@@ -122,7 +122,7 @@ export const MerchantLoginView: React.FC = () => {
         </button>
 
         <span className="font-mono text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-          try1second.com/merchantinstab2b
+          www.myindustryhouse.com/merchantinstab2b
         </span>
       </div>
 
@@ -362,7 +362,7 @@ export const MerchantLoginView: React.FC = () => {
 
           <div className="pt-2 text-[11px] text-center text-slate-500">
             <span>Admin can generate new 10-digit keys for any category in </span>
-            <strong className="text-slate-800">www.try1second.com/admininsta</strong>.
+            <strong className="text-slate-800">www.myindustryhouse.com/admininsta</strong>.
           </div>
         </div>
       </div>

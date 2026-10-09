@@ -252,7 +252,7 @@ interface AppContextType {
   adminLogin: (email: string, pass: string) => { success: boolean; message: string };
   adminLogout: () => void;
 
-  // Secret URL Routing (try1second.com/merchantinstab2b and try1second.com/admininsta)
+  // Secret URL Routing (www.myindustryhouse.com/merchantinstab2b and /admininsta)
   currentSecretRoute: string;
   navigateToSecretRoute: (route: string) => void;
 

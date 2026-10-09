@@ -32,7 +32,6 @@ import { AdminLoginView } from './components/admin/AdminLoginView';
 import { MerchantPortal } from './components/merchant/MerchantPortal';
 import { MerchantLoginView } from './components/merchant/MerchantLoginView';
 import { CplLeadCaptureModal } from './components/CplLeadCaptureModal';
-import { SecretRouteAddressBar } from './components/SecretRouteAddressBar';
 
 const MainContent: React.FC = () => {
   const {
@@ -54,8 +53,6 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 pb-20">
-      {/* Secret Route Navigator & Address Indicator for try1second.com/merchantinstab2b & admininsta */}
-      <SecretRouteAddressBar />
 
       {/* Top Header with Try1Second logo, Compare button, Notifications, Profile */}
       <Navbar />
