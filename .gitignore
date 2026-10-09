@@ -1,5 +1,6 @@
 node_modules
-dist
+# dist is committed with `git add -f dist/` for shared-hosting deployment
+# (remove that line when we move to KVM4 where builds happen on the server)
 .env
 .env.*
 !.env.example

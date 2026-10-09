@@ -1,0 +1,23 @@
+# ============================================================
+# Try1Second — shared-hosting compatibility layer
+# Works while the whole repo is deployed as the web root.
+# The production bundle lives in ./dist/ (base=/dist/).
+# On KVM4 this file is ignored (Node/nginx serves dist/).
+# ============================================================
+
+# Serve the built SPA at the homepage
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^$ dist/index.html [L]
+</IfModule>
+
+# --- Security: stop serving raw source code to the public ---
+# (currently https://try1second.com/server/index.ts etc. are publicly readable)
+RedirectMatch 404 ^/(src|server|database|tests|node_modules|\.git|\.data)(/|$).*
+<FilesMatch "\.(ts|tsx|sql|env|lock|md)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^(package\.json|tsconfig\.json|vite\.config\.ts|server\.ts|metadata\.json|bun\.lock)$">
+  Require all denied
+</FilesMatch>
