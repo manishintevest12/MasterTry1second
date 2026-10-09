@@ -113,36 +113,7 @@ export const VERTICAL_META: Record<
     criteria: ['Driver ETAs', 'Car Cleanliness & AC', 'Fair Pricing / No Cancellation', 'Driver Politeness'],
     sampleQueries: ['Airport cab without surge pricing', 'Sedan with AC within 3 mins ETA', 'Quick bike taxi under ₹80'],
   },
-  trains: {
-    name: 'Trains (IRCTC)',
-    icon: 'Train',
-    description: 'Live PNR confirmation prediction, Tatkal seats & fare comparison across IRCTC, ConfirmTkt & ixigo',
-    searchPlaceholder: 'Search train name, number or stations (e.g. Vande Bharat, Rajdhani)',
-    defaultOrigin: 'New Delhi (NDLS)',
-    defaultDestination: 'Varanasi Jn (BSB)',
-    criteria: ['Seat Confirmation Odds', 'Tatkal Success Rate', 'Cleanliness & Punctuality', 'Food Pantry Quality'],
-    sampleQueries: ['Vande Bharat Express AC Chair Car', 'Tatkal quota confirmed prediction', 'Overnight Rajdhani 3A berth'],
-  },
-  pharmacy: {
-    name: 'Medicines & Health',
-    icon: 'Pill',
-    description: 'Real-time medicine prices, generic alternatives & 2-hr delivery across Tata 1mg, Apollo 24|7 & PharmEasy',
-    searchPlaceholder: 'Search medicine name, salt or health product',
-    defaultOrigin: 'Fast Delivery to Pincode',
-    defaultDestination: 'Generic vs Branded Savings',
-    criteria: ['Discount vs MRP', 'Expiry Assurance', 'Delivery Speed', 'Genuine Sourcing'],
-    sampleQueries: ['Diabetic care medicines 25% off', 'Apollo 2-hour emergency medicine delivery', 'Generic substitute 60% cheaper'],
-  },
-  bills_utilities: {
-    name: 'Bills & Utilities',
-    icon: 'Receipt',
-    description: 'FASTag recharge, electricity, broadband & mobile recharge cashback comparison',
-    searchPlaceholder: 'Search biller (e.g. BESCOM, Tata Power, Airtel, FASTag)',
-    defaultOrigin: 'Instant BBPS Payment',
-    defaultDestination: 'Max Cashback & Zero Surcharge',
-    criteria: ['Instant Settlement', 'Cashback Value', 'Zero Convenience Surcharge', 'Auto-Pay Reliability'],
-    sampleQueries: ['Electricity bill payment with ₹100 cashback', 'Airtel annual recharge lowest price', 'FASTag instant topup zero fee'],
-  },
+
 };
 
 export const INITIAL_COMPARISON_ITEMS: ComparisonItem[] = [

@@ -11,9 +11,6 @@ import {
   Landmark,
   ShieldCheck,
   Car,
-  Train,
-  Pill,
-  Receipt,
 } from 'lucide-react';
 import { VerticalId } from '../types';
 import { useApp } from '../context/AppContext';
@@ -29,14 +26,11 @@ const VERTICALS: VerticalTabItem[] = [
   { id: 'flights', name: 'Flights', icon: Plane, tagline: 'Airline & OTA Matrix' },
   { id: 'hotels', name: 'Hotels', icon: Building2, tagline: 'Suites & Resorts' },
   { id: 'bus', name: 'Bus', icon: Bus, tagline: 'AC Sleeper Routes' },
-  { id: 'trains', name: 'Trains', icon: Train, tagline: 'IRCTC & Tatkal' },
   { id: 'ecommerce', name: 'E-Commerce', icon: ShoppingBag, tagline: 'Gadgets & Tech' },
   { id: 'grocery', name: '10-Min Grocery', icon: Zap, tagline: 'Quick-Commerce' },
   { id: 'food', name: 'Food', icon: Utensils, tagline: 'Dishes & Outlets' },
-  { id: 'pharmacy', name: 'Pharmacy', icon: Pill, tagline: '1mg & Apollo Meds' },
   { id: 'movie', name: 'Movies', icon: Film, tagline: 'IMAX & Cinema' },
   { id: 'cab', name: 'Cab & Rides', icon: Car, tagline: 'Surge & Fare Check' },
-  { id: 'bills_utilities', name: 'Bills', icon: Receipt, tagline: 'FASTag & Recharge' },
   { id: 'loans', name: 'Loans', icon: Landmark, tagline: 'Lowest APR & EMI' },
   { id: 'insurance', name: 'Insurance', icon: ShieldCheck, tagline: '1 Cr Health & Car' },
 ];
