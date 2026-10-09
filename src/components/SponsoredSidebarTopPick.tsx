@@ -34,7 +34,7 @@ interface B2BSponsorData {
   rating: number;
 }
 
-const B2B_SPONSORED_DATA: Record<VerticalId, B2BSponsorData> = {
+const B2B_SPONSORED_DATA: Partial<Record<VerticalId, B2BSponsorData>> = {
   flights: {
     partnerName: 'MakeMyTrip',
     partnerCode: 'MMT',
@@ -194,7 +194,7 @@ export const SponsoredSidebarTopPick: React.FC<SponsoredSidebarTopPickProps> = (
   const { addToast } = useApp();
   const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
 
-  const sponsor = B2B_SPONSORED_DATA[vertical] || B2B_SPONSORED_DATA.flights;
+  const sponsor = (B2B_SPONSORED_DATA[vertical] ?? B2B_SPONSORED_DATA.flights) as B2BSponsorData;
 
   const handleRedirect = () => {
     setIsRedirecting(true);

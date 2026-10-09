@@ -41,15 +41,7 @@ export async function createApp(): Promise<express.Express> {
   return app;
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  const { settings } = await import('./common/settings');
-  (async () => {
-    const app = await createApp();
-    app.listen(settings.port, () => {
-      console.log(`Try1Second listening on :${settings.port} (${settings.env})`);
-    });
-  })().catch((e) => {
-    console.error('Server failed to start:', e);
-    process.exit(1);
-  });
-}
+// NOTE: no auto-listen here. `server.ts` is the single entrypoint: it builds the app,
+// mounts the Vite dev middleware (dev) or serves dist/ (prod), and listens once.
+// (A previous auto-listen at import time caused a double-bind / EADDRINUSE crash.)
+export default createApp;

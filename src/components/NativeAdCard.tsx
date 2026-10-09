@@ -42,7 +42,7 @@ interface AdData {
   ctaText: string;
 }
 
-const VERTICAL_ADS: Record<VerticalId, AdData> = {
+const VERTICAL_ADS: Partial<Record<VerticalId, AdData>> = {
   flights: {
     adSlotId: 't1s-adsense-flights-01',
     advertiser: 'Cleartrip Flight SuperSaver',
@@ -255,7 +255,7 @@ export const NativeAdCard: React.FC<NativeAdCardProps> = ({ vertical, userLocati
   const [showAdChoicesInfo, setShowAdChoicesInfo] = useState<boolean>(false);
   const [expanded, setExpanded] = useState<boolean>(false);
 
-  const ad = VERTICAL_ADS[vertical] || VERTICAL_ADS.flights;
+  const ad = (VERTICAL_ADS[vertical] ?? VERTICAL_ADS.flights) as AdData;
   const isImageAd = Boolean(ad.imageUrl);
 
   const handleAdClick = (e: React.MouseEvent) => {

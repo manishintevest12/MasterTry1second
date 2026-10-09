@@ -910,8 +910,8 @@ export const AiInsightsView: React.FC = () => {
               )
             );
 
-            const liveActiveScan: ScanResultItem = {
-              id: data.item.id,
+            const liveActiveScan: ScannerResult = {
+              id: String(data.item.id),
               vertical: scan.vertical,
               productTitle: scan.title,
               category: scan.category,

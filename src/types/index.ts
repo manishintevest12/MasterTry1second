@@ -88,7 +88,7 @@ export interface ComparisonItem {
   unit?: string; // e.g. 'per night', 'per ticket', 'EMI / mo', 'annual premium', 'per trip', 'for 500g'
   sellerQuotes: SellerQuote[];
   pricePrediction: {
-    advice: 'book_now' | 'wait' | 'fair_price';
+    advice: 'book_now' | 'buy_now' | 'wait' | 'fair_price';
     headline: string;
     details: string;
     historicalLow: number;
