@@ -1,0 +1,170 @@
+/**
+ * Admin routes (Section 19): authorized controls for source management, health,
+ * affiliate configuration, rewards/prizes, fulfilment, feature flags and audit.
+ * Secrets are never returned in responses.
+ */
+import { Router } from 'express';
+import type { Request, Response } from 'express';
+import { getSources, getSource, updateSource, sourcesStatusReport, loadSourcesFromDb } from '../sources/registry';
+import { getAllHealth } from '../sources/health';
+import { checkSourceHealth } from '../sources/orchestrator';
+import { verticalStatusReport } from '../verticals/verticalEngine';
+import { requireAdmin } from '../auth/authService';
+import { listFulfilmentsForAdmin, updateFulfilmentStatus } from '../rewards/rewardsEngine';
+import { getStore } from '../common/db';
+import { cacheStats } from '../common/cache';
+import { redactSecrets } from '../common/logger';
+import { validateDestination } from '../affiliate/affiliateNetwork';
+import { log } from '../common/logger';
+
+export const adminRouter = Router();
+adminRouter.use(requireAdmin);
+
+const audit = (req: Request, action: string, target?: string, details?: unknown) => {
+  void (async () => {
+    try {
+      await getStore().execute('INSERT INTO audit_logs (actor, action, target, details) VALUES (?, ?, ?, ?)',
+        [(req as any).user?.email || 'admin', action, target || null, JSON.stringify(details || {})]);
+    } catch { /* best-effort */ }
+  })();
+};
+
+// --- Sources ---
+adminRouter.get('/sources', (_req, res) => {
+  const sources = getSources().map((s) => ({
+    ...s,
+    config: redactSecrets(s.config), // never expose credentials
+  }));
+  res.json({ success: true, sources, health: getAllHealth() });
+});
+
+adminRouter.post('/sources/:id', (req, res) => {
+  const patch: any = {};
+  if (typeof req.body.enabled === 'boolean') patch.enabled = req.body.enabled;
+  if (typeof req.body.priority === 'number') patch.priority = req.body.priority;
+  if (req.body.config && typeof req.body.config === 'object') patch.config = req.body.config;
+  if (req.body.rateLimit) patch.rateLimit = req.body.rateLimit;
+  const updated = updateSource(req.params.id, patch);
+  if (!updated) return res.status(404).json({ success: false, error: 'Unknown source' });
+  audit(req, 'source.update', req.params.id, { enabled: updated.enabled, priority: updated.priority });
+  log.info('Admin', `Source ${req.params.id} updated`);
+  res.json({ success: true, source: { ...updated, config: redactSecrets(updated.config) } });
+});
+
+adminRouter.post('/sources/:id/health-check', async (req, res) => {
+  const source = getSource(req.params.id);
+  if (!source) return res.status(404).json({ success: false, error: 'Unknown source' });
+  const healthy = await checkSourceHealth(source);
+  audit(req, 'source.health_check', req.params.id, { healthy });
+  res.json({ success: true, sourceId: source.id, healthy });
+});
+
+adminRouter.post('/sources/reload', async (req, res) => {
+  const r = await loadSourcesFromDb();
+  audit(req, 'sources.reload', undefined, r);
+  res.json({ success: true, ...r });
+});
+
+// --- Verticals & coverage (honest reporting) ---
+adminRouter.get('/verticals', (_req, res) => {
+  res.json({ success: true, verticals: verticalStatusReport() });
+});
+
+adminRouter.get('/coverage', async (_req, res) => {
+  const store = getStore();
+  let searchStats: any = null;
+  try {
+    const rows = await store.query<any>(
+      `SELECT served_from, COUNT(*) AS c FROM searches GROUP BY served_from`,
+    );
+    searchStats = rows;
+  } catch { searchStats = null; }
+  res.json({
+    success: true,
+    sources: sourcesStatusReport(),
+    searchesByServedFrom: searchStats,
+    note: 'Percentages require measured numerator/denominator over a time window; with no sources verified yet we report zeros, not claims.',
+    cache: cacheStats(),
+  });
+});
+
+// --- Rewards admin: prizes, inventory, fulfilment ---
+adminRouter.get('/fulfilments', async (_req, res) => {
+  const rows = await listFulfilmentsForAdmin();
+  res.json({ success: true, fulfilments: rows });
+});
+
+adminRouter.post('/fulfilments/:id/status', async (req, res) => {
+  const ok = await updateFulfilmentStatus(Number(req.params.id), String(req.body.status || ''));
+  if (!ok) return res.status(400).json({ success: false, error: 'Invalid status or record' });
+  audit(req, 'fulfilment.status', req.params.id, { status: req.body.status });
+  res.json({ success: true });
+});
+
+adminRouter.post('/prizes', async (req, res) => {
+  const { name, description, weight, quantity } = req.body;
+  if (!name || typeof quantity !== 'number' || quantity < 0) {
+    return res.status(400).json({ success: false, error: 'name and non-negative quantity are required' });
+  }
+  const store = getStore();
+  try {
+    const prize = await store.execute(
+      'INSERT INTO prizes (name, description, weight, active) VALUES (?, ?, ?, 1)',
+      [String(name).slice(0, 255), description ? String(description).slice(0, 500) : null, Number(weight) || 1],
+    );
+    await store.execute('INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)', [(prize as any).insertId, quantity]);
+    audit(req, 'prize.create', String(name), { weight, quantity });
+    res.json({ success: true, prizeId: (prize as any).insertId });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: 'Prize creation failed' });
+  }
+});
+
+adminRouter.post('/prizes/:id/inventory', async (req, res) => {
+  const delta = Number(req.body.delta || 0);
+  if (!Number.isFinite(delta)) return res.status(400).json({ success: false, error: 'delta must be a number' });
+  const store = getStore();
+  // Inventory can never go negative (checked + enforced atomically)
+  const rows = await store.query<any>('SELECT quantity FROM prize_inventory WHERE prize_id = ?', [Number(req.params.id)]);
+  if (rows.length === 0) return res.status(404).json({ success: false, error: 'Prize inventory not found' });
+  const current = Number(rows[0].quantity);
+  if (current + delta < 0) return res.status(400).json({ success: false, error: 'Inventory cannot become negative' });
+  await store.execute('UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?', [delta, Number(req.params.id)]);
+  audit(req, 'prize.inventory', req.params.id, { delta });
+  res.json({ success: true, quantity: current + delta });
+});
+
+// --- Feature flags & audit logs ---
+adminRouter.get('/feature-flags', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT name, enabled FROM feature_flags');
+    res.json({ success: true, flags: rows });
+  } catch {
+    res.json({ success: true, flags: [] });
+  }
+});
+
+adminRouter.post('/feature-flags/:name', async (req, res) => {
+  const enabled = Boolean(req.body.enabled);
+  await getStore().execute(
+    'INSERT INTO feature_flags (name, enabled) VALUES (?, ?) ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)',
+    [req.params.name, enabled ? 1 : 0],
+  );
+  audit(req, 'feature_flag.set', req.params.name, { enabled });
+  res.json({ success: true, name: req.params.name, enabled });
+});
+
+adminRouter.get('/audit-logs', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT actor, action, target, details, created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200');
+    res.json({ success: true, logs: rows });
+  } catch {
+    res.json({ success: true, logs: [] });
+  }
+});
+
+// --- Affiliate destination validation utility ---
+adminRouter.post('/validate-destination', (req, res) => {
+  const check = validateDestination(String(req.body.url || ''));
+  res.json({ success: true, ...check });
+});
