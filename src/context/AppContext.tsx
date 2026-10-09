@@ -249,7 +249,10 @@ interface AppContextType {
   // Admin Authentication (Exclusive to admin@try1second.com)
   isAdminAuthenticated: boolean;
   adminEmail: string | null;
-  adminLogin: (email: string, pass: string) => { success: boolean; message: string };
+  /** Step 1 of admin email-OTP login: ask the backend to send a code (via Resend). */
+  adminOtpRequest: (email: string) => Promise<{ success: boolean; message: string }>;
+  /** Step 2 of admin email-OTP login: verify the code and open the admin session. */
+  adminOtpVerify: (email: string, code: string) => Promise<{ success: boolean; message: string }>;
   adminLogout: () => void;
 
   // Secret URL Routing (www.try1second.com/merchantinstab2b and try1second.com/admininsta)
@@ -1760,27 +1763,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addToast('info', 'Vendor Signed Out', 'Merchant B2B session terminated.');
   };
 
-  const adminLogin = (email: string, _pass: string) => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail !== 'admin@try1second.com') {
-      return {
-        success: false,
-        message: 'Access Denied: Admin login is strictly restricted to admin@try1second.com.',
-      };
-    }
-
+  const openAdminSession = (email: string, token: string) => {
     setIsAdminAuthenticated(true);
-    setAdminEmail('admin@try1second.com');
+    setAdminEmail(email);
     try {
       localStorage.setItem('t1s_admin_auth', 'true');
-      localStorage.setItem('t1s_admin_email', 'admin@try1second.com');
+      localStorage.setItem('t1s_admin_email', email);
+      localStorage.setItem('t1s_admin_token', token);
     } catch {}
+  };
 
-    addToast('success', 'Admin Authenticated', 'Logged in as Master Administrator (admin@try1second.com).');
-    return {
-      success: true,
-      message: 'Admin access authorized.',
-    };
+  const adminOtpRequest = async (email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const res = await fetch('/api/auth/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return { success: false, message: data.error || 'Could not send the login code.' };
+      return { success: true, message: data.message || 'Login code sent. Check your email.' };
+    } catch {
+      return { success: false, message: 'Cannot reach the Try1Second server. The backend must be running to log in.' };
+    }
+  };
+
+  const adminOtpVerify = async (email: string, code: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      const res = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, code }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) return { success: false, message: data.error || 'Login failed.' };
+      openAdminSession(cleanEmail, data.token);
+      addToast('success', 'Admin Authenticated', 'Logged in via one-time email code.');
+      return { success: true, message: 'Admin access authorized.' };
+    } catch {
+      return { success: false, message: 'Cannot reach the Try1Second server. The backend must be running to log in.' };
+    }
   };
 
   const adminLogout = () => {
@@ -1789,6 +1813,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       localStorage.removeItem('t1s_admin_auth');
       localStorage.removeItem('t1s_admin_email');
+      localStorage.removeItem('t1s_admin_token');
     } catch {}
     addToast('info', 'Admin Signed Out', 'Master admin session closed.');
   };
@@ -2137,7 +2162,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sendVendorIdEmail,
         isAdminAuthenticated,
         adminEmail,
-        adminLogin,
+        adminOtpRequest,
+        adminOtpVerify,
         adminLogout,
         currentSecretRoute,
         navigateToSecretRoute,

@@ -36,7 +36,7 @@ function seedSources(): SourceConfig[] {
     src({
       id: 'structured_books', name: 'Open Library / public structured data', method: 'structured_data',
       verticals: ['ecommerce'], priority: 30,
-      config: { baseUrl: 'https://openlibrary.org/search.json' },
+      config: { baseUrl: 'https://openlibrary.org/search.json?fields=title,author_name,isbn,first_publish_year,key&limit=20', schema: 'openlibrary_search', paramMap: { query: 'q' } },
       requiresAuthorization: false,
     }),
     // ---- Affiliate feed (Cuelinks) ----

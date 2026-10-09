@@ -7,45 +7,56 @@ import {
   ArrowLeft,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
   KeyRound,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const AdminLoginView: React.FC = () => {
-  const { adminLogin, navigateToSecretRoute } = useApp();
+  const { adminOtpRequest, adminOtpVerify, navigateToSecretRoute } = useApp();
 
-  const [email, setEmail] = useState<string>('admin@try1second.com');
-  const [password, setPassword] = useState<string>('try1second2026');
+  const [email, setEmail] = useState<string>('');
+  const [code, setCode] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [statusMessage, setStatusMessage] = useState<string>('');
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
+  const [step, setStep] = useState<'email' | 'code'>('email');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Step 1: ask the backend to email a one-time code (sent via Resend).
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
-
+    setStatusMessage('');
     const cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail !== 'admin@try1second.com') {
-      setErrorMessage(
-        'Access Denied: Administrative access is strictly restricted to admin@try1second.com. Other email addresses cannot login.'
-      );
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMessage('Enter the administrator email address.');
       return;
     }
-
     setIsAuthenticating(true);
-    setTimeout(() => {
-      const res = adminLogin(cleanEmail, password);
-      setIsAuthenticating(false);
-      if (!res.success) {
-        setErrorMessage(res.message);
-      }
-    }, 400);
+    const res = await adminOtpRequest(cleanEmail);
+    setIsAuthenticating(false);
+    if (!res.success) {
+      setErrorMessage(res.message);
+      return;
+    }
+    setStatusMessage(res.message);
+    setStep('code');
   };
 
-  const handlePrefillAdmin = () => {
-    setEmail('admin@try1second.com');
-    setPassword('try1second2026');
+  // Step 2: verify the code and open the admin session.
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMessage('');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^\d{6}$/.test(code.trim())) {
+      setErrorMessage('Enter the 6-digit code from your email.');
+      return;
+    }
+    setIsAuthenticating(true);
+    const res = await adminOtpVerify(cleanEmail, code.trim());
+    setIsAuthenticating(false);
+    if (!res.success) {
+      setErrorMessage(res.message);
+    }
   };
 
   return (
@@ -84,59 +95,81 @@ export const AdminLoginView: React.FC = () => {
                 Try1Second Admin Center
               </h1>
               <p className="text-xs text-slate-600 mt-1 max-w-xs mx-auto leading-relaxed">
-                Platform management is exclusively restricted to <strong className="text-slate-800">admin@try1second.com</strong>.
+                Admin access uses email one-time codes. Login is restricted to the configured admin account.
               </p>
             </div>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Administrator Email *
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
-                  <Mail className="w-4 h-4" />
-                </div>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
-                  placeholder="admin@try1second.com"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 font-medium text-sm focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-2xs"
-                />
-              </div>
-              <span className="text-[10px] text-slate-600 mt-1 block">
-                Must be: <code className="bg-slate-100 text-orange-600 px-1 py-0.5 rounded font-mono font-bold">admin@try1second.com</code>
-              </span>
+          {/* OTP status message */}
+          {statusMessage && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-700 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+              <span className="leading-snug">{statusMessage}</span>
             </div>
+          )}
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Security Passcode *
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
-                  <KeyRound className="w-4 h-4" />
+          {/* Form: step 1 (email) or step 2 (one-time code) */}
+          <form onSubmit={step === 'email' ? handleSendCode : handleVerifyCode} className="space-y-4">
+            {step === 'email' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Administrator Email *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    placeholder="your admin email"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 font-medium text-sm focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-2xs"
+                  />
                 </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
-                  placeholder="Enter administrator password"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 font-mono text-sm focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-2xs"
-                />
+                <span className="text-[10px] text-slate-600 mt-1 block">
+                  A one-time login code will be emailed to the admin address.
+                </span>
               </div>
-            </div>
+            )}
+
+            {step === 'code' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  One-Time Code (sent to {email}) *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-600">
+                    <KeyRound className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.replace(/\D/g, ''));
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    placeholder="6-digit code"
+                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 font-mono text-lg tracking-[0.5em] focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-2xs"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setStep('email'); setCode(''); setStatusMessage(''); setErrorMessage(''); }}
+                  className="text-[10px] font-bold text-slate-500 hover:text-slate-700 mt-1.5 cursor-pointer underline underline-offset-2"
+                >
+                  Use a different email
+                </button>
+              </div>
+            )}
 
             {/* Error Message */}
             {errorMessage && (
@@ -155,30 +188,23 @@ export const AdminLoginView: React.FC = () => {
               {isAuthenticating ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Verifying Master Credentials...</span>
+                  <span>{step === 'email' ? 'Sending Login Code...' : 'Verifying Code...'}</span>
+                </>
+              ) : step === 'email' ? (
+                <>
+                  <Mail className="w-4 h-4" />
+                  <span>Email Me a Login Code</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </>
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Authenticate Master Admin</span>
+                  <span>Verify & Enter Admin Center</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
             </button>
           </form>
-
-          {/* Quick Prefill helper */}
-          <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between text-xs">
-            <span className="text-[11px] text-slate-600 font-medium">Testing Credentials:</span>
-            <button
-              type="button"
-              onClick={handlePrefillAdmin}
-              className="text-[11px] font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 cursor-pointer"
-            >
-              <Sparkles className="w-3 h-3 text-amber-500" />
-              <span>Reset & Auto-fill Admin</span>
-            </button>
-          </div>
 
           {/* Security Notice */}
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">

@@ -189,7 +189,8 @@ export class FileStore implements DataStore {
       const cols = (s.match(/insert\s+into\s+`?\w+`?\s*\(([^)]+)\)/i)?.[1] || '')
         .split(',').map((c) => c.trim().replace(/[`]/g, '')).filter(Boolean);
       const row = this.valuesOf(s, cols, params);
-      row['id'] = this.data[table].length ? Math.max(...this.data[table].map((r) => Number(r.id) || 0)) + 1 : 1;
+      // Only auto-assign an id when the INSERT did not provide one (e.g. sessions carry their token as id).
+      if (!cols.includes('id')) row['id'] = this.data[table].length ? Math.max(...this.data[table].map((r) => Number(r.id) || 0)) + 1 : 1;
       this.data[table].push(row);
       this.persist();
       return { affectedRows: 1, insertId: row['id'] as number };

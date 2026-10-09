@@ -9,7 +9,10 @@ import type { VerticalId } from '../types';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
 import { sourcesStatusReport } from '../sources/registry';
 import { getAllHealth } from '../sources/health';
-import { authMiddleware, requireAuth, loginUser, registerUser } from '../auth/authService';
+import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
+import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
+import crypto from 'crypto';
+
 import {
   claimSpinEligibility, eligibleSpinCount, executeSpin, getSpinResult,
   registerReferral, submitFulfilmentDetails, validPointBalance,
@@ -184,6 +187,36 @@ apiRouter.post('/auth/login', async (req, res) => {
   const r = await loginUser(String(req.body.email || ''), String(req.body.password || ''));
   if (!r.ok) return res.status(401).json({ success: false, error: r.error });
   res.json({ success: true, token: r.token, user: r.user });
+});
+
+// ============ Admin email-OTP login (Resend) ============
+apiRouter.post('/auth/otp/request', async (req, res) => {
+  const r = await requestAdminOtp(String(req.body.email || ''));
+  if (!r.ok) return res.status(429).json({ success: false, error: r.error });
+  // Generic success (enumeration-safe); delivery problems are surfaced only as a generic retry message.
+  res.json({ success: true, message: 'If the address is an admin account, a login code has been sent.' });
+});
+
+apiRouter.post('/auth/otp/verify', async (req, res) => {
+  const r = await verifyAdminOtp(String(req.body.email || ''), String(req.body.code || ''));
+  if (!r.ok) return res.status(401).json({ success: false, error: r.error });
+  const email = r.email!;
+  const store = getStore();
+  let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [email]);
+  // Bootstrap: the configured ADMIN_EMAIL becomes the admin account on first OTP login.
+  if (rows.length === 0 && settings.adminEmails.includes(email)) {
+    await store.execute('INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)', [
+      email, `otp-only$${crypto.randomBytes(16).toString('hex')}`, 'Owner Admin', 'admin',
+    ]);
+    rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [email]);
+  }
+  if (rows.length === 0 || rows[0].role !== 'admin') return res.status(403).json({ success: false, error: 'Not an admin account' });
+  const u = rows[0];
+  const token = crypto.randomBytes(32).toString('hex');
+  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
+    token, Number(u.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
+  ]);
+  res.json({ success: true, token, user: { id: Number(u.id), email: u.email, role: u.role, displayName: u.display_name || undefined } });
 });
 
 // ============ Rewards: referrals & spins (Section 18) ============

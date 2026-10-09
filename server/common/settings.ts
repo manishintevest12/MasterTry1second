@@ -14,12 +14,24 @@ export const settings = {
   redisUrl: process.env.REDIS_URL || '',
 
   geminiApiKey: process.env.GEMINI_API_KEY || '',
+
+  /** First-admin bootstrap: any account registered with this email gets the admin role. */
+  adminBootstrapEmail: (process.env.ADMIN_EMAIL || '').toLowerCase(),
+  /** Allowed admin login emails (email-OTP). ADMIN_EMAILS is a comma-separated list. */
+  adminEmails: (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
   aiAssistEnabled: process.env.AI_ASSIST !== 'false' && Boolean(process.env.GEMINI_API_KEY),
 
   searchApi: {
     apiKey: process.env.SEARCHAPI_API_KEY || '',
     enabled: process.env.SEARCHAPI_ENABLED !== 'false' && Boolean(process.env.SEARCHAPI_API_KEY),
   },
+
+  /** Transactional email (Resend) for admin OTP login. */
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
   cuelinks: {
     apiKey: process.env.CUELINKS_API_KEY || '',

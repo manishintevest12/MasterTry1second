@@ -9,7 +9,7 @@ import { getSources, getSource, updateSource, sourcesStatusReport, loadSourcesFr
 import { getAllHealth } from '../sources/health';
 import { checkSourceHealth } from '../sources/orchestrator';
 import { verticalStatusReport } from '../verticals/verticalEngine';
-import { requireAdmin } from '../auth/authService';
+import { authMiddleware, requireAdmin } from '../auth/authService';
 import { listFulfilmentsForAdmin, updateFulfilmentStatus } from '../rewards/rewardsEngine';
 import { getStore } from '../common/db';
 import { cacheStats } from '../common/cache';
@@ -18,6 +18,7 @@ import { validateDestination } from '../affiliate/affiliateNetwork';
 import { log } from '../common/logger';
 
 export const adminRouter = Router();
+adminRouter.use(authMiddleware); // attach req.user from the Bearer token
 adminRouter.use(requireAdmin);
 
 const audit = (req: Request, action: string, target?: string, details?: unknown) => {
