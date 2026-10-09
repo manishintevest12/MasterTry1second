@@ -62,7 +62,7 @@ export const AdminLoginView: React.FC = () => {
         </button>
 
         <span className="font-mono text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-          www.myindustryhouse.com/admininsta
+          www.try1second.com/admininsta
         </span>
       </div>
 

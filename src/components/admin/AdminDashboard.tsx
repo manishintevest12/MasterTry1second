@@ -288,7 +288,7 @@ export const AdminDashboard: React.FC = () => {
               type="button"
               onClick={() => navigateToSecretRoute('/merchantinstab2b')}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 shadow-sm transition-all"
-              title="Open Merchant B2B Portal (www.myindustryhouse.com/merchantinstab2b)"
+              title="Open Merchant B2B Portal (try1second.com/merchantinstab2b)"
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>Merchant B2B Portal</span>
