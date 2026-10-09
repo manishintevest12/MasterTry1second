@@ -11,6 +11,7 @@ import { sourcesStatusReport } from '../sources/registry';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
 import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
+import { verifyFirebaseIdToken } from '../auth/firebaseAuth';
 import crypto from 'crypto';
 
 import {
@@ -187,6 +188,39 @@ apiRouter.post('/auth/login', async (req, res) => {
   const r = await loginUser(String(req.body.email || ''), String(req.body.password || ''));
   if (!r.ok) return res.status(401).json({ success: false, error: r.error });
   res.json({ success: true, token: r.token, user: r.user });
+});
+
+// ============ Firebase Google sign-in (main-site users) ============
+apiRouter.post('/auth/firebase', async (req, res) => {
+  if (!settings.firebaseProjectId) {
+    return res.status(503).json({ success: false, error: 'Google sign-in is not configured (set FIREBASE_PROJECT_ID)' });
+  }
+  const idToken = String(req.body?.idToken || '');
+  if (!idToken) return res.status(400).json({ success: false, error: 'Missing Google ID token' });
+
+  const claims = await verifyFirebaseIdToken(idToken);
+  if (!claims) return res.status(401).json({ success: false, error: 'Google sign-in could not be verified' });
+
+  const store = getStore();
+  let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  if (rows.length === 0) {
+    await store.execute('INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)', [
+      claims.email, claims.displayName || null, 'user', claims.uid,
+    ]);
+    rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  }
+  const row = rows[0];
+  const token = crypto.randomBytes(32).toString('hex');
+  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
+    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
+  ]);
+  res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined } });
+});
+
+// Who am I? — restores a session after page reload
+apiRouter.get('/auth/me', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, displayName: user.displayName || undefined } });
 });
 
 // ============ Admin email-OTP login (Resend) ============

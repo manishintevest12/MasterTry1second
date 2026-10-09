@@ -31,6 +31,9 @@ export const settings = {
 
   /** Transactional email (Resend) for admin OTP login. */
   resendApiKey: process.env.RESEND_API_KEY || '',
+
+  /** Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side. */
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
   cuelinks: {

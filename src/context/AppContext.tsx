@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import confetti from 'canvas-confetti';
+import { firebaseConfigured, signInWithGoogleAndGetToken } from '../utils/firebaseAuth';
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  role: string;
+  displayName?: string;
+}
 import {
   VerticalId,
   ComparisonItem,
@@ -265,6 +273,11 @@ interface AppContextType {
   addQuickAppPartner: (partner: Omit<QuickAppPartner, 'id' | 'createdAt'>) => QuickAppPartner;
   updateQuickAppPartner: (id: string, updates: Partial<QuickAppPartner>) => void;
   deleteQuickAppPartner: (id: string) => void;
+  authUser: AuthUser | null;
+  authBusy: boolean;
+  authError: string | null;
+  loginWithGoogle: () => Promise<boolean>;
+  logoutUser: () => void;
   trackQuickAppRedirection: (partnerId: string) => QuickAppRedirectionLog | null;
   clearQuickAppRedirectionLogs: () => void;
   simulateQuickAppRedirection: (partnerId?: string) => void;
@@ -273,6 +286,9 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authBusy, setAuthBusy] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [vertical, setVertical] = useState<VerticalId>('flights');
   const [activeNavTab, setActiveNavTabState] = useState<MainNavTab>('home');
 
@@ -2029,9 +2045,73 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     trackQuickAppRedirection(target.id);
   };
 
+  // ---- User authentication (Google via Firebase) ----
+  const persistSession = (token: string, user: AuthUser) => {
+    localStorage.setItem('try1_session', token);
+    localStorage.setItem('try1_user', JSON.stringify(user));
+    setAuthUser(user);
+    setAuthError(null);
+  };
+
+  const loginWithGoogle = async (): Promise<boolean> => {
+    setAuthBusy(true); setAuthError(null);
+    try {
+      if (!firebaseConfigured()) {
+        setAuthError('Google sign-in is not configured yet.');
+        return false;
+      }
+      const idToken = await signInWithGoogleAndGetToken();
+      const res = await fetch('/api/auth/firebase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setAuthError(data.error || 'Google sign-in failed.');
+        return false;
+      }
+      persistSession(data.token, data.user);
+      return true;
+    } catch (err: any) {
+      setAuthError(err?.code?.includes('popup') ? 'Google sign-in window was closed.' : String(err?.message || err));
+      return false;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const logoutUser = () => {
+    localStorage.removeItem('try1_session');
+    localStorage.removeItem('try1_user');
+    setAuthUser(null);
+  };
+
+  // Restore an existing session on load
+  useEffect(() => {
+    const saved = localStorage.getItem('try1_user');
+    const token = localStorage.getItem('try1_session');
+    if (!saved || !token) return;
+    try {
+      const user = JSON.parse(saved) as AuthUser;
+      fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.success) setAuthUser(d.user);
+          else { localStorage.removeItem('try1_session'); localStorage.removeItem('try1_user'); setAuthUser(null); }
+        })
+        .catch(() => setAuthUser(user)); // backend unreachable — keep the last known session
+    } catch { /* ignore corrupt storage */ }
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
+        authUser,
+        authBusy,
+        authError,
+        loginWithGoogle,
+        logoutUser,
         vertical,
         setVertical: handleSetVertical,
         activeNavTab,
