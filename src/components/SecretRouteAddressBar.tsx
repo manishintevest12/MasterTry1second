@@ -26,7 +26,7 @@ export const SecretRouteAddressBar: React.FC = () => {
   // Compute current simulated URL
   const currentUrl =
     activeNavTab === 'merchant'
-      ? 'https://try1second.com/merchantinstab2b'
+      ? 'https://www.www.try1second.com/merchantinstab2b'
       : activeNavTab === 'admin'
       ? 'https://www.try1second.com/admininsta'
       : 'https://try1second.com/';
@@ -41,7 +41,7 @@ export const SecretRouteAddressBar: React.FC = () => {
             <span className="text-slate-400 select-none">https://</span>
             <span className="font-bold text-white truncate">
               {activeNavTab === 'merchant'
-                ? 'try1second.com/merchantinstab2b'
+                ? 'www.try1second.com/merchantinstab2b'
                 : activeNavTab === 'admin'
                 ? 'www.try1second.com/admininsta'
                 : 'try1second.com'}
@@ -77,7 +77,7 @@ export const SecretRouteAddressBar: React.FC = () => {
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white'
             }`}
-            title="Open Merchant B2B Portal (try1second.com/merchantinstab2b)"
+            title="Open Merchant B2B Portal (www.try1second.com/merchantinstab2b)"
           >
             <Building2 className="w-3 h-3" />
             <span>/merchantinstab2b</span>

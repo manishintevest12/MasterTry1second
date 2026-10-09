@@ -142,7 +142,7 @@ export const MerchantVendorIdsTab: React.FC = () => {
   };
 
   const handleCopyCredentials = (vendor: MerchantVendorAccount) => {
-    const textToCopy = `Try1Second Merchant Portal Access:\nPortal URL: try1second.com/merchantinstab2b\nCompany: ${vendor.companyName}\nCategory: ${vendor.vertical.toUpperCase()}\nYour Unique 10-Digit Vendor ID: ${vendor.vendorIdNumber}\nStatus: ${vendor.status.toUpperCase()}`;
+    const textToCopy = `Try1Second Merchant Portal Access:\nPortal URL: www.try1second.com/merchantinstab2b\nCompany: ${vendor.companyName}\nCategory: ${vendor.vertical.toUpperCase()}\nYour Unique 10-Digit Vendor ID: ${vendor.vendorIdNumber}\nStatus: ${vendor.status.toUpperCase()}`;
     navigator.clipboard.writeText(textToCopy);
     setCopiedId(vendor.vendorIdNumber);
     setTimeout(() => setCopiedId(null), 2500);
@@ -179,7 +179,7 @@ export const MerchantVendorIdsTab: React.FC = () => {
               <span>Merchant 10-Digit Vendor Access Management</span>
             </h2>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-              Every B2B partner must be provisioned with a unique 10-digit Vendor Access ID by Admin to log in at <strong className="text-slate-800">try1second.com/merchantinstab2b</strong>.
+              Every B2B partner must be provisioned with a unique 10-digit Vendor Access ID by Admin to log in at <strong className="text-slate-800">www.try1second.com/merchantinstab2b</strong>.
             </p>
           </div>
 
@@ -725,7 +725,7 @@ export const MerchantVendorIdsTab: React.FC = () => {
                   {emailingVendor.vendorIdNumber}
                 </div>
                 <div className="text-[11px] text-slate-600">
-                  Portal URL: <strong className="text-slate-900 font-mono">try1second.com/merchantinstab2b</strong>
+                  Portal URL: <strong className="text-slate-900 font-mono">www.try1second.com/merchantinstab2b</strong>
                 </div>
               </div>
 
