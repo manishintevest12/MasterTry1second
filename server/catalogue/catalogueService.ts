@@ -115,19 +115,30 @@ export async function findCatalogueOffers(
 }
 
 /**
- * Incremental refresh support: candidates for the background worker.
+ * Incremental refresh support: candidates for the background worker (Section 7.3).
  * Only volatile fields are refreshed; unchanged stable fields are never rewritten.
+ * Priority = measured search demand for the vertical (24h) first, then near-expiry, then oldest.
+ * Runs only on MySQL (measured demand lives in the searches table); the dev file
+ * store returns [] honestly rather than pretending to know demand.
  */
 export async function refreshCandidates(opts: { limit: number; minAgeSec: number }): Promise<CatalogueRow[]> {
   const store = getStore();
+  if (store.kind !== 'mysql') return [];
   try {
     return await store.query<CatalogueRow>(
-      `SELECT id, vertical, title, vendor, seller, mandatory_total, effective_price, currency, availability,
-              freshness_status, validation_status, fetched_at, source_id, canonical_entity_id
-       FROM offers
-       WHERE validation_status != 'INVALID'
-       AND TIMESTAMPDIFF(SECOND, COALESCE(fetched_at, '1970-01-01'), NOW()) > ?
-       ORDER BY fetched_at ASC LIMIT ?`,
+      `SELECT o.id, o.vertical, o.title, o.vendor, o.seller, o.mandatory_total, o.effective_price, o.currency,
+              o.availability, o.freshness_status, o.validation_status, o.fetched_at, o.source_id, o.canonical_entity_id
+       FROM offers o
+       LEFT JOIN (
+         SELECT vertical, COUNT(*) AS demand FROM searches
+         WHERE created_at >= NOW() - INTERVAL 24 HOUR GROUP BY vertical
+       ) d ON d.vertical = o.vertical
+       WHERE o.validation_status != 'INVALID'
+       AND TIMESTAMPDIFF(SECOND, COALESCE(o.fetched_at, '1970-01-01'), NOW()) > ?
+       ORDER BY COALESCE(d.demand, 0) DESC,
+                (o.expires_at IS NULL OR o.expires_at < NOW() + INTERVAL 6 HOUR) DESC,
+                o.fetched_at ASC
+       LIMIT ?`,
       [opts.minAgeSec, opts.limit],
     );
   } catch {

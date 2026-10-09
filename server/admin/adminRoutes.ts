@@ -168,3 +168,104 @@ adminRouter.post('/validate-destination', (req, res) => {
   const check = validateDestination(String(req.body.url || ''));
   res.json({ success: true, ...check });
 });
+
+// --- Coverage measurement (Section 20): honest numerator/denominator metrics ---
+adminRouter.get('/coverage/metrics', async (req, res) => {
+  const hours = Math.max(0, Math.min(Number(req.query.hours) || 24, 720));
+  const { buildCoverageReport } = await import('../analytics/coverage');
+  const report = await buildCoverageReport(hours);
+  res.json({ success: true, report });
+});
+
+// --- Catalogue quality controls (Section 19): coupons, bank offers, gift cards ---
+adminRouter.get('/coupons', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT id, merchant, code, description, discount_type, discount_value, min_spend, max_discount, eligibility, expires_at, verified FROM coupons ORDER BY created_at DESC LIMIT 200');
+    res.json({ success: true, coupons: rows });
+  } catch { res.json({ success: true, coupons: [] }); }
+});
+
+adminRouter.post('/coupons', async (req, res) => {
+  const { merchant, code, description, discountType, discountValue, minSpend, maxDiscount, eligibility, expiresAt } = req.body;
+  if (!merchant || !description) return res.status(400).json({ success: false, error: 'merchant and description are required' });
+  // Admin-entered coupons carry verified=true only when the admin explicitly confirms the terms
+  const verified = req.body.verified === true;
+  try {
+    const r = await getStore().execute(
+      `INSERT INTO coupons (merchant, code, description, discount_type, discount_value, min_spend, max_discount, eligibility, expires_at, verified, source_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin')`,
+      [String(merchant).slice(0, 255), code ? String(code).slice(0, 120) : null, String(description).slice(0, 500),
+        ['flat', 'percent', 'unknown'].includes(discountType) ? discountType : 'unknown',
+        discountValue ?? null, minSpend ?? null, maxDiscount ?? null,
+        eligibility ? String(eligibility).slice(0, 1000) : null,
+        expiresAt || null, verified ? 1 : 0],
+    );
+    audit(req, 'coupon.create', String(merchant), { verified });
+    res.json({ success: true, couponId: (r as any).insertId });
+  } catch {
+    res.status(500).json({ success: false, error: 'Coupon creation failed' });
+  }
+});
+
+adminRouter.post('/coupons/:id/verify', async (req, res) => {
+  const verified = Boolean(req.body.verified);
+  try {
+    const r = await getStore().execute('UPDATE coupons SET verified = ? WHERE id = ?', [verified ? 1 : 0, Number(req.params.id)]);
+    if ((r as any).affectedRows === 0) return res.status(404).json({ success: false, error: 'Coupon not found' });
+    audit(req, 'coupon.verify', req.params.id, { verified });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ success: false, error: 'Update failed' });
+  }
+});
+
+adminRouter.get('/bank-offers', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT id, bank, card_type, offer_text, min_spend, max_discount, valid_from, valid_to, eligibility, verified FROM bank_offers ORDER BY created_at DESC LIMIT 200');
+    res.json({ success: true, bankOffers: rows });
+  } catch { res.json({ success: true, bankOffers: [] }); }
+});
+
+adminRouter.post('/bank-offers', async (req, res) => {
+  const { bank, cardType, offerText, minSpend, maxDiscount, validFrom, validTo, eligibility } = req.body;
+  if (!bank || !offerText) return res.status(400).json({ success: false, error: 'bank and offerText are required' });
+  try {
+    const r = await getStore().execute(
+      `INSERT INTO bank_offers (bank, card_type, offer_text, min_spend, max_discount, valid_from, valid_to, eligibility, verified, source_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'admin')`,
+      [String(bank).slice(0, 160), cardType ? String(cardType).slice(0, 160) : null, String(offerText).slice(0, 500),
+        minSpend ?? null, maxDiscount ?? null, validFrom || null, validTo || null,
+        eligibility ? String(eligibility).slice(0, 1000) : null, req.body.verified === true ? 1 : 0],
+    );
+    audit(req, 'bank_offer.create', String(bank), {});
+    res.json({ success: true, bankOfferId: (r as any).insertId });
+  } catch {
+    res.status(500).json({ success: false, error: 'Bank offer creation failed' });
+  }
+});
+
+adminRouter.get('/gift-cards', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT id, merchant, denomination, sale_price, discount_percent, validity_months, verified FROM gift_cards ORDER BY created_at DESC LIMIT 200');
+    res.json({ success: true, giftCards: rows });
+  } catch { res.json({ success: true, giftCards: [] }); }
+});
+
+adminRouter.post('/gift-cards', async (req, res) => {
+  const { merchant, denomination, salePrice, discountPercent, validityMonths } = req.body;
+  if (!merchant || typeof denomination !== 'number' || denomination <= 0) {
+    return res.status(400).json({ success: false, error: 'merchant and positive denomination are required' });
+  }
+  try {
+    const r = await getStore().execute(
+      `INSERT INTO gift_cards (merchant, denomination, sale_price, discount_percent, validity_months, verified, source_id)
+       VALUES (?, ?, ?, ?, ?, ?, 'admin')`,
+      [String(merchant).slice(0, 255), denomination, salePrice ?? null, discountPercent ?? null,
+        validityMonths ?? null, req.body.verified === true ? 1 : 0],
+    );
+    audit(req, 'gift_card.create', String(merchant), {});
+    res.json({ success: true, giftCardId: (r as any).insertId });
+  } catch {
+    res.status(500).json({ success: false, error: 'Gift card creation failed' });
+  }
+});

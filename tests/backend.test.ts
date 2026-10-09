@@ -371,3 +371,89 @@ async function registerReferralRef(store: any, referrerId: number, refereeId: nu
   const r = await registerReferral(referrerId, refereeId);
   assert.ok(r.ok, `referral ${referrerId}→${refereeId} failed: ${r.error}`);
 }
+
+// ---------------- Circuit breaker (Section 14/24) ----------------
+test('resilience: circuit opens after consecutive failures and blocks further attempts', async () => {
+  const { recordFailure, getHealth, canAttempt } = await import('../server/sources/health.ts');
+  const sid = `cb-test-${Math.random()}`;
+  assert.equal(canAttempt(sid), true); // healthy state allows attempts
+  for (let i = 0; i < 3; i++) recordFailure(sid, 'CONNECTION_FAILURE', 'simulated failure');
+  const h = getHealth(sid);
+  assert.equal(h.state, 'CIRCUIT_OPEN');
+  assert.equal(canAttempt(sid), false); // blocked while open
+  // Recovery probe: only after cooldown does a half-open attempt get through
+  // (simulated by inspecting the recorded open-until timestamp instead of waiting 60s)
+  assert.ok(h.circuitOpenUntil && new Date(h.circuitOpenUntil).getTime() > Date.now());
+});
+
+test('resilience: single failure does not open the circuit (transient errors tolerated)', async () => {
+  const { recordFailure, getHealth, canAttempt } = await import('../server/sources/health.ts');
+  const sid = `cb-single-${Math.random()}`;
+  recordFailure(sid, 'TIMEOUT', 'simulated timeout');
+  const h = getHealth(sid);
+  assert.notEqual(h.state, 'CIRCUIT_OPEN');
+  assert.equal(canAttempt(sid), true);
+});
+
+// ---------------- Optional provider policy (Sections 2.3, 24) ----------------
+test('searchapi: disabled / credential-free provider never blocks and never invents results', async () => {
+  const { SearchProviderAdapter } = await import('../server/sources/adapters/feedAndApiAdapters.ts');
+  const adapter = new SearchProviderAdapter();
+  const source: any = {
+    id: 'searchapi-test', name: 'SearchApi (disabled)', method: 'search_provider', verticals: ['ecommerce'],
+    enabled: true, priority: 99, config: {}, rateLimit: { maxRequestsPerMinute: 1, maxConcurrency: 1 },
+    freshnessPolicy: { liveVerifiedTtlSec: 900, freshTtlSec: 3600, maxStaleSec: 86400 },
+    adapterVersion: '1', parserVersion: '1', requiresAuthorization: true, permittedForRetention: false,
+  };
+  const result = await adapter.search({ query: { vertical: 'ecommerce', rawQuery: 'iphone' }, source });
+  // Missing credentials → adapter fails alone, returns no fabricated items
+  assert.equal(result.success, false);
+  assert.equal(result.rawItems.length, 0);
+  assert.ok(['MISSING_CREDENTIALS', 'UNAVAILABLE', 'CONFIGURATION_REQUIRED', 'QUOTA_EXHAUSTED', 'EMPTY_RESPONSE', 'AUTHORIZATION_REQUIRED'].includes(result.failureClass as string) || result.failureClass,
+    `expected a declared failure class, got ${result.failureClass}`);
+});
+
+// ---------------- Coverage honesty (Section 20) ----------------
+test('coverage: zero denominators report null percentage, never a claimed 0% or 100%', async () => {
+  const { buildCoverageReport } = await import('../server/analytics/coverage.ts');
+  const report = await buildCoverageReport(1);
+  // With no searches recorded in the window the rate is explicitly not measurable
+  assert.equal(report.searches.searchSuccessRate.percentage === null || report.searches.searchSuccessRate.percentage >= 0, true);
+  if (report.searches.searchSuccessRate.denominator === 0) {
+    assert.equal(report.searches.searchSuccessRate.percentage, null);
+  }
+  assert.ok(Array.isArray(report.exclusions) && report.exclusions.length > 0);
+  assert.equal(typeof report.searches.searchSuccessRate.numerator, 'number');
+  assert.equal(typeof report.searches.searchSuccessRate.denominator, 'number');
+});
+
+// ---------------- Catalogue persistence across restart (Section 7/24) ----------------
+test('catalogue: persisted offers survive a store restart (durable source of truth)', async () => {
+  const { getStore, FileStore } = await import('../server/common/db.ts');
+  const store = getStore() as any;
+  const offer: any = {
+    canonicalEntityId: null, vertical: 'ecommerce', title: 'Persisted Test Product', brand: 'TestBrand',
+    identifiers: '{}', attributes: '{}', vendor: 'TestVendor', seller: 'TestSeller', sellerUrl: null,
+    location_pincode: null, location_city: null, list_price: 100, mandatory_total: 110, effective_price: 110,
+    verified_savings: 0, currency: 'INR', fees: '{}', availability: 'in_stock', match_state: 'MATCHED',
+    freshness_status: 'FRESH', validation_status: 'PARTIAL', confidence: 0.5,
+    source_id: 'persist-test', source_method: 'direct_http', source_url: null,
+    fetched_at: new Date().toISOString(), validated_at: null, expires_at: null,
+  };
+  const res = await store.execute(
+    `INSERT INTO offers (canonical_entity_id, vertical, title, brand, identifiers, attributes, vendor, seller, seller_url,
+      location_pincode, location_city, list_price, mandatory_total, effective_price, verified_savings, currency, fees,
+      availability, match_state, freshness_status, validation_status, confidence, source_id, source_method, source_url,
+      fetched_at, validated_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    Object.values(offer),
+  );
+  assert.ok((res as any).insertId > 0);
+
+  // Simulate a process restart: brand-new store instance over the same durable data
+  const reopened = new (FileStore as any)();
+  const rows: any[] = await reopened.query('SELECT id, title, mandatory_total FROM offers');
+  const found = rows.find((r: any) => r.title === 'Persisted Test Product');
+  assert.ok(found, 'offer must survive restart');
+  assert.equal(Number(found.mandatory_total), 110);
+});

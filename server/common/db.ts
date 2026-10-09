@@ -74,7 +74,7 @@ class MysqlStore implements DataStore {
 }
 
 // ---------------- File fallback (dev only — NOT a production store) ----------------
-class FileStore implements DataStore {
+export class FileStore implements DataStore {
   kind = 'file' as const;
   // Generic table emulation: { tableName: [rows] }
   private file = path.join(dataDir, 'devstore.json');
