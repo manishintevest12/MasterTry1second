@@ -1,0 +1,6 @@
+{
+  "name": "OmniCompare - 10-Vertical Live Price Comparison & Rewards",
+  "description": "Real-time price comparison across flights, hotels, bus, ecommerce, 10-minute grocery, food delivery, movies, loans, insurance, and cabs with price tracking, verified user reviews, and Spin & Earn rewards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
