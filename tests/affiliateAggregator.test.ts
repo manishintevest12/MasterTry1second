@@ -58,3 +58,23 @@ test('unconfigured Admitad reports honestly instead of fabricating', async () =>
   assert.equal(res.offers.length, 0);
   assert.ok(res.warnings.length > 0);
 });
+
+test('VCommission normalizer maps the live campaigns shape (data.campaigns fields)', async () => {
+  const { VCommissionProvider } = await import('../server/affiliate/providers/vcommission');
+  const p = new VCommissionProvider();
+  const o = p.normalize({
+    id: '13860', title: 'Lifechangingastro.com Ecommerce CPS - India',
+    description: '<p>Flat 10% commission</p>', thumbnail: 'https://static.vnative.co/images/x.png',
+    preview_url: 'https://lifechangingastro.com/', model: 'cps',
+    categories: "['ecommerce']", currency: 'INR',
+    tracking_link: 'https://track.vcommission.com/click?campaign_id=13860&pub_id=1',
+    payouts: "[{'payout': 31.5, 'geo': ['IN'], 'payout_model': 'percentage'}]",
+  });
+  assert.equal(o.network_source, 'vcommission');
+  assert.equal(o.network_offer_id, '13860');
+  assert.equal(o.affiliate_url, 'https://track.vcommission.com/click?campaign_id=13860&pub_id=1');
+  assert.equal(o.original_url, 'https://lifechangingastro.com/');
+  assert.equal(o.commission, 31.5);
+  assert.deepEqual(o.categories, ['ecommerce']);
+  assert.ok(!o.description?.includes('<')); // HTML stripped
+});

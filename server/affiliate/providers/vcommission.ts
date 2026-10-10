@@ -18,7 +18,8 @@ export class VCommissionProvider extends BaseAffiliateProvider {
     const res = await fetch(`${settings.vcommission.baseUrl}/publisher/campaigns?apiKey=${settings.vcommission.apiKey}`);
     if (!res.ok) throw new Error(`vcommission: campaigns HTTP ${res.status}`);
     const j: any = await res.json();
-    this.campaigns = Array.isArray(j.data) ? j.data : [];
+    // Live shape (verified Oct 2026): {success, data: {page, count, campaigns: [...]}}
+    this.campaigns = Array.isArray(j?.data?.campaigns) ? j.data.campaigns : (Array.isArray(j?.data) ? j.data : []);
   }
 
   async fetchOffers(_opts: { limit?: number } = {}): Promise<ProviderFetchResult> {
@@ -29,26 +30,33 @@ export class VCommissionProvider extends BaseAffiliateProvider {
   }
 
   normalize(c: any): UnifiedAffiliateOffer {
-    const cats = String(c.category || '').split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+    // Verified live fields: id, title, description, thumbnail, preview_url,
+    // tracking_link, categories, payouts (string repr of list-of-dicts), currency
+    const cats = (() => { try { return String(c.categories || '').replace(/[\[\]'\"]/g, '').split(','); } catch { return []; } })();
+    // payouts arrives as a string repr of a list ("[{'payout': 31.5, ...}]") — regex the
+    // first payout number; unparseable stays null, never fabricated.
+    let commission: number | null = null;
+    const m = /['"]payout['"]\s*:\s*([\d.]+)/.exec(String(c.payouts || ''));
+    if (m) commission = Number(m[1]) || null;
     return {
       network_source: 'vcommission',
-      network_offer_id: String(c.campaign_id ?? c.id ?? ''),
-      merchant_name: String(c.name || 'VCommission merchant').slice(0, 255),
-      merchant_logo: c.logo || null,
-      title: String(c.name || '').slice(0, 500),
-      description: c.description ? String(c.description).slice(0, 2000) : null,
+      network_offer_id: String(c.id ?? c.campaign_id ?? ''),
+      merchant_name: String(c.title || 'VCommission merchant').slice(0, 255),
+      merchant_logo: c.thumbnail || null,
+      title: String(c.title || '').slice(0, 500),
+      description: c.description ? String(c.description).replace(/<[^>]*>/g, '').slice(0, 2000) : null,
       coupon_code: null,
       discount_value: null,
       discount_type: 'cashback',
-      affiliate_url: c.link ? String(c.link) : (c.url ? String(c.url) : null),
-      original_url: c.url ? String(c.url) : null,
-      categories: cats,
+      affiliate_url: c.tracking_link ? String(c.tracking_link) : null,
+      original_url: c.preview_url ? String(c.preview_url) : null,
+      categories: cats.map((s: string) => s.trim().toLowerCase()).filter(Boolean),
       starts_at: null,
       expires_at: null,
       status: 'active',
-      commission: Number(String(c.payout || '').replace(/[^\d.]/g, '')) || null,
-      commission_note: c.payout || null,
-      raw: { tracking: c.tracking || null },
+      commission,
+      commission_note: commission != null ? `${commission} ${c.currency || 'INR'}` : null,
+      raw: { model: c.model || null },
     };
   }
 
