@@ -85,6 +85,15 @@ var init_settings = __esm({
         subId: process.env.CUELINKS_SUB_ID || "",
         enabled: Boolean(process.env.CUELINKS_API_KEY)
       },
+      admitad: {
+        clientId: process.env.ADMITAD_CLIENT_ID || "",
+        clientSecret: process.env.ADMITAD_CLIENT_SECRET || "",
+        websiteId: process.env.ADMITAD_WEBSITE_ID || "",
+        defaultCampaignId: process.env.ADMITAD_DEFAULT_CAMPAIGN_ID || "",
+        baseUrl: process.env.ADMITAD_BASE_URL || "https://api.admitad.com",
+        scope: process.env.ADMITAD_SCOPE || "advcampaigns_for_website coupons_for_website",
+        enabled: Boolean(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET)
+      },
       vcommission: {
         apiKey: process.env.VCOMMISSION_API_KEY || "",
         baseUrl: process.env.VCOMMISSION_BASE_URL || "https://api.vcommission.com/v2",
@@ -102,7 +111,10 @@ var init_settings = __esm({
       },
       isProduction: (process.env.NODE_ENV || "") === "production"
     };
-    dataDir = import_path.default.resolve(process.cwd(), ".data");
+    dataDir = import_path.default.resolve(
+      process.cwd(),
+      process.env.DATA_DIR || (process.env.NODE_ENV === "test" ? `.data/test-${process.pid}` : ".data")
+    );
   }
 });
 
@@ -645,6 +657,7 @@ var init_db = __esm({
         }
       }
       persist() {
+        import_fs.default.mkdirSync(dataDir, { recursive: true });
         import_fs.default.writeFileSync(this.file, JSON.stringify(this.data));
         if (!this.warned) {
           this.warned = true;
@@ -879,8 +892,8 @@ function markDisabled(sourceId) {
 }
 async function persist(h) {
   try {
-    const { getStore: getStore2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store2 = getStore2();
+    const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    const store2 = getStore3();
     await store2.execute(
       `INSERT INTO source_health (source_id, state, consecutive_failures, last_success_at, last_failure_at, last_failure_class, circuit_open_until, total_attempts, total_successes, avg_latency_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1006,8 +1019,8 @@ function getSource(id) {
 }
 async function loadSourcesFromDb() {
   try {
-    const { getStore: getStore2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store2 = getStore2();
+    const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    const store2 = getStore3();
     const rows = await store2.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
     for (const row of rows) {
       const existing = sources.find((s) => s.id === row.id);
@@ -1035,8 +1048,8 @@ function updateSource(id, patch) {
   Object.assign(s, patch);
   void (async () => {
     try {
-      const { getStore: getStore2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const store2 = getStore2();
+      const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+      const store2 = getStore3();
       await store2.execute(
         `INSERT INTO source_adapters (id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -3184,8 +3197,8 @@ async function processAdapterResults(results, parsed) {
 }
 async function recordSearchMetrics(input, parsed, response) {
   try {
-    const { getStore: getStore2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    await getStore2().execute(
+    const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    await getStore3().execute(
       `INSERT INTO searches (raw_query, vertical, detected_vertical, pincode, city, served_from, results_count, latency_ms, first_result_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -4974,31 +4987,597 @@ var init_refreshWorker = __esm({
   }
 });
 
+// server/affiliate/store.ts
+function iso(d) {
+  return d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null;
+}
+async function upsertOffers(offers) {
+  const store2 = getStore();
+  let n = 0;
+  for (const o of offers) {
+    const existing = await store2.query(
+      "SELECT id FROM affiliate_offers WHERE network_source = ? AND network_offer_id = ?",
+      [o.network_source, o.network_offer_id]
+    );
+    if (existing.length > 0) {
+      await store2.execute(
+        `UPDATE affiliate_offers SET title = ?, description = ?, coupon_code = ?, discount_value = ?, discount_type = ?,
+         affiliate_url = ?, original_url = ?, categories = ?, starts_at = ?, expires_at = ?, status = ?, merchant_logo = ?, commission_note = ?, last_seen_at = NOW()
+         WHERE network_source = ? AND network_offer_id = ?`,
+        sanitizeBindParams([
+          o.title,
+          o.description ?? null,
+          o.coupon_code ?? null,
+          o.discount_value ?? null,
+          o.discount_type ?? null,
+          o.affiliate_url ?? null,
+          o.original_url ?? null,
+          (o.categories || []).join(","),
+          iso(o.starts_at),
+          iso(o.expires_at),
+          o.status,
+          o.merchant_logo ?? null,
+          o.commission_note ?? null,
+          o.network_source,
+          o.network_offer_id
+        ])
+      );
+    } else {
+      await store2.execute(
+        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sanitizeBindParams([
+          o.network_source,
+          o.network_offer_id,
+          o.merchant_name,
+          o.merchant_logo ?? null,
+          o.title,
+          o.description ?? null,
+          o.coupon_code ?? null,
+          o.discount_value ?? null,
+          o.discount_type ?? null,
+          o.affiliate_url ?? null,
+          o.original_url ?? null,
+          (o.categories || []).join(","),
+          iso(o.starts_at),
+          iso(o.expires_at),
+          o.status,
+          o.commission_note ?? null
+        ])
+      );
+    }
+    n += 1;
+  }
+  return n;
+}
+async function expirePastOffers() {
+  const store2 = getStore();
+  const r = await store2.execute(
+    `UPDATE affiliate_offers SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()`,
+    []
+  );
+  return r.affectedRows || 0;
+}
+async function listOffers(q) {
+  const store2 = getStore();
+  const where = ["status = 'active'"];
+  const params = [];
+  if (q.source) {
+    where.push("network_source = ?");
+    params.push(q.source);
+  }
+  if (q.merchant) {
+    where.push("merchant_name LIKE ?");
+    params.push(`%${q.merchant}%`);
+  }
+  if (q.category) {
+    where.push("categories LIKE ?");
+    params.push(`%${q.category}%`);
+  }
+  if (q.hasCoupon) {
+    where.push("coupon_code IS NOT NULL AND coupon_code != ?");
+    params.push("");
+  }
+  if (q.search) {
+    where.push("(title LIKE ? OR merchant_name LIKE ?)");
+    params.push(`%${q.search}%`, `%${q.search}%`);
+  }
+  const order = q.sort === "expiry_soon" ? "expires_at ASC" : q.sort === "discount_high_to_low" ? "discount_value DESC" : "updated_at DESC";
+  const limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
+  const offset = Math.max(q.offset ?? 0, 0);
+  const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
+               discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, created_at, updated_at
+               FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`;
+  return store2.query(sql, params);
+}
+var COLS;
+var init_store = __esm({
+  "server/affiliate/store.ts"() {
+    init_db();
+    init_db();
+    COLS = "network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note";
+  }
+});
+
+// server/affiliate/baseProvider.ts
+var BaseAffiliateProvider;
+var init_baseProvider = __esm({
+  "server/affiliate/baseProvider.ts"() {
+    BaseAffiliateProvider = class {
+      /** Capability-honest helper: providers without creds report and skip. */
+      unconfigured() {
+        return { offers: [], count: 0, warnings: [`${this.id}: credentials not configured (check .env)`] };
+      }
+    };
+  }
+});
+
+// server/affiliate/providers/admitad.ts
+var CATEGORY_MAP, AdmitadProvider;
+var init_admitad = __esm({
+  "server/affiliate/providers/admitad.ts"() {
+    init_settings();
+    init_logger();
+    init_baseProvider();
+    CATEGORY_MAP = [
+      [/fashion|cloth|apparel/i, "fashion"],
+      [/electronic|gadget|mobile|computer/i, "electronics"],
+      [/travel|hotel|flight/i, "travel"],
+      [/food|grocer|restaurant/i, "food"],
+      [/beauty|cosmetic/i, "beauty"],
+      [/home|furnish|kitchen/i, "home"],
+      [/financ|bank|loan|credit|invest/i, "finance"],
+      [/health|pharma|fitness|medic/i, "health"],
+      [/education|course|learn/i, "education"],
+      [/entertain|movie|game|music|stream/i, "entertainment"]
+    ];
+    AdmitadProvider = class extends BaseAffiliateProvider {
+      constructor() {
+        super(...arguments);
+        this.id = "admitad";
+        this.label = "Admitad";
+        this.token = null;
+      }
+      isConfigured() {
+        return Boolean(settings.admitad.clientId && settings.admitad.clientSecret);
+      }
+      tokenValid() {
+        if (!this.token) return false;
+        const ageSec = (Date.now() - this.token.fetchedAt) / 1e3;
+        return ageSec < this.token.expires_in - 60;
+      }
+      async authenticate() {
+        if (this.tokenValid()) return;
+        if (!this.isConfigured()) throw new Error("admitad: ADMITAD_CLIENT_ID/ADMITAD_CLIENT_SECRET not set");
+        const basic = Buffer.from(`${settings.admitad.clientId}:${settings.admitad.clientSecret}`).toString("base64");
+        const res = await fetch(`${settings.admitad.baseUrl}/token/`, {
+          method: "POST",
+          headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            grant_type: "client_credentials",
+            client_id: settings.admitad.clientId,
+            scope: settings.admitad.scope
+          })
+        });
+        if (!res.ok) throw new Error(`admitad: token request failed (HTTP ${res.status})`);
+        const j = await res.json();
+        this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
+        log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
+      }
+      async apiGet(path6, params = {}) {
+        await this.authenticate();
+        const qs = new URLSearchParams(params).toString();
+        const res = await fetch(`${settings.admitad.baseUrl}${path6}${qs ? `?${qs}` : ""}`, {
+          headers: { Authorization: `Bearer ${this.token.access_token}` }
+        });
+        if (res.status === 401) {
+          this.token = null;
+          await this.authenticate();
+          return this.apiGet(path6, params);
+        }
+        if (!res.ok) throw new Error(`admitad: GET ${path6} failed (HTTP ${res.status})`);
+        return res.json();
+      }
+      async fetchOffers(opts = {}) {
+        if (!this.isConfigured()) return this.unconfigured();
+        const maxOffers = opts.limit ?? 500;
+        const maxPages = opts.pages ?? 5;
+        const offers = [];
+        const warnings = [];
+        for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
+          const j = await this.apiGet("/coupons/", { limit: Math.min(100, maxOffers - offers.length), offset: page * 100, region: "IN" });
+          const results = j?.results || [];
+          if (results.length === 0) break;
+          for (const c of results) {
+            try {
+              offers.push(this.normalize(c));
+            } catch (e) {
+              warnings.push(`admitad: offer ${c?.id} skipped (${String(e).slice(0, 60)})`);
+            }
+          }
+        }
+        return { offers, count: offers.length, warnings };
+      }
+      /** Admitad coupon JSON → UnifiedAffiliateOffer. Only evidence-backed fields. */
+      normalize(c) {
+        const id = String(c.id ?? "");
+        if (!id || !c.name) throw new Error("missing id/name");
+        const frame = (c.frames || [])[0] || {};
+        const rawCats = (c.categories || []).map((x) => String(x?.name || x)).concat(String(c.campaign?.category || ""));
+        const type = /percent/i.test(String(frame.type || c.types?.[0]?.name_en || "")) ? "percentage" : /cashback/i.test(String(c.types?.[0]?.name_en || "")) ? "cashback" : /free.?ship|shipping/i.test(String(c.name)) ? "shipping" : frame.discount ? "flat" : "other";
+        const expires = c.date_end ? new Date(String(c.date_end)) : null;
+        return {
+          network_source: "admitad",
+          network_offer_id: id,
+          merchant_name: String(c.campaign?.name || c.campaign?.site || "Unknown merchant"),
+          merchant_logo: c.campaign?.image || null,
+          title: String(c.name).slice(0, 500),
+          description: c.description ? String(c.description).slice(0, 2e3) : null,
+          coupon_code: c.code ? String(c.code) : Array.isArray(c.codewords) ? String(c.codewords[0]) : null,
+          discount_value: frame.discount ? Number(frame.discount) : null,
+          discount_type: type,
+          affiliate_url: c.goto ? String(c.goto) : null,
+          original_url: c.url || c.campaign?.site_url || null,
+          categories: [...new Set(rawCats.map(this.mapCategory).filter(Boolean))],
+          starts_at: c.date_start ? new Date(String(c.date_start)) : null,
+          expires_at: expires,
+          status: expires && expires.getTime() < Date.now() ? "expired" : "active",
+          commission: c.campaign?.rate ? Number(String(c.campaign.rate).replace(/[^\d.]/g, "")) || null : null,
+          commission_note: c.campaign?.rate ? String(c.campaign.rate) : null,
+          raw: { campaign_id: c.campaign?.id, regions: c.regions }
+        };
+      }
+      mapCategory(raw) {
+        for (const [re, name] of CATEGORY_MAP) if (re.test(raw)) return name;
+        return null;
+      }
+      async fetchCampaigns() {
+        if (!this.isConfigured()) {
+          log.warn("Affiliate", "Admitad campaigns skipped: not configured");
+          return [];
+        }
+        const j = await this.apiGet("/advcampaigns/", { limit: 100, website: settings.admitad.websiteId });
+        return (j?.results || []).map((r) => ({ id: r.id, name: r.name, site: r.site, status: r.status, categories: r.categories, gotolink: r.gotolink }));
+      }
+      async generateTrackingLink(targetUrl, subId) {
+        await this.authenticate();
+        if (settings.admitad.websiteId && settings.admitad.defaultCampaignId) {
+          const u2 = new URL(`${settings.admitad.baseUrl.replace("api.", "ad.")}/deeplink/${settings.admitad.websiteId}/advcampaign/${settings.admitad.defaultCampaignId}/`);
+          u2.searchParams.set("ulp", targetUrl);
+          if (subId) u2.searchParams.set("subid", subId);
+          return u2.toString();
+        }
+        const u = new URL(targetUrl);
+        if (subId) u.searchParams.set("subid", subId);
+        return u.toString();
+      }
+    };
+  }
+});
+
+// server/affiliate/providers/vcommission.ts
+var VCommissionProvider;
+var init_vcommission = __esm({
+  "server/affiliate/providers/vcommission.ts"() {
+    init_settings();
+    init_baseProvider();
+    VCommissionProvider = class extends BaseAffiliateProvider {
+      constructor() {
+        super(...arguments);
+        this.id = "vcommission";
+        this.label = "VCommission";
+        this.campaigns = [];
+      }
+      isConfigured() {
+        return Boolean(settings.vcommission.enabled);
+      }
+      tokenValid() {
+        return this.campaigns.length > 0;
+      }
+      async authenticate() {
+        const res = await fetch(`${settings.vcommission.baseUrl}/publisher/campaigns?apiKey=${settings.vcommission.apiKey}`);
+        if (!res.ok) throw new Error(`vcommission: campaigns HTTP ${res.status}`);
+        const j = await res.json();
+        this.campaigns = Array.isArray(j.data) ? j.data : [];
+      }
+      async fetchOffers(_opts = {}) {
+        if (!this.isConfigured()) return this.unconfigured();
+        if (!this.tokenValid()) await this.authenticate();
+        const offers = this.campaigns.map((c) => this.normalize(c));
+        return { offers, count: offers.length, warnings: [] };
+      }
+      normalize(c) {
+        const cats = String(c.category || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+        return {
+          network_source: "vcommission",
+          network_offer_id: String(c.campaign_id ?? c.id ?? ""),
+          merchant_name: String(c.name || "VCommission merchant").slice(0, 255),
+          merchant_logo: c.logo || null,
+          title: String(c.name || "").slice(0, 500),
+          description: c.description ? String(c.description).slice(0, 2e3) : null,
+          coupon_code: null,
+          discount_value: null,
+          discount_type: "cashback",
+          affiliate_url: c.link ? String(c.link) : c.url ? String(c.url) : null,
+          original_url: c.url ? String(c.url) : null,
+          categories: cats,
+          starts_at: null,
+          expires_at: null,
+          status: "active",
+          commission: Number(String(c.payout || "").replace(/[^\d.]/g, "")) || null,
+          commission_note: c.payout || null,
+          raw: { tracking: c.tracking || null }
+        };
+      }
+      async fetchCampaigns() {
+        if (!this.tokenValid()) await this.authenticate();
+        return this.campaigns;
+      }
+      async generateTrackingLink(targetUrl, subId) {
+        const c = this.campaigns.find((x) => x.link && String(x.link) === targetUrl) || this.campaigns.find((x) => x.url === targetUrl);
+        const base = c?.link ? String(c.link) : targetUrl;
+        const u = new URL(base);
+        if (subId) u.searchParams.set("sub_id", subId);
+        return u.toString();
+      }
+    };
+  }
+});
+
+// server/affiliate/providers/cuelinks.ts
+var CuelinksProvider;
+var init_cuelinks = __esm({
+  "server/affiliate/providers/cuelinks.ts"() {
+    init_settings();
+    init_baseProvider();
+    CuelinksProvider = class extends BaseAffiliateProvider {
+      constructor() {
+        super(...arguments);
+        this.id = "cuelinks";
+        this.label = "Cuelinks";
+      }
+      isConfigured() {
+        return Boolean(settings.cuelinks?.enabled);
+      }
+      tokenValid() {
+        return false;
+      }
+      // TODO: cache Cuelinks JWT after /authenticate
+      async authenticate() {
+        throw new Error("cuelinks: adapter pending publisher approval");
+      }
+      async fetchOffers() {
+        return this.unconfigured();
+      }
+      async fetchCampaigns() {
+        return [];
+      }
+      async generateTrackingLink(targetUrl, subId) {
+        const u = new URL(targetUrl);
+        if (subId) u.searchParams.set("sub_id", subId);
+        return u.toString();
+      }
+    };
+  }
+});
+
+// server/affiliate/providers/optimise.ts
+var OptimiseProvider;
+var init_optimise = __esm({
+  "server/affiliate/providers/optimise.ts"() {
+    init_baseProvider();
+    OptimiseProvider = class extends BaseAffiliateProvider {
+      constructor() {
+        super(...arguments);
+        this.id = "optimise";
+        this.label = "Optimise Media";
+      }
+      isConfigured() {
+        return false;
+      }
+      // TODO: OPTIMISE_API_KEY in settings + .env
+      tokenValid() {
+        return false;
+      }
+      async authenticate() {
+        throw new Error("optimise: adapter pending publisher approval");
+      }
+      async fetchOffers() {
+        return this.unconfigured();
+      }
+      async fetchCampaigns() {
+        return [];
+      }
+      async generateTrackingLink(targetUrl, subId) {
+        const u = new URL(targetUrl);
+        if (subId) u.searchParams.set("sub_id", subId);
+        return u.toString();
+      }
+    };
+  }
+});
+
+// server/affiliate/providers/directMerchant.ts
+var DirectMerchantProvider;
+var init_directMerchant = __esm({
+  "server/affiliate/providers/directMerchant.ts"() {
+    init_baseProvider();
+    DirectMerchantProvider = class extends BaseAffiliateProvider {
+      constructor() {
+        super(...arguments);
+        this.id = "direct";
+        this.label = "Direct Merchant Feed";
+        this.pending = [];
+      }
+      // TODO: CSV/webhook ingestion queue
+      isConfigured() {
+        return false;
+      }
+      // enabled per-merchant after B2B onboarding
+      tokenValid() {
+        return false;
+      }
+      async authenticate() {
+      }
+      async fetchOffers() {
+        return { offers: this.pending, count: this.pending.length, warnings: [] };
+      }
+      async fetchCampaigns() {
+        return [];
+      }
+      async generateTrackingLink(targetUrl, subId) {
+        const u = new URL(targetUrl);
+        if (subId) u.searchParams.set("sub_id", subId);
+        return u.toString();
+      }
+    };
+  }
+});
+
+// server/affiliate/aggregator.ts
+function registeredProviders() {
+  return PROVIDERS.map((p) => ({ id: p.id, label: p.label, configured: p.isConfigured() }));
+}
+function dedupOffers(offers) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const o of offers) {
+    const compound = `${o.network_source}|${o.network_offer_id}`;
+    if (!byKey.has(compound)) byKey.set(compound, o);
+  }
+  const smart = /* @__PURE__ */ new Map();
+  for (const o of byKey.values()) {
+    if (!o.coupon_code) continue;
+    const key = `${o.merchant_name.toLowerCase()}|${o.coupon_code.toLowerCase()}`;
+    const prev = smart.get(key);
+    if (!prev || (o.commission ?? 0) > (prev.commission ?? 0)) smart.set(key, o);
+  }
+  return [...byKey.values()].filter((o) => {
+    if (!o.coupon_code) return true;
+    const winner = smart.get(`${o.merchant_name.toLowerCase()}|${o.coupon_code.toLowerCase()}`);
+    return winner ? winner.network_source === o.network_source && winner.network_offer_id === o.network_offer_id : true;
+  });
+}
+async function syncAllAffiliates(opts = {}) {
+  await runMigrations();
+  const outcomes = await Promise.all(PROVIDERS.map(async (p) => {
+    try {
+      if (!p.isConfigured()) return { provider: p.id, ok: true, offers: 0, error: "not configured (skipped)" };
+      const res = await p.fetchOffers({ limit: opts.limit });
+      const upserted = await upsertOffers(dedupOffers(res.offers));
+      for (const w of res.warnings) log.warn("Affiliate", w);
+      return { provider: p.id, ok: true, offers: upserted };
+    } catch (e) {
+      log.warn("Affiliate", `Sync failed for ${p.id} (isolated)`, { error: String(e?.message || e).slice(0, 160) });
+      return { provider: p.id, ok: false, offers: 0, error: String(e?.message || e).slice(0, 160) };
+    }
+  }));
+  const expired = await expirePastOffers();
+  log.info("Affiliate", "Sync complete", { outcomes, expired });
+  return outcomes;
+}
+function startAffiliateScheduler(intervalMs = 6 * 60 * 60 * 1e3) {
+  const t = setInterval(() => {
+    syncAllAffiliates().catch(() => void 0);
+  }, intervalMs);
+  t.unref?.();
+  return t;
+}
+var PROVIDERS;
+var init_aggregator = __esm({
+  "server/affiliate/aggregator.ts"() {
+    init_db();
+    init_logger();
+    init_admitad();
+    init_vcommission();
+    init_cuelinks();
+    init_optimise();
+    init_directMerchant();
+    init_store();
+    PROVIDERS = [
+      new VCommissionProvider(),
+      // already live
+      new AdmitadProvider(),
+      // activates when ADMITAD_* env vars are set
+      new CuelinksProvider(),
+      new OptimiseProvider(),
+      new DirectMerchantProvider()
+    ];
+  }
+});
+
+// server/affiliate/api.ts
+var api_exports = {};
+__export(api_exports, {
+  affiliateRouter: () => affiliateRouter,
+  bootstrapAffiliateSync: () => bootstrapAffiliateSync
+});
+async function bootstrapAffiliateSync() {
+  startAffiliateScheduler();
+  setTimeout(() => {
+    syncAllAffiliates().catch(() => void 0);
+  }, 3e4).unref?.();
+}
+var import_express3, affiliateRouter;
+var init_api = __esm({
+  "server/affiliate/api.ts"() {
+    import_express3 = require("express");
+    init_store();
+    init_aggregator();
+    affiliateRouter = (0, import_express3.Router)();
+    affiliateRouter.get("/offers", async (req, res) => {
+      try {
+        const rows = await listOffers({
+          source: req.query.source,
+          merchant: req.query.merchant,
+          category: req.query.category,
+          hasCoupon: req.query.has_coupon === "true" || req.query.has_coupon === "1",
+          search: req.query.search,
+          sort: req.query.sort || void 0,
+          limit: Number(req.query.limit) || void 0,
+          offset: Number(req.query.offset) || void 0
+        });
+        res.json({ success: true, count: rows.length, offers: rows });
+      } catch (e) {
+        res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 160) });
+      }
+    });
+    affiliateRouter.get("/providers", (_req, res) => res.json({ success: true, providers: registeredProviders() }));
+    affiliateRouter.post("/sync", async (_req, res) => {
+      const outcomes = await syncAllAffiliates();
+      res.json({ success: true, outcomes });
+    });
+  }
+});
+
 // server.prod.ts
 var import_path5 = __toESM(require("path"), 1);
 var import_fs4 = __toESM(require("fs"), 1);
-var import_express4 = __toESM(require("express"), 1);
+var import_express5 = __toESM(require("express"), 1);
 
 // server/index.ts
 var import_path4 = __toESM(require("path"), 1);
 var import_fs3 = __toESM(require("fs"), 1);
-var import_express3 = __toESM(require("express"), 1);
+var import_express4 = __toESM(require("express"), 1);
 var __dirname = process.cwd();
 async function createApp() {
-  const app = (0, import_express3.default)();
-  app.use(import_express3.default.json({ limit: "256kb" }));
+  const app = (0, import_express4.default)();
+  app.use(import_express4.default.json({ limit: "256kb" }));
   const { settings: settings2 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
   const { apiRouter: apiRouter2, bootstrapBackend: bootstrapBackend2 } = await Promise.resolve().then(() => (init_routes(), routes_exports));
   const { adminRouter: adminRouter2 } = await Promise.resolve().then(() => (init_adminRoutes(), adminRoutes_exports));
   const { startWorkers: startWorkers2 } = await Promise.resolve().then(() => (init_refreshWorker(), refreshWorker_exports));
+  const { affiliateRouter: affiliateRouter2, bootstrapAffiliateSync: bootstrapAffiliateSync2 } = await Promise.resolve().then(() => (init_api(), api_exports));
   const { log: log2 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
   app.use("/api", apiRouter2);
   app.use("/api/admin", adminRouter2);
+  app.use("/api/v1", affiliateRouter2);
   await bootstrapBackend2();
-  if (settings2.env !== "test") startWorkers2();
+  if (settings2.env !== "test") {
+    startWorkers2();
+    bootstrapAffiliateSync2();
+  }
   const dist = import_path4.default.resolve(__dirname, "dist");
   if (import_fs3.default.existsSync(dist)) {
-    app.use(import_express3.default.static(dist));
+    app.use(import_express4.default.static(dist));
     app.get("*", (_req, res) => res.sendFile(import_path4.default.join(dist, "index.html")));
   } else if (settings2.isProduction) {
     log2.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
@@ -5011,7 +5590,7 @@ async function start() {
   const app = await createApp();
   const dist = import_path5.default.resolve(process.cwd(), "dist");
   if (import_fs4.default.existsSync(dist)) {
-    app.use(import_express4.default.static(dist));
+    app.use(import_express5.default.static(dist));
     app.get("*", (_req, res) => res.sendFile(import_path5.default.join(dist, "index.html")));
   }
   const PORT = Number(process.env.PORT || 3e3);

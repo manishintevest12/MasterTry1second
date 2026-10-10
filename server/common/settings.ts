@@ -51,6 +51,15 @@ export const settings = {
     subId: process.env.CUELINKS_SUB_ID || '',
     enabled: Boolean(process.env.CUELINKS_API_KEY),
   },
+  admitad: {
+    clientId: process.env.ADMITAD_CLIENT_ID || '',
+    clientSecret: process.env.ADMITAD_CLIENT_SECRET || '',
+    websiteId: process.env.ADMITAD_WEBSITE_ID || '',
+    defaultCampaignId: process.env.ADMITAD_DEFAULT_CAMPAIGN_ID || '',
+    baseUrl: process.env.ADMITAD_BASE_URL || 'https://api.admitad.com',
+    scope: process.env.ADMITAD_SCOPE || 'advcampaigns_for_website coupons_for_website',
+    enabled: Boolean(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET),
+  },
   vcommission: {
     apiKey: process.env.VCOMMISSION_API_KEY || '',
     baseUrl: process.env.VCOMMISSION_BASE_URL || 'https://api.vcommission.com/v2',
@@ -81,4 +90,9 @@ export function assertProductionReadiness(): string[] {
   return missing;
 }
 
-export const dataDir = path.resolve(process.cwd(), '.data');
+// Test suites run in PARALLEL processes; each gets its own data dir so no suite
+// can delete another suite's devstore mid-run. Production keeps the shared .data.
+export const dataDir = path.resolve(
+  process.cwd(),
+  process.env.DATA_DIR || (process.env.NODE_ENV === 'test' ? `.data/test-${process.pid}` : '.data'),
+);

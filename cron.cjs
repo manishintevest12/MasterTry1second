@@ -71,6 +71,15 @@ var init_settings = __esm({
         subId: process.env.CUELINKS_SUB_ID || "",
         enabled: Boolean(process.env.CUELINKS_API_KEY)
       },
+      admitad: {
+        clientId: process.env.ADMITAD_CLIENT_ID || "",
+        clientSecret: process.env.ADMITAD_CLIENT_SECRET || "",
+        websiteId: process.env.ADMITAD_WEBSITE_ID || "",
+        defaultCampaignId: process.env.ADMITAD_DEFAULT_CAMPAIGN_ID || "",
+        baseUrl: process.env.ADMITAD_BASE_URL || "https://api.admitad.com",
+        scope: process.env.ADMITAD_SCOPE || "advcampaigns_for_website coupons_for_website",
+        enabled: Boolean(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET)
+      },
       vcommission: {
         apiKey: process.env.VCOMMISSION_API_KEY || "",
         baseUrl: process.env.VCOMMISSION_BASE_URL || "https://api.vcommission.com/v2",
@@ -88,7 +97,10 @@ var init_settings = __esm({
       },
       isProduction: (process.env.NODE_ENV || "") === "production"
     };
-    dataDir = import_path.default.resolve(process.cwd(), ".data");
+    dataDir = import_path.default.resolve(
+      process.cwd(),
+      process.env.DATA_DIR || (process.env.NODE_ENV === "test" ? `.data/test-${process.pid}` : ".data")
+    );
   }
 });
 
@@ -147,8 +159,12 @@ __export(db_exports, {
   getStore: () => getStore,
   resetToFileStore: () => resetToFileStore,
   runMigrations: () => runMigrations,
+  sanitizeBindParams: () => sanitizeBindParams,
   splitSqlStatements: () => splitSqlStatements
 });
+function sanitizeBindParams(params) {
+  return (params || []).map((p) => p === void 0 || typeof p === "number" && Number.isNaN(p) ? null : p);
+}
 function getStore() {
   if (store) return store;
   if (settings.mysqlUrl) {
@@ -261,17 +277,26 @@ var init_db = __esm({
     import_promise = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();
-    MysqlStore = class {
+    MysqlStore = class _MysqlStore {
       constructor(pool) {
         this.kind = "mysql";
         this.pool = pool;
       }
+      static {
+        /**
+         * mysql2 rejects `undefined` bind params ("Bind parameters must not contain
+         * undefined"). Offers from real feeds (e.g. VCommission campaigns) legitimately
+         * have missing optional fields (brand, currency, expiry…), so every param is
+         * normalized: undefined → SQL NULL. NaN also becomes NULL, never a fabricated 0.
+         */
+        this.bind = sanitizeBindParams;
+      }
       async query(sql, params = []) {
-        const [rows] = await this.pool.query(sql, params);
+        const [rows] = await this.pool.query(sql, _MysqlStore.bind(params));
         return rows;
       }
       async execute(sql, params = []) {
-        const [result] = await this.pool.execute(sql, params);
+        const [result] = await this.pool.execute(sql, _MysqlStore.bind(params));
         const r = result;
         return { affectedRows: r.affectedRows, insertId: r.insertId };
       }
@@ -280,8 +305,8 @@ var init_db = __esm({
         try {
           await conn.beginTransaction();
           const tx = {
-            query: (sql, params = []) => conn.query(sql, params).then(([r]) => r),
-            execute: (sql, params = []) => conn.execute(sql, params).then(([r]) => r)
+            query: (sql, params = []) => conn.query(sql, _MysqlStore.bind(params)).then(([r]) => r),
+            execute: (sql, params = []) => conn.execute(sql, _MysqlStore.bind(params)).then(([r]) => r)
           };
           const out = await fn(tx);
           await conn.commit();
@@ -319,6 +344,7 @@ var init_db = __esm({
         }
       }
       persist() {
+        import_fs.default.mkdirSync(dataDir, { recursive: true });
         import_fs.default.writeFileSync(this.file, JSON.stringify(this.data));
         if (!this.warned) {
           this.warned = true;

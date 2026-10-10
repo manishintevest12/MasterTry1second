@@ -19,15 +19,17 @@ export async function createApp(): Promise<express.Express> {
   const { apiRouter, bootstrapBackend } = await import('./api/routes');
   const { adminRouter } = await import('./admin/adminRoutes');
   const { startWorkers } = await import('./workers/refreshWorker');
+  const { affiliateRouter, bootstrapAffiliateSync } = await import('./affiliate/api');
   const { log } = await import('./common/logger');
 
   // Core API
   app.use('/api', apiRouter);
   app.use('/api/admin', adminRouter);
+  app.use('/api/v1', affiliateRouter); // unified affiliate offers aggregator
 
   // Validate + migrate durable storage, load source config, start L2 cache + workers
   await bootstrapBackend();
-  if (settings.env !== 'test') startWorkers();
+  if (settings.env !== 'test') { startWorkers(); bootstrapAffiliateSync(); }
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');

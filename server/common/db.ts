@@ -106,6 +106,9 @@ export class FileStore implements DataStore {
   }
 
   private persist() {
+    // Test runner runs suites in parallel; a sibling suite may rmSync .data between
+    // our constructor and this write. Recreate the dir instead of crashing (ENOENT).
+    fs.mkdirSync(dataDir, { recursive: true });
     fs.writeFileSync(this.file, JSON.stringify(this.data));
     if (!this.warned) {
       this.warned = true;
