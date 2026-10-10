@@ -1,14 +1,22 @@
 // Hostinger hPanel Node.js app entry point (Passenger runs this file directly).
-// Loads the TypeScript server via tsx so `server.ts` stays the single source of truth.
+// Runs the precompiled plain-JS bundle (server.cjs): no tsx / TypeScript needed on the host.
+// Falls back to the TypeScript sources via tsx only if the bundle is missing (local dev).
+import { createRequire } from 'module';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
-Promise.resolve()
-  .then(() => import('tsx/esm'))
-  .catch((e) => {
-    console.error('[try1second] FATAL: tsx loader unavailable — run `npm install` with tsx in dependencies.', e);
-    process.exit(1);
-  })
-  .then(() => import('./server.ts'))
-  .catch((e) => {
-    console.error('[try1second] FATAL: server failed to start:', e);
-    process.exit(1);
-  });
+const dir = path.dirname(fileURLToPath(import.meta.url));
+const bundle = path.join(dir, 'server.cjs');
+
+if (fs.existsSync(bundle)) {
+  createRequire(import.meta.url)(bundle);
+} else {
+  import('tsx/esm')
+    .then(() => import('./server.ts'))
+    .catch((e) => {
+      console.error('[try1second] FATAL: server.cjs missing and tsx fallback failed:', e);
+      process.exit(1);
+    });
+}

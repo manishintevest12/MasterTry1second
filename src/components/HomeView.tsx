@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Zap,
   TrendingDown,
@@ -16,12 +16,10 @@ import {
   ArrowRight,
   Radar,
   Gift,
-  Search,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId } from '../types';
-import { AutocompleteInput } from './AutocompleteInput';
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -55,12 +53,9 @@ export const HomeView: React.FC = () => {
     setActiveNavTab,
     items,
     simulatePriceDrop,
-    setSearchQuery,
-    triggerLiveLocationScrape,
     quickAppPartners,
     trackQuickAppRedirection,
   } = useApp();
-  const [homeSearch, setHomeSearch] = useState<string>('');
 
   const handleLaunch = (vId: VerticalId) => {
     setVertical(vId);
@@ -126,43 +121,12 @@ export const HomeView: React.FC = () => {
               <span>India's Unified Multi-Vertical Metasearch Engine</span>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] mb-4">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] mb-8">
               One Second Is All It Takes to{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-amber-400">
                 Find the Lowest Price
               </span>
             </h1>
-
-            <p className="text-slate-300 text-xs sm:text-sm sm:leading-relaxed max-w-2xl mb-6">
-              Instant price discovery across 10 verticals without jumping between 20 apps. Select any category below or search anything below for live comparison.
-            </p>
-
-            {/* Universal Instant Autocomplete Search Bar */}
-            <div className="bg-white rounded-2xl p-1.5 shadow-2xl border border-white/20 max-w-2xl mb-8">
-              <AutocompleteInput
-                value={homeSearch}
-                onChange={setHomeSearch}
-                onSelect={(val, sugg) => {
-                  let targetV: VerticalId = 'ecommerce';
-                  if (sugg?.type === 'city') targetV = 'flights';
-                  else if (sugg?.type === 'food') targetV = 'food';
-                  else if (sugg?.type === 'grocery') targetV = 'grocery';
-                  else if (sugg?.type === 'product') targetV = 'ecommerce';
-                  else if (sugg?.type === 'location') targetV = 'cab';
-                  else if (sugg?.type === 'date') targetV = 'flights';
-
-                  setVertical(targetV);
-                  setSearchQuery(val);
-                  triggerLiveLocationScrape(val);
-                  setActiveNavTab('compare');
-                }}
-                type="all"
-                placeholder="Search any product, city, dish, flight, or dark-store grocery item across 10 verticals..."
-                className="w-full"
-                inputClassName="text-xs sm:text-sm font-bold text-slate-900 placeholder:text-slate-400 py-2.5"
-                icon={<Search className="w-5 h-5 text-orange-500" />}
-              />
-            </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <button

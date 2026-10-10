@@ -5,11 +5,11 @@
  */
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import express, { type Request, type Response } from 'express';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Bundle-safe: resolve dist/ from the process working directory (the app root on Hostinger / KVM4).
+// Falls back to the source-relative path when running unbundled via tsx.
+const __dirname = process.cwd();
 
 export async function createApp(): Promise<express.Express> {
   const app = express();
@@ -30,7 +30,7 @@ export async function createApp(): Promise<express.Express> {
   if (settings.env !== 'test') startWorkers();
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
-  const dist = path.resolve(__dirname, '..', 'dist');
+  const dist = path.resolve(__dirname, 'dist');
   if (fs.existsSync(dist)) {
     app.use(express.static(dist));
     app.get('*', (_req: Request, res: Response) => res.sendFile(path.join(dist, 'index.html')));
