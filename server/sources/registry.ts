@@ -77,15 +77,9 @@ function seedSources(): SourceConfig[] {
       id: 'api_bus', name: 'Bus operator API (requires authorization)', method: 'official_api',
       verticals: ['bus'], priority: 25, requiresAuthorization: true,
     }),
-    // ---- OPTIONAL search provider ----
-    src({
-      id: 'searchapi_optional', name: 'SearchApi.io (OPTIONAL provider)', method: 'search_provider',
-      verticals: ['ecommerce', 'flights', 'hotels'], priority: 60,
-      config: { apiKey: settings.searchApi.apiKey, engines: ['google_shopping', 'google_flights', 'google_hotels'] },
-      requiresAuthorization: true,
-      enabled: Boolean(settings.searchApi.apiKey),
-      freshnessPolicy: { liveVerifiedTtlSec: 600, freshTtlSec: 1800, maxStaleSec: 7200 },
-    }),
+    // OPTIONAL search provider deliberately NOT seeded — Try1Second acquires
+    // its own data (direct cURL → headless-browser fallback). Owner decision:
+    // no SearchApi.io or any third-party search/marketplace API.
   ];
 }
 

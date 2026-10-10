@@ -65,6 +65,7 @@ export type SourceMethod =
   | 'affiliate_feed'
   | 'partner_feed'
   | 'official_api'
+  | 'browser_render' // headless-browser fallback when cURL gets a JS shell
   | 'search_provider'
   | 'cached_catalogue';
 
@@ -158,6 +159,7 @@ export type FailureClass =
   | 'PARSER_FAILURE'
   | 'SCHEMA_DRIFT'
   | 'EXPIRED_CREDENTIALS'
+  | 'CAPABILITY_UNAVAILABLE' // optional runtime dependency (e.g. Playwright) missing
   | 'QUOTA_EXHAUSTED'
   | 'CIRCUIT_OPEN'
   | 'CANCELLED'

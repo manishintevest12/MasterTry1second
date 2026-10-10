@@ -979,19 +979,10 @@ function seedSources() {
       verticals: ["bus"],
       priority: 25,
       requiresAuthorization: true
-    }),
-    // ---- OPTIONAL search provider ----
-    src({
-      id: "searchapi_optional",
-      name: "SearchApi.io (OPTIONAL provider)",
-      method: "search_provider",
-      verticals: ["ecommerce", "flights", "hotels"],
-      priority: 60,
-      config: { apiKey: settings.searchApi.apiKey, engines: ["google_shopping", "google_flights", "google_hotels"] },
-      requiresAuthorization: true,
-      enabled: Boolean(settings.searchApi.apiKey),
-      freshnessPolicy: { liveVerifiedTtlSec: 600, freshTtlSec: 1800, maxStaleSec: 7200 }
     })
+    // OPTIONAL search provider deliberately NOT seeded — Try1Second acquires
+    // its own data (direct cURL → headless-browser fallback). Owner decision:
+    // no SearchApi.io or any third-party search/marketplace API.
   ];
 }
 function getSources() {
@@ -1820,6 +1811,155 @@ var init_feedAndApiAdapters = __esm({
   }
 });
 
+// server/sources/adapters/browserRenderAdapter.ts
+var NAV_TIMEOUT_MS, MAX_HTML, BrowserRenderAdapter;
+var init_browserRenderAdapter = __esm({
+  "server/sources/adapters/browserRenderAdapter.ts"() {
+    init_contract();
+    NAV_TIMEOUT_MS = 15e3;
+    MAX_HTML = 3e6;
+    BrowserRenderAdapter = class {
+      constructor() {
+        this.id = "browser_render_adapter";
+        this.method = "browser_render";
+        this.adapterVersion = "1.0.0";
+        this.parserVersion = "1.0.0";
+      }
+      async healthCheck(source) {
+        try {
+          await import(
+            /* @vite-ignore */
+            "playwright"
+          );
+          return { healthy: true, latencyMs: 0 };
+        } catch {
+          return { healthy: false, latencyMs: 0 };
+        }
+      }
+      getFreshness(source) {
+        return source.freshnessPolicy ?? { liveVerifiedTtlSec: 600, freshTtlSec: 1800, maxStaleSec: 7200 };
+      }
+      getExpiry(rawItem) {
+        return rawItem.expiresAt ?? null;
+      }
+      async search(ctx) {
+        const { source, query } = ctx;
+        const started = Date.now();
+        let playwright;
+        try {
+          playwright = await import(
+            /* @vite-ignore */
+            "playwright"
+          );
+        } catch {
+          return failedResult(
+            source,
+            "CAPABILITY_UNAVAILABLE",
+            "Headless browser fallback unavailable: Playwright/Chromium not installed on this runtime",
+            Date.now() - started
+          );
+        }
+        const url = String(source.config.url || source.config.baseUrl || "");
+        if (!/^https:\/\//i.test(url)) {
+          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started);
+        }
+        let browser = null;
+        try {
+          browser = await playwright.chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] });
+          const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+          page.setDefaultNavigationTimeout(NAV_TIMEOUT_MS);
+          const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT_MS });
+          if (!res || !res.ok()) {
+            return failedResult(
+              source,
+              res && res.status() === 429 ? "QUOTA_EXHAUSTED" : "SERVER_ERROR",
+              `Rendered page HTTP ${res ? res.status() : "unknown"}`,
+              Date.now() - started,
+              res && res.status ? res.status() : void 0
+            );
+          }
+          await page.waitForLoadState("networkidle", { timeout: 5e3 }).catch(() => void 0);
+          const extracted = await page.evaluate((maxLen) => {
+            const out = [];
+            for (const s of Array.from(document.querySelectorAll('script[type="application/ld+json"]'))) {
+              try {
+                out.push(JSON.parse(s.textContent || "{}"));
+              } catch {
+              }
+            }
+            const title = document.title || "";
+            return { jsonLd: out, title, htmlLen: document.documentElement.outerHTML.length, html: document.documentElement.outerHTML.slice(0, maxLen) };
+          }, MAX_HTML);
+          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started);
+          if (rawItems.length === 0) {
+            return failedResult(
+              source,
+              "EMPTY_RESPONSE",
+              "Page rendered but exposed no public structured product data",
+              Date.now() - started,
+              res.status()
+            );
+          }
+          return {
+            success: true,
+            sourceId: source.id,
+            sourceMethod: this.method,
+            rawItems,
+            httpStatus: res.status(),
+            latencyMs: Date.now() - started,
+            fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+        } catch (e) {
+          const msg = String(e?.message || e).slice(0, 160);
+          const klass = /Timeout|timed out/i.test(msg) ? "TIMEOUT" : /net::|ERR_/.test(msg) ? "CONNECTION_FAILURE" : "PARSER_FAILURE";
+          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started);
+        } finally {
+          if (browser) {
+            try {
+              await browser.close();
+            } catch {
+            }
+          }
+        }
+      }
+      /** JSON-LD → RawSourceItem. Only evidence-backed fields are extracted. */
+      mapJsonLd(blocks, source, url, started) {
+        const items = [];
+        const push = (node) => {
+          if (!node || typeof node !== "object") return;
+          const type = String(node["@type"] || "");
+          if (/Product|Offer/i.test(type)) {
+            const offer = /Offer|AggregateOffer/i.test(type) ? node : node.offers || node.offer;
+            const price = offer ? Number(offer.price ?? offer.lowPrice) : void 0;
+            const title = String(node.name || node.itemOffered?.name || "").trim();
+            if (!title) return;
+            items.push(newRawItem(source, {
+              title,
+              price: Number.isFinite(price) ? price : void 0,
+              currency: String(offer?.priceCurrency || "INR"),
+              identifiers: node.gtin13 ? { gtin: String(node.gtin13) } : node.sku ? { sku: String(node.sku) } : {},
+              seller: String(node.brand?.name || node.seller?.name || ""),
+              sellerUrl: url,
+              availability: /InStock/i.test(String(offer?.availability || "")) ? "in_stock" : /OutOfStock/i.test(String(offer?.availability || "")) ? "out_of_stock" : "unknown",
+              attributes: { rendered_via: "browser", schema_type: type },
+              evidence: {
+                sourceUrl: url,
+                rawFingerprint: void 0,
+                extractedFields: ["json_ld", "title", ...price !== void 0 ? ["price"] : []]
+              }
+            }));
+          }
+          const graph = node["@graph"];
+          if (Array.isArray(graph)) graph.forEach(push);
+          if (Array.isArray(node)) node.forEach(push);
+        };
+        blocks.forEach(push);
+        return items.slice(0, 50);
+      }
+    };
+  }
+});
+
 // server/sources/orchestrator.ts
 function getAdapter(source) {
   return ADAPTERS[source.method];
@@ -1841,6 +1981,32 @@ async function acquireParallel(query, opts = {}) {
         return { kind: "ok", result };
       }
       const failureClass = result.failureClass || "EMPTY_RESPONSE";
+      if (source.method === "direct_http" && result.httpStatus && result.httpStatus < 500) {
+        const target = String(source.config?.url || source.config?.baseUrl || "");
+        if (/^https:\/\//i.test(target)) {
+          const browserSource = {
+            ...source,
+            id: `${source.id}#browser`,
+            method: "browser_render",
+            config: { ...source.config, url: target }
+          };
+          recordAttempt(browserSource.id, 0);
+          try {
+            const browserResult = await ADAPTERS.browser_render.search({ query, source: browserSource });
+            if (browserResult.success && browserResult.rawItems.length > 0) {
+              recordSuccess(browserSource.id, browserResult.latencyMs);
+              return { kind: "ok", result: browserResult };
+            }
+            recordFailure(
+              browserSource.id,
+              browserResult.failureClass || "EMPTY_RESPONSE",
+              browserResult.error || "Browser fallback found no usable data"
+            );
+          } catch (e) {
+            recordFailure(browserSource.id, "UNKNOWN", String(e).slice(0, 120));
+          }
+        }
+      }
       recordFailure(source.id, failureClass, result.error || "No items");
       return { kind: "fail", sourceId: source.id, failureClass, error: result.error || "No items" };
     } catch (e) {
@@ -1882,7 +2048,9 @@ var init_orchestrator = __esm({
     init_httpAcquisitionAdapter();
     init_structuredDataAdapter();
     init_feedAndApiAdapters();
+    init_browserRenderAdapter();
     ADAPTERS = {
+      browser_render: new BrowserRenderAdapter(),
       direct_http: new HttpAcquisitionAdapter(),
       structured_data: new StructuredDataAdapter(),
       affiliate_feed: new AffiliateFeedAdapter(),

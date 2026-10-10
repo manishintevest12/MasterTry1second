@@ -12,7 +12,10 @@ import { HttpAcquisitionAdapter } from './adapters/httpAcquisitionAdapter';
 import { StructuredDataAdapter } from './adapters/structuredDataAdapter';
 import { AffiliateFeedAdapter, OfficialAPIAdapter, PartnerFeedAdapter, SearchProviderAdapter } from './adapters/feedAndApiAdapters';
 
+import { BrowserRenderAdapter } from './adapters/browserRenderAdapter';
+
 const ADAPTERS: Record<string, SourceAdapter> = {
+  browser_render: new BrowserRenderAdapter(),
   direct_http: new HttpAcquisitionAdapter(),
   structured_data: new StructuredDataAdapter(),
   affiliate_feed: new AffiliateFeedAdapter(),
@@ -59,6 +62,36 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
         return { kind: 'ok', result };
       }
       const failureClass = result.failureClass || 'EMPTY_RESPONSE';
+
+      // Section 5.2 fallback: plain cURL often receives a JS-rendered shell with
+      // no usable data. Retry ONCE with the headless-browser adapter (only for
+      // direct_http sources, only if it returned a URL to render). Capability-
+      // honest: without Playwright installed the retry reports
+      // CONFIGURATION_REQUIRED and fails cleanly.
+      if (source.method === 'direct_http' && result.httpStatus && result.httpStatus < 500) {
+        const target = String(source.config?.url || source.config?.baseUrl || '');
+        if (/^https:\/\//i.test(target)) {
+          const browserSource: SourceConfig = {
+            ...source,
+            id: `${source.id}#browser`,
+            method: 'browser_render',
+            config: { ...source.config, url: target },
+          };
+          recordAttempt(browserSource.id, 0);
+          try {
+            const browserResult = await ADAPTERS.browser_render.search({ query, source: browserSource });
+            if (browserResult.success && browserResult.rawItems.length > 0) {
+              recordSuccess(browserSource.id, browserResult.latencyMs);
+              return { kind: 'ok', result: browserResult };
+            }
+            recordFailure(browserSource.id, browserResult.failureClass || 'EMPTY_RESPONSE',
+              browserResult.error || 'Browser fallback found no usable data');
+          } catch (e: any) {
+            recordFailure(browserSource.id, 'UNKNOWN', String(e).slice(0, 120));
+          }
+        }
+      }
+
       recordFailure(source.id, failureClass, result.error || 'No items');
       return { kind: 'fail', sourceId: source.id, failureClass, error: result.error || 'No items' };
     } catch (e: any) {
