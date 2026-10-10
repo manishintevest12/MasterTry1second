@@ -1,23 +1,36 @@
 # ============================================================
 # Try1Second — shared-hosting compatibility layer
 # Works while the whole repo is deployed as the web root.
-# The production bundle lives in ./dist/ (base=/dist/).
+# The production bundle lives in ./dist/ (built with base=/).
+# .htaccess bridges / -> ./dist/ so the SAME build works on
+# static hosting and under the Node.js app (server.js, Passenger).
 # On KVM4 this file is ignored (Node/nginx serves dist/).
 # ============================================================
 
-# Serve the built SPA at the homepage
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Bundle assets referenced by dist/index.html (base=/ build)
+  RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
+  RewriteRule ^favicon\.ico$ dist/favicon.ico [L]
+
+  # Serve the built SPA at the homepage
   RewriteRule ^$ dist/index.html [L]
+
+  # SPA fallback for client-side routes (admininsta, merchantinstab2b, ...)
+  # API paths are excluded so the backend (Node app) answers them itself.
+  RewriteCond %{REQUEST_URI} !^/api/
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . dist/index.html [L]
 </IfModule>
 
 # --- Security: stop serving raw source code to the public ---
-# (currently https://try1second.com/server/index.ts etc. are publicly readable)
 RedirectMatch 404 ^/(src|server|database|tests|node_modules|\.git|\.data)(/|$).*
 <FilesMatch "\.(ts|tsx|sql|env|lock|md)$">
   Require all denied
 </FilesMatch>
-<FilesMatch "^(package\.json|tsconfig\.json|vite\.config\.ts|server\.ts|metadata\.json|bun\.lock)$">
+<FilesMatch "^(package\.json|tsconfig\.json|vite\.config\.ts|server\.ts|server\.js|metadata\.json|bun\.lock)$">
   Require all denied
 </FilesMatch>
