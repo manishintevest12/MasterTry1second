@@ -13,7 +13,7 @@
 
   # Bundle assets referenced by dist/index.html (base=/ build)
   RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
-  RewriteRule ^favicon\.ico$ dist/favicon.ico [L]
+  RewriteRule ^(favicon\.ico|favicon-[0-9]+\.png|apple-touch-icon\.png)$ dist/$1 [L]
 
   # Serve the built SPA at the homepage
   RewriteRule ^$ dist/index.html [L]

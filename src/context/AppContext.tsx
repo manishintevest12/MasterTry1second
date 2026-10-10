@@ -1797,11 +1797,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        return { success: false, message: `The login service is not running yet (server answered ${res.status} without an API response). The Node.js backend must be started in hosting for admin login to work.` };
+      }
       if (!res.ok || !data.success) return { success: false, message: data.error || 'Could not send the login code.' };
       return { success: true, message: data.message || 'Login code sent. Check your email.' };
     } catch {
-      return { success: false, message: 'Cannot reach the Try1Second server. The backend must be running to log in.' };
+      return { success: false, message: 'Cannot reach the Try1Second server. Check your internet connection and try again.' };
     }
   };
 
@@ -1813,13 +1816,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, code }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        return { success: false, message: `The login service is not running yet (server answered ${res.status} without an API response). The Node.js backend must be started in hosting for admin login to work.` };
+      }
       if (!res.ok || !data.success) return { success: false, message: data.error || 'Login failed.' };
       openAdminSession(cleanEmail, data.token);
       addToast('success', 'Admin Authenticated', 'Logged in via one-time email code.');
       return { success: true, message: 'Admin access authorized.' };
     } catch {
-      return { success: false, message: 'Cannot reach the Try1Second server. The backend must be running to log in.' };
+      return { success: false, message: 'Cannot reach the Try1Second server. Check your internet connection and try again.' };
     }
   };
 
