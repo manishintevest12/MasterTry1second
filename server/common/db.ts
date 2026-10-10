@@ -25,6 +25,11 @@ export interface DataStore {
 }
 
 // ---------------- MySQL implementation ----------------
+/** Normalizes SQL bind params: undefined/NaN → null (exported for tests). */
+export function sanitizeBindParams(params: unknown[]): unknown[] {
+  return (params || []).map((p) => (p === undefined || (typeof p === 'number' && Number.isNaN(p))) ? null : p);
+}
+
 class MysqlStore implements DataStore {
   kind = 'mysql' as const;
   private pool: mysql.Pool;
@@ -33,13 +38,21 @@ class MysqlStore implements DataStore {
     this.pool = pool;
   }
 
+  /**
+   * mysql2 rejects `undefined` bind params ("Bind parameters must not contain
+   * undefined"). Offers from real feeds (e.g. VCommission campaigns) legitimately
+   * have missing optional fields (brand, currency, expiry…), so every param is
+   * normalized: undefined → SQL NULL. NaN also becomes NULL, never a fabricated 0.
+   */
+  private static bind = sanitizeBindParams;
+
   async query<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
-    const [rows] = await (this.pool.query as any)(sql, params);
+    const [rows] = await (this.pool.query as any)(sql, MysqlStore.bind(params));
     return rows as T[];
   }
 
   async execute(sql: string, params: unknown[] = []): Promise<{ affectedRows: number; insertId: number }> {
-    const [result] = await (this.pool.execute as any)(sql, params);
+    const [result] = await (this.pool.execute as any)(sql, MysqlStore.bind(params));
     const r = result as mysql.ResultSetHeader;
     return { affectedRows: r.affectedRows, insertId: r.insertId };
   }
@@ -49,8 +62,8 @@ class MysqlStore implements DataStore {
     try {
       await conn.beginTransaction();
       const tx = {
-        query: (sql: string, params: unknown[] = []) => (conn.query as any)(sql, params).then(([r]: any[]) => r),
-        execute: (sql: string, params: unknown[] = []) => (conn.execute as any)(sql, params).then(([r]: any[]) => r),
+        query: (sql: string, params: unknown[] = []) => (conn.query as any)(sql, MysqlStore.bind(params)).then(([r]: any[]) => r),
+        execute: (sql: string, params: unknown[] = []) => (conn.execute as any)(sql, MysqlStore.bind(params)).then(([r]: any[]) => r),
       };
       const out = await fn(tx);
       await conn.commit();

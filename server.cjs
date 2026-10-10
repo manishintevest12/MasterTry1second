@@ -460,8 +460,12 @@ __export(db_exports, {
   getStore: () => getStore,
   resetToFileStore: () => resetToFileStore,
   runMigrations: () => runMigrations,
+  sanitizeBindParams: () => sanitizeBindParams,
   splitSqlStatements: () => splitSqlStatements
 });
+function sanitizeBindParams(params) {
+  return (params || []).map((p) => p === void 0 || typeof p === "number" && Number.isNaN(p) ? null : p);
+}
 function getStore() {
   if (store) return store;
   if (settings.mysqlUrl) {
@@ -574,17 +578,26 @@ var init_db = __esm({
     import_promise = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();
-    MysqlStore = class {
+    MysqlStore = class _MysqlStore {
       constructor(pool) {
         this.kind = "mysql";
         this.pool = pool;
       }
+      static {
+        /**
+         * mysql2 rejects `undefined` bind params ("Bind parameters must not contain
+         * undefined"). Offers from real feeds (e.g. VCommission campaigns) legitimately
+         * have missing optional fields (brand, currency, expiry…), so every param is
+         * normalized: undefined → SQL NULL. NaN also becomes NULL, never a fabricated 0.
+         */
+        this.bind = sanitizeBindParams;
+      }
       async query(sql, params = []) {
-        const [rows] = await this.pool.query(sql, params);
+        const [rows] = await this.pool.query(sql, _MysqlStore.bind(params));
         return rows;
       }
       async execute(sql, params = []) {
-        const [result] = await this.pool.execute(sql, params);
+        const [result] = await this.pool.execute(sql, _MysqlStore.bind(params));
         const r = result;
         return { affectedRows: r.affectedRows, insertId: r.insertId };
       }
@@ -593,8 +606,8 @@ var init_db = __esm({
         try {
           await conn.beginTransaction();
           const tx = {
-            query: (sql, params = []) => conn.query(sql, params).then(([r]) => r),
-            execute: (sql, params = []) => conn.execute(sql, params).then(([r]) => r)
+            query: (sql, params = []) => conn.query(sql, _MysqlStore.bind(params)).then(([r]) => r),
+            execute: (sql, params = []) => conn.execute(sql, _MysqlStore.bind(params)).then(([r]) => r)
           };
           const out = await fn(tx);
           await conn.commit();
