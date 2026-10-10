@@ -56,7 +56,13 @@ var init_settings = __esm({
       port: Number(process.env.PORT || 3e3),
       env: process.env.NODE_ENV || "development",
       appUrl: process.env.APP_URL || "",
-      mysqlUrl: process.env.DATABASE_URL || process.env.MYSQL_URL || "",
+      /**
+       * MySQL connection URL. Two supported forms (discrete vars win — they avoid
+       * URL-encoding pitfalls with passwords containing @ : / # % etc.):
+       *   1) DB_HOST + DB_PORT + DB_USER + DB_PASSWORD + DB_NAME (as shown in hPanel → Databases)
+       *   2) DATABASE_URL / MYSQL_URL (mysql://user:pass@host:port/dbname)
+       */
+      mysqlUrl: process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME ? `mysql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD || "")}@${process.env.DB_HOST}:${process.env.DB_PORT || "3306"}/${encodeURIComponent(process.env.DB_NAME)}` : process.env.DATABASE_URL || process.env.MYSQL_URL || "",
       redisUrl: process.env.REDIS_URL || "",
       geminiApiKey: process.env.GEMINI_API_KEY || "",
       /** First-admin bootstrap: any account registered with this email gets the admin role. */
@@ -452,6 +458,7 @@ var db_exports = {};
 __export(db_exports, {
   FileStore: () => FileStore,
   getStore: () => getStore,
+  resetToFileStore: () => resetToFileStore,
   runMigrations: () => runMigrations
 });
 function getStore() {
@@ -476,6 +483,10 @@ function getStore() {
     store = new FileStore();
   }
   return store;
+}
+function resetToFileStore() {
+  store = new FileStore();
+  log.warn("DataStore", "Switched to FILE FALLBACK store (non-durable) \u2014 fix MySQL env vars and restart");
 }
 async function runMigrations() {
   const s = getStore();
@@ -3917,8 +3928,13 @@ __export(routes_exports, {
   bootstrapBackend: () => bootstrapBackend
 });
 async function bootstrapBackend() {
-  const migrations = await runMigrations();
-  if (migrations.applied.length > 0) log.info("Bootstrap", `Applied migrations: ${migrations.applied.join(", ")}`);
+  try {
+    const migrations = await runMigrations();
+    if (migrations.applied.length > 0) log.info("Bootstrap", `Applied migrations: ${migrations.applied.join(", ")}`);
+  } catch (err) {
+    log.error("Bootstrap", `MySQL migrations failed \u2014 falling back to file store until DB env vars are fixed: ${err.code || ""} ${err.message}`);
+    resetToFileStore();
+  }
   const loaded = await loadSourcesFromDb();
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();

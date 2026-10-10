@@ -284,6 +284,16 @@ export function getStore(): DataStore {
   return store;
 }
 
+/**
+ * Switch the process to the file store after a live MySQL failure (bad credentials,
+ * DB down, privileges missing). Keeps the site serving instead of crashing with 503;
+ * data becomes non-durable until the env vars are fixed and the app is restarted.
+ */
+export function resetToFileStore(): void {
+  store = new FileStore();
+  log.warn('DataStore', 'Switched to FILE FALLBACK store (non-durable) — fix MySQL env vars and restart');
+}
+
 /** Runs SQL migration files in order, tracked in schema_migrations. No-op for file store. */
 export async function runMigrations(): Promise<{ applied: string[]; skipped: string }> {
   const s = getStore();

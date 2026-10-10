@@ -10,7 +10,16 @@ export const settings = {
   env: process.env.NODE_ENV || 'development',
   appUrl: process.env.APP_URL || '',
 
-  mysqlUrl: process.env.DATABASE_URL || process.env.MYSQL_URL || '',
+  /**
+   * MySQL connection URL. Two supported forms (discrete vars win — they avoid
+   * URL-encoding pitfalls with passwords containing @ : / # % etc.):
+   *   1) DB_HOST + DB_PORT + DB_USER + DB_PASSWORD + DB_NAME (as shown in hPanel → Databases)
+   *   2) DATABASE_URL / MYSQL_URL (mysql://user:pass@host:port/dbname)
+   */
+  mysqlUrl:
+    (process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME)
+      ? `mysql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD || '')}@${process.env.DB_HOST}:${process.env.DB_PORT || '3306'}/${encodeURIComponent(process.env.DB_NAME)}`
+      : (process.env.DATABASE_URL || process.env.MYSQL_URL || ''),
   redisUrl: process.env.REDIS_URL || '',
 
   geminiApiKey: process.env.GEMINI_API_KEY || '',

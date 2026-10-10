@@ -20,7 +20,7 @@ import {
 } from '../rewards/rewardsEngine';
 import { resolveRedirect } from '../affiliate/affiliateNetwork';
 import { getStore } from '../common/db';
-import { runMigrations } from '../common/db';
+import { runMigrations, resetToFileStore } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
@@ -326,8 +326,14 @@ apiRouter.post('/rewards/fulfilment', requireAuth, async (req, res) => {
 
 // ============ Bootstrap for the server entrypoint ============
 export async function bootstrapBackend(): Promise<void> {
-  const migrations = await runMigrations();
-  if (migrations.applied.length > 0) log.info('Bootstrap', `Applied migrations: ${migrations.applied.join(', ')}`);
+  try {
+    const migrations = await runMigrations();
+    if (migrations.applied.length > 0) log.info('Bootstrap', `Applied migrations: ${migrations.applied.join(', ')}`);
+  } catch (err: any) {
+    // Bad credentials / DB down must not 503 the whole site: degrade to the file store.
+    log.error('Bootstrap', `MySQL migrations failed — falling back to file store until DB env vars are fixed: ${err.code || ''} ${err.message}`);
+    resetToFileStore();
+  }
   const loaded = await loadSourcesFromDb();
   log.info('Bootstrap', `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
