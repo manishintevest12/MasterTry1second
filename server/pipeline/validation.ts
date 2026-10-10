@@ -108,22 +108,25 @@ const VERTICAL_RULES: Record<VerticalId, FieldRule[]> = {
     { name: 'fare', present: (o) => o.prices.mandatoryTotal !== undefined },
     { name: 'seat_type', present: (o) => Boolean(o.travel?.seatType), blocking: false },
   ],
+  // Non-comparison verticals (Section 11): real affiliate-campaign offers often carry
+  // no expiry/eligibility/denomination fields. Missing optional facts downgrade the offer
+  // to PARTIAL (truthfully labelled, ranked lower) instead of discarding legitimate data.
   coupons: [
     { name: 'merchant', present: (o) => Boolean(o.vendor) },
-    { name: 'expiry', present: (o) => Boolean(o.expiresAt || o.attributes['expires_at']) },
-    { name: 'eligibility', present: (o) => Boolean(o.attributes['min_spend'] || o.attributes['eligibility']) },
+    { name: 'expiry', present: (o) => Boolean(o.expiresAt || o.attributes['expires_at']), blocking: false },
+    { name: 'eligibility', present: (o) => Boolean(o.attributes['min_spend'] || o.attributes['eligibility']), blocking: false },
     { name: 'verified', present: (o) => o.attributes['verified'] === 'true', blocking: false },
   ],
   giftcards: [
     { name: 'merchant', present: (o) => Boolean(o.vendor) },
-    { name: 'denomination', present: (o) => o.attributes['denomination'] !== undefined },
-    { name: 'sale_price', present: (o) => o.prices.mandatoryTotal !== undefined },
+    { name: 'denomination', present: (o) => o.attributes['denomination'] !== undefined, blocking: false },
+    { name: 'sale_price', present: (o) => o.prices.mandatoryTotal !== undefined, blocking: false },
     { name: 'validity', present: (o) => Boolean(o.attributes['validity']), blocking: false },
   ],
   banking: [
     { name: 'bank', present: (o) => Boolean(o.vendor) },
     { name: 'offer_terms', present: (o) => Boolean(o.title) },
-    { name: 'validity', present: (o) => Boolean(o.expiresAt || o.attributes['valid_to']) },
+    { name: 'validity', present: (o) => Boolean(o.expiresAt || o.attributes['valid_to']), blocking: false },
     { name: 'min_spend', present: (o) => o.attributes['min_spend'] !== undefined, blocking: false },
   ],
 };

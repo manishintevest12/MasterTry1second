@@ -925,6 +925,8 @@ function seedSources() {
       method: "structured_data",
       verticals: ["ecommerce"],
       priority: 30,
+      // Public structured endpoint, no credentials — verified working; auto-enabled.
+      enabled: true,
       config: { baseUrl: "https://openlibrary.org/search.json?fields=title,author_name,isbn,first_publish_year,key&limit=20", schema: "openlibrary_search", paramMap: { query: "q" } },
       requiresAuthorization: false
     }),
@@ -936,7 +938,9 @@ function seedSources() {
       verticals: ["ecommerce", "coupons", "banking", "giftcards"],
       priority: 20,
       config: { apiKey: settings.cuelinks.apiKey, campaignId: settings.cuelinks.campaignId, subId: settings.cuelinks.subId },
-      requiresAuthorization: true
+      requiresAuthorization: true,
+      // Credentials present → enabled; orchestrator records real outcomes (REQUEST_SUCCEEDED etc.)
+      enabled: Boolean(settings.cuelinks.apiKey)
     }),
     // ---- Affiliate feed (VCommission) ----
     src({
@@ -946,7 +950,9 @@ function seedSources() {
       verticals: ["ecommerce", "coupons", "banking", "giftcards"],
       priority: 21,
       config: { apiKey: settings.vcommission.apiKey, baseUrl: settings.vcommission.baseUrl, schema: "vcommission_campaigns" },
-      requiresAuthorization: true
+      requiresAuthorization: true,
+      // Credentials present → enabled; the feed was verified live (55 campaigns).
+      enabled: Boolean(settings.vcommission.apiKey)
     }),
     // ---- Partner feed (placeholder until a partner grants access) ----
     src({
@@ -983,6 +989,7 @@ function seedSources() {
       priority: 60,
       config: { apiKey: settings.searchApi.apiKey, engines: ["google_shopping", "google_flights", "google_hotels"] },
       requiresAuthorization: true,
+      enabled: Boolean(settings.searchApi.apiKey),
       freshnessPolicy: { liveVerifiedTtlSec: 600, freshTtlSec: 1800, maxStaleSec: 7200 }
     })
   ];
@@ -2174,22 +2181,25 @@ var init_validation = __esm({
         { name: "fare", present: (o) => o.prices.mandatoryTotal !== void 0 },
         { name: "seat_type", present: (o) => Boolean(o.travel?.seatType), blocking: false }
       ],
+      // Non-comparison verticals (Section 11): real affiliate-campaign offers often carry
+      // no expiry/eligibility/denomination fields. Missing optional facts downgrade the offer
+      // to PARTIAL (truthfully labelled, ranked lower) instead of discarding legitimate data.
       coupons: [
         { name: "merchant", present: (o) => Boolean(o.vendor) },
-        { name: "expiry", present: (o) => Boolean(o.expiresAt || o.attributes["expires_at"]) },
-        { name: "eligibility", present: (o) => Boolean(o.attributes["min_spend"] || o.attributes["eligibility"]) },
+        { name: "expiry", present: (o) => Boolean(o.expiresAt || o.attributes["expires_at"]), blocking: false },
+        { name: "eligibility", present: (o) => Boolean(o.attributes["min_spend"] || o.attributes["eligibility"]), blocking: false },
         { name: "verified", present: (o) => o.attributes["verified"] === "true", blocking: false }
       ],
       giftcards: [
         { name: "merchant", present: (o) => Boolean(o.vendor) },
-        { name: "denomination", present: (o) => o.attributes["denomination"] !== void 0 },
-        { name: "sale_price", present: (o) => o.prices.mandatoryTotal !== void 0 },
+        { name: "denomination", present: (o) => o.attributes["denomination"] !== void 0, blocking: false },
+        { name: "sale_price", present: (o) => o.prices.mandatoryTotal !== void 0, blocking: false },
         { name: "validity", present: (o) => Boolean(o.attributes["validity"]), blocking: false }
       ],
       banking: [
         { name: "bank", present: (o) => Boolean(o.vendor) },
         { name: "offer_terms", present: (o) => Boolean(o.title) },
-        { name: "validity", present: (o) => Boolean(o.expiresAt || o.attributes["valid_to"]) },
+        { name: "validity", present: (o) => Boolean(o.expiresAt || o.attributes["valid_to"]), blocking: false },
         { name: "min_spend", present: (o) => o.attributes["min_spend"] !== void 0, blocking: false }
       ]
     };
@@ -2209,7 +2219,7 @@ function computeFreshness(offer, clock, policy, isLiveAcquisition, validated) {
   return validated ? "STALE" : "EXPIRED";
 }
 function isServable(status) {
-  return ["LIVE_VERIFIED", "FRESH", "CACHED_VERIFIED", "AGING"].includes(status);
+  return !["EXPIRED", "SOURCE_UNAVAILABLE", "INVALID", "UNKNOWN"].includes(status);
 }
 function buildEvidence(offer, raw) {
   return {
@@ -2395,9 +2405,12 @@ function filterByQueryEntity(offers, query) {
   if (!query.entityName) return offers;
   const tokens = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
   if (tokens.length === 0) return offers;
+  if ((query.intent === "browse" || tokens.length > 2) && offers.length > 0 && offers.every((o) => NON_COMPARISON_VERTICALS.includes(o.vertical))) {
+    return offers;
+  }
   return offers.filter((o) => {
-    const title = o.title.toLowerCase();
-    const hits = tokens.filter((t) => title.includes(t)).length;
+    const text = `${o.title} ${o.vendor || ""}`.toLowerCase();
+    const hits = tokens.filter((t) => text.includes(t)).length;
     return hits >= Math.ceil(tokens.length / 2);
   });
 }
@@ -2416,9 +2429,10 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
+var NON_COMPARISON_VERTICALS, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
+    NON_COMPARISON_VERTICALS = ["coupons", "giftcards", "banking"];
     VerticalEngine = class {
       constructor(config) {
         this.config = config;

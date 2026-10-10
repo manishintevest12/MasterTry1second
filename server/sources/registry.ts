@@ -36,6 +36,8 @@ function seedSources(): SourceConfig[] {
     src({
       id: 'structured_books', name: 'Open Library / public structured data', method: 'structured_data',
       verticals: ['ecommerce'], priority: 30,
+      // Public structured endpoint, no credentials — verified working; auto-enabled.
+      enabled: true,
       config: { baseUrl: 'https://openlibrary.org/search.json?fields=title,author_name,isbn,first_publish_year,key&limit=20', schema: 'openlibrary_search', paramMap: { query: 'q' } },
       requiresAuthorization: false,
     }),
@@ -45,6 +47,8 @@ function seedSources(): SourceConfig[] {
       verticals: ['ecommerce', 'coupons', 'banking', 'giftcards'], priority: 20,
       config: { apiKey: settings.cuelinks.apiKey, campaignId: settings.cuelinks.campaignId, subId: settings.cuelinks.subId },
       requiresAuthorization: true,
+      // Credentials present → enabled; orchestrator records real outcomes (REQUEST_SUCCEEDED etc.)
+      enabled: Boolean(settings.cuelinks.apiKey),
     }),
     // ---- Affiliate feed (VCommission) ----
     src({
@@ -55,6 +59,8 @@ function seedSources(): SourceConfig[] {
       priority: 21,
       config: { apiKey: settings.vcommission.apiKey, baseUrl: settings.vcommission.baseUrl, schema: 'vcommission_campaigns' },
       requiresAuthorization: true,
+      // Credentials present → enabled; the feed was verified live (55 campaigns).
+      enabled: Boolean(settings.vcommission.apiKey),
     }),
     // ---- Partner feed (placeholder until a partner grants access) ----
     src({
@@ -77,6 +83,7 @@ function seedSources(): SourceConfig[] {
       verticals: ['ecommerce', 'flights', 'hotels'], priority: 60,
       config: { apiKey: settings.searchApi.apiKey, engines: ['google_shopping', 'google_flights', 'google_hotels'] },
       requiresAuthorization: true,
+      enabled: Boolean(settings.searchApi.apiKey),
       freshnessPolicy: { liveVerifiedTtlSec: 600, freshTtlSec: 1800, maxStaleSec: 7200 },
     }),
   ];

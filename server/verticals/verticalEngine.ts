@@ -13,14 +13,23 @@ export interface VerticalEngineConfig {
   postProcess?: (offers: NormalizedOffer[], query: ParsedQuery) => NormalizedOffer[];
 }
 
+// Non-comparison verticals list merchant campaigns; browse queries there should not
+// hard-filter legitimate feed offers (they surface ranked with truthful statuses).
+const NON_COMPARISON_VERTICALS: string[] = ['coupons', 'giftcards', 'banking'];
+
 function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   if (!query.entityName) return offers;
   const tokens = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
   if (tokens.length === 0) return offers;
+  // Browse intent on a non-comparison vertical = "show me offers", not a product lookup.
+  if ((query.intent === 'browse' || tokens.length > 2) && offers.length > 0 && offers.every((o) => NON_COMPARISON_VERTICALS.includes(o.vertical))) {
+    return offers; // relevance still applied by ranking (title/vendor match)
+  }
   return offers.filter((o) => {
-    const title = o.title.toLowerCase();
-    // At least half the significant query tokens should match the offer title
-    const hits = tokens.filter((t) => title.includes(t)).length;
+    // Match against the title AND the vendor/merchant name
+    const text = `${o.title} ${o.vendor || ''}`.toLowerCase();
+    // At least half the significant query tokens should match
+    const hits = tokens.filter((t) => text.includes(t)).length;
     return hits >= Math.ceil(tokens.length / 2);
   });
 }

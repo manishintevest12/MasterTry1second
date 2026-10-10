@@ -65,7 +65,10 @@ export function computeFreshness(
 }
 
 export function isServable(status: FreshnessStatus): boolean {
-  return ['LIVE_VERIFIED', 'FRESH', 'CACHED_VERIFIED', 'AGING'].includes(status);
+  // Partial/unverified offers are SERVED with their truthful label (Section 6:
+  // "preserve partial legitimate results") — only proven-bad states are hidden.
+  // Ranking (Section 13) places them below verified/comparable offers.
+  return !['EXPIRED', 'SOURCE_UNAVAILABLE', 'INVALID', 'UNKNOWN'].includes(status);
 }
 
 export function isComparable(status: FreshnessStatus): boolean {
