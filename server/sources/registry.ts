@@ -46,6 +46,16 @@ function seedSources(): SourceConfig[] {
       config: { apiKey: settings.cuelinks.apiKey, campaignId: settings.cuelinks.campaignId, subId: settings.cuelinks.subId },
       requiresAuthorization: true,
     }),
+    // ---- Affiliate feed (VCommission) ----
+    src({
+      id: 'affiliate_vcommission',
+      name: 'VCommission Affiliate Feed',
+      method: 'affiliate_feed',
+      verticals: ['ecommerce', 'coupons', 'banking', 'giftcards'],
+      priority: 21,
+      config: { apiKey: settings.vcommission.apiKey, baseUrl: settings.vcommission.baseUrl, schema: 'vcommission_campaigns' },
+      requiresAuthorization: true,
+    }),
     // ---- Partner feed (placeholder until a partner grants access) ----
     src({
       id: 'partner_generic', name: 'Partner Feed (configure per partner)', method: 'partner_feed',

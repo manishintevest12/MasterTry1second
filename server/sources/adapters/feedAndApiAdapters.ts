@@ -22,8 +22,11 @@ export class AffiliateFeedAdapter implements SourceAdapter {
   async search(ctx: { query: any; source: SourceConfig }): Promise<AdapterResult> {
     const { source, query } = ctx;
     const fetchedAt = new Date().toISOString();
-    const feedUrl = String(source.config.feedUrl || '');
     const apiKey = String(source.config.apiKey || '');
+    const isVcommission = source.config.schema === 'vcommission_campaigns';
+    const feedUrl = isVcommission
+      ? `${String(source.config.baseUrl || 'https://api.vcommission.com/v2')}/publisher/campaigns?apiKey=${encodeURIComponent(apiKey)}`
+      : String(source.config.feedUrl || '');
     if (!feedUrl || !apiKey) {
       // Credentials missing → adapter reports it, engine continues with other sources
       return failedResult(source, 'EXPIRED_CREDENTIALS', 'Affiliate feed URL/API key not configured', 0);
@@ -31,12 +34,41 @@ export class AffiliateFeedAdapter implements SourceAdapter {
     try {
       const res = await httpAcquire(feedUrl, {
         sourceId: source.id,
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: isVcommission ? {} : { Authorization: `Bearer ${apiKey}` },
         expectJson: true,
         maxPerMinute: source.rateLimit.maxRequestsPerMinute,
       });
       if (!res.ok) return failedResult(source, res.status === 429 ? 'QUOTA_EXHAUSTED' : 'SERVER_ERROR', `HTTP ${res.status}`, res.latencyMs, res.status);
       const json = JSON.parse(res.body);
+      // VCommission: { success, data: { campaigns: [...] } } — affiliate campaign
+      // metadata (merchant, tracking link, commission). No product prices are
+      // fabricated from campaigns; only evidence-backed fields are extracted.
+      if (isVcommission) {
+        const campaigns = json?.data?.campaigns;
+        if (!Array.isArray(campaigns)) {
+          return failedResult(source, 'SCHEMA_DRIFT', 'VCommission feed schema unrecognized', res.latencyMs, 200);
+        }
+        const rawItems: RawSourceItem[] = campaigns.slice(0, 50)
+          .filter((c: any) => c && c.title)
+          .map((c: any) =>
+            newRawItem(source, {
+              title: String(c.title),
+              price: undefined, // campaigns carry commissions, not product prices — never fabricated
+              currency: 'INR',
+              identifiers: c.id ? { sku: String(c.id) } : {},
+              seller: String(c.store_title || c.merchant_name || 'VCommission merchant'),
+              sellerUrl: c.tracking_url || c.url || undefined,
+              availability: 'unknown',
+              expiresAt: c.validity_end || c.expires_at,
+              evidence: {
+                sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, 'apiKey=***'),
+                rawFingerprint: createHash('sha256').update(res.body.slice(0, 50000)).digest('hex'),
+                extractedFields: ['title', 'seller', ...(c.tracking_url || c.url ? ['tracking_url'] : [])],
+              },
+            }),
+          );
+        return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: 200, latencyMs: res.latencyMs, fetchedAt };
+      }
       if (!Array.isArray(json.offers) && !Array.isArray(json)) {
         return failedResult(source, 'SCHEMA_DRIFT', 'Feed response schema unrecognized', res.latencyMs, 200);
       }

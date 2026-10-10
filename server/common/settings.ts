@@ -42,6 +42,11 @@ export const settings = {
     subId: process.env.CUELINKS_SUB_ID || '',
     enabled: Boolean(process.env.CUELINKS_API_KEY),
   },
+  vcommission: {
+    apiKey: process.env.VCOMMISSION_API_KEY || '',
+    baseUrl: process.env.VCOMMISSION_BASE_URL || 'https://api.vcommission.com/v2',
+    enabled: Boolean(process.env.VCOMMISSION_API_KEY),
+  },
 
   http: {
     connectTimeoutMs: Number(process.env.HTTP_CONNECT_TIMEOUT_MS || 6000),
