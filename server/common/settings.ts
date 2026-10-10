@@ -94,5 +94,5 @@ export function assertProductionReadiness(): string[] {
 // can delete another suite's devstore mid-run. Production keeps the shared .data.
 export const dataDir = path.resolve(
   process.cwd(),
-  process.env.DATA_DIR || (process.env.NODE_ENV === 'test' ? `.data/test-${process.pid}` : '.data'),
+  process.env.DATA_DIR || (process.env.NODE_ENV === 'test' ? `.data-tests/${process.pid}` : '.data'),
 );
