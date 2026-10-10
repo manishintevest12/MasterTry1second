@@ -459,7 +459,8 @@ __export(db_exports, {
   FileStore: () => FileStore,
   getStore: () => getStore,
   resetToFileStore: () => resetToFileStore,
-  runMigrations: () => runMigrations
+  runMigrations: () => runMigrations,
+  splitSqlStatements: () => splitSqlStatements
 });
 function getStore() {
   if (store) return store;
@@ -488,6 +489,60 @@ function resetToFileStore() {
   store = new FileStore();
   log.warn("DataStore", "Switched to FILE FALLBACK store (non-durable) \u2014 fix MySQL env vars and restart");
 }
+function splitSqlStatements(sql) {
+  const out = [];
+  let cur = "";
+  let i = 0;
+  const hasContent = (s) => s.split("\n").some((line) => line.trim() && !line.trim().startsWith("--") && !line.trim().startsWith("#"));
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "-" && sql[i + 1] === "-") {
+      const nl = sql.indexOf("\n", i);
+      if (nl === -1) {
+        cur += sql.slice(i);
+        i = sql.length;
+      } else {
+        cur += sql.slice(i, nl + 1);
+        i = nl + 1;
+      }
+      continue;
+    }
+    if (ch === "'") {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === "'" && sql[j + 1] === "'") {
+          j += 2;
+          continue;
+        }
+        if (sql[j] === "'") {
+          j++;
+          break;
+        }
+        j++;
+      }
+      cur += sql.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (ch === "`") {
+      const end = sql.indexOf("`", i + 1);
+      const stop = end === -1 ? sql.length : end + 1;
+      cur += sql.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === ";") {
+      if (hasContent(cur)) out.push(cur.trim());
+      cur = "";
+      i++;
+      continue;
+    }
+    cur += ch;
+    i++;
+  }
+  if (hasContent(cur)) out.push(cur.trim());
+  return out;
+}
 async function runMigrations() {
   const s = getStore();
   if (s.kind !== "mysql") return { applied: [], skipped: "file-fallback (dev)" };
@@ -501,7 +556,7 @@ async function runMigrations() {
     if (done.has(f)) continue;
     const sql = import_fs.default.readFileSync(import_path2.default.join(dir, f), "utf8");
     await s.transaction(async (tx) => {
-      for (const statement of sql.split(";").map((x) => x.trim()).filter(Boolean)) {
+      for (const statement of splitSqlStatements(sql)) {
         await tx.execute(statement);
       }
       await tx.execute("INSERT INTO schema_migrations (name) VALUES (?)", [f]);

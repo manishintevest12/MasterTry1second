@@ -294,6 +294,51 @@ export function resetToFileStore(): void {
   log.warn('DataStore', 'Switched to FILE FALLBACK store (non-durable) — fix MySQL env vars and restart');
 }
 
+
+/**
+ * Splits a .sql file into executable statements.
+ * Naive split-on-';' breaks when comments or string literals contain a semicolon
+ * (e.g. "-- hashed; never stored in plaintext"), which caused ER_PARSE_ERROR on MariaDB.
+ * This tokenizer respects -- line comments, '...' strings (with '' escapes) and `...` identifiers.
+ */
+export function splitSqlStatements(sql: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let i = 0;
+  const hasContent = (s: string) =>
+    s.split('\n').some((line) => line.trim() && !line.trim().startsWith('--') && !line.trim().startsWith('#'));
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === '-' && sql[i + 1] === '-') {
+      const nl = sql.indexOf('\n', i);
+      if (nl === -1) { cur += sql.slice(i); i = sql.length; }
+      else { cur += sql.slice(i, nl + 1); i = nl + 1; }
+      continue;
+    }
+    if (ch === "'") {
+      let j = i + 1;
+      while (j < sql.length) {
+        if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; }
+        if (sql[j] === "'") { j++; break; }
+        j++;
+      }
+      cur += sql.slice(i, j); i = j; continue;
+    }
+    if (ch === '`') {
+      const end = sql.indexOf('`', i + 1);
+      const stop = end === -1 ? sql.length : end + 1;
+      cur += sql.slice(i, stop); i = stop; continue;
+    }
+    if (ch === ';') {
+      if (hasContent(cur)) out.push(cur.trim());
+      cur = ''; i++; continue;
+    }
+    cur += ch; i++;
+  }
+  if (hasContent(cur)) out.push(cur.trim());
+  return out;
+}
+
 /** Runs SQL migration files in order, tracked in schema_migrations. No-op for file store. */
 export async function runMigrations(): Promise<{ applied: string[]; skipped: string }> {
   const s = getStore();
@@ -308,7 +353,7 @@ export async function runMigrations(): Promise<{ applied: string[]; skipped: str
     if (done.has(f)) continue;
     const sql = fs.readFileSync(path.join(dir, f), 'utf8');
     await s.transaction(async (tx) => {
-      for (const statement of sql.split(';').map((x) => x.trim()).filter(Boolean)) {
+      for (const statement of splitSqlStatements(sql)) {
         await tx.execute(statement);
       }
       await tx.execute('INSERT INTO schema_migrations (name) VALUES (?)', [f]);
