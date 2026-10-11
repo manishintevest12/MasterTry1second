@@ -155,6 +155,28 @@ apiRouter.get('/catalogue', async (_req, res) => {
   }
 });
 
+apiRouter.get('/picks', async (req, res) => {
+  // Public: active admin-curated top picks for a vertical. Empty array = none configured (honest).
+  try {
+    const { listTopPicks } = await import('../marketing/placements');
+    const picks = await listTopPicks(String(req.query.vertical || '') || undefined, false);
+    res.json({ success: true, picks });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load picks' });
+  }
+});
+
+apiRouter.get('/ads', async (req, res) => {
+  // Public: active ad slot config (AdSense ids or custom HTML). Nothing configured -> active: false.
+  try {
+    const { getAdSlot } = await import('../marketing/placements');
+    const slot = await getAdSlot(String(req.query.slot || ''));
+    res.json({ success: true, active: Boolean(slot), slot });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load ad slot' });
+  }
+});
+
 apiRouter.get('/provenance', async (_req, res) => {
   try {
     const rows = await getStore().query<any>(

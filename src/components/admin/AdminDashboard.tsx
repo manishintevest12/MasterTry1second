@@ -49,6 +49,7 @@ import { DirectPartnersTab } from './DirectPartnersTab';
 import { MerchantVendorIdsTab } from './MerchantVendorIdsTab';
 import { PlatformTrafficTab } from './PlatformTrafficTab';
 import { QuickAppsAdminTab } from './QuickAppsAdminTab';
+import { PlacementsTab } from './PlacementsTab';
 
 export type AdminTab =
   | 'traffic_performance'
@@ -63,7 +64,8 @@ export type AdminTab =
   | 'user_logins'
   | 'spin_earn'
   | 'proxies'
-  | 'direct_partners';
+  | 'direct_partners'
+  | 'placements';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -525,6 +527,16 @@ export const AdminDashboard: React.FC = () => {
               {directPartners.length}
             </span>
           </button>
+            <button
+              onClick={() => setActiveTab('placements')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'placements'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Top Picks &amp; Ads
+            </button>
 
           <button
             type="button"
@@ -1212,6 +1224,7 @@ export const AdminDashboard: React.FC = () => {
 
         {/* ================= TAB 10: 100+ DIRECT PARTNERS DIRECTORY MANAGEMENT ================= */}
         {activeTab === 'direct_partners' && <DirectPartnersTab />}
+        {activeTab === 'placements' && <PlacementsTab />}
 
         {/* ================= TAB 11: 10-DIGIT MERCHANT VENDOR ACCESS MANAGEMENT ================= */}
         {activeTab === 'merchant_vendors' && <MerchantVendorIdsTab />}

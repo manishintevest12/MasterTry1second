@@ -15,6 +15,7 @@ import { getStore } from '../common/db';
 import { cacheStats } from '../common/cache';
 import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
+import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
 import { log } from '../common/logger';
 
 export const adminRouter = Router();
@@ -165,6 +166,59 @@ adminRouter.get('/audit-logs', async (_req, res) => {
 });
 
 // --- Affiliate destination validation utility ---
+// --- Top Picks (admin-curated sponsored picks; shown only when configured) ---
+adminRouter.get('/top-picks', async (req, res) => {
+  try {
+    const picks = await listTopPicks(String(req.query.vertical || '') || undefined, true);
+    res.json({ success: true, picks });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load top picks' });
+  }
+});
+
+adminRouter.post('/top-picks', async (req, res) => {
+  try {
+    const result = await upsertTopPick(req.body || {});
+    if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+    audit(req, 'top_pick.upsert', String(result.id), { vertical: req.body?.vertical });
+    log.info('Admin', `Top pick saved (id ${result.id})`);
+    res.json({ success: true, id: result.id });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save top pick' });
+  }
+});
+
+adminRouter.delete('/top-picks/:id', async (req, res) => {
+  try {
+    await deleteTopPick(Number(req.params.id));
+    audit(req, 'top_pick.delete', req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not delete top pick' });
+  }
+});
+
+// --- Ad slots (AdSense config or admin-authored custom HTML) ---
+adminRouter.get('/ad-slots', async (_req, res) => {
+  try {
+    res.json({ success: true, slots: await listAdSlots() });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load ad slots' });
+  }
+});
+
+adminRouter.post('/ad-slots', async (req, res) => {
+  try {
+    const result = await upsertAdSlot(req.body || {});
+    if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+    audit(req, 'ad_slot.upsert', req.body?.slot_key, { provider: req.body?.provider });
+    log.info('Admin', `Ad slot saved (${req.body?.slot_key})`);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save ad slot' });
+  }
+});
+
 adminRouter.post('/validate-destination', (req, res) => {
   const check = validateDestination(String(req.body.url || ''));
   res.json({ success: true, ...check });

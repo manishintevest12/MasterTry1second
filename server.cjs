@@ -4194,6 +4194,157 @@ var init_realDataAcquisition = __esm({
   }
 });
 
+// server/marketing/placements.ts
+var placements_exports = {};
+__export(placements_exports, {
+  deleteTopPick: () => deleteTopPick,
+  getAdSlot: () => getAdSlot,
+  listAdSlots: () => listAdSlots,
+  listTopPicks: () => listTopPicks,
+  upsertAdSlot: () => upsertAdSlot,
+  upsertTopPick: () => upsertTopPick
+});
+async function listTopPicks(vertical, includeInactive = false) {
+  const store2 = getStore();
+  const params = [];
+  let where = "";
+  if (!includeInactive) {
+    where += " WHERE is_active = 1";
+  }
+  if (vertical) {
+    where += where ? " AND vertical = ?" : " WHERE vertical = ?";
+    params.push(vert(vertical));
+  }
+  const rows = await store2.query(
+    `SELECT * FROM top_picks${where} ORDER BY position ASC, id ASC LIMIT 50`,
+    params
+  );
+  return rows.map((r) => ({ ...r, perks: safeParse(r.perks) }));
+}
+function safeParse(v) {
+  try {
+    const a = JSON.parse(String(v || "[]"));
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+async function upsertTopPick(input) {
+  const vertical = vert(input.vertical);
+  const partner_name = str(input.partner_name, 120);
+  const headline = str(input.headline, 200);
+  const destination = str(input.destination_url, 500);
+  if (!partner_name) return { ok: false, error: "Partner name is required" };
+  if (!headline) return { ok: false, error: "Headline is required" };
+  if (!destination) return { ok: false, error: "Destination URL is required" };
+  const check = validateDestination(destination);
+  if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
+  const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
+  const store2 = getStore();
+  const perks = JSON.stringify((input.perks || []).map((p) => String(p).slice(0, 120)).slice(0, 6));
+  const values = [
+    vertical,
+    partner_name,
+    str(input.partner_code, 16),
+    str(input.badge_text, 60) || "Sponsored Top Pick",
+    headline,
+    str(input.offer_text, 400),
+    str(input.price_badge, 60),
+    perks,
+    str(input.cta_text, 80) || "View Deal",
+    destination,
+    str(input.image_url, 500),
+    str(input.logo_bg, 40) || "bg-slate-900",
+    str(input.logo_text, 8),
+    rating,
+    Number(input.position ?? 0) || 0,
+    input.is_active === false ? 0 : 1
+  ];
+  if (input.id) {
+    await store2.execute(
+      `UPDATE top_picks SET vertical=?, partner_name=?, partner_code=?, badge_text=?, headline=?, offer_text=?,
+       price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
+       rating=?, position=?, is_active=? WHERE id=?`,
+      [...values, input.id]
+    );
+    return { ok: true, id: input.id };
+  }
+  const result = await store2.execute(
+    `INSERT INTO top_picks (vertical, partner_name, partner_code, badge_text, headline, offer_text,
+     price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    values
+  );
+  return { ok: true, id: Number(result?.insertId ?? 0) };
+}
+async function deleteTopPick(id) {
+  await getStore().execute("DELETE FROM top_picks WHERE id = ?", [Number(id)]);
+}
+async function getAdSlot(slotKey) {
+  const rows = await getStore().query(
+    "SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1",
+    [vert(slotKey)]
+  );
+  return rows[rows.length - 1] || null;
+}
+async function listAdSlots() {
+  return getStore().query(
+    "SELECT * FROM ad_slots ORDER BY slot_key ASC LIMIT 50"
+  );
+}
+async function upsertAdSlot(input) {
+  const slot_key = vert(input.slot_key);
+  if (!/^[a-z0-9_-]{2,60}$/.test(slot_key)) return { ok: false, error: "Slot key must be 2-60 chars (a-z, 0-9, -, _)" };
+  if (input.provider === "adsense") {
+    const client = str(input.adsense_client, 60);
+    const slot = str(input.adsense_slot, 60);
+    if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
+    if (!/^[0-9]{6,20}$/.test(slot || "")) return { ok: false, error: "AdSense slot id must be numeric" };
+    const store3 = getStore();
+    const existing2 = await store3.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+    if (existing2.length) {
+      await store3.execute(
+        "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
+        ["adsense", client, slot, input.is_active === false ? 0 : 1, slot_key]
+      );
+    } else {
+      await store3.execute(
+        "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
+        [slot_key, "adsense", client, slot, input.is_active === false ? 0 : 1]
+      );
+    }
+    return { ok: true };
+  }
+  const html = String(input.custom_html || "").slice(0, 8e3);
+  if (!html.trim()) return { ok: false, error: "Custom HTML is required for the custom_html provider" };
+  const store2 = getStore();
+  const existing = await store2.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+  if (existing.length) {
+    await store2.execute(
+      "UPDATE ad_slots SET provider=?, custom_html=?, adsense_client=NULL, adsense_slot=NULL, is_active=? WHERE slot_key=?",
+      ["custom_html", html, input.is_active === false ? 0 : 1, slot_key]
+    );
+  } else {
+    await store2.execute(
+      "INSERT INTO ad_slots (slot_key, provider, custom_html, is_active) VALUES (?, ?, ?, ?)",
+      [slot_key, "custom_html", html, input.is_active === false ? 0 : 1]
+    );
+  }
+  return { ok: true };
+}
+var vert, str;
+var init_placements = __esm({
+  "server/marketing/placements.ts"() {
+    init_db();
+    init_affiliateNetwork();
+    vert = (v) => String(v ?? "").trim().toLowerCase();
+    str = (v, max) => {
+      const s = String(v ?? "").trim();
+      return s ? s.slice(0, max) : null;
+    };
+  }
+});
+
 // server/api/routes.ts
 var routes_exports = {};
 __export(routes_exports, {
@@ -4345,6 +4496,24 @@ var init_routes = __esm({
       } catch {
         const legacy = getCatalogueState();
         res.json({ success: true, total: legacy.items.length, items: legacy.items, lastSavedAt: legacy.lastSavedAt });
+      }
+    });
+    apiRouter.get("/picks", async (req, res) => {
+      try {
+        const { listTopPicks: listTopPicks2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
+        const picks = await listTopPicks2(String(req.query.vertical || "") || void 0, false);
+        res.json({ success: true, picks });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load picks" });
+      }
+    });
+    apiRouter.get("/ads", async (req, res) => {
+      try {
+        const { getAdSlot: getAdSlot2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
+        const slot = await getAdSlot2(String(req.query.slot || ""));
+        res.json({ success: true, active: Boolean(slot), slot });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load ad slot" });
       }
     });
     apiRouter.get("/provenance", async (_req, res) => {
@@ -4636,6 +4805,7 @@ var init_adminRoutes = __esm({
     init_cache();
     init_logger();
     init_affiliateNetwork();
+    init_placements();
     init_logger();
     adminRouter = (0, import_express2.Router)();
     adminRouter.use(authMiddleware);
@@ -4768,6 +4938,52 @@ var init_adminRoutes = __esm({
         res.json({ success: true, logs: rows });
       } catch {
         res.json({ success: true, logs: [] });
+      }
+    });
+    adminRouter.get("/top-picks", async (req, res) => {
+      try {
+        const picks = await listTopPicks(String(req.query.vertical || "") || void 0, true);
+        res.json({ success: true, picks });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load top picks" });
+      }
+    });
+    adminRouter.post("/top-picks", async (req, res) => {
+      try {
+        const result = await upsertTopPick(req.body || {});
+        if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+        audit(req, "top_pick.upsert", String(result.id), { vertical: req.body?.vertical });
+        log.info("Admin", `Top pick saved (id ${result.id})`);
+        res.json({ success: true, id: result.id });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save top pick" });
+      }
+    });
+    adminRouter.delete("/top-picks/:id", async (req, res) => {
+      try {
+        await deleteTopPick(Number(req.params.id));
+        audit(req, "top_pick.delete", req.params.id);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete top pick" });
+      }
+    });
+    adminRouter.get("/ad-slots", async (_req, res) => {
+      try {
+        res.json({ success: true, slots: await listAdSlots() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load ad slots" });
+      }
+    });
+    adminRouter.post("/ad-slots", async (req, res) => {
+      try {
+        const result = await upsertAdSlot(req.body || {});
+        if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+        audit(req, "ad_slot.upsert", req.body?.slot_key, { provider: req.body?.provider });
+        log.info("Admin", `Ad slot saved (${req.body?.slot_key})`);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save ad slot" });
       }
     });
     adminRouter.post("/validate-destination", (req, res) => {
