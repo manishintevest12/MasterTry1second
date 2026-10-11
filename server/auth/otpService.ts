@@ -37,6 +37,17 @@ function verifyOtpHash(code: string, stored: string): boolean {
   }
 }
 
+/** Parse a DB datetime as UTC. mysql2 returns DATETIME as a JS Date (not a string) and
+ *  the file store returns "YYYY-MM-DD HH:MM:SS"; both must resolve to the same UTC instant.
+ *  Returns NaN when unparseable (callers treat that as expired, never as valid). */
+export function parseDbUtc(v: unknown): number {
+  if (v instanceof Date) return v.getTime();
+  const s = String(v ?? '').trim();
+  if (!s) return NaN;
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s.replace(' ', 'T')).getTime();
+  return new Date(s.replace(' ', 'T') + 'Z').getTime();
+}
+
 function nowIso(): string {
   return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
@@ -58,9 +69,9 @@ export async function requestAdminOtp(email: string): Promise<{ ok: boolean; sen
   const recent = await store.query<any>('SELECT created_at, expires_at FROM otp_codes WHERE email = ?', [clean]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1000;
-  const lastHour = recent.filter((r) => new Date(String(r.created_at || '').replace(' ', 'T') + 'Z').getTime() > hourAgo);
+  const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: 'Too many codes requested. Try again later.' };
-  const lastCreated = Math.max(0, ...lastHour.map((r) => new Date(String(r.created_at || '').replace(' ', 'T') + 'Z').getTime() || 0));
+  const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: 'A code was just sent. Please wait a minute before requesting another.' };
 
   // Only one active code per email.
@@ -114,8 +125,8 @@ export async function verifyAdminOtp(email: string, code: string): Promise<{ ok:
     await store.execute('DELETE FROM otp_codes WHERE email = ?', [clean]);
     return { ok: false, error: 'Too many incorrect attempts. Request a new code.' };
   }
-  const exp = new Date(String(row.expires_at || '').replace(' ', 'T') + 'Z').getTime();
-  if (!exp || exp < Date.now()) {
+  const exp = parseDbUtc(row.expires_at);
+  if (!Number.isFinite(exp) || exp < Date.now()) {
     await store.execute('DELETE FROM otp_codes WHERE email = ?', [clean]);
     return { ok: false, error: 'Code expired. Request a new one.' };
   }

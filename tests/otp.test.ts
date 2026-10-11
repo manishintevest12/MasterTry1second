@@ -90,3 +90,14 @@ test('otp: delivery failure surfaces an honest error and stores no usable code',
   const v = await verifyAdminOtp(ADMIN2, '123456');
   assert.equal(v.ok, false); // nothing to verify against
 });
+
+test('parseDbUtc: mysql2 Date objects and file-store strings resolve to the same UTC instant', async () => {
+  const { parseDbUtc } = await import('../server/auth/otpService');
+  const future = Date.now() + 10 * 60 * 1000;
+  const asString = new Date(future).toISOString().slice(0, 19).replace('T', ' ');
+  const asDate = new Date(asString.replace(' ', 'T') + 'Z'); // what mysql2 returns for DATETIME with timezone 'Z'
+  assert.equal(parseDbUtc(asDate), parseDbUtc(asString));
+  assert.ok(parseDbUtc(asDate) > Date.now(), 'a fresh 10-minute code must not read as expired');
+  assert.ok(Number.isNaN(parseDbUtc('')), 'unparseable stays NaN -> treated as expired, never valid');
+  assert.ok(Number.isNaN(parseDbUtc(null)));
+});

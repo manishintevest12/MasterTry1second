@@ -113,7 +113,7 @@ var init_settings = __esm({
     };
     dataDir = import_path.default.resolve(
       process.cwd(),
-      process.env.DATA_DIR || (process.env.NODE_ENV === "test" ? `.data/test-${process.pid}` : ".data")
+      process.env.DATA_DIR || (process.env.NODE_ENV === "test" ? `.data-tests/${process.pid}` : ".data")
     );
   }
 });
@@ -487,7 +487,10 @@ function getStore() {
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
-        connectTimeout: 8e3
+        connectTimeout: 8e3,
+        // All app-written datetimes are UTC strings; read/write them as UTC so DATETIME
+        // round-trips identically regardless of the host's local timezone.
+        timezone: "Z"
         // KVM4 sizing: small pool, bounded queue
       });
       store = new MysqlStore(pool);
@@ -3368,6 +3371,13 @@ function verifyOtpHash(code, stored) {
     return false;
   }
 }
+function parseDbUtc(v) {
+  if (v instanceof Date) return v.getTime();
+  const s = String(v ?? "").trim();
+  if (!s) return NaN;
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s.replace(" ", "T")).getTime();
+  return (/* @__PURE__ */ new Date(s.replace(" ", "T") + "Z")).getTime();
+}
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
 }
@@ -3384,9 +3394,9 @@ async function requestAdminOtp(email) {
   const recent = await store2.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1e3;
-  const lastHour = recent.filter((r) => (/* @__PURE__ */ new Date(String(r.created_at || "").replace(" ", "T") + "Z")).getTime() > hourAgo);
+  const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: "Too many codes requested. Try again later." };
-  const lastCreated = Math.max(0, ...lastHour.map((r) => (/* @__PURE__ */ new Date(String(r.created_at || "").replace(" ", "T") + "Z")).getTime() || 0));
+  const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
   const code = String(import_crypto8.default.randomInt(0, 1e6)).padStart(6, "0");
@@ -3431,8 +3441,8 @@ async function verifyAdminOtp(email, code) {
     await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
     return { ok: false, error: "Too many incorrect attempts. Request a new code." };
   }
-  const exp = (/* @__PURE__ */ new Date(String(row.expires_at || "").replace(" ", "T") + "Z")).getTime();
-  if (!exp || exp < Date.now()) {
+  const exp = parseDbUtc(row.expires_at);
+  if (!Number.isFinite(exp) || exp < Date.now()) {
     await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
     return { ok: false, error: "Code expired. Request a new one." };
   }

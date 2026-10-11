@@ -99,7 +99,7 @@ var init_settings = __esm({
     };
     dataDir = import_path.default.resolve(
       process.cwd(),
-      process.env.DATA_DIR || (process.env.NODE_ENV === "test" ? `.data/test-${process.pid}` : ".data")
+      process.env.DATA_DIR || (process.env.NODE_ENV === "test" ? `.data-tests/${process.pid}` : ".data")
     );
   }
 });
@@ -174,7 +174,10 @@ function getStore() {
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
-        connectTimeout: 8e3
+        connectTimeout: 8e3,
+        // All app-written datetimes are UTC strings; read/write them as UTC so DATETIME
+        // round-trips identically regardless of the host's local timezone.
+        timezone: "Z"
         // KVM4 sizing: small pool, bounded queue
       });
       store = new MysqlStore(pool);

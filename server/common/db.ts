@@ -286,6 +286,9 @@ export function getStore(): DataStore {
         connectionLimit: 10,
         queueLimit: 0,
         connectTimeout: 8000,
+        // All app-written datetimes are UTC strings; read/write them as UTC so DATETIME
+        // round-trips identically regardless of the host's local timezone.
+        timezone: 'Z',
         // KVM4 sizing: small pool, bounded queue
       });
       store = new MysqlStore(pool);
