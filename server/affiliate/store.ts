@@ -65,7 +65,7 @@ export async function listOffers(q: OfferQuery) {
   const limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
   const offset = Math.max(q.offset ?? 0, 0);
   const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
-               discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, created_at, updated_at
+               discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
                FROM affiliate_offers WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`;
   return store.query(sql, params);
 }

@@ -2,6 +2,43 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import confetti from 'canvas-confetti';
 import { firebaseConfigured, signInWithGoogleAndGetToken } from '../utils/firebaseAuth';
 
+
+/** Map a persisted catalogue row (real acquisition) to the feed item shape.
+ *  Honesty rules: rating/history stay empty when unverified — never fabricated. */
+const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab'] as const;
+function catalogueRowToItem(row: any): ComparisonItem | null {
+  if (!COMPARISON_VERTICALS.includes(row?.vertical)) return null; // unsupported verticals are not forced in
+  const price = Number(row.effective_price ?? row.mandatory_total ?? 0);
+  return {
+    id: `cat-${row.id}`,
+    vertical: row.vertical,
+    title: String(row.title || 'Untitled offer'),
+    subtitle: `${row.vendor || 'Unknown vendor'} · ${row.freshness_status || 'UNKNOWN'}`,
+    category: row.vertical,
+    provider: row.vendor || 'Unknown vendor',
+    rating: 0,
+    reviewCount: 0,
+    sentimentSummary: 'No verified reviews yet',
+    criteriaRatings: [],
+    primaryPrice: price,
+    originalPrice: 0,
+    sellerQuotes: [],
+    pricePrediction: {
+      advice: 'fair_price',
+      headline: 'Newly tracked',
+      details: 'No price history yet — only real observations are charted, never generated.',
+      historicalLow: price,
+      historicalHigh: price,
+      priceHistory: [],
+    },
+    features: [],
+    specs: {},
+    reviews: [],
+    availability: row.availability,
+    isLiveScraped: false,
+  } as ComparisonItem;
+}
+
 export interface AuthUser {
   id: number;
   email: string;
@@ -39,12 +76,9 @@ import {
   QuickAppRedirectionLog,
 } from '../types';
 import {
-  INITIAL_COMPARISON_ITEMS,
   SPIN_REWARDS,
   VERTICAL_META,
 } from '../data/mockData';
-import { EXTRA_COMPARISON_ITEMS } from '../data/extraComparisonItems';
-import { CATEGORY_COMPARISON_ITEMS } from '../data/categoryItems';
 import { INITIAL_DIRECT_PARTNERS } from '../data/partnersData';
 import {
   INITIAL_QUICK_APP_PARTNERS,
@@ -752,11 +786,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  const [items, setItems] = useState<ComparisonItem[]>([
-    ...INITIAL_COMPARISON_ITEMS,
-    ...EXTRA_COMPARISON_ITEMS,
-    ...CATEGORY_COMPARISON_ITEMS,
-  ]);
+  // REAL DATA ONLY: no seeded demo items. The catalogue fills from the backend's
+  // verified offers table; a fresh deployment shows an honest empty state until
+  // real sources return verified offers (Section 6: never label mock data as live).
+  const [items, setItems] = useState<ComparisonItem[]>([]);
+
+  // Load the persisted verified catalogue (real acquisitions only).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/catalogue');
+        if (!res.ok) return;
+        const data = await res.json();
+        const mapped: ComparisonItem[] = [];
+        for (const row of data.items || []) {
+          const item = catalogueRowToItem(row);
+          if (item) mapped.push(item);
+        }
+        if (!cancelled && mapped.length > 0) setItems(mapped);
+      } catch {
+        /* catalogue unreachable -> honest empty state */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [smartFilterText, setSmartFilterText] = useState<string>('');
@@ -872,87 +926,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsScrapingLive(false);
     }
 
-    // Client-side Live Scraper Fallback if backend fetch returned no items or errored
-    if (vertical === 'hotels') {
-      const dest = (targetQuery || targetLoc.city || 'Goa').replace(/,.*$/, '').trim();
-      const cityCap = dest ? dest.charAt(0).toUpperCase() + dest.slice(1) : 'Goa';
-      const liveHotels: ComparisonItem[] = [
-        {
-          id: `scr-ht-dyn-${Date.now()}-1`,
-          vertical: 'hotels',
-          title: `The Grand Luxury Palace & Spa (${cityCap})`,
-          subtitle: `Prime Central District, ${cityCap} · 5-Star Heritage Sanctuary`,
-          category: '5-Star Luxury Resort',
-          provider: 'Taj & Oberoi Partner Hotels',
-          providerLogo: '🏨',
-          rating: 4.9,
-          reviewCount: 3120,
-          sentimentSummary: `Exceptional hospitality in ${cityCap}. Top rated on MakeMyTrip & Booking.com.`,
-          criteriaRatings: [
-            { name: 'Cleanliness & Comfort', score: 9.9 },
-            { name: 'Location & View', score: 9.8 },
-            { name: 'Dining & Breakfast', score: 9.7 },
-          ],
-          primaryPrice: 8400,
-          originalPrice: 10800,
-          unit: 'per night',
-          sellerQuotes: [
-            {
-              id: `sq-live-mmt-${Date.now()}`,
-              sellerName: 'MakeMyTrip Hotels',
-              price: 8400,
-              originalPrice: 10800,
-              currency: '₹',
-              url: `https://www.makemytrip.com/hotels/${encodeURIComponent(cityCap.toLowerCase())}-hotels.html`,
-              badge: '⚡ Lowest Fare',
-              deliveryOrEta: 'Instant Voucher & Free Breakfast',
-              isLowest: true,
-              isLiveScraped: true,
-              sourceDomain: 'makemytrip.com',
-              scrapedLocation: `${cityCap}, India`,
-              couponCode: 'TRY1STAY',
-              cashbackText: '₹1,200 Instant Bank Off',
-            },
-            {
-              id: `sq-live-bk-${Date.now()}`,
-              sellerName: 'Booking.com',
-              price: 8750,
-              originalPrice: 10800,
-              currency: '₹',
-              url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(cityCap)}`,
-              deliveryOrEta: 'Genius Member Rate',
-              isLowest: false,
-              isLiveScraped: true,
-              sourceDomain: 'booking.com',
-              scrapedLocation: `${cityCap}, India`,
-            },
-          ],
-          pricePrediction: {
-            advice: 'book_now',
-            headline: `Verified Lowest Rate in ${cityCap}`,
-            details: `Tariff is ₹2,400 below peak seasonal pricing for ${cityCap}.`,
-            historicalLow: 8400,
-            historicalHigh: 12500,
-            priceHistory: [{ date: 'Today', price: 8400 }],
-          },
-          features: ['Free Breakfast Buffet for 2', 'Swimming Pool & Spa', 'Free Wi-Fi'],
-          specs: { Location: `${cityCap}, India`, CheckIn: '2:00 PM', CheckOut: '12:00 PM' },
-          imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
-          reviews: [],
-          isLiveScraped: true,
-          scrapedLocation: `${cityCap}, India`,
-          scrapedTimestamp: 'Just now',
-          scrapedLatencyMs: 115,
-        },
-      ];
-      setItems((prev) => [...liveHotels, ...prev.filter((it) => it.vertical !== 'hotels' || !it.isLiveScraped)]);
-      setLastScrapeInfo({
-        timestamp: 'Just now',
-        location: `${cityCap}, India`,
-        latencyMs: 115,
-        sourcesCount: 18,
-      });
-    }
+    // No fabricated fallback: when the backend returns no verified offers, the feed
+    // shows the honest empty state instead of invented hotel data.
   };
 
   useEffect(() => {

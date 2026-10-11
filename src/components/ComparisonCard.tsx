@@ -116,9 +116,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
   };
 
   // Sparkline calculation for Price History
-  const history = item.pricePrediction.priceHistory;
-  const minPrice = Math.min(...history.map((h) => h.price));
-  const maxPrice = Math.max(...history.map((h) => h.price));
+  const history = item.pricePrediction?.priceHistory || []; // empty history -> no chart, never synthetic
+  const minPrice = history.length ? Math.min(...history.map((h) => h.price)) : item.primaryPrice;
+  const maxPrice = history.length ? Math.max(...history.map((h) => h.price)) : item.primaryPrice;
   const priceRange = maxPrice - minPrice || 1;
 
   return (
@@ -134,11 +134,13 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                 {item.category}
               </span>
               <span className="text-slate-300 font-light">·</span>
+              {item.rating > 0 && (
               <span className="text-xs font-medium text-slate-600 flex items-center gap-1">
                 <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
                 <strong className="text-slate-900 font-bold">{item.rating}</strong>
                 <span className="text-slate-400">({item.reviewCount.toLocaleString('en-IN')})</span>
               </span>
+              )}
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -712,7 +714,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
 
               {/* Criteria Scorecard */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 pb-3">
-                {item.criteriaRatings.map((crit, i) => (
+                {item.criteriaRatings.length > 0 && item.criteriaRatings.map((crit, i) => (
                   <div key={i} className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
                     <div className="text-[11px] text-slate-500 font-medium truncate">
                       {crit.name}

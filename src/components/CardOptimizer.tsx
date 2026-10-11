@@ -107,6 +107,11 @@ export const CardOptimizer: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+      {/* Honest labeling (Section 6): reference data, never presented as live bank offers */}
+      <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 font-medium">
+        Reference examples only — card details below are illustrative, not verified live bank offers.
+        Real banking offers appear here only after a verified source is connected.
+      </div>
       {/* Top Affiliate Marketplace Hero */}
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-slate-800">
         <div className="relative z-10 max-w-3xl space-y-3">
