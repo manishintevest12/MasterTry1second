@@ -93,17 +93,53 @@ function offerToComparisonItem(o: any) {
   if (o.travel?.route) specs['Route'] = String(o.travel.route);
   if (o.travel?.date) specs['Date'] = String(o.travel.date);
   const fetchedAt = o.provenance?.fetchedAt;
+  // Human-readable description built ONLY from fields the source actually published.
+  const parts: string[] = [];
+  if (attrs['brand'] && !String(o.title).toLowerCase().includes(String(attrs['brand']).toLowerCase())) parts.push(String(attrs['brand']));
+  if (attrs['rating']) parts.push(`${attrs['rating']}★ rating${attrs['rating_count'] ? ` (${Number(attrs['rating_count']).toLocaleString('en-IN')} ratings)` : ''}`);
+  if (attrs['cuisines']) parts.push(attrs['cuisines']);
+  if (attrs['address']) parts.push(attrs['address']);
+  if (o.travel?.route) parts.push(o.travel.route);
+  if (attrs['distance']) parts.push(attrs['distance']);
+  if (attrs['duration']) parts.push(attrs['duration']);
+  if (attrs['operator']) parts.push(String(attrs['operator']));
+  if (attrs['departure']) parts.push(`Departs ${attrs['departure']}`);
+  if (attrs['prime'] === 'true') parts.push('Prime eligible');
+  if (attrs['loan_type']) parts.push(String(attrs['loan_type']));
+  if (attrs['interest_rate_min'] && attrs['interest_rate_max']) parts.push(`${attrs['interest_rate_min']}–${attrs['interest_rate_max']}% p.a.`);
+  else if (attrs['interest_rate_min']) parts.push(`from ${attrs['interest_rate_min']}% p.a.`);
+  if (attrs['sum_insured']) parts.push(`Cover ${attrs['sum_insured']}`);
+  if (attrs['theatre']) parts.push(String(attrs['theatre']));
+  if (attrs['showtime']) parts.push(String(attrs['showtime']));
+  if (o.location?.city) parts.push(`${o.location.city}`);
+  if (attrs['in_stock'] === 'false' || o.availability === 'out_of_stock') parts.push('Currently out of stock');
+  if (!parts.length && attrs['data_note']) parts.push(String(attrs['data_note']));
+  const description = parts.join(' · ').slice(0, 300);
+  const featurePills = [
+    ...(attrs['rating'] ? [`${attrs['rating']}★`] : []),
+    ...(attrs['interest_rate_min'] ? [`${attrs['interest_rate_min']}–${attrs['interest_rate_max'] || attrs['interest_rate_min']}% p.a.`] : []),
+    ...(attrs['loan_type'] ? [String(attrs['loan_type'])] : []),
+    ...(attrs['sum_insured'] ? [`Cover ${attrs['sum_insured']}`] : []),
+    ...(o.location?.city ? [o.location.city] : []),
+    ...(attrs['cuisines'] ? [attrs['cuisines'].split(',')[0]] : []),
+    ...(attrs['prime'] === 'true' ? ['Prime'] : []),
+    ...(o.travel?.route ? [o.travel.route] : []),
+    ...(attrs['distance'] ? [attrs['distance']] : []),
+    ...(attrs['operator'] ? [attrs['operator']] : []),
+  ].slice(0, 3);
+  const sellerLabel = seller === 'Verified source' ? String(o.vendor || seller) : seller;
   return {
     id: o.id,
     vertical: o.vertical,
     title: o.title,
-    subtitle: `${o.vendor} · ${o.freshnessStatus}`,
+    subtitle: sellerLabel,
     category: o.vertical,
     provider: o.vendor,
     providerLogo: '',
     imageUrl: /^https:\/\//.test(attrs['image_url'] || '') ? attrs['image_url'] : undefined,
     rating: Number(attrs['rating']) || 0,
     reviewCount: Number(attrs['review_count']) || 0,
+    description,
     sentimentSummary: attrs['data_note'] || 'Live data from a verified source',
     criteriaRatings: [],
     primaryPrice: price,
@@ -111,7 +147,7 @@ function offerToComparisonItem(o: any) {
     priceAvailable: price > 0,
     unit: 'per unit',
     currency: o.prices?.currency || 'INR',
-    features: attrs['data_note'] ? [String(attrs['data_note'])] : [],
+    features: featurePills,
     specs,
     reviews: [],
     pricePrediction: {
@@ -130,7 +166,8 @@ function offerToComparisonItem(o: any) {
         originalPrice: list > price ? list : 0,
         currency: o.prices?.currency || 'INR',
         url,
-        badge: price > 0 ? 'Live Verified' : 'Live schedule data',
+        badge: price > 0 ? 'Live Verified' : 'Live data',
+        deliveryOrEta: attrs['eta'] || attrs['delivery'] || 'Standard delivery',
         isLowest: true,
         isLiveScraped: o.freshnessStatus === 'LIVE_VERIFIED',
         sourceDomain: url ? String(url).replace(/^https?:\/\//, '').split('/')[0] : undefined,
@@ -210,7 +247,7 @@ apiRouter.post('/scan/url', async (req, res) => {
 apiRouter.get('/catalogue', async (_req, res) => {
   try {
     const rows = await getStore().query<any>(
-      `SELECT id, vertical, title, vendor, seller, seller_url, source_url, mandatory_total, effective_price, currency, availability,
+      `SELECT id, vertical, title, vendor, seller, seller_url, source_url, location_city, mandatory_total, effective_price, currency, availability,
               freshness_status, validation_status, fetched_at, source_id, attributes
        FROM offers ORDER BY fetched_at DESC LIMIT 200`,
     );

@@ -205,7 +205,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
               <div
                 onClick={() => setShowImagePreview(true)}
                 title="Click to view full photo & gallery"
-                className="w-full sm:w-44 md:w-48 h-32 sm:h-32 shrink-0 relative rounded-xl overflow-hidden border border-slate-200 group bg-slate-100 cursor-pointer shadow-2xs"
+                className="w-full sm:w-48 md:w-52 h-40 sm:h-40 shrink-0 relative rounded-xl overflow-hidden border border-slate-200 group bg-white cursor-pointer"
               >
                 <img
                   src={getItemImage(item)}
@@ -217,30 +217,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                     (e.currentTarget as HTMLImageElement).src = placeholderImage(item.vertical, item.title);
                   }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent pointer-events-none" />
-
-                {/* Vertical Category Tag */}
+                {/* Honest vertical tag - describes the CATEGORY, never a claim we can't verify */}
                 <div className="absolute top-2 left-2">
-                  <span className="px-2 py-0.5 rounded-md bg-slate-900/80 backdrop-blur-xs text-white text-[10px] font-bold uppercase tracking-wider">
-                    {item.vertical === 'hotels'
-                      ? '5★ Hotel'
-                      : item.vertical === 'movie'
-                      ? 'IMAX 3D'
-                      : item.vertical === 'food'
-                      ? "Chef's Special"
-                      : item.vertical === 'grocery'
-                      ? '⚡ 10m Fresh'
-                      : item.vertical === 'flights'
-                      ? '✈️ Flight'
-                      : item.vertical === 'bus'
-                      ? '🚌 AC Sleeper'
-                      : item.vertical === 'cab'
-                      ? '🚖 Instant Ride'
-                      : item.vertical === 'loans'
-                      ? '💳 Low APR'
-                      : item.vertical === 'insurance'
-                      ? '🛡️ 1 Cr Cover'
-                      : 'Gadget Deal'}
+                  <span className="px-2 py-0.5 rounded-md bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold uppercase tracking-wider">
+                    {({ 'hotels': 'Hotel', 'movie': 'Movie', 'food': 'Food', 'grocery': 'Grocery',
+                      'flights': 'Flight', 'bus': 'Bus', 'ecommerce': 'Product' } as Record<string, string>)[item.vertical] || item.vertical}
                   </span>
                 </div>
 
@@ -251,13 +232,15 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                   </span>
                 </div>
 
-                {/* View Photos Pill */}
-                <div className="absolute bottom-2 right-2">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold group-hover:bg-orange-600 transition-colors">
-                    <Camera className="w-3 h-3" />
-                    <span>Photos</span>
-                  </span>
-                </div>
+                {/* View Photos Pill - only when the source actually published a photo */}
+                {item.imageUrl && (
+                  <div className="absolute bottom-2 right-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold group-hover:bg-orange-600 transition-colors">
+                      <Camera className="w-3 h-3" />
+                      <span>View photo</span>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Text Info Beside Image */}
@@ -266,8 +249,13 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                   {item.title}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  {item.subtitle}
+                  via {item.subtitle}
                 </p>
+                {item.description && (
+                  <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">
+                    {item.description}
+                  </p>
+                )}
 
                 {/* Hyper-local Pincode & GPS Delivery Badge */}
                 {['food', 'grocery'].includes(item.vertical) && (
@@ -319,15 +307,20 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                   {item.title}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  {item.subtitle}
+                  via {item.subtitle}
                 </p>
+                {item.description && (
+                  <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">
+                    {item.description}
+                  </p>
+                )}
 
                 {/* Hyper-local Pincode & GPS Delivery Badge for Cab */}
                 {item.vertical === 'cab' && (
                   <div className="inline-flex items-center gap-1.5 px-2 py-0.5 mt-1 rounded-md bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-800">
                     <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
                     <span>
-                      Pickup at {userLocation.locality} ({userLocation.pincode}) · Nearest cab 2 mins away
+                      Pickup area {userLocation.locality} ({userLocation.pincode})
                     </span>
                   </div>
                 )}

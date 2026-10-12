@@ -18,12 +18,23 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
     ? (() => { try { return JSON.parse(row.attributes) || {}; } catch { return {}; } })()
     : (row.attributes || {});
   const imageUrl = /^https:\/\//.test(attrs.image_url || '') ? attrs.image_url : undefined;
+  // Same honest description builder as the live mapper: source-published fields only.
+  const descParts: string[] = [];
+  if (attrs.rating) descParts.push(`${attrs.rating}★${attrs.rating_count ? ` (${Number(attrs.rating_count).toLocaleString('en-IN')})` : ''}`);
+  if (attrs.cuisines) descParts.push(attrs.cuisines);
+  if (attrs.address) descParts.push(attrs.address);
+  if (attrs.interest_rate_min) descParts.push(`${attrs.interest_rate_min}${attrs.interest_rate_max ? `–${attrs.interest_rate_max}` : ''}% p.a.`);
+  if (attrs.loan_type) descParts.push(String(attrs.loan_type));
+  if (attrs.operator) descParts.push(String(attrs.operator));
+  if (row.location_city) descParts.push(String(row.location_city));
+  const description = descParts.join(' · ').slice(0, 300);
   return {
     id: `cat-${row.id}`,
     imageUrl,
+    description,
     vertical: row.vertical,
     title: String(row.title || 'Untitled offer'),
-    subtitle: `${row.vendor || 'Unknown vendor'} · ${row.freshness_status || 'UNKNOWN'}`,
+    subtitle: String(row.seller || row.vendor || 'Verified source').slice(0, 80),
     category: row.vertical,
     provider: row.vendor || 'Unknown vendor',
     rating: Number(attrs.rating) || 0,

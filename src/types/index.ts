@@ -102,6 +102,8 @@ export interface ComparisonItem {
   isPriceTracked?: boolean;
   targetPriceAlert?: number;
   imageUrl?: string;
+  /** One-line human description built from source-published fields only. */
+  description?: string;
   galleryImages?: string[];
   logoText?: string;
   logoColor?: string;
