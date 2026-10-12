@@ -8,7 +8,7 @@ import { buildCabEstimate } from '../parsers/osrmCab';
 import { AcquisitionError } from '../../common/httpClient';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
-  const cleaned = raw.replace(/\b(cab|taxi|ride|auto|uber|ola|rapido|book|a|an|the|price|fare|for|drop|pickup)\b/gi, ' ')
+  const cleaned = raw.replace(/\b(cab|taxi|ride|auto|uber|ola|rapido|book|a|an|the|price|fare|for|drop|pickup|from|need|want|go|going)\b/gi, ' ')
     .replace(/\s+/g, ' ').trim();
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|→)\s+(.{2,40})/);
   if (!m) return null;

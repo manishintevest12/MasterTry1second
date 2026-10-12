@@ -70,7 +70,24 @@ export const SearchAndFilterHeader: React.FC = () => {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState<boolean>(false);
   const [datePickerContext, setDatePickerContext] = useState<'flights' | 'hotels' | 'bus' | 'movie' | 'cab'>('flights');
 
-  const handleSelectJourneyDate = (formattedDate: string) => {
+  
+/** Parse display date strings like "09 Oct – 12 Oct, 2026 (3 Nights)" / "09 Oct, 2026 (Today)" into ISO dates. */
+const toIsoDate = (display: string, yearHint?: number): string | undefined => {
+  const m = display.match(/(\d{1,2})\s+([A-Za-z]{3})/);
+  if (!m) return undefined;
+  const day = Number(m[1]);
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m[2].slice(0, 3));
+  if (!day || mon < 0) return undefined;
+  const yearMatch = display.match(/(\d{4})/);
+  const year = yearMatch ? Number(yearMatch[1]) : (yearHint ?? new Date().getFullYear());
+  return `${year}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+const travelDatesFor = (v: string, dep: string, ret?: string) =>
+  v === 'hotels' || v === 'flights' || v === 'bus' || v === 'cab'
+    ? { depart: toIsoDate(dep), ...(ret ? { return: toIsoDate(ret, Number((dep.match(/(\d{4})/) || [])[0])) } : {}) }
+    : undefined;
+
+const handleSelectJourneyDate = (formattedDate: string) => {
     if (datePickerContext === 'flights') {
       setDateStr(formattedDate);
     } else if (datePickerContext === 'hotels') {
@@ -502,7 +519,7 @@ export const SearchAndFilterHeader: React.FC = () => {
                     onSelect={(val) => {
                       setCabDrop(val);
                       setSearchQuery(val);
-                      triggerLiveLocationScrape(val);
+                      triggerLiveLocationScrape(val, undefined, travelDatesFor('cab', dateStr));
                     }}
                     type="location"
                     placeholder="Enter drop destination (e.g. DLF Cyber City, IGI Airport)..."
@@ -666,7 +683,7 @@ export const SearchAndFilterHeader: React.FC = () => {
                   onSelect={(val) => {
                     setDestination(val);
                     setSearchQuery(val);
-                    triggerLiveLocationScrape(val);
+                    triggerLiveLocationScrape(val, undefined, travelDatesFor('flights', dateStr));
                   }}
                   type="city"
                   placeholder="Destination: e.g. Dubai (DXB)"
@@ -700,7 +717,7 @@ export const SearchAndFilterHeader: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setSearchQuery(destination);
-                  triggerLiveLocationScrape(destination);
+                  triggerLiveLocationScrape(destination, undefined, travelDatesFor('flights', dateStr));
                 }}
                 className="px-6 py-2.5 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-md shadow-orange-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 hover:scale-105 active:scale-95"
               >
@@ -806,7 +823,7 @@ export const SearchAndFilterHeader: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setSearchQuery(hotelDestination);
-                      triggerLiveLocationScrape(hotelDestination);
+                      triggerLiveLocationScrape(hotelDestination, undefined, travelDatesFor('hotels', hotelDates));
                     }}
                     className="w-full py-2.5 bg-[#003580] hover:bg-[#00224f] text-white font-black text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   >

@@ -10,11 +10,18 @@ import { newRawItem } from '../../sources/contract';
 export interface GeoPoint { lat: number; lon: number; label: string }
 
 export async function photonGeocode(name: string): Promise<GeoPoint | null> {
-  const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=1`);
+  const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=5&lang=en`);
   if (!res.ok) return null;
   const json: any = await res.json();
-  const f = json?.features?.[0];
-  if (!f) return null;
+  const features: any[] = json?.features || [];
+  if (features.length === 0) return null;
+  // India-first: ambiguous names (e.g. "Delhi") must not geocode to a foreign namesake.
+  // Try1Second's launch market is India; prefer a feature whose OSM address country is IN,
+  // then a point inside India's bounding box, then the first result as honest fallback.
+  const inIndiaBbox = (f: any) => { const [lon, lat] = f.geometry.coordinates; return lat > 6 && lat < 37 && lon > 68 && lon < 98; };
+  const f = features.find((x: any) => x?.properties?.countrycode === 'IN')
+    || features.find(inIndiaBbox)
+    || features[0];
   return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: name };
 }
 

@@ -236,7 +236,7 @@ interface AppContextType {
     latencyMs: number;
     sourcesCount: number;
   };
-  triggerLiveLocationScrape: (overrideQuery?: string, overrideLoc?: UserLocationState) => Promise<void>;
+  triggerLiveLocationScrape: (overrideQuery?: string, overrideLoc?: UserLocationState, overrideTravel?: { depart?: string; return?: string }) => Promise<void>;
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
   proxies: ResidentialProxyConfig[];
@@ -885,10 +885,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sourcesCount: 18,
   });
 
-  const triggerLiveLocationScrape = async (overrideQuery?: string, overrideLoc?: UserLocationState) => {
+  /** YYYY-MM-DD travel dates for date-sensitive verticals (hotels/flights/bus/cab). */
+  const triggerLiveLocationScrape = async (
+    overrideQuery?: string,
+    overrideLoc?: UserLocationState,
+    overrideTravel?: { depart?: string; return?: string },
+  ) => {
     setIsScrapingLive(true);
     const targetLoc = overrideLoc || userLocation;
     const targetQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
+    const dateSensitive = ['hotels', 'flights', 'bus', 'cab', 'movies'].includes(vertical);
 
     try {
       const response = await fetch('/api/scrape/live', {
@@ -901,6 +907,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           city: targetLoc.city,
           locality: targetLoc.locality,
           coordinates: targetLoc.coordinates,
+          ...(dateSensitive && overrideTravel?.depart ? { travelDates: overrideTravel } : {}),
         }),
       });
 

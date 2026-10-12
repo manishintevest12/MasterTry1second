@@ -59,6 +59,7 @@ export const hotelsWorker: VerticalWorker = {
       name: 'Hotels worker: OpenStreetMap hotel discovery (worldwide)',
       priority: 20,
       maxPerMinute: 6,
+      timeoutMs: 45_000, // 3 mirrors x 12s must fit inside the task budget
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city) return [];
@@ -68,9 +69,9 @@ export const hotelsWorker: VerticalWorker = {
         const bbox = `${(geo.lat - d).toFixed(4)},${(geo.lon - d).toFixed(4)},${(geo.lat + d).toFixed(4)},${(geo.lon + d).toFixed(4)}`;
         const q = overpassHotelQuery(bbox);
         const mirrors = [
+          'https://overpass.osm.ch/api/interpreter',
           'https://overpass-api.de/api/interpreter',
           'https://overpass.kumi.systems/api/interpreter',
-          'https://overpass.private.coffee/api/interpreter',
         ];
         let json: any | null = null; let lastErr: any = null; let usedUrl = '';
         for (const mirror of mirrors) {
@@ -80,7 +81,7 @@ export const hotelsWorker: VerticalWorker = {
               body: `data=${encodeURIComponent(q)}`,
               headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
               expectJson: true,
-              timeoutMs: 25_000,
+              timeoutMs: 12_000,
             });
             if (r.status === 429 || r.status >= 500) { lastErr = new AcquisitionError('RATE_LIMITED', `Overpass mirror HTTP ${r.status}`); continue; }
             if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Overpass HTTP ${r.status}`, r.status);

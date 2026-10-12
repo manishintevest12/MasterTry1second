@@ -19,6 +19,7 @@ export async function buildCabEstimate(
   const route = await fetchRoute(a.lon, a.lat, b.lon, b.lat);
   const km = Math.round(route.distanceM / 100) / 10;
   const mins = Math.round(route.durationS / 60);
+  if (km > 800) return []; // cab rides beyond 800 km are mis-geocoded routes, not real rides
   const estimate = Math.round(km * ratePerKm);
   return [newRawItem(source, {
     title: `${from.trim()} → ${to.trim()} · ${km} km · about ${mins} min`,

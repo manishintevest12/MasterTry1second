@@ -37,6 +37,9 @@ export interface SearchInput {
   locality?: string;
   lat?: number;
   lng?: number;
+  /** Explicit travel dates from the frontend (YYYY-MM-DD); override defaults when present. */
+  travelDates?: { depart?: string; return?: string };
+  guests?: number;
 }
 
 function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
@@ -87,6 +90,8 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
     lng: input.lng,
   });
   if (input.vertical) parsed.vertical = input.vertical as any;
+  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...(input.travelDates.return ? { return: input.travelDates.return } : {}) };
+  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
   if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
   if (parsed.verticalConfidence < 0.6 || !parsed.vertical) {
     parsed = await aiAssistedUnderstanding(parsed);
@@ -205,7 +210,13 @@ async function processAdapterResults(results: AdapterResult[], parsed: ParsedQue
       try {
         // NORMALIZE
         const offer = normalizeOffer(raw, source, (parsed.vertical || 'ecommerce') as any);
-        offer.location = { ...offer.location, ...parsed.location };
+        // Merge parsed location WITHOUT clobbering source-provided fields: understandQuery
+        // emits explicit `undefined` values which a plain spread would use to erase
+        // the offer's real city — breaking pickup/destination validation downstream.
+        const parsedLoc = Object.fromEntries(
+          Object.entries(parsed.location || {}).filter(([, v]) => v !== undefined && v !== null && v !== ''),
+        );
+        offer.location = { ...offer.location, ...parsedLoc };
 
         // PRICING (fees + savings; only verified components subtract)
         const breakdown = computeEffectivePrice(offer.prices.fees, offer.prices.currency, { coupon: false, bank: false, cashback: false, giftCard: false });

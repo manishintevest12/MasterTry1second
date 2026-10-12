@@ -64,6 +64,11 @@ apiRouter.post('/search', async (req, res) => {
     locality: req.body.locality,
     lat: req.body.lat,
     lng: req.body.lng,
+    travelDates: req.body.travelDates && typeof req.body.travelDates === 'object' ? {
+      depart: String(req.body.travelDates.depart || '').slice(0, 10) || undefined,
+      return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
+    } : undefined,
+    guests: Number(req.body.guests) || undefined,
   };
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
   const response = await runSearch(input);
@@ -78,6 +83,11 @@ apiRouter.post('/scrape/live', async (req, res) => {
     pincode: req.body.pincode,
     city: req.body.city,
     locality: req.body.locality,
+    travelDates: req.body.travelDates && typeof req.body.travelDates === 'object' ? {
+      depart: String(req.body.travelDates.depart || '').slice(0, 10) || undefined,
+      return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
+    } : undefined,
+    guests: Number(req.body.guests) || undefined,
   };
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });

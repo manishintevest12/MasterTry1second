@@ -44,7 +44,12 @@ export const foodWorker: VerticalWorker = {
         if (!slug) return [];
         const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
         const url = `https://www.zomato.com/${slug}/restaurants?q=${encodeURIComponent(term || 'restaurants')}`;
-        const r = await ctx.fetch(url);
+        let r = await ctx.fetch(url);
+        // Zomato's edge samples plain-HTTP crawls with 403/202: one bounded retry.
+        if (r.status === 403 || r.status === 202 || r.status === 429) {
+          await new Promise((res) => setTimeout(res, 1500));
+          r = await ctx.fetch(url);
+        }
         if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Zomato HTTP ${r.status}`, r.status);
         const items = parseZomatoRestaurants(r.body, ctx.source, url, 'Zomato');
         if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Zomato presented a challenge page');
