@@ -154,7 +154,7 @@ apiRouter.post('/scan/url', async (req, res) => {
 apiRouter.get('/catalogue', async (_req, res) => {
   try {
     const rows = await getStore().query<any>(
-      `SELECT id, vertical, title, vendor, seller, mandatory_total, effective_price, currency, availability,
+      `SELECT id, vertical, title, vendor, seller, seller_url, source_url, mandatory_total, effective_price, currency, availability,
               freshness_status, validation_status, fetched_at, source_id
        FROM offers ORDER BY fetched_at DESC LIMIT 200`,
     );

@@ -378,7 +378,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
           <div className="w-full mt-3 flex items-center gap-2">
             <button
               type="button"
-              onClick={() => startRedirection(item, bestQuote)}
+              onClick={() => bestQuote && startRedirection(item, bestQuote)}
               className="flex-1 py-2.5 px-4 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-lg shadow-xs hover:shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>
@@ -405,7 +405,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
           </div>
 
           <div className="mt-1.5 flex items-center justify-between w-full text-[11px] text-slate-400">
-            <span>via {bestQuote.sellerName}</span>
+            <span>via {bestQuote?.sellerName || item.provider}</span>
             <button
               onClick={() => setExpanded(true)}
               className="text-orange-600 hover:underline font-semibold"

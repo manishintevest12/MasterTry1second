@@ -142,7 +142,7 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
               }}
               className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <span>View Deal on {bestQuote.sellerName}</span>
+              <span>View Deal on {bestQuote?.sellerName}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
           </div>

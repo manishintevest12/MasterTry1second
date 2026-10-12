@@ -9,6 +9,12 @@ const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','fo
 function catalogueRowToItem(row: any): ComparisonItem | null {
   if (!COMPARISON_VERTICALS.includes(row?.vertical)) return null; // unsupported verticals are not forced in
   const price = Number(row.effective_price ?? row.mandatory_total ?? 0);
+  const sellerName = String(row.seller || row.vendor || 'Verified source').slice(0, 60);
+  const quoteUrl = String(row.seller_url || row.source_url || '');
+  // The card requires at least one seller quote; it is built from the SAME persisted
+  // verified offer (no invented price, no invented vendor). A zero/invalid price
+  // cannot become a quote, so the row is skipped rather than rendered broken.
+  if (!price || price <= 0) return null;
   return {
     id: `cat-${row.id}`,
     vertical: row.vertical,
@@ -22,7 +28,19 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
     criteriaRatings: [],
     primaryPrice: price,
     originalPrice: 0,
-    sellerQuotes: [],
+    sellerQuotes: [
+      {
+        id: `sq-cat-${row.id}`,
+        sellerName,
+        price,
+        originalPrice: 0,
+        currency: row.currency || 'INR',
+        url: quoteUrl,
+        badge: row.freshness_status === 'LIVE_VERIFIED' ? 'Live Verified' : 'Verified Offer',
+        isLowest: true,
+        sourceDomain: quoteUrl ? String(quoteUrl).replace(/^https?:\/\//, '').split('/')[0] : undefined,
+      } as SellerQuote,
+    ],
     pricePrediction: {
       advice: 'fair_price',
       headline: 'Newly tracked',
