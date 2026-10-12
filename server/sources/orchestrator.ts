@@ -13,6 +13,8 @@ import { StructuredDataAdapter } from './adapters/structuredDataAdapter';
 import { AffiliateFeedAdapter, OfficialAPIAdapter, PartnerFeedAdapter, SearchProviderAdapter } from './adapters/feedAndApiAdapters';
 
 import { BrowserRenderAdapter } from './adapters/browserRenderAdapter';
+import { VerticalWorkerAdapter, workerTaskIndex } from '../workers/verticalWorker';
+import '../workers/verticals';
 
 const ADAPTERS: Record<string, SourceAdapter> = {
   browser_render: new BrowserRenderAdapter(),
@@ -24,7 +26,11 @@ const ADAPTERS: Record<string, SourceAdapter> = {
   search_provider: new SearchProviderAdapter(),
 };
 
+const WORKER_ADAPTER = new VerticalWorkerAdapter(workerTaskIndex() as any);
+
 export function getAdapter(source: SourceConfig): SourceAdapter {
+  // Worker-backed sources (one worker per vertical) take precedence over generic adapters.
+  if (workerTaskIndex().has(source.id)) return WORKER_ADAPTER;
   return ADAPTERS[source.method];
 }
 
@@ -68,7 +74,7 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
       // direct_http sources, only if it returned a URL to render). Capability-
       // honest: without Playwright installed the retry reports
       // CONFIGURATION_REQUIRED and fails cleanly.
-      if (source.method === 'direct_http' && result.httpStatus && result.httpStatus < 500) {
+      if (source.method === 'direct_http' && !workerTaskIndex().has(source.id) && result.httpStatus && result.httpStatus < 500) {
         const target = String(source.config?.url || source.config?.baseUrl || '');
         if (/^https:\/\//i.test(target)) {
           const browserSource: SourceConfig = {

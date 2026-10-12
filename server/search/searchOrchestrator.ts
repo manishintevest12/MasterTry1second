@@ -235,7 +235,10 @@ async function processAdapterResults(results: AdapterResult[], parsed: ParsedQue
           { fetchedAt: raw.fetchedAt },
           policy,
           true,
-          validation.status === 'VALID',
+          // Core-verified: no blocking failure and only non-blocking gaps (e.g. an unknown
+          // delivery fee, which stays unknown — never invented). The price itself was just
+          // acquired live, so it is LIVE_VERIFIED; the missing fee remains labelled unknown.
+          validation.status === 'VALID' || validation.status === 'PARTIAL',
         );
         offer.provenance.validatedAt = new Date().toISOString();
         if (!isServable(offer.freshnessStatus)) continue;

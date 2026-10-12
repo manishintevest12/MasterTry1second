@@ -1,0 +1,61 @@
+/**
+ * OpenStreetMap parsers for the worldwide HOTELS vertical.
+ * Photon (Komoot, open) geocodes a place name; Overpass returns real hotel/
+ * guest_house/hostel/resort records (name, coords, stars, phone, website) under ODbL.
+ * No prices exist in OSM — price stays unknown, never invented.
+ */
+import type { RawSourceItem, SourceConfig } from '../../types';
+import { newRawItem } from '../../sources/contract';
+
+export interface GeoPoint { lat: number; lon: number; label: string }
+
+export async function photonGeocode(name: string): Promise<GeoPoint | null> {
+  const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=1`);
+  if (!res.ok) return null;
+  const json: any = await res.json();
+  const f = json?.features?.[0];
+  if (!f) return null;
+  return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: name };
+}
+
+export interface OverpassElement {
+  type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number };
+  tags: Record<string, string>;
+}
+
+export function parseOverpassHotels(json: any, source: SourceConfig, city: string, bbox: string, queryUrl: string): RawSourceItem[] {
+  const els: OverpassElement[] = Array.isArray(json?.elements) ? json.elements : [];
+  const out: RawSourceItem[] = [];
+  for (const e of els) {
+    const name = e.tags?.name;
+    if (!name) continue;
+    const coords = e.type === 'node' ? { lat: e.lat!, lon: e.lon! } : e.center;
+    const kind = e.tags.tourism || 'hotel';
+    const stars = e.tags.stars ? String(parseInt(e.tags.stars, 10) || '') : '';
+    out.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      seller: name.slice(0, 200),
+      sellerUrl: e.tags.website || e.tags['contact:website'] || `https://www.openstreetmap.org/${e.type}/${e.id}`,
+      currency: 'INR',
+      location: { city },
+      attributes: {
+        property_type: kind,
+        ...(stars ? { stars } : {}),
+        ...(e.tags.phone || e.tags['contact:phone'] ? { phone: (e.tags.phone || e.tags['contact:phone']).slice(0, 40) } : {}),
+        ...(e.tags['addr:street'] ? { address: e.tags['addr:street'].slice(0, 120) } : {}),
+        ...(coords ? { lat: coords.lat.toFixed(5), lon: coords.lon.toFixed(5) } : {}),
+        osm_license: 'Data (c) OpenStreetMap contributors, ODbL',
+      },
+      evidence: {
+        sourceUrl: queryUrl,
+        sourceReference: `osm:${e.type}/${e.id}`,
+        extractedFields: ['title', 'location', ...(stars ? ['stars'] : []), ...(e.tags.phone ? ['phone'] : [])],
+      },
+    }));
+  }
+  return out.slice(0, 60);
+}
+
+export function overpassHotelQuery(bbox: string): string {
+  return `[out:json][timeout:20];nwr[tourism~"^(hotel|guest_house|hostel|resort|motel)$"](${bbox});out 80 tags center;`;
+}

@@ -8,6 +8,7 @@
 import type { ParsedQuery, SourceConfig, VerticalId } from '../types';
 import { settings } from '../common/settings';
 import { canAttempt, getHealth } from './health';
+import { allVerticalWorkers } from '../workers/verticals';
 
 const DEFAULT_FRESHNESS = { liveVerifiedTtlSec: 900, freshTtlSec: 3600, maxStaleSec: 86400 };
 
@@ -26,12 +27,31 @@ function src(p: Partial<SourceConfig> & Pick<SourceConfig, 'id' | 'name' | 'meth
   };
 }
 
+/** Each vertical worker task is a first-class, admin-controllable source (enabled by default:
+ *  these are direct public-HTTP tasks that need no credentials and record honest outcomes). */
+function workerSources(): SourceConfig[] {
+  const out: SourceConfig[] = [];
+  for (const w of allVerticalWorkers()) {
+    for (const t of w.tasks) {
+      out.push(src({
+        id: t.sourceId,
+        name: t.name || `${w.vertical} worker: ${t.sourceId}`,
+        method: 'direct_http',
+        verticals: [w.vertical],
+        priority: t.priority ?? 15,
+        enabled: true,
+        rateLimit: { maxRequestsPerMinute: t.maxPerMinute ?? 20, maxConcurrency: 2 },
+        config: { worker: w.vertical },
+      }));
+    }
+  }
+  return out;
+}
+
 /** Registry seeds. Sources are disabled until an admin verifies them. */
 function seedSources(): SourceConfig[] {
   return [
     // ---- Direct HTTP (legit public pages; subject to their ToS) ----
-    src({ id: 'http_amazon_in', name: 'Amazon.in Product Page (direct HTTP)', method: 'direct_http', verticals: ['ecommerce'], priority: 10 }),
-    src({ id: 'http_flipkart', name: 'Flipkart Product Page (direct HTTP)', method: 'direct_http', verticals: ['ecommerce'], priority: 11 }),
     // ---- Structured public feeds ----
     src({
       id: 'structured_books', name: 'Open Library / public structured data', method: 'structured_data',
@@ -77,6 +97,8 @@ function seedSources(): SourceConfig[] {
       id: 'api_bus', name: 'Bus operator API (requires authorization)', method: 'official_api',
       verticals: ['bus'], priority: 25, requiresAuthorization: true,
     }),
+    // ---- Vertical worker tasks (one worker per vertical; see server/workers/verticals) ----
+    ...workerSources(),
     // OPTIONAL search provider deliberately NOT seeded — Try1Second acquires
     // its own data (direct cURL → headless-browser fallback). Owner decision:
     // no SearchApi.io or any third-party search/marketplace API.

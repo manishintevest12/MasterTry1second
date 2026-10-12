@@ -15,7 +15,12 @@ export interface VerticalEngineConfig {
 
 // Non-comparison verticals list merchant campaigns; browse queries there should not
 // hard-filter legitimate feed offers (they surface ranked with truthful statuses).
-const NON_COMPARISON_VERTICALS: string[] = ['coupons', 'giftcards', 'banking'];
+const NON_COMPARISON_VERTICALS: string[] = [
+  'coupons', 'giftcards', 'banking',
+  // Listing/discovery verticals: the queried entity (dish, city, insurer, route) is not
+  // part of the offer title, so title-token filtering would wrongly drop real results.
+  'food', 'hotels', 'flights', 'bus', 'cab', 'insurance', 'loans', 'movies',
+];
 
 function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   if (!query.entityName) return offers;

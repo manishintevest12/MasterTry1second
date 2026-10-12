@@ -79,7 +79,20 @@ export function rankOffers(
     }
   }
 
-  const ordered = [...byEntity.values()].flat();
+  let ordered = [...byEntity.values()].flat();
+
+  // Service verticals (rates, fares, premiums, rooms) are comparable BY NATURE across
+  // providers: the user is comparing providers for the same journey/loan/cover, so the
+  // cheapest verified offer leads. Product verticals keep the same-entity rule above.
+  const SERVICE_VERTICALS = new Set(['loans', 'insurance', 'flights', 'hotels', 'bus', 'cab', 'movies']);
+  const verticalSet = new Set(ordered.map((x) => x.o.vertical));
+  if (verticalSet.size === 1 && SERVICE_VERTICALS.has([...verticalSet][0])) {
+    const tier = (x: { o: NormalizedOffer }) => (isComparable(x.o.freshnessStatus) ? 0 : 1); // verified before unverified
+    ordered = ordered.sort((a, b) =>
+      tier(a) - tier(b) ||
+      ((a.o.prices.effectivePrice ?? Infinity) - (b.o.prices.effectivePrice ?? Infinity)) ||
+      (b.score - a.score));
+  }
 
   return ordered.map(({ o }, i) => ({
     ...o,

@@ -17,6 +17,7 @@ import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
 import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
 import { log } from '../common/logger';
+import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
 
 export const adminRouter = Router();
 adminRouter.use(authMiddleware); // attach req.user from the Bearer token
@@ -322,5 +323,29 @@ adminRouter.post('/gift-cards', async (req, res) => {
     res.json({ success: true, giftCardId: (r as any).insertId });
   } catch {
     res.status(500).json({ success: false, error: 'Gift card creation failed' });
+  }
+});
+
+// --- Section 16: mandatory source-by-source acceptance matrix ---
+adminRouter.get('/acceptance', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT * FROM source_acceptance_tests ORDER BY source_id, capability');
+    const totals = acceptanceTotals(rows as any);
+    res.json({ success: true, rows, totals });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'failed' });
+  }
+});
+
+adminRouter.post('/acceptance/run', async (req, res) => {
+  try {
+    const rows = await runAcceptanceTests();
+    await persistAcceptance(rows);
+    const totals = acceptanceTotals(rows);
+    audit(req, 'acceptance.run', 'section16', totals);
+    log.info('Admin', `Acceptance sweep complete: ${rows.length} capability rows`);
+    res.json({ success: true, rows, totals });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'failed' });
   }
 });
