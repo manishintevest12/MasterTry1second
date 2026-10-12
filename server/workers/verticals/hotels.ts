@@ -7,15 +7,19 @@
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { photonGeocode, parseOverpassHotels, overpassHotelQuery } from '../parsers/osmTravel';
 import { parseBookingHotels } from '../parsers/booking';
+import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { AcquisitionError } from '../../common/httpClient';
 
 function cityFromQuery(ctx: { query: any }): string | null {
   const q = ctx.query;
+  const raw = String(q.rawQuery || '').trim();
+  // The destination the USER TYPED always wins over their device/profile city
+  // (searching "Goa" from Delhi must never return Delhi hotels).
+  const strip = (x: string) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|book|cheap|best|check-?in:?|tomorrow|today)\b/gi, ' ')
+    .replace(/,.*$/, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+  const cleaned = strip(raw);
+  if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q.location?.city) return String(q.location.city);
-  const m = String(q.rawQuery || '').match(/(?:in|near|at)\s+([a-z\s]{3,30})$/i);
-  if (m) return m[1].trim();
-  const m2 = String(q.rawQuery || '').match(/(?:hotels?|rooms?|stay)\s+([a-z\s]{3,30})$/i);
-  if (m2) return m2[1].trim();
   return null;
 }
 
@@ -90,6 +94,25 @@ export const hotelsWorker: VerticalWorker = {
         }
         if (!json) throw lastErr || new AcquisitionError('SERVER_ERROR', 'All Overpass mirrors failed');
         return parseOverpassHotels(json, ctx.source, city, bbox, usedUrl);
+      },
+    },
+    {
+      sourceId: 'w_hotels_wikidata',
+      name: 'Hotels worker: Wikidata hotel discovery (worldwide)',
+      priority: 30,
+      maxPerMinute: 10,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const url = `${WIKIDATA_ENDPOINT}?format=json&query=${encodeURIComponent(wikidataHotelQuery(city))}`;
+        const r = await ctx.fetch(url, {
+          headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Try1Second/1.0 (contact@try1second.com)' },
+          expectJson: true, timeoutMs: 25_000,
+        });
+        if (r.status === 429 || r.status >= 500) throw new AcquisitionError('RATE_LIMITED', `Wikidata HTTP ${r.status}`, r.status);
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Wikidata HTTP ${r.status}`, r.status);
+        return parseWikidataHotels(JSON.parse(r.body), ctx.source, city, WIKIDATA_ENDPOINT);
       },
     },
   ],

@@ -101,7 +101,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
     e.stopPropagation();
     if (navigator.clipboard) {
       navigator.clipboard.writeText(
-        `Check out ${item.title} on OmniCompare for ₹${item.primaryPrice.toLocaleString('en-IN')}: ${window.location.href}`
+        `Check out ${item.title} on OmniCompare for ₹${(item.primaryPrice || 0).toLocaleString('en-IN')}: ${window.location.href}`
       );
     }
   };
@@ -352,9 +352,15 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
           <div className="flex md:flex-col items-baseline md:items-end justify-between w-full md:w-auto gap-2">
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
-                  ₹{item.primaryPrice.toLocaleString('en-IN')}
-                </span>
+                {item.priceAvailable === false || !item.primaryPrice ? (
+                  <span className="text-sm font-bold text-slate-600" title="This source publishes schedules/availability but not a bookable fare. We never invent prices.">
+                    Price on seller site
+                  </span>
+                ) : (
+                  <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
+                    ₹{item.primaryPrice.toLocaleString('en-IN')}
+                  </span>
+                )}
                 {item.originalPrice > item.primaryPrice && (
                   <span className="text-xs text-slate-400 line-through tabular-nums font-mono">
                     ₹{item.originalPrice.toLocaleString('en-IN')}

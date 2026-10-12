@@ -14,7 +14,6 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
   // The card requires at least one seller quote; it is built from the SAME persisted
   // verified offer (no invented price, no invented vendor). A zero/invalid price
   // cannot become a quote, so the row is skipped rather than rendered broken.
-  if (!price || price <= 0) return null;
   return {
     id: `cat-${row.id}`,
     vertical: row.vertical,
@@ -28,6 +27,7 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
     criteriaRatings: [],
     primaryPrice: price,
     originalPrice: 0,
+    priceAvailable: price > 0,
     sellerQuotes: [
       {
         id: `sq-cat-${row.id}`,
@@ -911,7 +911,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   ) => {
     setIsScrapingLive(true);
     const targetLoc = overrideLoc || userLocation;
-    const targetQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
+    // Empty search box -> the vertical's own sensible starting query (what its placeholder suggests),
+    // so a tab shows real data the moment it opens. These are SEARCH TERMS, never fake results.
+    const DEFAULT_QUERY: Record<string, string> = {
+      flights: 'New Delhi (DEL) to Dubai (DXB)',
+      hotels: 'Goa',
+      bus: 'Bengaluru to Hyderabad',
+      ecommerce: 'mobile phone',
+      grocery: 'milk',
+      food: 'biryani',
+      movie: 'movies',
+      movies: 'movies',
+      cab: `${targetLoc.locality || 'Connaught Place'} to ${targetLoc.city || 'New Delhi'} Airport`,
+      loans: 'personal loan',
+      insurance: 'health insurance',
+    };
+    const rawQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
+    const targetQuery = rawQuery && rawQuery.trim() ? rawQuery : (DEFAULT_QUERY[vertical] || '');
     const dateSensitive = ['hotels', 'flights', 'bus', 'cab', 'movies'].includes(vertical);
 
     try {

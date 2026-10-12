@@ -75,11 +75,86 @@ apiRouter.post('/search', async (req, res) => {
   res.json({ success: response.results.length > 0 || response.state.servedFrom !== 'unavailable', ...response });
 });
 
+
+/**
+ * Map a verified backend offer to the full ComparisonItem the frontend renders.
+ * Every item carries a real seller quote built from the SAME offer. When the source
+ * exposes no price (e.g. airline-route data), price is 0 and priceAvailable=false:
+ * the UI shows "Price on seller site" instead of an invented fare.
+ */
+function offerToComparisonItem(o: any) {
+  const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+  const list = Number(o.prices?.listPrice ?? 0) || 0;
+  const url = o.affiliate?.deepLink || o.sellerUrl || '';
+  const seller = String(o.seller || o.vendor || 'Verified source');
+  const attrs: Record<string, string> = o.attributes || {};
+  const specs: Record<string, string> = {};
+  for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, ' ')] = String(v);
+  if (o.travel?.route) specs['Route'] = String(o.travel.route);
+  if (o.travel?.date) specs['Date'] = String(o.travel.date);
+  const fetchedAt = o.provenance?.fetchedAt;
+  return {
+    id: o.id,
+    vertical: o.vertical,
+    title: o.title,
+    subtitle: `${o.vendor} · ${o.freshnessStatus}`,
+    category: o.vertical,
+    provider: o.vendor,
+    providerLogo: '',
+    rating: Number(attrs['rating']) || 0,
+    reviewCount: Number(attrs['review_count']) || 0,
+    sentimentSummary: attrs['data_note'] || 'Live data from a verified source',
+    criteriaRatings: [],
+    primaryPrice: price,
+    originalPrice: list > price ? list : 0,
+    priceAvailable: price > 0,
+    unit: 'per unit',
+    currency: o.prices?.currency || 'INR',
+    features: attrs['data_note'] ? [String(attrs['data_note'])] : [],
+    specs,
+    reviews: [],
+    pricePrediction: {
+      advice: 'fair_price',
+      headline: price > 0 ? 'Newly tracked' : 'Price not exposed by this source',
+      details: 'Only real observations are charted; nothing is generated.',
+      historicalLow: price,
+      historicalHigh: price,
+      priceHistory: [],
+    },
+    sellerQuotes: [
+      {
+        id: `sq-${o.id}`,
+        sellerName: seller.slice(0, 80),
+        price,
+        originalPrice: list > price ? list : 0,
+        currency: o.prices?.currency || 'INR',
+        url,
+        badge: price > 0 ? 'Live Verified' : 'Live schedule data',
+        isLowest: true,
+        isLiveScraped: o.freshnessStatus === 'LIVE_VERIFIED',
+        sourceDomain: url ? String(url).replace(/^https?:\/\//, '').split('/')[0] : undefined,
+      },
+    ],
+    sellerUrl: url,
+    availability: o.availability,
+    isLiveScraped: o.freshnessStatus === 'LIVE_VERIFIED',
+    scrapedTimestamp: fetchedAt,
+    freshnessStatus: o.freshnessStatus,
+    matchState: o.matchState,
+    evidence: {
+      sourceId: o.provenance?.sourceId,
+      sourceMethod: o.provenance?.sourceMethod,
+      fetchedAt,
+    },
+  };
+}
+
 /** Legacy-compatible endpoint used by the existing frontend. */
 apiRouter.post('/scrape/live', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || ''),
-    vertical: req.body.vertical,
+    // the UI tab id is 'movie'; the engine's vertical id is 'movies'
+    vertical: req.body.vertical === 'movie' ? 'movies' : req.body.vertical,
     pincode: req.body.pincode,
     city: req.body.city,
     locality: req.body.locality,
@@ -95,30 +170,10 @@ apiRouter.post('/scrape/live', async (req, res) => {
   const response = await runSearch(input);
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
   res.json({
-    results: response.results.map((o) => ({
-      id: o.id,
-      vertical: o.vertical,
-      title: o.title,
-      subtitle: `${o.vendor} · ${o.freshnessStatus}`,
-      category: o.vertical,
-      provider: o.vendor,
-      providerLogo: '',
-      primaryPrice: o.prices.effectivePrice ?? o.prices.mandatoryTotal,
-      originalPrice: o.prices.listPrice,
-      unit: 'per unit',
-      currency: o.prices.currency,
-      sellerQuotes: [],
-      sellerUrl: o.affiliate?.deepLink || o.sellerUrl,
-      availability: o.availability,
-      isLiveScraped: o.freshnessStatus === 'LIVE_VERIFIED',
-      freshnessStatus: o.freshnessStatus,
-      matchState: o.matchState,
-      evidence: {
-        sourceId: o.provenance.sourceId,
-        sourceMethod: o.provenance.sourceMethod,
-        fetchedAt: o.provenance.fetchedAt,
-      },
-    })),
+    results: response.results.map((o: any) => {
+      const item = offerToComparisonItem(o);
+      return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' } : item;
+    }),
     honestNotice: response.state.honestNotice,
     sourcesAttempted: response.state.sourcesAttempted,
     sourcesSucceeded: response.state.sourcesSucceeded,

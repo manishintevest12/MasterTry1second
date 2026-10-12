@@ -43,8 +43,11 @@ export const ComparisonFeed: React.FC = () => {
     });
   }
 
-  // Filter by search query
-  if (searchQuery.trim()) {
+  // Filter by search query. For live-searched verticals the backend has ALREADY matched the
+  // query (route, location, product); re-filtering on the raw text hides valid results
+  // (e.g. "New Delhi (DEL) to Dubai (DXB)" is never a substring of an offer title).
+  const BACKEND_MATCHED = ['flights', 'bus', 'cab', 'hotels', 'food', 'movies'];
+  if (searchQuery.trim() && !BACKEND_MATCHED.includes(vertical)) {
     const q = searchQuery.toLowerCase();
     filtered = filtered.filter(
       (it) =>
@@ -65,7 +68,7 @@ export const ComparisonFeed: React.FC = () => {
     if (priceMatch && priceMatch[1]) {
       const maxP = parseInt(priceMatch[1].replace(/,/g, ''), 10);
       if (!isNaN(maxP)) {
-        filtered = filtered.filter((it) => it.primaryPrice <= maxP);
+        filtered = filtered.filter((it) => !it.primaryPrice || it.primaryPrice <= maxP);
       }
     }
 
@@ -99,7 +102,8 @@ export const ComparisonFeed: React.FC = () => {
   // Sort
   const sorted = [...filtered].sort((a, b) => {
     if (sortOption === 'cheapest') {
-      return a.primaryPrice - b.primaryPrice;
+      // price-less items sort last, never first
+      return (a.primaryPrice || Infinity) === (b.primaryPrice || Infinity) ? 0 : (a.primaryPrice || Infinity) < (b.primaryPrice || Infinity) ? -1 : 1;
     }
     if (sortOption === 'highest_rated') {
       return b.rating - a.rating;

@@ -72,6 +72,8 @@ export interface PriceDataPoint {
 }
 
 export interface ComparisonItem {
+  /** false when the source exposes no price (never invented); UI shows 'Price on seller site'. */
+  priceAvailable?: boolean;
   id: string;
   vertical: VerticalId;
   title: string;

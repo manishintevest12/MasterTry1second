@@ -1659,14 +1659,66 @@ var init_booking = __esm({
   }
 });
 
+// server/workers/parsers/wikidataHotels.ts
+function wikidataHotelQuery(city) {
+  const safe = city.replace(/["\\\n\r]/g, "").slice(0, 60);
+  return `SELECT DISTINCT ?h ?hLabel ?web ?stars ?coord WHERE {
+  ?c rdfs:label "${safe}"@en .
+  ?h wdt:P31/wdt:P279* wd:Q27686 .
+  ?h wdt:P131* ?c .
+  OPTIONAL { ?h wdt:P856 ?web }
+  OPTIONAL { ?h wdt:P625 ?coord }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+} LIMIT 40`;
+}
+function parseWikidataHotels(json, source, city, queryUrl) {
+  const rows = json?.results?.bindings || [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const b of rows) {
+    const name = String(b?.hLabel?.value || "").trim();
+    const qid = String(b?.h?.value || "").split("/").pop() || "";
+    if (!name || /^Q\d+$/.test(name) || seen.has(qid)) continue;
+    seen.add(qid);
+    const web = String(b?.web?.value || "");
+    const coord = String(b?.coord?.value || "").match(/Point\(([-\d.]+) ([-\d.]+)\)/);
+    out.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      seller: name.slice(0, 200),
+      sellerUrl: web || `https://www.wikidata.org/wiki/${qid}`,
+      currency: "INR",
+      location: { city },
+      attributes: {
+        property_type: "hotel",
+        ...coord ? { lat: Number(coord[2]).toFixed(5), lon: Number(coord[1]).toFixed(5) } : {},
+        ...web ? { official_website: web.slice(0, 200) } : {},
+        data_note: "Property listing from Wikidata (CC0); room rates are not in this dataset and are never invented"
+      },
+      evidence: {
+        sourceUrl: queryUrl,
+        sourceReference: `wikidata:${qid}`,
+        extractedFields: ["title", "location", ...web ? ["official_website"] : [], ...coord ? ["coordinates"] : []]
+      }
+    }));
+  }
+  return out.slice(0, 25);
+}
+var WIKIDATA_ENDPOINT;
+var init_wikidataHotels = __esm({
+  "server/workers/parsers/wikidataHotels.ts"() {
+    init_contract();
+    WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
+  }
+});
+
 // server/workers/verticals/hotels.ts
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
+  const raw = String(q3.rawQuery || "").trim();
+  const strip = (x) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|book|cheap|best|check-?in:?|tomorrow|today)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  const cleaned = strip(raw);
+  if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q3.location?.city) return String(q3.location.city);
-  const m = String(q3.rawQuery || "").match(/(?:in|near|at)\s+([a-z\s]{3,30})$/i);
-  if (m) return m[1].trim();
-  const m2 = String(q3.rawQuery || "").match(/(?:hotels?|rooms?|stay)\s+([a-z\s]{3,30})$/i);
-  if (m2) return m2[1].trim();
   return null;
 }
 function stayDates(q3) {
@@ -1683,6 +1735,7 @@ var init_hotels = __esm({
     init_verticalWorker();
     init_osmTravel();
     init_booking();
+    init_wikidataHotels();
     init_httpClient();
     hotelsWorker = {
       vertical: "hotels",
@@ -1757,6 +1810,26 @@ var init_hotels = __esm({
             }
             if (!json) throw lastErr || new AcquisitionError("SERVER_ERROR", "All Overpass mirrors failed");
             return parseOverpassHotels(json, ctx.source, city, bbox, usedUrl);
+          }
+        },
+        {
+          sourceId: "w_hotels_wikidata",
+          name: "Hotels worker: Wikidata hotel discovery (worldwide)",
+          priority: 30,
+          maxPerMinute: 10,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const url = `${WIKIDATA_ENDPOINT}?format=json&query=${encodeURIComponent(wikidataHotelQuery(city))}`;
+            const r = await ctx.fetch(url, {
+              headers: { Accept: "application/sparql-results+json", "User-Agent": "Try1Second/1.0 (contact@try1second.com)" },
+              expectJson: true,
+              timeoutMs: 25e3
+            });
+            if (r.status === 429 || r.status >= 500) throw new AcquisitionError("RATE_LIMITED", `Wikidata HTTP ${r.status}`, r.status);
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Wikidata HTTP ${r.status}`, r.status);
+            return parseWikidataHotels(JSON.parse(r.body), ctx.source, city, WIKIDATA_ENDPOINT);
           }
         }
       ]
@@ -5789,6 +5862,72 @@ __export(routes_exports, {
   apiRouter: () => apiRouter,
   bootstrapBackend: () => bootstrapBackend
 });
+function offerToComparisonItem(o) {
+  const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+  const list = Number(o.prices?.listPrice ?? 0) || 0;
+  const url = o.affiliate?.deepLink || o.sellerUrl || "";
+  const seller = String(o.seller || o.vendor || "Verified source");
+  const attrs = o.attributes || {};
+  const specs = {};
+  for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, " ")] = String(v);
+  if (o.travel?.route) specs["Route"] = String(o.travel.route);
+  if (o.travel?.date) specs["Date"] = String(o.travel.date);
+  const fetchedAt = o.provenance?.fetchedAt;
+  return {
+    id: o.id,
+    vertical: o.vertical,
+    title: o.title,
+    subtitle: `${o.vendor} \xB7 ${o.freshnessStatus}`,
+    category: o.vertical,
+    provider: o.vendor,
+    providerLogo: "",
+    rating: Number(attrs["rating"]) || 0,
+    reviewCount: Number(attrs["review_count"]) || 0,
+    sentimentSummary: attrs["data_note"] || "Live data from a verified source",
+    criteriaRatings: [],
+    primaryPrice: price,
+    originalPrice: list > price ? list : 0,
+    priceAvailable: price > 0,
+    unit: "per unit",
+    currency: o.prices?.currency || "INR",
+    features: attrs["data_note"] ? [String(attrs["data_note"])] : [],
+    specs,
+    reviews: [],
+    pricePrediction: {
+      advice: "fair_price",
+      headline: price > 0 ? "Newly tracked" : "Price not exposed by this source",
+      details: "Only real observations are charted; nothing is generated.",
+      historicalLow: price,
+      historicalHigh: price,
+      priceHistory: []
+    },
+    sellerQuotes: [
+      {
+        id: `sq-${o.id}`,
+        sellerName: seller.slice(0, 80),
+        price,
+        originalPrice: list > price ? list : 0,
+        currency: o.prices?.currency || "INR",
+        url,
+        badge: price > 0 ? "Live Verified" : "Live schedule data",
+        isLowest: true,
+        isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
+        sourceDomain: url ? String(url).replace(/^https?:\/\//, "").split("/")[0] : void 0
+      }
+    ],
+    sellerUrl: url,
+    availability: o.availability,
+    isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
+    scrapedTimestamp: fetchedAt,
+    freshnessStatus: o.freshnessStatus,
+    matchState: o.matchState,
+    evidence: {
+      sourceId: o.provenance?.sourceId,
+      sourceMethod: o.provenance?.sourceMethod,
+      fetchedAt
+    }
+  };
+}
 async function bootstrapBackend() {
   try {
     const migrations = await runMigrations();
@@ -5866,7 +6005,8 @@ var init_routes = __esm({
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
-        vertical: req.body.vertical,
+        // the UI tab id is 'movie'; the engine's vertical id is 'movies'
+        vertical: req.body.vertical === "movie" ? "movies" : req.body.vertical,
         pincode: req.body.pincode,
         city: req.body.city,
         locality: req.body.locality,
@@ -5881,30 +6021,10 @@ var init_routes = __esm({
       }
       const response = await runSearch(input);
       res.json({
-        results: response.results.map((o) => ({
-          id: o.id,
-          vertical: o.vertical,
-          title: o.title,
-          subtitle: `${o.vendor} \xB7 ${o.freshnessStatus}`,
-          category: o.vertical,
-          provider: o.vendor,
-          providerLogo: "",
-          primaryPrice: o.prices.effectivePrice ?? o.prices.mandatoryTotal,
-          originalPrice: o.prices.listPrice,
-          unit: "per unit",
-          currency: o.prices.currency,
-          sellerQuotes: [],
-          sellerUrl: o.affiliate?.deepLink || o.sellerUrl,
-          availability: o.availability,
-          isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
-          freshnessStatus: o.freshnessStatus,
-          matchState: o.matchState,
-          evidence: {
-            sourceId: o.provenance.sourceId,
-            sourceMethod: o.provenance.sourceMethod,
-            fetchedAt: o.provenance.fetchedAt
-          }
-        })),
+        results: response.results.map((o) => {
+          const item = offerToComparisonItem(o);
+          return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : item;
+        }),
         honestNotice: response.state.honestNotice,
         sourcesAttempted: response.state.sourcesAttempted,
         sourcesSucceeded: response.state.sourcesSucceeded,

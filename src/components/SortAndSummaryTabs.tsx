@@ -17,7 +17,7 @@ export const SortAndSummaryTabs: React.FC = () => {
   const currentItems = items.filter((it) => it.vertical === vertical);
 
   // Compute summary values
-  const cheapestItem = [...currentItems].sort((a, b) => a.primaryPrice - b.primaryPrice)[0];
+  const cheapestItem = [...currentItems].filter((it) => it.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice)[0];
   const highestRatedItem = [...currentItems].sort((a, b) => b.rating - a.rating)[0];
 
   return (
