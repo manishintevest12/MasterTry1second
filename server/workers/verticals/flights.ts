@@ -10,9 +10,9 @@ import { AcquisitionError } from '../../common/httpClient';
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
-  const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24})/);
+  const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
-  const strip = (s: string) => s.replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|direct)\b/gi, '').trim();
+  const strip = (s: string) => s.replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|direct|return|one-way|oneway|round trip)\b/gi, '').replace(/,.*$/, '').trim();
   const from = strip(m[1]);
   const to = strip(m[2]).replace(/\b(on|for|tomorrow|today|night|morning|evening|at)\b.*$/i, '').trim();
   if (!from || !to) return null;

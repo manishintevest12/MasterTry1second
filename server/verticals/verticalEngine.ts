@@ -85,13 +85,26 @@ class FlightEngine extends VerticalEngine {
       vertical: 'flights',
       displayName: 'Flights',
       postProcess: (offers, query) => {
-        // Route must match query route if both are expressed
-        const routeMatch = query.rawQuery.match(/([a-z]+)\s+to\s+([a-z]+)/i);
-        if (!routeMatch) return offers;
-        const from = routeMatch[1].toLowerCase(), to = routeMatch[2].toLowerCase();
+        // When the query expresses a route, ONLY offers for that route may be shown.
+        // (A cached Delhi->Mumbai offer must never appear for a Delhi->Dubai search.)
+        const m = query.rawQuery.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
+        if (!m) return offers;
+        const norm = (x: string) => {
+          const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
+          let t = x.replace(/\([^)]*\)/g, '').replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (t === 'new delhi') t = 'delhi';
+          if (t === 'bengaluru') t = 'bangalore';
+          if (t === 'bombay') t = 'mumbai';
+          return { code, city: t };
+        };
+        const a = norm(m[1]), b = norm(m[2]);
+        const hit = (route: string, side: { code?: string; city: string }) =>
+          (side.code && new RegExp(`\\b${side.code}\\b`, 'i').test(route)) || (side.city && route.includes(side.city));
         return offers.filter((o) => {
           const r = (o.travel?.route || '').toLowerCase();
-          return !r || (r.includes(from) && r.includes(to));
+          if (!r) return false; // an offer with no route cannot prove it serves this route
+          const [src = '', dst = ''] = r.split(/\s+to\s+/);
+          return hit(src, a) && hit(dst, b);
         });
       },
     });

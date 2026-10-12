@@ -1806,15 +1806,29 @@ async function loadOpenFlights(fetchFn) {
   cache = { at: Date.now(), airports, airlines, routes };
   return { airports, airlines, routes };
 }
+function matchAirports(airports, input) {
+  const raw = String(input || "").trim();
+  const code = raw.match(/\(([A-Za-z]{3})\)/)?.[1] || (/^[A-Za-z]{3}$/.test(raw) ? raw : "");
+  if (code) {
+    const byCode = airports.filter((a) => a.iata.toUpperCase() === code.toUpperCase());
+    if (byCode.length) return byCode;
+  }
+  const cleaned = raw.replace(/\([^)]*\)/g, "").replace(/\b(airport|international|intl)\b/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!cleaned) return [];
+  const target = CITY_ALIASES[cleaned] || cleaned;
+  let hit = airports.filter((a) => a.city.toLowerCase() === target);
+  if (!hit.length) hit = airports.filter((a) => a.city.toLowerCase() === cleaned);
+  if (!hit.length) hit = airports.filter((a) => a.name.toLowerCase().includes(target));
+  return hit;
+}
 function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, sourceUrl) {
-  const fc = fromCity.toLowerCase().trim();
-  const tc = toCity.toLowerCase().trim();
-  const fromAirports = airports.filter((a) => a.city.toLowerCase() === fc);
-  const toAirports = airports.filter((a) => a.city.toLowerCase() === tc);
+  const fromAirports = matchAirports(airports, fromCity);
+  const toAirports = matchAirports(airports, toCity);
   if (!fromAirports.length || !toAirports.length) return [];
   const srcIatas = new Set(fromAirports.map((a) => a.iata));
   const dstIatas = new Set(toAirports.map((a) => a.iata));
-  const airlineByIata = new Map(airlines.filter((a) => a.active).map((a) => [a.iata, a]));
+  const DEFUNCT = /\b(jet airways|kingfisher|spicejet cargo|silkair|tiger airways|air deccan|jetlite|go ?first|goair|king ?fisher|virgin america|germanwings|monarch|thomas cook|air berlin|alitalia|malev|cargo|freight|express cargo|logistics|courier|dhl|fedex|ups)\b/i;
+  const airlineByIata = new Map(airlines.filter((a) => a.active && !DEFUNCT.test(a.name)).map((a) => [a.iata, a]));
   const matched = /* @__PURE__ */ new Map();
   for (const r of routes) {
     if (srcIatas.has(r.srcIata) && dstIatas.has(r.dstIata)) {
@@ -1853,20 +1867,40 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
   }
   return out.slice(0, 20);
 }
-var BASE, cache;
+var BASE, cache, CITY_ALIASES;
 var init_openflights = __esm({
   "server/workers/parsers/openflights.ts"() {
     init_contract();
     BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
     cache = null;
+    CITY_ALIASES = {
+      "new delhi": "delhi",
+      "bengaluru": "bangalore",
+      "bombay": "mumbai",
+      "calcutta": "kolkata",
+      "madras": "chennai",
+      "gurugram": "delhi",
+      "gurgaon": "delhi",
+      "noida": "delhi",
+      "trivandrum": "thiruvananthapuram",
+      "cochin": "kochi",
+      "poona": "pune",
+      "baroda": "vadodara",
+      "banaras": "varanasi",
+      "benares": "varanasi",
+      "new york city": "new york",
+      "nyc": "new york",
+      "dubai international": "dubai",
+      "abu dhabi": "abu dhabi"
+    };
   }
 });
 
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
-  const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24})/);
+  const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
-  const strip = (s) => s.replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|direct)\b/gi, "").trim();
+  const strip = (s) => s.replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|direct|return|one-way|oneway|round trip)\b/gi, "").replace(/,.*$/, "").trim();
   const from = strip(m[1]);
   const to = strip(m[2]).replace(/\b(on|for|tomorrow|today|night|morning|evening|at)\b.*$/i, "").trim();
   if (!from || !to) return null;
@@ -4053,12 +4087,23 @@ var init_verticalEngine = __esm({
           vertical: "flights",
           displayName: "Flights",
           postProcess: (offers, query) => {
-            const routeMatch = query.rawQuery.match(/([a-z]+)\s+to\s+([a-z]+)/i);
-            if (!routeMatch) return offers;
-            const from = routeMatch[1].toLowerCase(), to = routeMatch[2].toLowerCase();
+            const m = query.rawQuery.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
+            if (!m) return offers;
+            const norm = (x) => {
+              const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
+              let t = x.replace(/\([^)]*\)/g, "").replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+              if (t === "new delhi") t = "delhi";
+              if (t === "bengaluru") t = "bangalore";
+              if (t === "bombay") t = "mumbai";
+              return { code, city: t };
+            };
+            const a = norm(m[1]), b = norm(m[2]);
+            const hit = (route, side) => side.code && new RegExp(`\\b${side.code}\\b`, "i").test(route) || side.city && route.includes(side.city);
             return offers.filter((o) => {
               const r = (o.travel?.route || "").toLowerCase();
-              return !r || r.includes(from) && r.includes(to);
+              if (!r) return false;
+              const [src2 = "", dst = ""] = r.split(/\s+to\s+/);
+              return hit(src2, a) && hit(dst, b);
             });
           }
         });

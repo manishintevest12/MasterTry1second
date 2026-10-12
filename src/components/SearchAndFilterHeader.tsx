@@ -139,6 +139,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   const [cabDrop, setCabDrop] = useState<string>('DLF Cyber City, Gurugram (122002)');
   const [cabScheduleDate, setCabScheduleDate] = useState<string>('Today (Ride Now)');
 
+  /** Backend route parsers need "<from> to <to>"; a bare destination can never resolve a route. */
+  const routeQuery = (from: string, to: string) => {
+    const clean = (x: string) => String(x || '').replace(/\s*\(\d{5,6}\)\s*$/, '').trim();
+    const a = clean(from), b = clean(to);
+    return a && b ? `${a} to ${b}` : (b || a);
+  };
+
   const handleOpenLocationModal = (ctx: 'food' | 'grocery' | 'cab') => {
     setLocationModalContext(ctx);
     setIsLocationModalOpen(true);
@@ -518,8 +525,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                     }}
                     onSelect={(val) => {
                       setCabDrop(val);
-                      setSearchQuery(val);
-                      triggerLiveLocationScrape(val, undefined, travelDatesFor('cab', dateStr));
+                      const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, val);
+                      setSearchQuery(q);
+                      triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
                     }}
                     type="location"
                     placeholder="Enter drop destination (e.g. DLF Cyber City, IGI Airport)..."
@@ -533,7 +541,11 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="md:col-span-2">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery(cabDrop)}
+                  onClick={() => {
+                    const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, cabDrop);
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+                  }}
                   className="w-full py-2.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs rounded-xl transition-colors shadow-md cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Car className="w-4 h-4" />
@@ -682,8 +694,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   }}
                   onSelect={(val) => {
                     setDestination(val);
-                    setSearchQuery(val);
-                    triggerLiveLocationScrape(val, undefined, travelDatesFor('flights', dateStr));
+                    const q = routeQuery(origin, val);
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q, undefined, travelDatesFor('flights', dateStr));
                   }}
                   type="city"
                   placeholder="Destination: e.g. Dubai (DXB)"
@@ -716,8 +729,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <button
                 type="button"
                 onClick={() => {
-                  setSearchQuery(destination);
-                  triggerLiveLocationScrape(destination, undefined, travelDatesFor('flights', dateStr));
+                  const q = routeQuery(origin, destination);
+                  setSearchQuery(q);
+                  triggerLiveLocationScrape(q, undefined, travelDatesFor('flights', dateStr));
                 }}
                 className="px-6 py-2.5 bg-gradient-to-r from-orange-500 via-orange-600 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-md shadow-orange-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0 hover:scale-105 active:scale-95"
               >
@@ -895,8 +909,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   }}
                   onSelect={(val) => {
                     setBusTo(val);
-                    setSearchQuery(val);
-                    triggerLiveLocationScrape(val);
+                    const q = routeQuery(busFrom, val);
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q, undefined, travelDatesFor('bus', busDate));
                   }}
                   type="city"
                   placeholder="To (Hyderabad / Manali)"
@@ -928,7 +943,11 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="md:col-span-2">
                 <button
                   type="button"
-                  onClick={() => setSearchQuery(busTo)}
+                  onClick={() => {
+                    const q = routeQuery(busFrom, busTo);
+                    setSearchQuery(q);
+                    triggerLiveLocationScrape(q, undefined, travelDatesFor('bus', busDate));
+                  }}
                   className="w-full py-2.5 bg-[#d84e55] hover:bg-[#b83b41] text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                 >
                   <span>Find Buses</span>

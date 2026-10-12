@@ -50,15 +50,42 @@ export async function loadOpenFlights(fetchFn: (u: string) => Promise<string>): 
   return { airports, airlines, routes };
 }
 
+/** Common naming differences between what users type and OpenFlights' city field. */
+const CITY_ALIASES: Record<string, string> = {
+  'new delhi': 'delhi', 'bengaluru': 'bangalore', 'bombay': 'mumbai', 'calcutta': 'kolkata',
+  'madras': 'chennai', 'gurugram': 'delhi', 'gurgaon': 'delhi', 'noida': 'delhi',
+  'trivandrum': 'thiruvananthapuram', 'cochin': 'kochi', 'poona': 'pune', 'baroda': 'vadodara',
+  'banaras': 'varanasi', 'benares': 'varanasi', 'new york city': 'new york', 'nyc': 'new york',
+  'dubai international': 'dubai', 'abu dhabi': 'abu dhabi',
+};
+
+/** Resolve free text ("New Delhi", "Delhi (DEL)", "DXB") to airports: IATA code first, then city (with aliases), then name. */
+export function matchAirports(airports: Airport[], input: string): Airport[] {
+  const raw = String(input || '').trim();
+  const code = raw.match(/\(([A-Za-z]{3})\)/)?.[1] || (/^[A-Za-z]{3}$/.test(raw) ? raw : '');
+  if (code) {
+    const byCode = airports.filter((a) => a.iata.toUpperCase() === code.toUpperCase());
+    if (byCode.length) return byCode;
+  }
+  const cleaned = raw.replace(/\([^)]*\)/g, '').replace(/\b(airport|international|intl)\b/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!cleaned) return [];
+  const target = CITY_ALIASES[cleaned] || cleaned;
+  let hit = airports.filter((a) => a.city.toLowerCase() === target);
+  if (!hit.length) hit = airports.filter((a) => a.city.toLowerCase() === cleaned);
+  if (!hit.length) hit = airports.filter((a) => a.name.toLowerCase().includes(target));
+  return hit;
+}
+
 export function parseRoute(airports: Airport[], airlines: Airline[], routes: Route[], source: SourceConfig, fromCity: string, toCity: string, date: string | undefined, sourceUrl: string): RawSourceItem[] {
-  const fc = fromCity.toLowerCase().trim();
-  const tc = toCity.toLowerCase().trim();
-  const fromAirports = airports.filter((a) => a.city.toLowerCase() === fc);
-  const toAirports = airports.filter((a) => a.city.toLowerCase() === tc);
+  const fromAirports = matchAirports(airports, fromCity);
+  const toAirports = matchAirports(airports, toCity);
   if (!fromAirports.length || !toAirports.length) return [];
   const srcIatas = new Set(fromAirports.map((a) => a.iata));
   const dstIatas = new Set(toAirports.map((a) => a.iata));
-  const airlineByIata = new Map(airlines.filter((a) => a.active).map((a) => [a.iata, a]));
+  // OpenFlights' `active` flag lags reality: drop known-defunct carriers and cargo-only operators
+  // so a passenger search never lists an airline that no longer sells tickets.
+  const DEFUNCT = /\b(jet airways|kingfisher|spicejet cargo|silkair|tiger airways|air deccan|jetlite|go ?first|goair|king ?fisher|virgin america|germanwings|monarch|thomas cook|air berlin|alitalia|malev|cargo|freight|express cargo|logistics|courier|dhl|fedex|ups)\b/i;
+  const airlineByIata = new Map(airlines.filter((a) => a.active && !DEFUNCT.test(a.name)).map((a) => [a.iata, a]));
   const matched = new Map<string, Route[]>();
   for (const r of routes) {
     if (srcIatas.has(r.srcIata) && dstIatas.has(r.dstIata)) {
