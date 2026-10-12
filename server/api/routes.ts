@@ -101,6 +101,7 @@ function offerToComparisonItem(o: any) {
     category: o.vertical,
     provider: o.vendor,
     providerLogo: '',
+    imageUrl: /^https:\/\//.test(attrs['image_url'] || '') ? attrs['image_url'] : undefined,
     rating: Number(attrs['rating']) || 0,
     reviewCount: Number(attrs['review_count']) || 0,
     sentimentSummary: attrs['data_note'] || 'Live data from a verified source',
@@ -210,7 +211,7 @@ apiRouter.get('/catalogue', async (_req, res) => {
   try {
     const rows = await getStore().query<any>(
       `SELECT id, vertical, title, vendor, seller, seller_url, source_url, mandatory_total, effective_price, currency, availability,
-              freshness_status, validation_status, fetched_at, source_id
+              freshness_status, validation_status, fetched_at, source_id, attributes
        FROM offers ORDER BY fetched_at DESC LIMIT 200`,
     );
     res.json({ success: true, total: rows.length, items: rows, lastSavedAt: new Date().toISOString() });

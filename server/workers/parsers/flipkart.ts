@@ -31,7 +31,12 @@ export function extractAssignedJson(html: string, marker: string): any | null {
 function collectUnits(node: any, out: any[]) {
   if (Array.isArray(node)) { for (const v of node) collectUnits(v, out); return; }
   if (node && typeof node === 'object') {
-    if (node.type === 'ProductSummaryValue') out.push(node);
+    // Product units are recognised by their shape (id + title + prices), not by the
+    // type tag — Flipkart renames the tag between deploys but keeps the shape.
+    if (node.id && node.titles?.title && Array.isArray(node.pricing?.prices) && node.pricing.prices.length) {
+      out.push(node);
+      return; // do not descend into a product unit further
+    }
     for (const v of Object.values(node)) collectUnits(v, out);
   }
 }
@@ -55,6 +60,10 @@ export function parseFlipkart(html: string, source: SourceConfig, searchUrl: str
     const state2 = String(u.availability?.displayState || '');
     const availability = state2 === 'IN_STOCK' ? 'in_stock' : /OUT_OF_STOCK|SOLD_OUT|UNAVAILABLE/i.test(state2) ? 'out_of_stock' : 'unknown';
     const avg = u.rating?.average;
+    const rawImg = String(u.media?.images?.[0]?.url || u.imageUrl || '');
+    const imageUrl = rawImg
+      ? rawImg.replace(/^http:/, 'https:').replace('{@width}', '400').replace('{@height}', '400').replace('{@quality}', '70')
+      : '';
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
       price: selling,
@@ -62,7 +71,7 @@ export function parseFlipkart(html: string, source: SourceConfig, searchUrl: str
       listPrice: mrp && mrp > selling ? mrp : undefined,
       brand: u.titles?.superTitle || undefined,
       identifiers: { vendorProductId: id },
-      attributes: { ...(avg ? { rating: String(avg) } : {}), ...(u.rating?.count ? { rating_count: String(u.rating.count) } : {}) },
+      attributes: { ...(avg ? { rating: String(avg) } : {}), ...(u.rating?.count ? { rating_count: String(u.rating.count) } : {}), ...(/^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {}) },
       seller: 'Flipkart',
       sellerUrl: u.baseUrl ? `https://www.flipkart.com${String(u.baseUrl).split('&')[0]}` : undefined,
       availability,

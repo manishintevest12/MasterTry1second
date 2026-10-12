@@ -34,19 +34,19 @@ const DEFAULT_VERTICAL_IMAGES: Record<string, string> = {
   cab: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&w=600&q=80',
 };
 
+// Real photo from the source page only. Items without one get a neutral branded
+// placeholder (vertical monogram) — NEVER a generic stock photo that could be
+// mistaken for the actual product (a mango photo is not Amul milk).
+const PLACEHOLDER_SVG: Record<string, string> = {};
+function placeholderImage(vertical: string, title: string): string {
+  const label = (vertical || 'item').slice(0, 8).toUpperCase();
+  const text = title.slice(0, 24).replace(/&/g, 'and').replace(/</g, '');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="267"><rect width="100%" height="100%" fill="#f1f5f9"/><text x="50%" y="42%" font-family="Arial" font-size="64" font-weight="bold" fill="#94a3b8" text-anchor="middle">${label}</text><text x="50%" y="62%" font-family="Arial" font-size="20" fill="#64748b" text-anchor="middle">${text}</text><text x="50%" y="80%" font-family="Arial" font-size="13" fill="#94a3b8" text-anchor="middle">photo not published by source</text></svg>`;
+  return `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(svg))) : Buffer.from(svg).toString('base64')}`;
+}
 const getItemImage = (item: ComparisonItem): string => {
   if (item.imageUrl) return item.imageUrl;
-  if (item.id === 'ht-1') return 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'ht-2') return 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'ec-1') return 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'ec-2') return 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'gr-1') return 'https://images.unsplash.com/photo-1553279768-865429fa0078?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'gr-2') return 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'fd-1') return 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'fd-2') return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'mv-1') return 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80';
-  if (item.id === 'mv-2') return 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=600&q=80';
-  return DEFAULT_VERTICAL_IMAGES[item.vertical] || DEFAULT_VERTICAL_IMAGES.hotels;
+  return placeholderImage(item.vertical, item.title);
 };
 
 const getLogoStyle = (item: ComparisonItem) => {
@@ -213,9 +213,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
                   onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src =
-                      DEFAULT_VERTICAL_IMAGES[item.vertical] ||
-                      'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80';
+                    (e.currentTarget as HTMLImageElement).onerror = null;
+                    (e.currentTarget as HTMLImageElement).src = placeholderImage(item.vertical, item.title);
                   }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent pointer-events-none" />

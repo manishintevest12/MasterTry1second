@@ -41,6 +41,7 @@ export function parseZomatoRestaurants(html: string, source: SourceConfig, searc
         location: { city: '' },
         attributes: {
           ...(it.servesCuisine ? { cuisines: it.servesCuisine.slice(0, 160) } : {}),
+          ...(typeof it.image === 'string' && /^https:\/\//.test(it.image) ? { image_url: it.image.slice(0, 400) } : {}),
           ...(rating !== undefined ? { rating: String(rating) } : {}),
           ...(reviews !== undefined ? { review_count: String(reviews) } : {}),
           ...(it.address?.streetAddress ? { address: it.address.streetAddress.slice(0, 160) } : {}),

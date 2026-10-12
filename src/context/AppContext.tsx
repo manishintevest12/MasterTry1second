@@ -14,16 +14,22 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
   // The card requires at least one seller quote; it is built from the SAME persisted
   // verified offer (no invented price, no invented vendor). A zero/invalid price
   // cannot become a quote, so the row is skipped rather than rendered broken.
+  const attrs: Record<string, string> = typeof row.attributes === 'string'
+    ? (() => { try { return JSON.parse(row.attributes) || {}; } catch { return {}; } })()
+    : (row.attributes || {});
+  const imageUrl = /^https:\/\//.test(attrs.image_url || '') ? attrs.image_url : undefined;
   return {
     id: `cat-${row.id}`,
+    imageUrl,
     vertical: row.vertical,
     title: String(row.title || 'Untitled offer'),
     subtitle: `${row.vendor || 'Unknown vendor'} · ${row.freshness_status || 'UNKNOWN'}`,
     category: row.vertical,
     provider: row.vendor || 'Unknown vendor',
-    rating: 0,
-    reviewCount: 0,
-    sentimentSummary: 'No verified reviews yet',
+    rating: Number(attrs.rating) || 0,
+    reviewCount: Number(attrs.review_count) || 0,
+    sentimentSummary: attrs.data_note || 'Live data from a verified source',
+    ...(imageUrl ? { features: [] as string[], specs: attrs.data_note ? { note: attrs.data_note } : {} } : {}),
     criteriaRatings: [],
     primaryPrice: price,
     originalPrice: 0,

@@ -1261,6 +1261,8 @@ function parseAmazonIn(html, source, searchUrl) {
     const productUrl = `https://www.amazon.in/dp/${asin}`;
     void url;
     const prime = card.find("i.a-icon-prime").length > 0;
+    const img = (card.find("img.s-image").first().attr("src") || "").trim();
+    const imageUrl = /^https:\/\/m\.media-amazon\.com\//.test(img) ? img : "";
     const unavailable = /currently unavailable|out of stock/i.test(card.text());
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
@@ -1268,7 +1270,7 @@ function parseAmazonIn(html, source, searchUrl) {
       currency: "INR",
       listPrice: mrp && mrp > price ? mrp : void 0,
       identifiers: { vendorProductId: asin },
-      attributes: { ...rating ? { rating } : {}, ...prime ? { prime: "true" } : {} },
+      attributes: { ...rating ? { rating } : {}, ...prime ? { prime: "true" } : {}, ...imageUrl ? { image_url: imageUrl } : {} },
       seller: "Amazon.in",
       sellerUrl: productUrl,
       availability: unavailable ? "out_of_stock" : "in_stock",
@@ -1332,7 +1334,10 @@ function collectUnits(node, out) {
     return;
   }
   if (node && typeof node === "object") {
-    if (node.type === "ProductSummaryValue") out.push(node);
+    if (node.id && node.titles?.title && Array.isArray(node.pricing?.prices) && node.pricing.prices.length) {
+      out.push(node);
+      return;
+    }
     for (const v of Object.values(node)) collectUnits(v, out);
   }
 }
@@ -1355,6 +1360,8 @@ function parseFlipkart(html, source, searchUrl) {
     const state2 = String(u.availability?.displayState || "");
     const availability = state2 === "IN_STOCK" ? "in_stock" : /OUT_OF_STOCK|SOLD_OUT|UNAVAILABLE/i.test(state2) ? "out_of_stock" : "unknown";
     const avg = u.rating?.average;
+    const rawImg = String(u.media?.images?.[0]?.url || u.imageUrl || "");
+    const imageUrl = rawImg ? rawImg.replace(/^http:/, "https:").replace("{@width}", "400").replace("{@height}", "400").replace("{@quality}", "70") : "";
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
       price: selling,
@@ -1362,7 +1369,7 @@ function parseFlipkart(html, source, searchUrl) {
       listPrice: mrp && mrp > selling ? mrp : void 0,
       brand: u.titles?.superTitle || void 0,
       identifiers: { vendorProductId: id },
-      attributes: { ...avg ? { rating: String(avg) } : {}, ...u.rating?.count ? { rating_count: String(u.rating.count) } : {} },
+      attributes: { ...avg ? { rating: String(avg) } : {}, ...u.rating?.count ? { rating_count: String(u.rating.count) } : {}, .../^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {} },
       seller: "Flipkart",
       sellerUrl: u.baseUrl ? `https://www.flipkart.com${String(u.baseUrl).split("&")[0]}` : void 0,
       availability,
@@ -2043,6 +2050,7 @@ function parseZomatoRestaurants(html, source, searchUrl, platform) {
         location: { city: "" },
         attributes: {
           ...it.servesCuisine ? { cuisines: it.servesCuisine.slice(0, 160) } : {},
+          ...typeof it.image === "string" && /^https:\/\//.test(it.image) ? { image_url: it.image.slice(0, 400) } : {},
           ...rating !== void 0 ? { rating: String(rating) } : {},
           ...reviews !== void 0 ? { review_count: String(reviews) } : {},
           ...it.address?.streetAddress ? { address: it.address.streetAddress.slice(0, 160) } : {},
@@ -5881,6 +5889,7 @@ function offerToComparisonItem(o) {
     category: o.vertical,
     provider: o.vendor,
     providerLogo: "",
+    imageUrl: /^https:\/\//.test(attrs["image_url"] || "") ? attrs["image_url"] : void 0,
     rating: Number(attrs["rating"]) || 0,
     reviewCount: Number(attrs["review_count"]) || 0,
     sentimentSummary: attrs["data_note"] || "Live data from a verified source",
@@ -6057,7 +6066,7 @@ var init_routes = __esm({
       try {
         const rows = await getStore().query(
           `SELECT id, vertical, title, vendor, seller, seller_url, source_url, mandatory_total, effective_price, currency, availability,
-              freshness_status, validation_status, fetched_at, source_id
+              freshness_status, validation_status, fetched_at, source_id, attributes
        FROM offers ORDER BY fetched_at DESC LIMIT 200`
         );
         res.json({ success: true, total: rows.length, items: rows, lastSavedAt: (/* @__PURE__ */ new Date()).toISOString() });

@@ -48,6 +48,8 @@ export function parseAmazonIn(html: string, source: SourceConfig, searchUrl: str
     const productUrl = `https://www.amazon.in/dp/${asin}`; // canonical, tracking-free
     void url;
     const prime = card.find('i.a-icon-prime').length > 0;
+    const img = (card.find('img.s-image').first().attr('src') || '').trim();
+    const imageUrl = /^https:\/\/m\.media-amazon\.com\//.test(img) ? img : '';
     const unavailable = /currently unavailable|out of stock/i.test(card.text());
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
@@ -55,7 +57,7 @@ export function parseAmazonIn(html: string, source: SourceConfig, searchUrl: str
       currency: 'INR',
       listPrice: mrp && mrp > price ? mrp : undefined,
       identifiers: { vendorProductId: asin },
-      attributes: { ...(rating ? { rating } : {}), ...(prime ? { prime: 'true' } : {}) },
+      attributes: { ...(rating ? { rating } : {}), ...(prime ? { prime: 'true' } : {}), ...(imageUrl ? { image_url: imageUrl } : {}) },
       seller: 'Amazon.in',
       sellerUrl: productUrl,
       availability: unavailable ? 'out_of_stock' : 'in_stock',
