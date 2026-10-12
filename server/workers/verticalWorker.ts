@@ -49,9 +49,13 @@ export const BROWSER_HEADERS: Record<string, string> = {
 
 /** Detect an interstitial that must be reported as ACCESS_CHALLENGE, never parsed as data. */
 export function looksLikeChallenge(body: string): boolean {
+  // Amazon/Flipkart soft-blocks often serve HTTP 200 with an "apologies" shell:
+  // real product listings are absent and the page self-describes as automated.
   const head = body.slice(0, 6000);
-  return /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you are human/i.test(head)
-    && !/application\/ld\+json/i.test(head);
+  const shell = body.length < 120_000;
+  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
+  return markers.test(head) && !/application\/ld\+json/i.test(head)
+    || (shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body));
 }
 
 /** Runs one task with isolation; converts every outcome into an AdapterResult. */

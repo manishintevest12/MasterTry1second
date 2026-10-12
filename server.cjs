@@ -1140,7 +1140,9 @@ var init_contract = __esm({
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
   const head = body.slice(0, 6e3);
-  return /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you are human/i.test(head) && !/application\/ld\+json/i.test(head);
+  const shell = body.length < 12e4;
+  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
+  return markers.test(head) && !/application\/ld\+json/i.test(head) || shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
   const started = Date.now();
