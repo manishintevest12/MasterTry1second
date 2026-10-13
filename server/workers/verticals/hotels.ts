@@ -40,6 +40,38 @@ export const hotelsWorker: VerticalWorker = {
   vertical: 'hotels',
   tasks: [
     {
+      // MakeMyTrip hotels — owner-mandated mandatory source. Akamai Bot Manager gates
+      // the hotel listing behind a valid _abck sensor cookie at the edge today; the
+      // attempt stays honest: on block we report ACCESS_CHALLENGE (visible as
+      // unavailable) and never fabricate prices.
+      sourceId: 'w_hotels_mmt',
+      priority: 15,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+        const r = await cffiFetch(`https://www.makemytrip.com/hotels/hotels-in-${slug}/`, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (r.status === 302 || r.status === 301) throw new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip redirected to Akamai geo-challenge (makemytrip.global) from this IP');
+        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `MakeMyTrip HTTP ${r.status}`);
+        if (r.body.length < 500) throw new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip returned an empty Akamai edge body (no sensor cookie)');
+        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip hotel page reached but carried no parseable SSR data');
+      },
+    },
+    {
+      // Goibibo hotels — owner-mandated mandatory source. Same Akamai edge gate today.
+      sourceId: 'w_hotels_goibibo',
+      priority: 15,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+        const r = await cffiFetch(`https://www.goibibo.com/hotels/hotels-in-${slug}/`, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `Goibibo HTTP ${r.status}`);
+        if (r.body.length < 500) throw new AcquisitionError('ACCESS_CHALLENGE', 'Goibibo returned an empty Akamai edge body (no sensor cookie)');
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Goibibo hotel page reached but carried no parseable SSR data');
+      },
+    },
+    {
       // Ixigo hotels (metasearch acquisition): SEO listing page carries __NEXT_DATA__
       // with hotel names + per-night base fares. Seller = the hotel property, never Ixigo.
       sourceId: 'w_hotels_ixigo',
