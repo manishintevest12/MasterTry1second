@@ -12,7 +12,7 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
-import { parseDistrictMovies, parseDistrictOffers, DISTRICT_MOVIES_URL } from '../parsers/district';
+import { parseDistrictMovies, parseDistrictOffers, districtPriceBands, DISTRICT_MOVIES_URL } from '../parsers/district';
 import { createHash } from 'node:crypto';
 
 let recentCache: { at: number; rows: any } | null = null;
@@ -133,7 +133,25 @@ export const moviesWorker: VerticalWorker = {
         if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `District movies page ${res.status}`, res.status);
         const movies = parseDistrictMovies(res.body);
         if (movies.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'District page carried no parseable JSON-LD movies');
-        return parseDistrictOffers(movies, ctx.source, queryTerm);
+        const offers = parseDistrictOffers(movies, ctx.source, queryTerm);
+        // SEAT-SELECTION PRICES: each matched movie's showtimes page carries the real session
+        // price histogram District's own seat-selection filter uses. Deep-dive the first few
+        // matched movies so the card shows a truthful "tickets from ₹X" instead of nothing.
+        for (const o of offers.slice(0, 3)) {
+          const url = String(o.sellerUrl || '');
+          if (!/^https:\/\/www\.district\.in\/movies\//.test(url)) continue;
+          try {
+            const page = await cffiFetch(url, { timeoutMs: 20_000 });
+            if (page.status !== 200) continue;
+            const band = districtPriceBands(page.body);
+            if (!band) continue;
+            o.price = band.from; o.attributes = o.attributes || {};
+            o.attributes['price_band'] = `₹${band.from}–₹${band.to}`;
+            o.attributes['data_note'] = `Ticket prices from District's session price bands (₹${band.from}–₹${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
+            (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_band_from', 'price_band_to'];
+          } catch { /* price deep-dive is best-effort; the offer stays honest without it */ }
+        }
+        return offers;
       },
     },
     {

@@ -3688,8 +3688,8 @@ var init_flights = __esm({
           // POST api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search.
           sourceId: "w_flights_indigo",
           name: "Flights worker: IndiGo 6E live fares (official app API)",
-          priority: 4,
-          maxPerMinute: 4,
+          priority: 6,
+          maxPerMinute: 2,
           timeoutMs: 3e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
@@ -6053,6 +6053,25 @@ var init_cinepolis = __esm({
 });
 
 // server/workers/parsers/district.ts
+function districtPriceBands(body) {
+  const buckets2 = [];
+  const bandRe = /\u20b9\s?([\d,]+)\s?-\s?\u20b9\s?([\d,]+)/g;
+  let m;
+  while ((m = bandRe.exec(body)) !== null) {
+    const win = body.slice(m.index, Math.min(body.length, m.index + 400));
+    if (!/price_[0-9_]+/.test(win)) continue;
+    const sc = win.match(/sessionCount\\?"?:\s*(\d+)/);
+    const sessions = sc ? Number(sc[1]) : 0;
+    buckets2.push({ lo: Number(m[1].replace(/,/g, "")), hi: Number(m[2].replace(/,/g, "")), sessions });
+  }
+  const live = buckets2.filter((b) => b.sessions > 0);
+  if (!live.length) return null;
+  live.sort((a, b) => a.lo - b.lo);
+  const firstPriced = live.find((b) => b.lo > 0);
+  const from = firstPriced ? firstPriced.lo : live[0].hi;
+  const to = live.reduce((mx, b) => Math.max(mx, b.hi), 0);
+  return from > 0 && to >= from ? { from, to } : null;
+}
 function parseDistrictMovies(body) {
   const out = [];
   const re = /<script type="application\/ld\+json">(\{[\s\S]*?\})<\/script>/g;
@@ -6249,7 +6268,24 @@ var init_movies = __esm({
             if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `District movies page ${res.status}`, res.status);
             const movies = parseDistrictMovies(res.body);
             if (movies.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "District page carried no parseable JSON-LD movies");
-            return parseDistrictOffers(movies, ctx.source, queryTerm);
+            const offers = parseDistrictOffers(movies, ctx.source, queryTerm);
+            for (const o of offers.slice(0, 3)) {
+              const url = String(o.sellerUrl || "");
+              if (!/^https:\/\/www\.district\.in\/movies\//.test(url)) continue;
+              try {
+                const page = await cffiFetch(url, { timeoutMs: 2e4 });
+                if (page.status !== 200) continue;
+                const band = districtPriceBands(page.body);
+                if (!band) continue;
+                o.price = band.from;
+                o.attributes = o.attributes || {};
+                o.attributes["price_band"] = `\u20B9${band.from}\u2013\u20B9${band.to}`;
+                o.attributes["data_note"] = `Ticket prices from District's session price bands (\u20B9${band.from}\u2013\u20B9${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
+                o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_band_from", "price_band_to"];
+              } catch {
+              }
+            }
+            return offers;
           }
         },
         {
@@ -8494,6 +8530,19 @@ function parseRouteQuery(raw) {
   if (!from.city || !to.city) return null;
   return { from, to };
 }
+function resolveCabQuery(raw, cityHint) {
+  const q3 = String(raw || "").trim();
+  if (!q3) return q3;
+  if (parseRouteQuery(q3)) return q3;
+  const text = (q3 + " " + (cityHint || "")).toLowerCase();
+  const known = Object.keys(CAB_DEFAULT_DEST);
+  const typed = q3.toLowerCase();
+  const city = known.find((c) => new RegExp(`\\b${c}\\b`).test(typed)) || known.find((c) => new RegExp(`\\b${c}\\b`).test(text));
+  if (!city) return q3;
+  const dest = CAB_DEFAULT_DEST[city];
+  const title = city.charAt(0).toUpperCase() + city.slice(1);
+  return `${title} to ${dest}`;
+}
 function placeHit(text, side) {
   const s = (text || "").toLowerCase();
   const alias = Object.entries(PLACE_ALIASES).filter(([, v]) => v === side.city).map(([k]) => k);
@@ -8544,7 +8593,7 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var NON_COMPARISON_VERTICALS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
+var NON_COMPARISON_VERTICALS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
     NON_COMPARISON_VERTICALS = [
@@ -8574,6 +8623,25 @@ var init_verticalEngine = __esm({
     };
     PLACE_NOISE = /\b(flight|flights|bus|buses|cab|cabs|taxi|ticket|tickets|book|booking|fare|fares|price|prices|from|cheapest|cheap|direct|return|one-way|oneway|airport|volvo|sleeper|ac|non-ac|hotel|hotels|in|near|around|at|on|for|tomorrow|today|tonight|night|morning|evening|next\s+\w+|this\s+\w+)\b/gi;
     IATA_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
+    CAB_DEFAULT_DEST = {
+      indore: "Bhopal",
+      bhopal: "Indore",
+      ujjain: "Indore",
+      delhi: "Jaipur",
+      mumbai: "Pune",
+      pune: "Mumbai",
+      bangalore: "Mysore",
+      bengaluru: "Mysore",
+      chennai: "Pondicherry",
+      hyderabad: "Vijayawada",
+      kolkata: "Durgapur",
+      ahmedabad: "Vadodara",
+      jaipur: "Delhi",
+      lucknow: "Kanpur",
+      chandigarh: "Delhi",
+      goa: "Mumbai",
+      nagpur: "Raipur"
+    };
     VerticalEngine = class {
       constructor(config) {
         this.config = config;
@@ -9269,10 +9337,31 @@ function sameProduct(a, b) {
   const shared = small.words.filter((w) => lw.has(w)).length;
   return shared >= 2 && shared / small.words.length >= 0.75;
 }
+function movieKey(title, city) {
+  const t = String(title || "").toLowerCase().replace(/\((?:hindi|english|tamil|telugu|malayalam|kannada|bengali|marathi|punjabi|gujarati|imax|3d|2d|4dx|dolby[^)]*|u\/?a?|a|s)\)/g, " ").replace(/\b(hindi|english|tamil|telugu|malayalam|kannada|3d|2d|imax|4dx)\b/g, " ").replace(/[^a-z0-9\s]/g, " ").replace(/\b(the|a|an|movie|film|tickets?)\b/g, " ").replace(/\s+/g, " ").trim();
+  if (t.length < 3) return null;
+  return `${t}|${String(city || "").toLowerCase()}`;
+}
 function groupSameProduct(items, extra = () => ({})) {
   const clusters = [];
   const slots = [];
   for (const it of items) {
+    if (it.vertical === "movies" || it.vertical === "movie") {
+      const mk = movieKey(it.title, it.city || it.specs?.["City"] || it.location);
+      if (!mk) {
+        slots.push(it);
+        continue;
+      }
+      const mh = clusters.find((c2) => c2.movieKey === mk && c2.vertical === it.vertical);
+      if (mh) {
+        mh.members.push(it);
+        continue;
+      }
+      const mc = { sig: null, vertical: it.vertical, members: [it], movieKey: mk };
+      clusters.push(mc);
+      slots.push(mc);
+      continue;
+    }
     if (it.vertical !== "ecommerce" && it.vertical !== "grocery") {
       slots.push(it);
       continue;
@@ -10797,6 +10886,7 @@ var init_routes = __esm({
         } : void 0,
         guests: Number(req.body.guests) || void 0
       };
+      if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
       const response = await runSearch(input);
       res.json({ success: response.results.length > 0 || response.state.servedFrom !== "unavailable", ...response });
@@ -10818,6 +10908,7 @@ var init_routes = __esm({
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
       }
+      if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (["flights", "bus", "cab"].includes(String(input.vertical))) {
         const rt = parseRouteQuery(input.query);
         if (rt) {
@@ -10865,7 +10956,7 @@ var init_routes = __esm({
           return;
         }
       }
-      if (kept.some((x) => x.priced)) kept = kept.filter((x) => x.priced);
+      if (kept.some((x) => x.priced) && !["movie", "movies"].includes(String(input.vertical))) kept = kept.filter((x) => x.priced);
       if (String(input.vertical) === "bus") {
         const live = kept.filter((x) => x.o.attributes?.fare_type !== "indicative_estimate");
         if (live.length) kept = live;

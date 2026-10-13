@@ -92,10 +92,13 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
   const [activeTab, setActiveTab] = useState<'sellers' | 'trend' | 'reviews' | 'specs'>('sellers');
   const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
   const [showImagePreview, setShowImagePreview] = useState<boolean>(false);
+  const [logoImgOk, setLogoImgOk] = useState<boolean>(true);
 
   const isTracked = trackedItemIds.includes(item.id);
   const bestQuote = item.sellerQuotes.find((q) => q.isLowest) || item.sellerQuotes[0];
-  const isImageVertical = true;
+  // Loans & insurance carry no product photo: show the provider's real logo tile
+  // (same idea as the flight rows' carrier logos) instead of a placeholder image.
+  const isImageVertical = !['loans', 'insurance'].includes(item.vertical);
   const logoStyle = getLogoStyle(item);
 
   const handleShare = (e: React.MouseEvent) => {
@@ -145,19 +148,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
-              {item.isLiveScraped ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded-full shadow-2xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>⚡ Live Scraped</span>
-                  {item.scrapedLatencyMs && (
-                    <span className="text-[10px] text-emerald-700 font-mono">({item.scrapedLatencyMs}ms)</span>
-                  )}
-                </span>
-              ) : (
-                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-sm">
-                  Cheapest
-                </span>
-              )}
+              
 
               {item.scrapedLocation ? (
                 <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
@@ -293,9 +284,19 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
                     logoStyle.bg
                   } ${logoStyle.color}`}
                 >
+                  {brandLogoUrl(item) && logoImgOk ? (
+                    <img
+                      src={brandLogoUrl(item)}
+                      alt={item.provider}
+                      className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
+                      referrerPolicy="no-referrer"
+                      onError={() => setLogoImgOk(false)}
+                    />
+                  ) : (
                   <span className="text-sm sm:text-base font-black tracking-tight leading-none px-1">
                     {item.logoText || item.providerLogo || item.provider.substring(0, 3).toUpperCase()}
                   </span>
+                  )}
                   <span className="text-[9px] uppercase tracking-wider opacity-85 mt-1 font-semibold truncate max-w-[65px] px-1">
                     {item.provider}
                   </span>

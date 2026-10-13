@@ -214,7 +214,7 @@ export const ComparisonFeed: React.FC = () => {
               </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
                 {searchQuery || (selectedCategory && selectedCategory !== 'All')
-                  ? `Click below to trigger Try1Second's Live Scraper cluster to harvest real-time rates for "${searchQuery || selectedCategory}" in ${meta.name}.`
+                  ? `Click below to fetch the latest prices for "${searchQuery || selectedCategory}" in ${meta.name}.`
                   : `We couldn't find matches for your active filter in ${meta.name}. Try clearing your search or adjusting your price threshold.`}
               </p>
               <div className="flex flex-wrap justify-center gap-2.5">

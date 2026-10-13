@@ -8,7 +8,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
 import { sourcesStatusReport } from '../sources/registry';
-import { parseRouteQuery } from '../verticals/verticalEngine';
+import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
@@ -79,6 +79,7 @@ apiRouter.post('/search', async (req, res) => {
     } : undefined,
     guests: Number(req.body.guests) || undefined,
   };
+  if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
   const response = await runSearch(input);
   res.json({ success: response.results.length > 0 || response.state.servedFrom !== 'unavailable', ...response });
@@ -219,6 +220,8 @@ apiRouter.post('/scrape/live', async (req, res) => {
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
   }
+  // Cab: a bare location ("vijay nagar indore") is resolved to the city's standard outstation route.
+  if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   // Same origin and destination is not a trip: refuse instead of showing some other route's fares.
   if (['flights', 'bus', 'cab'].includes(String(input.vertical))) {
     const rt = parseRouteQuery(input.query);
@@ -274,8 +277,10 @@ apiRouter.post('/scrape/live', async (req, res) => {
       return;
     }
   }
-  // Drop price-less rows when priced alternatives exist in the same vertical.
-  if (kept.some((x) => x.priced)) kept = kept.filter((x) => x.priced);
+  // Drop price-less rows when priced alternatives exist in the same vertical —
+  // EXCEPT movies: a film's card merges every ticket site, and only some sites
+  // expose seat-selection prices (the others are still real listing rows).
+  if (kept.some((x) => x.priced) && !['movie', 'movies'].includes(String(input.vertical))) kept = kept.filter((x) => x.priced);
   // Bus: once LIVE operator fares exist, the transparent OSRM indicative estimate
   // row is redundant — show only real operator quotes.
   if (String(input.vertical) === 'bus') {

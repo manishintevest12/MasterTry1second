@@ -73,6 +73,23 @@ export function sameProduct(a: ProductSig, b: ProductSig): boolean {
   return shared >= 2 && shared / small.words.length >= 0.75;
 }
 
+
+/**
+ * Movies: the SAME film listed by BookMyShow / TicketNew / District / Cinepolis is ONE card with every
+ * site as a seller (cheapest first when ticket prices are known, otherwise listing order).
+ * Key = normalized title ("Drishyam: The Conclusion" == "Drishyam The Conclusion") + city.
+ */
+export function movieKey(title: string, city?: string): string | null {
+  const t = String(title || '').toLowerCase()
+    .replace(/\((?:hindi|english|tamil|telugu|malayalam|kannada|bengali|marathi|punjabi|gujarati|imax|3d|2d|4dx|dolby[^)]*|u\/?a?|a|s)\)/g, ' ')
+    .replace(/\b(hindi|english|tamil|telugu|malayalam|kannada|3d|2d|imax|4dx)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(the|a|an|movie|film|tickets?)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  if (t.length < 3) return null;
+  return `${t}|${String(city || '').toLowerCase()}`;
+}
+
 interface Quote { sellerName: string; price: number; originalPrice?: number; [k: string]: any }
 
 /**
@@ -83,10 +100,19 @@ export function groupSameProduct<T extends { id: string; vertical: string; title
   items: T[],
   extra: (item: T) => { brand?: string; gtin?: string } = () => ({}),
 ): T[] {
-  type Cluster = { sig: ProductSig | null; gtin?: string; vertical: string; members: T[] };
+  type Cluster = { sig: ProductSig | null; gtin?: string; vertical: string; members: T[]; movieKey?: string };
   const clusters: Cluster[] = [];
   const slots: Array<T | Cluster> = [];
   for (const it of items) {
+    if (it.vertical === 'movies' || it.vertical === 'movie') {
+      const mk = movieKey(it.title, (it as any).city || it.specs?.['City'] || (it as any).location);
+      if (!mk) { slots.push(it); continue; }
+      const mh = clusters.find((c) => c.movieKey === mk && c.vertical === it.vertical);
+      if (mh) { mh.members.push(it); continue; }
+      const mc: Cluster = { sig: null, vertical: it.vertical, members: [it], movieKey: mk };
+      clusters.push(mc); slots.push(mc);
+      continue;
+    }
     if (it.vertical !== 'ecommerce' && it.vertical !== 'grocery') { slots.push(it); continue; }
     const { brand, gtin } = extra(it);
     const sig = productSig(it.title, brand);

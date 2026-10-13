@@ -25,7 +25,7 @@ export function sourceLabel(sourceId: string): string {
 const REASON: Record<string, string> = {
   ACCESS_CHALLENGE: 'Blocked by the site\'s bot protection',
   FORBIDDEN: 'Blocked by the site',
-  EMPTY_RESPONSE: 'Site returned no usable prices',
+  EMPTY_RESPONSE: 'Price not available right now',
   SERVER_ERROR: 'Site did not respond',
   TIMEOUT: 'Site timed out',
 };
@@ -47,7 +47,7 @@ export default function SourcesPanel({ vertical }: { vertical: string }) {
   const rows = ids.map((id) => {
     const f = failed.get(id);
     const ok = rep.succeeded.includes(id);
-    return { id, name: sourceLabel(id), ok, reason: f ? (REASON[f.failureClass || ''] || 'Unavailable') : ok ? '' : 'No result for this search', detail: f?.error };
+    return { id, name: sourceLabel(id), ok, reason: f ? (REASON[f.failureClass || ''] || 'Unavailable') : ok ? '' : 'Price not available right now', detail: f?.error };
   }).sort((a, b) => Number(b.ok) - Number(a.ok));
   const live = rows.filter((r) => r.ok).length;
 
@@ -55,7 +55,7 @@ export default function SourcesPanel({ vertical }: { vertical: string }) {
     <div className="mx-2 mt-2 rounded-xl border border-slate-200 bg-white" data-testid="sources-panel">
       <button type="button" onClick={() => setOpen(!open)} className="w-full flex items-center justify-between px-3 py-2 text-left">
         <span className="text-[12px] font-bold text-slate-800">
-          Compared across {rows.length} websites <span className="font-medium text-slate-500">· {live} gave live prices · for "{rep.query}"</span>
+          Compared across {rows.length} websites <span className="font-medium text-slate-500">· {live} showing prices · for "{rep.query}"</span>
         </span>
         {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
       </button>
@@ -68,7 +68,7 @@ export default function SourcesPanel({ vertical }: { vertical: string }) {
                 {dom ? <img src={`https://www.google.com/s2/favicons?domain=${dom}&sz=64`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" onError={(e) => ((e.currentTarget.style.display = 'none'))} /> : <span className="w-4 h-4 rounded-sm bg-slate-200" />}
                 <span className="font-semibold text-slate-800 truncate">{r.name}</span>
                 <span className="ml-auto flex items-center gap-1 shrink-0">
-                  {r.ok ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700 font-semibold">Live</span></>
+                  {r.ok ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700 font-semibold">Price found</span></>
                     : r.detail ? <><AlertTriangle className="w-3.5 h-3.5 text-amber-600" /><span className="text-slate-600">{r.reason}</span></>
                     : <><CircleSlash className="w-3.5 h-3.5 text-slate-400" /><span className="text-slate-500">{r.reason}</span></>}
                 </span>

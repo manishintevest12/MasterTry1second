@@ -128,17 +128,10 @@ export const SortAndSummaryTabs: React.FC = () => {
       {/* Live Scraper Engine Status Bar */}
       <div className="mt-2 pt-2 border-t border-slate-100 px-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px]">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Live Scraper Cluster</span>
-          </span>
-          <span className="text-slate-300">·</span>
           <span className="inline-flex items-center gap-1 font-medium text-slate-700">
             <MapPin className="w-3 h-3 text-red-500" />
             <span>Target: <strong>{userLocation.locality || userLocation.city}</strong> ({userLocation.pincode})</span>
           </span>
-          <span className="text-slate-300">·</span>
-          <span className="font-mono text-slate-500">{lastScrapeInfo.latencyMs}ms</span>
         </div>
 
         <button
@@ -148,7 +141,7 @@ export const SortAndSummaryTabs: React.FC = () => {
           className="text-xs font-bold text-orange-600 hover:text-orange-700 disabled:text-slate-400 cursor-pointer flex items-center gap-1"
         >
           <RotateCw className={`w-3 h-3 ${isScrapingLive ? 'animate-spin' : ''}`} />
-          <span>{isScrapingLive ? 'Scraping Live Web...' : 'Re-scan Live Now'}</span>
+          <span>{isScrapingLive ? 'Refreshing prices...' : 'Refresh prices'}</span>
         </button>
       </div>
     </div>

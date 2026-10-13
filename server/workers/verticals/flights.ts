@@ -161,8 +161,8 @@ export const flightsWorker: VerticalWorker = {
       // POST api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search.
       sourceId: 'w_flights_indigo',
       name: 'Flights worker: IndiGo 6E live fares (official app API)',
-      priority: 4,
-      maxPerMinute: 4,
+      priority: 6,
+      maxPerMinute: 2,
       timeoutMs: 30_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');

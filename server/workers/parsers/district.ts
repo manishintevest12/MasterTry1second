@@ -24,6 +24,36 @@ export interface DistrictMovie {
   image: string | null;
 }
 
+
+/**
+ * District movie page SSR carries a real session-price filter histogram (the same prices the
+ * seat-selection flow uses). The cheapest non-empty band gives an honest "tickets from ₹X"
+ * and the highest non-empty band the ceiling. Nothing invented: bands with 0 sessions are skipped.
+ */
+export function districtPriceBands(body: string): { from: number; to: number } | null {
+  const buckets: Array<{ lo: number; hi: number; sessions: number }> = [];
+  // the histogram appears with varying JSON escaping (\"title\" or plain "title" or \u20b9);
+  // anchor on the visible band text and confirm price_* + sessionCount nearby.
+  const bandRe = /\u20b9\s?([\d,]+)\s?-\s?\u20b9\s?([\d,]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = bandRe.exec(body)) !== null) {
+    const win = body.slice(m.index, Math.min(body.length, m.index + 400));
+    if (!/price_[0-9_]+/.test(win)) continue;
+    const sc = win.match(/sessionCount\\?"?:\s*(\d+)/);
+    const sessions = sc ? Number(sc[1]) : 0;
+    buckets.push({ lo: Number(m[1].replace(/,/g, '')), hi: Number(m[2].replace(/,/g, '')), sessions });
+  }
+  const live = buckets.filter((b) => b.sessions > 0);
+  if (!live.length) return null;
+  live.sort((a, b) => a.lo - b.lo);
+  // a "₹0–₹100" bucket means seats under ₹100 exist; the honest 'from' price is the
+  // lower bound of the first priced band above zero (or that bucket's ceiling).
+  const firstPriced = live.find((b) => b.lo > 0);
+  const from = firstPriced ? firstPriced.lo : live[0].hi;
+  const to = live.reduce((mx, b) => Math.max(mx, b.hi), 0);
+  return from > 0 && to >= from ? { from, to } : null;
+}
+
 /** Parse the schema.org ItemList of bookable movies from a District movies page body. */
 export function parseDistrictMovies(body: string): DistrictMovie[] {
   const out: DistrictMovie[] = [];

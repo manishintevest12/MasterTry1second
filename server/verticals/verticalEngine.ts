@@ -71,6 +71,31 @@ export function parseRouteQuery(raw: string): { from: { code?: string; city: str
   if (!from.city || !to.city) return null;
   return { from, to };
 }
+/**
+ * Cab searches are route fares. When the user types only a LOCATION (e.g. "vijay nagar indore",
+ * "Indore airport", "cab in indore") there is no destination, so no source can quote anything.
+ * Resolve it to the city's standard outstation route (city -> nearest popular destination) so the
+ * user still sees real fares; the route is shown in every result title. Never invents a price.
+ */
+const CAB_DEFAULT_DEST: Record<string, string> = {
+  indore: 'Bhopal', bhopal: 'Indore', ujjain: 'Indore', delhi: 'Jaipur', mumbai: 'Pune', pune: 'Mumbai',
+  bangalore: 'Mysore', bengaluru: 'Mysore', chennai: 'Pondicherry', hyderabad: 'Vijayawada', kolkata: 'Durgapur',
+  ahmedabad: 'Vadodara', jaipur: 'Delhi', lucknow: 'Kanpur', chandigarh: 'Delhi', goa: 'Mumbai', nagpur: 'Raipur',
+};
+export function resolveCabQuery(raw: string, cityHint?: string): string {
+  const q = String(raw || '').trim();
+  if (!q) return q;
+  if (parseRouteQuery(q)) return q; // already a route
+  const text = (q + ' ' + (cityHint || '')).toLowerCase();
+  // pick the first known city mentioned in the typed text (typed text wins over the profile city)
+  const known = Object.keys(CAB_DEFAULT_DEST);
+  const typed = q.toLowerCase();
+  const city = known.find((c) => new RegExp(`\\b${c}\\b`).test(typed)) || known.find((c) => new RegExp(`\\b${c}\\b`).test(text));
+  if (!city) return q;
+  const dest = CAB_DEFAULT_DEST[city];
+  const title = city.charAt(0).toUpperCase() + city.slice(1);
+  return `${title} to ${dest}`;
+}
 function placeHit(text: string, side: { code?: string; city: string }): boolean {
   const s = (text || '').toLowerCase();
   const alias = Object.entries(PLACE_ALIASES).filter(([, v]) => v === side.city).map(([k]) => k);
