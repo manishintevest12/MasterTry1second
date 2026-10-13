@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { brandDomain } from '../utils/brandLogo';
-import { CheckCircle2, CircleSlash, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, CircleSlash, AlertTriangle, ChevronDown, ChevronUp, Clock } from 'lucide-react';
+
+/** "2h ago" style relative time for the last-seen price. */
+function timeAgo(at: number): string {
+  const mins = Math.max(1, Math.round((Date.now() - at) / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return days < 30 ? `${days}d ago` : new Date(at).toLocaleDateString('en-IN');
+}
 
 /** Human names for worker source ids ("w_flights_emt" -> "EaseMyTrip"). Unknown ids are title-cased, never hidden. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -47,7 +57,7 @@ export default function SourcesPanel({ vertical }: { vertical: string }) {
   const rows = ids.map((id) => {
     const f = failed.get(id);
     const ok = rep.succeeded.includes(id);
-    return { id, name: sourceLabel(id), ok, reason: f ? (REASON[f.failureClass || ''] || 'Unavailable') : ok ? '' : 'Price not available right now', detail: f?.error };
+    return { id, name: sourceLabel(id), ok, reason: f ? (REASON[f.failureClass || ''] || 'Unavailable') : ok ? '' : 'Price not available right now', detail: f?.error, lastPrice: f?.lastPrice };
   }).sort((a, b) => Number(b.ok) - Number(a.ok));
   const live = rows.filter((r) => r.ok).length;
 
@@ -69,6 +79,7 @@ export default function SourcesPanel({ vertical }: { vertical: string }) {
                 <span className="font-semibold text-slate-800 truncate">{r.name}</span>
                 <span className="ml-auto flex items-center gap-1 shrink-0">
                   {r.ok ? <><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /><span className="text-emerald-700 font-semibold">Price found</span></>
+                    : r.lastPrice ? <><Clock className="w-3.5 h-3.5 text-slate-400" /><span className="text-slate-600">Last price <strong className="text-slate-800">₹{r.lastPrice.price.toLocaleString('en-IN')}</strong> · {timeAgo(r.lastPrice.at)}</span></>
                     : r.detail ? <><AlertTriangle className="w-3.5 h-3.5 text-amber-600" /><span className="text-slate-600">{r.reason}</span></>
                     : <><CircleSlash className="w-3.5 h-3.5 text-slate-400" /><span className="text-slate-500">{r.reason}</span></>}
                 </span>

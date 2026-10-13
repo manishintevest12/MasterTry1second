@@ -162,7 +162,7 @@ export interface SourcesReport {
   at: number;
   attempted: string[];
   succeeded: string[];
-  failed: Array<{ sourceId: string; failureClass?: string; error?: string }>;
+  failed: Array<{ sourceId: string; failureClass?: string; error?: string; lastPrice?: { price: number; query: string; at: number } }>;
   resultsCount: number;
   servedFrom?: string;
 }

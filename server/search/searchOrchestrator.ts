@@ -14,6 +14,7 @@
  *  - Slow sources never block verified results (progressive, bounded parallel acquisition).
  */
 import type { AdapterResult, NormalizedOffer, ParsedQuery, SearchResponse, SearchStateFlags } from '../types';
+import { recordSourcePrices, enrichFailedWithLastPrice } from '../common/lastPrice';
 import { buildCacheKey, cacheGet, cachePut, revalidateInBackground } from '../common/cache';
 import { log } from '../common/logger';
 import { aiAssistedUnderstanding, understandQuery } from '../query/queryUnderstanding';
@@ -210,6 +211,10 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Prom
 
     // 6. PARSING → NORMALIZATION → MATCHING → PRICING → VALIDATION → FRESHNESS → EVIDENCE
     liveOffers = await processAdapterResults(outcome.results, parsed);
+    // LAST PRICE MEMORY: remember what each source last charged in this vertical so a
+    // later blocked/empty search can show "Last: ₹X · when" instead of nothing.
+    recordSourcePrices(String(vertical), String(input.query || ''), liveOffers as any);
+    state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed) as any;
   } else {
     state.sourcesAttempted = [];
   }

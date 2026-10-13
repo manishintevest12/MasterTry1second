@@ -126,6 +126,64 @@ var init_settings = __esm({
   }
 });
 
+// server/common/lastPrice.ts
+function load() {
+  if (cache) return cache;
+  try {
+    cache = JSON.parse(import_node_fs.default.readFileSync(FILE, "utf8"));
+  } catch {
+    cache = {};
+  }
+  return cache;
+}
+function persistSoon() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      import_node_fs.default.mkdirSync(dataDir, { recursive: true });
+      import_node_fs.default.writeFileSync(FILE, JSON.stringify(cache ?? {}));
+      lastSave = Date.now();
+    } catch {
+    }
+  }, 250);
+}
+function recordSourcePrices(vertical, query, offers) {
+  const store2 = load();
+  const perSource = /* @__PURE__ */ new Map();
+  for (const o of offers || []) {
+    const sid = String(o.sourceId || "");
+    if (!sid) continue;
+    const p = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0);
+    if (!(p > 0)) continue;
+    perSource.set(sid, Math.min(perSource.get(sid) ?? Infinity, p));
+  }
+  const now = Date.now();
+  for (const [sid, price] of perSource) {
+    store2[`${vertical}|${sid}`] = { price: Math.round(price * 100) / 100, query: String(query || "").slice(0, 80), at: now };
+  }
+  if (perSource.size) persistSoon();
+}
+function enrichFailedWithLastPrice(vertical, failed) {
+  const store2 = load();
+  return (failed || []).map((f) => {
+    const e = store2[`${vertical}|${f.sourceId}`];
+    return e ? { ...f, lastPrice: { ...e } } : f;
+  });
+}
+var import_node_fs, import_node_path, FILE, cache, lastSave, saveTimer;
+var init_lastPrice = __esm({
+  "server/common/lastPrice.ts"() {
+    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_path = __toESM(require("node:path"), 1);
+    init_settings();
+    FILE = import_node_path.default.join(dataDir, "last-price.json");
+    cache = null;
+    lastSave = 0;
+    saveTimer = null;
+  }
+});
+
 // server/common/logger.ts
 var logger_exports = {};
 __export(logger_exports, {
@@ -1077,27 +1135,27 @@ async function cffiFetch(url, opts = {}) {
     child.stdin.end();
   });
 }
-var import_node_child_process, import_node_path, import_node_fs, import_node_url, import_meta, HELPER, PY_CANDIDATES, pyChoice, probeResults;
+var import_node_child_process, import_node_path2, import_node_fs2, import_node_url, import_meta, HELPER, PY_CANDIDATES, pyChoice, probeResults;
 var init_curlCffiFetch = __esm({
   "server/common/curlCffiFetch.ts"() {
     import_node_child_process = require("node:child_process");
-    import_node_path = __toESM(require("node:path"), 1);
-    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_path2 = __toESM(require("node:path"), 1);
+    import_node_fs2 = __toESM(require("node:fs"), 1);
     import_node_url = require("node:url");
     init_httpClient();
     import_meta = {};
     HELPER = (() => {
       const cands = [];
       try {
-        cands.push(import_node_path.default.join(import_node_path.default.dirname((0, import_node_url.fileURLToPath)(import_meta.url)), "..", "acquisition", "pyfetch.py"));
+        cands.push(import_node_path2.default.join(import_node_path2.default.dirname((0, import_node_url.fileURLToPath)(import_meta.url)), "..", "acquisition", "pyfetch.py"));
       } catch {
       }
       try {
-        cands.push(import_node_path.default.join(__dirname, "server", "acquisition", "pyfetch.py"));
+        cands.push(import_node_path2.default.join(__dirname, "server", "acquisition", "pyfetch.py"));
       } catch {
       }
-      cands.push(import_node_path.default.join(process.cwd(), "server", "acquisition", "pyfetch.py"));
-      return cands.find((c) => import_node_fs.default.existsSync(c)) || cands[cands.length - 1];
+      cands.push(import_node_path2.default.join(process.cwd(), "server", "acquisition", "pyfetch.py"));
+      return cands.find((c) => import_node_fs2.default.existsSync(c)) || cands[cands.length - 1];
     })();
     PY_CANDIDATES = () => {
       const c = [];
@@ -3009,7 +3067,7 @@ function splitCsv(line) {
   return out.map((s) => s.trim());
 }
 async function loadOpenFlights(fetchFn) {
-  if (cache && Date.now() - cache.at < 24 * 36e5) return cache;
+  if (cache2 && Date.now() - cache2.at < 24 * 36e5) return cache2;
   const [apRaw, alRaw, rtRaw] = await Promise.all([
     fetchFn(`${BASE}/airports.dat`),
     fetchFn(`${BASE}/airlines.dat`),
@@ -3027,7 +3085,7 @@ async function loadOpenFlights(fetchFn) {
     const f = l.split(",");
     return { airlineIata: f[0], srcIata: f[2], dstIata: f[4], stops: Number(f[7]) };
   }).filter((r) => r.srcIata && r.dstIata && r.srcIata !== "\\N" && r.dstIata !== "\\N");
-  cache = { at: Date.now(), airports, airlines, routes };
+  cache2 = { at: Date.now(), airports, airlines, routes };
   return { airports, airlines, routes };
 }
 function matchAirports(airports, input) {
@@ -3096,12 +3154,12 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
   }
   return out.slice(0, 20);
 }
-var BASE, cache, CITY_ALIASES, AIRLINE_SITES;
+var BASE, cache2, CITY_ALIASES, AIRLINE_SITES;
 var init_openflights = __esm({
   "server/workers/parsers/openflights.ts"() {
     init_contract();
     BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
-    cache = null;
+    cache2 = null;
     CITY_ALIASES = {
       "new delhi": "delhi",
       "bengaluru": "bangalore",
@@ -9174,6 +9232,8 @@ async function runLivePipeline(input, parsedIn) {
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
     liveOffers = await processAdapterResults(outcome.results, parsed);
+    recordSourcePrices(String(vertical), String(input.query || ""), liveOffers);
+    state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed);
   } else {
     state.sourcesAttempted = [];
   }
@@ -9281,6 +9341,7 @@ async function recordSearchMetrics(input, parsed, response) {
 }
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
+    init_lastPrice();
     init_cache();
     init_logger();
     init_queryUnderstanding();
@@ -12469,18 +12530,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path7, params = {}) {
+      async apiGet(path8, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path7}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path8}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path7, params);
+          return this.apiGet(path8, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path7} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path8} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
