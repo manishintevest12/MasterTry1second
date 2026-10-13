@@ -115,7 +115,16 @@ function detectIntent(q: string): ParsedQuery['intent'] {
 /** Rule-based understanding — the deterministic core, no network needed. */
 export function understandQuery(rawQuery: string, provided?: Partial<ParsedQuery['location']>): ParsedQuery {
   const { vertical, confidence } = detectVertical(rawQuery);
-  const loc = { ...extractLocation(rawQuery), ...provided };
+  // Merge caller-provided location WITHOUT letting explicit undefined clobber an
+  // extracted value ("in chennai" was being erased when the API caller passed
+  // city: undefined — the exact spread-undefined pitfall).
+  const loc = { ...extractLocation(rawQuery) };
+  if (provided) {
+    if (provided.pincode) loc.pincode = provided.pincode;
+    if (provided.city) loc.city = provided.city;
+    if (typeof provided.lat === 'number') loc.lat = provided.lat;
+    if (typeof provided.lng === 'number') loc.lng = provided.lng;
+  }
   return {
     rawQuery,
     vertical,

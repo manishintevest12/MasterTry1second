@@ -9,6 +9,7 @@ import { wikidataFetch, recentIndianFilms, parseRecentFilms, searchFilmEntity } 
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
+import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import { createHash } from 'node:crypto';
 
 let recentCache: { at: number; rows: any } | null = null;
@@ -48,6 +49,38 @@ export const moviesWorker: VerticalWorker = {
         const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : '';
         const fingerprint = createHash('sha256').update(res.body).digest('hex').slice(0, 16);
         return parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+      },
+    },
+    {
+      sourceId: 'w_movies_ticketnew',
+      name: 'Movies worker: TicketNew now-showing (Next.js __NEXT_DATA__, city-aware)',
+      priority: 8,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const entity = String(ctx.query.entityName || '').trim();
+        const city = String(ctx.query.location?.city || '');
+        const keys = ticketnewCityKeys(city);
+        if (keys.length === 0) return []; // city unknown to TicketNew — honest empty, no substitute
+        const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
+        let lastErr: any = null;
+        for (const key of keys.slice(0, 2)) {
+          try {
+            const res = await cffiFetch(`${TICKETNEW_BASE}/movies/${key}`, { timeoutMs: 25_000 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `TicketNew blocked: ${res.status}`, res.status);
+            }
+            if (res.status !== 200) { lastErr = new Error(`TN listing ${res.status}`); continue; }
+            const movies = parseTicketNewMoviesPage(res.body, key);
+            if (movies.length === 0) { lastErr = new Error('no movies parsed'); continue; }
+            return parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+          } catch (e: any) {
+            lastErr = e;
+            if (e instanceof AcquisitionError && (e.failureClass === 'FORBIDDEN' || e.failureClass === 'RATE_LIMITED')) throw e;
+          }
+        }
+        if (lastErr instanceof AcquisitionError) throw lastErr;
+        return []; // honest empty when the listing pages do not resolve
       },
     },
     {

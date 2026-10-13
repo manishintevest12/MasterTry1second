@@ -60,3 +60,10 @@ test('bms: discover url + headers carry region code for geo-accurate listings', 
   assert.equal(bmsDiscoverHeaders(region)['x-region-code'], 'BANG');
   assert.equal(bmsDiscoverHeaders(region)['x-app-code'], 'WEB');
 });
+
+test('query: "in chennai" city extraction survives undefined caller-provided location', async () => {
+  const { understandQuery } = await import('../server/query/queryUnderstanding');
+  const q = understandQuery('jailer 2 movie tickets in chennai', { pincode: undefined, city: undefined });
+  assert.equal(q.location.city, 'Chennai');
+  assert.equal(q.vertical, 'movies');
+});
