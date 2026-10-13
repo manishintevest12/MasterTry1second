@@ -927,6 +927,14 @@ function recordSuccess(sourceId, latencyMs) {
 function recordFailure(sourceId, failureClass, _error) {
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
+  if (failureClass === "RATE_LIMITED") {
+    h.lastFailureAt = (/* @__PURE__ */ new Date()).toISOString();
+    h.lastFailureClass = failureClass;
+    h.state = h.state === "CIRCUIT_OPEN" ? h.state : "DEGRADED";
+    health.set(sourceId, h);
+    void persist(h);
+    return;
+  }
   h.consecutiveFailures += 1;
   h.lastFailureAt = (/* @__PURE__ */ new Date()).toISOString();
   h.lastFailureClass = failureClass;
@@ -6370,7 +6378,7 @@ var init_bus = __esm({
           sourceId: "w_bus_redbus",
           name: "Bus worker: redBus live services (real fares, timings, seats)",
           priority: 2,
-          maxPerMinute: 8,
+          maxPerMinute: 24,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
@@ -6466,7 +6474,7 @@ var init_bus = __esm({
           sourceId: "w_bus_abhibus",
           name: "Bus worker: AbhiBus live services (real fares, timings, seats)",
           priority: 1,
-          maxPerMinute: 8,
+          maxPerMinute: 24,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);

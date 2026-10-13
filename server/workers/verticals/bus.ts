@@ -39,7 +39,7 @@ export const busWorker: VerticalWorker = {
       sourceId: 'w_bus_redbus',
       name: 'Bus worker: redBus live services (real fares, timings, seats)',
       priority: 2,
-      maxPerMinute: 8,
+      maxPerMinute: 24,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
@@ -135,7 +135,7 @@ export const busWorker: VerticalWorker = {
       sourceId: 'w_bus_abhibus',
       name: 'Bus worker: AbhiBus live services (real fares, timings, seats)',
       priority: 1,
-      maxPerMinute: 8,
+      maxPerMinute: 24,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
