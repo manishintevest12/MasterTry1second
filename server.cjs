@@ -2663,6 +2663,79 @@ var init_movies = __esm({
   }
 });
 
+// server/workers/parsers/abhibus.ts
+async function resolveAbhiBusCity(fetchJson, city) {
+  const raw = String(city || "").trim();
+  if (!raw) return null;
+  const q3 = encodeURIComponent(raw.replace(/\s+/g, " ").slice(0, 40));
+  const list = await fetchJson(`https://www.abhibus.com/wap/SearchStations?s=${q3}`);
+  if (!Array.isArray(list) || !list.length) return null;
+  const lower = raw.toLowerCase();
+  const exact = list.find((s) => String(s.label || "").toLowerCase() === lower);
+  const chosen = exact || list[0];
+  return { id: String(chosen.id), label: String(chosen.label || raw) };
+}
+function parseAbhiBusServices(json, source, route) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const services = Array.isArray(d?.services) ? d.services : [];
+  if (!services.length) return [];
+  const fingerprint = (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route.fromName)}/${route.fromId}/${encodeURIComponent(route.toName)}/${route.toId}/${route.jdate}`;
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const s of services) {
+    const fare = Number(s?.fares?.offerPrice) || Number(s?.fares?.fare);
+    if (!fare || fare <= 0) continue;
+    const key = String(s.serviceKey || s.serviceId || s.masterId || "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const operator = String(s.travelerAgentName || "").trim();
+    const busType = String(s.busServiceTypeName || s.busTypeName || "").trim();
+    const t = s.timings || {};
+    const seats = Number(s?.seatStats?.availableSeats);
+    const rating = Number(s.rating) > 0 ? String(s.rating) : void 0;
+    out.push(newRawItem(source, {
+      title: `${operator || "AbhiBus operator"} \xB7 ${busType}`.slice(0, 200),
+      price: fare,
+      currency: "INR",
+      ...Number(s?.fares?.fare) > fare ? { listPrice: Number(s.fares.fare) } : {},
+      seller: (operator || "AbhiBus").slice(0, 120),
+      sellerUrl: searchUrl,
+      availability: seats > 0 ? "in_stock" : "out_of_stock",
+      travel: { route: `${route.fromName} \u2192 ${route.toName}`, date: route.jdate, seatType: busType || "unknown" },
+      attributes: {
+        operator: operator || "AbhiBus",
+        ...t.startTime ? { departure: `${String(t.startTime)}${t.arriveTime ? ` \u2192 ${String(t.arriveTime)}` : ""}` } : {},
+        ...t.travelTime ? { duration: `~${String(t.travelTime).slice(0, 8)} h` } : {},
+        ...Number.isFinite(seats) ? { seats_available: String(seats) } : {},
+        ...rating ? { rating } : {},
+        ...s?.busInsights?.busThumbnailUrl && /^https:\/\//.test(s.busInsights.busThumbnailUrl) ? { image_url: s.busInsights.busThumbnailUrl } : {},
+        platform: "AbhiBus",
+        data_note: "Live fare and seats from AbhiBus public JSON API"
+      },
+      evidence: {
+        sourceUrl: searchUrl,
+        sourceReference: key || String(s.serviceId || ""),
+        rawFingerprint: fingerprint,
+        extractedFields: ["title", "price", "departure", "duration", ...rating ? ["rating"] : [], "availability"]
+      }
+    }));
+  }
+  return out.slice(0, 40);
+}
+var import_crypto9;
+var init_abhibus = __esm({
+  "server/workers/parsers/abhibus.ts"() {
+    import_crypto9 = require("crypto");
+    init_contract();
+  }
+});
+
 // server/workers/verticals/bus.ts
 function routeFromQuery3(raw) {
   const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -2676,9 +2749,60 @@ var init_bus = __esm({
     init_verticalWorker();
     init_osrmCab();
     init_httpClient();
+    init_abhibus();
     busWorker = {
       vertical: "bus",
       tasks: [
+        {
+          // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
+          // /wap/SearchStations resolves city -> station id, /buslist/v3/services
+          // returns live per-service fares, timings, bus type and seat counts.
+          sourceId: "w_bus_abhibus",
+          name: "Bus worker: AbhiBus live services (real fares, timings, seats)",
+          priority: 1,
+          maxPerMinute: 8,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const rt = routeFromQuery3(raw);
+            if (!rt) return [];
+            const getJson = async (url) => {
+              const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json" } });
+              if (r2.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus HTTP ${r2.status} on ${url.split("?")[0]}`, r2.status);
+              try {
+                return JSON.parse(r2.body);
+              } catch {
+                throw new AcquisitionError("MALFORMED_RESPONSE", "AbhiBus non-JSON response");
+              }
+            };
+            const [from, to] = await Promise.all([
+              resolveAbhiBusCity(getJson, rt.from),
+              resolveAbhiBusCity(getJson, rt.to)
+            ]);
+            if (!from || !to) throw new AcquisitionError("NOT_FOUND", `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
+            const depart = String(ctx.query.travelDates?.depart || "");
+            const jdate = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+            const route = { fromName: from.label, fromId: from.id, toName: to.label, toId: to.id, jdate };
+            const r = await ctx.fetch("https://www.abhibus.com/buslist/v3/services", {
+              method: "POST",
+              expectJson: true,
+              maxBytes: 6e6,
+              timeoutMs: 2e4,
+              headers: { Accept: "application/json", "Content-Type": "application/json" },
+              body: JSON.stringify({
+                source: from.label,
+                sourceid: Number(from.id),
+                destination: to.label,
+                destinationid: Number(to.id),
+                jdate,
+                prd: "mobile",
+                filters: "1",
+                isReturnJourney: "0"
+              })
+            });
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus services HTTP ${r.status}`, r.status);
+            return parseAbhiBusServices(r.body, ctx.source, route);
+          }
+        },
         {
           sourceId: "w_bus_osrm_estimate",
           name: "Bus worker: OSRM real-distance intercity estimate",
@@ -2998,11 +3122,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto9, HttpAcquisitionAdapter;
+var cheerio5, import_crypto10, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -3049,7 +3173,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto9.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -3098,10 +3222,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto10, StructuredDataAdapter;
+var import_crypto11, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -3131,7 +3255,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -3188,10 +3312,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto11, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto12, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto11 = require("crypto");
+    import_crypto12 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -3239,7 +3363,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -3263,7 +3387,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -3430,7 +3554,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -4055,13 +4179,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto12.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto13.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto12;
+var import_crypto13;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto12 = require("crypto");
+    import_crypto13 = require("crypto");
   }
 });
 
@@ -4640,7 +4764,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto13.default.randomUUID();
+  const clickId = import_crypto14.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -4666,10 +4790,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto13, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto14, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto13 = __toESM(require("crypto"), 1);
+    import_crypto14 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -4680,7 +4804,7 @@ var init_affiliateNetwork = __esm({
       }
       buildDeepLink(destinationUrl, _vendorDomain) {
         const apiKey = settings.cuelinks.apiKey;
-        const template = settings.cuelinks.campaignId ? `https://linksdesination.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
+        const template = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
         if (!apiKey || !template) return null;
         return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
       }
@@ -4907,16 +5031,16 @@ var init_searchOrchestrator = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto14.default.randomBytes(16).toString("hex");
-  const hash = import_crypto14.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto15.default.randomBytes(16).toString("hex");
+  const hash = import_crypto15.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto14.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto14.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto15.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto15.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -4939,7 +5063,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto14.default.randomBytes(32).toString("hex");
+  const token = import_crypto15.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -4979,10 +5103,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto14, SESSION_TTL_SEC;
+var import_crypto15, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto14 = __toESM(require("crypto"), 1);
+    import_crypto15 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -5024,16 +5148,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto15.default.randomBytes(8).toString("hex");
-  const hash = import_crypto15.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto16.default.randomBytes(8).toString("hex");
+  const hash = import_crypto16.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto15.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto16.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto15.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto16.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -5066,7 +5190,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
-  const code = String(import_crypto15.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto16.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -5123,10 +5247,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean}`);
   return { ok: true, email: clean };
 }
-var import_crypto15, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto16, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto15 = __toESM(require("crypto"), 1);
+    import_crypto16 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -5169,8 +5293,8 @@ async function verifyFirebaseIdToken(idToken) {
     const certs = await getCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto16.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto16.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto17.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto17.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
     if (!signatureOk) return null;
@@ -5186,10 +5310,10 @@ async function verifyFirebaseIdToken(idToken) {
     return null;
   }
 }
-var import_crypto16, CERT_URL, certCache, CERT_TTL_MS;
+var import_crypto17, CERT_URL, certCache, CERT_TTL_MS;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto16 = __toESM(require("crypto"), 1);
+    import_crypto17 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -5262,7 +5386,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto17.default.randomUUID();
+  const key = idempotencyKey || import_crypto18.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -5377,15 +5501,129 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto17, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+var import_crypto18, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto17 = __toESM(require("crypto"), 1);
+    import_crypto18 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
     POINTS_PER_SPIN_ELIGIBILITY = 100;
     userLocks = /* @__PURE__ */ new Map();
+  }
+});
+
+// server/affiliate/deeplink.ts
+function secret() {
+  return process.env.AFFILIATE_SECRET || import_crypto19.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+}
+function b64url(s) {
+  return Buffer.from(s, "utf8").toString("base64url");
+}
+function unb64url(s) {
+  return Buffer.from(s, "base64url").toString("utf8");
+}
+function createMaskingPointer(destination, opts = {}) {
+  const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
+  const sig = import_crypto19.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  return `/api/out?t=${payload}.${sig}`;
+}
+function resolveMaskingPointer(token) {
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m) return null;
+  const [payload, sig] = [m[1], m[2]];
+  const expect = import_crypto19.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto19.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  try {
+    const j = JSON.parse(unb64url(payload));
+    if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
+    return { destination: String(j.d), offerId: j.o ? String(j.o) : void 0 };
+  } catch {
+    return null;
+  }
+}
+function safeDomain2(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+function cuelinksTemplate() {
+  const c = settings.cuelinks;
+  if (!c.apiKey || !c.campaignId) return null;
+  return `https://linksredirect.com/cuelink?type=nl&subid=${encodeURIComponent(c.subId || "try1second")}&campaign=${encodeURIComponent(c.campaignId)}&url={url}`;
+}
+async function buildSecureDeeplink(targetUrl, opts = {}) {
+  const domain = safeDomain2(targetUrl);
+  const store2 = getStore();
+  try {
+    const slug = (opts.companySlug || "").toLowerCase().slice(0, 64);
+    const rows = await store2.query(
+      `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
+       WHERE active = 1 AND (slug = ? OR company_domain = ?) LIMIT 1`,
+      [slug, domain]
+    );
+    const r = rows?.[0];
+    if (r?.template) {
+      const extra = parseJsonObj(r.extra_params);
+      const url = renderTemplate(String(r.template), targetUrl, extra, String(r.subid_param || "subid"));
+      return { trackingUrl: url, network: String(r.network || "direct"), matchedProfile: "affiliate_configs" };
+    }
+  } catch {
+  }
+  try {
+    const rows = await store2.query(
+      `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
+       WHERE vendor_domain = ? LIMIT 1`,
+      [domain]
+    );
+    const r = rows?.[0];
+    if (r?.deep_link_template) {
+      const url = renderTemplate(String(r.deep_link_template), targetUrl, { campaign: r.campaign_id || "", subid: r.sub_id || "" }, "subid");
+      return { trackingUrl: url, network: String(r.network_id || "direct"), matchedProfile: "affiliate_links" };
+    }
+  } catch {
+  }
+  const tpl = cuelinksTemplate();
+  if (tpl) return { trackingUrl: renderTemplate(tpl, targetUrl, {}, "subid"), network: "cuelinks", matchedProfile: "cuelinks_fallback" };
+  return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
+}
+function renderTemplate(tpl, dest, extra, subidParam) {
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto19.default.randomBytes(6).toString("hex"));
+  return out.replace(/\{[a-z0-9_]+\}/gi, "");
+}
+function parseJsonObj(v) {
+  if (!v) return {};
+  try {
+    const j = typeof v === "string" ? JSON.parse(v) : v;
+    return j && typeof j === "object" ? j : {};
+  } catch {
+    return {};
+  }
+}
+async function recordPointerClick(dest, offerId, network) {
+  const clickId = import_crypto19.default.randomUUID();
+  try {
+    const store2 = getStore();
+    await store2.execute(
+      `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
+       VALUES (?, ?, ?, ?, ?, NULL)`,
+      [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain2(dest), dest.slice(0, 2e3), clickId]
+    );
+  } catch (e) {
+    log.debug("Affiliate", "click recording skipped", {});
+  }
+  return clickId;
+}
+var import_crypto19, AFFILIATE_TTL_SEC;
+var init_deeplink = __esm({
+  "server/affiliate/deeplink.ts"() {
+    import_crypto19 = __toESM(require("crypto"), 1);
+    init_settings();
+    init_logger();
+    init_db();
+    AFFILIATE_TTL_SEC = 24 * 60 * 60;
   }
 });
 
@@ -6021,7 +6259,8 @@ __export(routes_exports, {
 function offerToComparisonItem(o) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
-  const url = o.affiliate?.deepLink || o.sellerUrl || "";
+  const rawDest = o.sellerUrl || "";
+  const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || "") }) : "";
   const seller = String(o.seller || o.vendor || "Verified source");
   const attrs = o.attributes || {};
   const specs = {};
@@ -6107,7 +6346,7 @@ function offerToComparisonItem(o) {
         deliveryOrEta: attrs["eta"] || attrs["delivery"] || "Standard delivery",
         isLowest: true,
         isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
-        sourceDomain: url ? String(url).replace(/^https?:\/\//, "").split("/")[0] : void 0
+        sourceDomain: rawDest ? String(rawDest).replace(/^https?:\/\//, "").split("/")[0] : void 0
       }
     ],
     sellerUrl: url,
@@ -6135,7 +6374,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto18, apiRouter;
+var import_express, import_crypto20, apiRouter;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -6145,9 +6384,10 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto18 = __toESM(require("crypto"), 1);
+    import_crypto20 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
+    init_deeplink();
     init_db();
     init_db();
     init_cache();
@@ -6244,6 +6484,10 @@ var init_routes = __esm({
         }
       }
       if (kept.some((x) => x.priced)) kept = kept.filter((x) => x.priced);
+      if (String(input.vertical) === "bus") {
+        const live = kept.filter((x) => x.o.attributes?.fare_type !== "indicative_estimate");
+        if (live.length) kept = live;
+      }
       kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
       response.results = kept.map((x) => x.o);
       res.json({
@@ -6329,6 +6573,15 @@ var init_routes = __esm({
       if (!decision.allowed) return res.status(400).json({ success: false, error: `Refused: ${decision.reason}` });
       res.json({ success: true, clickId: decision.clickId, redirectUrl: decision.destination, viaNetwork: decision.viaNetwork });
     });
+    apiRouter.get("/out", async (req, res) => {
+      const resolved = resolveMaskingPointer(String(req.query.t || ""));
+      if (!resolved) return res.status(410).send("This link has expired. Please search again for a fresh link.");
+      const check = validateDestination(resolved.destination);
+      if (!check.valid) return res.status(400).send(`Refused: ${check.reason}`);
+      const dl = await buildSecureDeeplink(resolved.destination);
+      await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+      res.redirect(302, dl.trackingUrl);
+    });
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);
       if (!r.ok) return res.status(400).json({ success: false, error: r.error });
@@ -6359,7 +6612,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto18.default.randomBytes(32).toString("hex");
+      const token = import_crypto20.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -6385,7 +6638,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto18.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto20.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -6393,7 +6646,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto18.default.randomBytes(32).toString("hex");
+      const token = import_crypto20.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),

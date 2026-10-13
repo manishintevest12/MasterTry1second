@@ -27,7 +27,7 @@ class CuelinksAdapter implements AffiliateNetwork {
   buildDeepLink(destinationUrl: string, _vendorDomain: string): string | null {
     const apiKey = settings.cuelinks.apiKey;
     const template = settings.cuelinks.campaignId
-      ? `https://linksdesination.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}`
+      ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}`
       : null;
     // No credentials configured → no deep link. We NEVER invent affiliate parameters.
     if (!apiKey || !template) return null;

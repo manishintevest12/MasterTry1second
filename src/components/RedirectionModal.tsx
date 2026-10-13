@@ -19,6 +19,13 @@ export const RedirectionModal: React.FC = () => {
   const { item, quote, step } = redirectionState;
 
   const handleProceed = () => {
+    // Masking pointer (Module 4): server-side hop already carries attribution;
+    // never wrap it in a client-side tracking template.
+    if (String(quote.url || '').startsWith('/api/out')) {
+      window.open(quote.url, '_blank', 'noopener,noreferrer');
+      closeRedirection();
+      return;
+    }
     // Find matching affiliate ID config if exists
     const matchingAff = affiliateIds.find(
       (a) => a.merchantOrNetwork.toLowerCase().includes(quote.sellerName.toLowerCase()) ||

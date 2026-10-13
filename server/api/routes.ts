@@ -18,7 +18,8 @@ import {
   claimSpinEligibility, eligibleSpinCount, executeSpin, getSpinResult,
   registerReferral, submitFulfilmentDetails, validPointBalance,
 } from '../rewards/rewardsEngine';
-import { resolveRedirect } from '../affiliate/affiliateNetwork';
+import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
+import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -85,7 +86,10 @@ apiRouter.post('/search', async (req, res) => {
 function offerToComparisonItem(o: any) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
-  const url = o.affiliate?.deepLink || o.sellerUrl || '';
+  // Module 4: masking pointer — affiliate tokens are built server-side at click
+  // time and NEVER appear in API responses or the page source.
+  const rawDest = o.sellerUrl || '';
+  const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || '') }) : '';
   const seller = String(o.seller || o.vendor || 'Verified source');
   const attrs: Record<string, string> = o.attributes || {};
   const specs: Record<string, string> = {};
@@ -172,7 +176,7 @@ function offerToComparisonItem(o: any) {
         deliveryOrEta: attrs['eta'] || attrs['delivery'] || 'Standard delivery',
         isLowest: true,
         isLiveScraped: o.freshnessStatus === 'LIVE_VERIFIED',
-        sourceDomain: url ? String(url).replace(/^https?:\/\//, '').split('/')[0] : undefined,
+        sourceDomain: rawDest ? String(rawDest).replace(/^https?:\/\//, '').split('/')[0] : undefined,
       },
     ],
     sellerUrl: url,
@@ -249,6 +253,12 @@ apiRouter.post('/scrape/live', async (req, res) => {
   }
   // Drop price-less rows when priced alternatives exist in the same vertical.
   if (kept.some((x) => x.priced)) kept = kept.filter((x) => x.priced);
+  // Bus: once LIVE operator fares exist, the transparent OSRM indicative estimate
+  // row is redundant — show only real operator quotes.
+  if (String(input.vertical) === 'bus') {
+    const live = kept.filter((x) => (x.o.attributes as any)?.fare_type !== 'indicative_estimate');
+    if (live.length) kept = live;
+  }
   kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
   response.results = kept.map((x) => x.o) as any;
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
@@ -345,6 +355,19 @@ apiRouter.get('/go', async (req, res) => {
   const decision = await resolveRedirect(dest, { offerId: req.query.offerId as string | undefined });
   if (!decision.allowed) return res.status(400).json({ success: false, error: `Refused: ${decision.reason}` });
   res.json({ success: true, clickId: decision.clickId, redirectUrl: decision.destination, viaNetwork: decision.viaNetwork });
+});
+
+// ============ Masking-pointer redirect (Module 4) ============
+// GET /api/out?t=<signed pointer> -> validate -> build affiliate deeplink
+// server-side -> record click -> 302. Tokens never live in the browser.
+apiRouter.get('/out', async (req, res) => {
+  const resolved = resolveMaskingPointer(String(req.query.t || ''));
+  if (!resolved) return res.status(410).send('This link has expired. Please search again for a fresh link.');
+  const check = validateDestination(resolved.destination);
+  if (!check.valid) return res.status(400).send(`Refused: ${check.reason}`);
+  const dl = await buildSecureDeeplink(resolved.destination);
+  await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+  res.redirect(302, dl.trackingUrl);
 });
 
 // ============ Auth ============

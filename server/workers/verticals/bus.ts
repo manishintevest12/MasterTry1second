@@ -7,6 +7,7 @@
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { buildCabEstimate } from '../parsers/osrmCab';
 import { AcquisitionError } from '../../common/httpClient';
+import { parseAbhiBusServices, resolveAbhiBusCity, type AbhiBusRoute } from '../parsers/abhibus';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, ' ')
@@ -19,6 +20,47 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
 export const busWorker: VerticalWorker = {
   vertical: 'bus',
   tasks: [
+    {
+      // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
+      // /wap/SearchStations resolves city -> station id, /buslist/v3/services
+      // returns live per-service fares, timings, bus type and seat counts.
+      sourceId: 'w_bus_abhibus',
+      name: 'Bus worker: AbhiBus live services (real fares, timings, seats)',
+      priority: 1,
+      maxPerMinute: 8,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const getJson = async (url: string): Promise<any> => {
+          const r = await ctx.fetch(url, { expectJson: true, headers: { Accept: 'application/json' } });
+          if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `AbhiBus HTTP ${r.status} on ${url.split('?')[0]}`, r.status);
+          try { return JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'AbhiBus non-JSON response'); }
+        };
+        const [from, to] = await Promise.all([
+          resolveAbhiBusCity(getJson, rt.from),
+          resolveAbhiBusCity(getJson, rt.to),
+        ]);
+        if (!from || !to) throw new AcquisitionError('NOT_FOUND', `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
+        const depart = String(ctx.query.travelDates?.depart || '');
+        const jdate = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        const route: AbhiBusRoute = { fromName: from.label, fromId: from.id, toName: to.label, toId: to.id, jdate };
+        const r = await ctx.fetch('https://www.abhibus.com/buslist/v3/services', {
+          method: 'POST',
+          expectJson: true,
+          maxBytes: 6_000_000,
+          timeoutMs: 20_000,
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: from.label, sourceid: Number(from.id),
+            destination: to.label, destinationid: Number(to.id),
+            jdate, prd: 'mobile', filters: '1', isReturnJourney: '0',
+          }),
+        });
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `AbhiBus services HTTP ${r.status}`, r.status);
+        return parseAbhiBusServices(r.body, ctx.source, route);
+      },
+    },
     {
       sourceId: 'w_bus_osrm_estimate',
       name: 'Bus worker: OSRM real-distance intercity estimate',
