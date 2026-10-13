@@ -1137,6 +1137,35 @@ var init_contract = __esm({
   }
 });
 
+// server/acquisition/devFixtures.ts
+function devFixturesEnabled() {
+  return process.env.T1S_DEV_FIXTURES === "1" && process.env.NODE_ENV === "development";
+}
+function buildDevFixtures(source, vertical, query) {
+  if (!devFixturesEnabled()) return [];
+  const q3 = String(query || "sample query").slice(0, 60);
+  const mk = (title, price) => newRawItem(source, {
+    title,
+    price,
+    currency: "INR",
+    seller: "DEV FIXTURE SELLER",
+    sellerUrl: "https://example.com/",
+    availability: "in_stock",
+    attributes: {
+      platform: "DEV FIXTURE",
+      data_note: "DEV FIXTURE \u2014 local development sample, not live data",
+      image_url: "https://placehold.co/400x400/png?text=DEV+FIXTURE"
+    },
+    evidence: { sourceUrl: "dev://fixture", sourceReference: `${vertical}:${q3}`, extractedFields: ["title"] }
+  });
+  return [mk(`DEV FIXTURE \u2014 ${q3} (sample A)`, 199), mk(`DEV FIXTURE \u2014 ${q3} (sample B)`, 499)];
+}
+var init_devFixtures = __esm({
+  "server/acquisition/devFixtures.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
   const head = body.slice(0, 6e3);
@@ -1158,6 +1187,7 @@ async function runTask(worker, task, source, query) {
         headers: { ...BROWSER_HEADERS, ...opts.headers || {} },
         expectJson: opts.expectJson,
         timeoutMs: opts.timeoutMs ?? 12e3,
+        ...opts.maxBytes ? { maxResponseBytes: opts.maxBytes } : {},
         retries: 1,
         maxPerMinute: source.rateLimit.maxRequestsPerMinute,
         maxConcurrency: source.rateLimit.maxConcurrency
@@ -1177,6 +1207,11 @@ async function runTask(worker, task, source, query) {
   } catch (e) {
     const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
     log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });
+    const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ""));
+    if (fixtures.length) {
+      log.warn("VerticalWorker", `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
+      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started, fetchedAt };
+    }
     return failedResult(source, fc, String(e?.message || e).slice(0, 200), Date.now() - started, e?.httpStatus);
   }
 }
@@ -1195,6 +1230,7 @@ var init_verticalWorker = __esm({
   "server/workers/verticalWorker.ts"() {
     init_httpClient();
     init_contract();
+    init_devFixtures();
     init_logger();
     BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
     BROWSER_HEADERS = {
@@ -2076,6 +2112,80 @@ var init_zomato = __esm({
   }
 });
 
+// server/workers/parsers/swiggy.ts
+function parseSwiggyDishes(json, source, searchUrl, city) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const fingerprint = (0, import_crypto7.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const cards = [];
+  const stack = [d?.data];
+  while (stack.length) {
+    const n = stack.pop();
+    if (!n || typeof n !== "object") continue;
+    if (n.cardGroupMap?.DISH?.cards) cards.push(...n.cardGroupMap.DISH.cards);
+    for (const v of Object.values(n)) if (v && typeof v === "object") stack.push(v);
+    if (cards.length) break;
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of cards) {
+    const card = c?.card?.card;
+    const rest = card?.restaurant?.info;
+    const dishes = Array.isArray(card?.dishes) ? card.dishes : [];
+    if (!rest?.name || !dishes.length) continue;
+    const restUrl = rest.slugs?.restaurant && rest.slugs?.city ? `https://www.swiggy.com/city/${rest.slugs.city}/${rest.slugs.restaurant}-rest${rest.id}` : searchUrl;
+    for (const dw of dishes) {
+      const di = dw?.info;
+      if (!di?.name || typeof di.price !== "number" || di.price <= 0) continue;
+      const key = `${rest.id}:${di.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const rating = di.ratings?.aggregatedRating?.rating;
+      const ratingCount = di.ratings?.aggregatedRating?.ratingCountV2;
+      const img = di.imageId ? `${IMG}${di.imageId}` : rest.cloudinaryImageId ? `${IMG}${rest.cloudinaryImageId}` : "";
+      out.push(newRawItem(source, {
+        title: String(di.name).slice(0, 200),
+        price: Math.round(di.price) / 100,
+        currency: "INR",
+        seller: `${rest.name}${rest.areaName ? ` (${rest.areaName})` : ""}`.slice(0, 120),
+        sellerUrl: restUrl,
+        availability: di.inStock === 1 && rest.availability?.opened !== false ? "in_stock" : "out_of_stock",
+        location: { city },
+        attributes: {
+          ...img ? { image_url: img } : {},
+          ...di.description ? { dish_description: String(di.description).replace(/\s+/g, " ").trim().slice(0, 220) } : {},
+          ...rating ? { rating: String(rating) } : rest.avgRating ? { rating: String(rest.avgRating) } : {},
+          ...ratingCount ? { rating_count: String(ratingCount) } : {},
+          ...Array.isArray(rest.cuisines) && rest.cuisines.length ? { cuisines: rest.cuisines.slice(0, 4).join(", ") } : {},
+          ...rest.sla?.slaString ? { eta: String(rest.sla.slaString).toLowerCase() } : {},
+          ...rest.costForTwoMessage ? { cost_for_two: String(rest.costForTwoMessage) } : {},
+          restaurant: String(rest.name).slice(0, 120),
+          platform: "Swiggy"
+        },
+        evidence: {
+          sourceUrl: searchUrl,
+          sourceReference: `${rest.id}:${di.id}`,
+          rawFingerprint: fingerprint,
+          extractedFields: ["title", "price", ...img ? ["image"] : [], ...rating ? ["rating"] : [], "availability"]
+        }
+      }));
+    }
+  }
+  return out.slice(0, 60);
+}
+var import_crypto7, IMG;
+var init_swiggy = __esm({
+  "server/workers/parsers/swiggy.ts"() {
+    import_crypto7 = require("crypto");
+    init_contract();
+    IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
+  }
+});
+
 // server/workers/verticals/food.ts
 function citySlug(city, raw) {
   if (city) {
@@ -2090,11 +2200,12 @@ function citySlug(city, raw) {
   }
   return null;
 }
-var ZOMATO_SLUGS, foodWorker;
+var ZOMATO_SLUGS, CITY_COORDS, foodWorker;
 var init_food = __esm({
   "server/workers/verticals/food.ts"() {
     init_verticalWorker();
     init_zomato();
+    init_swiggy();
     init_httpClient();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
@@ -2126,9 +2237,46 @@ var init_food = __esm({
       goa: "goa",
       "panaji": "goa"
     };
+    CITY_COORDS = {
+      "new delhi": [28.6315, 77.2167],
+      delhi: [28.6315, 77.2167],
+      ncr: [28.6315, 77.2167],
+      gurgaon: [28.4595, 77.0266],
+      noida: [28.5355, 77.391],
+      bengaluru: [12.9716, 77.5946],
+      bangalore: [12.9716, 77.5946],
+      mumbai: [19.076, 72.8777],
+      pune: [18.5204, 73.8567],
+      hyderabad: [17.385, 78.4867],
+      chennai: [13.0827, 80.2707],
+      kolkata: [22.5726, 88.3639],
+      ahmedabad: [23.0225, 72.5714],
+      jaipur: [26.9124, 75.7873],
+      lucknow: [26.8467, 80.9462],
+      chandigarh: [30.7333, 76.7794],
+      indore: [22.7196, 75.8577],
+      goa: [15.4909, 73.8278],
+      kochi: [9.9312, 76.2673]
+    };
     foodWorker = {
       vertical: "food",
       tasks: [
+        {
+          sourceId: "w_food_swiggy",
+          name: "Food worker: Swiggy dish search (dish, price, photo, restaurant)",
+          priority: 5,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
+            if (!term) return [];
+            const cityKey = String(ctx.query.location?.city || "").toLowerCase().trim();
+            const c = CITY_COORDS[cityKey] || CITY_COORDS["new delhi"];
+            const url = `https://www.swiggy.com/dapi/restaurants/search/v3?lat=${c[0]}&lng=${c[1]}&str=${encodeURIComponent(term)}&trackingId=undefined&submitAction=ENTER&queryUniqueId=t1s${Date.now() % 1e5}`;
+            const r = await ctx.fetch(url, { expectJson: true, maxBytes: 8e6, timeoutMs: 2e4, headers: { Accept: "application/json" } });
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Swiggy HTTP ${r.status}`, r.status);
+            return parseSwiggyDishes(r.body, ctx.source, url, ctx.query.location?.city || "New Delhi");
+          }
+        },
         {
           sourceId: "w_food_zomato",
           name: "Food worker: Zomato public restaurant listings",
@@ -2251,7 +2399,7 @@ var init_cab = __esm({
 // server/workers/parsers/bankbazaarInsurance.ts
 function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   const $ = cheerio4.load(html);
-  const fingerprint = (0, import_crypto7.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto8.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -2298,10 +2446,10 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   });
   return out.slice(0, 30);
 }
-var import_crypto7, cheerio4;
+var import_crypto8, cheerio4;
 var init_bankbazaarInsurance = __esm({
   "server/workers/parsers/bankbazaarInsurance.ts"() {
-    import_crypto7 = require("crypto");
+    import_crypto8 = require("crypto");
     cheerio4 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -2850,11 +2998,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto8, HttpAcquisitionAdapter;
+var cheerio5, import_crypto9, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto8 = require("crypto");
+    import_crypto9 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -2901,7 +3049,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto8.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto9.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -2950,10 +3098,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto9, StructuredDataAdapter;
+var import_crypto10, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -2983,7 +3131,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto9.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -3040,10 +3188,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto10, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto11, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -3091,7 +3239,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -3115,7 +3263,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -3282,7 +3430,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -3907,13 +4055,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto11.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto12.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto11;
+var import_crypto12;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto11 = require("crypto");
+    import_crypto12 = require("crypto");
   }
 });
 
@@ -4492,7 +4640,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto12.default.randomUUID();
+  const clickId = import_crypto13.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -4518,10 +4666,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto12, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto13, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto12 = __toESM(require("crypto"), 1);
+    import_crypto13 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -4759,16 +4907,16 @@ var init_searchOrchestrator = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto13.default.randomBytes(16).toString("hex");
-  const hash = import_crypto13.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto14.default.randomBytes(16).toString("hex");
+  const hash = import_crypto14.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto13.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto13.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto14.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto14.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -4791,7 +4939,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto13.default.randomBytes(32).toString("hex");
+  const token = import_crypto14.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -4831,10 +4979,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto13, SESSION_TTL_SEC;
+var import_crypto14, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto13 = __toESM(require("crypto"), 1);
+    import_crypto14 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -4876,16 +5024,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto14.default.randomBytes(8).toString("hex");
-  const hash = import_crypto14.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto15.default.randomBytes(8).toString("hex");
+  const hash = import_crypto15.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto14.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto15.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto14.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto15.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -4918,7 +5066,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
-  const code = String(import_crypto14.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto15.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -4975,10 +5123,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean}`);
   return { ok: true, email: clean };
 }
-var import_crypto14, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto15, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto14 = __toESM(require("crypto"), 1);
+    import_crypto15 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -5021,8 +5169,8 @@ async function verifyFirebaseIdToken(idToken) {
     const certs = await getCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto15.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto15.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto16.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto16.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
     if (!signatureOk) return null;
@@ -5038,10 +5186,10 @@ async function verifyFirebaseIdToken(idToken) {
     return null;
   }
 }
-var import_crypto15, CERT_URL, certCache, CERT_TTL_MS;
+var import_crypto16, CERT_URL, certCache, CERT_TTL_MS;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto15 = __toESM(require("crypto"), 1);
+    import_crypto16 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -5114,7 +5262,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto16.default.randomUUID();
+  const key = idempotencyKey || import_crypto17.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -5229,10 +5377,10 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto16, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+var import_crypto17, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto16 = __toESM(require("crypto"), 1);
+    import_crypto17 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -5882,9 +6030,11 @@ function offerToComparisonItem(o) {
   if (o.travel?.date) specs["Date"] = String(o.travel.date);
   const fetchedAt = o.provenance?.fetchedAt;
   const parts = [];
+  if (attrs["dish_description"]) parts.push(String(attrs["dish_description"]));
   if (attrs["brand"] && !String(o.title).toLowerCase().includes(String(attrs["brand"]).toLowerCase())) parts.push(String(attrs["brand"]));
   if (attrs["rating"]) parts.push(`${attrs["rating"]}\u2605 rating${attrs["rating_count"] ? ` (${Number(attrs["rating_count"]).toLocaleString("en-IN")} ratings)` : ""}`);
-  if (attrs["cuisines"]) parts.push(attrs["cuisines"]);
+  if (attrs["cuisines"] && !attrs["dish_description"]) parts.push(attrs["cuisines"]);
+  if (attrs["eta"]) parts.push(`Delivers in ${attrs["eta"]}`);
   if (attrs["address"]) parts.push(attrs["address"]);
   if (o.travel?.route) parts.push(o.travel.route);
   if (attrs["distance"]) parts.push(attrs["distance"]);
@@ -5985,7 +6135,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto17, apiRouter;
+var import_express, import_crypto18, apiRouter;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -5995,7 +6145,7 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto17 = __toESM(require("crypto"), 1);
+    import_crypto18 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_db();
@@ -6065,6 +6215,37 @@ var init_routes = __esm({
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
       }
       const response = await runSearch(input);
+      const STOP = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
+      const words = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
+      const stem = (w) => w.replace(/(ies|es|s)$/, "");
+      const stems = words.map(stem);
+      const scored = response.results.map((o) => {
+        const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+        const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
+        return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 };
+      });
+      const verticalsNeedingTitleMatch = /* @__PURE__ */ new Set(["food", "grocery", "ecommerce"]);
+      let kept = scored;
+      if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
+        const full = scored.filter((x) => x.hit === 1);
+        kept = full;
+        if (!full.length) {
+          res.json({
+            results: [],
+            honestNotice: `No exact matches for '${input.query}' from live sources right now. Sources returned only loosely related items, which we do not show.`,
+            sourcesAttempted: response.state.sourcesAttempted,
+            sourcesSucceeded: response.state.sourcesSucceeded,
+            sourcesFailed: response.state.sourcesFailed,
+            servedFrom: response.state.servedFrom,
+            resultsCount: 0,
+            latencyMs: response.latencyMs
+          });
+          return;
+        }
+      }
+      if (kept.some((x) => x.priced)) kept = kept.filter((x) => x.priced);
+      kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
+      response.results = kept.map((x) => x.o);
       res.json({
         results: response.results.map((o) => {
           const item = offerToComparisonItem(o);
@@ -6178,7 +6359,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto17.default.randomBytes(32).toString("hex");
+      const token = import_crypto18.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -6204,7 +6385,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto17.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto18.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -6212,7 +6393,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto17.default.randomBytes(32).toString("hex");
+      const token = import_crypto18.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),

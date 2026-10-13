@@ -966,8 +966,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const data = await response.json();
         if (data.results && data.results.length > 0) {
           setItems((prev) => {
-            const nonScrapedForVertical = prev.filter((it) => it.vertical !== vertical || !it.isLiveScraped);
-            return [...data.results, ...nonScrapedForVertical];
+            // A search shows ONLY what was searched. Items of this vertical from earlier
+            // searches or the catalogue are replaced by the fresh, relevance-ranked results
+            // (other verticals are untouched). Identical dish+seller pairs are collapsed.
+            const otherVerticals = prev.filter((it) => it.vertical !== vertical);
+            const seen = new Set<string>();
+            const fresh = (data.results as any[]).filter((it) => {
+              const key = `${it.title}|${it.subtitle}|${it.primaryPrice}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            return [...fresh, ...otherVerticals];
           });
           setLastScrapeInfo({
             timestamp: 'Just now',

@@ -95,9 +95,11 @@ function offerToComparisonItem(o: any) {
   const fetchedAt = o.provenance?.fetchedAt;
   // Human-readable description built ONLY from fields the source actually published.
   const parts: string[] = [];
+  if (attrs['dish_description']) parts.push(String(attrs['dish_description']));
   if (attrs['brand'] && !String(o.title).toLowerCase().includes(String(attrs['brand']).toLowerCase())) parts.push(String(attrs['brand']));
   if (attrs['rating']) parts.push(`${attrs['rating']}★ rating${attrs['rating_count'] ? ` (${Number(attrs['rating_count']).toLocaleString('en-IN')} ratings)` : ''}`);
-  if (attrs['cuisines']) parts.push(attrs['cuisines']);
+  if (attrs['cuisines'] && !attrs['dish_description']) parts.push(attrs['cuisines']);
+  if (attrs['eta']) parts.push(`Delivers in ${attrs['eta']}`);
   if (attrs['address']) parts.push(attrs['address']);
   if (o.travel?.route) parts.push(o.travel.route);
   if (attrs['distance']) parts.push(attrs['distance']);
@@ -206,6 +208,49 @@ apiRouter.post('/scrape/live', async (req, res) => {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
   }
   const response = await runSearch(input);
+  // Relevance: a metasearch engine returns what the user searched for. Score each offer
+  // by how many query words appear in its title (+ small boosts), drop non-matches when
+  // matches exist, and rank priced + relevant first. Nothing is invented or reordered
+  // by anything other than the visible title/price evidence.
+  const STOP = new Set(['in','near','the','a','an','of','for','to','from','with','and','best','cheap','cheapest','online','buy','price','under','below']);
+  const words = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
+  const stem = (w: string) => w.replace(/(ies|es|s)$/,'');
+  const stems = words.map(stem);
+  const scored = (response.results as any[]).map((o) => {
+    const t = String(o.title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+    // Regex token boundary: 'milk' must appear as a WHOLE word, so 'buttermilk'
+    // does not match 'milk'. Simple plural stemming keeps 'shoes' matching 'shoe'.
+    const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
+    return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 };
+  });
+  const verticalsNeedingTitleMatch = new Set(['food', 'grocery', 'ecommerce']);
+  let kept = scored;
+  if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
+    // STRICT QUERY-TO-ITEM TOKEN SANITISATION (owner rule): every query word must
+    // appear as a whole word in the title. 'amul milk' must contain BOTH 'amul'
+    // and 'milk'. Items missing any word are DISCARDED — no random substitutes,
+    // no majority fallback. When nothing matches, the user sees an honest
+    // 'no exact matches' notice instead of unrelated products.
+    const full = scored.filter((x) => x.hit === 1);
+    kept = full;
+    if (!full.length) {
+      res.json({
+        results: [],
+        honestNotice: `No exact matches for '${input.query}' from live sources right now. Sources returned only loosely related items, which we do not show.`,
+        sourcesAttempted: response.state.sourcesAttempted,
+        sourcesSucceeded: response.state.sourcesSucceeded,
+        sourcesFailed: response.state.sourcesFailed,
+        servedFrom: response.state.servedFrom,
+        resultsCount: 0,
+        latencyMs: response.latencyMs,
+      });
+      return;
+    }
+  }
+  // Drop price-less rows when priced alternatives exist in the same vertical.
+  if (kept.some((x) => x.priced)) kept = kept.filter((x) => x.priced);
+  kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
+  response.results = kept.map((x) => x.o) as any;
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
   res.json({
     results: response.results.map((o: any) => {

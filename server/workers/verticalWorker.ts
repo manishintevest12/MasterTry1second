@@ -15,13 +15,14 @@
 import type { AdapterResult, ParsedQuery, RawSourceItem, SourceConfig, VerticalId } from '../types';
 import { httpAcquire, AcquisitionError } from '../common/httpClient';
 import { failedResult, type SourceAdapter } from '../sources/contract';
+import { buildDevFixtures } from '../acquisition/devFixtures';
 import { log } from '../common/logger';
 
 export interface WorkerTaskContext {
   query: ParsedQuery;
   source: SourceConfig;
   /** Fetch helper bound to this source's rate limits. */
-  fetch: (url: string, opts?: { headers?: Record<string, string>; method?: 'GET' | 'POST'; body?: string; expectJson?: boolean; timeoutMs?: number }) => Promise<{ status: number; body: string; ok: boolean; latencyMs: number }>;
+  fetch: (url: string, opts?: { headers?: Record<string, string>; method?: 'GET' | 'POST'; body?: string; expectJson?: boolean; timeoutMs?: number; maxBytes?: number }) => Promise<{ status: number; body: string; ok: boolean; latencyMs: number }>;
 }
 
 export interface WorkerTask {
@@ -73,6 +74,7 @@ export async function runTask(worker: VerticalWorker, task: WorkerTask, source: 
         headers: { ...BROWSER_HEADERS, ...(opts.headers || {}) },
         expectJson: opts.expectJson,
         timeoutMs: opts.timeoutMs ?? 12_000,
+        ...(opts.maxBytes ? { maxResponseBytes: opts.maxBytes } : {}),
         retries: 1,
         maxPerMinute: source.rateLimit.maxRequestsPerMinute,
         maxConcurrency: source.rateLimit.maxConcurrency,
@@ -92,6 +94,13 @@ export async function runTask(worker: VerticalWorker, task: WorkerTask, source: 
   } catch (e: any) {
     const fc = e instanceof AcquisitionError ? e.failureClass : 'UNKNOWN';
     log.debug('VerticalWorker', `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });
+    // Development-only fixture fallback: if the dev IP got WAF-blocked and
+    // T1S_DEV_FIXTURES=1, return clearly-labelled fixtures so testing continues.
+    const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ''));
+    if (fixtures.length) {
+      log.warn('VerticalWorker', `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
+      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started, fetchedAt };
+    }
     return failedResult(source, fc as any, String(e?.message || e).slice(0, 200), Date.now() - started, e?.httpStatus);
   }
 }

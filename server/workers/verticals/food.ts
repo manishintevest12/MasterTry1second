@@ -5,6 +5,7 @@
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseZomatoRestaurants } from '../parsers/zomato';
+import { parseSwiggyDishes } from '../parsers/swiggy';
 import { AcquisitionError } from '../../common/httpClient';
 
 /** Zomato city slugs for major Indian cities (others are tried as lowercase city names). */
@@ -15,6 +16,18 @@ const ZOMATO_SLUGS: Record<string, string> = {
   ahmedabad: 'ahmedabad', jaipur: 'jaipur', lucknow: 'lucknow', chandigarh: 'chandigarh',
   indore: 'indore', nagpur: 'nagpur', surat: 'surat', vadodara: 'vadodara', bhopal: 'bhopal',
   patna: 'patna', kochi: 'kochi', coimbatore: 'coimbatore', goa: 'goa', 'panaji': 'goa',
+};
+
+
+/** City-centre coordinates used for Swiggy's location-scoped dish search. */
+const CITY_COORDS: Record<string, [number, number]> = {
+  'new delhi': [28.6315, 77.2167], delhi: [28.6315, 77.2167], ncr: [28.6315, 77.2167],
+  gurgaon: [28.4595, 77.0266], noida: [28.5355, 77.391],
+  bengaluru: [12.9716, 77.5946], bangalore: [12.9716, 77.5946],
+  mumbai: [19.076, 72.8777], pune: [18.5204, 73.8567], hyderabad: [17.385, 78.4867],
+  chennai: [13.0827, 80.2707], kolkata: [22.5726, 88.3639], ahmedabad: [23.0225, 72.5714],
+  jaipur: [26.9124, 75.7873], lucknow: [26.8467, 80.9462], chandigarh: [30.7333, 76.7794],
+  indore: [22.7196, 75.8577], goa: [15.4909, 73.8278], kochi: [9.9312, 76.2673],
 };
 
 function citySlug(city: string | undefined, raw: string): string | null {
@@ -34,6 +47,22 @@ function citySlug(city: string | undefined, raw: string): string | null {
 export const foodWorker: VerticalWorker = {
   vertical: 'food',
   tasks: [
+    {
+      sourceId: 'w_food_swiggy',
+      name: 'Food worker: Swiggy dish search (dish, price, photo, restaurant)',
+      priority: 5,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
+        if (!term) return [];
+        const cityKey = String(ctx.query.location?.city || '').toLowerCase().trim();
+        const c = CITY_COORDS[cityKey] || CITY_COORDS['new delhi'];
+        const url = `https://www.swiggy.com/dapi/restaurants/search/v3?lat=${c[0]}&lng=${c[1]}&str=${encodeURIComponent(term)}&trackingId=undefined&submitAction=ENTER&queryUniqueId=t1s${Date.now() % 100000}`;
+        const r = await ctx.fetch(url, { expectJson: true, maxBytes: 8_000_000, timeoutMs: 20_000, headers: { Accept: 'application/json' } });
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Swiggy HTTP ${r.status}`, r.status);
+        return parseSwiggyDishes(r.body, ctx.source, url, ctx.query.location?.city || 'New Delhi');
+      },
+    },
     {
       sourceId: 'w_food_zomato',
       name: 'Food worker: Zomato public restaurant listings',
