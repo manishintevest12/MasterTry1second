@@ -56,7 +56,15 @@ export const SearchAndFilterHeader: React.FC = () => {
     detectGpsLocation,
     isGpsLocating,
     triggerLiveLocationScrape,
+    items,
   } = useApp();
+
+  // MOVIES: live now-playing titles from the loaded movie results (real data,
+  // not a hardcoded film list) power the movie-name autocomplete.
+  const movieTitlePresets = React.useMemo(
+    () => Array.from(new Set(items.filter((it: any) => it.vertical === 'movie' && it.title).map((it: any) => it.title as string))).slice(0, 16),
+    [items],
+  );
 
   const meta = VERTICAL_META[vertical] || VERTICAL_META.flights;
 
@@ -1104,14 +1112,11 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                     setSearchQuery(val);
                     triggerLiveLocationScrape(val);
                   }}
-                  presetList={[
-                    'Jawan: IMAX 70mm Experience',
-                    'Animal (Director’s Cut Dolby Atmos)',
-                    'Oppenheimer: PVR Gold Class 4DX',
-                    'Dune: Part Two (IMAX 3D Laser)',
-                    'Fighter (ScreenX 270° Recliner)',
-                    'Stree 2 (Midnight Show Dolby 7.1)',
-                  ]}
+                  presetList={
+                    movieTitlePresets.length > 0
+                      ? movieTitlePresets
+                      : AUTOCOMPLETE_CATEGORIES.movie
+                  }
                   placeholder="Search for Movies, IMAX 3D, Inox, PVR Director's Cut..."
                   className="w-full"
                   inputClassName="text-xs font-medium text-slate-900"
@@ -1160,6 +1165,33 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   {t}
                 </button>
               ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
+              <div className="flex-1 bg-white rounded-xl px-4 py-2 flex items-center shadow-md">
+                <AutocompleteInput
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  onSelect={(val) => {
+                    setSearchQuery(val);
+                    triggerLiveLocationScrape(val);
+                  }}
+                  presetList={AUTOCOMPLETE_CATEGORIES.loans}
+                  placeholder="Search loan type (e.g. Personal Loan, Home Loan, Business MSME...)"
+                  className="w-full"
+                  inputClassName="text-xs font-medium text-slate-900 placeholder:text-slate-400"
+                  icon={<Search className="w-4 h-4 text-indigo-500" />}
+                />
+                <button
+                  type="button"
+                  onClick={() => triggerLiveLocationScrape(searchQuery || loanType.split('(')[0].trim())}
+                  className="ml-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-xs flex items-center gap-1"
+                  title="Compare live loan offers"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Compare</span>
+                </button>
+              </div>
             </div>
 
             <div className="bg-white/10 rounded-2xl p-4 border border-white/15 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -1226,6 +1258,33 @@ const handleSelectJourneyDate = (formattedDate: string) => {
             <span className="text-xs font-black tracking-wider uppercase text-emerald-300">
               Compare 1 Crore Health & Zero-Dep Car Policies with 99%+ Settlement
             </span>
+
+            <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
+              <div className="flex-1 bg-white rounded-xl px-4 py-2 flex items-center shadow-md">
+                <AutocompleteInput
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  onSelect={(val) => {
+                    setSearchQuery(val);
+                    triggerLiveLocationScrape(val);
+                  }}
+                  presetList={AUTOCOMPLETE_CATEGORIES.insurance}
+                  placeholder="Search policy (e.g. Term Life, Car Insurance Zero Dep, Family Health...)"
+                  className="w-full"
+                  inputClassName="text-xs font-medium text-slate-900 placeholder:text-slate-400"
+                  icon={<Search className="w-4 h-4 text-emerald-600" />}
+                />
+                <button
+                  type="button"
+                  onClick={() => triggerLiveLocationScrape(searchQuery || insuranceType)}
+                  className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-xs flex items-center gap-1"
+                  title="Compare live insurance plans"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Compare</span>
+                </button>
+              </div>
+            </div>
 
             <div className="bg-white rounded-2xl p-2.5 shadow-xl grid grid-cols-1 md:grid-cols-12 gap-2 text-slate-900 items-center">
               <div className="md:col-span-4 flex items-center bg-slate-50 rounded-xl px-3 py-2 text-xs border border-slate-200">
