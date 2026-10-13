@@ -6,6 +6,7 @@
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
+import { parseBlinkit } from '../parsers/blinkit';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
@@ -24,7 +25,6 @@ const q = (ctx: { query: any }) =>
     .replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, ' ').replace(/\s+/g, ' ').trim();
 
 const QUICK_FAILS: Array<{ sourceId: string; url: (t: string) => string; probe: string; note: string }> = [
-  { sourceId: 'w_grocery_blinkit', url: (t) => `https://blinkit.com/cn/${encodeURIComponent(t)}/cid/12`, probe: 'https://blinkit.com/', note: 'Blinkit returns an Akamai/bot challenge page (403, no product data) to browserless HTTP' },
   { sourceId: 'w_grocery_zepto', url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: 'https://www.zeptonow.com/', note: 'Zeptonow returns a 202 JS challenge shell to browserless HTTP' },
   { sourceId: 'w_grocery_bigbasket', url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: 'https://www.bigbasket.com/ps/?q=milk', note: 'BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403' },
   { sourceId: 'w_grocery_flipkart_minutes', url: (t) => `https://www.flipkart.com/minutes-store`, probe: 'https://www.flipkart.com/minutes-store', note: 'Flipkart Minutes store is a JS shell with no SSR product prices' },
@@ -173,6 +173,46 @@ export const groceryWorker: VerticalWorker = {
         throw new AcquisitionError('EMPTY_RESPONSE', src.note.replace(/returns|serves/, 'served'));
       },
     })),
+    {
+      // Blinkit LIVE: /v1/layout/search answers real JSON to browserless HTTP when sent with the
+      // web-app headers (app_client=consumer_web + lat/lon). Server-side search, location-aware prices.
+      sourceId: 'w_grocery_blinkit',
+      name: 'Grocery worker: Blinkit search API',
+      priority: 14,
+      timeoutMs: 30_000,
+      run: async (ctx: any) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const loc = ctx.query.location || {};
+        const coords =
+          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
+            ? ([loc.lat, loc.lng] as [number, number])
+            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
+        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
+        const [lat, lng] = coords;
+        const url = `https://blinkit.com/v1/layout/search?q=${encodeURIComponent(term)}&search_type=type_to_search`;
+        const r = await cffiFetch(url, {
+          impersonate: 'chrome',
+          method: 'POST',
+          body: '{}',
+          timeoutMs: 22_000,
+          headers: {
+            app_client: 'consumer_web',
+            lat: String(lat),
+            lon: String(lng),
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Origin: 'https://blinkit.com',
+            Referer: `https://blinkit.com/s/?q=${encodeURIComponent(term)}`,
+          },
+        });
+        if (r.status === 403 || r.status === 202) throw new AcquisitionError('ACCESS_CHALLENGE', `Blinkit search API HTTP ${r.status}`);
+        if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `Blinkit search API HTTP ${r.status}`, r.status);
+        const items = parseBlinkit(r.body, ctx.source, url, cityLabel, 16);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `Blinkit returned no products for "${term}" at ${cityLabel} (not serviceable or no match)`);
+        return items;
+      },
+    },
     {
       // Swiggy Instamart LIVE: ungated storefront endpoints (reverse-engineered from the
       // instamart web bundle). Search path is edge-gated, so we pull product grids

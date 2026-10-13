@@ -4550,6 +4550,77 @@ var init_insurance = __esm({
   }
 });
 
+// server/workers/parsers/blinkit.ts
+function textOf(x) {
+  return x && typeof x === "object" ? String(x.text ?? "") : typeof x === "string" ? x : "";
+}
+function rupees(s) {
+  const m = String(s || "").replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+  return m ? Number(m[1]) : null;
+}
+function parseBlinkit(rawBody, source, pageUrl, cityLabel, cap = 16) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const snippets = root?.response?.snippets;
+  if (!Array.isArray(snippets)) return [];
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const sn of snippets) {
+    const d = sn?.data;
+    if (!d || !/product_card/.test(String(sn.widget_type || ""))) continue;
+    const name = textOf(d.display_name) || textOf(d.name);
+    if (!name) continue;
+    const cart = d.atc_action?.add_to_cart?.cart_item;
+    const price = Number(cart?.price) > 0 ? Number(cart.price) : rupees(textOf(d.normal_price));
+    if (!price || price <= 0) continue;
+    const mrpNum = Number(cart?.mrp);
+    const mrp = mrpNum > price ? mrpNum : void 0;
+    const pack = textOf(d.variant) || String(cart?.unit || "");
+    const pid = String(d.product_id || d.identity?.id || "");
+    const key = pid || `${name}|${pack}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const imageRaw = String(d.image?.url || cart?.image_url || "");
+    const imageUrl = imageRaw ? imageRaw.replace(/^http:/, "https:") : "";
+    const brand = textOf(d.brand_name) || void 0;
+    const inventory = Number(d.inventory ?? cart?.inventory);
+    const soldOut = d.is_sold_out === true || String(d.product_state || "") === "unavailable" || inventory === 0;
+    out.push(newRawItem(source, {
+      title: `${name}${pack ? ` (${pack})` : ""}`.slice(0, 200),
+      brand,
+      price,
+      listPrice: mrp,
+      currency: "INR",
+      seller: "Blinkit",
+      sellerUrl: `https://blinkit.com/s/?q=${encodeURIComponent(name)}`,
+      availability: soldOut ? "out_of_stock" : "in_stock",
+      location: { city: cityLabel },
+      attributes: {
+        platform: "Blinkit",
+        ...pack ? { quantity: pack.slice(0, 60) } : {},
+        ...imageUrl ? { image_url: imageUrl } : {},
+        price_basis: `Blinkit price for ${cityLabel} (10-min delivery zone)`,
+        data_note: "Price extracted from Blinkit search API (blinkit.com); final price at checkout may vary"
+      },
+      identifiers: pid ? { sku: pid, vendorProductId: String(d.merchant_id || "") || void 0 } : void 0,
+      evidence: { sourceUrl: pageUrl, sourceReference: pid, extractedFields: ["name", "variant", "cart_item.price", "cart_item.mrp", "inventory", "image"] }
+    }));
+    if (out.length >= cap) break;
+  }
+  void now;
+  return out;
+}
+var init_blinkit = __esm({
+  "server/workers/parsers/blinkit.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/grocery.ts
 function imRupees(m) {
   if (!m || typeof m !== "object") return void 0;
@@ -4648,6 +4719,7 @@ var init_grocery = __esm({
     init_verticalWorker();
     init_amazonIn();
     init_flipkart();
+    init_blinkit();
     init_httpClient();
     init_curlCffiFetch();
     GCITY_COORDS = {
@@ -4672,7 +4744,6 @@ var init_grocery = __esm({
     };
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
     QUICK_FAILS = [
-      { sourceId: "w_grocery_blinkit", url: (t) => `https://blinkit.com/cn/${encodeURIComponent(t)}/cid/12`, probe: "https://blinkit.com/", note: "Blinkit returns an Akamai/bot challenge page (403, no product data) to browserless HTTP" },
       { sourceId: "w_grocery_zepto", url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: "https://www.zeptonow.com/", note: "Zeptonow returns a 202 JS challenge shell to browserless HTTP" },
       { sourceId: "w_grocery_bigbasket", url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: "https://www.bigbasket.com/ps/?q=milk", note: "BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403" },
       { sourceId: "w_grocery_flipkart_minutes", url: (t) => `https://www.flipkart.com/minutes-store`, probe: "https://www.flipkart.com/minutes-store", note: "Flipkart Minutes store is a JS shell with no SSR product prices" }
@@ -4700,6 +4771,43 @@ var init_grocery = __esm({
             throw new AcquisitionError("EMPTY_RESPONSE", src2.note.replace(/returns|serves/, "served"));
           }
         })),
+        {
+          // Blinkit LIVE: /v1/layout/search answers real JSON to browserless HTTP when sent with the
+          // web-app headers (app_client=consumer_web + lat/lon). Server-side search, location-aware prices.
+          sourceId: "w_grocery_blinkit",
+          name: "Grocery worker: Blinkit search API",
+          priority: 14,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const term = q2(ctx);
+            if (!term) return [];
+            const loc = ctx.query.location || {};
+            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
+            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
+            const [lat, lng] = coords;
+            const url = `https://blinkit.com/v1/layout/search?q=${encodeURIComponent(term)}&search_type=type_to_search`;
+            const r = await cffiFetch(url, {
+              impersonate: "chrome",
+              method: "POST",
+              body: "{}",
+              timeoutMs: 22e3,
+              headers: {
+                app_client: "consumer_web",
+                lat: String(lat),
+                lon: String(lng),
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                Origin: "https://blinkit.com",
+                Referer: `https://blinkit.com/s/?q=${encodeURIComponent(term)}`
+              }
+            });
+            if (r.status === 403 || r.status === 202) throw new AcquisitionError("ACCESS_CHALLENGE", `Blinkit search API HTTP ${r.status}`);
+            if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `Blinkit search API HTTP ${r.status}`, r.status);
+            const items = parseBlinkit(r.body, ctx.source, url, cityLabel, 16);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Blinkit returned no products for "${term}" at ${cityLabel} (not serviceable or no match)`);
+            return items;
+          }
+        },
         {
           // Swiggy Instamart LIVE: ungated storefront endpoints (reverse-engineered from the
           // instamart web bundle). Search path is edge-gated, so we pull product grids
