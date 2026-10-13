@@ -8,6 +8,8 @@ import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
+import { parseTataCliq } from '../parsers/tatacliq';
+import { createCipheriv } from 'node:crypto';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
@@ -95,13 +97,42 @@ export const ecommerceWorker: VerticalWorker = {
       },
     },
     {
+      // Tata CLiQ: web SPA's search BFF (reverse-engineered 13 Oct 2026).
+      // x-auth / X-ACCESS-TOKEN = AES-192-CBC(current epoch seconds) with a
+      // key extracted from the obfuscated client bundle; body is pure JSON.
       sourceId: 'w_ecom_tatacliq',
-      name: 'Ecom worker: Tata CLiQ (probe)',
+      name: 'Ecom worker: Tata CLiQ (search BFF)',
       priority: 16,
       run: async (ctx) => {
-        const term = q(ctx) || 'products';
-        await cffiFetch(`https://www.tatacliq.com/search/?text=${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Tata CLiQ search is a JS-rendered SPA shell; cmdity-federator search API paths are not available unauthenticated to browserless HTTP.');
+        const term = q(ctx);
+        if (!term) return [];
+        const searchText = encodeURIComponent(`${term}:relevance:inStockFlag:true`);
+        const params =
+          'isTextSearch=true&isFilter=false&qc=false&page=0&isKeywordRedirect=true&isKeywordRedirectEnabled=true' +
+          '&isFilterDataRequired=false&isMDE=true&isSuggested=false&isPwa=true&pageSize=20&typeID=all&channel=mobile';
+        const url =
+          `https://searchbff.tatacliq.com/v2/products/mpl/search?searchText=${searchText}&${params}` +
+          `&originalSearchText=${encodeURIComponent(term)}`;
+        // AES-192 key lives (obfuscated) in the SPA bundle: client.60bf524baa78.js
+        const key = 'Vwdu3LWvHSOhAusUG9xfFw==';
+        const ts = String(Math.floor(Date.now() / 1000));
+        const cipher = createCipheriv('aes-192-cbc', Buffer.from(key, 'utf8'), Buffer.alloc(16, 0));
+        const token = cipher.update(ts, 'utf8', 'base64') + cipher.final('base64');
+        const r = await cffiFetch(url, {
+          impersonate: 'chrome',
+          timeoutMs: 15_000,
+          headers: {
+            Accept: 'application/json',
+            authorization: 'Bearer ',
+            'x-auth': token,
+            'X-ACCESS-TOKEN': token,
+          },
+        });
+        if (r.status === 401) throw new AcquisitionError('ACCESS_CHALLENGE', 'Tata CLiQ search BFF rejected the x-auth token', r.status);
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Tata CLiQ search BFF HTTP ${r.status}`, r.status);
+        const items = parseTataCliq(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Tata CLiQ search BFF returned no parseable products');
+        return items;
       },
     },
   ],
