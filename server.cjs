@@ -379,7 +379,13 @@ function detectIntent(q3) {
 }
 function understandQuery(rawQuery, provided) {
   const { vertical, confidence } = detectVertical(rawQuery);
-  const loc = { ...extractLocation(rawQuery), ...provided };
+  const loc = { ...extractLocation(rawQuery) };
+  if (provided) {
+    if (provided.pincode) loc.pincode = provided.pincode;
+    if (provided.city) loc.city = provided.city;
+    if (typeof provided.lat === "number") loc.lat = provided.lat;
+    if (typeof provided.lng === "number") loc.lng = provided.lng;
+  }
   return {
     rawQuery,
     vertical,
@@ -1515,7 +1521,7 @@ function parseBankBazaarLoans(html, source, pageUrl, loanType) {
         price: min,
         // lowest published p.a. rate (percent) — drives lowest-first ranking
         currency: "INR",
-        seller: lender.replace(/\s*(home|car|education|personal|business)?\s*loans?\s*$/i, "").trim() || lender,
+        seller: "BankBazaar",
         sellerUrl: pageUrl,
         availability: "in_stock",
         attributes: {
@@ -1611,7 +1617,7 @@ function parseOverpassHotels(json, source, city, bbox, queryUrl) {
     const stars = e.tags.stars ? String(parseInt(e.tags.stars, 10) || "") : "";
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      seller: name.slice(0, 200),
+      seller: "OpenStreetMap (ODbL)",
       sellerUrl: e.tags.website || e.tags["contact:website"] || `https://www.openstreetmap.org/${e.type}/${e.id}`,
       currency: "INR",
       location: { city },
@@ -1727,11 +1733,12 @@ function parseWikidataHotels(json, source, city, queryUrl) {
     const coord = String(b?.coord?.value || "").match(/Point\(([-\d.]+) ([-\d.]+)\)/);
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      seller: name.slice(0, 200),
+      seller: "Wikidata (CC0)",
       sellerUrl: web || `https://www.wikidata.org/wiki/${qid}`,
       currency: "INR",
       location: { city },
       attributes: {
+        property_name: name.slice(0, 200),
         property_type: "hotel",
         ...coord ? { lat: Number(coord[2]).toFixed(5), lon: Number(coord[1]).toFixed(5) } : {},
         ...web ? { official_website: web.slice(0, 200) } : {},
@@ -1754,11 +1761,259 @@ var init_wikidataHotels = __esm({
   }
 });
 
+// server/workers/parsers/cleartripHotels.ts
+function parseCleartripHotels(nextData) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const slots = nextData?.props?.pageProps?.initialState?.results?.data?.slotsData;
+  if (!Array.isArray(slots)) return out;
+  for (const slot of slots) {
+    if (slot?.slotData?.type !== "HOTEL_CARD_LIST") continue;
+    const cards = slot?.slotData?.data?.hotelCardList;
+    if (!Array.isArray(cards)) continue;
+    for (const card of cards) {
+      const d = card?.data;
+      if (!d?.name || !d?.priceInfo?.data) continue;
+      const pi = d.priceInfo.data;
+      const price = Number(pi.price) || 0;
+      if (price <= 0) continue;
+      const id = String(d.ravenTracking?.eventData?.h_hotel_id || pi.hotelId || d.id || "");
+      const key = id || `${d.name}|${price}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const imgRaw = d?.imageSlider?.data?.images?.[0]?.data?.url;
+      const imageUrl = typeof imgRaw === "string" && imgRaw.startsWith("http") ? imgRaw : typeof imgRaw === "string" && imgRaw ? CLEARTRIP_IMAGE_CDN + imgRaw.replace(/^\/+/, "") : null;
+      const rel = card?.action?.payload?.url;
+      const deeplink = typeof rel === "string" && rel.startsWith("/") ? CLEARTRIP_WEB + rel : typeof rel === "string" && rel.startsWith("http") ? rel : `${CLEARTRIP_WEB}/hotels/`;
+      out.push({
+        id,
+        name: String(d.name).trim(),
+        price,
+        slashedPrice: Number(pi.slashedPrice) || 0,
+        currency: "INR",
+        rating: d?.clearTripRatingAndReview?.data?.rating ? String(d.clearTripRatingAndReview.data.rating) : null,
+        stars: Number(d?.starRating) || null,
+        locality: d?.locality ? String(d.locality) : null,
+        city: d?.city ? String(d.city) : null,
+        imageUrl,
+        deeplink,
+        freeCancellation: Boolean(d?.freeCancellation?.available),
+        freeBreakfast: Boolean(d?.freeBreakfast?.available)
+      });
+    }
+  }
+  return out;
+}
+function parseCleartripOffers(hotels, source) {
+  const out = [];
+  for (const h of hotels.slice(0, 30)) {
+    const attrs = {
+      image_url: h.imageUrl,
+      rating: h.rating,
+      stars: h.stars,
+      locality: h.locality,
+      city: h.city,
+      free_cancellation: h.freeCancellation,
+      free_breakfast: h.freeBreakfast,
+      price_basis: "per night for 1 room",
+      data_note: "Live nightly rates from Cleartrip hotel search results"
+    };
+    out.push(newRawItem(source, {
+      title: h.name,
+      seller: "Cleartrip",
+      sellerUrl: h.deeplink,
+      // redirect only to the site that owns the price
+      currency: "INR",
+      price: h.price,
+      listPrice: h.slashedPrice > h.price ? h.slashedPrice : void 0,
+      attributes: attrs,
+      evidence: {
+        sourceUrl: `${CLEARTRIP_WEB}/hotels/india/`,
+        sourceReference: h.id,
+        extractedFields: ["title", "price", "listPrice", "rating", "locality", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+var CLEARTRIP_IMAGE_CDN, CLEARTRIP_WEB;
+var init_cleartripHotels = __esm({
+  "server/workers/parsers/cleartripHotels.ts"() {
+    init_contract();
+    CLEARTRIP_IMAGE_CDN = "https://rukmini-ct.flixcart.com/";
+    CLEARTRIP_WEB = "https://www.cleartrip.com";
+  }
+});
+
+// server/workers/parsers/airbnbHotels.ts
+function extractAirbnbSearchResults(deferred) {
+  try {
+    const ncd = deferred?.niobeClientData?.[0];
+    if (!Array.isArray(ncd)) return [];
+    for (const entry of ncd) {
+      if (!entry || typeof entry !== "object") continue;
+      const results = entry?.data?.presentation?.staysSearch?.results?.searchResults;
+      if (Array.isArray(results) && results.length) return results;
+    }
+  } catch {
+  }
+  return [];
+}
+function parseAirbnbStays(results) {
+  const stays = [];
+  for (const r of results) {
+    if (!r || r.__typename !== "StaySearchResult") continue;
+    const name = String(r.subtitle || r.nameLocalized?.localizedStringWithTranslationPreference || "").trim();
+    if (!name) continue;
+    const listingB64 = r.demandStayListing?.id || "";
+    let listingId = "";
+    try {
+      listingId = Buffer.from(listingB64, "base64").toString("utf8").split(":")[1] || "";
+    } catch {
+    }
+    if (!/^\d{5,}$/.test(listingId)) continue;
+    const primary = r.structuredDisplayPrice?.primaryLine || {};
+    const priceNum = parseInr3(primary.price);
+    const qualifier = String(primary.qualifier || "");
+    const nightsMatch = qualifier.match(/for\s+(\d+)\s+nights?/i);
+    const nights = nightsMatch ? parseInt(nightsMatch[1], 10) : priceNum ? 1 : 0;
+    const ratingRaw = String(r.avgRatingLocalized || "");
+    const ratingMatch = ratingRaw.match(/^([\d.]+)\s*(?:\((\d+)\))?/);
+    const coord = r.demandStayListing?.location?.coordinate;
+    stays.push({
+      name,
+      roomType: r.title ? String(r.title) : null,
+      listingId,
+      deeplink: `${AIRBNB_WEB}/rooms/${listingId}`,
+      priceTotal: priceNum,
+      nights,
+      pricePerNight: nights > 0 ? Math.round(priceNum / nights) : priceNum,
+      rating: ratingMatch ? ratingMatch[1] : null,
+      reviews: ratingMatch && ratingMatch[2] ? parseInt(ratingMatch[2], 10) : null,
+      imageUrl: r.contextualPictures?.[0]?.picture || null,
+      lat: coord?.latitude ?? null,
+      lon: coord?.longitude ?? null
+    });
+  }
+  return stays;
+}
+function parseInr3(s) {
+  if (!s) return 0;
+  const m = String(s).replace(/,/g, "").match(/([\d.]+)/);
+  return m ? Math.round(parseFloat(m[1])) : 0;
+}
+function parseAirbnbOffers(stays, source, city) {
+  const out = [];
+  for (const s of stays.slice(0, 25)) {
+    if (!s.pricePerNight) continue;
+    const attrs = {
+      image_url: s.imageUrl,
+      rating: s.rating,
+      review_count: s.reviews,
+      room_type: s.roomType,
+      city,
+      latitude: s.lat,
+      longitude: s.lon,
+      price_basis: `per night (total \u20B9${s.priceTotal.toLocaleString("en-IN")} for ${s.nights} night${s.nights > 1 ? "s" : ""} on Airbnb)`,
+      data_note: "Live stay rates from Airbnb search results"
+    };
+    out.push(newRawItem(source, {
+      title: s.name,
+      seller: "Airbnb",
+      sellerUrl: s.deeplink,
+      // redirect only to the site that owns the price
+      currency: "INR",
+      price: s.pricePerNight,
+      attributes: attrs,
+      evidence: {
+        sourceUrl: `${AIRBNB_WEB}/s/${encodeURIComponent(city)}/homes`,
+        sourceReference: s.listingId,
+        extractedFields: ["title", "price", "rating", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+var AIRBNB_WEB;
+var init_airbnbHotels = __esm({
+  "server/workers/parsers/airbnbHotels.ts"() {
+    init_contract();
+    AIRBNB_WEB = "https://www.airbnb.co.in";
+  }
+});
+
+// server/common/curlCffiFetch.ts
+async function cffiFetch(url, opts = {}) {
+  const payload = JSON.stringify({
+    url,
+    method: opts.method || "GET",
+    headers: opts.headers || {},
+    ...opts.body ? { body: opts.body } : {},
+    timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
+    impersonate: opts.impersonate || "safari17_0"
+  });
+  return new Promise((resolve, reject) => {
+    const child = (0, import_node_child_process.spawn)("python3", [HELPER], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new AcquisitionError("TIMEOUT", "curl_cffi bridge timed out"));
+    }, (opts.timeoutMs || 2e4) + 5e3);
+    child.stdout.on("data", (d) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d) => {
+      err += d.toString();
+    });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(new AcquisitionError("CAPABILITY_UNAVAILABLE", `python3 bridge unavailable: ${e.message}`));
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      try {
+        const res = JSON.parse(out || "{}");
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? "") });
+        reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge error: ${res.error || err || "unknown"}`));
+      } catch {
+        reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
+      }
+    });
+    child.stdin.write(payload);
+    child.stdin.end();
+  });
+}
+var import_node_child_process, import_node_path, import_node_fs, import_node_url, import_meta, HELPER;
+var init_curlCffiFetch = __esm({
+  "server/common/curlCffiFetch.ts"() {
+    import_node_child_process = require("node:child_process");
+    import_node_path = __toESM(require("node:path"), 1);
+    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_url = require("node:url");
+    init_httpClient();
+    import_meta = {};
+    HELPER = (() => {
+      const cands = [];
+      try {
+        cands.push(import_node_path.default.join(import_node_path.default.dirname((0, import_node_url.fileURLToPath)(import_meta.url)), "..", "acquisition", "pyfetch.py"));
+      } catch {
+      }
+      try {
+        cands.push(import_node_path.default.join(__dirname, "server", "acquisition", "pyfetch.py"));
+      } catch {
+      }
+      cands.push(import_node_path.default.join(process.cwd(), "server", "acquisition", "pyfetch.py"));
+      return cands.find((c) => import_node_fs.default.existsSync(c)) || cands[cands.length - 1];
+    })();
+  }
+});
+
 // server/workers/verticals/hotels.ts
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
   const raw = String(q3.rawQuery || "").trim();
-  const strip = (x) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|book|cheap|best|check-?in:?|tomorrow|today)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  const strip = (x) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
   const cleaned = strip(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q3.location?.city) return String(q3.location.city);
@@ -1779,10 +2034,80 @@ var init_hotels = __esm({
     init_osmTravel();
     init_booking();
     init_wikidataHotels();
+    init_cleartripHotels();
+    init_airbnbHotels();
+    init_curlCffiFetch();
     init_httpClient();
     hotelsWorker = {
       vertical: "hotels",
       tasks: [
+        {
+          // Real nightly rates from Cleartrip's Next.js SEO SRP: __NEXT_DATA__
+          // ships full hotel cards (price, slashed price, rating, locality,
+          // Flipkart-CDN images, hotel-details deeplinks). No API keys, no browser.
+          sourceId: "w_hotels_cleartrip",
+          name: "Hotels worker: Cleartrip SEO SRP (live nightly rates via __NEXT_DATA__)",
+          priority: 1,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+            const res = await cffiFetch(`https://www.cleartrip.com/hotels/india/${slug}`, { impersonate: "chrome", timeoutMs: 25e3 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Cleartrip blocked: ${res.status}`, res.status);
+            }
+            if (res.status === 404) throw new AcquisitionError("NOT_FOUND", `Cleartrip has no SEO page for '${city}'`, res.status);
+            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Cleartrip SRP HTTP ${res.status}`, res.status);
+            const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+            if (!m) throw new AcquisitionError("MALFORMED_RESPONSE", "Cleartrip SRP carried no __NEXT_DATA__");
+            let next;
+            try {
+              next = JSON.parse(m[1]);
+            } catch {
+              throw new AcquisitionError("MALFORMED_RESPONSE", "Cleartrip __NEXT_DATA__ not valid JSON");
+            }
+            const hotels = parseCleartripHotels(next);
+            if (hotels.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Cleartrip SRP had no priced hotel cards");
+            return parseCleartripOffers(hotels, ctx.source);
+          }
+        },
+        {
+          // Airbnb SSRs the full search page: <script data-deferred-state-0>
+          // carries StaysSearch results (property name, stay total + nights
+          // qualifier -> per-night rate, rating, photos, listing deeplink).
+          // Airbnb totals are divided by the parsed night count - never fabricated.
+          sourceId: "w_hotels_airbnb",
+          name: "Hotels worker: Airbnb SSR stays (live per-night rates)",
+          priority: 2,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            const url = `https://www.airbnb.co.in/s/${encodeURIComponent(city)}/homes?checkin=${checkin}&checkout=${checkout}&adults=2`;
+            const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Airbnb blocked: ${res.status}`, res.status);
+            }
+            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Airbnb HTTP ${res.status}`, res.status);
+            const m = res.body.match(/<script[^>]+data-deferred-state-0[^>]*>([\s\S]*?)<\/script>/);
+            if (!m) throw new AcquisitionError("MALFORMED_RESPONSE", "Airbnb SRP carried no deferred state");
+            let deferred;
+            try {
+              deferred = JSON.parse(m[1]);
+            } catch {
+              throw new AcquisitionError("MALFORMED_RESPONSE", "Airbnb deferred state not valid JSON");
+            }
+            const results = extractAirbnbSearchResults(deferred);
+            if (results.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Airbnb deferred state had no stays");
+            const stays = parseAirbnbStays(results);
+            if (stays.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Airbnb results had no parseable stays");
+            return parseAirbnbOffers(stays, ctx.source, city);
+          }
+        },
         {
           sourceId: "w_hotels_booking",
           name: "Hotels worker: Booking.com live rates (worldwide)",
@@ -1962,7 +2287,7 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
     const dstAp = toAirports.find((a) => a.iata === r0.dstIata);
     out.push(newRawItem(source, {
       title: `${airlineName}: ${srcAp.city} (${srcAp.iata}) \u2192 ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: airlineName.slice(0, 120),
+      seller: "OpenFlights (open data)",
       sellerUrl: sourceUrl,
       currency: "INR",
       travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...date ? { date } : {}, seatType: "unknown" },
@@ -2080,11 +2405,12 @@ function parseZomatoRestaurants(html, source, searchUrl, platform) {
       const reviews = it.aggregateRating?.reviewCount;
       out.push(newRawItem(source, {
         title: it.name.slice(0, 200),
-        seller: it.name.slice(0, 200),
+        seller: platform || "Zomato",
         sellerUrl: it.url ? `https://www.zomato.com${String(it.url).split("?")[0]}` : searchUrl,
         currency: "INR",
         location: { city: "" },
         attributes: {
+          restaurant: it.name.slice(0, 200),
           ...it.servesCuisine ? { cuisines: it.servesCuisine.slice(0, 160) } : {},
           ...typeof it.image === "string" && /^https:\/\//.test(it.image) ? { image_url: it.image.slice(0, 400) } : {},
           ...rating !== void 0 ? { rating: String(rating) } : {},
@@ -2151,11 +2477,13 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
         title: String(di.name).slice(0, 200),
         price: Math.round(di.price) / 100,
         currency: "INR",
-        seller: `${rest.name}${rest.areaName ? ` (${rest.areaName})` : ""}`.slice(0, 120),
+        seller: "Swiggy",
         sellerUrl: restUrl,
         availability: di.inStock === 1 && rest.availability?.opened !== false ? "in_stock" : "out_of_stock",
         location: { city },
         attributes: {
+          restaurant: String(rest.name).slice(0, 120),
+          ...rest.areaName ? { area: String(rest.areaName).slice(0, 80) } : {},
           ...img ? { image_url: img } : {},
           ...di.description ? { dish_description: String(di.description).replace(/\s+/g, " ").trim().slice(0, 220) } : {},
           ...rating ? { rating: String(rating) } : rest.avgRating ? { rating: String(rest.avgRating) } : {},
@@ -2163,7 +2491,6 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
           ...Array.isArray(rest.cuisines) && rest.cuisines.length ? { cuisines: rest.cuisines.slice(0, 4).join(", ") } : {},
           ...rest.sla?.slaString ? { eta: String(rest.sla.slaString).toLowerCase() } : {},
           ...rest.costForTwoMessage ? { cost_for_two: String(rest.costForTwoMessage) } : {},
-          restaurant: String(rest.name).slice(0, 120),
           platform: "Swiggy"
         },
         evidence: {
@@ -2423,7 +2750,7 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
       const extra = extraIdx >= 0 ? (r[extraIdx] || "").trim() : "";
       out.push(newRawItem(source, {
         title: (plan ? `${insurer} \u2014 ${plan}` : `${insurer} ${insType}`).slice(0, 200),
-        seller: insurer.replace(/\s*(insurance company|co\.?\.? ltd\.?|limited)\s*$/i, "").trim().slice(0, 120),
+        seller: "BankBazaar",
         sellerUrl: pageUrl,
         currency: "INR",
         price: Number(csrMatch[1]),
@@ -2624,16 +2951,670 @@ var init_wikidataMovies = __esm({
   }
 });
 
+// server/acquisition/selfHeal.ts
+function getHealSpec(sourceId) {
+  return SPECS.find((s) => s.sourceId === sourceId);
+}
+function extractScriptSrcs(html) {
+  const out = /* @__PURE__ */ new Set();
+  const re = /<script[^>]+src=["']([^"']+)["']/g;
+  let m;
+  while (m = re.exec(html)) out.add(m[1]);
+  return [...out];
+}
+function absolutize(src2, pageUrl) {
+  if (/^https?:\/\//i.test(src2)) return src2;
+  try {
+    return new URL(src2, pageUrl).toString();
+  } catch {
+    return src2;
+  }
+}
+async function collectCandidates(spec) {
+  const notes = [];
+  const candidates = [];
+  const bundleUrls = /* @__PURE__ */ new Set();
+  for (const page of spec.entryPages) {
+    try {
+      const r = await cffiFetch(page, { impersonate: "chrome", timeoutMs: 25e3 });
+      if (r.status !== 200) {
+        notes.push(`entry ${page} -> HTTP ${r.status}`);
+        continue;
+      }
+      for (const s of extractScriptSrcs(r.body)) {
+        const abs = absolutize(s, page);
+        if (spec.bundleFilter.test(abs)) bundleUrls.add(abs);
+      }
+    } catch (e) {
+      notes.push(`entry ${page} -> ${String(e?.message || e).slice(0, 80)}`);
+    }
+  }
+  const bundles = [...bundleUrls].slice(0, spec.maxBundles ?? DEFAULTS.maxBundles);
+  for (const b of bundles) {
+    try {
+      const r = await cffiFetch(b, { impersonate: "chrome", timeoutMs: 25e3 });
+      if (r.status !== 200) {
+        notes.push(`bundle ${b.slice(-60)} -> HTTP ${r.status}`);
+        continue;
+      }
+      const text = r.body.length > (spec.maxBundleBytes ?? DEFAULTS.maxBundleBytes) ? r.body.slice(0, spec.maxBundleBytes ?? DEFAULTS.maxBundleBytes) : r.body;
+      for (const rule of spec.rules) {
+        const re = new RegExp(rule.pattern.source, "g");
+        let m;
+        while (m = re.exec(text)) {
+          const raw = m[1];
+          if (!raw) continue;
+          const value = rule.normalize ? rule.normalize(raw) : raw;
+          if (!value || value.length > 500) continue;
+          candidates.push({ key: rule.key, value, bundleUrl: b, context: text.slice(Math.max(0, m.index - 30), m.index + 60).replace(/\s+/g, " ") });
+          if (candidates.filter((c) => c.key === rule.key).length >= 12) break;
+        }
+      }
+    } catch (e) {
+      notes.push(`bundle ${b.slice(-60)} -> ${String(e?.message || e).slice(0, 80)}`);
+    }
+  }
+  return { bundles, candidates, notes };
+}
+async function saveEndpointOverride(sourceId, key, value, evidenceUrl, bundleUrl) {
+  const store2 = getStore();
+  const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+  const upd = await store2.execute(
+    "UPDATE source_endpoint_overrides SET value = ?, evidence_url = ?, bundle_url = ?, healed_at = ? WHERE source_id = ? AND rule_key = ?",
+    [value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now, sourceId, key]
+  );
+  if (!upd.affectedRows) {
+    await store2.execute(
+      "INSERT INTO source_endpoint_overrides (source_id, rule_key, value, evidence_url, bundle_url, healed_at) VALUES (?, ?, ?, ?, ?, ?)",
+      [sourceId, key, value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now]
+    );
+  }
+}
+async function getEndpointOverrides(sourceId) {
+  const store2 = getStore();
+  const rows = await store2.query(
+    "SELECT rule_key, value, healed_at, bundle_url FROM source_endpoint_overrides WHERE source_id = ?",
+    [sourceId]
+  );
+  const out = {};
+  for (const r of rows) out[r.rule_key] = { value: String(r.value), healedAt: r.healed_at, bundle: r.bundle_url };
+  return out;
+}
+async function getOverride(sourceId, key) {
+  const hit = overrideCache.get(sourceId);
+  const use = hit && Date.now() - hit.at < OVERRIDE_TTL_MS ? hit : null;
+  if (use) return use.data[key]?.value ?? null;
+  const full = await getEndpointOverrides(sourceId);
+  const data = {};
+  for (const [k, v] of Object.entries(full)) data[k] = { value: v.value };
+  overrideCache.set(sourceId, { at: Date.now(), data });
+  return data[key]?.value ?? null;
+}
+function invalidateOverrideCache(sourceId) {
+  if (sourceId) overrideCache.delete(sourceId);
+  else overrideCache.clear();
+}
+var DEFAULTS, SPECS, overrideCache, OVERRIDE_TTL_MS, DynamicScannerEngine, dynamicScannerEngine;
+var init_selfHeal = __esm({
+  "server/acquisition/selfHeal.ts"() {
+    init_db();
+    init_curlCffiFetch();
+    init_logger();
+    DEFAULTS = { maxBundles: 6, maxBundleBytes: 3e6 };
+    SPECS = [
+      {
+        // BookMyShow (movies): the explore API base + discover path live as constants in the
+        // site's webpack bundles (parser header documents modules 6161/74318).
+        sourceId: "w_movies_bookmyshow",
+        entryPages: ["https://in.bookmyshow.com/explore/movies-bengaluru"],
+        // BMS ships webpack chunks under /public/build/chunks/js/ (runtime, vendor-*, app, common-code, app-explore-*).
+        bundleFilter: /\/public\/build\/chunks\/js\/(?:app|common-code|app-explore)[^"']*\.js/i,
+        maxBundles: 4,
+        maxBundleBytes: 4e6,
+        rules: [
+          {
+            // `${host}/api/explore` — the explore API path suffix composed with a per-env host map.
+            key: "explore_api_path",
+            pattern: /`\$\{[a-z]\}(\/api\/explore)`/
+          },
+          {
+            // production host in the env map: {...,prod:"https://in.bookmyshow.com"}[env]
+            key: "api_host",
+            pattern: /(?:prod|production)\s*:\s*"(https:\/\/in\.bookmyshow\.com)"/
+          }
+        ]
+      }
+    ];
+    overrideCache = /* @__PURE__ */ new Map();
+    OVERRIDE_TTL_MS = 6e4;
+    DynamicScannerEngine = class {
+      /** Re-derives endpoints for a source from its public bundles and persists overrides. */
+      async heal(sourceId) {
+        const spec = getHealSpec(sourceId);
+        const report = {
+          sourceId,
+          healed: false,
+          at: (/* @__PURE__ */ new Date()).toISOString(),
+          entryPages: spec?.entryPages ?? [],
+          scannedBundles: [],
+          overrides: [],
+          notes: []
+        };
+        if (!spec) {
+          report.notes.push("no healing spec registered for this source");
+          return report;
+        }
+        const { bundles, candidates, notes } = await collectCandidates(spec);
+        report.scannedBundles = bundles;
+        report.notes.push(...notes);
+        if (candidates.length === 0) {
+          report.notes.push("no rule matched in scanned bundles");
+          return report;
+        }
+        const existing = await getEndpointOverrides(sourceId);
+        let healedAny = false;
+        const byKey = /* @__PURE__ */ new Map();
+        for (const c of candidates) {
+          if (!byKey.has(c.key)) byKey.set(c.key, []);
+          byKey.get(c.key).push(c);
+        }
+        for (const rule of spec.rules) {
+          const cands = byKey.get(rule.key) || [];
+          const winner = spec.pick?.(rule.key, cands) || cands[0];
+          if (!winner) continue;
+          let verified = false;
+          const probe = rule.verifyGet ? rule.verifyGet(winner.value) : null;
+          if (probe) {
+            try {
+              const r = await cffiFetch(probe, { impersonate: "chrome", timeoutMs: 2e4 });
+              verified = r.status >= 200 && r.status < 404;
+            } catch {
+              verified = false;
+            }
+          } else {
+            verified = true;
+          }
+          const old = existing[rule.key]?.value ?? null;
+          if (old === winner.value) {
+            report.overrides.push({ key: rule.key, oldValue: old, newValue: winner.value, verified });
+            continue;
+          }
+          await saveEndpointOverride(sourceId, rule.key, winner.value, spec.entryPages[0], winner.bundleUrl);
+          report.overrides.push({ key: rule.key, oldValue: old, newValue: winner.value, verified });
+          healedAny = true;
+          log.info("SelfHeal", `Healed ${sourceId}.${rule.key}: ${old ?? "(none)"} -> ${winner.value.slice(0, 80)} (verified=${verified})`);
+        }
+        invalidateOverrideCache(sourceId);
+        report.healed = healedAny && report.overrides.some((o) => o.verified);
+        return report;
+      }
+    };
+    dynamicScannerEngine = new DynamicScannerEngine();
+  }
+});
+
+// server/workers/parsers/bookmyshow.ts
+function normCity(s) {
+  return s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+}
+async function resolveBmsRegion(city, fetchJson) {
+  const want = normCity(city || "");
+  if (!regionsCache || Date.now() - regionsCache.at > 24 * 36e5) {
+    const j = await fetchJson(REGIONS_URL);
+    const all = [...j?.BookMyShow?.TopCities || [], ...j?.BookMyShow?.OtherCities || []];
+    const regions = all.map((r) => ({
+      regionCode: String(r.RegionCode || ""),
+      regionSlug: String(r.RegionSlug || "").toLowerCase(),
+      regionName: String(r.RegionName || "")
+    })).filter((r) => r.regionCode && r.regionSlug);
+    const aliases = /* @__PURE__ */ new Map();
+    for (const r of regions) {
+      aliases.set(normCity(r.regionName), r);
+      const aliasRaw = Array.isArray(all.find((x) => x.RegionCode === r.regionCode)?.Alias) ? all.find((x) => x.RegionCode === r.regionCode).Alias : [];
+      for (const a of aliasRaw) aliases.set(normCity(a), r);
+    }
+    regionsCache = { at: Date.now(), regions, aliases };
+  }
+  if (want) {
+    const hit = regionsCache.aliases.get(want) || regionsCache.regions.find((r) => normCity(r.regionName).startsWith(want));
+    if (hit) return hit;
+  }
+  return { regionCode: DEFAULT_REGION.regionCode, regionSlug: DEFAULT_REGION.regionSlug, regionName: DEFAULT_REGION.regionName };
+}
+function extractMovieQuery(entity, cityTokens) {
+  const clean = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
+  return clean.join(" ");
+}
+function matchesQuery(title, query) {
+  const toks = normCity(query).split(" ").filter((t) => t.length > 1 && !["in", "near", "movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing"].includes(t));
+  if (!toks.length) return true;
+  const hay = normCity(title);
+  return toks.every((t) => hay.includes(t));
+}
+function bmsDiscoverUrl(region, healedBase) {
+  const base = healedBase && /^https:\/\/in\.bookmyshow\.com\//.test(healedBase) ? healedBase.replace(/\/$/, "") : DISCOVER_BASE;
+  return `${base}/movies-${region.regionSlug}?region=${encodeURIComponent(region.regionCode)}&embedded=true`;
+}
+function bmsDiscoverHeaders(region) {
+  return {
+    Accept: "application/json",
+    "x-app-code": "WEB",
+    "x-platform-code": "DESKTOP-WEB",
+    "x-region-code": region.regionCode,
+    "x-bms-id": "1"
+  };
+}
+function parseMovieCards(payload, source, region, query, fingerprint) {
+  const listings = Array.isArray(payload?.listings) ? payload.listings : [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const L of listings) {
+    for (const card of L?.cards || []) {
+      const ctaUrl = String(card?.ctaUrl || "");
+      if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
+      const text = Array.isArray(card?.text) ? card.text : [];
+      const title = String(text[0]?.components?.[0]?.text || "").trim();
+      if (!title || title.length > 120) continue;
+      const eventCode = String(card?.id || "");
+      const key = eventCode || ctaUrl;
+      if (seen.has(key)) continue;
+      if (query && !matchesQuery(title, query)) continue;
+      seen.add(key);
+      const poster = String(card?.image?.url || "");
+      const cert = String(text[1]?.components?.[0]?.text || "");
+      const lang = String(text[2]?.components?.[0]?.text || "");
+      out.push(newRawItem(source, {
+        title: title.slice(0, 200),
+        seller: "BookMyShow",
+        sellerUrl: ctaUrl,
+        // the deeplink goes ONLY to the price-owning platform (owner policy)
+        availability: "in_stock",
+        // now-showing in this region per BMS itself
+        location: { city: region.regionName },
+        attributes: {
+          ...poster ? { image_url: poster } : {},
+          ...cert ? { certification: cert } : {},
+          ...lang ? { language: lang } : {},
+          ...eventCode ? { event_code: eventCode } : {},
+          movie_page_url: ctaUrl,
+          platform: "BookMyShow"
+        },
+        evidence: {
+          sourceUrl: bmsDiscoverUrl(region),
+          sourceReference: eventCode || key,
+          rawFingerprint: fingerprint,
+          extractedFields: ["title", ...poster ? ["image"] : [], "deeplink", ...cert ? ["certification"] : [], ...lang ? ["language"] : []]
+        }
+      }));
+    }
+  }
+  return out.slice(0, 40);
+}
+var REGIONS_URL, DISCOVER_BASE, DEFAULT_REGION, regionsCache;
+var init_bookmyshow = __esm({
+  "server/workers/parsers/bookmyshow.ts"() {
+    init_contract();
+    REGIONS_URL = "https://in.bmscdn.com/discovery-catalog/response-cache/regions.json";
+    DISCOVER_BASE = "https://in.bookmyshow.com/api/explore/v1/discover";
+    DEFAULT_REGION = { regionCode: "BANG", regionSlug: "bengaluru", regionName: "Bengaluru" };
+    regionsCache = null;
+  }
+});
+
+// server/workers/parsers/ticketnew.ts
+function ticketnewCityKeys(city) {
+  const c = (city || "").toLowerCase().trim().replace(/\s+/g, "-");
+  if (!c) return [];
+  return CITY_ALIASES2[c] || [c];
+}
+function ticketnewSlug(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function parseTicketNewMoviesPage(body, cityKey) {
+  const m = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(body);
+  if (!m) return [];
+  let d;
+  try {
+    d = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const serverState = d?.props?.pageProps?.data?.serverState;
+  const running2 = serverState?.currentlyRunningMovies;
+  const entry = running2?.[cityKey] || Object.values(running2 || {})[0];
+  const movies = entry?.data?.movies || [];
+  return movies.filter((mv) => mv && typeof mv.name === "string" && mv.name.length > 0);
+}
+function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const mv of movies.slice(0, 40)) {
+    const title = String(mv.name || "").trim();
+    if (!title) continue;
+    if (queryTerm && !matchesQuery(title, queryTerm)) continue;
+    const slug = ticketnewSlug(title);
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    const attrs = {
+      image_url: mv.appImgPath ? String(mv.appImgPath) : null,
+      language: mv.lang || null,
+      genres: Array.isArray(mv.grn) ? mv.grn.join(", ") : null,
+      certification: mv.censor || null,
+      duration_min: typeof mv.duration === "number" ? mv.duration : null,
+      sessions_today: typeof mv.totalSessionCount === "number" ? mv.totalSessionCount : null,
+      data_note: "Now-showing discovery from TicketNew; ticket price appears in the seat-selection flow"
+    };
+    out.push(newRawItem(source, {
+      title,
+      seller: "TicketNew",
+      sellerUrl: slug ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
+      currency: "INR",
+      attributes: attrs,
+      evidence: {
+        sourceUrl: `${TICKETNEW_BASE}/movies/${cityKey}`,
+        sourceReference: String(mv.id || ""),
+        extractedFields: ["title", "language", "genres", "certification", "duration", "sessions", "image"]
+      }
+    }));
+  }
+  return out;
+}
+var TICKETNEW_BASE, CITY_ALIASES2;
+var init_ticketnew = __esm({
+  "server/workers/parsers/ticketnew.ts"() {
+    init_contract();
+    init_bookmyshow();
+    TICKETNEW_BASE = "https://www.ticketnew.com";
+    CITY_ALIASES2 = {
+      bengaluru: ["bengaluru", "bangalore"],
+      bangalore: ["bangalore", "bengaluru"],
+      mumbai: ["mumbai"],
+      delhi: ["delhi", "new-delhi"],
+      "new delhi": ["new-delhi", "delhi"],
+      ncr: ["delhi", "ncr"],
+      hyderabad: ["hyderabad"],
+      chennai: ["chennai"],
+      kolkata: ["kolkata"],
+      pune: ["pune"],
+      ahmedabad: ["ahmedabad"],
+      kochi: ["kochi"],
+      coimbatore: ["coimbatore"],
+      madurai: ["madurai"],
+      jaipur: ["jaipur"],
+      lucknow: ["lucknow"]
+    };
+  }
+});
+
+// server/workers/parsers/cinepolis.ts
+function parseCinepolisPage(body) {
+  const m = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(body);
+  if (!m) return { nowPlaying: [], comingSoon: [] };
+  let d;
+  try {
+    d = JSON.parse(m[1]);
+  } catch {
+    return { nowPlaying: [], comingSoon: [] };
+  }
+  const pp = d?.props?.pageProps || {};
+  const clean = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
+  const np = pp.nowPlayingMoviesData;
+  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean(Object.values(np)) : clean(np);
+  return { nowPlaying, comingSoon: clean(pp.comingSoonMoviesData) };
+}
+function cinepolisDisplayTitle(title) {
+  return title.replace(/\s*\((?:[A-Z]{2,8}(?:\s+WI\s+[A-Z]{2,8})?(?:\s+\([^)]*\))?(?:\s+\(\d+D\))?)?\)\s*$/i, "").trim() || title;
+}
+function parseCinepolisMovies(data, source, queryTerm) {
+  const out = [];
+  const groups = [
+    { movies: data.nowPlaying, availability: "now_showing", note: "Now-showing discovery from Cinepolis India; ticket price appears in the seat-selection flow" },
+    { movies: data.comingSoon, availability: "coming_soon", note: "Upcoming release listed by Cinepolis India; tickets open per the release date shown" }
+  ];
+  for (const g of groups) {
+    for (const mv of g.movies.slice(0, 25)) {
+      const rawTitle = String(mv.Title || "").trim();
+      if (!rawTitle) continue;
+      if (queryTerm && !matchesQuery(rawTitle, queryTerm)) continue;
+      const display = cinepolisDisplayTitle(rawTitle);
+      const img = mv.movie_image_url_1 || mv.movie_image_url_2;
+      const release = mv.movie_release_date ? String(mv.movie_release_date).slice(0, 10) : null;
+      const attrs = {
+        image_url: img ? encodeURI(String(img)) : null,
+        language: mv.movie_lang || null,
+        genres: mv.m_movie_genre_name || null,
+        duration_min: typeof mv.run_time === "number" ? mv.run_time : null,
+        trailer_url: mv.movie_trailer && mv.movie_trailer !== "NA" ? mv.movie_trailer : null,
+        release_date: release,
+        availability: g.availability,
+        data_note: g.note
+      };
+      out.push(newRawItem(source, {
+        title: display,
+        seller: "Cinepolis India",
+        sellerUrl: CINEPOLIS_MOVIE_LIST_URL,
+        // the site's own SSR-verified movie-list entry
+        currency: "INR",
+        attributes: attrs,
+        evidence: {
+          sourceUrl: CINEPOLIS_MOVIE_LIST_URL,
+          sourceReference: mv.movie_id ? String(mv.movie_id) : "",
+          extractedFields: ["title", "language", "genres", "duration", "release_date", "trailer", "image"]
+        }
+      }));
+    }
+  }
+  return out;
+}
+var CINEPOLIS_BASE, CINEPOLIS_MOVIE_LIST_URL;
+var init_cinepolis = __esm({
+  "server/workers/parsers/cinepolis.ts"() {
+    init_contract();
+    init_bookmyshow();
+    CINEPOLIS_BASE = "https://cinepolisindia.com";
+    CINEPOLIS_MOVIE_LIST_URL = `${CINEPOLIS_BASE}/movie-list/undefined`;
+  }
+});
+
+// server/workers/parsers/district.ts
+function parseDistrictMovies(body) {
+  const out = [];
+  const re = /<script type="application\/ld\+json">(\{[\s\S]*?\})<\/script>/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    let d;
+    try {
+      d = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    if (d?.["@type"] !== "ItemList") continue;
+    const items = Array.isArray(d.itemListElement) ? d.itemListElement : [];
+    for (const it of items) {
+      const name = typeof it?.name === "string" ? it.name.trim() : "";
+      const url = typeof it?.url === "string" ? it.url.trim() : "";
+      if (!name || !/^https:\/\/www\.district\.in\/movies\/.+/.test(url)) continue;
+      out.push({ name, url, image: typeof it.image === "string" && it.image.startsWith("http") ? it.image : null });
+    }
+  }
+  return out;
+}
+function parseDistrictOffers(movies, source, queryTerm) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const mv of movies.slice(0, 25)) {
+    if (queryTerm && !matchesQuery(mv.name, queryTerm)) continue;
+    const key = mv.url.split("/").pop() || mv.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const attrs = {
+      image_url: mv.image,
+      availability: "now_showing",
+      data_note: "Now-showing discovery from District by Zomato (the merged Paytm Insider movies platform); ticket price appears in the District seat-selection flow"
+    };
+    out.push(newRawItem(source, {
+      title: mv.name,
+      seller: DISTRICT_SELLER,
+      sellerUrl: mv.url,
+      // the platform's own canonical web deeplink — web redirection works
+      currency: "INR",
+      attributes: attrs,
+      evidence: {
+        sourceUrl: DISTRICT_MOVIES_URL,
+        sourceReference: key,
+        extractedFields: ["title", "web_deeplink", "poster"]
+      }
+    }));
+  }
+  return out;
+}
+var DISTRICT_MOVIES_URL, DISTRICT_SELLER;
+var init_district = __esm({
+  "server/workers/parsers/district.ts"() {
+    init_contract();
+    init_bookmyshow();
+    DISTRICT_MOVIES_URL = "https://www.district.in/movies/";
+    DISTRICT_SELLER = "District by Zomato (Paytm)";
+  }
+});
+
 // server/workers/verticals/movies.ts
-var recentCache, moviesWorker;
+async function fetchJsonNode(url) {
+  const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2e4) });
+  if (!r.ok) throw new AcquisitionError("SERVER_ERROR", `regions fetch ${r.status}`);
+  return r.json();
+}
+var import_node_crypto, recentCache, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
     init_wikidataMovies();
+    init_httpClient();
+    init_selfHeal();
+    init_curlCffiFetch();
+    init_bookmyshow();
+    init_ticketnew();
+    init_cinepolis();
+    init_district();
+    import_node_crypto = require("node:crypto");
     recentCache = null;
     moviesWorker = {
       vertical: "movies",
       tasks: [
+        {
+          sourceId: "w_movies_bookmyshow",
+          name: "Movies worker: BookMyShow now-showing discovery (posters + deeplinks, city-aware)",
+          priority: 1,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "").trim();
+            const entity = String(ctx.query.entityName || "").trim();
+            const region = await resolveBmsRegion(ctx.query.location?.city, fetchJsonNode);
+            const healedBase = await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
+              const host = await getOverride("w_movies_bookmyshow", "api_host");
+              return pth && host ? `${host}${pth}/v1/discover` : null;
+            }).catch(() => null);
+            let res = await cffiFetch(bmsDiscoverUrl(region, healedBase), { headers: bmsDiscoverHeaders(region), timeoutMs: 25e3 });
+            if ((res.status === 404 || res.status === 410) && !healedBase) {
+              const rep = await dynamicScannerEngine.heal("w_movies_bookmyshow").catch(() => null);
+              const fresh = rep?.healed ? await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
+                const host = await getOverride("w_movies_bookmyshow", "api_host");
+                return pth && host ? `${host}${pth}/v1/discover` : null;
+              }).catch(() => null) : null;
+              if (fresh) res = await cffiFetch(bmsDiscoverUrl(region, fresh), { headers: bmsDiscoverHeaders(region), timeoutMs: 25e3 });
+            }
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `BMS blocked: ${res.status}`, res.status);
+            }
+            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `BMS discovery ${res.status}`, res.status);
+            const payload = JSON.parse(res.body);
+            const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
+            const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : "";
+            const fingerprint = (0, import_node_crypto.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
+            return parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+          }
+        },
+        {
+          sourceId: "w_movies_ticketnew",
+          name: "Movies worker: TicketNew now-showing (Next.js __NEXT_DATA__, city-aware)",
+          priority: 8,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const entity = String(ctx.query.entityName || "").trim();
+            const city = String(ctx.query.location?.city || "");
+            const keys = ticketnewCityKeys(city);
+            if (keys.length === 0) return [];
+            const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
+            let lastErr = null;
+            for (const key of keys.slice(0, 2)) {
+              try {
+                const res = await cffiFetch(`${TICKETNEW_BASE}/movies/${key}`, { timeoutMs: 25e3 });
+                if (res.status === 403 || res.status === 429) {
+                  throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `TicketNew blocked: ${res.status}`, res.status);
+                }
+                if (res.status !== 200) {
+                  lastErr = new Error(`TN listing ${res.status}`);
+                  continue;
+                }
+                const movies = parseTicketNewMoviesPage(res.body, key);
+                if (movies.length === 0) {
+                  lastErr = new Error("no movies parsed");
+                  continue;
+                }
+                return parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+              } catch (e) {
+                lastErr = e;
+                if (e instanceof AcquisitionError && (e.failureClass === "FORBIDDEN" || e.failureClass === "RATE_LIMITED")) throw e;
+              }
+            }
+            if (lastErr instanceof AcquisitionError) throw lastErr;
+            return [];
+          }
+        },
+        {
+          sourceId: "w_movies_cinepolis",
+          name: "Movies worker: Cinepolis India listing (Next.js SSR __NEXT_DATA__, now-showing + coming-soon)",
+          priority: 9,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const entity = String(ctx.query.entityName || "").trim();
+            const city = String(ctx.query.location?.city || "");
+            const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
+            const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25e3 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `Cinepolis blocked: ${res.status}`, res.status);
+            }
+            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Cinepolis listing ${res.status}`, res.status);
+            const data = parseCinepolisPage(res.body);
+            if (data.nowPlaying.length === 0 && data.comingSoon.length === 0) {
+              throw new AcquisitionError("EMPTY_RESPONSE", "Cinepolis page carried no parseable movies");
+            }
+            return parseCinepolisMovies(data, ctx.source, queryTerm);
+          }
+        },
+        {
+          sourceId: "w_movies_district",
+          name: "Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)",
+          priority: 8,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const entity = String(ctx.query.entityName || "").trim();
+            const city = String(ctx.query.location?.city || "");
+            const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
+            const res = await cffiFetch(DISTRICT_MOVIES_URL, { timeoutMs: 25e3 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `District blocked: ${res.status}`, res.status);
+            }
+            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `District movies page ${res.status}`, res.status);
+            const movies = parseDistrictMovies(res.body);
+            if (movies.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "District page carried no parseable JSON-LD movies");
+            return parseDistrictOffers(movies, ctx.source, queryTerm);
+          }
+        },
         {
           sourceId: "w_movies_wikidata",
           name: "Movies worker: Wikidata film releases (India)",
@@ -2642,9 +3623,12 @@ var init_movies = __esm({
           timeoutMs: 3e4,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
-            if (entity && entity.length > 2 && !/now showing|nowsho|latest|current|movies? (near|in)/i.test(entity)) {
-              const hits = await searchFilmEntity(entity, ctx.source);
-              if (hits.length) return hits;
+            const cityToks = normCity(String(ctx.query.location?.city || "")).split(" ").filter(Boolean);
+            const movieTerm = entity ? extractMovieQuery(entity, cityToks) : "";
+            if (movieTerm) {
+              const hits = await searchFilmEntity(movieTerm, ctx.source);
+              const strict = hits.filter((h) => matchesQuery(String(h.attributes?.match || h.title), movieTerm));
+              return strict;
             }
             if (!recentCache || Date.now() - recentCache.at > 30 * 6e4) {
               const json = await wikidataFetch("https://query.wikidata.org/sparql", {
@@ -2704,7 +3688,7 @@ function parseAbhiBusServices(json, source, route) {
       price: fare,
       currency: "INR",
       ...Number(s?.fares?.fare) > fare ? { listPrice: Number(s.fares.fare) } : {},
-      seller: (operator || "AbhiBus").slice(0, 120),
+      seller: "AbhiBus",
       sellerUrl: searchUrl,
       availability: seats > 0 ? "in_stock" : "out_of_stock",
       travel: { route: `${route.fromName} \u2192 ${route.toName}`, date: route.jdate, seatType: busType || "unknown" },
@@ -2738,7 +3722,7 @@ var init_abhibus = __esm({
 
 // server/workers/verticals/bus.ts
 function routeFromQuery3(raw) {
-  const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\s+/g, " ").trim();
+  const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, " ").replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/gi, " ").replace(/\s+/g, " ").trim();
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|from)\s+(.{2,40})/);
   if (!m) return null;
   return { from: m[1].trim(), to: m[2].trim() };
@@ -7989,18 +8973,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path6, params = {}) {
+      async apiGet(path7, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path6}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path7}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path6, params);
+          return this.apiGet(path7, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path6} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path7} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -8392,7 +9376,7 @@ var import_express5 = __toESM(require("express"), 1);
 var import_path4 = __toESM(require("path"), 1);
 var import_fs3 = __toESM(require("fs"), 1);
 var import_express4 = __toESM(require("express"), 1);
-var __dirname = process.cwd();
+var __dirname2 = process.cwd();
 async function createApp() {
   const app = (0, import_express4.default)();
   app.use(import_express4.default.json({ limit: "256kb" }));
@@ -8410,7 +9394,7 @@ async function createApp() {
     startWorkers2();
     bootstrapAffiliateSync2();
   }
-  const dist = import_path4.default.resolve(__dirname, "dist");
+  const dist = import_path4.default.resolve(__dirname2, "dist");
   if (import_fs3.default.existsSync(dist)) {
     app.use(import_express4.default.static(dist));
     app.get("*", (_req, res) => res.sendFile(import_path4.default.join(dist, "index.html")));

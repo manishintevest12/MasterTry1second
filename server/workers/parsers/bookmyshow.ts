@@ -84,8 +84,11 @@ export function matchesQuery(title: string, query: string): boolean {
   return toks.every((t) => hay.includes(t));
 }
 
-export function bmsDiscoverUrl(region: BmsRegion): string {
-  return `${DISCOVER_BASE}/movies-${region.regionSlug}?region=${encodeURIComponent(region.regionCode)}&embedded=true`;
+export function bmsDiscoverUrl(region: BmsRegion, healedBase?: string | null): string {
+  // Self-healing: an override re-derived from the site's public JS bundles (DynamicScannerEngine)
+  // wins over the code default when present and well-formed.
+  const base = healedBase && /^https:\/\/in\.bookmyshow\.com\//.test(healedBase) ? healedBase.replace(/\/$/, '') : DISCOVER_BASE;
+  return `${base}/movies-${region.regionSlug}?region=${encodeURIComponent(region.regionCode)}&embedded=true`;
 }
 
 export function bmsDiscoverHeaders(region: BmsRegion): Record<string, string> {

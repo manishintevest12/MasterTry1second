@@ -7,6 +7,7 @@
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { wikidataFetch, recentIndianFilms, parseRecentFilms, searchFilmEntity } from '../parsers/wikidataMovies';
 import { AcquisitionError } from '../../common/httpClient';
+import { getOverride, dynamicScannerEngine } from '../../acquisition/selfHeal';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
@@ -39,7 +40,14 @@ export const moviesWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || '').trim();
         const entity = String(ctx.query.entityName || '').trim();
         const region = await resolveBmsRegion(ctx.query.location?.city, fetchJsonNode);
-        const res = await cffiFetch(bmsDiscoverUrl(region), { headers: bmsDiscoverHeaders(region), timeoutMs: 25_000 });
+        const healedBase = await getOverride('w_movies_bookmyshow', 'explore_api_path').then(async (pth) => { const host = await getOverride('w_movies_bookmyshow', 'api_host'); return pth && host ? `${host}${pth}/v1/discover` : null; }).catch(() => null);
+        let res = await cffiFetch(bmsDiscoverUrl(region, healedBase), { headers: bmsDiscoverHeaders(region), timeoutMs: 25_000 });
+        if ((res.status === 404 || res.status === 410) && !healedBase) {
+          // SOURCE_DRIFT: endpoint moved. Re-scan public bundles, retry once with the healed base.
+          const rep = await dynamicScannerEngine.heal('w_movies_bookmyshow').catch(() => null);
+          const fresh = rep?.healed ? await getOverride('w_movies_bookmyshow', 'explore_api_path').then(async (pth) => { const host = await getOverride('w_movies_bookmyshow', 'api_host'); return pth && host ? `${host}${pth}/v1/discover` : null; }).catch(() => null) : null;
+          if (fresh) res = await cffiFetch(bmsDiscoverUrl(region, fresh), { headers: bmsDiscoverHeaders(region), timeoutMs: 25_000 });
+        }
         if (res.status === 403 || res.status === 429) {
           throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `BMS blocked: ${res.status}`, res.status);
         }
