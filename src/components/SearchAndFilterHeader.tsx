@@ -37,6 +37,11 @@ import {
 } from '../data/categoriesData';
 import { JourneyDatePickerModal } from './JourneyDatePickerModal';
 
+// ---- Date helpers: all displayed dates are DD-MM-YYYY, always anchored to the real current date ----
+const fmtDMY = (d: Date) =>
+  `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+const todayDMY = () => fmtDMY(new Date());
+
 export const SearchAndFilterHeader: React.FC = () => {
   const {
     vertical,
@@ -63,7 +68,7 @@ export const SearchAndFilterHeader: React.FC = () => {
   const [origin, setOrigin] = useState<string>(meta.defaultOrigin || '');
   const [destination, setDestination] = useState<string>(meta.defaultDestination || '');
   const [tripType, setTripType] = useState<'return' | 'oneway'>('return');
-  const [dateStr, setDateStr] = useState<string>('Fri 09 Oct – Fri 16 Oct, 2026');
+  const [dateStr, setDateStr] = useState<string>(() => `${todayDMY()} (Today)`);
   const [passengerCount, setPassengerCount] = useState<number>(1);
 
   // Interactive Journey Date Picker State
@@ -73,6 +78,10 @@ export const SearchAndFilterHeader: React.FC = () => {
   
 /** Parse display date strings like "09 Oct – 12 Oct, 2026 (3 Nights)" / "09 Oct, 2026 (Today)" into ISO dates. */
 const toIsoDate = (display: string, yearHint?: number): string | undefined => {
+  // New canonical format: DD-MM-YYYY
+  const dmy = display.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+  // Legacy: "09 Oct[, 2026]"
   const m = display.match(/(\d{1,2})\s+([A-Za-z]{3})/);
   if (!m) return undefined;
   const day = Number(m[1]);
@@ -82,10 +91,16 @@ const toIsoDate = (display: string, yearHint?: number): string | undefined => {
   const year = yearMatch ? Number(yearMatch[1]) : (yearHint ?? new Date().getFullYear());
   return `${year}-${String(mon + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
-const travelDatesFor = (v: string, dep: string, ret?: string) =>
-  v === 'hotels' || v === 'flights' || v === 'bus' || v === 'cab'
-    ? { depart: toIsoDate(dep), ...(ret ? { return: toIsoDate(ret, Number((dep.match(/(\d{4})/) || [])[0])) } : {}) }
-    : undefined;
+/** Second date (return / check-out) of a "A – B" display string, if present. */
+const toIsoReturn = (display: string): string | undefined => {
+  const parts = display.split(/\s[–-]\s/);
+  return parts.length > 1 ? toIsoDate(parts[1]) : undefined;
+};
+const travelDatesFor = (v: string, dep: string, ret?: string) => {
+  if (!(v === 'hotels' || v === 'flights' || v === 'bus' || v === 'cab')) return undefined;
+  const r = ret ? toIsoDate(ret) : toIsoReturn(dep);
+  return { depart: toIsoDate(dep), ...(r ? { return: r } : {}) };
+};
 
 const handleSelectJourneyDate = (formattedDate: string) => {
     if (datePickerContext === 'flights') {
@@ -111,20 +126,20 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
   // 3. Hotels
   const [hotelDestination, setHotelDestination] = useState<string>('Goa, India');
-  const [hotelDates, setHotelDates] = useState<string>('09 Oct – 12 Oct, 2026 (3 Nights)');
+  const [hotelDates, setHotelDates] = useState<string>(() => { const a = new Date(); const b = new Date(); b.setDate(b.getDate() + 3); return `${fmtDMY(a)} – ${fmtDMY(b)} (3 Nights)`; });
   const [hotelGuests, setHotelGuests] = useState<string>('2 Adults · 1 Room');
 
   // 4. Bus
   const [busFrom, setBusFrom] = useState<string>('Bengaluru (BLR)');
   const [busTo, setBusTo] = useState<string>('Hyderabad (HYD)');
-  const [busDate, setBusDate] = useState<string>('09 Oct, 2026 (Today)');
+  const [busDate, setBusDate] = useState<string>(() => `${todayDMY()} (Today)`);
 
   // 5. E-commerce
   const [ecomCategory, setEcomCategory] = useState<string>('All Electronics');
 
   // 6. Movie
   const [movieCity, setMovieCity] = useState<string>('Mumbai (All Theatres)');
-  const [selectedMovieDate, setSelectedMovieDate] = useState<string>('09 Oct, 2026 (Today)');
+  const [selectedMovieDate, setSelectedMovieDate] = useState<string>(() => `${todayDMY()} (Today)`);
 
   // 7. Loans
   const [loanAmount, setLoanAmount] = useState<number>(500000);
@@ -1315,6 +1330,7 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
       {/* Reusable Journey Date Picker Modal (Exact match to image.png with present/future validation) */}
       <JourneyDatePickerModal
+        key={`${datePickerContext}-${isDatePickerOpen}`}
         isOpen={isDatePickerOpen}
         onClose={() => setIsDatePickerOpen(false)}
         title={
@@ -1329,6 +1345,7 @@ const handleSelectJourneyDate = (formattedDate: string) => {
             : 'Schedule Ride Date'
         }
         isRange={datePickerContext === 'flights' ? tripType === 'return' : datePickerContext === 'hotels'}
+        returnOptional={datePickerContext === 'flights'}
         accentColor={
           datePickerContext === 'flights'
             ? 'orange'

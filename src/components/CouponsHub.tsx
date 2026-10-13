@@ -147,7 +147,7 @@ export const CouponsHub: React.FC = () => {
                   <span className="text-sm font-black text-slate-900">{discountText(coupon)}</span>
                   {coupon.expires_at && (
                     <span className="text-[10px] text-slate-400 font-medium">
-                      till {new Date(coupon.expires_at).toLocaleDateString('en-IN')}
+                      till {new Date(coupon.expires_at).toLocaleDateString('en-GB').replace(/\//g, '-')}
                     </span>
                   )}
                 </div>

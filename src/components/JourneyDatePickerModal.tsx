@@ -19,6 +19,7 @@ export interface JourneyDatePickerProps {
   onSelectDate: (formattedDate: string, departureDate?: Date, returnDate?: Date) => void;
   title?: string;
   isRange?: boolean; // For return flight or hotel check-in/out
+  returnOptional?: boolean; // Flights: return date is optional (one-way allowed)
   accentColor?: 'orange' | 'red' | 'blue' | 'emerald' | 'amber';
 }
 
@@ -46,6 +47,7 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
   onSelectDate,
   title = 'Date of Journey',
   isRange = false,
+  returnOptional = false,
   accentColor = 'orange',
 }) => {
   // Always anchor to current real date (or October 2026 as reference)
@@ -63,7 +65,7 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
   const [selectedDeparture, setSelectedDeparture] = useState<Date>(today);
   // Selected return date (if range mode)
   const [selectedReturn, setSelectedReturn] = useState<Date | null>(() => {
-    if (isRange) {
+    if (isRange && !returnOptional) {
       const ret = new Date(today);
       ret.setDate(ret.getDate() + 3);
       return ret;
@@ -166,16 +168,21 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
       setSelectedDeparture(clickedDate);
       // If previous return date is before new departure, push return date forward by 2 days
       if (selectedReturn && selectedReturn.getTime() <= clickedDate.getTime()) {
-        const nextDay = new Date(clickedDate);
-        nextDay.setDate(nextDay.getDate() + 2);
-        setSelectedReturn(nextDay);
+        if (returnOptional) {
+          setSelectedReturn(null);
+        } else {
+          const nextDay = new Date(clickedDate);
+          nextDay.setDate(nextDay.getDate() + 2);
+          setSelectedReturn(nextDay);
+        }
       }
       setSelectingStep('return');
     } else {
       // Selecting return date
       if (clickedDate.getTime() <= selectedDeparture.getTime()) {
-        // If clicked on or before departure, reset departure to clickedDate
+        // If clicked on or before departure, reset departure to clickedDate (return cleared when optional)
         setSelectedDeparture(clickedDate);
+        if (returnOptional) setSelectedReturn(null);
         setSelectingStep('return');
       } else {
         setSelectedReturn(clickedDate);
@@ -184,21 +191,21 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
     }
   };
 
-  const formatDateLabel = (d: Date, withDayName: boolean = true) => {
-    const dayStr = String(d.getDate()).padStart(2, '0');
-    const monthShort = MONTH_NAMES[d.getMonth()].slice(0, 3);
-    const yearStr = d.getFullYear();
-    const dayName = WEEKDAY_NAMES[(d.getDay() + 6) % 7];
-    if (withDayName) {
-      return `${dayName} ${dayStr} ${monthShort}, ${yearStr}`;
-    }
-    return `${dayStr} ${monthShort}, ${yearStr}`;
+  // Always DD-MM-YYYY (optionally with weekday prefix)
+  const formatDateLabel = (d: Date, withDayName: boolean = false) => {
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const base = `${dd}-${mm}-${d.getFullYear()}`;
+    return withDayName ? `${WEEKDAY_NAMES[(d.getDay() + 6) % 7]} ${base}` : base;
   };
 
   // Quick Preset Actions
   const handleSelectToday = () => {
     setSelectedDeparture(new Date(today));
-    if (isRange) {
+    if (isRange && returnOptional) {
+      setSelectedReturn(null);
+      setSelectingStep('return');
+    } else if (isRange) {
       const ret = new Date(today);
       ret.setDate(ret.getDate() + 3);
       setSelectedReturn(ret);
@@ -211,7 +218,10 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     setSelectedDeparture(tomorrow);
-    if (isRange) {
+    if (isRange && returnOptional) {
+      setSelectedReturn(null);
+      setSelectingStep('return');
+    } else if (isRange) {
       const ret = new Date(tomorrow);
       ret.setDate(ret.getDate() + 3);
       setSelectedReturn(ret);
@@ -226,7 +236,10 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
     const daysUntilSat = (6 - d.getDay() + 7) % 7 || 7;
     d.setDate(d.getDate() + daysUntilSat);
     setSelectedDeparture(new Date(d));
-    if (isRange) {
+    if (isRange && returnOptional) {
+      setSelectedReturn(null);
+      setSelectingStep('return');
+    } else if (isRange) {
       const sun = new Date(d);
       sun.setDate(sun.getDate() + 2);
       setSelectedReturn(sun);
@@ -238,13 +251,15 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
   const handleConfirm = () => {
     if (!isRange) {
       const isTod = isDateToday(selectedDeparture);
-      const formatted = `${formatDateLabel(selectedDeparture, false)}${isTod ? ' (Today)' : ''}`;
-      onSelectDate(formatted, selectedDeparture);
+      onSelectDate(`${formatDateLabel(selectedDeparture)}${isTod ? ' (Today)' : ''}`, selectedDeparture);
+    } else if (!selectedReturn) {
+      // Return is optional (one-way)
+      const isTod = isDateToday(selectedDeparture);
+      onSelectDate(`${formatDateLabel(selectedDeparture)}${isTod ? ' (Today)' : ''}`, selectedDeparture);
     } else {
-      const ret = selectedReturn || new Date(selectedDeparture.getTime() + 86400000 * 3);
-      const nights = Math.max(1, Math.round((ret.getTime() - selectedDeparture.getTime()) / (1000 * 60 * 60 * 24)));
-      const formatted = `${formatDateLabel(selectedDeparture, true)} – ${formatDateLabel(ret, true)} (${nights} Night${nights > 1 ? 's' : ''})`;
-      onSelectDate(formatted, selectedDeparture, ret);
+      const nights = Math.max(1, Math.round((selectedReturn.getTime() - selectedDeparture.getTime()) / 86400000));
+      const suffix = returnOptional ? '' : ` (${nights} Night${nights > 1 ? 's' : ''})`;
+      onSelectDate(`${formatDateLabel(selectedDeparture)} – ${formatDateLabel(selectedReturn)}${suffix}`, selectedDeparture, selectedReturn);
     }
     onClose();
   };
@@ -272,7 +287,7 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
               </span>
               <div className="flex items-center gap-2">
                 <span className="text-base sm:text-lg font-black text-slate-900 font-mono tracking-tight">
-                  {formatDateLabel(selectedDeparture, false)}
+                  {formatDateLabel(selectedDeparture)}
                 </span>
                 {isDateToday(selectedDeparture) && (
                   <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -300,7 +315,7 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
             className="px-3 py-1 rounded-xl font-bold bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs whitespace-nowrap cursor-pointer flex items-center gap-1"
           >
             <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
-            <span>Today (09 Oct)</span>
+            <span>Today ({formatDateLabel(today)})</span>
           </button>
 
           <button
@@ -324,12 +339,16 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
         {isRange && (
           <div className="px-4 py-2 bg-blue-50/80 border-b border-blue-100 flex items-center justify-between text-xs">
             <span className="font-semibold text-blue-900">
-              {selectingStep === 'departure' ? 'Step 1: Select Departure / Check-in' : 'Step 2: Select Return / Check-out'}
+              {selectingStep === 'departure'
+                ? (returnOptional ? 'Step 1: Select Departure' : 'Step 1: Select Check-in')
+                : (returnOptional ? 'Step 2: Select Return (optional)' : 'Step 2: Select Check-out')}
             </span>
-            {selectedReturn && (
+            {selectedReturn ? (
               <span className="font-mono font-bold text-blue-700 text-[11px]">
-                Return: {formatDateLabel(selectedReturn, false)}
+                {returnOptional ? 'Return' : 'Check-out'}: {formatDateLabel(selectedReturn)}
               </span>
+            ) : (
+              <span className="font-semibold text-blue-600 text-[11px]">{returnOptional ? 'Return optional' : ''}</span>
             )}
           </div>
         )}
@@ -435,7 +454,7 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDayClick(dayNum)}
-                      className="w-9 h-9 rounded-full bg-slate-900 text-white font-black text-sm flex items-center justify-center shadow-md ring-2 ring-slate-900/10 cursor-pointer"
+                      className="w-9 h-9 rounded-full border-2 border-slate-400 text-slate-900 font-black text-sm flex items-center justify-center hover:bg-slate-100 cursor-pointer"
                     >
                       {dayNum}
                     </button>
@@ -464,8 +483,8 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
 
           <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between text-xs text-slate-500">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-900 inline-block" />
-              <span>Today highlighted</span>
+              <span className="w-2.5 h-2.5 rounded-full border-2 border-slate-400 inline-block" />
+              <span>Today</span>
             </span>
             <span className="text-slate-400 font-medium">Past dates locked</span>
           </div>
@@ -476,8 +495,9 @@ export const JourneyDatePickerModal: React.FC<JourneyDatePickerProps> = ({
           <div className="text-xs">
             <span className="text-[10px] text-slate-400 font-bold uppercase block">Confirmed Choice</span>
             <span className="font-extrabold text-slate-900 font-mono">
-              {formatDateLabel(selectedDeparture, false)}
-              {isRange && selectedReturn && ` → ${formatDateLabel(selectedReturn, false)}`}
+              {formatDateLabel(selectedDeparture)}
+              {isRange && selectedReturn && ` → ${formatDateLabel(selectedReturn)}`}
+              {isRange && !selectedReturn && returnOptional && ' (one-way)'}
             </span>
           </div>
 

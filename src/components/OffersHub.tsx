@@ -143,7 +143,7 @@ export const OffersHub: React.FC = () => {
 
               {offer.expires_at && (
                 <span className="absolute top-0 right-0 bg-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded-bl-lg font-semibold">
-                  till {new Date(offer.expires_at).toLocaleDateString('en-IN')}
+                  till {new Date(offer.expires_at).toLocaleDateString('en-GB').replace(/\//g, '-')}
                 </span>
               )}
             </div>
