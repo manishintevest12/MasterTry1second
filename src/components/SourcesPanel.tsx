@@ -39,7 +39,10 @@ export default function SourcesPanel({ vertical }: { vertical: string }) {
     <div className="mx-2 mt-2 text-[11px] text-slate-500 animate-pulse">Asking each website for live prices…</div>
   ) : null;
 
-  const ids = Array.from(new Set(rep.attempted.length ? rep.attempted : [...rep.succeeded, ...rep.failed.map((f) => f.sourceId)]));
+  const ids = Array.from(new Set(rep.attempted.length ? rep.attempted : [...rep.succeeded, ...rep.failed.map((f) => f.sourceId)]))
+    // Movies: Wikidata is an open-data reference feed, not a ticket seller — owner asked
+    // to keep it out of the movies seller list (its film rows still work in results).
+    .filter((id) => !(key === 'movies' && /wikidata/i.test(id)));
   const failed = new Map(rep.failed.map((f) => [f.sourceId, f]));
   const rows = ids.map((id) => {
     const f = failed.get(id);

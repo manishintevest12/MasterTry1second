@@ -3494,6 +3494,64 @@ function parseZomatoRestaurants(html, source, searchUrl, platform) {
   }
   return out.slice(0, 40);
 }
+function walkMenuJson(node, out, depth = 0) {
+  if (!node || depth > 12) return;
+  if (Array.isArray(node)) {
+    for (const n of node) walkMenuJson(n, out, depth + 1);
+    return;
+  }
+  if (typeof node !== "object") return;
+  const t = String(node["@type"] || "");
+  if ((t === "MenuItem" || t === "MenuSection") && node.name && node.offers) {
+    const p = Number(node.offers.price ?? node.offers.lowPrice ?? NaN);
+    if (Number.isFinite(p) && p > 0) out.push({ name: String(node.name).slice(0, 160), price: Math.round(p), description: node.description ? String(node.description).slice(0, 200) : void 0 });
+  }
+  if (!t && node.name && (node.price !== void 0 || node.item_price !== void 0 || node.price_incl !== void 0)) {
+    const p = Number(node.price ?? node.item_price ?? node.price_incl ?? NaN);
+    const nm = String(node.name).trim();
+    if (Number.isFinite(p) && p >= 10 && p <= 12e3 && nm.length >= 3 && nm.length <= 160) {
+      out.push({ name: nm.slice(0, 160), price: Math.round(p) });
+    }
+  }
+  for (const v of Object.values(node)) walkMenuJson(v, out, depth + 1);
+}
+function parseZomatoMenuPage(html) {
+  const hints = { jsonLdBlocks: 0, hasMenu: 0, preloadedState: 0, priceHits: 0 };
+  const dishes = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (d) => {
+    const k = `${d.name}|${d.price}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      dishes.push(d);
+    }
+  };
+  hints.priceHits = (html.match(/"(?:price|item_price|price_incl)"\s*:/g) || []).length;
+  const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    hints.jsonLdBlocks += 1;
+    if (m[1].includes("hasMenu") || m[1].includes("MenuItem")) hints.hasMenu += 1;
+    try {
+      const tmp = [];
+      walkMenuJson(JSON.parse(m[1]), tmp);
+      tmp.forEach(add);
+    } catch {
+    }
+  }
+  if (dishes.length) return { dishes: dishes.slice(0, 30), hints };
+  const pre = /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i.exec(html) || /__NEXT_DATA__[^>]*>(\{[\s\S]*?\})<\/script>/i.exec(html);
+  if (pre) {
+    hints.preloadedState += 1;
+    try {
+      const tmp = [];
+      walkMenuJson(JSON.parse(pre[1]), tmp);
+      tmp.forEach(add);
+    } catch {
+    }
+  }
+  return { dishes: dishes.slice(0, 30), hints };
+}
 var import_crypto6;
 var init_zomato = __esm({
   "server/workers/parsers/zomato.ts"() {
@@ -3668,6 +3726,7 @@ var init_food = __esm({
   "server/workers/verticals/food.ts"() {
     init_verticalWorker();
     init_zomato();
+    init_contract();
     init_swiggy();
     init_httpClient();
     init_dominos();
@@ -3796,6 +3855,41 @@ var init_food = __esm({
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Zomato HTTP ${r.status}`, r.status);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
             if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Zomato presented a challenge page");
+            const restUrls = items.slice(0, 2).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u));
+            const dishItems = [];
+            const hintAgg = {};
+            for (const ru of restUrls) {
+              const rr = await ctx.fetch(ru);
+              if (rr.status !== 200) continue;
+              const { dishes, hints } = parseZomatoMenuPage(rr.body);
+              for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
+              const restName = String(items.find((it) => it.sellerUrl === ru)?.title || ru.split("/").pop() || "restaurant");
+              for (const d of dishes) {
+                dishItems.push(newRawItem(ctx.source, {
+                  title: `${d.name} (${restName})`,
+                  brand: "Zomato",
+                  price: d.price,
+                  currency: "INR",
+                  seller: "Zomato",
+                  sellerUrl: ru,
+                  location: { city: ctx.query.location?.city || "" },
+                  attributes: {
+                    dish: d.name.slice(0, 160),
+                    restaurant: restName.slice(0, 160),
+                    platform: "Zomato",
+                    ...d.description ? { description: d.description } : {},
+                    price_basis: "Menu price served in Zomato restaurant page embedded JSON",
+                    data_note: "Dish price extracted from the restaurant page on zomato.com; final price at checkout may vary"
+                  },
+                  evidence: { sourceUrl: ru, sourceReference: d.name, extractedFields: ["dish", "price"] }
+                }));
+              }
+              if (dishItems.length >= 20) break;
+            }
+            if (dishItems.length) return dishItems;
+            if (restUrls.length && !hintAgg.priceHits) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) \u2014 dish prices stay unavailable to browserless HTTP`);
+            }
             return items;
           }
         }
@@ -4063,29 +4157,130 @@ var init_cab = __esm({
     init_bharatTaxi();
     init_quickRideCabs();
     init_curlCffiFetch();
+    init_contract();
+    init_osmTravel();
     init_httpClient();
     cabWorker = {
       vertical: "cab",
       tasks: [
         {
           // ---- Owner-mandated cab sources: attempted live on every cab search, honestly reported ----
+          // Ola: official Ola Cabs API fare estimates (developers.olacabs.com). Credentials in
+          // OLA_API_KEY (owner supplies the real app token; demo keys are rejected by Ola).
           sourceId: "w_cab_ola",
-          name: "Cab worker: Ola (probe)",
+          name: "Cab worker: Ola India fare estimates (official API)",
           priority: 15,
-          run: async () => {
-            const r = await cffiFetch("https://www.olacabs.com/", { impersonate: "chrome", timeoutMs: 12e3 });
-            if (r.status === 403 || r.status === 202) throw new AcquisitionError("ACCESS_CHALLENGE", "Ola web (olacabs.com) returns an Akamai challenge to browserless HTTP; fares are app-only.");
-            throw new AcquisitionError("EMPTY_RESPONSE", "Ola served no web fare data to browserless HTTP; fare estimates are app-only.");
+          maxPerMinute: 10,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const key = String(process.env.OLA_API_KEY || "").trim();
+            if (!key) throw new AcquisitionError("EMPTY_RESPONSE", "Ola API credentials not configured: set OLA_API_KEY in hPanel env (official Ola Cabs API; a demo key will be rejected by Ola with 401 \u2014 the owner will supply the original token).");
+            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            if (!rt) return [];
+            const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
+            if (!a || !b) return [];
+            const url = `https://api.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
+            const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { "X-APP-TOKEN": key, Accept: "application/json" } });
+            if (r.status === 401 || r.status === 403) throw new AcquisitionError("FORBIDDEN", `Ola API rejected credentials (HTTP ${r.status}) \u2014 set a valid OLA_API_KEY`, r.status);
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Ola API HTTP ${r.status}`, r.status);
+            let j;
+            try {
+              j = JSON.parse(r.body);
+            } catch {
+              throw new AcquisitionError("MALFORMED_RESPONSE", "Ola API non-JSON");
+            }
+            const cats = Array.isArray(j?.categories) ? j.categories : [];
+            const items = [];
+            const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            for (const c of cats.slice(0, 4)) {
+              const fares = c?.ride_estimate?.fare_breakup;
+              const total = Array.isArray(fares) ? fares.find((f) => String(f?.type || "").includes("total")) : null;
+              const price = Math.round(Number(total?.amount ?? c?.ride_estimate?.amount_max ?? 0));
+              if (!price) continue;
+              const vehicle = String(c.display_name || c.category || "Ola cab").slice(0, 60);
+              items.push(newRawItem(ctx.source, {
+                title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
+                brand: "Ola",
+                price,
+                currency: "INR",
+                seller: "Ola",
+                sellerUrl: "https://book.olacabs.com/",
+                travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
+                attributes: {
+                  pickup: rt.from,
+                  drop: rt.to,
+                  route: `${rt.from} to ${rt.to}`,
+                  vehicle_type: vehicle,
+                  trip_type: "one-way",
+                  price_basis: `Ola API fare estimate on ${today}`,
+                  data_note: "Fare estimate from the official Ola Cabs API (developers.olacabs.com)"
+                },
+                identifiers: { sku: `ola-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, "-") },
+                evidence: { sourceUrl: url, extractedFields: ["Ola API fare_breakup total_fare"] }
+              }));
+            }
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Ola API returned no fare estimate for this route");
+            return items;
           }
         },
         {
+          // Uber: official Uber API price estimates (developer.uber.com / v1.2). Credentials in
+          // UBER_SERVER_TOKEN (owner supplies the real token; demo keys are rejected with 401 — verified live).
           sourceId: "w_cab_uber",
-          name: "Cab worker: Uber India (probe)",
+          name: "Cab worker: Uber India fare estimates (official API)",
           priority: 15,
-          run: async () => {
-            const r = await cffiFetch("https://www.uber.com/global/en/price-estimate/", { impersonate: "chrome", timeoutMs: 12e3 });
-            const shell = r.status !== 200 || r.body.length > 1e5 && !r.body.includes('"prices"') && !r.body.includes("__NEXT_DATA__");
-            throw new AcquisitionError(shell ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE", "Uber price-estimate page is a JS shell; live estimates come from a sessioned riders.uber.com API unavailable to browserless HTTP \u2014 available only on app.");
+          maxPerMinute: 10,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const token = String(process.env.UBER_SERVER_TOKEN || "").trim();
+            if (!token) throw new AcquisitionError("EMPTY_RESPONSE", "Uber API credentials not configured: set UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price; demo keys are rejected by Uber with 401 \u2014 the owner will supply the original token).");
+            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            if (!rt) return [];
+            const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
+            if (!a || !b) return [];
+            const url = `https://api.uber.com/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
+            const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { Authorization: `Token ${token}`, Accept: "application/json" } });
+            if (r.status === 401 || r.status === 403) throw new AcquisitionError("FORBIDDEN", `Uber API rejected credentials (HTTP ${r.status}) \u2014 set a valid UBER_SERVER_TOKEN`, r.status);
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Uber API HTTP ${r.status}`, r.status);
+            let j;
+            try {
+              j = JSON.parse(r.body);
+            } catch {
+              throw new AcquisitionError("MALFORMED_RESPONSE", "Uber API non-JSON");
+            }
+            const prices = Array.isArray(j?.prices) ? j.prices : [];
+            const items = [];
+            const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            for (const p of prices.slice(0, 5)) {
+              const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
+              if (!price) continue;
+              const vehicle = String(p.localized_display_name || "Uber cab").slice(0, 60);
+              items.push(newRawItem(ctx.source, {
+                title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
+                brand: "Uber",
+                price,
+                currency: String(p.currency_code || "INR"),
+                seller: "Uber",
+                sellerUrl: "https://m.uber.com/looking/",
+                travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
+                attributes: {
+                  pickup: rt.from,
+                  drop: rt.to,
+                  route: `${rt.from} to ${rt.to}`,
+                  vehicle_type: vehicle,
+                  trip_type: "one-way",
+                  distance_km: p.distance != null ? String(Math.round(p.distance * 10) / 10) : "",
+                  duration_minutes: p.duration != null ? String(Math.round(p.duration / 60)) : "",
+                  fare_range: p.low_estimate && p.high_estimate ? `Rs ${p.low_estimate} - Rs ${p.high_estimate}` : "",
+                  price_basis: `Uber API price estimate on ${today}`,
+                  data_note: "Fare estimate from the official Uber API (developer.uber.com /v1.2/estimates/price)"
+                },
+                identifiers: { sku: `uber-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, "-") },
+                evidence: { sourceUrl: url, extractedFields: ["Uber API estimates/price"] }
+              }));
+            }
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Uber API returned no fare estimate for this route");
+            return items;
           }
         },
         {

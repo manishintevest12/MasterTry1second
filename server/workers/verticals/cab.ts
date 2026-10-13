@@ -9,6 +9,8 @@ import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs'
 import { bharatTaxiSlug, parseBharatTaxiCabs } from '../parsers/bharatTaxi';;
 import { parseQuickRideCabs } from '../parsers/quickRideCabs';
 import { cffiFetch } from '../../common/curlCffiFetch';
+import { newRawItem } from '../../sources/contract';
+import { photonGeocode } from '../parsers/osmTravel';
 import { AcquisitionError } from '../../common/httpClient';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
@@ -24,23 +26,102 @@ export const cabWorker: VerticalWorker = {
   tasks: [
     {
       // ---- Owner-mandated cab sources: attempted live on every cab search, honestly reported ----
+      // Ola: official Ola Cabs API fare estimates (developers.olacabs.com). Credentials in
+      // OLA_API_KEY (owner supplies the real app token; demo keys are rejected by Ola).
       sourceId: 'w_cab_ola',
-      name: 'Cab worker: Ola (probe)',
+      name: 'Cab worker: Ola India fare estimates (official API)',
       priority: 15,
-      run: async () => {
-        const r = await cffiFetch('https://www.olacabs.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        if (r.status === 403 || r.status === 202) throw new AcquisitionError('ACCESS_CHALLENGE', 'Ola web (olacabs.com) returns an Akamai challenge to browserless HTTP; fares are app-only.');
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Ola served no web fare data to browserless HTTP; fare estimates are app-only.');
+      maxPerMinute: 10,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        const key = String(process.env.OLA_API_KEY || '').trim();
+        if (!key) throw new AcquisitionError('EMPTY_RESPONSE', 'Ola API credentials not configured: set OLA_API_KEY in hPanel env (official Ola Cabs API; a demo key will be rejected by Ola with 401 — the owner will supply the original token).');
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
+        if (!a || !b) return [];
+        const url = `https://api.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
+        const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { 'X-APP-TOKEN': key, Accept: 'application/json' } });
+        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Ola API rejected credentials (HTTP ${r.status}) — set a valid OLA_API_KEY`, r.status);
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Ola API HTTP ${r.status}`, r.status);
+        let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Ola API non-JSON'); }
+        const cats: any[] = Array.isArray(j?.categories) ? j.categories : [];
+        const items = [];
+        const today = new Date().toISOString().slice(0, 10);
+        for (const c of cats.slice(0, 4)) {
+          const fares = c?.ride_estimate?.fare_breakup;
+          const total = Array.isArray(fares) ? fares.find((f: any) => String(f?.type || '').includes('total')) : null;
+          const price = Math.round(Number(total?.amount ?? c?.ride_estimate?.amount_max ?? 0));
+          if (!price) continue;
+          const vehicle = String(c.display_name || c.category || 'Ola cab').slice(0, 60);
+          items.push(newRawItem(ctx.source, {
+            title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
+            brand: 'Ola',
+            price, currency: 'INR',
+            seller: 'Ola', sellerUrl: 'https://book.olacabs.com/',
+            travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: 'unknown' },
+            attributes: {
+              pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,
+              vehicle_type: vehicle, trip_type: 'one-way',
+              price_basis: `Ola API fare estimate on ${today}`,
+              data_note: 'Fare estimate from the official Ola Cabs API (developers.olacabs.com)',
+            },
+            identifiers: { sku: `ola-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, '-') },
+            evidence: { sourceUrl: url, extractedFields: ['Ola API fare_breakup total_fare'] },
+          }));
+        }
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Ola API returned no fare estimate for this route');
+        return items;
       },
     },
     {
+      // Uber: official Uber API price estimates (developer.uber.com / v1.2). Credentials in
+      // UBER_SERVER_TOKEN (owner supplies the real token; demo keys are rejected with 401 — verified live).
       sourceId: 'w_cab_uber',
-      name: 'Cab worker: Uber India (probe)',
+      name: 'Cab worker: Uber India fare estimates (official API)',
       priority: 15,
-      run: async () => {
-        const r = await cffiFetch('https://www.uber.com/global/en/price-estimate/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        const shell = r.status !== 200 || (r.body.length > 100_000 && !r.body.includes('"prices"') && !r.body.includes('__NEXT_DATA__'));
-        throw new AcquisitionError(shell ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE', 'Uber price-estimate page is a JS shell; live estimates come from a sessioned riders.uber.com API unavailable to browserless HTTP — available only on app.');
+      maxPerMinute: 10,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        const token = String(process.env.UBER_SERVER_TOKEN || '').trim();
+        if (!token) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API credentials not configured: set UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price; demo keys are rejected by Uber with 401 — the owner will supply the original token).');
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
+        if (!a || !b) return [];
+        const url = `https://api.uber.com/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
+        const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { Authorization: `Token ${token}`, Accept: 'application/json' } });
+        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Uber API rejected credentials (HTTP ${r.status}) — set a valid UBER_SERVER_TOKEN`, r.status);
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Uber API HTTP ${r.status}`, r.status);
+        let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Uber API non-JSON'); }
+        const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
+        const items = [];
+        const today = new Date().toISOString().slice(0, 10);
+        for (const p of prices.slice(0, 5)) {
+          const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
+          if (!price) continue;
+          const vehicle = String(p.localized_display_name || 'Uber cab').slice(0, 60);
+          items.push(newRawItem(ctx.source, {
+            title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
+            brand: 'Uber',
+            price, currency: String(p.currency_code || 'INR'),
+            seller: 'Uber', sellerUrl: 'https://m.uber.com/looking/',
+            travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: 'unknown' },
+            attributes: {
+              pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,
+              vehicle_type: vehicle, trip_type: 'one-way',
+              distance_km: p.distance != null ? String(Math.round(p.distance * 10) / 10) : '',
+              duration_minutes: p.duration != null ? String(Math.round(p.duration / 60)) : '',
+              fare_range: p.low_estimate && p.high_estimate ? `Rs ${p.low_estimate} - Rs ${p.high_estimate}` : '',
+              price_basis: `Uber API price estimate on ${today}`,
+              data_note: 'Fare estimate from the official Uber API (developer.uber.com /v1.2/estimates/price)',
+            },
+            identifiers: { sku: `uber-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, '-') },
+            evidence: { sourceUrl: url, extractedFields: ['Uber API estimates/price'] },
+          }));
+        }
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API returned no fare estimate for this route');
+        return items;
       },
     },
     {

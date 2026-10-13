@@ -4,7 +4,9 @@
  * exposed to plain HTTP; they stay unknown (never invented).
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
-import { parseZomatoRestaurants } from '../parsers/zomato';
+import { parseZomatoRestaurants, parseZomatoMenuPage } from '../parsers/zomato';
+import { newRawItem } from '../../sources/contract';
+import type { RawSourceItem } from '../../types';
 import { parseSwiggyDishes } from '../parsers/swiggy';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseDominosMenu, dominosItems } from '../parsers/dominos';
@@ -120,6 +122,45 @@ export const foodWorker: VerticalWorker = {
         if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Zomato HTTP ${r.status}`, r.status);
         const items = parseZomatoRestaurants(r.body, ctx.source, url, 'Zomato');
         if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Zomato presented a challenge page');
+        // Deep dive: the search listing carries no prices (which is why Zomato contributed
+        // 0 offers to results). Follow the first 2 restaurants and pull DISH prices from
+        // their pages' embedded JSON (JSON-LD hasMenu / __PRELOADED_STATE__). Priced dishes
+        // pass validation; unpriced listings stay as reference rows only.
+        const restUrls = items.slice(0, 2).map((it) => String((it as any).sellerUrl || '')).filter((u) => /zomato\.com\//.test(u));
+        const dishItems: RawSourceItem[] = [];
+        const hintAgg: Record<string, number> = {};
+        for (const ru of restUrls) {
+          const rr = await ctx.fetch(ru);
+          if (rr.status !== 200) continue;
+          const { dishes, hints } = parseZomatoMenuPage(rr.body);
+          for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
+          const restName = String((items.find((it) => (it as any).sellerUrl === ru) as any)?.title || ru.split('/').pop() || 'restaurant');
+          for (const d of dishes) {
+            dishItems.push(newRawItem(ctx.source, {
+              title: `${d.name} (${restName})`,
+              brand: 'Zomato',
+              price: d.price,
+              currency: 'INR',
+              seller: 'Zomato',
+              sellerUrl: ru,
+              location: { city: ctx.query.location?.city || '' },
+              attributes: {
+                dish: d.name.slice(0, 160),
+                restaurant: restName.slice(0, 160),
+                platform: 'Zomato',
+                ...(d.description ? { description: d.description } : {}),
+                price_basis: 'Menu price served in Zomato restaurant page embedded JSON',
+                data_note: 'Dish price extracted from the restaurant page on zomato.com; final price at checkout may vary',
+              },
+              evidence: { sourceUrl: ru, sourceReference: d.name, extractedFields: ['dish', 'price'] },
+            }));
+          }
+          if (dishItems.length >= 20) break;
+        }
+        if (dishItems.length) return dishItems;
+        if (restUrls.length && !hintAgg.priceHits) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) — dish prices stay unavailable to browserless HTTP`);
+        }
         return items;
       },
     },
