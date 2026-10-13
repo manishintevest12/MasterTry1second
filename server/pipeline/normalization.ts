@@ -24,6 +24,17 @@ export function normalizeAttributes(attrs: Record<string, string> | undefined): 
     const key = k.trim().toLowerCase().replace(/\s+/g, '_');
     if (key && v !== undefined && v !== null && String(v).trim() !== '') out[key] = String(v).trim();
   }
+  // Canonical image key: parsers publish it as image / imageUrl / img / thumbnail / poster ...
+  // The UI and pipeline read `image_url` only, so unify here (https only, protocol-relative fixed).
+  if (!out['image_url']) {
+    for (const k of ['image', 'imageurl', 'image_src', 'img', 'img_url', 'thumbnail', 'thumb', 'poster', 'poster_url', 'photo', 'picture']) {
+      let u = out[k];
+      if (!u) continue;
+      if (u.startsWith('//')) u = 'https:' + u;
+      u = u.replace(/^http:\/\//i, 'https://');
+      if (/^https:\/\//i.test(u)) { out['image_url'] = u; break; }
+    }
+  }
   return out;
 }
 

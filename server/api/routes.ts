@@ -8,6 +8,8 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
 import { sourcesStatusReport } from '../sources/registry';
+import { parseRouteQuery } from '../verticals/verticalEngine';
+import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
 import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
@@ -217,6 +219,21 @@ apiRouter.post('/scrape/live', async (req, res) => {
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
   }
+  // Same origin and destination is not a trip: refuse instead of showing some other route's fares.
+  if (['flights', 'bus', 'cab'].includes(String(input.vertical))) {
+    const rt = parseRouteQuery(input.query);
+    if (rt) {
+      const same = (rt.from.code && rt.from.code === rt.to.code) || rt.from.city === rt.to.city;
+      if (same) {
+        return res.json({
+          results: [],
+          honestNotice: 'Origin and destination are the same. Please choose two different places.',
+          sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [], servedFrom: 'validation',
+          resultsCount: 0, latencyMs: 0,
+        });
+      }
+    }
+  }
   const response = await runSearch(input);
   // Relevance: a metasearch engine returns what the user searched for. Score each offer
   // by how many query words appear in its title (+ small boosts), drop non-matches when
@@ -268,17 +285,25 @@ apiRouter.post('/scrape/live', async (req, res) => {
   kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
   response.results = kept.map((x) => x.o) as any;
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
+  const mappedItems = response.results.map((o: any) => {
+    const item = offerToComparisonItem(o);
+    return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' } : item;
+  });
+  // Same product sold by several sellers -> ONE card with every seller's price (conservative matching).
+  const brandById = new Map<string, { brand?: string; gtin?: string }>();
+  for (const o of response.results as any[]) {
+    const ids = o.identifiers || {};
+    brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || undefined });
+  }
+  const grouped = groupSameProduct(mappedItems as any[], (it: any) => brandById.get(it.id) || {});
   res.json({
-    results: response.results.map((o: any) => {
-      const item = offerToComparisonItem(o);
-      return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' } : item;
-    }),
+    results: grouped,
     honestNotice: response.state.honestNotice,
     sourcesAttempted: response.state.sourcesAttempted,
     sourcesSucceeded: response.state.sourcesSucceeded,
     sourcesFailed: response.state.sourcesFailed,
     servedFrom: response.state.servedFrom,
-    resultsCount: response.results.length,
+    resultsCount: grouped.length,
     latencyMs: response.latencyMs,
   });
 });

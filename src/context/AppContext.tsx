@@ -962,6 +962,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
     const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };
 
+    // A route with the same origin and destination (e.g. Delhi -> Delhi) is not a real trip:
+    // never ask any source and never keep rows of an earlier, different route on screen.
+    if (['flights', 'bus', 'cab'].includes(vertical)) {
+      const sides = String(targetQuery).split(/\s+(?:to|\u2192|->)\s+/i);
+      if (sides.length === 2) {
+        const norm = (x: string) => x.toLowerCase().replace(/\([^)]*\)/g, ' ').replace(/\bnew\b/g, ' ').replace(/[^a-z]/g, '');
+        const code = (x: string) => (x.match(/\(([A-Za-z]{3})\)/) || [])[1]?.toUpperCase();
+        const a = sides[0], b = sides[1];
+        if ((code(a) && code(a) === code(b)) || (norm(a) && norm(a) === norm(b))) {
+          setItems((prev) => prev.filter((it) => it.vertical !== vertical));
+          setSourcesReport((prev) => ({ ...prev, [vertical]: { query: targetQuery, at: Date.now(), attempted: [], succeeded: [], failed: [], resultsCount: 0, servedFrom: 'validation' } }));
+          addToast('alert', 'Origin and destination are the same', 'Please choose two different places to search.');
+          setIsScrapingLive(false);
+          return;
+        }
+      }
+    }
+
     try {
       const response = await fetch('/api/scrape/live', {
         method: 'POST',

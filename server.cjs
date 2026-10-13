@@ -6893,6 +6893,18 @@ function normalizeAttributes(attrs) {
     const key = k.trim().toLowerCase().replace(/\s+/g, "_");
     if (key && v !== void 0 && v !== null && String(v).trim() !== "") out[key] = String(v).trim();
   }
+  if (!out["image_url"]) {
+    for (const k of ["image", "imageurl", "image_src", "img", "img_url", "thumbnail", "thumb", "poster", "poster_url", "photo", "picture"]) {
+      let u = out[k];
+      if (!u) continue;
+      if (u.startsWith("//")) u = "https:" + u;
+      u = u.replace(/^http:\/\//i, "https://");
+      if (/^https:\/\//i.test(u)) {
+        out["image_url"] = u;
+        break;
+      }
+    }
+  }
   return out;
 }
 function normalizeCurrency(cur) {
@@ -8233,6 +8245,158 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_catalogueService();
     init_affiliateNetwork();
+  }
+});
+
+// server/pipeline/productGrouping.ts
+function sizeTokens(text) {
+  const out = [];
+  const t = text.toLowerCase().replace(/(\d),(\d)/g, "$1$2");
+  for (const m of t.matchAll(UNIT_RE)) {
+    let n = parseFloat(m[1]);
+    let u = UNIT_CANON[m[2]] || m[2];
+    if (u === "kg") {
+      n *= 1e3;
+      u = "g";
+    }
+    if (u === "l") {
+      n *= 1e3;
+      u = "ml";
+    }
+    out.push(`${Math.round(n * 100) / 100}${u}`);
+  }
+  return Array.from(new Set(out)).sort();
+}
+function productSig(title, brand) {
+  const t = String(title || "").toLowerCase();
+  const sizes = sizeTokens(t).join(",");
+  const words = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
+  const b = String(brand || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const uniq = Array.from(new Set(words));
+  if (uniq.length < 2) return null;
+  return { brand: b, words: uniq, sizes };
+}
+function sameProduct(a, b) {
+  if (a.sizes !== b.sizes) return false;
+  if (a.brand && b.brand && a.brand !== b.brand) return false;
+  const brandIn = (sig, other) => !sig.brand || other.words.join("").includes(sig.brand) || other.brand === sig.brand;
+  if (!brandIn(a, b) || !brandIn(b, a)) return false;
+  const [small, large] = a.words.length <= b.words.length ? [a, b] : [b, a];
+  const lw = new Set(large.words);
+  const shared = small.words.filter((w) => lw.has(w)).length;
+  return shared >= 2 && shared / small.words.length >= 0.75;
+}
+function groupSameProduct(items, extra = () => ({})) {
+  const clusters = [];
+  const slots = [];
+  for (const it of items) {
+    if (it.vertical !== "ecommerce" && it.vertical !== "grocery") {
+      slots.push(it);
+      continue;
+    }
+    const { brand, gtin } = extra(it);
+    const sig = productSig(it.title, brand);
+    if (!sig && !gtin) {
+      slots.push(it);
+      continue;
+    }
+    const hit = clusters.find((c2) => c2.vertical === it.vertical && (gtin && c2.gtin && gtin === c2.gtin || sig && c2.sig && sameProduct(sig, c2.sig)));
+    if (hit) {
+      hit.members.push(it);
+      if (!hit.gtin && gtin) hit.gtin = gtin;
+      continue;
+    }
+    const c = { sig, gtin, vertical: it.vertical, members: [it] };
+    clusters.push(c);
+    slots.push(c);
+  }
+  const out = [];
+  for (const entry of slots) {
+    if (!("members" in entry)) {
+      out.push(entry);
+      continue;
+    }
+    const members = entry.members;
+    if (members.length === 1) {
+      out.push(members[0]);
+      continue;
+    }
+    const bySeller = /* @__PURE__ */ new Map();
+    for (const m of members) {
+      for (const q3 of m.sellerQuotes) {
+        const key = String(q3.sellerName || "").toLowerCase();
+        const cur = bySeller.get(key);
+        if (!cur || q3.price > 0 && (cur.price <= 0 || q3.price < cur.price)) bySeller.set(key, { ...q3 });
+      }
+    }
+    const quotes = Array.from(bySeller.values()).sort((a, b) => (a.price > 0 ? a.price : Infinity) - (b.price > 0 ? b.price : Infinity));
+    quotes.forEach((q3, i) => {
+      q3.isLowest = i === 0 && q3.price > 0;
+    });
+    const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
+    const head = priced[0] || members[0];
+    const withImg = members.find((m) => m.imageUrl);
+    out.push({ ...head, imageUrl: head.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
+  }
+  return out;
+}
+var UNIT_RE, NOISE, UNIT_CANON;
+var init_productGrouping = __esm({
+  "server/pipeline/productGrouping.ts"() {
+    UNIT_RE = /(\d+(?:\.\d+)?)\s*(kg|g|gm|gms|gram|grams|ml|l|ltr|litre|liter|litres|liters|pcs|pc|pack|units?|tb|gb|mb|mm|cm|inch|in)\b/g;
+    NOISE = /* @__PURE__ */ new Set([
+      "the",
+      "and",
+      "with",
+      "for",
+      "of",
+      "pack",
+      "combo",
+      "new",
+      "premium",
+      "original",
+      "fresh",
+      "natural",
+      "all",
+      "by",
+      "in",
+      "a",
+      "an",
+      "buy",
+      "online",
+      "best",
+      "price",
+      "india",
+      "pouch",
+      "packet"
+    ]);
+    UNIT_CANON = {
+      kg: "kg",
+      g: "g",
+      gm: "g",
+      gms: "g",
+      gram: "g",
+      grams: "g",
+      ml: "ml",
+      l: "l",
+      ltr: "l",
+      litre: "l",
+      liter: "l",
+      litres: "l",
+      liters: "l",
+      pcs: "pc",
+      pc: "pc",
+      unit: "pc",
+      units: "pc",
+      pack: "pc",
+      tb: "tb",
+      gb: "gb",
+      mb: "mb",
+      mm: "mm",
+      cm: "cm",
+      inch: "in",
+      in: "in"
+    };
   }
 });
 
@@ -9587,6 +9751,8 @@ var init_routes = __esm({
     import_express = require("express");
     init_searchOrchestrator();
     init_registry();
+    init_verticalEngine();
+    init_productGrouping();
     init_health();
     init_authService();
     init_otpService();
@@ -9669,6 +9835,24 @@ var init_routes = __esm({
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
       }
+      if (["flights", "bus", "cab"].includes(String(input.vertical))) {
+        const rt = parseRouteQuery(input.query);
+        if (rt) {
+          const same = rt.from.code && rt.from.code === rt.to.code || rt.from.city === rt.to.city;
+          if (same) {
+            return res.json({
+              results: [],
+              honestNotice: "Origin and destination are the same. Please choose two different places.",
+              sourcesAttempted: [],
+              sourcesSucceeded: [],
+              sourcesFailed: [],
+              servedFrom: "validation",
+              resultsCount: 0,
+              latencyMs: 0
+            });
+          }
+        }
+      }
       const response = await runSearch(input);
       const STOP = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
       const words = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
@@ -9705,17 +9889,24 @@ var init_routes = __esm({
       }
       kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
       response.results = kept.map((x) => x.o);
+      const mappedItems = response.results.map((o) => {
+        const item = offerToComparisonItem(o);
+        return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : item;
+      });
+      const brandById = /* @__PURE__ */ new Map();
+      for (const o of response.results) {
+        const ids = o.identifiers || {};
+        brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || void 0 });
+      }
+      const grouped = groupSameProduct(mappedItems, (it) => brandById.get(it.id) || {});
       res.json({
-        results: response.results.map((o) => {
-          const item = offerToComparisonItem(o);
-          return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : item;
-        }),
+        results: grouped,
         honestNotice: response.state.honestNotice,
         sourcesAttempted: response.state.sourcesAttempted,
         sourcesSucceeded: response.state.sourcesSucceeded,
         sourcesFailed: response.state.sourcesFailed,
         servedFrom: response.state.servedFrom,
-        resultsCount: response.results.length,
+        resultsCount: grouped.length,
         latencyMs: response.latencyMs
       });
     });
