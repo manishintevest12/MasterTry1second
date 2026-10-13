@@ -8,6 +8,8 @@ import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { buildCabEstimate } from '../parsers/osrmCab';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseAbhiBusServices, resolveAbhiBusCity, type AbhiBusRoute } from '../parsers/abhibus';
+import { parseRedBusRoute } from '../parsers/redbusRoute';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw
@@ -25,6 +27,25 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
 export const busWorker: VerticalWorker = {
   vertical: 'bus',
   tasks: [
+    {
+      // redBus route pages embed a live dataInfo JSON (min fare, service/operator counts)
+      sourceId: 'w_bus_redbus',
+      name: 'Bus worker: redBus route-level fare summary',
+      priority: 5,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+        const url = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        if (r.status === 404) return []; // route page not published — honest unavailable
+        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `redBus HTTP ${r.status}`, r.status);
+        const items = parseRedBusRoute(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'redBus route page carried no parseable dataInfo fare');
+        return items;
+      },
+    },
     {
       // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
       // /wap/SearchStations resolves city -> station id, /buslist/v3/services

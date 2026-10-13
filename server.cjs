@@ -4470,6 +4470,68 @@ var init_abhibus = __esm({
   }
 });
 
+// server/workers/parsers/redbusRoute.ts
+function extractRedBusRouteInfo(html) {
+  const field = (key) => {
+    const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
+    return m ? m[1] : null;
+  };
+  const num = (key) => {
+    const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
+    return m ? m[1] : null;
+  };
+  const minFare = field("minFare");
+  const source = field("source");
+  if (!minFare || !source) return null;
+  return {
+    source,
+    destination: field("destination") || "",
+    minFare,
+    servicecount: Number(num("servicecount")) || 0,
+    operators: field("operators") || num("operators") || "",
+    avgDuration: field("avgDuration") || "",
+    firstBus: field("firstBus") || "",
+    lastBus: field("lastBus") || ""
+  };
+}
+function parseRedBusRoute(html, source, pageUrl) {
+  const info = extractRedBusRouteInfo(html);
+  if (!info) return [];
+  const fareM = /([\d,]+(?:\.\d{1,2})?)/.exec(info.minFare);
+  const fare = fareM ? Math.round(Number(fareM[1].replace(/,/g, ""))) : null;
+  if (!fare || fare <= 0) return [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const route = `${info.source} to ${info.destination}`.toLowerCase();
+  return [newRawItem(source, {
+    title: `${info.source} to ${info.destination} bus (lowest fare across ${info.servicecount || "all"} services)`,
+    brand: "redBus",
+    price: fare,
+    currency: "INR",
+    seller: "redBus",
+    sellerUrl: pageUrl,
+    travel: { route, seatType: "varies (seater/sleeper/AC)" },
+    attributes: {
+      route: `${info.source} to ${info.destination}`,
+      min_fare: String(fare),
+      service_count: String(info.servicecount),
+      operator_count: info.operators,
+      avg_duration: info.avgDuration,
+      first_departure: info.firstBus,
+      last_departure: info.lastBus,
+      image: "",
+      price_basis: `minimum route fare as published by redbus.in on ${today}`,
+      data_note: `Route-level fare summary (min fare across ${info.servicecount} services from ${info.operators} operators) scraped from redbus.in on ${today}`
+    },
+    identifiers: { sku: `redbus-${route.replace(/\s+/g, "-")}` },
+    evidence: { sourceUrl: pageUrl, extractedFields: ["dataInfo minFare", "servicecount", "operators", "avgDuration"] }
+  })];
+}
+var init_redbusRoute = __esm({
+  "server/workers/parsers/redbusRoute.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/bus.ts
 function routeFromQuery3(raw) {
   const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, " ").replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -4484,9 +4546,30 @@ var init_bus = __esm({
     init_osrmCab();
     init_httpClient();
     init_abhibus();
+    init_redbusRoute();
+    init_curlCffiFetch();
     busWorker = {
       vertical: "bus",
       tasks: [
+        {
+          // redBus route pages embed a live dataInfo JSON (min fare, service/operator counts)
+          sourceId: "w_bus_redbus",
+          name: "Bus worker: redBus route-level fare summary",
+          priority: 5,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const rt = routeFromQuery3(raw);
+            if (!rt) return [];
+            const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const url = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            if (r.status === 404) return [];
+            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status}`, r.status);
+            const items = parseRedBusRoute(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "redBus route page carried no parseable dataInfo fare");
+            return items;
+          }
+        },
         {
           // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
           // /wap/SearchStations resolves city -> station id, /buslist/v3/services
