@@ -3088,6 +3088,78 @@ var init_swiggy = __esm({
   }
 });
 
+// server/workers/parsers/dominos.ts
+function parseDominosMenu(htmlEscaped) {
+  const html = htmlEscaped.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'");
+  const re = /\{"productMasterUID":"[0-9a-f-]{36}","name":"(.*?)","displayName":"(.*?)","family":\{"familyId":"[0-9a-f-]{36}","name":"(.*?)"\},"description":"(.*?)".{0,4000}?"price":\{"regularPrice":(\d+),"currentPrice":(\d+)\}/gs;
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const m of html.matchAll(re)) {
+    const [, , displayName, family, description, regular, current] = m;
+    const cur = Number(current);
+    const reg = Number(regular);
+    const disp = String(displayName);
+    const key = `${disp}|${family}`;
+    if (!disp || !cur || cur <= 0 || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      displayName: disp,
+      family: String(family),
+      currentPrice: cur,
+      regularPrice: reg,
+      description: String(description).replace(/\\u0026/g, "&").slice(0, 160),
+      menuCode: ""
+    });
+  }
+  return out;
+}
+function dominosItems(products, source, query) {
+  const q3 = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!q3) return [];
+  const words = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "pizza", "order", "buy", "price"].includes(w));
+  const pizzaish = /pizza|margherita|farmhouse|paneer|corn|cheese|garlic|bread|taco|burger|chicken|veg|cake|dessert|sides|wings|lava|parcel|meltz|taco/i.test(q3);
+  const scored = products.map((p) => {
+    const hay = `${p.displayName} ${p.family} ${p.description}`.toLowerCase();
+    let score = 0;
+    for (const w of words) if (hay.includes(w)) score += 1;
+    if (hay.includes(q3)) score += 3;
+    return { p, score };
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.p.currentPrice - b.p.currentPrice);
+  const top = scored.slice(0, 12);
+  if (!top.length && pizzaish) {
+    return products.filter((p) => p.family === "Pizza").slice(0, 8).map((p) => buildItem(p, source, "national menu best-seller"));
+  }
+  return top.map((x) => buildItem(x.p, source, "menu item matched to your search"));
+}
+function buildItem(p, source, matchNote) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return newRawItem(source, {
+    title: `Domino's ${p.displayName} (${p.family})`,
+    brand: "Domino's",
+    price: p.currentPrice,
+    currency: "INR",
+    seller: "Domino's Pizza India",
+    sellerUrl: "https://www.dominos.co.in/menu",
+    attributes: {
+      dish: p.displayName,
+      category: p.family,
+      description: p.description,
+      regular_price: String(p.regularPrice),
+      saving: p.regularPrice > p.currentPrice ? String(p.regularPrice - p.currentPrice) : "",
+      image: "",
+      price_basis: `dominos.co.in web menu price (${matchNote}), scraped ${today}`,
+      data_note: `Price from Domino's India national web menu on ${today}; final price at checkout may vary by city/store`
+    },
+    identifiers: { sku: `dominos-${p.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` },
+    evidence: { sourceUrl: "https://www.dominos.co.in/menu", extractedFields: ["displayName", "family", "currentPrice", "regularPrice", "description"] }
+  });
+}
+var init_dominos = __esm({
+  "server/workers/parsers/dominos.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/food.ts
 function citySlug(city, raw) {
   if (city) {
@@ -3109,6 +3181,8 @@ var init_food = __esm({
     init_zomato();
     init_swiggy();
     init_httpClient();
+    init_dominos();
+    init_curlCffiFetch();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
       delhi: "ncr",
@@ -3163,6 +3237,24 @@ var init_food = __esm({
     foodWorker = {
       vertical: "food",
       tasks: [
+        {
+          // Domino's India: full national menu SSR'd (entity-encoded JSON) with real prices.
+          // Seller = Domino's; web menu deeplink (web ordering works on dominos.co.in).
+          sourceId: "w_food_dominos",
+          priority: 13,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const dishish = /pizza|margherita|farmhouse|garlic.?bread|taco|burger.?pizza|lava|chicken|wings|parcel|meltz|cheese|dominos|domino.?s/i.test(raw);
+            if (!dishish) return [];
+            const r = await cffiFetch("https://www.dominos.co.in/menu", { impersonate: "chrome", timeoutMs: 45e3 });
+            if (r.status !== 200) throw new AcquisitionError("ACCESS_CHALLENGE", `Domino's HTTP ${r.status}`);
+            const products = parseDominosMenu(r.body);
+            if (!products.length) throw new AcquisitionError("EMPTY_RESPONSE", "Domino's menu page carried no parseable products");
+            const items = dominosItems(products, ctx.source, raw);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Domino's menu had no item matching this query");
+            return items;
+          }
+        },
         {
           sourceId: "w_food_swiggy",
           name: "Food worker: Swiggy dish search (dish, price, photo, restaurant)",

@@ -7,6 +7,8 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseZomatoRestaurants } from '../parsers/zomato';
 import { parseSwiggyDishes } from '../parsers/swiggy';
 import { AcquisitionError } from '../../common/httpClient';
+import { parseDominosMenu, dominosItems } from '../parsers/dominos';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 /** Zomato city slugs for major Indian cities (others are tried as lowercase city names). */
 const ZOMATO_SLUGS: Record<string, string> = {
@@ -47,6 +49,24 @@ function citySlug(city: string | undefined, raw: string): string | null {
 export const foodWorker: VerticalWorker = {
   vertical: 'food',
   tasks: [
+    {
+      // Domino's India: full national menu SSR'd (entity-encoded JSON) with real prices.
+      // Seller = Domino's; web menu deeplink (web ordering works on dominos.co.in).
+      sourceId: 'w_food_dominos',
+      priority: 13,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const dishish = /pizza|margherita|farmhouse|garlic.?bread|taco|burger.?pizza|lava|chicken|wings|parcel|meltz|cheese|dominos|domino.?s/i.test(raw);
+        if (!dishish) return []; // only run for dish-relevant queries
+        const r = await cffiFetch('https://www.dominos.co.in/menu', { impersonate: 'chrome', timeoutMs: 45_000 });
+        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `Domino's HTTP ${r.status}`);
+        const products = parseDominosMenu(r.body);
+        if (!products.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Domino\'s menu page carried no parseable products');
+        const items = dominosItems(products, ctx.source, raw);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Domino\'s menu had no item matching this query');
+        return items;
+      },
+    },
     {
       sourceId: 'w_food_swiggy',
       name: 'Food worker: Swiggy dish search (dish, price, photo, restaurant)',
