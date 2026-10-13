@@ -41,7 +41,7 @@ export function parseOverpassHotels(json: any, source: SourceConfig, city: strin
     const stars = e.tags.stars ? String(parseInt(e.tags.stars, 10) || '') : '';
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      seller: name.slice(0, 200),
+      seller: 'OpenStreetMap (ODbL)',
       sellerUrl: e.tags.website || e.tags['contact:website'] || `https://www.openstreetmap.org/${e.type}/${e.id}`,
       currency: 'INR',
       location: { city },

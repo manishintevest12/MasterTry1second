@@ -23,7 +23,9 @@ test('swiggy: parses real dish, price in rupees, image, restaurant; skips price-
   assert.equal(out[0].title, 'Chicken Biryani');
   assert.equal(out[0].price, 349);
   assert.match(String(out[0].attributes!.image_url), /^https:\/\/media-assets\.swiggy\.com\/.*FOOD\/a\.jpg$/);
-  assert.equal(out[0].seller, 'Biryani By Kilo (Connaught Place)');
+  assert.equal(out[0].seller, 'Swiggy');
+  assert.equal(out[0].attributes!.restaurant, 'Biryani By Kilo');
+  assert.equal(out[0].attributes!.area, 'Connaught Place');
   assert.equal(out[0].attributes!.rating, '4.6');
   assert.equal(out[0].availability, 'in_stock');
   assert.equal(out[1].availability, 'out_of_stock');

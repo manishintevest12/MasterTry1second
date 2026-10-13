@@ -42,7 +42,7 @@ export function parseBankBazaarLoans(html: string, source: SourceConfig, pageUrl
         title: lender.slice(0, 160),
         price: min, // lowest published p.a. rate (percent) — drives lowest-first ranking
         currency: 'INR',
-        seller: lender.replace(/\s*(home|car|education|personal|business)?\s*loans?\s*$/i, '').trim() || lender,
+        seller: 'BankBazaar',
         sellerUrl: pageUrl,
         availability: 'in_stock',
         attributes: {

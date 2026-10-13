@@ -35,11 +35,12 @@ export function parseWikidataHotels(json: any, source: SourceConfig, city: strin
     const coord = String(b?.coord?.value || '').match(/Point\(([-\d.]+) ([-\d.]+)\)/);
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      seller: name.slice(0, 200),
+      seller: 'Wikidata (CC0)',
       sellerUrl: web || `https://www.wikidata.org/wiki/${qid}`,
       currency: 'INR',
       location: { city },
       attributes: {
+      property_name: name.slice(0, 200),
         property_type: 'hotel',
         ...(coord ? { lat: Number(coord[2]).toFixed(5), lon: Number(coord[1]).toFixed(5) } : {}),
         ...(web ? { official_website: web.slice(0, 200) } : {}),

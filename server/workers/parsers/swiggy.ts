@@ -48,11 +48,13 @@ export function parseSwiggyDishes(json: string, source: SourceConfig, searchUrl:
         title: String(di.name).slice(0, 200),
         price: Math.round(di.price) / 100,
         currency: 'INR',
-        seller: `${rest.name}${rest.areaName ? ` (${rest.areaName})` : ''}`.slice(0, 120),
+        seller: 'Swiggy',
         sellerUrl: restUrl,
         availability: di.inStock === 1 && rest.availability?.opened !== false ? 'in_stock' : 'out_of_stock',
         location: { city },
         attributes: {
+          restaurant: String(rest.name).slice(0, 120),
+          ...(rest.areaName ? { area: String(rest.areaName).slice(0, 80) } : {}),
           ...(img ? { image_url: img } : {}),
           ...(di.description ? { dish_description: String(di.description).replace(/\s+/g, ' ').trim().slice(0, 220) } : {}),
           ...(rating ? { rating: String(rating) } : (rest.avgRating ? { rating: String(rest.avgRating) } : {})),
@@ -60,7 +62,6 @@ export function parseSwiggyDishes(json: string, source: SourceConfig, searchUrl:
           ...(Array.isArray(rest.cuisines) && rest.cuisines.length ? { cuisines: rest.cuisines.slice(0, 4).join(', ') } : {}),
           ...(rest.sla?.slaString ? { eta: String(rest.sla.slaString).toLowerCase() } : {}),
           ...(rest.costForTwoMessage ? { cost_for_two: String(rest.costForTwoMessage) } : {}),
-          restaurant: String(rest.name).slice(0, 120),
           platform: 'Swiggy',
         },
         evidence: {

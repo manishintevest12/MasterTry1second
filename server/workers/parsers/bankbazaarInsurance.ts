@@ -35,7 +35,7 @@ export function parseBankBazaarInsurance(html: string, source: SourceConfig, pag
       const extra = extraIdx >= 0 ? (r[extraIdx] || '').trim() : '';
       out.push(newRawItem(source, {
         title: (plan ? `${insurer} — ${plan}` : `${insurer} ${insType}`).slice(0, 200),
-        seller: insurer.replace(/\s*(insurance company|co\.?\.? ltd\.?|limited)\s*$/i, '').trim().slice(0, 120),
+        seller: 'BankBazaar',
         sellerUrl: pageUrl,
         currency: 'INR',
         price: Number(csrMatch[1]), // CSR % — the comparable metric users rank insurers by

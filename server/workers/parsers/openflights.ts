@@ -103,7 +103,7 @@ export function parseRoute(airports: Airport[], airlines: Airline[], routes: Rou
     const dstAp = toAirports.find((a) => a.iata === r0.dstIata)!;
     out.push(newRawItem(source, {
       title: `${airlineName}: ${srcAp.city} (${srcAp.iata}) → ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: airlineName.slice(0, 120),
+      seller: 'OpenFlights (open data)',
       sellerUrl: sourceUrl,
       currency: 'INR',
       travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...(date ? { date } : {}), seatType: 'unknown' },

@@ -63,7 +63,7 @@ export function parseAbhiBusServices(
       price: fare,
       currency: 'INR',
       ...(Number(s?.fares?.fare) > fare ? { listPrice: Number(s.fares.fare) } : {}),
-      seller: (operator || 'AbhiBus').slice(0, 120),
+      seller: 'AbhiBus',
       sellerUrl: searchUrl,
       availability: seats > 0 ? 'in_stock' : 'out_of_stock',
       travel: { route: `${route.fromName} → ${route.toName}`, date: route.jdate, seatType: busType || 'unknown' },

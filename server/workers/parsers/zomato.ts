@@ -35,11 +35,12 @@ export function parseZomatoRestaurants(html: string, source: SourceConfig, searc
       const reviews = it.aggregateRating?.reviewCount;
       out.push(newRawItem(source, {
         title: it.name.slice(0, 200),
-        seller: it.name.slice(0, 200),
+        seller: platform || 'Zomato',
         sellerUrl: it.url ? `https://www.zomato.com${String(it.url).split('?')[0]}` : searchUrl,
         currency: 'INR',
         location: { city: '' },
         attributes: {
+          restaurant: it.name.slice(0, 200),
           ...(it.servesCuisine ? { cuisines: it.servesCuisine.slice(0, 160) } : {}),
           ...(typeof it.image === 'string' && /^https:\/\//.test(it.image) ? { image_url: it.image.slice(0, 400) } : {}),
           ...(rating !== undefined ? { rating: String(rating) } : {}),
