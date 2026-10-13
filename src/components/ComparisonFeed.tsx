@@ -203,6 +203,24 @@ export const ComparisonFeed: React.FC = () => {
           <SortAndSummaryTabs />
 
           {sorted.length === 0 ? (
+            isScrapingLive ? (
+              // First open: default-city results are being fetched live — never show a
+              // dead "no options" page while the default search is still running.
+              <div className="bg-white rounded-xl border border-slate-200 p-8 sm:p-12 text-center">
+                <Loader2 className="w-10 h-10 text-orange-500 mx-auto mb-3 animate-spin" />
+                <h3 className="text-base font-bold text-slate-900 mb-1">
+                  Fetching live {meta.name} results{searchQuery ? ` for "${searchQuery}"` : ''}...
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                  Comparing live prices from the web for your default city. Results appear automatically in a few seconds.
+                </p>
+                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl mx-auto">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse border border-slate-200" />
+                  ))}
+                </div>
+              </div>
+            ) : (
             <div className="bg-white rounded-xl border border-slate-200 p-8 sm:p-12 text-center">
               <SearchX className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <h3 className="text-base font-bold text-slate-900 mb-1">
@@ -242,6 +260,7 @@ export const ComparisonFeed: React.FC = () => {
                 </button>
               </div>
             </div>
+            )
           ) : (
             <div className="space-y-4">
               {/* Native Google AdSense Injection: The very first result card displayed must be a Google Ad */}

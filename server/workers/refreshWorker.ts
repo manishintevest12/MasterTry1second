@@ -23,6 +23,21 @@ export function startWorkers() {
   if (running) return;
   running = true;
 
+  // Keep-warm (13 Oct): every 12 min re-warm ALL vertical default queries so a page
+  // open never lands on a cold cache (instant results on every vertical's first paint).
+  const keepWarmTimer = setInterval(() => {
+    void withLock('keep-warm', async () => {
+      try {
+        const { keepWarmDefaults } = await import('../cron/warm');
+        await keepWarmDefaults();
+      } catch (e: any) {
+        log.warn('Worker', 'Keep-warm pass failed (will retry next tick)', { error: String(e?.message || e).slice(0, 120) });
+      }
+    }).catch(() => undefined);
+  }, 12 * 60_000);
+  if (keepWarmTimer.unref) keepWarmTimer.unref();
+  timers.push(keepWarmTimer);
+
   // Incremental refresh worker (demand-independent, popularity via ORDER BY fetched_at)
   const refreshTimer = setInterval(async () => {
     // Distributed lock prevents duplicate refresh when multiple processes run (KVM4)
@@ -98,7 +113,7 @@ export function startWorkers() {
 
   refreshTimer.unref?.();
   retryTimer.unref?.();
-  timers = [refreshTimer, retryTimer];
+  timers.push(refreshTimer, retryTimer); // keep keepWarmTimer in the list too
   log.info('Worker', `Background workers started (refresh every ${settings.worker.refreshIntervalSec}s)`);
 }
 

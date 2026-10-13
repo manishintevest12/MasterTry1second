@@ -70,12 +70,35 @@ export async function bootWarm(): Promise<void> {
        GROUP BY raw_query, v, pincode, city
        ORDER BY COUNT(*) DESC LIMIT 6`,
     ).catch(() => []);
-    const targets = rows.length > 0 ? rows : SEED_QUERIES.slice(0, 6);
-    log.info('Cron', `Boot-warm starting (${targets.length} queries, background)`);
+    // Instant-on-open (owner request, 13 Oct): warm EVERY vertical's DEFAULT query at
+    // boot (SEED_QUERIES mirrors the frontend DEFAULT_QUERY set with the default city
+    // Indore), plus the most-searched recent queries. A vertical then never opens empty:
+    // its default search is served from warm cache the moment the page loads, and the
+    // user can search something else if they want.
+    const seen = new Set<string>();
+    const targets: Array<Record<string, any>> = [];
+    const push = (r: Record<string, any>) => {
+      const key = `${String(r.raw_query || r.query || '')}|${String(r.v || r.vertical || '')}`;
+      if (!seen.has(key)) { seen.add(key); targets.push(r); }
+    };
+    (rows.length > 0 ? rows : []).forEach(push);
+    SEED_QUERIES.forEach(push);
+    log.info('Cron', `Boot-warm starting (${targets.length} queries: all vertical defaults + top searches, background)`);
     void warmRows(targets, 'BootWarm'); // fire-and-forget: never block the listen()
   } catch (e: any) {
     log.warn('Cron', 'Boot-warm skipped', { error: String(e?.message || e).slice(0, 100) });
   }
+}
+
+/**
+ * Keep-warm (13 Oct): re-runs ALL vertical default queries so their caches never go
+ * fully cold while the server is up (travel verticals: 5min fresh + 15min stale-serve;
+ * every other vertical: 15min + 45min). Called every ~12 minutes by the refresh
+ * worker, so opening any vertical always serves instantly from cache. Stale-serve
+ * keeps the acquisition cost low: only genuinely expired queries re-hit sources.
+ */
+export async function keepWarmDefaults(): Promise<void> {
+  await warmRows(SEED_QUERIES, 'KeepWarm');
 }
 
 /** One warm pass: fresh top queries from the last 7 days (or seeds). */

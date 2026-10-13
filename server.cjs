@@ -12251,6 +12251,131 @@ var init_adminRoutes = __esm({
   }
 });
 
+// server/cron/warm.ts
+var warm_exports = {};
+__export(warm_exports, {
+  bootWarm: () => bootWarm,
+  keepWarmDefaults: () => keepWarmDefaults
+});
+async function warmRows(rows, tag) {
+  let ok = 0;
+  for (const r of rows) {
+    try {
+      const res = await runSearch({
+        query: String(r.raw_query || r.query || ""),
+        vertical: r.v || r.vertical ? String(r.v || r.vertical) : void 0,
+        pincode: r.pincode ? String(r.pincode) : void 0,
+        city: r.city ? String(r.city) : void 0
+      });
+      ok += 1;
+      log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
+    } catch (e) {
+      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
+    }
+  }
+  log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
+}
+async function bootWarm() {
+  try {
+    const store2 = getStore();
+    const rows = await store2.query(
+      `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
+       FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
+       GROUP BY raw_query, v, pincode, city
+       ORDER BY COUNT(*) DESC LIMIT 6`
+    ).catch(() => []);
+    const seen = /* @__PURE__ */ new Set();
+    const targets = [];
+    const push = (r) => {
+      const key = `${String(r.raw_query || r.query || "")}|${String(r.v || r.vertical || "")}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        targets.push(r);
+      }
+    };
+    (rows.length > 0 ? rows : []).forEach(push);
+    SEED_QUERIES.forEach(push);
+    log.info("Cron", `Boot-warm starting (${targets.length} queries: all vertical defaults + top searches, background)`);
+    void warmRows(targets, "BootWarm");
+  } catch (e) {
+    log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+async function keepWarmDefaults() {
+  await warmRows(SEED_QUERIES, "KeepWarm");
+}
+async function warmPass(limit, verticalFilter, forceSeed) {
+  const store2 = getStore();
+  const rows = await store2.query(
+    `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
+     FROM searches
+     WHERE created_at > (NOW() - INTERVAL 7 DAY)
+     ${verticalFilter ? "AND COALESCE(detected_vertical, vertical) = ?" : ""}
+     GROUP BY raw_query, v, pincode, city
+     ORDER BY n DESC
+     LIMIT ?`,
+    verticalFilter ? [verticalFilter, limit] : [limit]
+  ).catch(() => []);
+  const useSeed = forceSeed || rows.length === 0;
+  if (useSeed) {
+    log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
+    await warmRows(SEED_QUERIES, "Cron");
+    return;
+  }
+  await warmRows(rows, "Cron");
+}
+async function main() {
+  const args = process.argv.slice(2);
+  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
+  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
+  const forceSeed = args.includes("--seed");
+  const intervalArg = Number((args.find((a) => a.startsWith("--interval=")) || "--interval=0").split("=")[1]);
+  const intervalMin = intervalArg > 0 ? intervalArg : process.env.CRON_INTERVAL_MIN ? Number(process.env.CRON_INTERVAL_MIN) : 0;
+  await runMigrations();
+  if (!intervalMin || !Number.isFinite(intervalMin) || intervalMin <= 0) {
+    await warmPass(limit, verticalFilter, forceSeed);
+    process.exit(0);
+  }
+  log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
+  await warmPass(limit, verticalFilter, forceSeed);
+  setInterval(() => {
+    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
+      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
+    });
+  }, intervalMin * 6e4);
+}
+var SEED_QUERIES, invokedAsScript;
+var init_warm = __esm({
+  "server/cron/warm.ts"() {
+    init_db();
+    init_searchOrchestrator();
+    init_logger();
+    SEED_QUERIES = [
+      { query: "mobile phone", vertical: "ecommerce" },
+      { query: "milk", vertical: "grocery", city: "Indore" },
+      { query: "biryani", vertical: "food", city: "Indore" },
+      { query: "movies", vertical: "movies", city: "Indore" },
+      { query: "Indore to Bhopal", vertical: "bus", city: "Indore" },
+      { query: "Indore to Bhopal", vertical: "cab", city: "Indore" },
+      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore" },
+      { query: "Indore", vertical: "hotels", city: "Indore" },
+      { query: "personal loan", vertical: "loans" },
+      { query: "health insurance", vertical: "insurance" },
+      { query: "iphone", vertical: "ecommerce" },
+      { query: "pizza", vertical: "food", city: "Indore" },
+      { query: "delhi to jaipur", vertical: "bus" },
+      { query: "goa", vertical: "hotels" }
+    ];
+    invokedAsScript = /cron/.test(String(process.argv[1] || ""));
+    if (invokedAsScript) {
+      main().catch((e) => {
+        log.error("Cron", "Warmer crashed", { error: String(e) });
+        process.exit(1);
+      });
+    }
+  }
+});
+
 // server/workers/refreshWorker.ts
 var refreshWorker_exports = {};
 __export(refreshWorker_exports, {
@@ -12260,6 +12385,18 @@ __export(refreshWorker_exports, {
 function startWorkers() {
   if (running) return;
   running = true;
+  const keepWarmTimer = setInterval(() => {
+    void withLock("keep-warm", async () => {
+      try {
+        const { keepWarmDefaults: keepWarmDefaults2 } = await Promise.resolve().then(() => (init_warm(), warm_exports));
+        await keepWarmDefaults2();
+      } catch (e) {
+        log.warn("Worker", "Keep-warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 120) });
+      }
+    }).catch(() => void 0);
+  }, 12 * 6e4);
+  if (keepWarmTimer.unref) keepWarmTimer.unref();
+  timers.push(keepWarmTimer);
   const refreshTimer = setInterval(async () => {
     await withLock("refresh-worker", async () => {
       try {
@@ -12326,7 +12463,7 @@ function startWorkers() {
   }, 6e4);
   refreshTimer.unref?.();
   retryTimer.unref?.();
-  timers = [refreshTimer, retryTimer];
+  timers.push(refreshTimer, retryTimer);
   log.info("Worker", `Background workers started (refresh every ${settings.worker.refreshIntervalSec}s)`);
 }
 function stopWorkers() {
@@ -12995,117 +13132,6 @@ var init_singleton = __esm({
     init_settings();
     init_logger();
     STALE_MS = 10 * 6e4;
-  }
-});
-
-// server/cron/warm.ts
-var warm_exports = {};
-__export(warm_exports, {
-  bootWarm: () => bootWarm
-});
-async function warmRows(rows, tag) {
-  let ok = 0;
-  for (const r of rows) {
-    try {
-      const res = await runSearch({
-        query: String(r.raw_query || r.query || ""),
-        vertical: r.v || r.vertical ? String(r.v || r.vertical) : void 0,
-        pincode: r.pincode ? String(r.pincode) : void 0,
-        city: r.city ? String(r.city) : void 0
-      });
-      ok += 1;
-      log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
-    } catch (e) {
-      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
-    }
-  }
-  log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
-}
-async function bootWarm() {
-  try {
-    const store2 = getStore();
-    const rows = await store2.query(
-      `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
-       FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
-       GROUP BY raw_query, v, pincode, city
-       ORDER BY COUNT(*) DESC LIMIT 6`
-    ).catch(() => []);
-    const targets = rows.length > 0 ? rows : SEED_QUERIES.slice(0, 6);
-    log.info("Cron", `Boot-warm starting (${targets.length} queries, background)`);
-    void warmRows(targets, "BootWarm");
-  } catch (e) {
-    log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
-  }
-}
-async function warmPass(limit, verticalFilter, forceSeed) {
-  const store2 = getStore();
-  const rows = await store2.query(
-    `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
-     FROM searches
-     WHERE created_at > (NOW() - INTERVAL 7 DAY)
-     ${verticalFilter ? "AND COALESCE(detected_vertical, vertical) = ?" : ""}
-     GROUP BY raw_query, v, pincode, city
-     ORDER BY n DESC
-     LIMIT ?`,
-    verticalFilter ? [verticalFilter, limit] : [limit]
-  ).catch(() => []);
-  const useSeed = forceSeed || rows.length === 0;
-  if (useSeed) {
-    log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
-    await warmRows(SEED_QUERIES, "Cron");
-    return;
-  }
-  await warmRows(rows, "Cron");
-}
-async function main() {
-  const args = process.argv.slice(2);
-  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
-  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
-  const forceSeed = args.includes("--seed");
-  const intervalArg = Number((args.find((a) => a.startsWith("--interval=")) || "--interval=0").split("=")[1]);
-  const intervalMin = intervalArg > 0 ? intervalArg : process.env.CRON_INTERVAL_MIN ? Number(process.env.CRON_INTERVAL_MIN) : 0;
-  await runMigrations();
-  if (!intervalMin || !Number.isFinite(intervalMin) || intervalMin <= 0) {
-    await warmPass(limit, verticalFilter, forceSeed);
-    process.exit(0);
-  }
-  log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
-  await warmPass(limit, verticalFilter, forceSeed);
-  setInterval(() => {
-    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
-      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
-    });
-  }, intervalMin * 6e4);
-}
-var SEED_QUERIES, invokedAsScript;
-var init_warm = __esm({
-  "server/cron/warm.ts"() {
-    init_db();
-    init_searchOrchestrator();
-    init_logger();
-    SEED_QUERIES = [
-      { query: "mobile phone", vertical: "ecommerce" },
-      { query: "milk", vertical: "grocery", city: "Indore" },
-      { query: "biryani", vertical: "food", city: "Indore" },
-      { query: "movies", vertical: "movies", city: "Indore" },
-      { query: "Indore to Bhopal", vertical: "bus", city: "Indore" },
-      { query: "Indore to Bhopal", vertical: "cab", city: "Indore" },
-      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore" },
-      { query: "Indore", vertical: "hotels", city: "Indore" },
-      { query: "personal loan", vertical: "loans" },
-      { query: "health insurance", vertical: "insurance" },
-      { query: "iphone", vertical: "ecommerce" },
-      { query: "pizza", vertical: "food", city: "Indore" },
-      { query: "delhi to jaipur", vertical: "bus" },
-      { query: "goa", vertical: "hotels" }
-    ];
-    invokedAsScript = /cron/.test(String(process.argv[1] || ""));
-    if (invokedAsScript) {
-      main().catch((e) => {
-        log.error("Cron", "Warmer crashed", { error: String(e) });
-        process.exit(1);
-      });
-    }
   }
 });
 
