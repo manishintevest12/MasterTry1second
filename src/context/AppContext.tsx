@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import confetti from 'canvas-confetti';
 import { firebaseConfigured, signInWithGoogleAndGetToken } from '../utils/firebaseAuth';
 
@@ -1051,6 +1051,88 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     triggerLiveLocationScrape();
   }, [vertical, userLocation.pincode]);
+
+  // Background prefetch: as soon as the site opens (and whenever the city changes) quietly search
+  // EVERY vertical with its default query so tab badges are filled and no tab opens empty.
+  // The server answers from its warmed cache, so this is cheap. Real results only, never mock data.
+  // It never touches isScrapingLive/sourcesReport of the active tab and never overwrites a vertical
+  // the user already searched (or that already has rows).
+  const prefetchedKeyRef = useRef<string>('');
+  useEffect(() => {
+    const city = userLocation.city || 'Indore';
+    const key = `${city}|${userLocation.pincode}`;
+    if (prefetchedKeyRef.current === key) return;
+    prefetchedKeyRef.current = key;
+    const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    const PREFETCH: Array<{ id: string; query: string; dated?: boolean }> = [
+      { id: 'ecommerce', query: 'mobile phone' },
+      { id: 'grocery', query: 'milk' },
+      { id: 'food', query: 'biryani' },
+      { id: 'hotels', query: city, dated: true },
+      { id: 'flights', query: 'Indore (IDR) to Delhi (DEL)', dated: true },
+      { id: 'bus', query: `${city} to Bhopal`, dated: true },
+      { id: 'cab', query: `${city} to Bhopal`, dated: true },
+      { id: 'movies', query: 'movies', dated: true },
+      { id: 'loans', query: 'personal loan' },
+      { id: 'insurance', query: 'health insurance' },
+    ];
+    let cancelled = false;
+    // Small concurrency (3) so the active tab's own request is never starved on shared hosting.
+    const queue = PREFETCH.filter((p) => p.id !== vertical);
+    const worker = async () => {
+      while (!cancelled && queue.length) {
+        const p = queue.shift()!;
+        try {
+          const r = await fetch('/api/scrape/live', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              vertical: p.id,
+              query: p.query,
+              pincode: userLocation.pincode,
+              city: userLocation.city,
+              locality: userLocation.locality,
+              coordinates: userLocation.coordinates,
+              ...(p.dated ? { travelDates: { depart: todayIso } } : {}),
+            }),
+          });
+          if (!r.ok) continue;
+          const data = await r.json();
+          if (cancelled || !data.results || data.results.length === 0) continue;
+          const vid = p.id;
+          setItems((prev) => {
+            const hasRows = prev.some((it) => it.vertical === vid || (vid === 'movies' && it.vertical === ('movie' as any)));
+            if (hasRows) return prev; // user (or catalogue) already has data for this vertical
+            const seen = new Set<string>();
+            const fresh = (data.results as any[]).filter((it) => {
+              const k = `${it.title}|${it.subtitle}|${it.primaryPrice}`;
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            return [...prev, ...fresh];
+          });
+          setSourcesReport((prev) => prev[vid] ? prev : ({
+            ...prev,
+            [vid]: {
+              query: p.query,
+              at: Date.now(),
+              attempted: data.sourcesAttempted || [],
+              succeeded: data.sourcesSucceeded || [],
+              failed: data.sourcesFailed || [],
+              resultsCount: data.resultsCount ?? (data.results?.length || 0),
+              servedFrom: data.servedFrom,
+            },
+          }));
+        } catch {
+          // offline / blocked: leave the tab to load on open, never fabricate
+        }
+      }
+    };
+    // Let the active tab's own request go first, then fan out.
+    const t = setTimeout(() => { void Promise.all([worker(), worker(), worker()]); }, 800);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [userLocation.city, userLocation.pincode]);
 
   // Modals state
   const [redirectionState, setRedirectionState] = useState<RedirectionState>({

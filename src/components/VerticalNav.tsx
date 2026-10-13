@@ -78,7 +78,7 @@ export const VerticalNav: React.FC = () => {
           {VERTICALS.map((item) => {
             const Icon = item.icon;
             const isActive = activeNavTab === 'compare' && vertical === item.id;
-            const count = items.filter((it) => it.vertical === item.id).length;
+            const count = items.filter((it) => (it.vertical as string) === item.id || (item.id === 'movie' && (it.vertical as string) === 'movies')).length;
 
             return (
               <button

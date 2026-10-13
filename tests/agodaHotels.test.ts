@@ -76,7 +76,7 @@ test('agoda: offers are price-only with own-site deeplink and honest note', () =
   assert.equal(o.price, 1455); // Math.round of 1454.53
   assert.equal(o.currency, 'INR');
   assert.ok(String(o.sellerUrl).startsWith('https://www.agoda.com/search?city=17193'));
-  assert.ok(o.attributes.price_basis.includes('per night on Agoda'));
-  assert.ok(o.attributes.data_note.includes('Agoda'));
-  assert.ok(o.attributes.image_url.startsWith('https://'));
+  assert.ok(o.attributes!.price_basis.includes('per night on Agoda'));
+  assert.ok(o.attributes!.data_note.includes('Agoda'));
+  assert.ok(o.attributes!.image_url.startsWith('https://'));
 });
