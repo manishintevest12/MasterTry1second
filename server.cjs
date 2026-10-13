@@ -1554,13 +1554,117 @@ var init_bankbazaarLoans = __esm({
   }
 });
 
+// server/workers/parsers/publishedRates.ts
+function extractRateRange(text) {
+  const ranged = /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:to|–|-|—|till|upto|up to)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:p\.?\s?a\.?|per annum|p\.a\.?)/i.exec(text);
+  if (ranged) return { min: Number(ranged[1]), max: Number(ranged[2]) };
+  const single = /(?:starting (?:at|from|as low as)|from|as low as|at)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:p\.?\s?a\.?|per annum)/i.exec(text) || /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*p\.?\s?a\.?/i.exec(text);
+  if (single) {
+    const v = Number(single[1]);
+    return { min: v, max: v };
+  }
+  return {};
+}
+function extractProcessingFee(text) {
+  const m = /processing fee[^<]{0,120}?((?:upto|up to)?\s*\d{1,2}(?:\.\d+)?\s*%[^<]{0,60})/i.exec(text);
+  return m ? m[1].trim() : void 0;
+}
+function extractLoanAmount(text) {
+  const m = /(?:loan amount[^<]{0,80}?)((?:₹|rs\.?\s?)?\d[\d,\.]{1,11}\s*(?:to|-|–|upto|up to)\s*(?:₹|rs\.?\s?)?[\d,\.]{1,11}\s*(?:lakh|lakhs|crore|cr)?)/i.exec(text);
+  return m ? m[1].trim() : void 0;
+}
+function extractTenure(text) {
+  const m = /(?:tenure|repayment[^<]{0,40}?)((?:up to\s*)?\d{1,2}\s*(?:years?|months?)\s*(?:\(\d{1,3}\s*months?\))?)/i.exec(text);
+  return m ? m[1].trim() : void 0;
+}
+function buildRateOffer(source, opts) {
+  const attrs = {
+    ...opts.loanType ? { loan_type: opts.loanType } : {},
+    ...opts.insuranceType ? { insurance_type: opts.insuranceType } : {},
+    ...opts.planName ? { plan_name: opts.planName } : {},
+    ...opts.facts.rateMin !== void 0 ? { interest_rate: String(opts.facts.rateMin) } : {},
+    ...opts.facts.rateMin !== void 0 ? { interest_rate_min: String(opts.facts.rateMin) } : {},
+    ...opts.facts.rateMin !== void 0 ? { rate_type: "indicative" } : {},
+    ...opts.facts.sumInsured ? { quote_type: "indicative" } : {},
+    ...opts.facts.rateMax !== void 0 ? { interest_rate_max: String(opts.facts.rateMax) } : {},
+    ...opts.facts.processingFee ? { processing_fee: opts.facts.processingFee } : {},
+    ...opts.facts.loanAmount ? { loan_amount: opts.facts.loanAmount } : {},
+    ...opts.facts.tenure ? { tenure: opts.facts.tenure } : {},
+    ...opts.facts.sumInsured ? { sum_insured: opts.facts.sumInsured } : {},
+    ...opts.facts.startingPremium ? { starting_premium: opts.facts.startingPremium } : {},
+    price_basis: opts.facts.rateMin !== void 0 ? "published annual interest-rate range, indicative \u2014 never an approved offer" : "published plan information",
+    data_note: opts.evidenceNote,
+    ...opts.extraAttributes || {}
+  };
+  const bits = [
+    opts.planName,
+    opts.facts.rateMin !== void 0 ? `${opts.facts.rateMin}${opts.facts.rateMax && opts.facts.rateMax !== opts.facts.rateMin ? `\u2013${opts.facts.rateMax}` : ""}% p.a.` : "",
+    opts.facts.sumInsured ? `Cover ${opts.facts.sumInsured}` : ""
+  ].filter(Boolean);
+  const title = bits.join(" \xB7 ") || `${opts.seller} published rates`;
+  return newRawItem(source, {
+    title,
+    seller: opts.seller,
+    sellerUrl: opts.sellerUrl,
+    currency: "INR",
+    price: void 0,
+    // a published rate/premium schedule is not a single purchasable price
+    attributes: attrs,
+    evidence: {
+      sourceUrl: opts.pageUrl,
+      extractedFields: Object.keys(attrs)
+    }
+  });
+}
+var init_publishedRates = __esm({
+  "server/workers/parsers/publishedRates.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/loans.ts
-var PAGES, loansWorker;
+function lenderPageTask(cfg) {
+  return {
+    sourceId: cfg.sourceId,
+    name: `Loans worker: ${cfg.seller} published rate page`,
+    priority: 20,
+    run: async (ctx) => {
+      const r = await ctx.fetch(cfg.url);
+      if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${cfg.seller} HTTP ${r.status}`, r.status);
+      const text = r.body.replace(/<[^>]+>/g, " ");
+      const range = extractRateRange(text);
+      if (range.min === void 0) throw new AcquisitionError("EMPTY_RESPONSE", `${cfg.seller} page carried no publishable rate`);
+      const facts = {
+        rateMin: range.min,
+        rateMax: range.max,
+        processingFee: extractProcessingFee(text),
+        loanAmount: extractLoanAmount(text),
+        tenure: extractTenure(text)
+      };
+      return [buildRateOffer(ctx.source, {
+        seller: cfg.seller,
+        sellerUrl: cfg.url,
+        pageUrl: cfg.url,
+        loanType: cfg.loanType,
+        facts,
+        evidenceNote: `Published on ${cfg.seller}'s own rates page, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; indicative rates \u2014 never an approved offer`
+      })];
+    }
+  };
+}
+var LENDER_PAGES, PAGES, loansWorker;
 var init_loans = __esm({
   "server/workers/verticals/loans.ts"() {
     init_verticalWorker();
     init_bankbazaarLoans();
+    init_publishedRates();
     init_httpClient();
+    LENDER_PAGES = [
+      { sourceId: "w_loans_paisabazaar", seller: "Paisabazaar", url: "https://www.paisabazaar.com/personal-loan/interest-rates/", loanType: "personal loan" },
+      { sourceId: "w_loans_bajajfinserv", seller: "Bajaj Finserv", url: "https://www.bajajfinserv.in/personal-loan-processing-fees-and-interest-rates", loanType: "personal loan" },
+      { sourceId: "w_loans_hdfc", seller: "HDFC Bank", url: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan/interest-rates-and-charges", loanType: "personal loan" },
+      { sourceId: "w_loans_moneyview", seller: "Money View", url: "https://moneyview.in/personal-loan-interest-rates-and-charges", loanType: "personal loan" }
+    ];
     PAGES = [
       { type: "home loan", re: /home|housing|house|property purchase/i, url: "https://www.bankbazaar.com/home-loan.html" },
       { type: "car loan", re: /car|auto|vehicle/i, url: "https://www.bankbazaar.com/car-loan.html" },
@@ -1585,7 +1689,8 @@ var init_loans = __esm({
             if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "BankBazaar presented a challenge page");
             return items;
           }
-        }
+        },
+        ...LENDER_PAGES.map(lenderPageTask)
       ]
     };
     registerVerticalWorker(loansWorker);
@@ -2922,12 +3027,47 @@ var init_bankbazaarInsurance = __esm({
 });
 
 // server/workers/verticals/insurance.ts
-var PAGES2, insuranceWorker;
+function insurerPageTask(cfg) {
+  return {
+    sourceId: cfg.sourceId,
+    name: `Insurance worker: ${cfg.seller} published plan page`,
+    priority: 20,
+    run: async (ctx) => {
+      const r = await ctx.fetch(cfg.url);
+      if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${cfg.seller} HTTP ${r.status}`, r.status);
+      const text = r.body.replace(/<[^>]+>/g, " ");
+      const sumM = /(?:sum insured[^₹]{0,60}?₹\s*[\d,\.]+\s*(?:lakh|lakhs|crore)[^₹]{0,60}?₹\s*[\d,\.]+\s*(?:lakh|lakhs|crore))|(?:₹|rs\.?\s?)?\d[\d,\.]{0,11}\s*(?:lakh|lakhs|crore)\s*(?:to|-|–)\s*(?:₹|rs\.?\s?)?[\d,\.]{0,11}\s*(?:lakh|lakhs|crore)/i.exec(text);
+      const premM = /(?:premium[^₹₨]{0,60}?|starting\s*(?:at|from))\s*[₹₨]?\s*\d[\d,]*(?:\.\d+)?\s*(?:per\s*(?:month|year|annum|day)|\/\s*(?:month|year)|p\.?a\.?)/i.exec(text);
+      const facts = {
+        sumInsured: sumM ? sumM[0].trim() : void 0,
+        startingPremium: premM ? premM[0].trim() : void 0
+      };
+      if (!facts.sumInsured && !facts.startingPremium) throw new AcquisitionError("EMPTY_RESPONSE", `${cfg.seller} page carried no publishable plan facts`);
+      return [buildRateOffer(ctx.source, {
+        seller: cfg.seller,
+        sellerUrl: cfg.url,
+        pageUrl: cfg.url,
+        insuranceType: "health insurance",
+        planName: cfg.planName,
+        facts,
+        evidenceNote: `Plan terms as published on ${cfg.seller}'s own page, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; real premiums depend on age, city and medical history`
+      })];
+    }
+  };
+}
+var INSURER_PAGES, PAGES2, insuranceWorker;
 var init_insurance = __esm({
   "server/workers/verticals/insurance.ts"() {
     init_verticalWorker();
     init_bankbazaarInsurance();
+    init_publishedRates();
     init_httpClient();
+    INSURER_PAGES = [
+      { sourceId: "w_insurance_policybazaar", seller: "Policybazaar", url: "https://www.policybazaar.com/health-insurance/", planName: "Policybazaar health plans" },
+      { sourceId: "w_insurance_acko", seller: "Acko", url: "https://www.acko.com/health-insurance/", planName: "Acko health plans" },
+      { sourceId: "w_insurance_digit", seller: "Digit", url: "https://www.godigit.com/health-insurance", planName: "Digit health plans" },
+      { sourceId: "w_insurance_hdfcergo", seller: "HDFC Ergo", url: "https://www.hdfcergo.com/health-insurance", planName: "HDFC Ergo health plans" }
+    ];
     PAGES2 = [
       { type: "term life insurance", re: /term|life cover/i, url: "https://www.bankbazaar.com/insurance/term-insurance.html" },
       { type: "health insurance", re: /health|medical/i, url: "https://www.bankbazaar.com/insurance/health-insurance.html" },
@@ -2950,7 +3090,8 @@ var init_insurance = __esm({
             if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "BankBazaar presented a challenge page");
             return items;
           }
-        }
+        },
+        ...INSURER_PAGES.map(insurerPageTask)
       ]
     };
     registerVerticalWorker(insuranceWorker);
