@@ -5,7 +5,9 @@
  */
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { loadOpenFlights, parseRoute } from '../parsers/openflights';
+import { parseIxigoFlights, parseIxigoOffers } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
@@ -22,6 +24,37 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
 export const flightsWorker: VerticalWorker = {
   vertical: 'flights',
   tasks: [
+    {
+      // Ixigo SSRs the flight search page: __NEXT_DATA__ ships up to 100
+      // real flight entries for the date (airline, flight number, total
+      // fare, times, stops). City names are accepted directly.
+      sourceId: 'w_flights_ixigo',
+      name: 'Flights worker: Ixigo SSR search (live fares)',
+      priority: 1,
+      maxPerMinute: 6,
+      timeoutMs: 35_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const dep = ctx.query?.travelDates?.depart && /\d{4}-\d{2}-\d{2}/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const url = `https://www.ixigo.com/search/flight/${encodeURIComponent(rt.from.toLowerCase())}/${encodeURIComponent(rt.to.toLowerCase())}/${dep}/1/0`;
+        const res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        if (res.status === 403 || res.status === 429) {
+          throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Ixigo blocked: ${res.status}`, res.status);
+        }
+        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Ixigo HTTP ${res.status}`, res.status);
+        const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+        if (!m) throw new AcquisitionError('MALFORMED_RESPONSE', 'Ixigo SRP carried no __NEXT_DATA__');
+        let next: any;
+        try { next = JSON.parse(m[1]); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Ixigo __NEXT_DATA__ not valid JSON'); }
+        const flights = parseIxigoFlights(next);
+        if (flights.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo SRP had no priced flights');
+        return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep);
+      },
+    },
     {
       sourceId: 'w_flights_openflights',
       name: 'Flights worker: OpenFlights airline-route data (worldwide)',
