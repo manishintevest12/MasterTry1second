@@ -7,14 +7,38 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { AcquisitionError } from '../../common/httpClient';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 const q = (ctx: { query: any }) =>
   String(ctx.query.entityName || ctx.query.rawQuery || '')
     .replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, ' ').replace(/\s+/g, ' ').trim();
 
+const QUICK_FAILS: Array<{ sourceId: string; url: (t: string) => string; probe: string; note: string }> = [
+  { sourceId: 'w_grocery_blinkit', url: (t) => `https://blinkit.com/cn/${encodeURIComponent(t)}/cid/12`, probe: 'https://blinkit.com/', note: 'Blinkit returns an Akamai/bot challenge page (403, no product data) to browserless HTTP' },
+  { sourceId: 'w_grocery_zepto', url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: 'https://www.zeptonow.com/', note: 'Zeptonow returns a 202 JS challenge shell to browserless HTTP' },
+  { sourceId: 'w_grocery_instamart', url: (t) => `https://www.swiggy.com/instamart/search?str=${encodeURIComponent(t)}`, probe: 'https://www.swiggy.com/instamart', note: 'Swiggy Instamart web/app endpoints return 403/202 challenge to browserless HTTP (restaurant dapi works, instamart is separately gated)' },
+  { sourceId: 'w_grocery_bigbasket', url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: 'https://www.bigbasket.com/ps/?q=milk', note: 'BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403' },
+  { sourceId: 'w_grocery_flipkart_minutes', url: (t) => `https://www.flipkart.com/minutes-store`, probe: 'https://www.flipkart.com/minutes-store', note: 'Flipkart Minutes store is a JS shell with no SSR product prices' },
+];
+
 export const groceryWorker: VerticalWorker = {
   vertical: 'grocery',
   tasks: [
+    ...QUICK_FAILS.map((src) => ({
+      // Owner-mandated quick-commerce sources: ATTEMPTED on every grocery search,
+      // honestly reported as unavailable when the edge gate blocks browserless HTTP.
+      sourceId: src.sourceId,
+      priority: 15,
+      run: async (ctx: any) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const r = await cffiFetch(src.probe, { impersonate: 'chrome', timeoutMs: 12_000 });
+        const gated = r.status === 202 || r.status === 403 || (r.status === 200 && /challenge|captcha/i.test(r.body.slice(0, 4000)) && !/__NEXT_DATA__/.test(r.body));
+        if (gated) throw new AcquisitionError('ACCESS_CHALLENGE', src.note);
+        // Edge case: page served but no product payload (shell) — still honest.
+        throw new AcquisitionError('EMPTY_RESPONSE', src.note.replace(/returns|serves/, 'served'));
+      },
+    })),
     {
       sourceId: 'w_grocery_amazon_in',
       name: 'Grocery worker: Amazon.in grocery listings',

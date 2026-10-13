@@ -3863,17 +3863,39 @@ var init_insurance = __esm({
 });
 
 // server/workers/verticals/grocery.ts
-var q2, groceryWorker;
+var q2, QUICK_FAILS, groceryWorker;
 var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
     init_amazonIn();
     init_flipkart();
     init_httpClient();
+    init_curlCffiFetch();
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
+    QUICK_FAILS = [
+      { sourceId: "w_grocery_blinkit", url: (t) => `https://blinkit.com/cn/${encodeURIComponent(t)}/cid/12`, probe: "https://blinkit.com/", note: "Blinkit returns an Akamai/bot challenge page (403, no product data) to browserless HTTP" },
+      { sourceId: "w_grocery_zepto", url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: "https://www.zeptonow.com/", note: "Zeptonow returns a 202 JS challenge shell to browserless HTTP" },
+      { sourceId: "w_grocery_instamart", url: (t) => `https://www.swiggy.com/instamart/search?str=${encodeURIComponent(t)}`, probe: "https://www.swiggy.com/instamart", note: "Swiggy Instamart web/app endpoints return 403/202 challenge to browserless HTTP (restaurant dapi works, instamart is separately gated)" },
+      { sourceId: "w_grocery_bigbasket", url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: "https://www.bigbasket.com/ps/?q=milk", note: "BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403" },
+      { sourceId: "w_grocery_flipkart_minutes", url: (t) => `https://www.flipkart.com/minutes-store`, probe: "https://www.flipkart.com/minutes-store", note: "Flipkart Minutes store is a JS shell with no SSR product prices" }
+    ];
     groceryWorker = {
       vertical: "grocery",
       tasks: [
+        ...QUICK_FAILS.map((src2) => ({
+          // Owner-mandated quick-commerce sources: ATTEMPTED on every grocery search,
+          // honestly reported as unavailable when the edge gate blocks browserless HTTP.
+          sourceId: src2.sourceId,
+          priority: 15,
+          run: async (ctx) => {
+            const term = q2(ctx);
+            if (!term) return [];
+            const r = await cffiFetch(src2.probe, { impersonate: "chrome", timeoutMs: 12e3 });
+            const gated = r.status === 202 || r.status === 403 || r.status === 200 && /challenge|captcha/i.test(r.body.slice(0, 4e3)) && !/__NEXT_DATA__/.test(r.body);
+            if (gated) throw new AcquisitionError("ACCESS_CHALLENGE", src2.note);
+            throw new AcquisitionError("EMPTY_RESPONSE", src2.note.replace(/returns|serves/, "served"));
+          }
+        })),
         {
           sourceId: "w_grocery_amazon_in",
           name: "Grocery worker: Amazon.in grocery listings",
