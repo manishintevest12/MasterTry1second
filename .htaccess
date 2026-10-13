@@ -27,7 +27,7 @@
 </IfModule>
 
 # --- Security: stop serving raw source code to the public ---
-RedirectMatch 404 ^/(src|server|database|tests|node_modules|\.git|\.data)(/|$).*
+RedirectMatch 404 ^/(src|server|database|tests|node_modules|python-vendor|python-engine|\.git|\.data)(/|$).*
 <FilesMatch "\.(ts|tsx|sql|env|lock|md)$">
   Require all denied
 </FilesMatch>
