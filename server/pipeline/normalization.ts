@@ -35,6 +35,12 @@ export function normalizeAttributes(attrs: Record<string, string> | undefined): 
       if (/^https:\/\//i.test(u)) { out['image_url'] = u; break; }
     }
   }
+  // Gallery: `image_urls` is a '|' joined list of https photos from the SAME listing (never mixed products).
+  if (out['image_urls']) {
+    const list = out['image_urls'].split('|').map((u) => u.trim().replace(/^\/\//, 'https://').replace(/^http:\/\//i, 'https://')).filter((u) => /^https:\/\//i.test(u));
+    const uniq = [...new Set(list)].slice(0, 8);
+    if (uniq.length) out['image_urls'] = uniq.join('|'); else delete out['image_urls'];
+  }
   return out;
 }
 

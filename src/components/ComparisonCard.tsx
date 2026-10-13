@@ -18,6 +18,8 @@ import {
   Check,
   MapPin,
   Camera,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ComparisonItem, SellerQuote } from '../types';
 import { useApp } from '../context/AppContext';
@@ -108,6 +110,14 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   const [activeTab, setActiveTab] = useState<'sellers' | 'trend' | 'reviews' | 'specs'>('sellers');
   const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
   const [showImagePreview, setShowImagePreview] = useState<boolean>(false);
+  // Real gallery: the source's own photos of THIS listing (never other products).
+  const gallery: string[] = Array.from(new Set([item.imageUrl, ...(item.images || [])].filter(Boolean) as string[]));
+  const [photoIdx, setPhotoIdx] = useState<number>(0);
+  const photoSrc = gallery.length ? gallery[photoIdx % gallery.length] : getItemImage(item);
+  const stepPhoto = (e: React.MouseEvent, d: number) => {
+    e.stopPropagation();
+    setPhotoIdx((i) => (i + d + gallery.length) % gallery.length);
+  };
   const [logoImgOk, setLogoImgOk] = useState<boolean>(true);
 
   const isTracked = trackedItemIds.includes(item.id);
@@ -216,7 +226,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 className="w-full sm:w-48 md:w-52 h-40 sm:h-40 shrink-0 relative rounded-xl overflow-hidden border border-slate-200 group bg-white cursor-pointer"
               >
                 <img
-                  src={getItemImage(item)}
+                  src={photoSrc}
                   alt={item.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
@@ -243,12 +253,25 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   </span>
                 </div>
 
+                {/* Gallery arrows + dots: only when the source published more than one photo */}
+                {gallery.length > 1 && (
+                  <>
+                    <button type="button" onClick={(e) => stepPhoto(e, -1)} aria-label="Previous photo" className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/90 shadow cursor-pointer"><ChevronLeft className="w-4 h-4 text-slate-800" /></button>
+                    <button type="button" onClick={(e) => stepPhoto(e, 1)} aria-label="Next photo" className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/90 shadow cursor-pointer"><ChevronRight className="w-4 h-4 text-slate-800" /></button>
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1">
+                      {gallery.slice(0, 8).map((_, i) => (
+                        <span key={i} className={`h-1.5 rounded-full transition-all ${i === photoIdx % gallery.length ? 'w-3 bg-white' : 'w-1.5 bg-white/60'}`} />
+                      ))}
+                    </div>
+                  </>
+                )}
+
                 {/* View Photos Pill - only when the source actually published a photo */}
                 {item.imageUrl && (
                   <div className="absolute bottom-2 right-2">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold group-hover:bg-orange-600 transition-colors">
                       <Camera className="w-3 h-3" />
-                      <span>View photo</span>
+                      <span>{gallery.length > 1 ? `${gallery.length} photos` : 'View photo'}</span>
                     </span>
                   </div>
                 )}
@@ -259,6 +282,13 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 <h3 className="text-base font-bold text-slate-900 leading-tight">
                   {item.title}
                 </h3>
+                {item.vertical === 'food' && (item.specs as any)?.restaurant && (
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5 flex items-center gap-1">
+                    <span aria-hidden>🍽</span>
+                    <span className="truncate">{(item.specs as any).restaurant}</span>
+                    {(item.specs as any).area && <span className="text-slate-400 font-normal truncate">· {(item.specs as any).area}</span>}
+                  </p>
+                )}
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
                   via {item.subtitle}
                 </p>

@@ -17,6 +17,7 @@ interface MyxProduct {
   productId?: number;
   landingPageUrl?: string;
   searchImage?: string;
+  images?: Array<{ view?: string; src?: string }>;
   discountDisplayLabel?: string;
   category?: string;
 }
@@ -73,6 +74,7 @@ export function parseMyntra(html: string, source: SourceConfig, pageUrl: string)
     const landing = String(p.landingPageUrl || '');
     const url = landing ? `https://www.myntra.com/${landing.replace(/^\/+/, '')}` : 'https://www.myntra.com';
     const img = p.searchImage ? String(p.searchImage).replace(/^http:/, 'https:') : undefined;
+    const imgs = [...new Set((Array.isArray(p.images) ? p.images : []).map((i) => String(i?.src || '').replace(/^http:/, 'https:')).filter((u) => /^https:\/\//.test(u)))].slice(0, 6);
     items.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: p.brand ? String(p.brand).slice(0, 120) : undefined,
@@ -89,6 +91,7 @@ export function parseMyntra(html: string, source: SourceConfig, pageUrl: string)
         rating_count: p.ratingCount ? String(p.ratingCount) : '',
         discount: p.discountDisplayLabel ? String(p.discountDisplayLabel).replace(/[()]/g, '') : '',
         image: img || '',
+        ...(imgs.length > 1 ? { image_urls: imgs.join('|') } : {}),
         data_note: `Product as listed on Myntra search, observed ${new Date().toISOString().slice(0, 10)}`,
       },
       identifiers: p.productId ? { sku: String(p.productId) } : undefined,

@@ -81,6 +81,8 @@ export interface ComparisonItem {
   category: string;
   provider: string; // Airline, Hotel chain, E-comm brand, Restaurant, Bank, Insurer, Cab company
   providerLogo?: string;
+  /** Extra real photos of this same listing published by its source (gallery). */
+  images?: string[];
   rating: number;
   reviewCount: number;
   sentimentSummary: string;

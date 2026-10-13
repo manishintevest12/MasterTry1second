@@ -18,6 +18,7 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
     ? (() => { try { return JSON.parse(row.attributes) || {}; } catch { return {}; } })()
     : (row.attributes || {});
   const imageUrl = /^https:\/\//.test(attrs.image_url || '') ? attrs.image_url : undefined;
+  const images = attrs.image_urls ? String(attrs.image_urls).split('|').filter((u: string) => /^https:\/\//.test(u)) : undefined;
   // Same honest description builder as the live mapper: source-published fields only.
   const descParts: string[] = [];
   if (attrs.rating) descParts.push(`${attrs.rating}★${attrs.rating_count ? ` (${Number(attrs.rating_count).toLocaleString('en-IN')})` : ''}`);
@@ -31,6 +32,7 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
   return {
     id: `cat-${row.id}`,
     imageUrl,
+    images,
     description,
     vertical: row.vertical,
     title: String(row.title || 'Untitled offer'),

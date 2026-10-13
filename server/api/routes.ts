@@ -152,6 +152,7 @@ function offerToComparisonItem(o: any) {
     provider: o.vendor,
     providerLogo: '',
     imageUrl: /^https:\/\//.test(attrs['image_url'] || '') ? attrs['image_url'] : undefined,
+    images: attrs['image_urls'] ? String(attrs['image_urls']).split('|').filter((u) => /^https:\/\//.test(u)) : undefined,
     rating: Number(attrs['rating']) || 0,
     reviewCount: Number(attrs['review_count']) || 0,
     description,

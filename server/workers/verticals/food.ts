@@ -145,7 +145,10 @@ export const foodWorker: VerticalWorker = {
         // 0 offers to results). Follow the first 2 restaurants and pull DISH prices from
         // their pages' embedded JSON (JSON-LD hasMenu / __PRELOADED_STATE__). Priced dishes
         // pass validation; unpriced listings stay as reference rows only.
-        const restUrls = items.slice(0, 2).map((it) => String((it as any).sellerUrl || '')).filter((u) => /zomato\.com\//.test(u));
+        // Menu prices live on the restaurant's /order page (the bare/info pages carry none).
+        const toOrder = (u: string) => u.replace(/\/(?:info|order)?\/?$/, '') + '/order';
+        const restUrls = items.slice(0, 6).map((it) => String((it as any).sellerUrl || '')).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
+        const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
         const dishItems: RawSourceItem[] = [];
         const hintAgg: Record<string, number> = {};
         for (const ru of restUrls) {
@@ -153,19 +156,24 @@ export const foodWorker: VerticalWorker = {
           if (rr.status !== 200) continue;
           const { dishes, hints } = parseZomatoMenuPage(rr.body);
           for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
-          const restName = String((items.find((it) => (it as any).sellerUrl === ru) as any)?.title || ru.split('/').pop() || 'restaurant');
-          for (const d of dishes) {
+          const baseUrl = ru.replace(/\/order$/, '');
+          const found = items.find((it) => { const su = String((it as any).sellerUrl || ''); return su.replace(/\/(?:info|order)?\/?$/, '') === baseUrl; }) as any;
+          const restName = String(found?.title || baseUrl.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'restaurant');
+          // Only dishes that match what the user typed (biryani -> biryani dishes), never the whole menu.
+          const wanted = qTokens.length ? dishes.filter((d) => qTokens.every((w) => (d.name + ' ' + (d.description || '')).toLowerCase().includes(w))) : dishes;
+          for (const d of wanted.slice(0, 8)) {
             dishItems.push(newRawItem(ctx.source, {
-              title: `${d.name} (${restName})`,
+              title: d.name,
               brand: 'Zomato',
               price: d.price,
               currency: 'INR',
               seller: 'Zomato',
-              sellerUrl: ru,
+              sellerUrl: baseUrl + '/order',
               location: { city: ctx.query.location?.city || '' },
               attributes: {
                 dish: d.name.slice(0, 160),
                 restaurant: restName.slice(0, 160),
+                ...(d.image ? { image_url: d.image } : {}),
                 platform: 'Zomato',
                 ...(d.description ? { description: d.description } : {}),
                 price_basis: 'Menu price served in Zomato restaurant page embedded JSON',
@@ -174,7 +182,7 @@ export const foodWorker: VerticalWorker = {
               evidence: { sourceUrl: ru, sourceReference: d.name, extractedFields: ['dish', 'price'] },
             }));
           }
-          if (dishItems.length >= 20) break;
+          if (dishItems.length >= 24) break;
         }
         if (dishItems.length) return dishItems;
         if (restUrls.length && !hintAgg.priceHits) {

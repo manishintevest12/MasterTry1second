@@ -25,6 +25,14 @@ function pickImage(p: AjioProduct): string | undefined {
   return url ? String(url).replace(/^http:/, 'https:') : undefined;
 }
 
+function pickImages(p: AjioProduct): string[] {
+  const out: string[] = [];
+  const add = (u?: string) => { if (u) { const x = String(u).replace(/^http:/, 'https:'); if (!out.includes(x)) out.push(x); } };
+  add(p.fnlColorVariantData?.outfitPictureURL);
+  for (const g of p.images || []) for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
+  return out.slice(0, 6);
+}
+
 export function parseAjio(rawBody: string, source: SourceConfig, pageUrl: string): RawSourceItem[] {
   let root: any;
   try { root = JSON.parse(rawBody); } catch { return []; }
@@ -52,6 +60,7 @@ export function parseAjio(rawBody: string, source: SourceConfig, pageUrl: string
         brand: brand || '',
         discount: p.discountPercent ? `${p.discountPercent}%` : '',
         image: img || '',
+        ...(pickImages(p).length > 1 ? { image_urls: pickImages(p).join('|') } : {}),
         data_note: `Product as listed on Ajio search API, observed ${new Date().toISOString().slice(0, 10)}`,
       },
       identifiers: p.code ? { sku: String(p.code) } : undefined,

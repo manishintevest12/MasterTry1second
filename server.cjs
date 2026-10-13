@@ -1670,6 +1670,7 @@ function parseFlipkart(html, source, searchUrl) {
     const avg = u.rating?.average;
     const rawImg = String(u.media?.images?.[0]?.url || u.imageUrl || "");
     const imageUrl = rawImg ? rawImg.replace(/^http:/, "https:").replace("{@width}", "400").replace("{@height}", "400").replace("{@quality}", "70") : "";
+    const fkImgs = (Array.isArray(u.media?.images) ? u.media.images : []).map((im) => String(im?.url || "")).filter(Boolean).map((x) => x.replace(/^http:/, "https:").replace("{@width}", "400").replace("{@height}", "400").replace("{@quality}", "70")).filter((x) => /^https:\/\/rukmini/.test(x)).slice(0, 6);
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
       price: selling,
@@ -1677,7 +1678,7 @@ function parseFlipkart(html, source, searchUrl) {
       listPrice: mrp && mrp > selling ? mrp : void 0,
       brand: u.titles?.superTitle || void 0,
       identifiers: { vendorProductId: id },
-      attributes: { ...avg ? { rating: String(avg) } : {}, ...u.rating?.count ? { rating_count: String(u.rating.count) } : {}, .../^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {} },
+      attributes: { ...avg ? { rating: String(avg) } : {}, ...u.rating?.count ? { rating_count: String(u.rating.count) } : {}, .../^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {}, ...fkImgs.length > 1 ? { image_urls: fkImgs.join("|") } : {} },
       seller: "Flipkart",
       sellerUrl: u.baseUrl ? `https://www.flipkart.com${String(u.baseUrl).split("&")[0]}` : void 0,
       availability,
@@ -1765,6 +1766,7 @@ function parseMyntra(html, source, pageUrl) {
     const landing = String(p.landingPageUrl || "");
     const url = landing ? `https://www.myntra.com/${landing.replace(/^\/+/, "")}` : "https://www.myntra.com";
     const img = p.searchImage ? String(p.searchImage).replace(/^http:/, "https:") : void 0;
+    const imgs = [...new Set((Array.isArray(p.images) ? p.images : []).map((i) => String(i?.src || "").replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u)))].slice(0, 6);
     items.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: p.brand ? String(p.brand).slice(0, 120) : void 0,
@@ -1781,6 +1783,7 @@ function parseMyntra(html, source, pageUrl) {
         rating_count: p.ratingCount ? String(p.ratingCount) : "",
         discount: p.discountDisplayLabel ? String(p.discountDisplayLabel).replace(/[()]/g, "") : "",
         image: img || "",
+        ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
         data_note: `Product as listed on Myntra search, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
       },
       identifiers: p.productId ? { sku: String(p.productId) } : void 0,
@@ -1802,6 +1805,18 @@ function pickImage(p) {
   const media = p.images?.[0]?.media;
   const url = media?.[0]?.mediumImageUrl || media?.[0]?.imageUrl;
   return url ? String(url).replace(/^http:/, "https:") : void 0;
+}
+function pickImages(p) {
+  const out = [];
+  const add = (u) => {
+    if (u) {
+      const x = String(u).replace(/^http:/, "https:");
+      if (!out.includes(x)) out.push(x);
+    }
+  };
+  add(p.fnlColorVariantData?.outfitPictureURL);
+  for (const g of p.images || []) for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
+  return out.slice(0, 6);
 }
 function parseAjio(rawBody, source, pageUrl) {
   let root;
@@ -1834,6 +1849,7 @@ function parseAjio(rawBody, source, pageUrl) {
         brand: brand || "",
         discount: p.discountPercent ? `${p.discountPercent}%` : "",
         image: img || "",
+        ...pickImages(p).length > 1 ? { image_urls: pickImages(p).join("|") } : {},
         data_note: `Product as listed on Ajio search API, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
       },
       identifiers: p.code ? { sku: String(p.code) } : void 0,
@@ -2455,6 +2471,7 @@ function parseCleartripHotels(nextData) {
       seen.add(key);
       const imgRaw = d?.imageSlider?.data?.images?.[0]?.data?.url;
       const imageUrl = typeof imgRaw === "string" && imgRaw.startsWith("http") ? imgRaw : typeof imgRaw === "string" && imgRaw ? CLEARTRIP_IMAGE_CDN + imgRaw.replace(/^\/+/, "") : null;
+      const allImgs = (Array.isArray(d?.imageSlider?.data?.images) ? d.imageSlider.data.images : []).map((im) => im?.data?.url).filter((u) => typeof u === "string" && u).map((u) => u.startsWith("http") ? u : CLEARTRIP_IMAGE_CDN + u.replace(/^\/+/, "")).slice(0, 8);
       const rel = card?.action?.payload?.url;
       const deeplink = typeof rel === "string" && rel.startsWith("/") ? CLEARTRIP_WEB + rel : typeof rel === "string" && rel.startsWith("http") ? rel : `${CLEARTRIP_WEB}/hotels/`;
       out.push({
@@ -2468,6 +2485,7 @@ function parseCleartripHotels(nextData) {
         locality: d?.locality ? String(d.locality) : null,
         city: d?.city ? String(d.city) : null,
         imageUrl,
+        imageUrls: allImgs,
         deeplink,
         freeCancellation: Boolean(d?.freeCancellation?.available),
         freeBreakfast: Boolean(d?.freeBreakfast?.available)
@@ -2481,6 +2499,7 @@ function parseCleartripOffers(hotels, source) {
   for (const h of hotels.slice(0, 30)) {
     const attrs = {
       image_url: h.imageUrl,
+      ...h.imageUrls && h.imageUrls.length > 1 ? { image_urls: h.imageUrls.join("|") } : {},
       rating: h.rating,
       stars: h.stars,
       locality: h.locality,
@@ -2563,6 +2582,7 @@ function parseAirbnbStays(results) {
       rating: ratingMatch ? ratingMatch[1] : null,
       reviews: ratingMatch && ratingMatch[2] ? parseInt(ratingMatch[2], 10) : null,
       imageUrl: r.contextualPictures?.[0]?.picture || null,
+      imageUrls: (Array.isArray(r.contextualPictures) ? r.contextualPictures : []).map((x) => x?.picture).filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 8),
       lat: coord?.latitude ?? null,
       lon: coord?.longitude ?? null
     });
@@ -2580,6 +2600,7 @@ function parseAirbnbOffers(stays, source, city) {
     if (!s.pricePerNight) continue;
     const attrs = {
       image_url: s.imageUrl,
+      ...s.imageUrls && s.imageUrls.length > 1 ? { image_urls: s.imageUrls.join("|") } : {},
       rating: s.rating,
       review_count: s.reviews,
       room_type: s.roomType,
@@ -2615,6 +2636,14 @@ var init_airbnbHotels = __esm({
 });
 
 // server/workers/parsers/ixigoHotels.ts
+function pickImages2(h) {
+  const out = [];
+  for (const e of Array.isArray(h.imageInfoList) ? h.imageInfoList : []) {
+    const u = e?.imageUrl || e?.url || e?.thumbUrl || e?.mainImage || e?.image || e?.dynamicImageUrl || e?.cdnUrl;
+    if (typeof u === "string" && u && !out.includes(u)) out.push(u.replace(/^http:/, "https:"));
+  }
+  return out.slice(0, 8);
+}
 function pickImage2(h) {
   const list = h.imageInfoList;
   if (Array.isArray(list)) {
@@ -2653,6 +2682,7 @@ function parseIxigoHotels(html, source, pageUrl, city) {
     if (!name || !Number.isFinite(fare) || fare <= 0) continue;
     const site = siteFor(name, h.city || city);
     const img = pickImage2(h);
+    const imgs = pickImages2(h);
     items.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: name.slice(0, 200),
@@ -2671,6 +2701,7 @@ function parseIxigoHotels(html, source, pageUrl, city) {
         user_rating_category: String(h.userRatingCategory || ""),
         top_offerings: Array.isArray(h.topOfferings) ? h.topOfferings.slice(0, 5).join(", ") : "",
         image: img || "",
+        ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
         price_basis: "per night, base fare as published by Ixigo",
         chain_site: site.chain ? "brand official website" : "web search for official site",
         data_note: `Price observed on Ixigo (metasearch) on ${today}; booking is via the hotel's own channels, never via Ixigo`
@@ -4629,7 +4660,7 @@ function parseZomatoRestaurants(html, source, searchUrl, platform) {
   return out.slice(0, 40);
 }
 function walkMenuJson(node, out, depth = 0) {
-  if (!node || depth > 12) return;
+  if (!node || depth > 22) return;
   if (Array.isArray(node)) {
     for (const n of node) walkMenuJson(n, out, depth + 1);
     return;
@@ -4639,6 +4670,21 @@ function walkMenuJson(node, out, depth = 0) {
   if ((t === "MenuItem" || t === "MenuSection") && node.name && node.offers) {
     const p = Number(node.offers.price ?? node.offers.lowPrice ?? NaN);
     if (Number.isFinite(p) && p > 0) out.push({ name: String(node.name).slice(0, 160), price: Math.round(p), description: node.description ? String(node.description).slice(0, 200) : void 0 });
+  }
+  if (!t && typeof node.name === "string" && (node.display_price !== void 0 || node.default_price !== void 0 || node.min_price !== void 0) && node.id) {
+    const p = Number(node.price) > 0 ? Number(node.price) : Number(node.display_price ?? node.default_price ?? node.min_price);
+    const nm = node.name.trim();
+    if (Number.isFinite(p) && p >= 10 && p <= 12e3 && nm.length >= 3 && nm.length <= 160) {
+      const img = String(node.item_image_url || "").replace(/^http:/, "https:");
+      out.push({
+        name: nm.slice(0, 160),
+        price: Math.round(p),
+        description: node.desc ? String(node.desc).slice(0, 200) : void 0,
+        image: /^https:\/\//.test(img) ? img.split("?")[0] : void 0,
+        veg: typeof node.is_veg === "boolean" ? node.is_veg : void 0
+      });
+    }
+    return;
   }
   if (!t && node.name && (node.price !== void 0 || node.item_price !== void 0 || node.price_incl !== void 0)) {
     const p = Number(node.price ?? node.item_price ?? node.price_incl ?? NaN);
@@ -4653,12 +4699,17 @@ function parseZomatoMenuPage(html) {
   const hints = { jsonLdBlocks: 0, hasMenu: 0, preloadedState: 0, priceHits: 0 };
   const dishes = [];
   const seen = /* @__PURE__ */ new Set();
+  const byKey = /* @__PURE__ */ new Map();
   const add = (d) => {
-    const k = `${d.name}|${d.price}`;
-    if (!seen.has(k)) {
-      seen.add(k);
+    const k = `${d.name.toLowerCase()}|${d.price}`;
+    const prev = byKey.get(k);
+    if (!prev) {
+      byKey.set(k, d);
       dishes.push(d);
+      return;
     }
+    if (!prev.image && d.image) prev.image = d.image;
+    if (!prev.description && d.description) prev.description = d.description;
   };
   hints.priceHits = (html.match(/"(?:price|item_price|price_incl)"\s*:/g) || []).length;
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -4673,7 +4724,18 @@ function parseZomatoMenuPage(html) {
     } catch {
     }
   }
-  if (dishes.length) return { dishes: dishes.slice(0, 30), hints };
+  const wrapped = /window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\("((?:[^"\\]|\\.)*)"\)/.exec(html);
+  if (wrapped) {
+    hints.preloadedState += 1;
+    try {
+      const tmp = [];
+      walkMenuJson(JSON.parse(JSON.parse('"' + wrapped[1] + '"')), tmp);
+      tmp.forEach(add);
+    } catch (e) {
+      if (process.env.ZOMATO_DEBUG) console.error("zomato state parse", e.message);
+    }
+    if (dishes.length) return { dishes, hints };
+  }
   const pre = /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i.exec(html) || /__NEXT_DATA__[^>]*>(\{[\s\S]*?\})<\/script>/i.exec(html);
   if (pre) {
     hints.preloadedState += 1;
@@ -4684,7 +4746,7 @@ function parseZomatoMenuPage(html) {
     } catch {
     }
   }
-  return { dishes: dishes.slice(0, 30), hints };
+  return { dishes: dishes.slice(0, 400), hints };
 }
 var import_crypto7;
 var init_zomato = __esm({
@@ -5086,7 +5148,9 @@ var init_food = __esm({
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Zomato HTTP ${r.status}`, r.status);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
             if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Zomato presented a challenge page");
-            const restUrls = items.slice(0, 2).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u));
+            const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
+            const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
+            const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
             const dishItems = [];
             const hintAgg = {};
             for (const ru of restUrls) {
@@ -5094,19 +5158,26 @@ var init_food = __esm({
               if (rr.status !== 200) continue;
               const { dishes, hints } = parseZomatoMenuPage(rr.body);
               for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
-              const restName = String(items.find((it) => it.sellerUrl === ru)?.title || ru.split("/").pop() || "restaurant");
-              for (const d of dishes) {
+              const baseUrl = ru.replace(/\/order$/, "");
+              const found = items.find((it) => {
+                const su = String(it.sellerUrl || "");
+                return su.replace(/\/(?:info|order)?\/?$/, "") === baseUrl;
+              });
+              const restName = String(found?.title || baseUrl.split("/").filter(Boolean).pop()?.replace(/-/g, " ") || "restaurant");
+              const wanted = qTokens.length ? dishes.filter((d) => qTokens.every((w) => (d.name + " " + (d.description || "")).toLowerCase().includes(w))) : dishes;
+              for (const d of wanted.slice(0, 8)) {
                 dishItems.push(newRawItem(ctx.source, {
-                  title: `${d.name} (${restName})`,
+                  title: d.name,
                   brand: "Zomato",
                   price: d.price,
                   currency: "INR",
                   seller: "Zomato",
-                  sellerUrl: ru,
+                  sellerUrl: baseUrl + "/order",
                   location: { city: ctx.query.location?.city || "" },
                   attributes: {
                     dish: d.name.slice(0, 160),
                     restaurant: restName.slice(0, 160),
+                    ...d.image ? { image_url: d.image } : {},
                     platform: "Zomato",
                     ...d.description ? { description: d.description } : {},
                     price_basis: "Menu price served in Zomato restaurant page embedded JSON",
@@ -5115,7 +5186,7 @@ var init_food = __esm({
                   evidence: { sourceUrl: ru, sourceReference: d.name, extractedFields: ["dish", "price"] }
                 }));
               }
-              if (dishItems.length >= 20) break;
+              if (dishItems.length >= 24) break;
             }
             if (dishItems.length) return dishItems;
             if (restUrls.length && !hintAgg.priceHits) {
@@ -9020,6 +9091,12 @@ function normalizeAttributes(attrs) {
       }
     }
   }
+  if (out["image_urls"]) {
+    const list = out["image_urls"].split("|").map((u) => u.trim().replace(/^\/\//, "https://").replace(/^http:\/\//i, "https://")).filter((u) => /^https:\/\//i.test(u));
+    const uniq = [...new Set(list)].slice(0, 8);
+    if (uniq.length) out["image_urls"] = uniq.join("|");
+    else delete out["image_urls"];
+  }
   return out;
 }
 function normalizeCurrency(cur) {
@@ -11935,6 +12012,7 @@ function offerToComparisonItem(o) {
     provider: o.vendor,
     providerLogo: "",
     imageUrl: /^https:\/\//.test(attrs["image_url"] || "") ? attrs["image_url"] : void 0,
+    images: attrs["image_urls"] ? String(attrs["image_urls"]).split("|").filter((u) => /^https:\/\//.test(u)) : void 0,
     rating: Number(attrs["rating"]) || 0,
     reviewCount: Number(attrs["review_count"]) || 0,
     description,

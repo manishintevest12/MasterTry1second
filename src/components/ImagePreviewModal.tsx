@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, ExternalLink, Star, ShieldCheck, MapPin } from 'lucide-react';
 import { ComparisonItem } from '../types';
 
@@ -13,7 +13,10 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
   onClose,
   onSelectDeal,
 }) => {
+  const [idx, setIdx] = useState(0);
   if (!item) return null;
+  const photos = Array.from(new Set([item.imageUrl, ...(item.images || [])].filter(Boolean) as string[]));
+  const cur = photos.length ? photos[idx % photos.length] : item.imageUrl;
 
   const bestQuote = item.sellerQuotes.find((q) => q.isLowest) || item.sellerQuotes[0];
 
@@ -29,7 +32,7 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
         {/* Left: High-Res Photo Container */}
         <div className="md:w-3/5 bg-slate-900 relative flex items-center justify-center overflow-hidden min-h-[260px] md:min-h-[420px]">
           <img
-            src={item.imageUrl}
+            src={cur}
             alt={item.title}
             className="w-full h-full object-cover max-h-[450px]"
             onError={(e) => {
@@ -38,6 +41,16 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent pointer-events-none" />
+
+          {photos.length > 1 && (
+            <>
+              <button type="button" onClick={() => setIdx((i) => (i - 1 + photos.length) % photos.length)} className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow text-slate-800 font-bold cursor-pointer">‹</button>
+              <button type="button" onClick={() => setIdx((i) => (i + 1) % photos.length)} className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 shadow text-slate-800 font-bold cursor-pointer">›</button>
+              <div className="absolute bottom-14 left-0 right-0 flex justify-center gap-1.5">
+                {photos.map((_, i) => (<button key={i} type="button" onClick={() => setIdx(i)} className={`h-1.5 rounded-full cursor-pointer ${i === idx % photos.length ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`} />))}
+              </div>
+            </>
+          )}
 
           {/* Badges on Image */}
           <div className="absolute top-3 left-3 flex items-center gap-1.5">

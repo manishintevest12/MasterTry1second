@@ -64,6 +64,12 @@ export function parseFlipkart(html: string, source: SourceConfig, searchUrl: str
     const imageUrl = rawImg
       ? rawImg.replace(/^http:/, 'https:').replace('{@width}', '400').replace('{@height}', '400').replace('{@quality}', '70')
       : '';
+    const fkImgs: string[] = (Array.isArray(u.media?.images) ? u.media.images : [])
+      .map((im: any) => String(im?.url || ''))
+      .filter(Boolean)
+      .map((x: string) => x.replace(/^http:/, 'https:').replace('{@width}', '400').replace('{@height}', '400').replace('{@quality}', '70'))
+      .filter((x: string) => /^https:\/\/rukmini/.test(x))
+      .slice(0, 6);
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
       price: selling,
@@ -71,7 +77,7 @@ export function parseFlipkart(html: string, source: SourceConfig, searchUrl: str
       listPrice: mrp && mrp > selling ? mrp : undefined,
       brand: u.titles?.superTitle || undefined,
       identifiers: { vendorProductId: id },
-      attributes: { ...(avg ? { rating: String(avg) } : {}), ...(u.rating?.count ? { rating_count: String(u.rating.count) } : {}), ...(/^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {}) },
+      attributes: { ...(avg ? { rating: String(avg) } : {}), ...(u.rating?.count ? { rating_count: String(u.rating.count) } : {}), ...(/^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {}), ...(fkImgs.length > 1 ? { image_urls: fkImgs.join('|') } : {}) },
       seller: 'Flipkart',
       sellerUrl: u.baseUrl ? `https://www.flipkart.com${String(u.baseUrl).split('&')[0]}` : undefined,
       availability,

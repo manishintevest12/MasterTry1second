@@ -34,6 +34,7 @@ export interface AirbnbStay {
   rating: string | null;
   reviews: number | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   lat: number | null;
   lon: number | null;
 }
@@ -88,6 +89,8 @@ export function parseAirbnbStays(results: any[]): AirbnbStay[] {
       rating: ratingMatch ? ratingMatch[1] : null,
       reviews: ratingMatch && ratingMatch[2] ? parseInt(ratingMatch[2], 10) : null,
       imageUrl: r.contextualPictures?.[0]?.picture || null,
+      imageUrls: (Array.isArray(r.contextualPictures) ? r.contextualPictures : [])
+        .map((x: any) => x?.picture).filter((u: any) => typeof u === 'string' && u.startsWith('http')).slice(0, 8),
       lat: coord?.latitude ?? null,
       lon: coord?.longitude ?? null,
     });
@@ -107,6 +110,7 @@ export function parseAirbnbOffers(stays: AirbnbStay[], source: SourceConfig, cit
     if (!s.pricePerNight) continue; // never publish a price we did not see
     const attrs: Record<string, any> = {
       image_url: s.imageUrl,
+      ...(s.imageUrls && s.imageUrls.length > 1 ? { image_urls: s.imageUrls.join('|') } : {}),
       rating: s.rating,
       review_count: s.reviews,
       room_type: s.roomType,

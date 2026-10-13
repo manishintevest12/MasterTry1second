@@ -55,6 +55,15 @@ const CHAIN_SITES: Array<[RegExp, string]> = [
   [/sun-n-sand|sun n sand/i, 'https://www.sunnsandhotels.com/'],
 ];
 
+function pickImages(h: IxigoHotel): string[] {
+  const out: string[] = [];
+  for (const e of Array.isArray(h.imageInfoList) ? h.imageInfoList : []) {
+    const u = e?.imageUrl || e?.url || e?.thumbUrl || e?.mainImage || e?.image || e?.dynamicImageUrl || e?.cdnUrl;
+    if (typeof u === 'string' && u && !out.includes(u)) out.push(u.replace(/^http:/, 'https:'));
+  }
+  return out.slice(0, 8);
+}
+
 function pickImage(h: IxigoHotel): string | undefined {
   const list = h.imageInfoList;
   if (Array.isArray(list)) {
@@ -92,6 +101,7 @@ export function parseIxigoHotels(html: string, source: SourceConfig, pageUrl: st
     if (!name || !Number.isFinite(fare) || fare <= 0) continue;
     const site = siteFor(name, h.city || city);
     const img = pickImage(h);
+    const imgs = pickImages(h);
     items.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: name.slice(0, 200),
@@ -110,6 +120,7 @@ export function parseIxigoHotels(html: string, source: SourceConfig, pageUrl: st
         user_rating_category: String(h.userRatingCategory || ''),
         top_offerings: Array.isArray(h.topOfferings) ? h.topOfferings.slice(0, 5).join(', ') : '',
         image: img || '',
+        ...(imgs.length > 1 ? { image_urls: imgs.join('|') } : {}),
         price_basis: 'per night, base fare as published by Ixigo',
         chain_site: site.chain ? 'brand official website' : 'web search for official site',
         data_note: `Price observed on Ixigo (metasearch) on ${today}; booking is via the hotel's own channels, never via Ixigo`,

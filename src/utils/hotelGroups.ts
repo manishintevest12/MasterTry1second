@@ -91,6 +91,7 @@ export function groupHotels(items: ComparisonItem[]): HotelGroup[] {
       if (!g.locality) g.locality = spec(it, 'locality');
     }
     if (img && !g.gallery.includes(img)) g.gallery.push(img);
+    for (const extra of it.images || []) if (extra && !g.gallery.includes(extra)) g.gallery.push(extra);
     for (const a of amen) if (!g.amenities.includes(a)) g.amenities.push(a);
   }
   const out = [...groups.values()];

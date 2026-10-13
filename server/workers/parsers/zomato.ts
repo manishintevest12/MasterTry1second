@@ -64,10 +64,10 @@ export function parseZomatoRestaurants(html: string, source: SourceConfig, searc
 
 /** Dish found while walking a Zomato restaurant page's embedded JSON (JSON-LD hasMenu
  *  or window.__PRELOADED_STATE__): a {name, price} pair that looks like a real menu item. */
-export interface ZomatoDish { name: string; price: number; description?: string; }
+export interface ZomatoDish { name: string; price: number; description?: string; image?: string; veg?: boolean; }
 
 function walkMenuJson(node: any, out: ZomatoDish[], depth = 0) {
-  if (!node || depth > 12) return;
+  if (!node || depth > 22) return;
   if (Array.isArray(node)) { for (const n of node) walkMenuJson(n, out, depth + 1); return; }
   if (typeof node !== 'object') return;
   const t = String(node['@type'] || '');
@@ -78,6 +78,21 @@ function walkMenuJson(node: any, out: ZomatoDish[], depth = 0) {
   }
   // Structure-agnostic: any {name, price} object that smells like a real dish (protects
   // against Zomato restructuring its preloaded state — extraction stays evidence-driven).
+  // Zomato /order page item: { name, desc, price|display_price|default_price|min_price, item_image_url }
+  if (!t && typeof node.name === 'string' && (node.display_price !== undefined || node.default_price !== undefined || node.min_price !== undefined) && node.id) {
+    const p = Number(node.price) > 0 ? Number(node.price) : Number(node.display_price ?? node.default_price ?? node.min_price);
+    const nm = node.name.trim();
+    if (Number.isFinite(p) && p >= 10 && p <= 12000 && nm.length >= 3 && nm.length <= 160) {
+      const img = String(node.item_image_url || '').replace(/^http:/, 'https:');
+      out.push({
+        name: nm.slice(0, 160), price: Math.round(p),
+        description: node.desc ? String(node.desc).slice(0, 200) : undefined,
+        image: /^https:\/\//.test(img) ? img.split('?')[0] : undefined,
+        veg: typeof node.is_veg === 'boolean' ? node.is_veg : undefined,
+      });
+    }
+    return;
+  }
   if (!t && node.name && (node.price !== undefined || node.item_price !== undefined || node.price_incl !== undefined)) {
     const p = Number(node.price ?? node.item_price ?? node.price_incl ?? NaN);
     const nm = String(node.name).trim();
@@ -96,7 +111,14 @@ export function parseZomatoMenuPage(html: string): { dishes: ZomatoDish[]; hints
   const hints: Record<string, number> = { jsonLdBlocks: 0, hasMenu: 0, preloadedState: 0, priceHits: 0 };
   const dishes: ZomatoDish[] = [];
   const seen = new Set<string>();
-  const add = (d: ZomatoDish) => { const k = `${d.name}|${d.price}`; if (!seen.has(k)) { seen.add(k); dishes.push(d); } };
+  const byKey = new Map<string, ZomatoDish>();
+  const add = (d: ZomatoDish) => {
+    const k = `${d.name.toLowerCase()}|${d.price}`;
+    const prev = byKey.get(k);
+    if (!prev) { byKey.set(k, d); dishes.push(d); return; }
+    if (!prev.image && d.image) prev.image = d.image;
+    if (!prev.description && d.description) prev.description = d.description;
+  };
   hints.priceHits = (html.match(/"(?:price|item_price|price_incl)"\s*:/g) || []).length;
 
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -106,13 +128,21 @@ export function parseZomatoMenuPage(html: string): { dishes: ZomatoDish[]; hints
     if (m[1].includes('hasMenu') || m[1].includes('MenuItem')) hints.hasMenu += 1;
     try { const tmp: ZomatoDish[] = []; walkMenuJson(JSON.parse(m[1]), tmp); tmp.forEach(add); } catch { /* skip broken block */ }
   }
-  if (dishes.length) return { dishes: dishes.slice(0, 30), hints };
-
+  const wrapped = /window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\("((?:[^"\\]|\\.)*)"\)/.exec(html);
+  if (wrapped) {
+    hints.preloadedState += 1;
+    try {
+      const tmp: ZomatoDish[] = [];
+      walkMenuJson(JSON.parse(JSON.parse('"' + wrapped[1] + '"')), tmp);
+      tmp.forEach(add);
+    } catch (e) { if (process.env.ZOMATO_DEBUG) console.error('zomato state parse', (e as Error).message); }
+    if (dishes.length) return { dishes, hints };
+  }
   const pre = /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i.exec(html)
     || /__NEXT_DATA__[^>]*>(\{[\s\S]*?\})<\/script>/i.exec(html);
   if (pre) {
     hints.preloadedState += 1;
     try { const tmp: ZomatoDish[] = []; walkMenuJson(JSON.parse(pre[1]), tmp); tmp.forEach(add); } catch { /* unparsable state */ }
   }
-  return { dishes: dishes.slice(0, 30), hints };
+  return { dishes: dishes.slice(0, 400), hints };
 }

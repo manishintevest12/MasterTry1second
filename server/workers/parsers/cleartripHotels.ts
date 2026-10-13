@@ -29,6 +29,7 @@ export interface CleartripHotel {
   locality: string | null;
   city: string | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   deeplink: string;
   freeCancellation: boolean;
   freeBreakfast: boolean;
@@ -61,6 +62,11 @@ export function parseCleartripHotels(nextData: any): CleartripHotel[] {
         : typeof imgRaw === 'string' && imgRaw
           ? CLEARTRIP_IMAGE_CDN + imgRaw.replace(/^\/+/, '')
           : null;
+      const allImgs: string[] = (Array.isArray(d?.imageSlider?.data?.images) ? d.imageSlider.data.images : [])
+        .map((im: any) => im?.data?.url)
+        .filter((u: any) => typeof u === 'string' && u)
+        .map((u: string) => (u.startsWith('http') ? u : CLEARTRIP_IMAGE_CDN + u.replace(/^\/+/, '')))
+        .slice(0, 8);
       const rel = card?.action?.payload?.url;
       const deeplink = typeof rel === 'string' && rel.startsWith('/')
         ? CLEARTRIP_WEB + rel
@@ -78,6 +84,7 @@ export function parseCleartripHotels(nextData: any): CleartripHotel[] {
         locality: d?.locality ? String(d.locality) : null,
         city: d?.city ? String(d.city) : null,
         imageUrl,
+        imageUrls: allImgs,
         deeplink,
         freeCancellation: Boolean(d?.freeCancellation?.available),
         freeBreakfast: Boolean(d?.freeBreakfast?.available),
@@ -96,6 +103,7 @@ export function parseCleartripOffers(
   for (const h of hotels.slice(0, 30)) {
     const attrs: Record<string, any> = {
       image_url: h.imageUrl,
+      ...(h.imageUrls && h.imageUrls.length > 1 ? { image_urls: h.imageUrls.join('|') } : {}),
       rating: h.rating,
       stars: h.stars,
       locality: h.locality,
