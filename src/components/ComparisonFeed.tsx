@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { parseSmartFilter, matchSmartFilter } from '../utils/smartFilter';
 import { PriceAdviceSidebar } from './PriceAdviceSidebar';
 import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
@@ -63,53 +64,20 @@ export const ComparisonFeed: React.FC = () => {
     );
   }
 
-  // Filter by Smart AI Filter prompt
-  if (smartFilterText.trim()) {
-    const p = smartFilterText.toLowerCase();
-
-    // Check for "under X" or "< X" or numbers
-    const priceMatch = p.match(/under\s*[₹]?\s*([0-9,]+)/i);
-    if (priceMatch && priceMatch[1]) {
-      const maxP = parseInt(priceMatch[1].replace(/,/g, ''), 10);
-      if (!isNaN(maxP)) {
-        filtered = filtered.filter((it) => !it.primaryPrice || it.primaryPrice <= maxP);
-      }
-    }
-
-    if (p.includes('direct') || p.includes('non-stop')) {
-      filtered = filtered.filter(
-        (it) =>
-          it.features.some((f) => f.toLowerCase().includes('direct') || f.toLowerCase().includes('non-stop')) ||
-          it.subtitle.toLowerCase().includes('direct') ||
-          (it.specs['Duration'] && it.specs['Duration'].toLowerCase().includes('direct'))
-      );
-    }
-
-    if (p.includes('breakfast') || p.includes('meal')) {
-      filtered = filtered.filter(
-        (it) =>
-          it.features.some((f) => f.toLowerCase().includes('breakfast') || f.toLowerCase().includes('meal')) ||
-          it.title.toLowerCase().includes('breakfast') ||
-          it.title.toLowerCase().includes('meal')
-      );
-    }
-
-    if (p.includes('free cancellation') || p.includes('refundable')) {
-      filtered = filtered.filter(
-        (it) =>
-          it.features.some((f) => f.toLowerCase().includes('free cancellation') || f.toLowerCase().includes('refundable')) ||
-          (it.specs['Cancellation'] && it.specs['Cancellation'].toLowerCase().includes('free'))
-      );
-    }
+  // Filter by Smart AI Filter prompt (shared NL parser: price/rating/veg/flags/tokens)
+  const smartFilter = smartFilterText.trim() ? parseSmartFilter(smartFilterText) : null;
+  if (smartFilter) {
+    filtered = filtered.filter((it) => matchSmartFilter(it, smartFilter));
   }
 
-  // Sort
+  // Sort (prompt sort hint wins only when the tab is still on 'best')
+  const effectiveSort = (sortOption === 'best' && smartFilter?.sortHint) ? smartFilter.sortHint : sortOption;
   const sorted = [...filtered].sort((a, b) => {
-    if (sortOption === 'cheapest') {
+    if (effectiveSort === 'cheapest') {
       // price-less items sort last, never first
       return (a.primaryPrice || Infinity) === (b.primaryPrice || Infinity) ? 0 : (a.primaryPrice || Infinity) < (b.primaryPrice || Infinity) ? -1 : 1;
     }
-    if (sortOption === 'highest_rated') {
+    if (effectiveSort === 'highest_rated') {
       return b.rating - a.rating;
     }
     if (sortOption === 'fastest') {
@@ -174,6 +142,20 @@ export const ComparisonFeed: React.FC = () => {
             <span>
               Applied Smart AI Filter: <strong>"{smartFilterText}"</strong> ({sorted.length} results matching)
             </span>
+            {smartFilter && (
+              <span className="flex items-center gap-1.5 flex-wrap">
+                {smartFilter.maxPrice != null && (
+                  <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">&le; &#8377;{smartFilter.maxPrice.toLocaleString('en-IN')}</span>
+                )}
+                {smartFilter.minRating != null && (
+                  <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">&ge; {smartFilter.minRating}&#9733;</span>
+                )}
+                {smartFilter.veg && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold">Veg</span>}
+                {smartFilter.freeCancellation && <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">Free cancellation</span>}
+                {smartFilter.breakfast && <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">Breakfast</span>}
+                {smartFilter.direct && <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold">Non-stop</span>}
+              </span>
+            )}
           </div>
           <button
             type="button"

@@ -63,6 +63,23 @@ apiRouter.get('/status', (_req, res) => {
   });
 });
 
+// ============ Real price history per canonical entity ============
+apiRouter.get('/history', async (req, res) => {
+  const entity = Number(req.query.entity);
+  if (!entity || entity <= 0) return res.status(400).json({ success: false, error: 'entity (canonical id) is required' });
+  const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 120);
+  try {
+    const { priceHistoryForEntity } = await import('../catalogue/catalogueService');
+    const rows = await priceHistoryForEntity(entity, limit);
+    const points = rows
+      .map((r: any) => ({ price: Number(r.effective_price), capturedAt: r.captured_at }))
+      .filter((p: any) => Number.isFinite(p.price) && p.price > 0);
+    res.json({ success: true, points });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'history lookup failed' });
+  }
+});
+
 // ============ Search pipeline (Section 6) ============
 apiRouter.post('/search', async (req, res) => {
   const input: SearchInput = {
@@ -145,6 +162,7 @@ function offerToComparisonItem(o: any) {
   const sellerLabel = seller === 'Verified source' ? String(o.vendor || seller) : seller;
   return {
     id: o.id,
+    canonicalEntityId: o.canonicalEntityId ?? o.canonical_entity_id ?? null,
     vertical: o.vertical,
     title: o.title,
     subtitle: sellerLabel,

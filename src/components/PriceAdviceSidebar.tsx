@@ -11,6 +11,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { SponsoredSidebarTopPick } from './SponsoredSidebarTopPick';
+import { VoiceSearchButton } from './VoiceSearchButton';
 
 export const PriceAdviceSidebar: React.FC = () => {
   const {
@@ -58,11 +59,39 @@ export const PriceAdviceSidebar: React.FC = () => {
     );
   };
 
-  // Determine aggregate advice for this vertical
+  // LIVE fair-price advice: computed from the actual price distribution of
+  // current live results (median across sites), never a canned prediction.
   const primaryItem = currentVerticalItems[0];
-  const advice = primaryItem?.pricePrediction.advice || 'book_now';
-  const headline = primaryItem?.pricePrediction.headline || 'Prices are unlikely to drop';
-  const details = primaryItem?.pricePrediction.details || 'Historical demand predicts rate increases closer to booking date.';
+  const pricedItems = currentVerticalItems
+    .map((it) => it.primaryPrice)
+    .filter((p) => typeof p === 'number' && p > 0)
+    .sort((a, b) => a - b);
+  const medianPrice = pricedItems.length ? pricedItems[Math.floor(pricedItems.length / 2)] : 0;
+  const inr = (n: number) => `\u20B9${n.toLocaleString('en-IN')}`;
+
+  let advice: 'book_now' | 'wait' | 'fair_price' = 'book_now';
+  let headline = 'Live prices are still loading for this search.';
+  let details = 'Advice appears once live offers with prices arrive from the sites.';
+  if (medianPrice > 0 && primaryItem?.primaryPrice) {
+    const ratio = primaryItem.primaryPrice / medianPrice;
+    if (ratio <= 0.9) {
+      advice = 'book_now';
+      headline = `Top live pick is ${Math.round((1 - ratio) * 100)}% below the live market median of ${inr(medianPrice)}.`;
+      details = `Median computed right now from ${pricedItems.length} live priced offers across sites for this search.`;
+    } else if (ratio <= 1.08) {
+      advice = 'fair_price';
+      headline = `At par with the live market median of ${inr(medianPrice)} across ${pricedItems.length} offers.`;
+      details = 'Fair-price zone: not the absolute cheapest, but within the honest live range. Cheapest first sort helps you skim lower options.';
+    } else {
+      advice = 'wait';
+      headline = `${Math.round((ratio - 1) * 100)}% above the live median of ${inr(medianPrice)} — compare or track it.`;
+      details = `The cheapest live offer right now is ${inr(pricedItems[0])}. Track prices to catch a drop, or sort Cheapest first.`;
+    }
+  } else if (pricedItems.length) {
+    advice = 'fair_price';
+    headline = `Live prices available — median ${inr(medianPrice)} across ${pricedItems.length} offers.`;
+    details = 'Switch the first card or sort by price to judge individual deals against the live median.';
+  }
 
   return (
     <aside className="w-full lg:w-72 shrink-0 space-y-4">
@@ -141,6 +170,13 @@ export const PriceAdviceSidebar: React.FC = () => {
             />
 
             <div className="mt-2 flex items-center gap-2">
+              <VoiceSearchButton
+                onTranscript={(text) => {
+                  setAiInput(text);
+                  applySmartFilter(text);
+                }}
+                accent="orange"
+              />
               <button
                 type="submit"
                 className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer text-center"

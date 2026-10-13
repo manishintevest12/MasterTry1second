@@ -22,7 +22,7 @@ interface RealOffer {
 }
 
 export const OffersHub: React.FC = () => {
-  const { addPoints, setVertical, setActiveNavTab } = useApp();
+  const { addPoints, setVertical, setActiveNavTab, addToast } = useApp();
   const [offers, setOffers] = useState<RealOffer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,6 +54,10 @@ export const OffersHub: React.FC = () => {
   /** Verified affiliate redirect: the backend resolves the destination and logs the click. */
   const handleClaim = async (offer: RealOffer) => {
     if (!offer.affiliate_url) return;
+    if (offer.coupon_code) {
+      try { await navigator.clipboard.writeText(offer.coupon_code); } catch { /* clipboard blocked */ }
+      addToast('success', 'Coupon code copied', `${offer.coupon_code} copied. Paste it at ${offer.merchant_name} checkout.`);
+    }
     try {
       const res = await fetch(`/api/go?url=${encodeURIComponent(offer.affiliate_url)}&offerId=${offer.id}`);
       const data = await res.json();

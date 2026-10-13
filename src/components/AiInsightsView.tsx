@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   TrendingDown,
@@ -73,9 +73,11 @@ interface ScannerResult {
   mrp: number;
   lowestPrice: number;
   lowestDate: string;
-  avg90dPrice: number;
-  avg180dPrice: number;
-  avg365dPrice: number;
+  avg90dPrice: number | null;
+  avg180dPrice: number | null;
+  avg365dPrice: number | null;
+  /** true only when real tracked price points exist (2+ captures) */
+  historyTracked: boolean;
   isFakeDiscount: boolean;
   fakeDiscountDetails?: string;
   recommendation: string;
@@ -108,746 +110,95 @@ interface AiInsightCard {
 }
 
 // 10 Rich Verticals Showcase Cards
-const INSIGHTS: AiInsightCard[] = [
-  {
-    vertical: 'flights',
-    category: 'International Flights (DEL → DXB)',
-    recommendation: 'BUY_NOW',
-    confidence: 94,
-    dealScore: 92,
-    headline: 'Aviation yield curves indicate sharp 72-hour price spike',
-    rationale: 'Seating capacity on A380 & Boeing 777 routes dipped below 22%. Dynamic airline yield algorithms trigger automatic fare bracket bumps at T-10 days.',
-    bestDayOrTime: 'Book before Friday 6 PM',
-    estSavings: 'Avoid ₹4,200 surge',
-    imageUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Aviation Yield Curve',
-    lowestPriceRecorded: '₹17,450 (ATL)',
-    competitors: [
-      { platform: 'IndiGo Direct', price: 17850, isLowest: true, highlight: 'Zero Convenience Fee' },
-      { platform: 'EaseMyTrip', price: 18200, highlight: 'Flat ₹600 Off' },
-      { platform: 'MakeMyTrip', price: 19450, highlight: '₹799 Fee Added' },
-    ],
-  },
-  {
-    vertical: 'hotels',
-    category: 'Goa & Beachfront Luxury Private Villas',
-    recommendation: 'BUY_NOW',
-    confidence: 89,
-    dealScore: 88,
-    headline: 'Autumn weekend inventory tightening across 5-star properties',
-    rationale: 'Agoda and Booking.com wholesale contracts expire 14 days prior to check-in. Rates will rise by ~28% as direct hotel rate parity kicks in.',
-    bestDayOrTime: 'Lock in before Oct 15th',
-    estSavings: 'Save ₹4,700 / night',
-    imageUrl: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Luxury Stays & Villas',
-    lowestPriceRecorded: '₹8,200 / night',
-    competitors: [
-      { platform: 'Booking.com', price: 8499, isLowest: true, highlight: 'Genius 10% Off' },
-      { platform: 'Agoda VIP', price: 8900, highlight: 'Free Breakfast' },
-      { platform: 'MakeMyTrip', price: 9850, highlight: 'Taxes extra' },
-    ],
-  },
-  {
-    vertical: 'ecommerce',
-    category: 'Noise-Canceling Audio & Flagship Tech',
-    recommendation: 'WAIT',
-    confidence: 91,
-    dealScore: 38,
-    headline: 'Artificial MRP inflation detected ahead of festival sale banner',
-    rationale: 'Marketplace seller raised original MRP by ₹3,500 right before advertising a 14% discount. 90-day telemetry shows it drops to ₹24,240 during bank promo resets.',
-    bestDayOrTime: 'Wait for Midnight Flash Sale',
-    estSavings: 'Save ₹5,750 on wait',
-    imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Buyhatke Fake Discount Flag',
-    lowestPriceRecorded: '₹24,490 (All-Time Low)',
-    competitors: [
-      { platform: 'Flipkart', price: 24240, isLowest: true, highlight: 'HDFC Card ₹1,750 Off' },
-      { platform: 'Tata Neu / Croma', price: 25165, highlight: '5% NeuCoins' },
-      { platform: 'Amazon India', price: 28490, highlight: 'Fake MRP Bump' },
-    ],
-  },
-  {
-    vertical: 'grocery',
-    category: '10-Min Quick Commerce (Dark Store Baskets)',
-    recommendation: 'BUY_NOW',
-    confidence: 96,
-    dealScore: 95,
-    headline: 'Zero dark-store surge window active right now in your zone',
-    rationale: 'Rain and evening peak handling fees (₹25–₹45) activate after 6:30 PM across metro dark stores. Non-peak afternoon basket yields cheapest cart total.',
-    bestDayOrTime: 'Order between 2 PM – 5 PM',
-    estSavings: 'Zero surge surcharge',
-    imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Instant Delivery Basket',
-    lowestPriceRecorded: '₹340 / Basket',
-    competitors: [
-      { platform: 'Blinkit', price: 345, isLowest: true, highlight: 'Zero Handling Fee' },
-      { platform: 'Zepto', price: 370, highlight: '₹25 Handling Added' },
-      { platform: 'Instamart', price: 385, highlight: '₹30 Rain Surge' },
-    ],
-  },
-  {
-    vertical: 'food',
-    category: 'Gourmet Dining & Biryani Royal Combos',
-    recommendation: 'BUY_NOW',
-    confidence: 93,
-    dealScore: 90,
-    headline: 'Direct kitchen coupon stacking yields 32% lower total',
-    rationale: 'Direct kitchen discount coupon bypasses aggregator platform fees (₹11) and delivery surcharges. Net effective savings verified at ₹167.',
-    bestDayOrTime: 'Order with lunch coupon code',
-    estSavings: 'Save ₹167 on order',
-    imageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Restaurant Parity Engine',
-    lowestPriceRecorded: '₹480 / 2 Pax',
-    competitors: [
-      { platform: 'Magicpin Direct', price: 490, isLowest: true, highlight: 'Flat 15% Net Off' },
-      { platform: 'Swiggy', price: 566, highlight: 'One Membership' },
-      { platform: 'Zomato', price: 657, highlight: '₹40 Rain Surcharge' },
-    ],
-  },
-  {
-    vertical: 'cab',
-    category: 'Airport City Transfers & Metro Mobility',
-    recommendation: 'VOLATILE',
-    confidence: 82,
-    dealScore: 55,
-    headline: 'High surge volatility predicted between 6 PM – 9 PM',
-    rationale: 'Flight arrival peaks between 7 PM and 9 PM increase Uber/Ola surge multipliers up to 1.8X. Rapido Cabs and InDrive retain fixed baselines.',
-    bestDayOrTime: 'Pre-schedule or switch to Rapido',
-    estSavings: 'Save ₹120–₹160',
-    imageUrl: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Mobility Surge Tracker',
-    lowestPriceRecorded: '₹420 Baseline',
-    competitors: [
-      { platform: 'Rapido Cabs', price: 440, isLowest: true, highlight: 'Zero Dynamic Surge' },
-      { platform: 'InDrive', price: 460, highlight: 'Passenger Bidding' },
-      { platform: 'Uber Premier', price: 680, highlight: '1.6X Surge Multiplier' },
-    ],
-  },
-  {
-    vertical: 'loans',
-    category: 'Home & Personal Loan Disbursals (Overdraft)',
-    recommendation: 'BUY_NOW',
-    confidence: 95,
-    dealScore: 96,
-    headline: '8.40% benchmark rate locked with full processing fee waiver',
-    rationale: 'PSU festive lending window closes at month end. Locking floating benchmark now provides permanent waiver of ₹10,000 processing charges.',
-    bestDayOrTime: 'Lock benchmark rate this week',
-    estSavings: 'Save ₹10,000 upfront + APR',
-    imageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'CPL & APR Intelligence',
-    lowestPriceRecorded: '8.35% APR Historic',
-    competitors: [
-      { platform: 'SBI Maxgain', price: 8.4, isLowest: true, highlight: 'Zero Processing Fee' },
-      { platform: 'HDFC Reach', price: 8.75, highlight: '₹5,000 Admin Fee' },
-      { platform: 'ICICI Express', price: 9.1, highlight: 'Pre-Approved 15m' },
-    ],
-  },
-  {
-    vertical: 'movie',
-    category: 'IMAX 3D & Weekend Blockbuster Shows',
-    recommendation: 'BUY_NOW',
-    confidence: 88,
-    dealScore: 84,
-    headline: 'BOGO credit card quota resets every Friday at 10 AM',
-    rationale: 'ICICI Saphiro & Axis Magnus 1+1 ticket quotas exhaust within 90 minutes. Booking Friday morning yields guaranteed 50% discount on dual seats.',
-    bestDayOrTime: 'Book Friday 10:00 AM sharp',
-    estSavings: 'Save ₹650 on dual ticket',
-    imageUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'IMAX Premiere Seats',
-    lowestPriceRecorded: '₹320 / Ticket',
-    competitors: [
-      { platform: 'BookMyShow (BOGO)', price: 450, isLowest: true, highlight: 'Buy 1 Get 1 Free' },
-      { platform: 'PVR Inox Direct', price: 680, highlight: '₹45 F&B Voucher' },
-      { platform: 'District App', price: 720, highlight: 'Standard Pricing' },
-    ],
-  },
-  {
-    vertical: 'insurance',
-    category: 'Term Life 1 Cr + Comprehensive Health Top-Up',
-    recommendation: 'BUY_NOW',
-    confidence: 94,
-    dealScore: 91,
-    headline: 'Early-age entry premium locked with zero smoking loading',
-    rationale: 'Age slab change next month increases annualized premium by 8.5% permanently across 30-year policy term. Instant issuance waiver active.',
-    bestDayOrTime: 'Lock before age slab change',
-    estSavings: 'Save ₹72,000 over 30 yrs',
-    imageUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'IRR & Claim Settlement',
-    lowestPriceRecorded: '₹620 / Month',
-    competitors: [
-      { platform: 'HDFC Life Click2Protect', price: 680, isLowest: true, highlight: '99.3% Claim Ratio' },
-      { platform: 'Max Life Smart', price: 710, highlight: 'Free Critical Illness' },
-      { platform: 'Tata AIA Sampoorna', price: 745, highlight: 'Terminal Illness Add-on' },
-    ],
-  },
-  {
-    vertical: 'bus',
-    category: 'Intercity Volvo Multi-Axle Sleeper Routes',
-    recommendation: 'BUY_NOW',
-    confidence: 87,
-    dealScore: 86,
-    headline: 'Sleeper lower-berth quotas selling out for weekend departure',
-    rationale: 'Single female and lower-berth sleeper inventory reduces to under 15% by Wednesday evening. Dynamic fares surge by 35% on Thursday night.',
-    bestDayOrTime: 'Book by Wednesday midnight',
-    estSavings: 'Save ₹450 / seat',
-    imageUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=700&auto=format&fit=crop&q=80',
-    badgeTag: 'Express Highway Coach',
-    lowestPriceRecorded: '₹950 / Berth',
-    competitors: [
-      { platform: 'AbhiBus Direct', price: 999, isLowest: true, highlight: 'Flat ₹150 Cashback' },
-      { platform: 'RedBus Prime', price: 1050, highlight: 'Free Cancellation' },
-      { platform: 'Zingbus Express', price: 1120, highlight: 'Standard Rate' },
-    ],
-  },
-];
-
-// Rich Sample Datasets across 10 Verticals
-const SAMPLE_SCAN_RESULTS: Record<string, ScannerResult> = {
-  headphones: {
-    id: 'sony-xm5',
-    vertical: 'ecommerce',
-    productTitle: 'Sony WH-1000XM5 Wireless Noise Canceling Headphones (Silver)',
-    category: 'E-Commerce · Premium Audio & Gadgets',
-    imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80',
-    dealScore: 38,
-    statusBadge: 'Fake Discount Alert',
-    statusType: 'danger',
-    currentPrice: 28490,
-    mrp: 34990,
-    lowestPrice: 24240,
-    lowestDate: '28 Nov 2025',
-    avg90dPrice: 26990,
-    avg180dPrice: 27500,
-    avg365dPrice: 28200,
-    isFakeDiscount: true,
-    fakeDiscountDetails: 'Seller raised original MRP from ₹29,990 to ₹34,990 on Oct 2nd to advertise an artificial 18% discount.',
-    recommendation: 'WAIT: Amazon artificially inflated MRP right before sale. Buy on Flipkart using HDFC card for ₹5,750 true net savings.',
-    platforms: [
-      {
-        platform: 'Flipkart',
-        logoUrl: 'https://cdn.iconscout.com/icon/free/png-256/free-flipkart-logo-icon-download-in-svg-png-gif-file-formats--shopping-brand-social-media-pack-logos-icons-1175216.png',
-        basePrice: 25990,
-        hiddenSurge: 0,
-        couponSavings: 1750,
-        finalPrice: 24240,
-        deliveryTime: 'Tomorrow 11 AM',
-        highlight: 'Auto-Applied: HDFC Card ₹1,750 Instant Off',
-        isLowest: true,
-        deepLink: 'https://flipkart.com',
-      },
-      {
-        platform: 'Tata Neu / Croma',
-        logoUrl: 'https://play-lh.googleusercontent.com/9v83f8gq9jM7j7q1k0l9',
-        basePrice: 26490,
-        hiddenSurge: 0,
-        couponSavings: 1325,
-        finalPrice: 25165,
-        deliveryTime: '2 Days Delivery',
-        highlight: '5% NeuCoins Cashback (₹1,325)',
-        isLowest: false,
-        deepLink: 'https://croma.com',
-      },
-      {
-        platform: 'Amazon India',
-        logoUrl: 'https://cdn.iconscout.com/icon/free/png-256/free-amazon-logo-icon-download-in-svg-png-gif-file-formats--brand-social-media-pack-logos-icons-3215366.png',
-        basePrice: 29990,
-        hiddenSurge: 0,
-        couponSavings: 1500,
-        finalPrice: 28490,
-        deliveryTime: 'Same-Day Prime',
-        highlight: 'Amazon Pay ICICI ₹1,500 CB',
-        isLowest: false,
-        deepLink: 'https://amazon.in',
-      },
-    ],
-    savings: { baseGap: 4000, couponSavings: 1750, bankOffer: 1750, total: 5750 },
-    history90d: [
-      { date: 'Jul 10', price: 27990 },
-      { date: 'Aug 01', price: 26990 },
-      { date: 'Aug 25', price: 25490 },
-      { date: 'Sep 15', price: 26490 },
-      { date: 'Oct 02', price: 34990, isFakeBump: true, event: 'Artificial MRP Bump' },
-      { date: 'Today', price: 28490 },
-    ],
-    history180d: [
-      { date: 'Apr 15', price: 28990 },
-      { date: 'Jun 01', price: 27490 },
-      { date: 'Jul 15', price: 26990 },
-      { date: 'Aug 15', price: 25490 },
-      { date: 'Sep 28', price: 26490 },
-      { date: 'Today', price: 28490 },
-    ],
-    history365d: [
-      { date: 'Nov 2025', price: 24240, event: 'All-Time Low' },
-      { date: 'Feb 2026', price: 27990 },
-      { date: 'May 2026', price: 28490 },
-      { date: 'Aug 2026', price: 25490 },
-      { date: 'Today', price: 28490 },
-    ],
-  },
-  flight: {
-    id: 'indigo-del-dxb',
-    vertical: 'flights',
-    productTitle: 'Non-Stop Airbus A380 Flight: New Delhi (DEL) → Dubai (DXB)',
-    category: 'Flights · International Aviation Route',
-    imageUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800&auto=format&fit=crop&q=80',
-    dealScore: 94,
-    statusBadge: 'Lowest Fare in 30 Days',
-    statusType: 'success',
-    currentPrice: 17528,
-    mrp: 23600,
-    lowestPrice: 17450,
-    lowestDate: '02 Sep 2026',
-    avg90dPrice: 21400,
-    avg180dPrice: 22800,
-    avg365dPrice: 23600,
-    isFakeDiscount: false,
-    recommendation: 'BUY NOW on IndiGo Direct via Quick Apps: Save ₹1,221 vs MakeMyTrip by bypassing convenience fees.',
-    platforms: [
-      {
-        platform: 'IndiGo Direct (6E-1461)',
-        basePrice: 17528,
-        hiddenSurge: 0,
-        couponSavings: 600,
-        finalPrice: 16928,
-        deliveryTime: 'Direct Booking E-Ticket',
-        highlight: 'Zero Convenience Fee + Free 30kg Luggage',
-        isLowest: true,
-        deepLink: 'https://goindigo.in',
-      },
-      {
-        platform: 'EaseMyTrip',
-        basePrice: 17850,
-        hiddenSurge: 0,
-        couponSavings: 500,
-        finalPrice: 17350,
-        deliveryTime: 'Instant PNR',
-        highlight: 'Promo EMTINT Auto-Applied',
-        isLowest: false,
-        deepLink: 'https://easemytrip.com',
-      },
-      {
-        platform: 'MakeMyTrip',
-        basePrice: 17950,
-        hiddenSurge: 799,
-        couponSavings: 0,
-        finalPrice: 18749,
-        deliveryTime: 'Instant PNR',
-        highlight: '₹799 Platform Convenience Fee Added',
-        isLowest: false,
-        deepLink: 'https://makemytrip.com',
-      },
-    ],
-    savings: { baseGap: 5150, couponSavings: 600, bankOffer: 322, total: 6072 },
-    history90d: [
-      { date: 'Jul 15', price: 22400 },
-      { date: 'Aug 05', price: 21900 },
-      { date: 'Aug 20', price: 19800 },
-      { date: 'Sep 02', price: 17450, event: 'All-Time Low' },
-      { date: 'Sep 25', price: 18200 },
-      { date: 'Today', price: 17528 },
-    ],
-    history180d: [
-      { date: 'Apr 20', price: 23500 },
-      { date: 'Jun 10', price: 22100 },
-      { date: 'Aug 01', price: 21900 },
-      { date: 'Sep 02', price: 17450 },
-      { date: 'Today', price: 17528 },
-    ],
-    history365d: [
-      { date: 'Nov 2025', price: 26000 },
-      { date: 'Feb 2026', price: 23900 },
-      { date: 'Jun 2026', price: 22100 },
-      { date: 'Sep 2026', price: 17450 },
-      { date: 'Today', price: 17528 },
-    ],
-  },
-  grocery: {
-    id: 'blinkit-grocery',
-    vertical: 'grocery',
-    productTitle: 'Daily Essentials Dark-Store Basket (Amul Milk, Brown Bread, Eggs, Aashirvaad Atta)',
-    category: '10-Min Quick Grocery · Dark Stores',
-    imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&auto=format&fit=crop&q=80',
-    dealScore: 95,
-    statusBadge: 'Normal Pricing (Zero Surge)',
-    statusType: 'success',
-    currentPrice: 345,
-    mrp: 465,
-    lowestPrice: 340,
-    lowestDate: '18 Sep 2026',
-    avg90dPrice: 395,
-    avg180dPrice: 410,
-    avg365dPrice: 420,
-    isFakeDiscount: false,
-    recommendation: 'BUY NOW on Blinkit via Quick Apps: Try1Second auto-applied BLINK10 saving ₹40 with zero rain handling fee.',
-    platforms: [
-      {
-        platform: 'Blinkit',
-        basePrice: 345,
-        hiddenSurge: 0,
-        couponSavings: 40,
-        finalPrice: 305,
-        deliveryTime: '8 Mins Delivery',
-        highlight: 'Zero Handling Fee + BLINK10 Applied',
-        isLowest: true,
-        deepLink: 'https://blinkit.com',
-      },
-      {
-        platform: 'Zepto',
-        basePrice: 360,
-        hiddenSurge: 25,
-        couponSavings: 30,
-        finalPrice: 355,
-        deliveryTime: '10 Mins Delivery',
-        highlight: '₹25 Dark Store Handling Added',
-        isLowest: false,
-        deepLink: 'https://zeptonow.com',
-      },
-      {
-        platform: 'Swiggy Instamart',
-        basePrice: 375,
-        hiddenSurge: 35,
-        couponSavings: 20,
-        finalPrice: 390,
-        deliveryTime: '12 Mins Delivery',
-        highlight: '₹35 Rain Handling Surcharge',
-        isLowest: false,
-        deepLink: 'https://swiggy.com/instamart',
-      },
-    ],
-    savings: { baseGap: 85, couponSavings: 40, bankOffer: 35, total: 160 },
-    history90d: [
-      { date: 'Jul 20', price: 410 },
-      { date: 'Aug 10', price: 395 },
-      { date: 'Aug 30', price: 385 },
-      { date: 'Sep 18', price: 340, event: 'Low' },
-      { date: 'Today', price: 345 },
-    ],
-    history180d: [
-      { date: 'May 01', price: 420 },
-      { date: 'Jul 15', price: 405 },
-      { date: 'Today', price: 345 },
-    ],
-    history365d: [
-      { date: 'Dec 2025', price: 430 },
-      { date: 'May 2026', price: 420 },
-      { date: 'Today', price: 345 },
-    ],
-  },
-  food: {
-    id: 'behrouz-biryani',
-    vertical: 'food',
-    productTitle: 'Behrouz Royal Dum Biryani Feast (2 Pax with Gulab Jamun & Raita)',
-    category: 'Food Delivery · Gourmet Kitchens',
-    imageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&auto=format&fit=crop&q=80',
-    dealScore: 90,
-    statusBadge: 'Normal Pricing (Zero Surcharge)',
-    statusType: 'success',
-    currentPrice: 490,
-    mrp: 680,
-    lowestPrice: 480,
-    lowestDate: '14 Aug 2026',
-    avg90dPrice: 590,
-    avg180dPrice: 620,
-    avg365dPrice: 650,
-    isFakeDiscount: false,
-    recommendation: 'BUY NOW on Magicpin via Quick Apps: Bypasses Zomato’s ₹40 rain surcharge and ₹11 platform fee.',
-    platforms: [
-      {
-        platform: 'Magicpin Direct',
-        basePrice: 490,
-        hiddenSurge: 0,
-        couponSavings: 75,
-        finalPrice: 415,
-        deliveryTime: '30 Mins Delivery',
-        highlight: 'Flat 15% Magicpin Coupon Auto-Applied',
-        isLowest: true,
-        deepLink: 'https://magicpin.in',
-      },
-      {
-        platform: 'Swiggy',
-        basePrice: 540,
-        hiddenSurge: 11,
-        couponSavings: 50,
-        finalPrice: 501,
-        deliveryTime: '32 Mins Delivery',
-        highlight: 'Swiggy One Free Delivery',
-        isLowest: false,
-        deepLink: 'https://swiggy.com',
-      },
-      {
-        platform: 'Zomato',
-        basePrice: 570,
-        hiddenSurge: 51,
-        couponSavings: 40,
-        finalPrice: 581,
-        deliveryTime: '35 Mins Delivery',
-        highlight: '₹40 Rain Surcharge + ₹11 Platform Fee',
-        isLowest: false,
-        deepLink: 'https://zomato.com',
-      },
-    ],
-    savings: { baseGap: 166, couponSavings: 75, bankOffer: 0, total: 241 },
-    history90d: [
-      { date: 'Jul 15', price: 620 },
-      { date: 'Aug 05', price: 580 },
-      { date: 'Aug 14', price: 480, event: 'Kitchen Promo' },
-      { date: 'Sep 20', price: 510 },
-      { date: 'Today', price: 490 },
-    ],
-    history180d: [
-      { date: 'Apr 10', price: 650 },
-      { date: 'Jul 01', price: 610 },
-      { date: 'Today', price: 490 },
-    ],
-    history365d: [
-      { date: 'Nov 2025', price: 670 },
-      { date: 'May 2026', price: 630 },
-      { date: 'Today', price: 490 },
-    ],
-  },
-  cab: {
-    id: 'rapido-airport',
-    vertical: 'cab',
-    productTitle: 'Airport City Mobility: City Center → Kempegowda Airport (BLR)',
-    category: 'Cabs & Mobility · Airport Transfer',
-    imageUrl: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=800&auto=format&fit=crop&q=80',
-    dealScore: 55,
-    statusBadge: 'High Surge Detected (Uber 1.8X)',
-    statusType: 'warning',
-    currentPrice: 440,
-    mrp: 680,
-    lowestPrice: 420,
-    lowestDate: '05 Sep 2026',
-    avg90dPrice: 510,
-    avg180dPrice: 540,
-    avg365dPrice: 560,
-    isFakeDiscount: false,
-    recommendation: 'SWITCH TO RAPIDO: Uber active dynamic surge multiplier is 1.8X; Rapido locks fixed baseline fare saving ₹240.',
-    platforms: [
-      {
-        platform: 'Rapido Cabs',
-        basePrice: 440,
-        hiddenSurge: 0,
-        couponSavings: 40,
-        finalPrice: 400,
-        deliveryTime: 'Driver 3 Mins Away',
-        highlight: 'Zero Dynamic Surge Multiplier',
-        isLowest: true,
-        deepLink: 'https://rapido.bike',
-      },
-      {
-        platform: 'InDrive',
-        basePrice: 460,
-        hiddenSurge: 0,
-        couponSavings: 0,
-        finalPrice: 460,
-        deliveryTime: 'Driver 5 Mins Away',
-        highlight: 'Passenger Direct Bidding',
-        isLowest: false,
-        deepLink: 'https://indrive.com',
-      },
-      {
-        platform: 'Uber Premier',
-        basePrice: 450,
-        hiddenSurge: 230,
-        couponSavings: 0,
-        finalPrice: 680,
-        deliveryTime: 'Driver 2 Mins Away',
-        highlight: '1.8X Peak Rain Surge Multiplier',
-        isLowest: false,
-        deepLink: 'https://uber.com',
-      },
-    ],
-    savings: { baseGap: 240, couponSavings: 40, bankOffer: 0, total: 280 },
-    history90d: [
-      { date: 'Jul 10', price: 460 },
-      { date: 'Aug 01', price: 520 },
-      { date: 'Aug 25', price: 490 },
-      { date: 'Sep 05', price: 420, event: 'Non-Peak' },
-      { date: 'Today', price: 440 },
-    ],
-    history180d: [
-      { date: 'May 10', price: 540 },
-      { date: 'Jul 20', price: 480 },
-      { date: 'Today', price: 440 },
-    ],
-    history365d: [
-      { date: 'Jan 2026', price: 560 },
-      { date: 'Jun 2026', price: 510 },
-      { date: 'Today', price: 440 },
-    ],
-  },
-  hotel: {
-    id: 'goa-villa',
-    vertical: 'hotels',
-    productTitle: 'Luxury 5-Star Beachfront Villa with Private Pool, North Goa',
-    category: 'Hotels · Luxury Resorts & Villas',
-    imageUrl: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&auto=format&fit=crop&q=80',
-    dealScore: 88,
-    statusBadge: 'All-Time Low',
-    statusType: 'success',
-    currentPrice: 8499,
-    mrp: 14500,
-    lowestPrice: 8200,
-    lowestDate: '12 Sep 2026',
-    avg90dPrice: 11200,
-    avg180dPrice: 12400,
-    avg365dPrice: 13500,
-    isFakeDiscount: false,
-    recommendation: 'BUY NOW on Booking.com via Quick Apps: Lock Genius VIP rate before Agoda wholesale contract expires.',
-    platforms: [
-      {
-        platform: 'Booking.com',
-        basePrice: 8499,
-        hiddenSurge: 0,
-        couponSavings: 850,
-        finalPrice: 7649,
-        deliveryTime: 'Free Cancellation Until Check-in',
-        highlight: 'Genius Level 2 10% Off Auto-Applied',
-        isLowest: true,
-        deepLink: 'https://booking.com',
-      },
-      {
-        platform: 'Agoda Direct',
-        basePrice: 8900,
-        hiddenSurge: 0,
-        couponSavings: 0,
-        finalPrice: 8900,
-        deliveryTime: 'Instant Voucher',
-        highlight: 'Includes Complimentary Breakfast',
-        isLowest: false,
-        deepLink: 'https://agoda.com',
-      },
-      {
-        platform: 'MakeMyTrip',
-        basePrice: 8800,
-        hiddenSurge: 1050,
-        couponSavings: 0,
-        finalPrice: 9850,
-        deliveryTime: 'Instant Voucher',
-        highlight: '₹1,050 Luxury Service Fee Added',
-        isLowest: false,
-        deepLink: 'https://makemytrip.com',
-      },
-    ],
-    savings: { baseGap: 2201, couponSavings: 850, bankOffer: 500, total: 3551 },
-    history90d: [
-      { date: 'Jul 12', price: 12500 },
-      { date: 'Aug 04', price: 11200 },
-      { date: 'Aug 28', price: 9800 },
-      { date: 'Sep 12', price: 8200, event: 'All-Time Low' },
-      { date: 'Today', price: 8499 },
-    ],
-    history180d: [
-      { date: 'Apr 15', price: 13900 },
-      { date: 'Jun 20', price: 12100 },
-      { date: 'Today', price: 8499 },
-    ],
-    history365d: [
-      { date: 'Dec 2025', price: 16500, event: 'New Year Peak' },
-      { date: 'May 2026', price: 11500 },
-      { date: 'Today', price: 8499 },
-    ],
-  },
-  loan: {
-    id: 'sbi-maxgain',
-    vertical: 'loans',
-    productTitle: 'Home Loan Overdraft (SBI Maxgain vs HDFC Reach vs Tata Capital)',
-    category: 'Loans & Credit · Benchmark APR Rates',
-    imageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80',
-    dealScore: 96,
-    statusBadge: 'Lowest APR Match (8.40%)',
-    statusType: 'success',
-    currentPrice: 8.4,
-    mrp: 9.25,
-    lowestPrice: 8.35,
-    lowestDate: '15 Aug 2026',
-    avg90dPrice: 8.65,
-    avg180dPrice: 8.8,
-    avg365dPrice: 8.95,
-    isFakeDiscount: false,
-    recommendation: 'APPLY NOW: 8.40% festive rate includes 100% processing charge waiver saving ₹10,000 upfront.',
-    platforms: [
-      {
-        platform: 'SBI Maxgain',
-        basePrice: 8.4,
-        hiddenSurge: 0,
-        couponSavings: 0,
-        finalPrice: 8.4,
-        deliveryTime: 'Pre-Approved Paperless',
-        highlight: 'Zero Processing Fee + Overdraft Account',
-        isLowest: true,
-        deepLink: 'https://sbi.co.in',
-      },
-      {
-        platform: 'HDFC Reach',
-        basePrice: 8.75,
-        hiddenSurge: 5000,
-        couponSavings: 0,
-        finalPrice: 8.75,
-        deliveryTime: '24h Sanction',
-        highlight: '₹5,000 Processing Admin Fee',
-        isLowest: false,
-        deepLink: 'https://hdfcbank.com',
-      },
-      {
-        platform: 'Tata Capital',
-        basePrice: 9.1,
-        hiddenSurge: 7500,
-        couponSavings: 0,
-        finalPrice: 9.1,
-        deliveryTime: 'Instant Digital Sanction',
-        highlight: 'Standard Benchmark + 0.35% Margin',
-        isLowest: false,
-        deepLink: 'https://tatacapital.com',
-      },
-    ],
-    savings: { baseGap: 10000, couponSavings: 0, bankOffer: 0, total: 10000 },
-    history90d: [
-      { date: 'Jul 15', price: 8.75 },
-      { date: 'Aug 15', price: 8.35 },
-      { date: 'Today', price: 8.4 },
-    ],
-    history180d: [
-      { date: 'May 01', price: 8.9 },
-      { date: 'Today', price: 8.4 },
-    ],
-    history365d: [
-      { date: 'Dec 2025', price: 9.1 },
-      { date: 'Today', price: 8.4 },
-    ],
-  },
-};
 
 export const AiInsightsView: React.FC = () => {
-  const { setVertical, setActiveNavTab, openExtensionModal, addToast, trackQuickAppRedirection } = useApp();
+  const { vertical, setVertical, setActiveNavTab, openExtensionModal, addToast, trackQuickAppRedirection } = useApp();
 
   const [inputUrl, setInputUrl] = useState<string>('');
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
-  const [activeScan, setActiveScan] = useState<ScannerResult | null>(SAMPLE_SCAN_RESULTS.headphones);
+  const [activeScan, setActiveScan] = useState<ScannerResult | null>(null);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<'90d' | '180d' | '365d'>('90d');
   const [scannerMode, setScannerMode] = useState<'url' | 'barcode' | 'query'>('url');
   const [isBarcodeSimulating, setIsBarcodeSimulating] = useState<boolean>(false);
 
+  // LIVE market insight cards: one real query per vertical, built from actual results only.
+  const [INSIGHTS, setInsights] = useState<AiInsightCard[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const PROBES: Array<{ vertical: VerticalId; label: string; query: string; api: string }> = [
+      { vertical: 'flights', label: 'Delhi \u2192 Mumbai Flights', query: 'delhi to mumbai', api: 'flights' },
+      { vertical: 'hotels', label: 'Goa Hotels', query: 'goa', api: 'hotels' },
+      { vertical: 'bus', label: 'Delhi \u2192 Jaipur Buses', query: 'delhi to jaipur', api: 'bus' },
+      { vertical: 'ecommerce', label: 'Mobile Phones', query: 'mobile phone', api: 'ecommerce' },
+      { vertical: 'grocery', label: 'Milk (10-min delivery)', query: 'milk', api: 'grocery' },
+      { vertical: 'food', label: 'Biryani Delivery', query: 'biryani', api: 'food' },
+      { vertical: 'movie', label: 'Movies Near You', query: 'movies', api: 'movie' },
+      { vertical: 'loans', label: 'Personal Loans', query: 'personal loan', api: 'loans' },
+      { vertical: 'insurance', label: 'Health Insurance', query: 'health insurance', api: 'insurance' },
+    ];
+    const inr = (n: number) => `\u20B9${Math.round(n).toLocaleString('en-IN')}`;
+    (async () => {
+      const out: AiInsightCard[] = [];
+      await Promise.all(
+        PROBES.map(async (pr) => {
+          try {
+            const res = await fetch('/api/scrape/live', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: pr.query, vertical: pr.api }),
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const items: any[] = (data.results || []).filter((i: any) => Number(i.primaryPrice) > 0);
+            if (items.length < 2) return; // need a real spread to say anything
+            const sorted = [...items].sort((a, b) => a.primaryPrice - b.primaryPrice);
+            const lo = sorted[0];
+            const hi = sorted[sorted.length - 1];
+            const med = sorted[Math.floor(sorted.length / 2)].primaryPrice;
+            const spread = hi.primaryPrice > 0 ? Math.round((1 - lo.primaryPrice / hi.primaryPrice) * 100) : 0;
+            const rec: AiInsightCard['recommendation'] = lo.primaryPrice <= med * 0.9 ? 'BUY_NOW' : spread > 40 ? 'VOLATILE' : 'BUY_NOW';
+            out.push({
+              vertical: pr.vertical,
+              category: pr.label,
+              recommendation: rec,
+              confidence: Math.min(95, 50 + items.length * 3),
+              headline: `Cheapest live: ${inr(lo.primaryPrice)} vs highest ${inr(hi.primaryPrice)} (${spread}% spread)`,
+              rationale: `Measured right now across ${items.length} live priced offers. Median ${inr(med)}. Cheapest is "${String(lo.title).slice(0, 60)}" via ${lo.subtitle || lo.provider || 'a verified source'}.`,
+              bestDayOrTime: 'Live now',
+              estSavings: `Save up to ${inr(hi.primaryPrice - lo.primaryPrice)}`,
+              dealScore: Math.min(95, 55 + Math.min(30, spread)),
+              imageUrl: lo.imageUrl || (lo.images && lo.images[0]) || '',
+              badgeTag: 'LIVE DATA',
+              lowestPriceRecorded: `Live low ${inr(lo.primaryPrice)}`,
+              competitors: sorted.slice(0, 2).map((i, k) => ({
+                platform: String(i.subtitle || i.provider || 'Live source'),
+                price: i.primaryPrice,
+                isLowest: k === 0,
+              })),
+            });
+          } catch { /* a failed probe simply yields no card */ }
+        })
+      );
+      if (!cancelled) {
+        const order = PROBES.map((x) => x.vertical);
+        out.sort((a, b) => order.indexOf(a.vertical) - order.indexOf(b.vertical));
+        setInsights(out);
+        setInsightsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Automated Coupon Tester Live Simulation State
-  const [isTestingCoupons, setIsTestingCoupons] = useState<boolean>(false);
-  const [testedCouponIndex, setTestedCouponIndex] = useState<number>(0);
-  const [winningCouponApplied, setWinningCouponApplied] = useState<boolean>(false);
-  const [cartDiscount, setCartDiscount] = useState<number>(0);
 
   // WhatsApp Alert Form State
   const [alertPhone, setAlertPhone] = useState<string>('');
   const [targetPriceAlert, setTargetPriceAlert] = useState<number>(24000);
   const [alertSuccess, setAlertSuccess] = useState<boolean>(false);
 
-  const couponTestCodes = [
-    { code: 'TRY1SEC', discount: 200, status: 'Testing...' },
-    { code: 'SUPERDEAL', discount: 450, status: 'Testing...' },
-    { code: 'FLAT20', discount: 800, status: 'Testing...' },
-    { code: 'HDFC1750', discount: 1750, status: 'Winning Code Found!' },
-  ];
 
   const handleInspect = (v: VerticalId) => {
     setVertical(v);
@@ -857,105 +208,206 @@ export const AiInsightsView: React.FC = () => {
     document.body.scrollTop = 0;
   };
 
+  // ---- LIVE SCAN ENGINE: every report field comes from real acquisition ----
+
+  const detectVerticalFromText = (q: string): VerticalId | null => {
+    const p = q.toLowerCase();
+    if (/(flight|indigo|akasa|air india|airline|6e-|del|dxb|bom)/.test(p)) return 'flights';
+    if (/(biryani|pizza|burger|momos|dish|restaurant|swiggy|zomato|domino|food)/.test(p)) return 'food';
+    if (/(blinkit|zepto|instamart|bigbasket|grocery|milk|bread|atta)/.test(p)) return 'grocery';
+    if (/(hotel|resort|villa|stay|hostel|room)/.test(p)) return 'hotels';
+    if (/(cab|uber|ola|rapido|taxi|ride)/.test(p)) return 'cab';
+    if (/(bus|redbus|abhibus|volvo)/.test(p)) return 'bus';
+    if (/(movie|cinema|pvr|inox|bms|imax)/.test(p)) return 'movie';
+    if (/(loan|emi|interest|apr|paisabazaar)/.test(p)) return 'loans';
+    if (/(insurance|policy|term plan|health cover)/.test(p)) return 'insurance';
+    return null;
+  };
+
+  const fetchRealHistory = async (entityId: number | null): Promise<Array<{ ts: number; price: number; label: string }>> => {
+    if (!entityId) return [];
+    try {
+      const r = await fetch(`/api/history?entity=${entityId}&limit=120`);
+      if (!r.ok) return [];
+      const d = await r.json();
+      const points = Array.isArray(d.points) ? d.points : [];
+      return points
+        .map((pt: any) => {
+          const ts = new Date(pt.capturedAt).getTime();
+          return Number.isFinite(ts) && pt.price > 0
+            ? { ts, price: Math.round(Number(pt.price)), label: new Date(pt.capturedAt).toLocaleDateString('en-GB') }
+            : null;
+        })
+        .filter(Boolean) as Array<{ ts: number; price: number; label: string }>;
+    } catch {
+      return [];
+    }
+  };
+
+  /** Builds the scan report from REAL pipeline items + REAL tracked history only. */
+  const buildScannerResultFromItems = async (items: any[], vert: VerticalId): Promise<ScannerResult | null> => {
+    if (!items.length) return null;
+    const item = items[0];
+    const price = Number(item.primaryPrice) || 0;
+    const list = Number(item.originalPrice) || 0;
+    const quotes: any[] = item.sellerQuotes || [];
+    const pricedPeers = items.map((i) => Number(i.primaryPrice) || 0).filter((v) => v > 0);
+    const median = pricedPeers.length ? [...pricedPeers].sort((a, b) => a - b)[Math.floor(pricedPeers.length / 2)] : 0;
+
+    // Real tracked history (may be empty \u2014 then we say so, we never invent it)
+    const series = await fetchRealHistory(item.canonicalEntityId ?? null);
+    const tracked = series.length >= 2;
+    const livePoint: PriceHistoryPoint = { date: 'Today (Live)', price, event: 'Live capture' };
+    const allPts: PriceHistoryPoint[] = tracked
+      ? series.map((h) => ({ date: h.label, price: h.price }))
+      : [livePoint];
+    const windowPts = (days: number): PriceHistoryPoint[] => {
+      if (!tracked) return allPts;
+      const cutoff = Date.now() - days * 86400000;
+      const w = series.filter((h) => h.ts >= cutoff).map((h) => ({ date: h.label, price: h.price }));
+      return w.length ? w : allPts;
+    };
+    const avgOf = (pts: PriceHistoryPoint[]): number | null =>
+      pts.length ? Math.round(pts.reduce((a, b) => a + b.price, 0) / pts.length) : null;
+
+    const history90d = windowPts(90);
+    const history180d = windowPts(180);
+    const history365d = windowPts(365);
+    const lowestPrice = tracked ? Math.min(...series.map((h) => h.price)) : price;
+    const lowestDate = tracked
+      ? series.find((h) => h.price === lowestPrice)?.label || 'Recorded history'
+      : 'Today (first capture)';
+
+    // Fake-discount detection with evidence only
+    let isFakeDiscount = false;
+    let fakeDiscountDetails: string | undefined;
+    if (list > price * 2 && price > 0) {
+      const highestEver = tracked ? Math.max(...series.map((h) => h.price)) : price;
+      if (highestEver < list * 0.6) {
+        isFakeDiscount = true;
+        fakeDiscountDetails = `Seller claims MRP \u20B9${list.toLocaleString('en-IN')}, but the highest real price recorded for this product is \u20B9${highestEver.toLocaleString('en-IN')}. The ${Math.round((1 - price / list) * 100)}% "discount" is inflated.`;
+      }
+    }
+
+    // Honest deal score from live evidence only
+    let dealScore = 55;
+    if (price > 0 && median > 0 && price <= median) dealScore += 15;
+    if (price > 0 && pricedPeers.length > 1 && price === Math.min(...pricedPeers)) dealScore += 10;
+    if ((item.rating || 0) >= 4) dealScore += 10;
+    if (item.imageUrl || (item.images && item.images.length)) dealScore += 5;
+    if (item.isLiveScraped) dealScore += 5;
+    dealScore = Math.min(95, dealScore);
+
+    const platforms: CrossPlatformItem[] = quotes.map((sq: any) => ({
+      platform: sq.sellerName || item.subtitle || 'Live source',
+      basePrice: sq.price,
+      hiddenSurge: 0,
+      couponSavings: 0,
+      finalPrice: sq.price,
+      deliveryTime: sq.deliveryOrEta || 'See seller site',
+      highlight: sq.badge || 'Live quote',
+      isLowest: Boolean(sq.isLowest),
+      deepLink: sq.url,
+    }));
+    const cheapest = platforms.length
+      ? platforms.reduce((a, b) => (a.finalPrice <= b.finalPrice ? a : b))
+      : null;
+
+    const baseGap = list > price ? list - price : 0;
+    const statusBadge = item.isLiveScraped
+      ? `Live scraped \u00B7 ${quotes[0]?.sourceDomain || item.subtitle || 'verified source'}`
+      : `Live result from ${item.subtitle || 'pipeline'}`;
+
+    const recommendation =
+      price === 0
+        ? 'Price not exposed by the source. Open the seller page to check the live price \u2014 nothing is guessed here.'
+        : cheapest
+        ? `Cheapest live offer: \u20B9${cheapest.finalPrice.toLocaleString('en-IN')} on ${cheapest.platform} across ${platforms.length} site${platforms.length > 1 ? 's' : ''}.`
+        : `Live price \u20B9${price.toLocaleString('en-IN')}. ${baseGap > 0 ? `\u20B9${baseGap.toLocaleString('en-IN')} below the seller's own MRP.` : 'Compare across the feed before buying.'}`;
+
+    return {
+      id: String(item.id),
+      vertical: vert,
+      productTitle: item.title || 'Live result',
+      category: item.category || vert,
+      imageUrl: item.imageUrl || (item.images && item.images[0]) || '',
+      dealScore,
+      statusBadge,
+      statusType: 'success',
+      currentPrice: price,
+      mrp: list,
+      lowestPrice,
+      lowestDate,
+      avg90dPrice: avgOf(history90d),
+      avg180dPrice: avgOf(history180d),
+      avg365dPrice: avgOf(history365d),
+      historyTracked: tracked,
+      isFakeDiscount,
+      fakeDiscountDetails,
+      recommendation,
+      platforms: platforms.length
+        ? platforms
+        : [
+            {
+              platform: item.subtitle || 'Live source',
+              basePrice: price,
+              hiddenSurge: 0,
+              couponSavings: 0,
+              finalPrice: price,
+              deliveryTime: 'See seller site',
+              highlight: 'Live data',
+              isLowest: true,
+              deepLink: item.sellerUrl || '',
+            },
+          ],
+      savings: { baseGap, couponSavings: 0, bankOffer: 0, total: baseGap },
+      history90d,
+      history180d,
+      history365d,
+    };
+  };
+
   const handleScanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputUrl.trim()) return;
-
+    const q = inputUrl.trim();
+    if (!q) return;
     setIsScanning(true);
 
     try {
-      const isUrl = /^https?:\/\//i.test(inputUrl.trim());
+      const isUrl = /^https?:\/\//i.test(q);
       if (isUrl) {
         const res = await fetch('/api/scan/url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: inputUrl.trim() }),
+          body: JSON.stringify({ url: q }),
         });
-
         if (res.ok) {
           const data = await res.json();
-          if (data.item && data.rawScan) {
-            const scan = data.rawScan;
-            const livePlatforms: CrossPlatformItem[] = (scan.sellerQuotes || []).map((sq: any) => ({
-              platform: sq.sellerName,
-              basePrice: sq.price,
-              hiddenSurge: 0,
-              couponSavings: sq.couponCode ? 40 : 0,
-              finalPrice: sq.price - (sq.couponCode ? 40 : 0),
-              deliveryTime: sq.deliveryOrEta || 'Express Delivery',
-              highlight: sq.badge || 'Verified Live Quote',
-              isLowest: Boolean(sq.isLowest),
-              deepLink: sq.url,
-            }));
-
-            const lowestPlatform =
-              livePlatforms.find((p) => p.isLowest) ||
-              livePlatforms[0] || {
-                platform: scan.sourceDomain,
-                basePrice: scan.extractedPrice,
-                hiddenSurge: 0,
-                couponSavings: 0,
-                finalPrice: scan.extractedPrice,
-                deliveryTime: 'Direct Store',
-                highlight: 'Live Scraped',
-                isLowest: true,
-                deepLink: scan.sourceUrl,
-              };
-
-            const computedScore = Math.min(
-              98,
-              Math.max(
-                70,
-                Math.round(94 - (scan.extractedPrice / (scan.originalPrice || scan.extractedPrice * 1.2)) * 12)
-              )
-            );
-
-            const liveActiveScan: ScannerResult = {
-              id: String(data.item.id),
-              vertical: scan.vertical,
-              productTitle: scan.title,
-              category: scan.category,
-              imageUrl:
-                scan.imageUrl ||
-                'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&auto=format&fit=crop&q=80',
-              dealScore: computedScore,
-              statusBadge: `Live Scraped from ${scan.sourceDomain}`,
-              statusType: 'success',
-              currentPrice: scan.extractedPrice,
-              mrp: scan.originalPrice || Math.round(scan.extractedPrice * 1.15),
-              lowestPrice: lowestPlatform.finalPrice,
-              lowestDate: 'Today (Live Discovery)',
-              avg90dPrice: Math.round(scan.extractedPrice * 1.08),
-              avg180dPrice: Math.round(scan.extractedPrice * 1.12),
-              avg365dPrice: Math.round(scan.extractedPrice * 1.18),
-              isFakeDiscount: false,
-              recommendation: `BUY NOW on ${lowestPlatform.platform}: Verified lowest price of ₹${lowestPlatform.finalPrice.toLocaleString('en-IN')} with active coupon.`,
-              platforms: livePlatforms.length > 0 ? livePlatforms : [lowestPlatform],
-              savings: {
-                baseGap: Math.max(0, (scan.originalPrice || scan.extractedPrice) - lowestPlatform.finalPrice),
-                couponSavings: 40,
-                bankOffer: 50,
-                total: Math.max(0, (scan.originalPrice || scan.extractedPrice) - lowestPlatform.finalPrice) + 90,
-              },
-              history90d: [
-                { date: '60d ago', price: Math.round(scan.extractedPrice * 1.1) },
-                { date: '30d ago', price: Math.round(scan.extractedPrice * 1.05) },
-                { date: 'Yesterday', price: Math.round(scan.extractedPrice * 1.02) },
-                { date: 'Today (Live)', price: scan.extractedPrice, event: 'Live Hit' },
-              ],
-              history180d: [
-                { date: '180d ago', price: Math.round(scan.extractedPrice * 1.15) },
-                { date: '90d ago', price: Math.round(scan.extractedPrice * 1.1) },
-                { date: 'Today (Live)', price: scan.extractedPrice },
-              ],
-              history365d: [
-                { date: '365d ago', price: Math.round(scan.extractedPrice * 1.2) },
-                { date: '180d ago', price: Math.round(scan.extractedPrice * 1.15) },
-                { date: 'Today (Live)', price: scan.extractedPrice },
-              ],
-            };
-
-            setActiveScan(liveActiveScan);
+          if (data.item) {
+            const vert = (data.rawScan?.vertical as VerticalId) || vertical;
+            const scan = await buildScannerResultFromItems([data.item], vert);
+            if (scan) {
+              setActiveScan(scan);
+              setIsScanning(false);
+              window.scrollTo({ top: 400, behavior: 'smooth' });
+              return;
+            }
+          }
+        }
+      } else {
+        // Plain text query -> live search pipeline, vertical auto-detected from keywords
+        const vert = detectVerticalFromText(q) || vertical;
+        const res = await fetch('/api/scrape/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q, vertical: vert === 'movie' ? 'movie' : vert }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const items: any[] = data.results || [];
+          const scan = await buildScannerResultFromItems(items, vert);
+          if (scan) {
+            setActiveScan(scan);
             setIsScanning(false);
             window.scrollTo({ top: 400, behavior: 'smooth' });
             return;
@@ -963,42 +415,41 @@ export const AiInsightsView: React.FC = () => {
         }
       }
     } catch (err: any) {
-      console.warn('[AiInsights] Live URL scan fallback:', err.message);
+      console.warn('[AiInsights] live scan failed:', err.message);
     }
 
-    setTimeout(() => {
-      setIsScanning(false);
-      const lower = inputUrl.toLowerCase();
-      if (lower.includes('flight') || lower.includes('air') || lower.includes('del') || lower.includes('dxb') || lower.includes('indigo')) {
-        setActiveScan(SAMPLE_SCAN_RESULTS.flight);
-      } else if (lower.includes('food') || lower.includes('biryani') || lower.includes('swiggy') || lower.includes('zomato') || lower.includes('magicpin')) {
-        setActiveScan(SAMPLE_SCAN_RESULTS.food);
-      } else if (lower.includes('grocery') || lower.includes('blinkit') || lower.includes('zepto') || lower.includes('instamart') || lower.includes('milk')) {
-        setActiveScan(SAMPLE_SCAN_RESULTS.grocery);
-      } else if (lower.includes('hotel') || lower.includes('resort') || lower.includes('goa') || lower.includes('stay') || lower.includes('villa')) {
-        setActiveScan(SAMPLE_SCAN_RESULTS.hotel);
-      } else if (lower.includes('cab') || lower.includes('uber') || lower.includes('rapido') || lower.includes('ride') || lower.includes('airport')) {
-        setActiveScan(SAMPLE_SCAN_RESULTS.cab);
-      } else if (lower.includes('loan') || lower.includes('sbi') || lower.includes('hdfc') || lower.includes('interest') || lower.includes('apr')) {
-        setActiveScan(SAMPLE_SCAN_RESULTS.loan);
-      } else {
-        setActiveScan(SAMPLE_SCAN_RESULTS.headphones);
+    // Honest failure: no fabricated report is ever built
+    setIsScanning(false);
+    addToast('alert', 'No live results for that query', 'The engine found no live offers to report \u2014 nothing is simulated here. Try a different product, dish or route.');
+  };
+
+  /** Preset chips run REAL live searches (previously they replayed hardcoded samples). */
+  const handlePresetScan = async (query: string) => {
+    setInputUrl(query);
+    setIsScanning(true);
+    const vert = detectVerticalFromText(query) || vertical;
+    try {
+      const res = await fetch('/api/scrape/live', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, vertical: vert === 'movie' ? 'movie' : vert }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const items: any[] = data.results || [];
+        const scan = await buildScannerResultFromItems(items, vert);
+        if (scan) {
+          setActiveScan(scan);
+          window.scrollTo({ top: 400, behavior: 'smooth' });
+          return;
+        }
       }
-
-      window.scrollTo({ top: 400, behavior: 'smooth' });
-    }, 450);
+    } catch { /* fall through to honest notice */ }
+    setIsScanning(false);
+    addToast('alert', 'No live results for that preset', 'The live pipeline returned nothing for this query \u2014 no sample data is shown.');
   };
 
-  const handleSimulateBarcode = (skuKey: string) => {
-    setIsBarcodeSimulating(true);
-    setTimeout(() => {
-      setIsBarcodeSimulating(false);
-      setActiveScan(SAMPLE_SCAN_RESULTS[skuKey] || SAMPLE_SCAN_RESULTS.headphones);
-      window.scrollTo({ top: 400, behavior: 'smooth' });
-    }, 600);
-  };
-
-  const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
+const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
     trackQuickAppRedirection(partner.platform.toLowerCase().replace(/\s+/g, '-'));
     addToast(
       'success',
@@ -1010,33 +461,38 @@ export const AiInsightsView: React.FC = () => {
     }
   };
 
-  // Run 1-Click Automated Coupon Testing Routine
-  const handleRunAutoCouponTest = () => {
-    setIsTestingCoupons(true);
-    setWinningCouponApplied(false);
-    setCartDiscount(0);
-
-    let idx = 0;
-    const interval = setInterval(() => {
-      idx += 1;
-      setTestedCouponIndex(idx);
-      if (idx >= couponTestCodes.length) {
-        clearInterval(interval);
-        setIsTestingCoupons(false);
-        setWinningCouponApplied(true);
-        setCartDiscount(1750);
-        confetti({
-          particleCount: 80,
-          spread: 60,
-          origin: { y: 0.7 },
-        });
-        addToast(
-          'points',
-          'Highest Discount Applied: HDFC1750',
-          'Saved ₹1,750 net on checkout. Zero effort required.'
-        );
+  // REAL coupons from the affiliate aggregator (GET /api/v1/offers) — only codes a network returned.
+  const [realCoupons, setRealCoupons] = useState<any[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState<boolean>(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/v1/offers?limit=60');
+        const d = await r.json();
+        const list = (d.offers || []).filter((o: any) => o.coupon_code);
+        if (!cancelled) setRealCoupons(list.slice(0, 8));
+      } catch {
+        if (!cancelled) setRealCoupons([]);
+      } finally {
+        if (!cancelled) setCouponsLoading(false);
       }
-    }, 400);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleCopyCoupon = async (code: string) => {
+    try { await navigator.clipboard.writeText(code); } catch { /* clipboard blocked */ }
+    addToast('success', 'Code copied', `${code} is on your clipboard. Paste it at checkout.`);
+  };
+
+  const handleOpenCouponOffer = async (o: any) => {
+    if (!o.affiliate_url) return;
+    try {
+      const r = await fetch(`/api/go?url=${encodeURIComponent(o.affiliate_url)}&offerId=${o.id}`);
+      const d = await r.json();
+      if (d.redirectUrl) window.open(d.redirectUrl, '_blank', 'noopener');
+    } catch { /* redirect service unavailable */ }
   };
 
   const handleSetWhatsAppAlert = (e: React.FormEvent) => {
@@ -1198,25 +654,25 @@ export const AiInsightsView: React.FC = () => {
 
               {/* Quick Barcode Test Buttons */}
               <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-slate-400 block">Click a barcode sample to simulate live scan:</span>
+                <span className="text-[11px] font-bold text-slate-400 block">Camera scan is not wired yet. Run these products live instead:</span>
                 <div className="flex flex-wrap gap-2 text-xs">
                   <button
                     type="button"
-                    onClick={() => handleSimulateBarcode('headphones')}
+                    onClick={() => handlePresetScan('sony wh-1000xm5 headphones')}
                     className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
                   >
                     🏷️ 490552498231 (Sony XM5 Barcode)
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSimulateBarcode('grocery')}
+                    onClick={() => handlePresetScan('amul milk')}
                     className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
                   >
                     🏷️ 890123302451 (Amul Basket Barcode)
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSimulateBarcode('flight')}
+                    onClick={() => handlePresetScan('delhi to dubai flights')}
                     className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
                   >
                     ✈️ 6E-1461 QR Ticket Pass
@@ -1234,52 +690,52 @@ export const AiInsightsView: React.FC = () => {
             </span>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.headphones)}
+              onClick={() => handlePresetScan('sony wh-1000xm5 headphones')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              🎧 Sony XM5 (Fake Discount)
+              🎧 Sony XM5 Headphones
             </button>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.flight)}
+              onClick={() => handlePresetScan('delhi to dubai flights')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              ✈️ DEL → DXB Flight (ATL)
+              ✈️ DEL → DXB Flights
             </button>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.grocery)}
+              onClick={() => handlePresetScan('milk bread grocery')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              ⚡ 10-Min Grocery (Surge Audit)
+              ⚡ 10-Min Grocery
             </button>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.food)}
+              onClick={() => handlePresetScan('biryani')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              🍛 Behrouz Biryani (Kitchen Parity)
+              🍛 Live Biryani Deals
             </button>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.hotel)}
+              onClick={() => handlePresetScan('goa hotels')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              🏖️ Goa Beach Villa (Rate Parity)
+              🏖️ Goa Stays
             </button>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.cab)}
+              onClick={() => handlePresetScan('airport cab')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              🚖 Airport Ride (1.8X Surge)
+              🚖 Airport Cab
             </button>
             <button
               type="button"
-              onClick={() => setActiveScan(SAMPLE_SCAN_RESULTS.loan)}
+              onClick={() => handlePresetScan('home loan')}
               className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
             >
-              💳 Home Loan APR (8.40%)
+              💳 Home Loans
             </button>
           </div>
         </div>
@@ -1413,7 +869,7 @@ export const AiInsightsView: React.FC = () => {
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase font-bold block">90-Day Avg Price</span>
                   <span className="font-bold text-slate-700 font-mono">
-                    {activeScan.avg90dPrice > 100 ? `₹${activeScan.avg90dPrice.toLocaleString('en-IN')}` : `${activeScan.avg90dPrice}%`}
+                    {activeScan.avg90dPrice == null ? 'Tracking started' : activeScan.avg90dPrice > 100 ? `₹${activeScan.avg90dPrice.toLocaleString('en-IN')}` : `${activeScan.avg90dPrice}%`}
                   </span>
                 </div>
                 <div>
@@ -1684,104 +1140,33 @@ export const AiInsightsView: React.FC = () => {
       )}
 
       {/* ================= 3. MODULE A: AUTOMATED COUPON TESTER & AUTO-APPLY ENGINE ================= */}
-      <section className="bg-gradient-to-br from-indigo-950 via-slate-950 to-blue-950 text-white rounded-3xl p-6 sm:p-8 border border-indigo-900/60 shadow-xl space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-400/30">
-              <Zap className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400" />
-              <span>MODULE A: 1-CLICK AUTO-APPLY COUPON & STACKING ENGINE</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-white">
-              Automated Checkout Coupon Testing & Auto-Fill
-            </h2>
-            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-              When you land on any partner checkout or cart screen, Try1Second automatically tests all active promo codes, bank cashback offers, and referral stacks in 1 second to apply the single code yielding the lowest price.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleRunAutoCouponTest}
-            disabled={isTestingCoupons}
-            className="px-6 py-3 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:brightness-110 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 cursor-pointer shrink-0 transition-transform hover:scale-105 active:scale-95"
-          >
-            {isTestingCoupons ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Testing {testedCouponIndex + 1}/4 Promo Stacks...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 fill-white" />
-                <span>Auto-Test Coupons with Try1Second</span>
-              </>
-            )}
-          </button>
+      <section className="rounded-3xl bg-slate-950 text-white p-6 sm:p-8 border border-slate-800 space-y-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-white">Live Coupon Codes</h2>
+          <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+            Real codes returned by our partner networks right now. Copy a code, then open the merchant to use it at checkout. Nothing here is simulated.
+          </p>
         </div>
-
-        {/* Live Cart Simulator Visual */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-xs">
-          <div className="space-y-2">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Cart Checkout State</span>
-            <div className="flex items-center gap-3">
-              <img
-                src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&auto=format&fit=crop&q=80"
-                alt="Product"
-                className="w-12 h-12 rounded-xl object-cover border border-white/20"
-              />
-              <div>
-                <span className="text-xs font-bold text-white block">Sony WH-1000XM5</span>
-                <span className="text-[11px] text-slate-400 font-mono">Original: ₹25,990</span>
+        {couponsLoading && <p className="text-xs text-slate-400">Loading live coupons\u2026</p>}
+        {!couponsLoading && realCoupons.length === 0 && (
+          <p className="text-xs text-slate-400">No coupon codes are available from our partner networks at the moment.</p>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {realCoupons.map((o) => (
+            <div key={o.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-white block truncate">{o.merchant_name}</span>
+                <span className="text-[11px] text-slate-400 block truncate">{o.title}</span>
+                <span className="font-mono text-sm font-black text-cyan-300">{o.coupon_code}</span>
               </div>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Coupon Auto-Test Progress</span>
-            <div className="space-y-1">
-              {couponTestCodes.map((c, i) => (
-                <div key={c.code} className="flex items-center justify-between text-xs py-0.5">
-                  <span className="font-mono text-[11px] text-slate-300">
-                    {c.code} {i === testedCouponIndex && isTestingCoupons ? '⏳' : ''}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold ${
-                      winningCouponApplied && c.code === 'HDFC1750'
-                        ? 'text-emerald-400 font-mono'
-                        : isTestingCoupons && i <= testedCouponIndex
-                        ? 'text-cyan-300'
-                        : 'text-slate-500'
-                    }`}
-                  >
-                    {winningCouponApplied && c.code === 'HDFC1750' ? 'APPLIED: -₹1,750' : `-₹${c.discount}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2 bg-slate-900/80 p-3 rounded-xl border border-slate-700/80 flex flex-col justify-between">
-            <div>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Net Effective Price</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
-                  ₹{(25990 - cartDiscount).toLocaleString('en-IN')}
-                </span>
-                {cartDiscount > 0 && (
-                  <span className="text-xs line-through text-slate-500 font-mono">₹25,990</span>
+              <div className="flex flex-col gap-1.5 shrink-0">
+                <button type="button" onClick={() => handleCopyCoupon(o.coupon_code)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-bold cursor-pointer">Copy</button>
+                {o.affiliate_url && (
+                  <button type="button" onClick={() => handleOpenCouponOffer(o)} className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-[11px] font-bold cursor-pointer">Use at store</button>
                 )}
               </div>
             </div>
-
-            {winningCouponApplied ? (
-              <span className="text-[11px] text-emerald-300 font-bold flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" />
-                <span>Saved ₹1,750 with Try1Second Auto-Fill!</span>
-              </span>
-            ) : (
-              <span className="text-[10px] text-slate-400">Click button above to simulate 1-click test</span>
-            )}
-          </div>
+          ))}
         </div>
       </section>
 
@@ -1821,6 +1206,12 @@ export const AiInsightsView: React.FC = () => {
       </div>
 
       {/* ================= 5. GRID OF 10 RICH VISUAL PHOTOGRAPHY CARDS ================= */}
+      {insightsLoading && (
+        <p className="text-sm text-slate-500">Reading live prices across verticals\u2026</p>
+      )}
+      {!insightsLoading && filteredCards.length === 0 && (
+        <p className="text-sm text-slate-500">No live insight available for this category right now. Cards appear only when real priced offers are found.</p>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCards.map((item, idx) => {
           let badgeColor = 'bg-emerald-600 text-white';
@@ -1847,8 +1238,7 @@ export const AiInsightsView: React.FC = () => {
                     alt={item.category}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=700&auto=format&fit=crop&q=80';
+                      (e.target as HTMLImageElement).style.display = 'none';
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />

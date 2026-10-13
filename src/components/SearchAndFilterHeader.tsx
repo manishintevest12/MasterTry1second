@@ -28,6 +28,7 @@ import { VERTICAL_META } from '../data/mockData';
 import { LocationPickerModal } from './LocationPickerModal';
 import { PINCODE_DATABASE } from '../utils/locationHelper';
 import { AutocompleteInput } from './AutocompleteInput';
+import { VoiceSearchButton } from './VoiceSearchButton';
 import { AUTOCOMPLETE_CATEGORIES } from '../data/autocompleteData';
 import { CategoryPickerDropdown } from './CategoryPickerDropdown';
 import {
@@ -262,6 +263,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
               {/* Right Pill: Autocomplete Search for restaurant, item or dish */}
               <div className="flex-1 bg-white rounded-2xl px-4 py-2 flex items-center shadow-md hover:shadow-lg transition-all focus-within:ring-2 focus-within:ring-white">
+                <VoiceSearchButton
+                  onTranscript={(text) => {
+                    setSearchQuery(text);
+                    triggerLiveLocationScrape(text || searchQuery || selectedCategory);
+                  }}
+                  accent="orange"
+                />
                 <AutocompleteInput
                   value={searchQuery}
                   onChange={setSearchQuery}
@@ -403,6 +411,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
               {/* Big Grocery Autocomplete Search Bar */}
               <div className="flex-1 bg-white rounded-2xl px-4 py-2 flex items-center shadow-md">
+                <VoiceSearchButton
+                  onTranscript={(text) => {
+                    setSearchQuery(text);
+                    triggerLiveLocationScrape(text || searchQuery || selectedCategory);
+                  }}
+                  accent="orange"
+                />
                 <AutocompleteInput
                   value={searchQuery}
                   onChange={setSearchQuery}
@@ -540,6 +555,15 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   <span className="text-[9px] text-slate-400 uppercase font-bold block mb-0.5">
                     Drop Destination (Hotspots & Airports)
                   </span>
+                  <VoiceSearchButton
+  onTranscript={(text) => {
+    setCabDrop(text);
+    const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, text);
+    setSearchQuery(q);
+    triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+  }}
+  accent="dark"
+/>
                   <AutocompleteInput
                     value={cabDrop}
                     onChange={(val) => {
@@ -657,6 +681,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="flex-1 bg-slate-50 hover:bg-slate-100/80 rounded-xl px-3 py-2 flex items-center justify-between border border-slate-200 transition-colors">
                 <div className="flex items-center flex-1 min-w-0 mr-2">
                   <MapPin className="w-4 h-4 text-orange-600 mr-2 shrink-0" />
+                  <VoiceSearchButton
+  onTranscript={(text) => {
+    setOrigin(text);
+    setSearchQuery(routeQuery(text, destination));
+  }}
+  accent="dark"
+/>
                   <AutocompleteInput
                     value={origin}
                     onChange={setOrigin}
@@ -709,6 +740,15 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               {/* Destination Chip */}
               <div className="flex-1 bg-slate-50 hover:bg-slate-100/80 rounded-xl px-3 py-2 flex items-center border border-slate-200 transition-colors">
                 <MapPin className="w-4 h-4 text-orange-600 mr-2 shrink-0" />
+                <VoiceSearchButton
+  onTranscript={(text) => {
+    setDestination(text);
+    const q = routeQuery(origin, text);
+    setSearchQuery(q);
+    triggerLiveLocationScrape(q, undefined, travelDatesFor('flights', dateStr));
+  }}
+  accent="dark"
+/>
                 <AutocompleteInput
                   value={destination}
                   onChange={(val) => {
@@ -781,6 +821,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                 <div className="md:col-span-4 flex items-center justify-between bg-slate-50 rounded-lg px-2.5 py-1.5 text-xs border border-slate-200">
                   <div className="flex items-center flex-1 min-w-0 mr-1.5">
                     <Bed className="w-4 h-4 text-[#003580] mr-1.5 shrink-0" />
+                    <VoiceSearchButton
+  onTranscript={(text) => {
+    setHotelDestination(text);
+    setSearchQuery(text);
+    triggerLiveLocationScrape(text, undefined, travelDatesFor('hotels', hotelDates));
+  }}
+  accent="dark"
+/>
                     <AutocompleteInput
                       value={hotelDestination}
                       onChange={(val) => {
@@ -887,7 +935,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="md:col-span-3 flex items-center justify-between bg-slate-50 rounded-xl px-2.5 py-1.5 text-xs border border-slate-200">
                 <div className="flex items-center flex-1 min-w-0 mr-1">
                   <Bus className="w-4 h-4 text-[#d84e55] mr-1.5 shrink-0" />
-                  <AutocompleteInput
+                                    <VoiceSearchButton
+                    onTranscript={(text) => {
+    setBusFrom(text);
+    setSearchQuery(text);
+                    }}
+                    accent="dark"
+                  />
+<AutocompleteInput
                     value={busFrom}
                     onChange={setBusFrom}
                     onSelect={(val) => setBusFrom(val)}
@@ -924,7 +979,16 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
               <div className="md:col-span-3 flex items-center bg-slate-50 rounded-xl px-2.5 py-1.5 text-xs border border-slate-200">
                 <MapPin className="w-4 h-4 text-[#d84e55] mr-1.5 shrink-0" />
-                <AutocompleteInput
+                                <VoiceSearchButton
+                  onTranscript={(text) => {
+    setBusTo(text);
+    const q = routeQuery(busFrom, text);
+    setSearchQuery(q);
+    triggerLiveLocationScrape(q, undefined, travelDatesFor('bus', busDate));
+                  }}
+                  accent="dark"
+                />
+<AutocompleteInput
                   value={busTo}
                   onChange={(val) => {
                     setBusTo(val);
@@ -1005,7 +1069,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               </div>
 
               <div className="flex-1 bg-white rounded-xl flex items-center overflow-hidden border border-slate-300 shadow-md">
-                <AutocompleteInput
+                                <VoiceSearchButton
+                  onTranscript={(text) => {
+    setSearchQuery(text);
+    triggerLiveLocationScrape(text || selectedCategory);
+                  }}
+                  accent="blue"
+                />
+<AutocompleteInput
                   value={searchQuery}
                   onChange={setSearchQuery}
                   onSelect={(val) => {
@@ -1079,7 +1150,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="bg-slate-800 rounded-xl px-3 py-1 text-xs font-bold text-white flex items-center justify-between gap-1.5 border border-slate-700 shrink-0 md:w-72">
                 <div className="flex items-center flex-1 min-w-0 mr-1">
                   <Film className="w-4 h-4 text-red-500 shrink-0 mr-1.5" />
-                  <AutocompleteInput
+                                    <VoiceSearchButton
+                    onTranscript={(text) => {
+    setMovieCity(text);
+                    }}
+                    accent="dark"
+                  />
+<AutocompleteInput
                     value={movieCity}
                     onChange={(val) => setMovieCity(val)}
                     onSelect={(val) => setMovieCity(val)}
@@ -1105,7 +1182,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               </div>
 
               <div className="flex-1 bg-white rounded-xl px-3 py-1 flex items-center justify-between text-slate-900 shadow-md">
-                <AutocompleteInput
+                                <VoiceSearchButton
+                  onTranscript={(text) => {
+    setSearchQuery(text);
+    triggerLiveLocationScrape(text);
+                  }}
+                  accent="orange"
+                />
+<AutocompleteInput
                   value={searchQuery}
                   onChange={setSearchQuery}
                   onSelect={(val) => {
@@ -1169,7 +1253,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
             <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
               <div className="flex-1 bg-white rounded-xl px-4 py-2 flex items-center shadow-md">
-                <AutocompleteInput
+                                <VoiceSearchButton
+                  onTranscript={(text) => {
+    setSearchQuery(text);
+    triggerLiveLocationScrape(text || loanType.split('(')[0].trim());
+                  }}
+                  accent="blue"
+                />
+<AutocompleteInput
                   value={searchQuery}
                   onChange={setSearchQuery}
                   onSelect={(val) => {
@@ -1261,7 +1352,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
             <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
               <div className="flex-1 bg-white rounded-xl px-4 py-2 flex items-center shadow-md">
-                <AutocompleteInput
+                                <VoiceSearchButton
+                  onTranscript={(text) => {
+    setSearchQuery(text);
+    triggerLiveLocationScrape(text || insuranceType);
+                  }}
+                  accent="orange"
+                />
+<AutocompleteInput
                   value={searchQuery}
                   onChange={setSearchQuery}
                   onSelect={(val) => {
