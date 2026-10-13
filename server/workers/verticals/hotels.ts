@@ -228,6 +228,26 @@ export const hotelsWorker: VerticalWorker = {
         return parseWikidataHotels(JSON.parse(r.body), ctx.source, city, WIKIDATA_ENDPOINT);
       },
     },
+    // ---- Owner-mandated hotel sources: attempted live on every search, honestly reported ----
+    {
+      sourceId: 'w_hotels_agoda',
+      name: 'Hotels worker: Agoda (probe)',
+      priority: 19,
+      run: async () => {
+        await cffiFetch('https://www.agoda.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Agoda serves an SSR shell; hotel prices load via token-gated XHRs that are not available unauthenticated to browserless HTTP.');
+      },
+    },
+    {
+      sourceId: 'w_hotels_yatra',
+      name: 'Hotels worker: Yatra (probe)',
+      priority: 20,
+      run: async () => {
+        await cffiFetch('https://www.yatra.com/hotels', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Yatra hotels serves an SPA shell (414KB, no SSR prices); quote XHRs require a session.');
+      },
+    },
   ],
 };
+
 registerVerticalWorker(hotelsWorker);

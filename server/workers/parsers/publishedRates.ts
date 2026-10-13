@@ -54,7 +54,9 @@ const PCT = /(\d{1,2}(?:\.\d{1,2})?)\s*%/g;
  * Looks for the "X% ... Y% p.a." pattern; single rates become min=max.
  */
 export function extractRateRange(text: string): { min?: number; max?: number } {
-  const ranged = /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:to|–|-|—|till|upto|up to)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:p\.?\s?a\.?|per annum|p\.a\.?)/i.exec(text);
+  // Range without a required "p.a." suffix: lender pages increasingly publish
+  // "9.99% - 24.00%" in plain table cells (HDFC rack-rate table, 13 Oct 2026).
+  const ranged = /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:to|–|-|—|till|upto|up to)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%/i.exec(text);
   if (ranged) return { min: Number(ranged[1]), max: Number(ranged[2]) };
   const single = /(?:starting (?:at|from|as low as)|from|as low as|at)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:p\.?\s?a\.?|per annum)/i.exec(text)
     || /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*p\.?\s?a\.?/i.exec(text);

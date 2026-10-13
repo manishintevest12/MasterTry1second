@@ -9,6 +9,7 @@ import { parseFlipkart } from '../parsers/flipkart';
 import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
 import { AcquisitionError } from '../../common/httpClient';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 const q = (ctx: { query: any }) => String(ctx.query.entityName || ctx.query.rawQuery || '').trim();
 
@@ -80,6 +81,27 @@ export const ecommerceWorker: VerticalWorker = {
         const items = parseAjio(r.body, ctx.source, url);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Ajio API returned no parseable products');
         return items;
+      },
+    },
+    // ---- Owner-mandated e-commerce sources: attempted live on every search, honestly reported ----
+    {
+      sourceId: 'w_ecom_meesho',
+      name: 'Ecom worker: Meesho (probe)',
+      priority: 15,
+      run: async (ctx) => {
+        const term = q(ctx) || 'products';
+        await cffiFetch(`https://www.meesho.com/search?q=${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Meesho search serves a client-rendered shell to browserless HTTP; product prices load only via session-gated app APIs.');
+      },
+    },
+    {
+      sourceId: 'w_ecom_tatacliq',
+      name: 'Ecom worker: Tata CLiQ (probe)',
+      priority: 16,
+      run: async (ctx) => {
+        const term = q(ctx) || 'products';
+        await cffiFetch(`https://www.tatacliq.com/search/?text=${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Tata CLiQ search is a JS-rendered SPA shell; cmdity-federator search API paths are not available unauthenticated to browserless HTTP.');
       },
     },
   ],

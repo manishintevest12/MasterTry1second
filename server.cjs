@@ -1679,6 +1679,7 @@ var init_ecommerce = __esm({
     init_myntra();
     init_ajio();
     init_httpClient();
+    init_curlCffiFetch();
     q = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").trim();
     ecommerceWorker = {
       vertical: "ecommerce",
@@ -1748,6 +1749,27 @@ var init_ecommerce = __esm({
             const items = parseAjio(r.body, ctx.source, url);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Ajio API returned no parseable products");
             return items;
+          }
+        },
+        // ---- Owner-mandated e-commerce sources: attempted live on every search, honestly reported ----
+        {
+          sourceId: "w_ecom_meesho",
+          name: "Ecom worker: Meesho (probe)",
+          priority: 15,
+          run: async (ctx) => {
+            const term = q(ctx) || "products";
+            await cffiFetch(`https://www.meesho.com/search?q=${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Meesho search serves a client-rendered shell to browserless HTTP; product prices load only via session-gated app APIs.");
+          }
+        },
+        {
+          sourceId: "w_ecom_tatacliq",
+          name: "Ecom worker: Tata CLiQ (probe)",
+          priority: 16,
+          run: async (ctx) => {
+            const term = q(ctx) || "products";
+            await cffiFetch(`https://www.tatacliq.com/search/?text=${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Tata CLiQ search is a JS-rendered SPA shell; cmdity-federator search API paths are not available unauthenticated to browserless HTTP.");
           }
         }
       ]
@@ -1823,7 +1845,7 @@ var init_bankbazaarLoans = __esm({
 
 // server/workers/parsers/publishedRates.ts
 function extractRateRange(text) {
-  const ranged = /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:to|–|-|—|till|upto|up to)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:p\.?\s?a\.?|per annum|p\.a\.?)/i.exec(text);
+  const ranged = /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:to|–|-|—|till|upto|up to)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%/i.exec(text);
   if (ranged) return { min: Number(ranged[1]), max: Number(ranged[2]) };
   const single = /(?:starting (?:at|from|as low as)|from|as low as|at)\s*(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:p\.?\s?a\.?|per annum)/i.exec(text) || /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*p\.?\s?a\.?/i.exec(text);
   if (single) {
@@ -1926,11 +1948,14 @@ var init_loans = __esm({
     init_bankbazaarLoans();
     init_publishedRates();
     init_httpClient();
+    init_curlCffiFetch();
     LENDER_PAGES = [
       { sourceId: "w_loans_paisabazaar", seller: "Paisabazaar", url: "https://www.paisabazaar.com/personal-loan/interest-rates/", loanType: "personal loan" },
       { sourceId: "w_loans_bajajfinserv", seller: "Bajaj Finserv", url: "https://www.bajajfinserv.in/personal-loan-processing-fees-and-interest-rates", loanType: "personal loan" },
       { sourceId: "w_loans_hdfc", seller: "HDFC Bank", url: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan/interest-rates-and-charges", loanType: "personal loan" },
-      { sourceId: "w_loans_moneyview", seller: "Money View", url: "https://moneyview.in/personal-loan-interest-rates-and-charges", loanType: "personal loan" }
+      { sourceId: "w_loans_moneyview", seller: "Money View", url: "https://moneyview.in/personal-loan-interest-rates-and-charges", loanType: "personal loan" },
+      { sourceId: "w_loans_kreditbee", seller: "KreditBee", url: "https://www.kreditbee.in/personal-loan", loanType: "personal loan" },
+      { sourceId: "w_loans_policybazaar", seller: "Policybazaar", url: "https://www.policybazaar.com/personal-loan/", loanType: "personal loan" }
     ];
     PAGES = [
       { type: "home loan", re: /home|housing|house|property purchase/i, url: "https://www.bankbazaar.com/home-loan.html" },
@@ -1957,7 +1982,17 @@ var init_loans = __esm({
             return items;
           }
         },
-        ...LENDER_PAGES.map(lenderPageTask)
+        ...LENDER_PAGES.map(lenderPageTask),
+        // ---- Owner-mandated loans source: attempted live, honestly reported ----
+        {
+          sourceId: "w_loans_navi",
+          name: "Loans worker: Navi (probe)",
+          priority: 21,
+          run: async () => {
+            const r = await cffiFetch("https://navi.com/personal-loan", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", "Navi web serves HTTP 403 to browserless HTTP; loan rates are shown only in the app/sessioned flow.");
+          }
+        }
       ]
     };
     registerVerticalWorker(loansWorker);
@@ -2654,6 +2689,25 @@ var init_hotels = __esm({
             if (r.status === 429 || r.status >= 500) throw new AcquisitionError("RATE_LIMITED", `Wikidata HTTP ${r.status}`, r.status);
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Wikidata HTTP ${r.status}`, r.status);
             return parseWikidataHotels(JSON.parse(r.body), ctx.source, city, WIKIDATA_ENDPOINT);
+          }
+        },
+        // ---- Owner-mandated hotel sources: attempted live on every search, honestly reported ----
+        {
+          sourceId: "w_hotels_agoda",
+          name: "Hotels worker: Agoda (probe)",
+          priority: 19,
+          run: async () => {
+            await cffiFetch("https://www.agoda.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Agoda serves an SSR shell; hotel prices load via token-gated XHRs that are not available unauthenticated to browserless HTTP.");
+          }
+        },
+        {
+          sourceId: "w_hotels_yatra",
+          name: "Hotels worker: Yatra (probe)",
+          priority: 20,
+          run: async () => {
+            await cffiFetch("https://www.yatra.com/hotels", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Yatra hotels serves an SPA shell (414KB, no SSR prices); quote XHRs require a session.");
           }
         }
       ]
@@ -3936,7 +3990,7 @@ function insurerPageTask(cfg) {
       if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${cfg.seller} HTTP ${r.status}`, r.status);
       const text = r.body.replace(/<[^>]+>/g, " ");
       const sumM = /(?:sum insured[^₹]{0,60}?₹\s*[\d,\.]+\s*(?:lakh|lakhs|crore)[^₹]{0,60}?₹\s*[\d,\.]+\s*(?:lakh|lakhs|crore))|(?:₹|rs\.?\s?)?\d[\d,\.]{0,11}\s*(?:lakh|lakhs|crore)\s*(?:to|-|–)\s*(?:₹|rs\.?\s?)?[\d,\.]{0,11}\s*(?:lakh|lakhs|crore)/i.exec(text);
-      const premM = /(?:premium[^₹₨]{0,60}?|starting\s*(?:at|from))\s*[₹₨]?\s*\d[\d,]*(?:\.\d+)?\s*(?:per\s*(?:month|year|annum|day)|\/\s*(?:month|year)|p\.?a\.?)/i.exec(text);
+      const premM = /(?:premium[^₹₨]{0,60}?|starting\s*(?:at|from)|@)\s*[₹₨]?\s*\d[\d,]*(?:\.\d+)?\s*(?:per\s*(?:month|year|annum|day)|\/\s*(?:month|year|day)|p\.?a\.?)/i.exec(text);
       const facts = {
         sumInsured: sumM ? sumM[0].trim() : void 0,
         startingPremium: premM ? premM[0].trim() : void 0
@@ -3961,11 +4015,13 @@ var init_insurance = __esm({
     init_bankbazaarInsurance();
     init_publishedRates();
     init_httpClient();
+    init_curlCffiFetch();
     INSURER_PAGES = [
       { sourceId: "w_insurance_policybazaar", seller: "Policybazaar", url: "https://www.policybazaar.com/health-insurance/", planName: "Policybazaar health plans" },
       { sourceId: "w_insurance_acko", seller: "Acko", url: "https://www.acko.com/health-insurance/", planName: "Acko health plans" },
       { sourceId: "w_insurance_digit", seller: "Digit", url: "https://www.godigit.com/health-insurance", planName: "Digit health plans" },
-      { sourceId: "w_insurance_hdfcergo", seller: "HDFC Ergo", url: "https://www.hdfcergo.com/health-insurance", planName: "HDFC Ergo health plans" }
+      { sourceId: "w_insurance_hdfcergo", seller: "HDFC Ergo", url: "https://www.hdfcergo.com/health-insurance", planName: "HDFC Ergo health plans" },
+      { sourceId: "w_insurance_insurancedekho", seller: "InsuranceDekho", url: "https://www.insurancedekho.com/health-insurance", planName: "InsuranceDekho health plans" }
     ];
     PAGES2 = [
       { type: "term life insurance", re: /term|life cover/i, url: "https://www.bankbazaar.com/insurance/term-insurance.html" },
@@ -3990,7 +4046,26 @@ var init_insurance = __esm({
             return items;
           }
         },
-        ...INSURER_PAGES.map(insurerPageTask)
+        ...INSURER_PAGES.map(insurerPageTask),
+        // ---- Owner-mandated insurance sources: attempted live, honestly reported ----
+        {
+          sourceId: "w_insurance_ditto",
+          name: "Insurance worker: Ditto (probe)",
+          priority: 21,
+          run: async () => {
+            const r = await cffiFetch("https://www.getditto.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("ACCESS_CHALLENGE", `Ditto (dittoinsurance.com) is unreachable to our acquisition hosts: ${r.status === 200 ? "page renders but plan quotes require an interactive adviser session" : `HTTP ${r.status}`}.`);
+          }
+        },
+        {
+          sourceId: "w_insurance_coverfox",
+          name: "Insurance worker: Coverfox (probe)",
+          priority: 22,
+          run: async () => {
+            const r = await cffiFetch("https://www.coverfox.com/health-insurance/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", `Coverfox serves HTTP ${r.status} to browserless HTTP; premium quotes require a sessioned quote flow.`);
+          }
+        }
       ]
     };
     registerVerticalWorker(insuranceWorker);

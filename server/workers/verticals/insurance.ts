@@ -7,6 +7,7 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseBankBazaarInsurance } from '../parsers/bankbazaarInsurance';
 import { extractRateRange, buildRateOffer } from '../parsers/publishedRates';
 import { AcquisitionError } from '../../common/httpClient';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 /**
  * Insurer published plan pages (browserless SSR, verified live 13 Oct 2026).
@@ -19,6 +20,7 @@ const INSURER_PAGES: Array<{ sourceId: string; seller: string; url: string; plan
   { sourceId: 'w_insurance_acko', seller: 'Acko', url: 'https://www.acko.com/health-insurance/', planName: 'Acko health plans' },
   { sourceId: 'w_insurance_digit', seller: 'Digit', url: 'https://www.godigit.com/health-insurance', planName: 'Digit health plans' },
   { sourceId: 'w_insurance_hdfcergo', seller: 'HDFC Ergo', url: 'https://www.hdfcergo.com/health-insurance', planName: 'HDFC Ergo health plans' },
+  { sourceId: 'w_insurance_insurancedekho', seller: 'InsuranceDekho', url: 'https://www.insurancedekho.com/health-insurance', planName: 'InsuranceDekho health plans' },
 ];
 
 function insurerPageTask(cfg: (typeof INSURER_PAGES)[number]) {
@@ -32,7 +34,7 @@ function insurerPageTask(cfg: (typeof INSURER_PAGES)[number]) {
       const text = r.body.replace(/<[^>]+>/g, ' ');
       // Sum-insured tiers the page states, e.g. "₹5 lakh to ₹1 crore".
       const sumM = /(?:sum insured[^₹]{0,60}?₹\s*[\d,\.]+\s*(?:lakh|lakhs|crore)[^₹]{0,60}?₹\s*[\d,\.]+\s*(?:lakh|lakhs|crore))|(?:₹|rs\.?\s?)?\d[\d,\.]{0,11}\s*(?:lakh|lakhs|crore)\s*(?:to|-|–)\s*(?:₹|rs\.?\s?)?[\d,\.]{0,11}\s*(?:lakh|lakhs|crore)/i.exec(text);
-      const premM = /(?:premium[^₹₨]{0,60}?|starting\s*(?:at|from))\s*[₹₨]?\s*\d[\d,]*(?:\.\d+)?\s*(?:per\s*(?:month|year|annum|day)|\/\s*(?:month|year)|p\.?a\.?)/i.exec(text);
+      const premM = /(?:premium[^₹₨]{0,60}?|starting\s*(?:at|from)|@)\s*[₹₨]?\s*\d[\d,]*(?:\.\d+)?\s*(?:per\s*(?:month|year|annum|day)|\/\s*(?:month|year|day)|p\.?a\.?)/i.exec(text);
       const facts: any = {
         sumInsured: sumM ? sumM[0].trim() : undefined,
         startingPremium: premM ? premM[0].trim() : undefined,
@@ -77,6 +79,26 @@ export const insuranceWorker: VerticalWorker = {
       },
     },
     ...INSURER_PAGES.map(insurerPageTask),
+    // ---- Owner-mandated insurance sources: attempted live, honestly reported ----
+    {
+      sourceId: 'w_insurance_ditto',
+      name: 'Insurance worker: Ditto (probe)',
+      priority: 21,
+      run: async () => {
+        const r = await cffiFetch('https://www.getditto.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('ACCESS_CHALLENGE', `Ditto (dittoinsurance.com) is unreachable to our acquisition hosts: ${r.status === 200 ? 'page renders but plan quotes require an interactive adviser session' : `HTTP ${r.status}`}.`);
+      },
+    },
+    {
+      sourceId: 'w_insurance_coverfox',
+      name: 'Insurance worker: Coverfox (probe)',
+      priority: 22,
+      run: async () => {
+        const r = await cffiFetch('https://www.coverfox.com/health-insurance/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', `Coverfox serves HTTP ${r.status} to browserless HTTP; premium quotes require a sessioned quote flow.`);
+      },
+    },
   ],
 };
+
 registerVerticalWorker(insuranceWorker);

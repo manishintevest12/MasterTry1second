@@ -8,6 +8,7 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseBankBazaarLoans } from '../parsers/bankbazaarLoans';
 import { extractRateRange, extractProcessingFee, extractLoanAmount, extractTenure, buildRateOffer } from '../parsers/publishedRates';
 import { AcquisitionError } from '../../common/httpClient';
+import { cffiFetch } from '../../common/curlCffiFetch';
 
 /**
  * Published lender rate pages (browserless SSR, verified live 13 Oct 2026).
@@ -19,6 +20,8 @@ const LENDER_PAGES: Array<{ sourceId: string; seller: string; url: string; loanT
   { sourceId: 'w_loans_bajajfinserv', seller: 'Bajaj Finserv', url: 'https://www.bajajfinserv.in/personal-loan-processing-fees-and-interest-rates', loanType: 'personal loan' },
   { sourceId: 'w_loans_hdfc', seller: 'HDFC Bank', url: 'https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan/interest-rates-and-charges', loanType: 'personal loan' },
   { sourceId: 'w_loans_moneyview', seller: 'Money View', url: 'https://moneyview.in/personal-loan-interest-rates-and-charges', loanType: 'personal loan' },
+  { sourceId: 'w_loans_kreditbee', seller: 'KreditBee', url: 'https://www.kreditbee.in/personal-loan', loanType: 'personal loan' },
+  { sourceId: 'w_loans_policybazaar', seller: 'Policybazaar', url: 'https://www.policybazaar.com/personal-loan/', loanType: 'personal loan' },
 ];
 
 /** Generic task factory: fetch the lender page, extract what it publishes, emit one honest offer. */
@@ -79,6 +82,17 @@ export const loansWorker: VerticalWorker = {
       },
     },
     ...LENDER_PAGES.map(lenderPageTask),
+    // ---- Owner-mandated loans source: attempted live, honestly reported ----
+    {
+      sourceId: 'w_loans_navi',
+      name: 'Loans worker: Navi (probe)',
+      priority: 21,
+      run: async () => {
+        const r = await cffiFetch('https://navi.com/personal-loan', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', 'Navi web serves HTTP 403 to browserless HTTP; loan rates are shown only in the app/sessioned flow.');
+      },
+    },
   ],
 };
+
 registerVerticalWorker(loansWorker);
