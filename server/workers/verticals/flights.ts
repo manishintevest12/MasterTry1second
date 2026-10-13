@@ -161,6 +161,46 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
+      sourceId: 'w_flights_budgetair',
+      name: 'Flights worker: BudgetAir/Travix (probe)',
+      priority: 20,
+      run: async () => {
+        const res = await cffiFetch('https://www.budgetair.com/en_us', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
+          'BudgetAir (Travix) search results load only via the sessioned edge-api.travix.com gateway; the flights URL 302s to a marketing home with static per-airline deal tiles, no SSR route fares to browserless HTTP.');
+      },
+    },
+    {
+      sourceId: 'w_flights_gotogate',
+      name: 'Flights worker: Gotogate/Etraveli (probe)',
+      priority: 21,
+      run: async () => {
+        const res = await cffiFetch('https://us.gotogate.com/?customerLanguage=en', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
+          'Gotogate (Etraveli Group) is a full JS shell: search results render client-side from sessioned XHRs, and /en-in returns 404 to browserless HTTP; no SSR fares.');
+      },
+    },
+    {
+      sourceId: 'w_flights_flightnetwork',
+      name: 'Flights worker: FlightNetwork/Etraveli (probe)',
+      priority: 22,
+      run: async () => {
+        const res = await cffiFetch('https://us-en.flightnetwork.com/?customerLanguage=en', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
+          'FlightNetwork (Etraveli Group) serves the same JS shell as Gotogate: route URLs 404, search is client-side only; no SSR fares to browserless HTTP.');
+      },
+    },
+    {
+      sourceId: 'w_flights_holidaybreakz',
+      name: 'Flights worker: HolidayBreakz (probe)',
+      priority: 23,
+      run: async () => {
+        const res = await cffiFetch('https://www.holidaybreakz.com/flightsticket', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
+          'HolidayBreakz is a US-market agency: static USD deal tiles for US cities (SFO/ATL/AUS) on SEO pages; flight/hotel search is a sessioned POST with no SSR fares, no India-route inventory.');
+      },
+    },
+    {
       sourceId: 'w_flights_openflights',
       name: 'Flights worker: OpenFlights airline-route data (worldwide)',
       priority: 10,
