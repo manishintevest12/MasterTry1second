@@ -64,6 +64,14 @@ var init_settings = __esm({
        */
       mysqlUrl: process.env.DB_HOST && process.env.DB_USER && process.env.DB_NAME ? `mysql://${encodeURIComponent(process.env.DB_USER)}:${encodeURIComponent(process.env.DB_PASSWORD || "")}@${process.env.DB_HOST}:${process.env.DB_PORT || "3306"}/${encodeURIComponent(process.env.DB_NAME)}` : process.env.DATABASE_URL || process.env.MYSQL_URL || "",
       redisUrl: process.env.REDIS_URL || "",
+      /**
+       * HTTPS Redis (shared-hosting friendly): Upstash free tier via its REST API.
+       * Works on Hostinger shared hosting (HTTPS-only egress, no TCP 6379 needed).
+       * Set both in hPanel: UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN.
+       * REDIS_URL (ioredis/TCP, KVM4) takes precedence when both are present.
+       */
+      redisRestUrl: process.env.UPSTASH_REDIS_REST_URL || "",
+      redisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN || "",
       geminiApiKey: process.env.GEMINI_API_KEY || "",
       /** First-admin bootstrap: any account registered with this email gets the admin role. */
       adminBootstrapEmail: (process.env.ADMIN_EMAIL || "").toLowerCase(),
@@ -191,62 +199,96 @@ async function getRedis() {
   }
   return redis;
 }
+async function restGet(key) {
+  if (!settings.redisRestUrl) return null;
+  try {
+    const r = await fetch(`${settings.redisRestUrl}/get/${encodeURIComponent(key)}`, {
+      headers: settings.redisRestToken ? { Authorization: `Bearer ${settings.redisRestToken}` } : {}
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return typeof j?.result === "string" ? j.result : null;
+  } catch {
+    return null;
+  }
+}
+async function restSet(key, value, ttlSec) {
+  if (!settings.redisRestUrl) return;
+  try {
+    await fetch(settings.redisRestUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...settings.redisRestToken ? { Authorization: `Bearer ${settings.redisRestToken}` } : {}
+      },
+      body: JSON.stringify(["SET", key, value, "EX", Math.max(60, ttlSec)])
+    });
+  } catch {
+  }
+}
+async function l2Get(key) {
+  const r = await getRedis();
+  if (r) {
+    try {
+      const v = await r.get(`t1s:${key}`);
+      if (v) return v;
+    } catch {
+    }
+  }
+  return restGet(`t1s:${key}`);
+}
+async function l2Set(key, value, ttlSec) {
+  if (value.length > MAX_L2_BYTES) return;
+  const r = await getRedis();
+  if (r) {
+    try {
+      await r.set(`t1s:${key}`, value, "EX", ttlSec);
+    } catch {
+    }
+  }
+  if (!r || settings.redisRestUrl) await restSet(`t1s:${key}`, value, ttlSec);
+}
+async function cacheGet(key) {
+  const now = Date.now();
+  const l1e = l1.get(key);
+  if (l1e && l1e.expiresAt > now) return { value: l1e.value, fresh: true, stale: false };
+  if (l1e && l1e.staleUntil > now) return { value: l1e.value, fresh: false, stale: true };
+  const raw = await l2Get(key);
+  if (raw) {
+    try {
+      return { value: JSON.parse(raw), fresh: false, stale: true };
+    } catch {
+      return { value: null, fresh: false, stale: false };
+    }
+  }
+  return { value: null, fresh: false, stale: false };
+}
+function cachePut(key, value, ttlSec, staleSec) {
+  const stale = (staleSec ?? ttlSec * 3) * 1e3;
+  l1.set(key, { value, expiresAt: Date.now() + ttlSec * 1e3, staleUntil: Date.now() + stale });
+  const payload = JSON.stringify(value);
+  void l2Set(key, payload, ttlSec);
+}
+function revalidateInBackground(key, ttlSec, refresh) {
+  if (inflight.has(key)) return;
+  const p = (async () => {
+    const done = await withLock(`swr:${key}`, async () => {
+      const v = await refresh();
+      if (v !== void 0 && v !== null) cachePut(key, v, ttlSec);
+      return true;
+    });
+    return done;
+  })().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  p.catch(() => void 0);
+}
 async function initCache() {
   await getRedis();
+  if (settings.redisRestUrl && !settings.redisUrl) log.info("Cache", "L2 Upstash REST connected (shared-hosting mode)");
 }
 function buildCacheKey(parts) {
   const normalized = Object.keys(parts).sort().map((k) => `${k}=${parts[k] ?? ""}`).join("|");
   return import_crypto.default.createHash("sha1").update(normalized).digest("hex").slice(0, 32);
-}
-async function cached(key, ttlSec, loader, opts = {}) {
-  const now = Date.now();
-  const l1e = l1.get(key);
-  if (l1e && l1e.expiresAt > now) {
-    return { value: l1e.value, fresh: true, stale: false };
-  }
-  if (l1e && opts.allowStale !== false && l1e.staleUntil > now) {
-    if (!inflight.has(key)) {
-      inflight.set(key, loader().then((v) => {
-        l1.set(key, { value: v, expiresAt: Date.now() + ttlSec * 1e3, staleUntil: Date.now() + (opts.staleWhileRevalidateSec ?? ttlSec * 3) * 1e3 });
-        return v;
-      }).finally(() => inflight.delete(key)));
-    }
-    return { value: l1e.value, fresh: false, stale: true };
-  }
-  if (inflight.has(key)) {
-    const v = await inflight.get(key);
-    return { value: v, fresh: true, stale: false };
-  }
-  const p = (async () => {
-    const r = await getRedis();
-    if (r) {
-      try {
-        const raw = await r.get(`t1s:${key}`);
-        if (raw) {
-          const value2 = JSON.parse(raw);
-          l1.set(key, { value: value2, expiresAt: now + ttlSec * 1e3, staleUntil: now + (opts.staleWhileRevalidateSec ?? ttlSec * 3) * 1e3 });
-          return value2;
-        }
-      } catch {
-      }
-    }
-    const value = await loader();
-    l1.set(key, { value, expiresAt: Date.now() + ttlSec * 1e3, staleUntil: Date.now() + (opts.staleWhileRevalidateSec ?? ttlSec * 3) * 1e3 });
-    if (r) {
-      try {
-        await r.set(`t1s:${key}`, JSON.stringify(value), "EX", ttlSec);
-      } catch {
-      }
-    }
-    return value;
-  })();
-  inflight.set(key, p);
-  try {
-    const v = await p;
-    return { value: v, fresh: true, stale: false };
-  } finally {
-    inflight.delete(key);
-  }
 }
 async function withLock(name, fn, opts = {}) {
   if (locks.has(name)) return null;
@@ -271,9 +313,10 @@ async function withLock(name, fn, opts = {}) {
   }
 }
 function cacheStats() {
-  return { l1Entries: l1.size, l1MaxAgeMs: 10 * 60 * 1e3, inflight: inflight.size, l2: settings.redisUrl ? "redis" : "disabled" };
+  const l2 = settings.redisUrl ? "redis" : settings.redisRestUrl ? "redis-rest" : "disabled";
+  return { l1Entries: l1.size, l1MaxAgeMs: 10 * 60 * 1e3, inflight: inflight.size, l2 };
 }
-var import_crypto, l1, inflight, locks, redis, redisTried;
+var import_crypto, l1, inflight, locks, redis, redisTried, MAX_L2_BYTES;
 var init_cache = __esm({
   "server/common/cache.ts"() {
     import_crypto = __toESM(require("crypto"), 1);
@@ -284,6 +327,7 @@ var init_cache = __esm({
     locks = /* @__PURE__ */ new Set();
     redis = null;
     redisTried = false;
+    MAX_L2_BYTES = 900 * 1024;
   }
 });
 
@@ -8290,6 +8334,10 @@ function rowToOffer(row, isLiveNow) {
     }
   };
 }
+function searchCacheTtl(vertical) {
+  if (["flights", "hotels", "bus", "cab", "movies"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
+  return { ttlSec: 900, staleSec: 2700 };
+}
 async function runSearch(input) {
   const totalStart = Date.now();
   let parsed = understandQuery(input.query, {
@@ -8324,13 +8372,52 @@ async function runSearch(input) {
     pax: parsed.parties?.passengers || parsed.parties?.guests,
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : ""
   });
-  const cachedSearch = await cached(cacheKey, 60, async () => null);
-  if (cachedSearch.value && cachedSearch.fresh) {
+  const { ttlSec, staleSec } = searchCacheTtl(vertical);
+  const cachedSearch = await cacheGet(cacheKey);
+  if (cachedSearch.value) {
     const v = cachedSearch.value;
+    for (const o of v.results) {
+      if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
+      if (o.provenance) o.provenance.replayedFromCache = true;
+    }
     v.state.servedFrom = "cache";
+    v.state.reusedCache = true;
     v.latencyMs = Date.now() - totalStart;
+    v.totalSearchLatencyMs = v.latencyMs;
+    if (!cachedSearch.fresh) {
+      revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
+    }
     return v;
   }
+  const response = await runLivePipeline(input, parsed);
+  cachePut(cacheKey, response, ttlSec, staleSec);
+  return response;
+}
+async function runLivePipeline(input, parsedIn) {
+  const totalStart = Date.now();
+  let parsed = parsedIn ?? understandQuery(input.query, {
+    pincode: input.pincode,
+    city: input.city,
+    lat: input.lat,
+    lng: input.lng
+  });
+  if (input.vertical) parsed.vertical = input.vertical;
+  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...input.travelDates.return ? { return: input.travelDates.return } : {} };
+  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
+  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
+  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
+    parsed = await aiAssistedUnderstanding(parsed);
+  }
+  const vertical = parsed.vertical || "ecommerce";
+  parsed.vertical = vertical;
+  const state = {
+    servedFrom: "unavailable",
+    sourcesAttempted: [],
+    sourcesSucceeded: [],
+    sourcesFailed: [],
+    reusedCatalogue: false,
+    triggeredRefresh: false
+  };
   const catalogueRows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
   const eligible = catalogueRows.filter((r) => {
@@ -10004,7 +10091,7 @@ var init_routes = __esm({
         status: "online",
         engine: "Try1Second Independent Metasearch Engine v1.0",
         dataSource: store2.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
-        l2Cache: settings.redisUrl ? "redis" : "disabled (set REDIS_URL on KVM4)",
+        l2Cache: settings.redisUrl ? "redis" : settings.redisRestUrl ? "redis-rest (Upstash HTTPS)" : "disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)",
         searchApi: settings.searchApi.enabled ? "optional-adapter-enabled" : "optional-adapter-disabled",
         productionWarnings: missing,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
@@ -10939,7 +11026,7 @@ async function buildCoverageReport(windowHours = 24) {
   const latencies = searches.map((s) => Number(s.latency_ms)).filter((n) => Number.isFinite(n) && n >= 0);
   const nonInvalid = offerRows.filter((o) => o.validation_status !== "INVALID");
   const fresh = nonInvalid.filter((o) => ["LIVE_VERIFIED", "FRESH"].includes(o.freshness_status));
-  const cached2 = nonInvalid.filter((o) => o.freshness_status === "CACHED_VERIFIED");
+  const cached = nonInvalid.filter((o) => o.freshness_status === "CACHED_VERIFIED");
   const stale = nonInvalid.filter((o) => ["AGING", "STALE", "EXPIRED"].includes(o.freshness_status));
   const avail = nonInvalid.filter((o) => ["in_stock", "available", "confirmed"].includes(o.availability));
   return {
@@ -10954,7 +11041,7 @@ async function buildCoverageReport(windowHours = 24) {
     catalogue: {
       offersTotal: offerRows.length,
       freshVerified: ratio(fresh.length, nonInvalid.length),
-      cachedVerified: ratio(cached2.length, nonInvalid.length),
+      cachedVerified: ratio(cached.length, nonInvalid.length),
       staleOrExpired: ratio(stale.length, nonInvalid.length),
       withVerifiedAvailability: ratio(avail.length, nonInvalid.length)
     },
@@ -12015,6 +12102,103 @@ var init_api = __esm({
   }
 });
 
+// server/cron/warm.ts
+var warm_exports = {};
+__export(warm_exports, {
+  bootWarm: () => bootWarm
+});
+async function warmRows(rows, tag) {
+  let ok = 0;
+  for (const r of rows) {
+    try {
+      const res = await runSearch({
+        query: String(r.raw_query || r.query || ""),
+        vertical: r.v || r.vertical ? String(r.v || r.vertical) : void 0,
+        pincode: r.pincode ? String(r.pincode) : void 0,
+        city: r.city ? String(r.city) : void 0
+      });
+      ok += 1;
+      log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
+    } catch (e) {
+      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
+    }
+  }
+  log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
+}
+async function bootWarm() {
+  try {
+    const store2 = getStore();
+    const rows = await store2.query(
+      `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
+       FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
+       GROUP BY raw_query, v, pincode, city
+       ORDER BY COUNT(*) DESC LIMIT 6`
+    ).catch(() => []);
+    const targets = rows.length > 0 ? rows : SEED_QUERIES.slice(0, 6);
+    log.info("Cron", `Boot-warm starting (${targets.length} queries, background)`);
+    void warmRows(targets, "BootWarm");
+  } catch (e) {
+    log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+async function main() {
+  const args = process.argv.slice(2);
+  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
+  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
+  await runMigrations();
+  const store2 = getStore();
+  const rows = await store2.query(
+    `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
+     FROM searches
+     WHERE created_at > (NOW() - INTERVAL 7 DAY)
+     ${verticalFilter ? "AND COALESCE(detected_vertical, vertical) = ?" : ""}
+     GROUP BY raw_query, v, pincode, city
+     ORDER BY n DESC
+     LIMIT ?`,
+    verticalFilter ? [verticalFilter, limit] : [limit]
+  );
+  const useSeed = rows.length === 0 || args.includes("--seed");
+  if (rows.length === 0 && !useSeed) {
+    log.info("Cron", "Warmer: no recent queries to warm yet");
+    process.exit(0);
+  }
+  if (useSeed) {
+    log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
+    await warmRows(SEED_QUERIES, "Cron");
+    process.exit(0);
+  }
+  await warmRows(rows, "Cron");
+  process.exit(0);
+}
+var SEED_QUERIES;
+var init_warm = __esm({
+  "server/cron/warm.ts"() {
+    init_db();
+    init_searchOrchestrator();
+    init_logger();
+    SEED_QUERIES = [
+      { query: "mobile phone", vertical: "ecommerce" },
+      { query: "milk", vertical: "grocery", city: "Indore" },
+      { query: "biryani", vertical: "food", city: "Indore" },
+      { query: "movies", vertical: "movies", city: "Indore" },
+      { query: "Indore to Bhopal", vertical: "bus", city: "Indore" },
+      { query: "Indore to Bhopal", vertical: "cab", city: "Indore" },
+      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore" },
+      { query: "Indore", vertical: "hotels", city: "Indore" },
+      { query: "personal loan", vertical: "loans" },
+      { query: "health insurance", vertical: "insurance" },
+      { query: "iphone", vertical: "ecommerce" },
+      { query: "pizza", vertical: "food", city: "Indore" },
+      { query: "delhi to jaipur", vertical: "bus" },
+      { query: "goa", vertical: "hotels" }
+    ];
+    main().catch((e) => {
+      log.error("Cron", "Warmer crashed", { error: String(e) });
+      process.exit(1);
+    });
+  }
+});
+
 // server.prod.ts
 var import_path5 = __toESM(require("path"), 1);
 var import_fs4 = __toESM(require("fs"), 1);
@@ -12041,6 +12225,7 @@ async function createApp() {
   if (settings2.env !== "test") {
     startWorkers2();
     bootstrapAffiliateSync2();
+    Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
   }
   const dist = import_path4.default.resolve(__dirname2, "dist");
   if (import_fs3.default.existsSync(dist)) {
