@@ -21,6 +21,7 @@ import {
 import { ComparisonItem, SellerQuote } from '../types';
 import { useApp } from '../context/AppContext';
 import { ImagePreviewModal } from './ImagePreviewModal';
+import type { OfferGroup } from '../utils/offerGroups';
 
 const DEFAULT_VERTICAL_IMAGES: Record<string, string> = {
   flights: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=600&q=80',
@@ -75,10 +76,24 @@ const getLogoStyle = (item: ComparisonItem) => {
 };
 
 interface ComparisonCardProps {
-  item: ComparisonItem;
+  item?: ComparisonItem;
+  /** Grouped mode: one product published by several websites = ONE card, cheapest on top. */
+  group?: OfferGroup;
 }
 
-export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
+export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, group }) => {
+  // In grouped mode the card is the product's richest listing, priced and linked by its CHEAPEST site.
+  const item: ComparisonItem = group
+    ? ({
+        ...group.lead,
+        primaryPrice: group.best.price,
+        priceAvailable: group.best.priceAvailable,
+        originalPrice: group.best.item.originalPrice,
+        sellerQuotes: group.rows.flatMap((r) => r.item.sellerQuotes.slice(0, 1)).map((q, i) => ({ ...q, isLowest: i === 0 })),
+      } as ComparisonItem)
+    : (itemProp as ComparisonItem);
+  const siteRows = group && group.rows.length > 1 ? group.rows : [];
+  const [compareOpen, setCompareOpen] = useState<boolean>(false);
   const {
     trackedItemIds,
     toggleTrackPrice,
@@ -815,6 +830,54 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
             </div>
           )}
         </div>
+      )}
+
+      {/* One product, several websites: cheapest is the card price; the arrow lists every site (cheapest first). */}
+      {siteRows.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setCompareOpen((o) => !o)}
+            className="w-full flex items-center justify-between px-4 sm:px-5 py-2.5 border-t border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+          >
+            <span>
+              Compare {siteRows.length} websites
+              {group?.highest && group.highest > group.best.price && !['loans', 'insurance'].includes(item.vertical)
+                ? ` · save up to ₹${(group.highest - group.best.price).toLocaleString('en-IN')}`
+                : ''}
+            </span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${compareOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {compareOpen && (
+            <div className="border-t border-slate-100 divide-y divide-slate-100">
+              {siteRows.map((r, i) => {
+                const q = r.item.sellerQuotes.find((x) => x.isLowest) || r.item.sellerQuotes[0];
+                const isRate = ['loans', 'insurance'].includes(item.vertical);
+                return (
+                  <div key={r.item.id + i} className="flex items-center gap-3 px-4 sm:px-5 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-slate-800 truncate">{r.site}</p>
+                      {i === 0 && r.priceAvailable && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Lowest price</span>
+                      )}
+                    </div>
+                    <p className={`text-base font-black ${i === 0 && r.priceAvailable ? 'text-emerald-700' : 'text-slate-900'}`}>
+                      {!r.priceAvailable ? 'Price on site' : isRate ? `${r.price}%` : `₹${r.price.toLocaleString('en-IN')}`}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={!q}
+                      onClick={() => q && startRedirection(r.item, q)}
+                      className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <span>View</span><ExternalLink className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* Lightbox Photo Preview Modal for Image Verticals */}

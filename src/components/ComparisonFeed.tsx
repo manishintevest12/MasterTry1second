@@ -6,6 +6,7 @@ import { ComparisonCard } from './ComparisonCard';
 import { TravelDealRow } from './TravelDealRow';
 import { HotelDealCard } from './HotelDealCard';
 import { groupHotels } from '../utils/hotelGroups';
+import { groupOffers } from '../utils/offerGroups';
 import { NativeAdCard } from './NativeAdCard';
 import { VERTICAL_META } from '../data/mockData';
 import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X } from 'lucide-react';
@@ -137,8 +138,20 @@ export const ComparisonFeed: React.FC = () => {
     else gs.sort((a, b) => (b.rows.length - a.rows.length) || ((b.rating10 || 0) - (a.rating10 || 0)) || (a.best.price - b.best.price));
     return gs;
   }, [isHotels, sorted, sortOption]);
-  const totalCount = isHotels ? hotelGroups.length : sorted.length;
-  const visibleItems = sorted.slice(0, visibleCount);
+  // Every other vertical: ONE card per product, however many websites sell it. The card shows the
+  // cheapest site; the arrow lists the rest (cheapest first), exactly like flights/hotels comparison.
+  const offerGroups = React.useMemo(() => {
+    if (isHotels) return [];
+    const gs = groupOffers(sorted);
+    const priceOf = (g: (typeof gs)[number]) => (g.best.priceAvailable ? g.best.price : Infinity);
+    if (sortOption === 'cheapest') gs.sort((a, b) => priceOf(a) - priceOf(b));
+    else if (sortOption === 'highest_rated') gs.sort((a, b) => (b.lead.rating || 0) - (a.lead.rating || 0));
+    else gs.sort((a, b) => (b.rows.length - a.rows.length) || (priceOf(a) - priceOf(b)));
+    return gs;
+  }, [isHotels, sorted, sortOption]);
+  const totalCount = isHotels ? hotelGroups.length : offerGroups.length;
+  const visibleGroups = offerGroups.slice(0, visibleCount);
+  const visibleItems = visibleGroups;
   const visibleHotels = hotelGroups.slice(0, visibleCount);
   // The 'Load More' button only appears if there are at least 4 results currently displayed and more items remain
   const shouldShowLoadMore = (isHotels ? visibleHotels.length : visibleItems.length) >= 4 && visibleCount < totalCount;
@@ -269,10 +282,10 @@ export const ComparisonFeed: React.FC = () => {
               {/* Standard Organic Result Cards */}
               {isHotels
                 ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
-                : visibleItems.map((item) => (
-                    ['flights', 'bus', 'cab'].includes(item.vertical)
-                      ? <TravelDealRow key={item.id} item={item} />
-                      : <ComparisonCard key={item.id} item={item} />
+                : visibleGroups.map((g) => (
+                    ['flights', 'bus', 'cab'].includes(g.vertical)
+                      ? <TravelDealRow key={g.key + g.best.item.id} group={g} />
+                      : <ComparisonCard key={g.key + g.best.item.id} group={g} />
                   ))}
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
