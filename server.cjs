@@ -2951,13 +2951,14 @@ var init_emtFareCalendar = __esm({
 
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
-  const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
+  const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
-  const strip = (s) => s.replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|direct|return|one-way|oneway|round trip)\b/gi, "").replace(/,.*$/, "").trim();
-  const from = strip(m[1]);
-  const to = strip(m[2]).replace(/\b(on|for|tomorrow|today|night|morning|evening|at)\b.*$/i, "").trim();
+  const codeOf = (s) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
+  const clean = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
+  const from = clean(m[1]);
+  const to = clean(m[2]);
   if (!from || !to) return null;
-  return { from, to };
+  return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
 var URL_AP, flightsWorker;
 var init_flights = __esm({
@@ -3045,10 +3046,11 @@ var init_flights = __esm({
               tirupati: "TIR"
             };
             const code = (s) => IATA[s.toLowerCase().trim()] || null;
-            const from = code(rt.from);
-            const to = code(rt.to);
+            const from = rt.fromCode || code(rt.from);
+            const to = rt.toCode || code(rt.to);
             if (!from || !to) return [];
-            const base = new Date(Date.now() + 7 * 864e5);
+            const dIso = ctx.query?.travelDates?.depart;
+            const base = dIso && /^\d{4}-\d{2}-\d{2}$/.test(dIso) ? /* @__PURE__ */ new Date(`${dIso}T00:00:00`) : new Date(Date.now() + 7 * 864e5);
             const dd = String(base.getDate()).padStart(2, "0");
             const mm = String(base.getMonth() + 1).padStart(2, "0");
             const yy = base.getFullYear();
@@ -3681,7 +3683,6 @@ var init_cab = __esm({
       vertical: "cab",
       tasks: [
         {
-          // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
           // ---- Owner-mandated cab sources: attempted live on every cab search, honestly reported ----
           sourceId: "w_cab_ola",
           name: "Cab worker: Ola (probe)",
@@ -3729,6 +3730,7 @@ var init_cab = __esm({
           }
         },
         {
+          // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
           sourceId: "w_cab_savaari",
           name: "Cab worker: Savaari outstation route fares",
           priority: 5,
@@ -4952,9 +4954,6 @@ var init_bus = __esm({
           }
         },
         {
-          // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
-          // /wap/SearchStations resolves city -> station id, /buslist/v3/services
-          // returns live per-service fares, timings, bus type and seat counts.
           // ---- Owner-mandated bus sources: attempted live on every bus search, honestly reported ----
           sourceId: "w_bus_makemytrip",
           name: "Bus worker: MakeMyTrip bus (probe)",
@@ -4989,6 +4988,9 @@ var init_bus = __esm({
           }
         },
         {
+          // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
+          // /wap/SearchStations resolves city -> station id, /buslist/v3/services
+          // returns live per-service fares, timings, bus type and seat counts.
           sourceId: "w_bus_abhibus",
           name: "Bus worker: AbhiBus live services (real fares, timings, seats)",
           priority: 1,
@@ -6150,6 +6152,11 @@ function hashOf(...parts) {
 }
 function offerDedupKey(o) {
   const identity = o.identifiers.gtin || o.identifiers.ean || o.identifiers.upc || o.identifiers.sku || `${o.brand || ""}:${o.title}`.toLowerCase();
+  if (["hotels", "flights", "bus", "cab", "movies"].includes(String(o.vertical))) {
+    const svc = String(o.attributes?.["flight_number"] ?? o.attributes?.["flight number"] ?? o.attributes?.["departure"] ?? o.attributes?.["departure_time"] ?? o.attributes?.["departure time"] ?? "");
+    const price = String(o.prices?.effectivePrice ?? "");
+    return `${o.vertical}|${identity}|${o.seller.toLowerCase()}|${o.travel?.date || ""}|${o.travel?.route || ""}|${svc}|${o.vertical === "hotels" ? "" : price}`;
+  }
   return `${identity}|${o.seller.toLowerCase()}|${o.location?.pincode || ""}|${o.attributes && Object.keys(o.attributes).length ? JSON.stringify(o.attributes) : ""}`;
 }
 function dedupeOffers(offers) {
@@ -6601,6 +6608,45 @@ function filterByQueryEntity(offers, query) {
     return hits >= Math.ceil(tokens.length / 2);
   });
 }
+function normPlace(x) {
+  const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
+  let t = x.replace(/\([^)]*\)/g, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/g, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(PLACE_NOISE, " ").replace(/[,.]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  t = PLACE_ALIASES[t] || t;
+  return { code, city: t };
+}
+function parseRouteQuery(raw) {
+  const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
+  if (!m) return null;
+  const from = normPlace(m[1].replace(/^\s*from\s+/i, "")), to = normPlace(m[2]);
+  if (!from.city || !to.city) return null;
+  return { from, to };
+}
+function placeHit(text, side) {
+  const s = (text || "").toLowerCase();
+  const alias = Object.entries(PLACE_ALIASES).filter(([, v]) => v === side.city).map(([k]) => k);
+  return !!(side.code && new RegExp(`\\b${side.code}\\b`, "i").test(s) || side.city && (s.includes(side.city) || alias.some((a) => s.includes(a))));
+}
+function routeFilter(offers, query) {
+  const rt = parseRouteQuery(query.rawQuery || "");
+  if (!rt) return offers;
+  return offers.filter((o) => {
+    const r = String(o.travel?.route || o.attributes?.["route"] || "").toLowerCase();
+    if (!r) return false;
+    const [src2 = "", dst = ""] = r.split(/\s+(?:to|→|->)\s+/);
+    return placeHit(src2, rt.from) && placeHit(dst, rt.to);
+  });
+}
+function destinationFilter(offers, query) {
+  const q3 = normPlace(query.rawQuery || "");
+  const city = (query.location?.city || "").toLowerCase();
+  const target = q3.city || city;
+  if (!target) return offers;
+  const kept = offers.filter((o) => {
+    const hay = `${o.location?.city || ""} ${o.attributes?.["destination"] || ""} ${o.attributes?.["city"] || ""} ${o.title}`.toLowerCase();
+    return hay.includes(target);
+  });
+  return kept;
+}
 function travelFilter(offers, query) {
   if (!query.travelDates?.depart) return offers;
   return offers.filter((o) => !o.travel?.date || o.travel.date === query.travelDates.depart);
@@ -6616,7 +6662,7 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var NON_COMPARISON_VERTICALS, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
+var NON_COMPARISON_VERTICALS, PLACE_ALIASES, PLACE_NOISE, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
     NON_COMPARISON_VERTICALS = [
@@ -6634,6 +6680,17 @@ var init_verticalEngine = __esm({
       "loans",
       "movies"
     ];
+    PLACE_ALIASES = {
+      "new delhi": "delhi",
+      "bengaluru": "bangalore",
+      "bombay": "mumbai",
+      "calcutta": "kolkata",
+      "madras": "chennai",
+      "gurugram": "gurgaon",
+      "poona": "pune",
+      "baroda": "vadodara"
+    };
+    PLACE_NOISE = /\b(flight|flights|bus|buses|cab|cabs|taxi|ticket|tickets|book|booking|fare|fares|price|prices|from|cheapest|cheap|direct|return|one-way|oneway|airport|volvo|sleeper|ac|non-ac|hotel|hotels|in|near|around|at|on|for|tomorrow|today|tonight|night|morning|evening|next\s+\w+|this\s+\w+)\b/gi;
     VerticalEngine = class {
       constructor(config) {
         this.config = config;
@@ -6671,32 +6728,15 @@ var init_verticalEngine = __esm({
         super({
           vertical: "flights",
           displayName: "Flights",
-          postProcess: (offers, query) => {
-            const m = query.rawQuery.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
-            if (!m) return offers;
-            const norm = (x) => {
-              const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
-              let t = x.replace(/\([^)]*\)/g, "").replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, "").replace(/\b(on|for|at|tomorrow|today|tonight|night|morning|evening|next\s+\w+)\b/gi, "").replace(/\b\d{1,2}[a-z]*\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, "").replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-              if (t === "new delhi") t = "delhi";
-              if (t === "bengaluru") t = "bangalore";
-              if (t === "bombay") t = "mumbai";
-              return { code, city: t };
-            };
-            const a = norm(m[1]), b = norm(m[2]);
-            const hit = (route, side) => side.code && new RegExp(`\\b${side.code}\\b`, "i").test(route) || side.city && route.includes(side.city);
-            return offers.filter((o) => {
-              const r = (o.travel?.route || "").toLowerCase();
-              if (!r) return false;
-              const [src2 = "", dst = ""] = r.split(/\s+to\s+/);
-              return hit(src2, a) && hit(dst, b);
-            });
-          }
+          // ONLY offers for the typed route may be shown (a cached Delhi->Mumbai fare must never
+          // appear for a Patna->Delhi search).
+          postProcess: (offers, query) => routeFilter(offers, query)
         });
       }
     };
     HotelEngine = class extends VerticalEngine {
       constructor() {
-        super({ vertical: "hotels", displayName: "Hotels", postProcess: (offers) => offers.map((o) => {
+        super({ vertical: "hotels", displayName: "Hotels", postProcess: (offers, query) => destinationFilter(offers, query).map((o) => {
           return { ...o, attributes: { ...o.attributes, unit: o.attributes["unit"] || "per night" } };
         }) });
       }
@@ -6706,7 +6746,7 @@ var init_verticalEngine = __esm({
         super({
           vertical: "cab",
           displayName: "Cabs & Mobility",
-          postProcess: (offers) => offers.map((o) => ({
+          postProcess: (offers, query) => routeFilter(offers, query).map((o) => ({
             ...o,
             // Stale fares are never presented as guaranteed booking prices (Section 12)
             attributes: { ...o.attributes, fare_type: o.freshnessStatus === "LIVE_VERIFIED" ? "live_estimate" : "indicative_only" }
@@ -6738,7 +6778,7 @@ var init_verticalEngine = __esm({
     };
     BusEngine = class extends VerticalEngine {
       constructor() {
-        super({ vertical: "bus", displayName: "Bus Travel" });
+        super({ vertical: "bus", displayName: "Bus Travel", postProcess: (offers, query) => routeFilter(offers, query) });
       }
     };
     FoodDeliveryEngine = class extends VerticalEngine {
@@ -7143,7 +7183,10 @@ async function runSearch(input) {
   } else {
     state.sourcesAttempted = [];
   }
-  let combined = dedupeOffers([...liveOffers, ...catalogueOffers]);
+  const liveIdentity = (o) => `${o.vertical}|${o.title.toLowerCase()}|${o.seller.toLowerCase()}|${o.travel?.date || ""}|${o.travel?.route || ""}`;
+  const liveKeys = new Set(liveOffers.map(liveIdentity));
+  const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)));
+  let combined = dedupeOffers([...liveOffers, ...supplementary]);
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);

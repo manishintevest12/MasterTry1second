@@ -47,9 +47,6 @@ export const busWorker: VerticalWorker = {
       },
     },
     {
-      // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
-      // /wap/SearchStations resolves city -> station id, /buslist/v3/services
-      // returns live per-service fares, timings, bus type and seat counts.
       // ---- Owner-mandated bus sources: attempted live on every bus search, honestly reported ----
       sourceId: 'w_bus_makemytrip',
       name: 'Bus worker: MakeMyTrip bus (probe)',
@@ -84,6 +81,9 @@ export const busWorker: VerticalWorker = {
       },
     },
     {
+      // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
+      // /wap/SearchStations resolves city -> station id, /buslist/v3/services
+      // returns live per-service fares, timings, bus type and seat counts.
       sourceId: 'w_bus_abhibus',
       name: 'Bus worker: AbhiBus live services (real fares, timings, seats)',
       priority: 1,

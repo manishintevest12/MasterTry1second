@@ -158,7 +158,12 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   }
 
   // 7. COMBINE: live results first (fresher), catalogue supplements without being relabeled
-  let combined = dedupeOffers([...liveOffers, ...catalogueOffers]);
+  // A catalogue replay of a listing that was just acquired live is strictly poorer (attributes are
+  // not round-tripped), so it is dropped; catalogue rows only supplement listings live did not return.
+  const liveIdentity = (o: NormalizedOffer) => `${o.vertical}|${o.title.toLowerCase()}|${o.seller.toLowerCase()}|${o.travel?.date || ''}|${o.travel?.route || ''}`;
+  const liveKeys = new Set(liveOffers.map(liveIdentity));
+  const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)));
+  let combined = dedupeOffers([...liveOffers, ...supplementary]);
 
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules
   const engine = getVerticalEngine(vertical as any);

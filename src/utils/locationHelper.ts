@@ -280,13 +280,13 @@ export const PINCODE_DATABASE: Record<string, PincodeEntry> = {
 };
 
 export const DEFAULT_USER_LOCATION: UserLocationState = {
-  address: 'Connaught Place, Central Delhi',
-  locality: 'Connaught Place',
-  city: 'New Delhi',
-  pincode: '110001',
-  coordinates: { lat: 28.6315, lng: 77.2167 },
+  address: 'Chappan Dukan / MG Road, Indore',
+  locality: 'Chappan Dukan / MG Road',
+  city: 'Indore',
+  pincode: '452001',
+  coordinates: { lat: 22.7196, lng: 75.8577 },
   isGps: false,
-  accuracyText: 'Default Pincode (110001)',
+  accuracyText: 'Default Pincode (452001)',
 };
 
 /**

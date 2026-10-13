@@ -39,6 +39,60 @@ function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): Nor
   });
 }
 
+
+// ---------- Shared place/route matching (search must reflect what the user typed) ----------
+const PLACE_ALIASES: Record<string, string> = {
+  'new delhi': 'delhi', 'bengaluru': 'bangalore', 'bombay': 'mumbai', 'calcutta': 'kolkata',
+  'madras': 'chennai', 'gurugram': 'gurgaon', 'poona': 'pune', 'baroda': 'vadodara',
+};
+const PLACE_NOISE = /\b(flight|flights|bus|buses|cab|cabs|taxi|ticket|tickets|book|booking|fare|fares|price|prices|from|cheapest|cheap|direct|return|one-way|oneway|airport|volvo|sleeper|ac|non-ac|hotel|hotels|in|near|around|at|on|for|tomorrow|today|tonight|night|morning|evening|next\s+\w+|this\s+\w+)\b/gi;
+export function normPlace(x: string): { code?: string; city: string } {
+  const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
+  let t = x.replace(/\([^)]*\)/g, ' ')
+    .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, ' ')
+    .replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/g, ' ')
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
+    .replace(PLACE_NOISE, ' ').replace(/[,.]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  t = PLACE_ALIASES[t] || t;
+  return { code, city: t };
+}
+/** Extract {from,to} from free text like "patna to ranchi bus", "DEL → BOM", "from indore to bhopal". */
+export function parseRouteQuery(raw: string): { from: { code?: string; city: string }; to: { code?: string; city: string } } | null {
+  const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
+  if (!m) return null;
+  const from = normPlace(m[1].replace(/^\s*from\s+/i, '')), to = normPlace(m[2]);
+  if (!from.city || !to.city) return null;
+  return { from, to };
+}
+function placeHit(text: string, side: { code?: string; city: string }): boolean {
+  const s = (text || '').toLowerCase();
+  const alias = Object.entries(PLACE_ALIASES).filter(([, v]) => v === side.city).map(([k]) => k);
+  return !!((side.code && new RegExp(`\\b${side.code}\\b`, 'i').test(s)) || (side.city && (s.includes(side.city) || alias.some((a) => s.includes(a)))));
+}
+/** Keep only offers whose route matches the typed route (both ends). Offers with no route cannot prove relevance. */
+export function routeFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
+  const rt = parseRouteQuery(query.rawQuery || '');
+  if (!rt) return offers;
+  return offers.filter((o) => {
+    const r = String(o.travel?.route || o.attributes?.['route'] || '').toLowerCase();
+    if (!r) return false;
+    const [src = '', dst = ''] = r.split(/\s+(?:to|→|->)\s+/);
+    return placeHit(src, rt.from) && placeHit(dst, rt.to);
+  });
+}
+/** Keep only offers located in the typed city/destination (hotels, food, grocery browse). */
+export function destinationFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
+  const q = normPlace(query.rawQuery || '');
+  const city = (query.location?.city || '').toLowerCase();
+  const target = q.city || city;
+  if (!target) return offers;
+  const kept = offers.filter((o) => {
+    const hay = `${o.location?.city || ''} ${o.attributes?.['destination'] || ''} ${o.attributes?.['city'] || ''} ${o.title}`.toLowerCase();
+    return hay.includes(target);
+  });
+  return kept;
+}
+
 function travelFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   if (!query.travelDates?.depart) return offers;
   return offers.filter((o) => !o.travel?.date || o.travel.date === query.travelDates!.depart);
@@ -84,36 +138,16 @@ class FlightEngine extends VerticalEngine {
     super({
       vertical: 'flights',
       displayName: 'Flights',
-      postProcess: (offers, query) => {
-        // When the query expresses a route, ONLY offers for that route may be shown.
-        // (A cached Delhi->Mumbai offer must never appear for a Delhi->Dubai search.)
-        const m = query.rawQuery.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
-        if (!m) return offers;
-        const norm = (x: string) => {
-          const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
-          let t = x.replace(/\([^)]*\)/g, '').replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, '').replace(/\b(on|for|at|tomorrow|today|tonight|night|morning|evening|next\s+\w+)\b/gi, '').replace(/\b\d{1,2}[a-z]*\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, '').replace(/\b\d{4}-\d{2}-\d{2}\b/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-          if (t === 'new delhi') t = 'delhi';
-          if (t === 'bengaluru') t = 'bangalore';
-          if (t === 'bombay') t = 'mumbai';
-          return { code, city: t };
-        };
-        const a = norm(m[1]), b = norm(m[2]);
-        const hit = (route: string, side: { code?: string; city: string }) =>
-          (side.code && new RegExp(`\\b${side.code}\\b`, 'i').test(route)) || (side.city && route.includes(side.city));
-        return offers.filter((o) => {
-          const r = (o.travel?.route || '').toLowerCase();
-          if (!r) return false; // an offer with no route cannot prove it serves this route
-          const [src = '', dst = ''] = r.split(/\s+to\s+/);
-          return hit(src, a) && hit(dst, b);
-        });
-      },
+      // ONLY offers for the typed route may be shown (a cached Delhi->Mumbai fare must never
+      // appear for a Patna->Delhi search).
+      postProcess: (offers, query) => routeFilter(offers, query),
     });
   }
 }
 
 class HotelEngine extends VerticalEngine {
   constructor() {
-    super({ vertical: 'hotels', displayName: 'Hotels', postProcess: (offers) => offers.map((o) => {
+    super({ vertical: 'hotels', displayName: 'Hotels', postProcess: (offers, query) => destinationFilter(offers, query).map((o) => {
       // Hotel prices are per night unless the source explicitly says otherwise
       return { ...o, attributes: { ...o.attributes, unit: o.attributes['unit'] || 'per night' } };
     }) });
@@ -125,7 +159,7 @@ class CabEngine extends VerticalEngine {
     super({
       vertical: 'cab',
       displayName: 'Cabs & Mobility',
-      postProcess: (offers) => offers.map((o) => ({
+      postProcess: (offers, query) => routeFilter(offers, query).map((o) => ({
         ...o,
         // Stale fares are never presented as guaranteed booking prices (Section 12)
         attributes: { ...o.attributes, fare_type: o.freshnessStatus === 'LIVE_VERIFIED' ? 'live_estimate' : 'indicative_only' },
@@ -157,7 +191,7 @@ class MovieEventEngine extends VerticalEngine {
   constructor() { super({ vertical: 'movies', displayName: 'Movies & Events' }); }
 }
 class BusEngine extends VerticalEngine {
-  constructor() { super({ vertical: 'bus', displayName: 'Bus Travel' }); }
+  constructor() { super({ vertical: 'bus', displayName: 'Bus Travel', postProcess: (offers, query) => routeFilter(offers, query) }); }
 }
 class FoodDeliveryEngine extends VerticalEngine {
   constructor() { super({ vertical: 'food', displayName: 'Food Delivery' }); }

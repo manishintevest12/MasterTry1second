@@ -95,6 +95,13 @@ export function offerDedupKey(o: NormalizedOffer): string {
   // Same product identity from the same seller = one offer; different sellers stay separate (Section 10)
   const identity = o.identifiers.gtin || o.identifiers.ean || o.identifiers.upc || o.identifiers.sku ||
     `${o.brand || ''}:${o.title}`.toLowerCase();
+  // Property/route verticals: one listing = (title, seller, date, flight/service id). A catalogue replay of the
+  // same listing carries differently-keyed attributes, so attributes must NOT be part of the identity.
+  if (['hotels', 'flights', 'bus', 'cab', 'movies'].includes(String(o.vertical))) {
+    const svc = String(o.attributes?.['flight_number'] ?? o.attributes?.['flight number'] ?? o.attributes?.['departure'] ?? o.attributes?.['departure_time'] ?? o.attributes?.['departure time'] ?? '');
+    const price = String(o.prices?.effectivePrice ?? '');
+    return `${o.vertical}|${identity}|${o.seller.toLowerCase()}|${o.travel?.date || ''}|${o.travel?.route || ''}|${svc}|${o.vertical === 'hotels' ? '' : price}`;
+  }
   return `${identity}|${o.seller.toLowerCase()}|${o.location?.pincode || ''}|${o.attributes && Object.keys(o.attributes).length ? JSON.stringify(o.attributes) : ''}`;
 }
 

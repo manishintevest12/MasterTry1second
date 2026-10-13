@@ -22,7 +22,6 @@ export const cabWorker: VerticalWorker = {
   vertical: 'cab',
   tasks: [
     {
-      // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
       // ---- Owner-mandated cab sources: attempted live on every cab search, honestly reported ----
       sourceId: 'w_cab_ola',
       name: 'Cab worker: Ola (probe)',
@@ -70,6 +69,7 @@ export const cabWorker: VerticalWorker = {
       },
     },
     {
+      // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
       sourceId: 'w_cab_savaari',
       name: 'Cab worker: Savaari outstation route fares',
       priority: 5,

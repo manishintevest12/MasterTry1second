@@ -1,3 +1,4 @@
+import { brandLogoUrl } from '../utils/brandLogo';
 import React, { useState } from 'react';
 import {
   Heart,
@@ -227,8 +228,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item }) => {
 
                 {/* Provider Pill Badge */}
                 <div className="absolute top-2 right-2">
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider shadow-xs ${logoStyle.bg} ${logoStyle.color}`}>
-                    {item.provider}
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-black tracking-wide shadow-xs bg-white/95 text-slate-800 border border-slate-200">
+                    {brandLogoUrl(item) && (
+                      <img src={brandLogoUrl(item)} alt="" className="w-3.5 h-3.5 object-contain" referrerPolicy="no-referrer" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                    )}
+                    <span className="max-w-[110px] truncate">{item.provider}</span>
                   </span>
                 </div>
 

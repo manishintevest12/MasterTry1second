@@ -125,20 +125,20 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   const groceryCategories = ['All Staples', 'Fresh Fruits', 'Dairy & Milk', 'Cooking Oil', 'Breakfast Combos'];
 
   // 3. Hotels
-  const [hotelDestination, setHotelDestination] = useState<string>('Goa, India');
+  const [hotelDestination, setHotelDestination] = useState<string>('Indore, India');
   const [hotelDates, setHotelDates] = useState<string>(() => { const a = new Date(); const b = new Date(); b.setDate(b.getDate() + 3); return `${fmtDMY(a)} – ${fmtDMY(b)} (3 Nights)`; });
   const [hotelGuests, setHotelGuests] = useState<string>('2 Adults · 1 Room');
 
   // 4. Bus
-  const [busFrom, setBusFrom] = useState<string>('Bengaluru (BLR)');
-  const [busTo, setBusTo] = useState<string>('Hyderabad (HYD)');
+  const [busFrom, setBusFrom] = useState<string>('Indore (IDR)');
+  const [busTo, setBusTo] = useState<string>('Bhopal (BHO)');
   const [busDate, setBusDate] = useState<string>(() => `${todayDMY()} (Today)`);
 
   // 5. E-commerce
   const [ecomCategory, setEcomCategory] = useState<string>('All Electronics');
 
   // 6. Movie
-  const [movieCity, setMovieCity] = useState<string>('Mumbai (All Theatres)');
+  const [movieCity, setMovieCity] = useState<string>('Indore (All Theatres)');
   const [selectedMovieDate, setSelectedMovieDate] = useState<string>(() => `${todayDMY()} (Today)`);
 
   // 7. Loans

@@ -931,21 +931,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Empty search box -> the vertical's own sensible starting query (what its placeholder suggests),
     // so a tab shows real data the moment it opens. These are SEARCH TERMS, never fake results.
     const DEFAULT_QUERY: Record<string, string> = {
-      flights: 'New Delhi (DEL) to Dubai (DXB)',
-      hotels: 'Goa',
-      bus: 'Bengaluru to Hyderabad',
+      flights: 'Indore (IDR) to Delhi (DEL)',
+      hotels: targetLoc.city || 'Indore',
+      bus: `${targetLoc.city || 'Indore'} to Bhopal`,
       ecommerce: 'mobile phone',
       grocery: 'milk',
       food: 'biryani',
       movie: 'movies',
       movies: 'movies',
-      cab: `${targetLoc.locality || 'Connaught Place'} to ${targetLoc.city || 'New Delhi'} Airport`,
+      cab: `${targetLoc.city || 'Indore'} to Bhopal`,
       loans: 'personal loan',
       insurance: 'health insurance',
     };
     const rawQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
     const targetQuery = rawQuery && rawQuery.trim() ? rawQuery : (DEFAULT_QUERY[vertical] || '');
     const dateSensitive = ['hotels', 'flights', 'bus', 'cab', 'movies'].includes(vertical);
+    const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };
 
     try {
       const response = await fetch('/api/scrape/live', {
@@ -958,7 +960,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           city: targetLoc.city,
           locality: targetLoc.locality,
           coordinates: targetLoc.coordinates,
-          ...(dateSensitive && overrideTravel?.depart ? { travelDates: overrideTravel } : {}),
+          ...(dateSensitive ? { travelDates: travel } : {}),
         }),
       });
 

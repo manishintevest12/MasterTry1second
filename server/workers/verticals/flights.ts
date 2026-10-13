@@ -16,14 +16,21 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
-function routeFromQuery(raw: string): { from: string; to: string } | null {
-  const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
+/** "Indore (IDR) to Delhi (DEL) on 20 oct", "patna to delhi flight", "DEL → BOM" -> clean city names (codes stripped). */
+function routeFromQuery(raw: string): { from: string; to: string; fromCode?: string; toCode?: string } | null {
+  const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
-  const strip = (s: string) => s.replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|direct|return|one-way|oneway|round trip)\b/gi, '').replace(/,.*$/, '').trim();
-  const from = strip(m[1]);
-  const to = strip(m[2]).replace(/\b(on|for|tomorrow|today|night|morning|evening|at)\b.*$/i, '').trim();
+  const codeOf = (s: string) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
+  const clean = (s: string) => s
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, ' ')
+    .replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, ' ')
+    .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, ' ')
+    .replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, ' ')
+    .replace(/,.*$/, '').replace(/\s+/g, ' ').trim();
+  const from = clean(m[1]); const to = clean(m[2]);
   if (!from || !to) return null;
-  return { from, to };
+  return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
 
 export const flightsWorker: VerticalWorker = {
@@ -53,9 +60,10 @@ export const flightsWorker: VerticalWorker = {
           tirupati: 'TIR',
         };
         const code = (s: string) => IATA[s.toLowerCase().trim()] || null;
-        const from = code(rt.from); const to = code(rt.to);
+        const from = rt.fromCode || code(rt.from); const to = rt.toCode || code(rt.to);
         if (!from || !to) return []; // unknown city — honest skip (calendar needs IATA codes)
-        const base = new Date(Date.now() + 7 * 86400_000);
+        const dIso = ctx.query?.travelDates?.depart;
+        const base = dIso && /^\d{4}-\d{2}-\d{2}$/.test(dIso) ? new Date(`${dIso}T00:00:00`) : new Date(Date.now() + 7 * 86400_000);
         const dd = String(base.getDate()).padStart(2, '0'); const mm = String(base.getMonth() + 1).padStart(2, '0'); const yy = base.getFullYear();
         const wantDate = `${dd}/${mm}/${yy}`;
         const body = JSON.stringify({ CalKey_: `${from}_${to}_rdate__${wantDate}_` });

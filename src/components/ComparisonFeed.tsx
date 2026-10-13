@@ -3,6 +3,9 @@ import { useApp } from '../context/AppContext';
 import { PriceAdviceSidebar } from './PriceAdviceSidebar';
 import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
+import { TravelDealRow } from './TravelDealRow';
+import { HotelDealCard } from './HotelDealCard';
+import { groupHotels } from '../utils/hotelGroups';
 import { NativeAdCard } from './NativeAdCard';
 import { VERTICAL_META } from '../data/mockData';
 import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X } from 'lucide-react';
@@ -124,9 +127,21 @@ export const ComparisonFeed: React.FC = () => {
     setVisibleCount(INITIAL_VISIBLE_COUNT);
   }, [vertical, searchQuery, smartFilterText, selectedCategory]);
 
+  // Hotels: same property from several sites becomes ONE card with a price row per site.
+  const isHotels = vertical === 'hotels';
+  const hotelGroups = React.useMemo(() => {
+    if (!isHotels) return [];
+    const gs = groupHotels(sorted);
+    if (sortOption === 'cheapest') gs.sort((a, b) => a.best.price - b.best.price);
+    else if (sortOption === 'highest_rated') gs.sort((a, b) => (b.rating10 || 0) - (a.rating10 || 0));
+    else gs.sort((a, b) => (b.rows.length - a.rows.length) || ((b.rating10 || 0) - (a.rating10 || 0)) || (a.best.price - b.best.price));
+    return gs;
+  }, [isHotels, sorted, sortOption]);
+  const totalCount = isHotels ? hotelGroups.length : sorted.length;
   const visibleItems = sorted.slice(0, visibleCount);
+  const visibleHotels = hotelGroups.slice(0, visibleCount);
   // The 'Load More' button only appears if there are at least 4 results currently displayed and more items remain
-  const shouldShowLoadMore = visibleItems.length >= 4 && visibleCount < sorted.length;
+  const shouldShowLoadMore = (isHotels ? visibleHotels.length : visibleItems.length) >= 4 && visibleCount < totalCount;
 
   const handleLoadMore = () => {
     setIsLoadingMore(true);
@@ -233,9 +248,13 @@ export const ComparisonFeed: React.FC = () => {
               <NativeAdCard vertical={vertical} userLocation={userLocation} />
 
               {/* Standard Organic Result Cards */}
-              {visibleItems.map((item) => (
-                <ComparisonCard key={item.id} item={item} />
-              ))}
+              {isHotels
+                ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
+                : visibleItems.map((item) => (
+                    ['flights', 'bus', 'cab'].includes(item.vertical)
+                      ? <TravelDealRow key={item.id} item={item} />
+                      : <ComparisonCard key={item.id} item={item} />
+                  ))}
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
               {shouldShowLoadMore && (
@@ -255,23 +274,23 @@ export const ComparisonFeed: React.FC = () => {
                       <>
                         <Search className="w-4 h-4 text-orange-600" />
                         <span>
-                          Load More Results in {meta.name} ({sorted.length - visibleCount} more deals available)
+                          Load More Results in {meta.name} ({totalCount - visibleCount} more {isHotels ? 'hotels' : 'deals'} available)
                         </span>
                         <ChevronDown className="w-4 h-4 text-slate-400" />
                       </>
                     )}
                   </button>
                   <p className="text-[11px] text-slate-400 mt-2 font-medium">
-                    Showing {Math.min(visibleCount, sorted.length)} of {sorted.length} verified live comparisons
+                    Showing {Math.min(visibleCount, totalCount)} of {totalCount} verified live {isHotels ? 'hotels' : 'comparisons'}
                   </p>
                 </div>
               )}
 
-              {!shouldShowLoadMore && sorted.length >= 4 && (
+              {!shouldShowLoadMore && totalCount >= 4 && (
                 <div className="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-center space-y-2">
                   <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100/70 px-3 py-1 rounded-full">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>All {sorted.length} verified live deals loaded for {meta.name}</span>
+                    <span>All {totalCount} verified live {isHotels ? 'hotels' : 'deals'} loaded for {meta.name}</span>
                   </div>
                   <p className="text-[11px] text-slate-500">
                     Prices continuously synchronized via sub-second direct merchant feeds. Last checked just now.
