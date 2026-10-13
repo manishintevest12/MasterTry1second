@@ -5,7 +5,8 @@
  */
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { buildCabEstimate } from '../parsers/osrmCab';
-import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs';
+import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs'
+import { bharatTaxiSlug, parseBharatTaxiCabs } from '../parsers/bharatTaxi';;
 import { parseQuickRideCabs } from '../parsers/quickRideCabs';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
@@ -66,6 +67,26 @@ export const cabWorker: VerticalWorker = {
       priority: 15,
       run: async () => {
         throw new AcquisitionError('EMPTY_RESPONSE', 'No authoritative web presence found for the Fastdeals/Snap-E cab service (fastdeals.in is an unrelated laptop store); no fare data exists on the open web for this source.');
+      },
+    },
+    {
+      // Bharat Taxi (direct operator): SSR route pages with flat one-way fare tables,
+      // covers routes Savaari/QuickRide do not publish (Indore→Ujjain, Mumbai→Pune, Bengaluru→Mysuru).
+      sourceId: 'w_cab_bharattaxi',
+      name: 'Cab worker: Bharat Taxi route fares (SSR HTML tables, per-vehicle one-way)',
+      priority: 5,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const url = `https://www.bharattaxi.com/${bharatTaxiSlug(rt.from)}/to/${bharatTaxiSlug(rt.to)}`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        if (r.status === 404) return []; // route not published — nothing fabricated
+        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `BharatTaxi HTTP ${r.status}`, r.status);
+        const items = parseBharatTaxiCabs(r.body, ctx.source, url, rt.from, rt.to);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'BharatTaxi route page carried no flat one-way fares');
+        return items;
       },
     },
     {

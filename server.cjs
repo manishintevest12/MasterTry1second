@@ -3926,6 +3926,73 @@ var init_savaariCabs = __esm({
   }
 });
 
+// server/workers/parsers/bharatTaxi.ts
+function bharatTaxiSlug(city) {
+  const s = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+  return BTX_ALIASES[s] || s;
+}
+function parseBharatTaxiCabs(html, source, pageUrl, from, to) {
+  const tables = html.match(/<table[\s\S]*?<\/table>/gi) || [];
+  const flat = [];
+  for (const tb of tables) {
+    const rows = tb.match(/<tr>\s*<td>[\s\S]*?<\/td>\s*<td>[\s\S]*?<\/td>\s*<\/tr>/g) || [];
+    const parsed = [];
+    for (const row of rows) {
+      const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) ?? [];
+      if (cells.length < 2) continue;
+      const clean = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+      parsed.push({ car: clean(cells[0] ?? ""), price: clean(cells[1] ?? "") });
+    }
+    const isFlat = parsed.length > 0 && parsed.every((p) => /^[₹rs\.]*\s?[\d,]{3,6}$/i.test(p.price)) && parsed.every((p) => !/km/i.test(p.price));
+    if (isFlat) {
+      for (const p of parsed) flat.push({ car: p.car, fare: Number(p.price.replace(/[₹rs\.,\s]/gi, "")) });
+      break;
+    }
+  }
+  const seen = flat.filter((f) => f.fare > 0 && f.car).slice(0, 8);
+  if (!seen.length) return [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const lo = Math.min(...seen.map((f) => f.fare));
+  const hi = Math.max(...seen.map((f) => f.fare));
+  return seen.map((f) => newRawItem(source, {
+    title: `${from} to ${to} cab (${f.car}, one-way)`,
+    brand: "Bharat Taxi",
+    price: Math.round(f.fare),
+    currency: "INR",
+    seller: "Bharat Taxi",
+    sellerUrl: pageUrl,
+    // the price-owning website itself
+    travel: { route: `${from} to ${to}`.toLowerCase(), seatType: "unknown" },
+    attributes: {
+      pickup: from,
+      drop: to,
+      route: `${from} to ${to}`,
+      vehicle_type: f.car,
+      trip_type: "one-way",
+      fare_range: `Rs ${lo} (base) - Rs ${hi}`,
+      price_basis: `one-way route fare as published by bharattaxi.com on ${today}`,
+      data_note: `Route fare scraped from bharattaxi.com route page on ${today}`
+    },
+    identifiers: { sku: `bharattaxi-${from}-${to}-${f.car}`.toLowerCase().replace(/\s+/g, "-") },
+    evidence: { sourceUrl: pageUrl, extractedFields: ["SSR HTML fare table (flat one-way)"] }
+  }));
+}
+var BTX_ALIASES;
+var init_bharatTaxi = __esm({
+  "server/workers/parsers/bharatTaxi.ts"() {
+    init_contract();
+    BTX_ALIASES = {
+      bengaluru: "bangalore",
+      mysuru: "mysore",
+      kolkata: "kolkata",
+      chennai: "chennai",
+      gurugram: "gurgaon",
+      prayagraj: "allahabad",
+      puducherry: "pondicherry"
+    };
+  }
+});
+
 // server/workers/parsers/quickRideCabs.ts
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
@@ -3993,6 +4060,7 @@ var init_cab = __esm({
     init_verticalWorker();
     init_osrmCab();
     init_savaariCabs();
+    init_bharatTaxi();
     init_quickRideCabs();
     init_curlCffiFetch();
     init_httpClient();
@@ -4044,6 +4112,26 @@ var init_cab = __esm({
           priority: 15,
           run: async () => {
             throw new AcquisitionError("EMPTY_RESPONSE", "No authoritative web presence found for the Fastdeals/Snap-E cab service (fastdeals.in is an unrelated laptop store); no fare data exists on the open web for this source.");
+          }
+        },
+        {
+          // Bharat Taxi (direct operator): SSR route pages with flat one-way fare tables,
+          // covers routes Savaari/QuickRide do not publish (Indore→Ujjain, Mumbai→Pune, Bengaluru→Mysuru).
+          sourceId: "w_cab_bharattaxi",
+          name: "Cab worker: Bharat Taxi route fares (SSR HTML tables, per-vehicle one-way)",
+          priority: 5,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            if (!rt) return [];
+            const url = `https://www.bharattaxi.com/${bharatTaxiSlug(rt.from)}/to/${bharatTaxiSlug(rt.to)}`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            if (r.status === 404) return [];
+            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `BharatTaxi HTTP ${r.status}`, r.status);
+            const items = parseBharatTaxiCabs(r.body, ctx.source, url, rt.from, rt.to);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "BharatTaxi route page carried no flat one-way fares");
+            return items;
           }
         },
         {
