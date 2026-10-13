@@ -6767,7 +6767,12 @@ var init_bus = __esm({
               }
             }
             const rp = Date.now();
-            const r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
+            let r;
+            try {
+              r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
+            } catch (e) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", `redBus domain unresponsive from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
+            }
             steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
             if (r.status === 404) return [];
             if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status} [${steps.join(" ")}]`, r.status);
