@@ -40,6 +40,9 @@ export const busWorker: VerticalWorker = {
       name: 'Bus worker: redBus live services (real fares, timings, seats)',
       priority: 2,
       maxPerMinute: 24,
+      // City resolution + per-bus searchResults + (only if needed) route-page fallback:
+      // three sequential round-trips legitimately need more than the 18s default budget.
+      timeoutMs: 40_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
@@ -82,8 +85,11 @@ export const busWorker: VerticalWorker = {
           if (r.status === 200) {
             const items = parseRedBusSearch(r.body, ctx.source, route);
             if (items.length) return items;
+            // Searchable ids with zero services for this date — honest empty, no fallback
+            // (a route-page min-fare would claim a fare no service actually offers today).
+            return [];
           }
-          // No live services for the resolved ids/date — fall through to route-page fallback
+          // searchResults endpoint failed — fall through to the route-page dataInfo fallback
         }
 
         const r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 30_000 });

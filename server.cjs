@@ -6713,6 +6713,9 @@ var init_bus = __esm({
           name: "Bus worker: redBus live services (real fares, timings, seats)",
           priority: 2,
           maxPerMinute: 24,
+          // City resolution + per-bus searchResults + (only if needed) route-page fallback:
+          // three sequential round-trips legitimately need more than the 18s default budget.
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
@@ -6757,6 +6760,7 @@ var init_bus = __esm({
               if (r2.status === 200) {
                 const items2 = parseRedBusSearch(r2.body, ctx.source, route);
                 if (items2.length) return items2;
+                return [];
               }
             }
             const r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 3e4 });
