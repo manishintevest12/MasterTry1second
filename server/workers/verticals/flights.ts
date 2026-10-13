@@ -12,7 +12,24 @@ import { loadOpenFlights, parseRoute } from '../parsers/openflights';
 import { parseIxigoFlights, parseIxigoOffers } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
+import { parseIndigoSearch, indigoItems } from '../parsers/indigoFlights';
 import { cffiFetch } from '../../common/curlCffiFetch';
+
+/** City name → IATA code (major Indian + a few intl airports we actually serve). */
+const IATA: Record<string, string> = {
+          delhi: 'DEL', 'new delhi': 'DEL', mumbai: 'BOM', bombay: 'BOM', bangalore: 'BLR', bengaluru: 'BLR',
+          hyderabad: 'HYD', chennai: 'MAA', kolkata: 'CCU', pune: 'PNQ', ahmedabad: 'AMD', jaipur: 'JAI',
+          goa: 'GOI', panaji: 'GOI', lucknow: 'LKO', nagpur: 'NAG', indore: 'IDR', surat: 'STV',
+          patna: 'PAT', bhopal: 'BHO', coimbatore: 'CJB', kochi: 'COK', ernakulam: 'COK', guwahati: 'GAU',
+          chandigarh: 'IXC', dehradun: 'DED', amritsar: 'ATQ', varanasi: 'VNS', srinagar: 'SXR',
+          trivandrum: 'TRV', thiruvananthapuram: 'TRV', vizag: 'VTZ', visakhapatnam: 'VTZ', madurai: 'IXM',
+          udaipur: 'UDR', jodhpur: 'JDH', ranchi: 'IXR', raipur: 'RPR', bhubaneswar: 'BBI', imphal: 'IMF',
+          leh: 'IXL', bagdogra: 'IXB', aurangabad: 'IXU', mangalore: 'IXE',
+          vadodara: 'BDQ', rajkot: 'RAJ', jammu: 'IXJ', allahabad: 'IXD', prayagraj: 'IXD',
+          gorakhpur: 'GOP', jharsuguda: 'JRG', dibrugarh: 'DIB', tezpur: 'TEZ', kanpur: 'KNU',
+          mysore: 'MYQ', hubli: 'HBX', belgaum: 'IXG', kolhapur: 'KLH', nashik: 'ISK', shirdi: 'SAG',
+          tirupati: 'TIR',
+        };
 
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
@@ -49,20 +66,7 @@ export const flightsWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
         if (!rt) return [];
-        const IATA: Record<string, string> = {
-          delhi: 'DEL', 'new delhi': 'DEL', mumbai: 'BOM', bombay: 'BOM', bangalore: 'BLR', bengaluru: 'BLR',
-          hyderabad: 'HYD', chennai: 'MAA', kolkata: 'CCU', pune: 'PNQ', ahmedabad: 'AMD', jaipur: 'JAI',
-          goa: 'GOI', panaji: 'GOI', lucknow: 'LKO', nagpur: 'NAG', indore: 'IDR', surat: 'STV',
-          patna: 'PAT', bhopal: 'BHO', coimbatore: 'CJB', kochi: 'COK', ernakulam: 'COK', guwahati: 'GAU',
-          chandigarh: 'IXC', dehradun: 'DED', amritsar: 'ATQ', varanasi: 'VNS', srinagar: 'SXR',
-          trivandrum: 'TRV', thiruvananthapuram: 'TRV', vizag: 'VTZ', visakhapatnam: 'VTZ', madurai: 'IXM',
-          udaipur: 'UDR', jodhpur: 'JDH', ranchi: 'IXR', raipur: 'RPR', bhubaneswar: 'BBI', imphal: 'IMF',
-          leh: 'IXL', bagdogra: 'IXB', aurangabad: 'IXU', mangalore: 'IXE',
-          vadodara: 'BDQ', rajkot: 'RAJ', jammu: 'IXJ', allahabad: 'IXD', prayagraj: 'IXD',
-          gorakhpur: 'GOP', jharsuguda: 'JRG', dibrugarh: 'DIB', tezpur: 'TEZ', kanpur: 'KNU',
-          mysore: 'MYQ', hubli: 'HBX', belgaum: 'IXG', kolhapur: 'KLH', nashik: 'ISK', shirdi: 'SAG',
-          tirupati: 'TIR',
-        };
+;
         const code = (s: string) => IATA[s.toLowerCase().trim()] || null;
         const from = rt.fromCode || code(rt.from); const to = rt.toCode || code(rt.to);
         if (!from || !to) return []; // unknown city — honest skip (calendar needs IATA codes)
@@ -152,14 +156,69 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
+      // IndiGo 6E official mobile flight-search API, reverse-engineered from the
+      // Android app's Hermes bundle (browserless; static app user_key, no login):
+      // POST api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search.
       sourceId: 'w_flights_indigo',
-      name: 'Flights worker: IndiGo (probe)',
-      priority: 19,
-      run: async () => {
-        await cffiFetch('https://www.goindigo.in/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'IndiGo web homepage carries marketing fares only; live route fares come from the sessioned skyplus booking API (app-prod-skyplus6e.goindigo.in), not an unauthenticated browserless endpoint.');
+      name: 'Flights worker: IndiGo 6E live fares (official app API)',
+      priority: 4,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
+        const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+        if (!from || !to) return []; // unknown city — honest skip (API needs IATA codes)
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const beginDate = dep.replace(/-/g, ''); // YYYYMMDD
+        const body = JSON.stringify({
+          criteria: [{
+            dates: { beginDate, endDate: beginDate },
+            flightFilters: { type: 'All' },
+            stations: { originStationCodes: [from], destinationStationCodes: [to] },
+          }],
+          tripType: 'ONE_WAY',
+          currencyCode: 'INR',
+          paxInfo: { travelPurpose: '', adultCount: 1, childrenCount: 0, infantCount: 0, seniorCitizenCount: 0, extraSeat: 0 },
+          specialFare: '',
+          promoCode: '',
+          bookingPurpose: '',
+          marketType: '',
+          doubleSeatSelected: false,
+          tripleSeatSelected: false,
+          selectedTripIndex: 0,
+        });
+        let r;
+        try {
+          r = await cffiFetch('https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search', {
+            impersonate: 'chrome', timeoutMs: 28_000, method: 'POST', body,
+            headers: {
+              'user_key': '43b557c03fc85cc213e91df0f526cc7a', // static app key shipped inside the public APK
+              'Content-Type': 'application/json', 'Accept': 'application/json',
+            },
+          });
+        } catch (e: any) {
+          throw new AcquisitionError('SERVER_ERROR', `IndiGo API unreachable: ${String(e?.message || e)}`);
+        }
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED',
+            `IndiGo API edge blocked this server's IP (Akamai ${r.status}); the endpoint itself needs only the app's static user_key.`, r.status);
+        }
+        if (r.status === 400 || r.status === 404 || r.status >= 500) {
+          throw new AcquisitionError('SERVER_ERROR', `IndiGo API HTTP ${r.status}: ${(r.body || '').slice(0, 180)}`, r.status);
+        }
+        const flights = parseIndigoSearch(r.body);
+        if (flights.length === 0) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `IndiGo API returned no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status})`);
+        }
+        return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
       },
     },
+
     {
       sourceId: 'w_flights_budgetair',
       name: 'Flights worker: BudgetAir/Travix (probe)',

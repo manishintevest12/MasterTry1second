@@ -3310,6 +3310,180 @@ var init_emtFareCalendar = __esm({
   }
 });
 
+// server/workers/parsers/indigoFlights.ts
+function pick(o, keys) {
+  for (const k of keys) if (o[k] !== void 0 && o[k] !== null && o[k] !== "") return o[k];
+  return void 0;
+}
+function flightNo(o) {
+  const direct = pick(o, NO_KEYS);
+  if (typeof direct === "string" && FLIGHT_NO.test(direct)) return direct.toUpperCase().replace(/\s+/, "-");
+  for (const k of FLIGHT_DETAIL_KEYS) {
+    const v = o[k];
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const inner = flightNo(v);
+      if (inner) return inner;
+    }
+  }
+  return void 0;
+}
+function fillMeta(o, f) {
+  const grab = (keys, assign) => {
+    const v = pick(o, keys);
+    if (v !== void 0) assign(v);
+  };
+  if (!f.depTime) grab(DEP_KEYS, (v) => {
+    f.depTime = timeish(v);
+  });
+  if (!f.arrTime) grab(ARR_KEYS, (v) => {
+    f.arrTime = timeish(v);
+  });
+  if (!f.duration) grab(DUR_KEYS, (v) => {
+    if (typeof v === "string") f.duration = v;
+  });
+  if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
+    f.stops = num(v);
+  });
+  if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
+    if (typeof v === "string") f.cabin = v;
+  });
+  if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
+    const n = num(v);
+    f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
+  });
+  const stat = (keys) => {
+    for (const k of keys) {
+      const v = o[k];
+      if (typeof v === "string" && /^[A-Za-z]{3}$/.test(v.trim())) return v.trim().toUpperCase();
+    }
+    return void 0;
+  };
+  if (!f.depStation) f.depStation = stat(["origin", "from", "originStation", "fromStation", "departureStation", "originStationCode"]);
+  if (!f.arrStation) f.arrStation = stat(["destination", "to", "destinationStation", "toStation", "arrivalStation", "destinationStationCode"]);
+  if (!f.fareCurrency) {
+    const c = pick(o, ["currencyCode", "currency"]);
+    if (typeof c === "string" && c.trim()) f.fareCurrency = c;
+  }
+}
+function collectFlights(root) {
+  const out = [];
+  const walk = (node, depth) => {
+    const mine = [];
+    if (depth > 14 || node == null) return mine;
+    if (Array.isArray(node)) {
+      for (const v of node) mine.push(...walk(v, depth + 1));
+      return mine;
+    }
+    if (typeof node !== "object") return mine;
+    const o = node;
+    for (const [k, v] of Object.entries(o)) {
+      if (FLIGHT_DETAIL_KEYS.includes(k) || v == null) continue;
+      mine.push(...walk(v, depth + 1));
+    }
+    const no = flightNo(o);
+    if (no) {
+      const f = { flightNo: no };
+      for (const k of FLIGHT_DETAIL_KEYS) {
+        const v = o[k];
+        if (v && typeof v === "object" && !Array.isArray(v)) fillMeta(v, f);
+      }
+      fillMeta(o, f);
+      mine.push(f);
+    }
+    const fare = num(pick(o, FARE_KEYS));
+    if (fare !== void 0 && fare > 0) {
+      const first = mine.find((f) => f.fare === void 0);
+      if (first) {
+        first.fare = fare;
+        if (!first.fareCurrency) {
+          const c = pick(o, ["currencyCode", "currency"]);
+          if (typeof c === "string" && c.trim()) first.fareCurrency = c;
+        }
+      }
+    }
+    if (!no) {
+      const bare = mine.filter((f) => f.fare === void 0 && (!f.depTime || !f.arrTime));
+      if (bare.length === 1) fillMeta(o, bare[0]);
+    }
+    return mine;
+  };
+  out.push(...walk(root, 0));
+  return out;
+}
+function parseIndigoSearch(body) {
+  let root;
+  try {
+    root = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  return collectFlights(root);
+}
+function indigoItems(flights, source, fromCity, toCity, fromCode, toCode, departIso) {
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const f of flights) {
+    if (f.fare === void 0 || f.fare <= 0) continue;
+    const key = `${f.flightNo}|${f.depTime || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const route = `${fromCity} to ${toCity}`.toLowerCase();
+    const dep = f.depTime ? `, departs ${f.depTime}` : "";
+    const arr = f.arrTime ? `, arrives ${f.arrTime}` : "";
+    const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${departIso}&pax=A1`;
+    items.push(newRawItem(source, {
+      title: `IndiGo ${f.flightNo} ${fromCode} to ${toCode} on ${departIso}${dep}${arr}`,
+      brand: "IndiGo",
+      price: f.fare,
+      currency: f.fareCurrency === "USD" ? "USD" : "INR",
+      seller: "IndiGo",
+      sellerUrl: deeplink,
+      travel: { route, seatType: f.cabin || "Economy", date: departIso },
+      attributes: {
+        route,
+        flight_no: f.flightNo || "",
+        from_iata: fromCode,
+        to_iata: toCode,
+        departs: f.depTime || "",
+        arrives: f.arrTime || "",
+        duration: f.duration || "",
+        stops: f.stops !== void 0 ? String(f.stops) : "0",
+        seats_left: f.seatsLeft !== void 0 ? String(f.seatsLeft) : "",
+        price_basis: `fare returned by IndiGo's own flight-search API for ${departIso}`
+      },
+      identifiers: { sku: `indigo-${f.flightNo}-${route.replace(/\s+/g, "-")}-${departIso}` },
+      evidence: {
+        sourceUrl: "https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search",
+        extractedFields: ["flightNumber", "totalFare", "departureTime", "arrivalTime"]
+      }
+    }));
+    if (items.length >= 25) break;
+  }
+  return items;
+}
+var FLIGHT_NO, num, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS;
+var init_indigoFlights = __esm({
+  "server/workers/parsers/indigoFlights.ts"() {
+    init_contract();
+    FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
+    num = (v) => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && v.trim() !== "") {
+        const n = Number(v.replace(/[₹,\s]/g, ""));
+        if (Number.isFinite(n)) return n;
+      }
+      return void 0;
+    };
+    timeish = (v) => typeof v === "string" && /\d{1,2}:\d{2}/.test(v) ? v : void 0;
+    FARE_KEYS = ["totalFare", "totalAmount", "fareAmount", "fare", "netFare", "totalPrice", "amount", "adultFare", "displayFare", "baseFareAmount"];
+    NO_KEYS = ["flightNumber", "flightNo", "flight_number", "flightCode", "code", "flightIdentifier", "flightCodeWithSuffix"];
+    DEP_KEYS = ["departureTime", "depTime", "departureDateTime", "std", "scheduledDeparture", "fromTime"];
+    ARR_KEYS = ["arrivalTime", "arrTime", "arrivalDateTime", "sta", "scheduledArrival", "toTime"];
+    DUR_KEYS = ["duration", "travelTime", "journeyDuration", "flightDuration", "totalDuration"];
+    FLIGHT_DETAIL_KEYS = ["flightDetail", "flightInfo", "flightDetails", "segment", "leg"];
+  }
+});
+
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const KNOWN_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
@@ -3323,7 +3497,7 @@ function routeFromQuery(raw) {
   if (!from || !to) return null;
   return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
-var URL_AP, flightsWorker;
+var IATA, URL_AP, flightsWorker;
 var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
     init_verticalWorker();
@@ -3331,7 +3505,71 @@ var init_flights = __esm({
     init_ixigoFlights();
     init_httpClient();
     init_emtFareCalendar();
+    init_indigoFlights();
     init_curlCffiFetch();
+    IATA = {
+      delhi: "DEL",
+      "new delhi": "DEL",
+      mumbai: "BOM",
+      bombay: "BOM",
+      bangalore: "BLR",
+      bengaluru: "BLR",
+      hyderabad: "HYD",
+      chennai: "MAA",
+      kolkata: "CCU",
+      pune: "PNQ",
+      ahmedabad: "AMD",
+      jaipur: "JAI",
+      goa: "GOI",
+      panaji: "GOI",
+      lucknow: "LKO",
+      nagpur: "NAG",
+      indore: "IDR",
+      surat: "STV",
+      patna: "PAT",
+      bhopal: "BHO",
+      coimbatore: "CJB",
+      kochi: "COK",
+      ernakulam: "COK",
+      guwahati: "GAU",
+      chandigarh: "IXC",
+      dehradun: "DED",
+      amritsar: "ATQ",
+      varanasi: "VNS",
+      srinagar: "SXR",
+      trivandrum: "TRV",
+      thiruvananthapuram: "TRV",
+      vizag: "VTZ",
+      visakhapatnam: "VTZ",
+      madurai: "IXM",
+      udaipur: "UDR",
+      jodhpur: "JDH",
+      ranchi: "IXR",
+      raipur: "RPR",
+      bhubaneswar: "BBI",
+      imphal: "IMF",
+      leh: "IXL",
+      bagdogra: "IXB",
+      aurangabad: "IXU",
+      mangalore: "IXE",
+      vadodara: "BDQ",
+      rajkot: "RAJ",
+      jammu: "IXJ",
+      allahabad: "IXD",
+      prayagraj: "IXD",
+      gorakhpur: "GOP",
+      jharsuguda: "JRG",
+      dibrugarh: "DIB",
+      tezpur: "TEZ",
+      kanpur: "KNU",
+      mysore: "MYQ",
+      hubli: "HBX",
+      belgaum: "IXG",
+      kolhapur: "KLH",
+      nashik: "ISK",
+      shirdi: "SAG",
+      tirupati: "TIR"
+    };
     URL_AP = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
     flightsWorker = {
       vertical: "flights",
@@ -3345,69 +3583,7 @@ var init_flights = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery(raw);
             if (!rt) return [];
-            const IATA = {
-              delhi: "DEL",
-              "new delhi": "DEL",
-              mumbai: "BOM",
-              bombay: "BOM",
-              bangalore: "BLR",
-              bengaluru: "BLR",
-              hyderabad: "HYD",
-              chennai: "MAA",
-              kolkata: "CCU",
-              pune: "PNQ",
-              ahmedabad: "AMD",
-              jaipur: "JAI",
-              goa: "GOI",
-              panaji: "GOI",
-              lucknow: "LKO",
-              nagpur: "NAG",
-              indore: "IDR",
-              surat: "STV",
-              patna: "PAT",
-              bhopal: "BHO",
-              coimbatore: "CJB",
-              kochi: "COK",
-              ernakulam: "COK",
-              guwahati: "GAU",
-              chandigarh: "IXC",
-              dehradun: "DED",
-              amritsar: "ATQ",
-              varanasi: "VNS",
-              srinagar: "SXR",
-              trivandrum: "TRV",
-              thiruvananthapuram: "TRV",
-              vizag: "VTZ",
-              visakhapatnam: "VTZ",
-              madurai: "IXM",
-              udaipur: "UDR",
-              jodhpur: "JDH",
-              ranchi: "IXR",
-              raipur: "RPR",
-              bhubaneswar: "BBI",
-              imphal: "IMF",
-              leh: "IXL",
-              bagdogra: "IXB",
-              aurangabad: "IXU",
-              mangalore: "IXE",
-              vadodara: "BDQ",
-              rajkot: "RAJ",
-              jammu: "IXJ",
-              allahabad: "IXD",
-              prayagraj: "IXD",
-              gorakhpur: "GOP",
-              jharsuguda: "JRG",
-              dibrugarh: "DIB",
-              tezpur: "TEZ",
-              kanpur: "KNU",
-              mysore: "MYQ",
-              hubli: "HBX",
-              belgaum: "IXG",
-              kolhapur: "KLH",
-              nashik: "ISK",
-              shirdi: "SAG",
-              tirupati: "TIR"
-            };
+            ;
             const code = (s) => IATA[s.toLowerCase().trim()] || null;
             const from = rt.fromCode || code(rt.from);
             const to = rt.toCode || code(rt.to);
@@ -3505,12 +3681,72 @@ var init_flights = __esm({
           }
         },
         {
+          // IndiGo 6E official mobile flight-search API, reverse-engineered from the
+          // Android app's Hermes bundle (browserless; static app user_key, no login):
+          // POST api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search.
           sourceId: "w_flights_indigo",
-          name: "Flights worker: IndiGo (probe)",
-          priority: 19,
-          run: async () => {
-            await cffiFetch("https://www.goindigo.in/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "IndiGo web homepage carries marketing fares only; live route fares come from the sessioned skyplus booking API (app-prod-skyplus6e.goindigo.in), not an unauthenticated browserless endpoint.");
+          name: "Flights worker: IndiGo 6E live fares (official app API)",
+          priority: 4,
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
+            const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const beginDate = dep.replace(/-/g, "");
+            const body = JSON.stringify({
+              criteria: [{
+                dates: { beginDate, endDate: beginDate },
+                flightFilters: { type: "All" },
+                stations: { originStationCodes: [from], destinationStationCodes: [to] }
+              }],
+              tripType: "ONE_WAY",
+              currencyCode: "INR",
+              paxInfo: { travelPurpose: "", adultCount: 1, childrenCount: 0, infantCount: 0, seniorCitizenCount: 0, extraSeat: 0 },
+              specialFare: "",
+              promoCode: "",
+              bookingPurpose: "",
+              marketType: "",
+              doubleSeatSelected: false,
+              tripleSeatSelected: false,
+              selectedTripIndex: 0
+            });
+            let r;
+            try {
+              r = await cffiFetch("https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search", {
+                impersonate: "chrome",
+                timeoutMs: 28e3,
+                method: "POST",
+                body,
+                headers: {
+                  "user_key": "43b557c03fc85cc213e91df0f526cc7a",
+                  // static app key shipped inside the public APK
+                  "Content-Type": "application/json",
+                  "Accept": "application/json"
+                }
+              });
+            } catch (e) {
+              throw new AcquisitionError("SERVER_ERROR", `IndiGo API unreachable: ${String(e?.message || e)}`);
+            }
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(
+                r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
+                `IndiGo API edge blocked this server's IP (Akamai ${r.status}); the endpoint itself needs only the app's static user_key.`,
+                r.status
+              );
+            }
+            if (r.status === 400 || r.status === 404 || r.status >= 500) {
+              throw new AcquisitionError("SERVER_ERROR", `IndiGo API HTTP ${r.status}: ${(r.body || "").slice(0, 180)}`, r.status);
+            }
+            const flights = parseIndigoSearch(r.body);
+            if (flights.length === 0) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API returned no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status})`);
+            }
+            return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
           }
         },
         {
@@ -4876,9 +5112,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num(p.pricing?.discount?.prim_price?.sp);
+      const sp = num2(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num(p.pricing?.discount?.mrp);
+      const mrp = num2(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -4914,11 +5150,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num;
+var num2;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num = (v) => {
+    num2 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -6125,7 +6361,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num2 = (key) => {
+  const num3 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -6136,8 +6372,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num2("servicecount")) || 0,
-    operators: field("operators") || num2("operators") || "",
+    servicecount: Number(num3("servicecount")) || 0,
+    operators: field("operators") || num3("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -6280,32 +6516,33 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
   } catch {
     return [];
   }
-  let pt = null;
+  const holder = {};
   const find = (o, depth) => {
-    if (pt || depth > 10 || o == null) return;
+    if (holder.pt || depth > 10 || o == null) return;
     if (Array.isArray(o)) {
       for (const v of o.slice(0, 60)) find(v, depth + 1);
       return;
     }
     if (typeof o === "object") {
       if (o.pTableData && typeof o.pTableData === "object") {
-        pt = o.pTableData;
+        holder.pt = o.pTableData;
         return;
       }
       for (const v of Object.values(o)) find(v, depth + 1);
     }
   };
   find(root, 0);
-  if (!pt) return [];
-  const fare = Number(pt.minFare);
+  const pTable = holder.pt;
+  if (!pTable) return [];
+  const fare = Number(pTable.minFare);
   if (!Number.isFinite(fare) || fare <= 0) return [];
-  const from = String(pt.fromCityName || fromCity);
-  const to = String(pt.toCityName || toCity);
+  const from = String(pTable.fromCityName || fromCity);
+  const to = String(pTable.toCityName || toCity);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const route = `${from} to ${to}`.toLowerCase();
-  const busTypes = Array.isArray(pt.busTypeArr) ? pt.busTypeArr.slice(0, 4).join("; ") : "";
+  const busTypes = Array.isArray(pTable.busTypeArr) ? pTable.busTypeArr.slice(0, 4).join("; ") : "";
   return [newRawItem(source, {
-    title: `${from} to ${to} zingbus (lowest fare across ${pt.busCount || "all"} services)`,
+    title: `${from} to ${to} zingbus (lowest fare across ${pTable.busCount || "all"} services)`,
     brand: "zingbus",
     price: fare,
     currency: "INR",
@@ -6315,14 +6552,14 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
     attributes: {
       route,
       min_fare: String(fare),
-      max_fare: String(pt.maxFare ?? ""),
-      service_count: String(pt.busCount ?? ""),
-      avg_duration: String(pt.travelTime ?? ""),
-      first_departure: String(pt.firstBusTime ?? ""),
-      last_departure: String(pt.lastBusTime ?? ""),
+      max_fare: String(pTable.maxFare ?? ""),
+      service_count: String(pTable.busCount ?? ""),
+      avg_duration: String(pTable.travelTime ?? ""),
+      first_departure: String(pTable.firstBusTime ?? ""),
+      last_departure: String(pTable.lastBusTime ?? ""),
       image: "",
       price_basis: `minimum route fare as published by zingbus.com on ${today}`,
-      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pt.maxFare ?? "?"} across ${pt.busCount ?? "?"} services) scraped from zingbus.com on ${today}`
+      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pTable.maxFare ?? "?"} across ${pTable.busCount ?? "?"} services) scraped from zingbus.com on ${today}`
     },
     identifiers: { sku: `zingbus-${route.replace(/\s+/g, "-")}` },
     evidence: { sourceUrl: pageUrl, extractedFields: ["pTableData minFare", "maxFare", "busCount", "travelTime", "firstBusTime"] }

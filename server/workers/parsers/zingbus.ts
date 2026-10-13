@@ -49,26 +49,27 @@ export function parseZingbusRoute(html: string, source: SourceConfig, pageUrl: s
   if (!m) return [];
   let root: any;
   try { root = JSON.parse(m[1]); } catch { return []; }
-  let pt: ZingRouteTable | null = null;
+  const holder: { pt?: ZingRouteTable } = {};
   const find = (o: any, depth: number): any => {
-    if (pt || depth > 10 || o == null) return;
+    if (holder.pt || depth > 10 || o == null) return;
     if (Array.isArray(o)) { for (const v of o.slice(0, 60)) find(v, depth + 1); return; }
     if (typeof o === 'object') {
-      if (o.pTableData && typeof o.pTableData === 'object') { pt = o.pTableData; return; }
+      if (o.pTableData && typeof o.pTableData === 'object') { holder.pt = o.pTableData as ZingRouteTable; return; }
       for (const v of Object.values(o)) find(v, depth + 1);
     }
   };
   find(root, 0);
-  if (!pt) return [];
-  const fare = Number(pt.minFare);
+  const pTable = holder.pt;
+  if (!pTable) return [];
+  const fare = Number(pTable.minFare);
   if (!Number.isFinite(fare) || fare <= 0) return [];
-  const from = String(pt.fromCityName || fromCity);
-  const to = String(pt.toCityName || toCity);
+  const from = String(pTable.fromCityName || fromCity);
+  const to = String(pTable.toCityName || toCity);
   const today = new Date().toISOString().slice(0, 10);
   const route = `${from} to ${to}`.toLowerCase();
-  const busTypes = Array.isArray(pt.busTypeArr) ? pt.busTypeArr.slice(0, 4).join('; ') : '';
+  const busTypes = Array.isArray(pTable.busTypeArr) ? pTable.busTypeArr.slice(0, 4).join('; ') : '';
   return [newRawItem(source, {
-    title: `${from} to ${to} zingbus (lowest fare across ${pt.busCount || 'all'} services)`,
+    title: `${from} to ${to} zingbus (lowest fare across ${pTable.busCount || 'all'} services)`,
     brand: 'zingbus',
     price: fare,
     currency: 'INR',
@@ -78,14 +79,14 @@ export function parseZingbusRoute(html: string, source: SourceConfig, pageUrl: s
     attributes: {
       route,
       min_fare: String(fare),
-      max_fare: String(pt.maxFare ?? ''),
-      service_count: String(pt.busCount ?? ''),
-      avg_duration: String(pt.travelTime ?? ''),
-      first_departure: String(pt.firstBusTime ?? ''),
-      last_departure: String(pt.lastBusTime ?? ''),
+      max_fare: String(pTable.maxFare ?? ''),
+      service_count: String(pTable.busCount ?? ''),
+      avg_duration: String(pTable.travelTime ?? ''),
+      first_departure: String(pTable.firstBusTime ?? ''),
+      last_departure: String(pTable.lastBusTime ?? ''),
       image: '',
       price_basis: `minimum route fare as published by zingbus.com on ${today}`,
-      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pt.maxFare ?? '?'} across ${pt.busCount ?? '?'} services) scraped from zingbus.com on ${today}`,
+      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pTable.maxFare ?? '?'} across ${pTable.busCount ?? '?'} services) scraped from zingbus.com on ${today}`,
     },
     identifiers: { sku: `zingbus-${route.replace(/\s+/g, '-')}` },
     evidence: { sourceUrl: pageUrl, extractedFields: ['pTableData minFare', 'maxFare', 'busCount', 'travelTime', 'firstBusTime'] },
