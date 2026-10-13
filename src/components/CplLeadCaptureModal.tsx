@@ -42,9 +42,9 @@ export const CplLeadCaptureModal: React.FC = () => {
   const [existingEmis, setExistingEmis] = useState<number>(10000);
   const [city, setCity] = useState<string>('New Delhi');
   const [pincode, setPincode] = useState<string>('110001');
-  const [fullName, setFullName] = useState<string>('Amit Kumar');
-  const [phone, setPhone] = useState<string>('9876543210');
-  const [email, setEmail] = useState<string>('amit.kumar@gmail.com');
+  const [fullName, setFullName] = useState<string>('');
+  const [phone, setPhone] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   // Sync default location and item price when modal opens
@@ -409,7 +409,7 @@ export const CplLeadCaptureModal: React.FC = () => {
                 className="flex-1 py-3 px-6 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-orange-950/20 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99]"
               >
                 <Zap className="w-4 h-4 text-yellow-300 fill-yellow-300" />
-                <span>Match With 4 Partner Banks Now →</span>
+                <span>Submit My Enquiry To Partner Network →</span>
               </button>
             </div>
           </form>
@@ -428,51 +428,43 @@ export const CplLeadCaptureModal: React.FC = () => {
 
             <div>
               <h3 className="text-lg font-black text-slate-900">
-                Running Simultaneous Multi-Bank Underwriting...
+                Submitting Your Enquiry...
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Comparing debt-to-income ratio and policy limits across our direct institutional lending & insurance network.
+                Securely sharing your details with our lending &amp; insurance partner network. No credit decision or
+                underwriting happens here — partners verify and contact you directly.
               </p>
             </div>
 
-            {/* Real-time ping progress simulation */}
-            <div className="max-w-md mx-auto space-y-2.5 text-xs text-left bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                        <div className="max-w-md mx-auto space-y-2 text-xs text-left bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <div className="flex items-center justify-between text-slate-700">
                 <span className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span>HDFC Bank Automated Decisioning Gateway</span>
+                  <span>Encrypting &amp; forwarding your enquiry</span>
                 </span>
-                <span className="font-mono text-emerald-600 font-bold">140ms · Match Found!</span>
+                <span className="font-mono text-emerald-600 font-bold">Sending…</span>
               </div>
               <div className="flex items-center justify-between text-slate-700">
                 <span className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span>Bajaj Finserv Flexi-Rules Engine</span>
+                  <span>Registering in partner dispatch queue</span>
                 </span>
-                <span className="font-mono text-emerald-600 font-bold">190ms · Pre-Approved</span>
+                <span className="font-mono text-emerald-600 font-bold">Queued</span>
               </div>
               <div className="flex items-center justify-between text-slate-700">
                 <span className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span>ICICI Instant Disbursal API</span>
+                  <span>Generating your reference ID</span>
                 </span>
-                <span className="font-mono text-emerald-600 font-bold">210ms · Pre-Qualified</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-700">
-                <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  <span>{isLoan ? 'SBI Prime Rate Underwriter' : 'PolicyBazaar VIP Underwriter'}</span>
-                </span>
-                <span className="font-mono text-emerald-600 font-bold">260ms · Approved</span>
+                <span className="font-mono text-emerald-600 font-bold">Done</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* STEP 3: MATCHED FINAL CONFIRMATION SCREEN */}
+        {/* STEP 3: SUBMITTED CONFIRMATION SCREEN */}
         {step === 'matched' && submittedLead && (
           <div className="p-6 space-y-6">
-            {/* Success Banner */}
             <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-950 text-white p-5 rounded-2xl border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-900/50">
@@ -481,18 +473,17 @@ export const CplLeadCaptureModal: React.FC = () => {
                 <div>
                   <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1">
                     <Sparkles className="w-3 h-3" />
-                    <span>Instant Pre-Approval Confirmed</span>
+                    <span>Enquiry Submitted</span>
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-white">
-                    Congratulations, {submittedLead.fullName}!
+                    Thanks, {submittedLead.fullName}!
                   </h3>
                   <p className="text-xs text-slate-300">
-                    You have been pre-matched with {submittedLead.matchedPartners.length} top financial partners based on your profile.
+                    Your {submittedLead.vertical === 'loans' ? 'loan' : 'insurance'} enquiry has been shared with our partner network.
                   </p>
                 </div>
               </div>
 
-              {/* Unique Reference Code Box */}
               <div className="bg-slate-900/90 border border-emerald-500/40 p-3 rounded-xl text-right shrink-0">
                 <span className="text-[10px] text-slate-400 block font-semibold">Lead Reference ID</span>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -508,85 +499,22 @@ export const CplLeadCaptureModal: React.FC = () => {
                     {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <span className="text-[9px] text-slate-400">Estimated CIBIL: {submittedLead.creditScoreEstimate}+</span>
               </div>
             </div>
 
-            {/* Matched Partners List */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                <span>Top Multi-Bank Pre-Approved Offers:</span>
-                <span className="text-emerald-700 font-semibold text-[11px]">
-                  All quotes locked for next 48 hours
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3">
-                {submittedLead.matchedPartners.map((partner) => (
-                  <div
-                    key={partner.partnerId}
-                    className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-orange-500/40 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-12 h-12 rounded-xl ${partner.logoBg} text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm`}
-                      >
-                        {partner.logoText}
-                      </div>
-
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-900 text-sm">{partner.partnerName}</h4>
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                            {partner.approvalOdds}% Match
-                          </span>
-                        </div>
-                        <p className="text-xs text-orange-950 font-semibold mt-0.5">
-                          {partner.offerHeadline}
-                        </p>
-                        <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
-                          <span className="text-emerald-700 font-medium">✓ {partner.processingFee}</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-400" />
-                            {partner.disbursalTime}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto gap-2 shrink-0">
-                      <span className="font-mono text-[10px] text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
-                        Ref: {partner.leadReferenceCode}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          addToast('success', `Application Initiated: ${partner.partnerName}`, `A dedicated manager from ${partner.partnerName} will call your verified number (+91 ${submittedLead.phone}) within 15 minutes.`);
-                        }}
-                        className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1"
-                      >
-                        <span>Fast-Track</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Direct Relationship Manager Callback Notice */}
-            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-3">
-              <Phone className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <strong className="font-bold block">15-Minute Dedicated Follow-Up Guarantee:</strong>
-                <p className="text-amber-800 text-[11px] leading-relaxed mt-0.5">
-                  An institutional credit manager from your highest-matched partner will reach out to your registered number ({submittedLead.phone}) to assist with zero-paperwork doorstep/digital KYC.
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 flex items-start gap-3">
+              <ShieldCheck className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong className="font-bold block">What happens next:</strong>
+                <p className="text-slate-600 text-[11px] mt-0.5">
+                  Partners that can serve your request will contact you directly on your registered number
+                  ({submittedLead.phone}). All approvals, interest rates, premiums and terms are decided solely by
+                  each partner after their own verification — Try1Second forwards your enquiry and does not
+                  guarantee any approval, offer or callback time.
                 </p>
               </div>
             </div>
 
-            {/* Modal Bottom Actions */}
             <div className="pt-2 border-t border-slate-200 flex items-center justify-end gap-3">
               <button
                 type="button"

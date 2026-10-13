@@ -224,7 +224,7 @@ interface AppContextType {
   toasts: ToastNotification[];
   addToast: (type: 'points' | 'alert' | 'success' | 'info', title: string, message: string) => void;
   dismissToast: (id: string) => void;
-  simulatePriceDrop: () => void;
+  refreshLivePrices: () => Promise<void>;
   infoModalTab: InfoModalTab | null;
   openInfoModal: (tab: InfoModalTab) => void;
   closeInfoModal: () => void;
@@ -532,33 +532,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return {
           latencyMs: data.latencyMs || 120,
           success: data.success !== false,
-          ip: data.ip || '103.28.14.92 (India 🇮🇳)',
+          ip: data.ip || 'unknown',
         };
       }
+      // Backend responded but reported failure — record it honestly.
+      setProxies((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, status: 'cooldown', lastUsedAt: 'Just now' }
+            : p
+        )
+      );
+      return { latencyMs: 0, success: false, ip: 'unreachable' };
     } catch {
-      // fallback
+      // Test request failed — report failure honestly, never invent a ping.
+      setProxies((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, status: 'cooldown', lastUsedAt: 'Just now' }
+            : p
+        )
+      );
+      return { latencyMs: 0, success: false, ip: 'unreachable' };
     }
-
-    await new Promise((r) => setTimeout(r, 600));
-    const mockLatency = Math.floor(95 + Math.random() * 85);
-    setProxies((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              latencyMs: mockLatency,
-              status: 'active',
-              requestsCount: p.requestsCount + 1,
-              lastUsedAt: 'Just now',
-            }
-          : p
-      )
-    );
-    return {
-      latencyMs: mockLatency,
-      success: true,
-      ip: `103.${Math.floor(20 + Math.random() * 200)}.${Math.floor(10 + Math.random() * 200)}.${Math.floor(1 + Math.random() * 250)} (India 🇮🇳)`,
-    };
   };
 
   // ==========================================
@@ -651,106 +647,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }): Promise<CplLead> => {
     setLeadCaptureState((prev) => ({ ...prev, step: 'processing' }));
 
-    // Real-time simulated parallel multi-bank scoring & underwriting ping
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Submit the enquiry to the partner network. NOTE (no-fabrication rule):
+    // Try1Second only forwards the lead — no underwriting, credit decision or
+    // pre-approval happens here, so we never display bank offers, odds or
+    // guaranteed callbacks. Partners decide and contact the user directly.
+    await new Promise((resolve) => setTimeout(resolve, 900));
 
     const isLoan = (data.vertical || leadCaptureState.item?.vertical || 'loans') === 'loans';
     const cplFee = isLoan ? 750 : 650;
-    const estScore = data.monthlySalary >= 50000 ? Math.floor(750 + Math.random() * 50) : Math.floor(680 + Math.random() * 40);
-
-    const generatedMatches: MatchedFinancialPartner[] = isLoan
-      ? [
-          {
-            partnerId: 'hdfc',
-            partnerName: 'HDFC Bank',
-            logoText: 'HDFC',
-            logoBg: 'bg-[#004c8f]',
-            approvalOdds: 98,
-            offerHeadline: `Pre-Approved up to ₹${Math.min(data.requestedAmount * 1.25, 4000000).toLocaleString('en-IN')} @ 10.25% APR`,
-            processingFee: '0% Processing Fee Waiver',
-            leadReferenceCode: `HDFC-PL-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Instant 10-Second Disbursal',
-          },
-          {
-            partnerId: 'bajaj',
-            partnerName: 'Bajaj Finserv',
-            logoText: 'BAJAJ',
-            logoBg: 'bg-[#00529b]',
-            approvalOdds: 96,
-            offerHeadline: `Flexi-Hybrid Credit Limit up to ₹${data.requestedAmount.toLocaleString('en-IN')}`,
-            processingFee: 'Flat ₹999 Fee Promo',
-            leadReferenceCode: `BAJ-FLX-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Disbursal in 20 Mins',
-          },
-          {
-            partnerId: 'icici',
-            partnerName: 'ICICI Bank',
-            logoText: 'ICICI',
-            logoBg: 'bg-[#b84d00]',
-            approvalOdds: 94,
-            offerHeadline: 'Pre-Qualified Paperless Loan @ 10.45% Fixed APR',
-            processingFee: 'Zero Prepayment Charges',
-            leadReferenceCode: `ICI-EXP-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Doorstep / Digital KYC',
-          },
-          {
-            partnerId: 'sbi',
-            partnerName: 'State Bank of India',
-            logoText: 'SBI',
-            logoBg: 'bg-[#0b4d8c]',
-            approvalOdds: 91,
-            offerHeadline: 'Lowest PSU Prime Rate @ 9.85% for Salaried',
-            processingFee: 'Special PSU Festive Concession',
-            leadReferenceCode: `SBI-PL-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Sanction in 24 Hours',
-          },
-        ]
-      : [
-          {
-            partnerId: 'ergo',
-            partnerName: 'HDFC ERGO',
-            logoText: 'ERGO',
-            logoBg: 'bg-[#b81c22]',
-            approvalOdds: 99,
-            offerHeadline: `Optima Secure ${data.requestedAmount >= 5000000 ? '₹1 Crore' : '₹25 Lakhs'} with 4X Automatic Cover`,
-            processingFee: 'Zero Room Rent Capping',
-            leadReferenceCode: `ERGO-OPT-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Instant Digital Policy Delivery',
-          },
-          {
-            partnerId: 'care',
-            partnerName: 'Care Health Insurance',
-            logoText: 'CARE',
-            logoBg: 'bg-[#00796b]',
-            approvalOdds: 96,
-            offerHeadline: 'Care Supreme Unlimited Recharge + No Claim Bonus up to 500%',
-            processingFee: 'Free Annual Health Checkup Included',
-            leadReferenceCode: `CARE-SUP-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Instant Approval',
-          },
-          {
-            partnerId: 'pb',
-            partnerName: 'PolicyBazaar VIP Concierge',
-            logoText: 'PB',
-            logoBg: 'bg-[#0072ce]',
-            approvalOdds: 95,
-            offerHeadline: '30-Minute Cashless Hospital Admission Guarantee & Support',
-            processingFee: 'Dedicated Relationship Manager',
-            leadReferenceCode: `PB-MED-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: '24x7 Priority Support',
-          },
-          {
-            partnerId: 'tata',
-            partnerName: 'Tata AIG',
-            logoText: 'TATA',
-            logoBg: 'bg-[#1a237e]',
-            approvalOdds: 93,
-            offerHeadline: 'Zero-Dep Universal Cover with Global Emergency Assistance',
-            processingFee: 'Instant Premium Discount Applied',
-            leadReferenceCode: `TATA-INS-${Math.floor(100000 + Math.random() * 900000)}`,
-            disbursalTime: 'Instant WhatsApp Delivery',
-          },
-        ];
 
     const newLead: CplLead = {
       id: `lead-${Date.now().toString().slice(-4)}`,
@@ -766,12 +670,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       fullName: data.fullName,
       phone: data.phone,
       email: data.email,
-      creditScoreEstimate: estScore,
-      matchedPartners: generatedMatches,
+      matchedPartners: [],
       status: 'new',
       cplCost: cplFee,
       createdAt: 'Just now',
-      assignedMerchant: generatedMatches[0]?.partnerName || 'All Partners',
+      assignedMerchant: 'Partner Network (routing pending)',
     };
 
     setCplLeads((prev) => [newLead, ...prev]);
@@ -796,8 +699,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     addToast(
       'success',
-      'Multi-Bank Pre-Approval Generated!',
-      `Matched with ${generatedMatches.length} top partners. Reference ID: ${newLead.id}`
+      'Enquiry Submitted',
+      `Your details were shared with our partner network. Reference ID: ${newLead.id}`
     );
 
     return newLead;
@@ -819,7 +722,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         `${loc.address} (Pincode: ${loc.pincode}) · ${loc.accuracyText}`
       );
     } catch {
-      addToast('info', 'GPS Simulation Active', 'Accurate to Connaught Place, New Delhi');
+      addToast('alert', 'GPS unavailable', "We couldn't get a precise location. Please enter your pincode manually.");
     } finally {
       setIsGpsLocating(false);
     }
@@ -1447,62 +1350,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSmartFilterText('');
   };
 
-  const simulatePriceDrop = () => {
-    const currentItems = items.filter((it) => it.vertical === vertical);
-    if (currentItems.length === 0) return;
-    const target = currentItems[Math.floor(Math.random() * currentItems.length)];
-    const dropAmount = Math.max(10, Math.floor(target.primaryPrice * 0.06));
-    const newPrice = target.primaryPrice - dropAmount;
-
-    setItems((prev) =>
-      prev.map((it) => {
-        if (it.id === target.id) {
-          const updatedQuotes = it.sellerQuotes.map((q, idx) =>
-            idx === 0 ? { ...q, price: newPrice, isLowest: true } : q
-          );
-          return {
-            ...it,
-            primaryPrice: newPrice,
-            sellerQuotes: updatedQuotes,
-            lastPriceUpdate: 'Just now',
-          };
-        }
-        return it;
-      })
-    );
-
-    const isTracked = trackedItemIds.includes(target.id);
-    addToast(
-      'alert',
-      `⚡ Price Drop Detected! (-₹${dropAmount.toLocaleString('en-IN')})`,
-      `${target.title} dropped to ₹${newPrice.toLocaleString('en-IN')}${isTracked ? ' (Tracked in your watchlist)' : ''}.`
-    );
+  // Honest live recheck: re-runs the real acquisition pipeline for the current
+  // vertical. No fabricated price drops — prices change only when the backend
+  // returns fresh verified data (no-fabrication rule).
+  const refreshLivePrices = async () => {
+    addToast('info', 'Re-checking live prices', 'Fetching fresh prices for your city and vertical.');
+    try {
+      await triggerLiveLocationScrape();
+    } catch {
+      addToast('alert', 'Refresh failed', 'Live sources are unreachable right now. Prices were not changed.');
+    }
   };
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (Math.random() < 0.25) {
-        const itemToTick = items[Math.floor(Math.random() * items.length)];
-        const delta = (Math.random() > 0.5 ? -1 : 1) * Math.floor(itemToTick.primaryPrice * 0.02);
-        if (delta !== 0) {
-          setItems((prev) =>
-            prev.map((it) => {
-              if (it.id === itemToTick.id) {
-                const updatedPrice = Math.max(10, it.primaryPrice + delta);
-                return {
-                  ...it,
-                  primaryPrice: updatedPrice,
-                  lastPriceUpdate: 'Updated 1m ago',
-                };
-              }
-              return it;
-            })
-          );
-        }
-      }
-    }, 28000);
-    return () => clearInterval(timer);
-  }, [items]);
 
   // =================== ADMIN ENGINE METHODS ===================
 
@@ -1541,10 +1400,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, itemsFound: 0, sampleTitle: '', samplePrice: 0 };
     }
 
-    let itemsFound = Math.floor(12 + Math.random() * 24);
-    let mockPrice = Math.floor(1200 + Math.random() * 8500);
-    let sampleTitle = `${targetScraper.merchantName} Verified Best Seller (${testQuery})`;
-    let latency = 145;
+    // REAL EXTRACTION ONLY (no-fabrication rule): we report exactly what the
+    // backend extracted. On failure we report the failure honestly and inject
+    // nothing — no invented titles, prices, ratings or reviews.
+    let itemsFound = 0;
+    let extractedPrice = 0;
+    let sampleTitle = '';
+    let latency = 0;
 
     try {
       const res = await fetch('/api/scrape/custom', {
@@ -1563,119 +1425,109 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (res.ok) {
         const data = await res.json();
         if (data.extractedTitle) sampleTitle = data.extractedTitle;
-        if (data.extractedPrice) mockPrice = data.extractedPrice;
+        if (data.extractedPrice) extractedPrice = data.extractedPrice;
         if (data.itemsCount) itemsFound = data.itemsCount;
         if (data.latencyMs) latency = data.latencyMs;
       }
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      /* extraction failed -> honest failure below */
     }
+
+    const extractionSucceeded = Boolean(sampleTitle) && extractedPrice > 0;
 
     setScrapers((prev) =>
       prev.map((s) =>
         s.id === scraperId
           ? {
               ...s,
-              status: 'active',
+              status: extractionSucceeded ? 'active' : s.status,
               lastScrapeTime: 'Just now',
-              itemsScrapedLastRun: itemsFound,
+              itemsScrapedLastRun: extractionSucceeded ? itemsFound : 0,
             }
           : s
       )
     );
 
-    // If auto-ingestion is on, inject the newly scraped merchant deal directly into the comparison feed!
-    if (targetScraper.autoIngestIntoCompare) {
+    // Auto-ingestion only when a REAL title+price pair was extracted, and the
+    // item carries only fields actually observed by the extraction.
+    if (extractionSucceeded && targetScraper.autoIngestIntoCompare) {
+      const sourceUrl = targetScraper.targetUrlTemplate.replace('{query}', encodeURIComponent(testQuery));
       const newComparisonItem: ComparisonItem = {
         id: `scraped-${targetScraper.id}-${Date.now()}`,
         vertical: targetScraper.vertical,
         title: sampleTitle,
-        subtitle: `Harvested via ${targetScraper.engineMode} from ${targetScraper.merchantName}`,
+        subtitle: `Extracted via ${targetScraper.engineMode} from ${targetScraper.merchantName}`,
         category: 'Live Scraped Deal',
         provider: targetScraper.merchantName,
         providerLogo: targetScraper.merchantName.substring(0, 3).toUpperCase(),
-        rating: 4.6,
-        reviewCount: 312,
-        sentimentSummary: `Real-time pricing extracted via Try1Second ${targetScraper.engineMode} engine.`,
-        criteriaRatings: [
-          { name: 'Scrape Accuracy', score: 5.0 },
-          { name: 'Live Stock Check', score: 4.8 },
-          { name: 'Price Competitiveness', score: 4.9 },
-          { name: 'Delivery ETA', score: 4.7 },
-        ],
-        primaryPrice: mockPrice,
-        originalPrice: Math.round(mockPrice * 1.25),
+        rating: 0,
+        reviewCount: 0,
+        sentimentSummary: `Price extracted live via the ${targetScraper.engineMode} engine. Rating data not captured by this scraper.`,
+        criteriaRatings: [],
+        primaryPrice: extractedPrice,
+        originalPrice: 0,
+        priceAvailable: true,
         unit: 'deal price',
         features: [
-          `Scraped via ${targetScraper.engineMode}`,
-          'Auto-synchronized every 15 minutes',
-          'Verified merchant direct cart checkout',
-          'Earn 1 Point per redirection',
+          `Extracted via ${targetScraper.engineMode}`,
+          'Auto-synced on each scraper run',
         ],
         specs: {
-          SourceUrl: targetScraper.targetUrlTemplate.replace('{query}', encodeURIComponent(testQuery)),
+          SourceUrl: sourceUrl,
           Engine: targetScraper.engineMode,
           ScrapedAt: 'Just now',
-          Status: 'Live & In Stock',
         },
+        pricePrediction: {
+          advice: 'fair_price',
+          headline: 'Newly tracked',
+          details: 'No price history yet — only real observations are charted, never generated.',
+          historicalLow: extractedPrice,
+          historicalHigh: extractedPrice,
+          priceHistory: [],
+        },
+        reviews: [],
         sellerQuotes: [
           {
             id: `sq-scraped-${Date.now()}`,
             sellerName: targetScraper.merchantName,
-            price: mockPrice,
-            originalPrice: Math.round(mockPrice * 1.25),
+            price: extractedPrice,
             currency: '₹',
-            url: targetScraper.targetUrlTemplate.replace('{query}', encodeURIComponent(testQuery)),
-            badge: 'Scraped Lowest Deal',
+            url: sourceUrl,
+            badge: 'Live Scraped Price',
             isLowest: true,
             isLiveScraped: true,
             sourceDomain: targetScraper.merchantName.toLowerCase().replace(/\s+/g, '') + '.com',
             scrapedLocation: `${userLocation.locality}, ${userLocation.city} (${userLocation.pincode})`,
-            deliveryOrEta: '2-3 Business Days',
           },
         ],
         isLiveScraped: true,
         scrapedLocation: `${userLocation.locality}, ${userLocation.city} (${userLocation.pincode})`,
         scrapedTimestamp: 'Just now',
         scrapedLatencyMs: latency,
-        pricePrediction: {
-          advice: 'book_now',
-          headline: 'Freshly Scraped Merchant Deal',
-          details: `Direct price discovery from non-API partner ${targetScraper.merchantName}.`,
-          historicalLow: mockPrice,
-          historicalHigh: Math.round(mockPrice * 1.3),
-          priceHistory: [
-            { date: 'Initial Scrape', price: mockPrice },
-          ],
-        },
-        reviews: [
-          {
-            id: `rev-scr-${Date.now()}`,
-            author: 'Scraper Audit Bot',
-            rating: 5,
-            date: 'Today',
-            title: 'Live price validated against checkout HTML',
-            comment: `Automated parser verified matching price ₹${mockPrice.toLocaleString('en-IN')}.`,
-            verifiedPurchase: true,
-            helpfulCount: 8,
-          },
-        ],
       };
 
       setItems((prev) => [newComparisonItem, ...prev]);
     }
 
-    addToast(
-      'success',
-      '✓ Scraper Run Successful',
-      `Harvested ${itemsFound} items from ${targetScraper.merchantName} and injected into ${targetScraper.vertical} metasearch.`
-    );
+    if (extractionSucceeded) {
+      addToast(
+        'success',
+        '✓ Scraper Run Successful',
+        `Extracted ${itemsFound} item(s) from ${targetScraper.merchantName}.`
+      );
+    } else {
+      addToast(
+        'alert',
+        'Scraper Run Failed',
+        `${targetScraper.merchantName} returned no extractable title/price for "${testQuery}". Nothing was added.`
+      );
+    }
 
     return {
-      success: true,
-      itemsFound,
+      success: extractionSucceeded,
+      itemsFound: extractionSucceeded ? itemsFound : 0,
       sampleTitle,
-      samplePrice: mockPrice,
+      samplePrice: extractedPrice,
     };
   };
 
@@ -1706,29 +1558,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addToast('success', 'Network Configuration Updated', 'Credentials and postback URLs synchronized.');
   };
 
+  // Admin-only TEST postback: records a clearly-labeled zero-commission test
+  // entry so real earnings are never mixed with simulated data (no-fabrication
+  // rule). No fake buyer identities, orders or commissions are invented.
   const simulateNetworkPostback = (networkName: string) => {
-    const commissionAmt = Math.floor(350 + Math.random() * 1800);
-    const mockOrder: UserPurchaseRecord = {
-      id: `postback-${Date.now()}`,
-      userId: `usr-s2s-${Math.floor(1000 + Math.random() * 9000)}`,
-      userName: 'Verified Network Buyer',
-      userEmail: 'network.buyer@partner.com',
-      userCity: 'Bengaluru',
-      userIp: '49.207.12.89',
-      merchantName: `${networkName} Merchant Partner`,
+    const testRecord: UserPurchaseRecord = {
+      id: `postback-test-${Date.now()}`,
+      userId: 'TEST',
+      userName: 'TEST RECORD — no real user',
+      userEmail: 'test-record@local',
+      userCity: '—',
+      userIp: '0.0.0.0 (test)',
+      merchantName: `${networkName} TEST — not a real merchant`,
       vertical: 'ecommerce',
-      itemTitle: 'Festival Special Electronics Bundle',
-      orderId: `S2S-${Math.floor(100000 + Math.random() * 900000)}`,
-      orderAmount: commissionAmt * 20,
-      commissionEarned: commissionAmt,
-      commissionRate: '5.0% S2S Postback',
-      pointsAwarded: 1,
-      status: 'approved',
-      timestamp: 'Just now via S2S Webhook',
+      itemTitle: 'TEST postback — no real order exists',
+      orderId: `TEST-${Date.now()}`,
+      orderAmount: 0,
+      commissionEarned: 0,
+      commissionRate: 'TEST — ₹0 recorded',
+      pointsAwarded: 0,
+      status: 'pending',
+      timestamp: 'TEST entry — just now (not a real order)',
       affiliateNetwork: networkName,
     };
-    setUserPurchases((prev) => [mockOrder, ...prev]);
-    addToast('points', `Incoming ${networkName} S2S Postback!`, `Attributed ₹${commissionAmt} commission to Try1Second account.`);
+    setUserPurchases((prev) => [testRecord, ...prev]);
+    addToast('info', `TEST postback recorded (${networkName})`, 'Marked as a test entry with ₹0 commission — real network earnings come only from verified S2S conversions.');
   };
 
   const blockUserSession = (userId: string) => {
@@ -2349,7 +2203,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toasts,
         addToast,
         dismissToast,
-        simulatePriceDrop,
+        refreshLivePrices,
         infoModalTab,
         openInfoModal,
         closeInfoModal,

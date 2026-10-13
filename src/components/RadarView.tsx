@@ -83,7 +83,7 @@ const INITIAL_RADAR_DETECTIONS: RadarDetection[] = [
 ];
 
 export const RadarView: React.FC = () => {
-  const { setVertical, setActiveNavTab, simulatePriceDrop } = useApp();
+  const { setVertical, setActiveNavTab, refreshLivePrices } = useApp();
   const [detections, setDetections] = useState<RadarDetection[]>(INITIAL_RADAR_DETECTIONS);
   const [isScanning, setIsScanning] = useState<boolean>(true);
 
@@ -151,11 +151,11 @@ export const RadarView: React.FC = () => {
 
           <button
             type="button"
-            onClick={simulatePriceDrop}
+            onClick={refreshLivePrices}
             className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Force Pulse Scan</span>
+            <span>Live Price Scan</span>
           </button>
         </div>
       </div>

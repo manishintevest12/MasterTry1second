@@ -40,7 +40,6 @@ export const Navbar: React.FC = () => {
     setIsNotificationsOpen,
     isProfileOpen,
     setIsProfileOpen,
-    simulatePriceDrop,
     openExtensionModal,
   } = useApp();
 

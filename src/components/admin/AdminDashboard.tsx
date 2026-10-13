@@ -305,7 +305,7 @@ export const AdminDashboard: React.FC = () => {
               className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
             >
               <Zap className="w-3.5 h-3.5 text-orange-600" />
-              <span>Simulate S2S Postback</span>
+              <span>Record TEST Postback</span>
             </button>
 
             {/* Admin Logout Button */}

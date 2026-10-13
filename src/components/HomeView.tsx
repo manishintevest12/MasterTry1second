@@ -52,7 +52,6 @@ export const HomeView: React.FC = () => {
     setVertical,
     setActiveNavTab,
     items,
-    simulatePriceDrop,
     quickAppPartners,
     trackQuickAppRedirection,
   } = useApp();

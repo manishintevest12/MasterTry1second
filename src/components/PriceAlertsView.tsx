@@ -29,7 +29,7 @@ export const PriceAlertsView: React.FC = () => {
     items,
     trackedItemIds,
     toggleTrackPrice,
-    simulatePriceDrop,
+    refreshLivePrices,
     openPriceAlertModal,
     setVertical,
     setActiveNavTab,
@@ -110,11 +110,11 @@ export const PriceAlertsView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={simulatePriceDrop}
+            onClick={refreshLivePrices}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
           >
             <Zap className="w-4 h-4 fill-white" />
-            <span>Simulate Live Price Drop</span>
+            <span>Check Live Prices Now</span>
           </button>
 
           <button

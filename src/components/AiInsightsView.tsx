@@ -120,7 +120,6 @@ export const AiInsightsView: React.FC = () => {
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<'90d' | '180d' | '365d'>('90d');
   const [scannerMode, setScannerMode] = useState<'url' | 'barcode' | 'query'>('url');
-  const [isBarcodeSimulating, setIsBarcodeSimulating] = useState<boolean>(false);
 
   // LIVE market insight cards: one real query per vertical, built from actual results only.
   const [INSIGHTS, setInsights] = useState<AiInsightCard[]>([]);
@@ -191,8 +190,6 @@ export const AiInsightsView: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, []);
-
-  // Automated Coupon Tester Live Simulation State
 
   // WhatsApp Alert Form State
   const [alertPhone, setAlertPhone] = useState<string>('');
