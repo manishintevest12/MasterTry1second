@@ -267,6 +267,7 @@ export interface SourceHealth {
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
   lastFailureClass: FailureClass | null;
+  lastFailureMessage: string | null;
   circuitOpenUntil: string | null;
   totalAttempts: number;
   totalSuccesses: number;

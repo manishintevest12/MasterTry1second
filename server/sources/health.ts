@@ -20,6 +20,7 @@ function blank(sourceId: string): SourceHealth {
     lastSuccessAt: null,
     lastFailureAt: null,
     lastFailureClass: null,
+    lastFailureMessage: null,
     circuitOpenUntil: null,
     totalAttempts: 0,
     totalSuccesses: 0,
@@ -69,7 +70,7 @@ export function recordSuccess(sourceId: string, latencyMs: number): void {
   void persist(h);
 }
 
-export function recordFailure(sourceId: string, failureClass: FailureClass, _error: string): void {
+export function recordFailure(sourceId: string, failureClass: FailureClass, error: string): void {
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
   // RATE_LIMITED is OUR OWN limiter backpressure, not an upstream failure —
@@ -86,6 +87,7 @@ export function recordFailure(sourceId: string, failureClass: FailureClass, _err
   h.consecutiveFailures += 1;
   h.lastFailureAt = new Date().toISOString();
   h.lastFailureClass = failureClass;
+  h.lastFailureMessage = String(error || '').slice(0, 300) || null;
   h.state = h.consecutiveFailures >= CIRCUIT_THRESHOLD ? 'CIRCUIT_OPEN' : 'DEGRADED';
   if (h.state === 'CIRCUIT_OPEN') {
     h.circuitOpenUntil = new Date(Date.now() + CIRCUIT_COOLDOWN_MS).toISOString();

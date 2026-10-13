@@ -213,7 +213,8 @@ export const flightsWorker: VerticalWorker = {
         }
         const flights = parseIndigoSearch(r.body);
         if (flights.length === 0) {
-          throw new AcquisitionError('EMPTY_RESPONSE', `IndiGo API returned no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status})`);
+          const snippet = (r.body || '').replace(/\s+/g, ' ').slice(0, 220);
+          throw new AcquisitionError('EMPTY_RESPONSE', `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
         }
         return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
       },

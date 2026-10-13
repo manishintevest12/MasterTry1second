@@ -883,6 +883,7 @@ function blank(sourceId) {
     lastSuccessAt: null,
     lastFailureAt: null,
     lastFailureClass: null,
+    lastFailureMessage: null,
     circuitOpenUntil: null,
     totalAttempts: 0,
     totalSuccesses: 0,
@@ -924,7 +925,7 @@ function recordSuccess(sourceId, latencyMs) {
   health.set(sourceId, h);
   void persist(h);
 }
-function recordFailure(sourceId, failureClass, _error) {
+function recordFailure(sourceId, failureClass, error) {
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
   if (failureClass === "RATE_LIMITED") {
@@ -938,6 +939,7 @@ function recordFailure(sourceId, failureClass, _error) {
   h.consecutiveFailures += 1;
   h.lastFailureAt = (/* @__PURE__ */ new Date()).toISOString();
   h.lastFailureClass = failureClass;
+  h.lastFailureMessage = String(error || "").slice(0, 300) || null;
   h.state = h.consecutiveFailures >= CIRCUIT_THRESHOLD ? "CIRCUIT_OPEN" : "DEGRADED";
   if (h.state === "CIRCUIT_OPEN") {
     h.circuitOpenUntil = new Date(Date.now() + CIRCUIT_COOLDOWN_MS).toISOString();
@@ -3744,7 +3746,8 @@ var init_flights = __esm({
             }
             const flights = parseIndigoSearch(r.body);
             if (flights.length === 0) {
-              throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API returned no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status})`);
+              const snippet = (r.body || "").replace(/\s+/g, " ").slice(0, 220);
+              throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
             }
             return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
           }
@@ -7036,6 +7039,7 @@ function sourcesStatusReport() {
       lastSuccessAt: h.lastSuccessAt,
       lastFailureAt: h.lastFailureAt,
       lastFailureClass: h.lastFailureClass,
+      lastFailureMessage: h.lastFailureMessage,
       totalAttempts: h.totalAttempts,
       totalSuccesses: h.totalSuccesses,
       // Honest classification (Section 23 Phase 9)

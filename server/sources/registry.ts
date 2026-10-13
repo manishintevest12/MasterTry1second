@@ -199,6 +199,7 @@ export function sourcesStatusReport() {
       lastSuccessAt: h.lastSuccessAt,
       lastFailureAt: h.lastFailureAt,
       lastFailureClass: h.lastFailureClass,
+      lastFailureMessage: h.lastFailureMessage,
       totalAttempts: h.totalAttempts,
       totalSuccesses: h.totalSuccesses,
       // Honest classification (Section 23 Phase 9)
