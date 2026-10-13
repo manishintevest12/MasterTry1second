@@ -32,6 +32,7 @@ import {
   Building2,
   KeyRound,
   LogOut,
+  Link2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
@@ -44,6 +45,7 @@ import {
 import { Try1SecondLogo } from '../Try1SecondLogo';
 import { UserLoginsTab } from './UserLoginsTab';
 import { SpinEarnManagementTab } from './SpinEarnManagementTab';
+import { AffiliateNetworksTab } from './AffiliateNetworksTab';
 import { ResidentialProxyTab } from './ResidentialProxyTab';
 import { DirectPartnersTab } from './DirectPartnersTab';
 import { MerchantVendorIdsTab } from './MerchantVendorIdsTab';
@@ -58,6 +60,7 @@ export type AdminTab =
   | 'purchases'
   | 'payouts'
   | 'affiliate_ids'
+  | 'affiliate_networks'
   | 'scrapers'
   | 'apis'
   | 'networks'
@@ -414,6 +417,19 @@ export const AdminDashboard: React.FC = () => {
             <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-[10px] text-slate-700">
               {affiliateIds.length}
             </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('affiliate_networks')}
+            className={`py-3 px-3.5 border-b-2 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${
+              activeTab === 'affiliate_networks'
+                ? 'border-orange-600 text-orange-600 font-bold bg-orange-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Link2 className="w-4 h-4" />
+            <span>Affiliate Networks</span>
           </button>
 
           <button
@@ -1218,6 +1234,8 @@ export const AdminDashboard: React.FC = () => {
 
         {/* ================= TAB 8: SPIN & EARN REWARDS MANAGEMENT ================= */}
         {activeTab === 'spin_earn' && <SpinEarnManagementTab />}
+
+        {activeTab === 'affiliate_networks' && <AffiliateNetworksTab />}
 
         {/* ================= TAB 9: RESIDENTIAL PROXY NETWORK & HOSTINGER ================= */}
         {activeTab === 'proxies' && <ResidentialProxyTab />}
