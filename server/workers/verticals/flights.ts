@@ -18,6 +18,10 @@ const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/da
 
 /** "Indore (IDR) to Delhi (DEL) on 20 oct", "patna to delhi flight", "DEL → BOM" -> clean city names (codes stripped). */
 function routeFromQuery(raw: string): { from: string; to: string; fromCode?: string; toCode?: string } | null {
+  // Normalise bare trailing IATA codes ("indore idr to delhi del") into the "City (IDR)" form.
+  const KNOWN_CODES = new Set(['DEL','BOM','BLR','HYD','MAA','CCU','PNQ','AMD','JAI','GOI','LKO','NAG','IDR','STV','PAT','BHO','CJB','COK','GAU','IXC','DED','ATQ','VNS','SXR','TRV','VTZ','IXM','UDR','JDH','IXR','RPR','BBI','IMF','IXL','IXB','IXU','IXE','BDQ','RAJ','IXJ','IXD','GOP','JRG','DIB','TEZ','KNU','MYQ','HBX','IXG','KLH','ISK','SAG','TIR','DXB','SIN','LHR','JFK','BKK','KUL','DOH','AUH','SHJ']);
+  raw = raw.replace(/\b([a-zA-Z][a-zA-Z.]{2,})\s+([A-Za-z]{3})\b(?!\s*\))/g, (full, city, code) =>
+    KNOWN_CODES.has(code.toUpperCase()) && !/^(to|from|and|the|via)$/i.test(city) ? `${city} (${code.toUpperCase()})` : full);
   const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const codeOf = (s: string) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
@@ -108,6 +112,52 @@ export const flightsWorker: VerticalWorker = {
         const flights = parseIxigoFlights(next);
         if (flights.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo SRP had no priced flights');
         return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep);
+      },
+    },
+    // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
+    {
+      sourceId: 'w_flights_makemytrip',
+      name: 'Flights worker: MakeMyTrip flights (probe)',
+      priority: 15,
+      run: async () => {
+        await cffiFetch('https://www.makemytrip.com/flights/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip flight search serves an empty shell to browserless HTTP; fare lists load via Akamai-sensor-gated sessioned APIs (bot challenge on 302 to makemytrip.global).');
+      },
+    },
+    {
+      sourceId: 'w_flights_yatra',
+      name: 'Flights worker: Yatra flights (probe)',
+      priority: 16,
+      run: async () => {
+        await cffiFetch('https://flight.yatra.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Yatra flight search is a JS shell to browserless HTTP (HTTP/2 stream reset); fares are session-gated. Cheap-flights SEO pages return 404.');
+      },
+    },
+    {
+      sourceId: 'w_flights_cleartrip',
+      name: 'Flights worker: Cleartrip flights (probe)',
+      priority: 17,
+      run: async () => {
+        await cffiFetch('https://www.cleartrip.com/flights/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip flight results render client-side only; the SEO route pages (/flights/<city>-<city>/) return 404 and the search results XHR requires a session.');
+      },
+    },
+    {
+      sourceId: 'w_flights_akasa',
+      name: 'Flights worker: Akasa Air (probe)',
+      priority: 18,
+      run: async () => {
+        await cffiFetch('https://www.akasaair.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Akasa Air web serves a challenge/403 to browserless HTTP; homepage carries only marketing voucher fares, no live route fares without a sessioned booking flow.');
+      },
+    },
+    {
+      sourceId: 'w_flights_indigo',
+      name: 'Flights worker: IndiGo (probe)',
+      priority: 19,
+      run: async () => {
+        await cffiFetch('https://www.goindigo.in/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'IndiGo web homepage carries marketing fares only; live route fares come from the sessioned skyplus booking API (app-prod-skyplus6e.goindigo.in), not an unauthenticated browserless endpoint.');
       },
     },
     {
