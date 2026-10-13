@@ -143,7 +143,28 @@ export function groupSameProduct<T extends { id: string; vertical: string; title
     const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
     const head = priced[0] || members[0];
     const withImg = members.find((m) => m.imageUrl);
-    out.push({ ...head, imageUrl: head.imageUrl || withImg?.imageUrl, sellerQuotes: quotes } as T);
+    // UNION THE CARD'S SPEC PANEL: one film's card merges every site, and different sites
+    // contribute different real attributes (trailer from District, IMDb/critics/theatres from
+    // TicketNew, language from BMS...). The head keeps its own values; missing keys are
+    // filled from the other members, cheapest first. Never overwritten, only filled.
+    const mergedSpecs: Record<string, string> = { ...(head.specs || {}) };
+    const FEATURE_KEYS = ['theatres', 'theatre count', 'shows today', 'price band', 'imdb rating', 'imdb id',
+      'critic rating', 'critic review', 'trailer url', 'language', 'genres', 'certification', 'duration min',
+      'censor rating', 'runtime minutes', 'sessions today', 'release date', 'director', 'cast', 'starring'];
+    const normKey = (k: string) => k.replace(/_/g, ' ').toLowerCase();
+    const have = new Set(Object.keys(mergedSpecs).map(normKey));
+    for (const m of members) {
+      if (m === head) continue;
+      for (const [k, v] of Object.entries(m.specs || {})) {
+        const nk = normKey(k);
+        const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk);
+        if (!wanted) continue;
+        if (!have.has(nk) && v != null && String(v).trim() !== '') {
+          mergedSpecs[k] = v; have.add(nk);
+        }
+      }
+    }
+    out.push({ ...head, specs: mergedSpecs, imageUrl: head.imageUrl || withImg?.imageUrl, sellerQuotes: quotes } as T);
   }
   return out;
 }

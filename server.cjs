@@ -9853,7 +9853,44 @@ function groupSameProduct(items, extra = () => ({})) {
     const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
     const head = priced[0] || members[0];
     const withImg = members.find((m) => m.imageUrl);
-    out.push({ ...head, imageUrl: head.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
+    const mergedSpecs = { ...head.specs || {} };
+    const FEATURE_KEYS = [
+      "theatres",
+      "theatre count",
+      "shows today",
+      "price band",
+      "imdb rating",
+      "imdb id",
+      "critic rating",
+      "critic review",
+      "trailer url",
+      "language",
+      "genres",
+      "certification",
+      "duration min",
+      "censor rating",
+      "runtime minutes",
+      "sessions today",
+      "release date",
+      "director",
+      "cast",
+      "starring"
+    ];
+    const normKey = (k) => k.replace(/_/g, " ").toLowerCase();
+    const have = new Set(Object.keys(mergedSpecs).map(normKey));
+    for (const m of members) {
+      if (m === head) continue;
+      for (const [k, v] of Object.entries(m.specs || {})) {
+        const nk = normKey(k);
+        const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk);
+        if (!wanted) continue;
+        if (!have.has(nk) && v != null && String(v).trim() !== "") {
+          mergedSpecs[k] = v;
+          have.add(nk);
+        }
+      }
+    }
+    out.push({ ...head, specs: mergedSpecs, imageUrl: head.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
   }
   return out;
 }

@@ -2,6 +2,7 @@ import { brandLogoUrl } from '../utils/brandLogo';
 import React, { useState } from 'react';
 import {
   Heart,
+  Play,
   Share2,
   ChevronDown,
   ChevronUp,
@@ -288,6 +289,61 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     </span>
                   ))}
                 </div>
+
+                {/* Movie extras: trailer / IMDb / critics / theatres — real data only; chips render only when the source published them */}
+                {item.vertical === 'movie' && (() => {
+                  const sp: Record<string, string> = (item.specs as any) || {};
+                  const trailer = sp['trailer url'] || sp['trailer_url'];
+                  const imdb = sp['imdb rating'] || sp['imdb_rating'];
+                  const critic = sp['critic rating'] || sp['critic_rating'];
+                  const shows = sp['shows today'] || sp['shows_today'];
+                  const theatresAll = (sp['theatres'] || '').split(' | ').filter(Boolean);
+                  const theatres = theatresAll.slice(0, 3).join(' · ');
+                  const criticHead = critic ? critic.split(' | ')[0] : '';
+                  if (!trailer && !imdb && !criticHead && !shows && !theatres) return null;
+                  return (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {trailer && String(trailer).startsWith('http') && (
+                          <a
+                            href={trailer}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Official trailer (opens YouTube)"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold transition-colors"
+                          >
+                            <Play className="w-3 h-3 fill-white" />
+                            Watch Trailer
+                          </a>
+                        )}
+                        {imdb && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold" title={imdb}>
+                            <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                            IMDb {imdb.split(' ')[0]}
+                          </span>
+                        )}
+                        {criticHead && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-bold" title={critic}>
+                            <ThumbsUp className="w-3 h-3 text-slate-500" />
+                            Critics {criticHead.split(' (')[0]}
+                          </span>
+                        )}
+                        {shows && (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-slate-600 text-[11px] font-semibold">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            {shows} shows today
+                          </span>
+                        )}
+                      </div>
+                      {theatres && (
+                        <p className="flex items-start gap-1 text-[11px] text-slate-600 leading-snug">
+                          <MapPin className="w-3 h-3 mt-0.5 shrink-0 text-orange-500" />
+                          <span className="line-clamp-1">{theatres}{theatresAll.length > 3 ? ' and more' : ''}</span>
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           ) : (
@@ -815,7 +871,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 Full Technical & Route Parameters
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {Object.entries(item.specs).map(([key, value]) => (
+                {Object.entries(item.specs).filter(([key]) => !/trailer[_ ]url/i.test(key)).map(([key, value]) => (
                   <div
                     key={key}
                     className="flex items-start justify-between py-1.5 border-b border-slate-100"
