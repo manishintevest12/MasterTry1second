@@ -3839,6 +3839,84 @@ var init_dominos = __esm({
   }
 });
 
+// server/workers/parsers/pizzaHut.ts
+function sizeLabel(p) {
+  const parts = [];
+  if (p.size && p.size !== "medium") parts.push(String(p.size));
+  if (p.crust) parts.push(String(p.crust).split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "));
+  return parts.join(", ");
+}
+function pizzaHutItems(rawBody, source, query, pageUrl) {
+  const m = rawBody.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) return [];
+  let root;
+  try {
+    root = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const kinds = root?.props?.pageProps?.itemsByKind || [];
+  const products = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const kind of kinds) {
+    for (const p of kind?.products || []) {
+      const title = String(p?.title || "").trim();
+      const price = Number(p?.price);
+      if (!title || !Number.isFinite(price) || price <= 0) continue;
+      const key = `${title}|${p.size || ""}|${price}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      products.push(p);
+    }
+  }
+  const q3 = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const words = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "order", "buy", "price"].includes(w));
+  const scored = products.map((p) => {
+    const hay = `${p.title} ${p.desc || ""} ${p.type || ""} ${sizeLabel(p)}`.toLowerCase();
+    let score = 0;
+    for (const w of words) if (hay.includes(w)) score += 1;
+    if (q3 && hay.includes(q3)) score += 3;
+    if (p.popular) score += 0.5;
+    return { p, score };
+  }).filter((x) => x.score >= 1).sort((a, b) => b.score - a.score || (a.p.price || 0) - (b.p.price || 0));
+  let top = scored.slice(0, 12).map((x) => x.p);
+  if (!top.length && PIZZAISH.test(q3)) {
+    top = products.filter((p) => p.popular || p.new).slice(0, 8);
+    if (!top.length) top = products.slice(0, 8);
+  }
+  if (!top.length) return [];
+  const items = [];
+  for (const p of top) {
+    const size = sizeLabel(p);
+    items.push(newRawItem(source, {
+      title: `Pizza Hut ${p.title}${size ? ` (${size})` : ""}`.slice(0, 200),
+      brand: "Pizza Hut",
+      price: Number(p.price),
+      currency: "INR",
+      seller: "Pizza Hut India",
+      sellerUrl: "https://www.pizzahut.co.in/menu/pizzas",
+      attributes: {
+        dish: p.title || "",
+        size: p.size || "",
+        crust: p.crust || "",
+        image: p.img ? String(p.img).replace(/^http:/, "https:") : "",
+        veg: p.veg === true ? "true" : "false",
+        data_note: `Menu item as listed on pizzahut.co.in national menu, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: p.id ? { sku: String(p.id) } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "size", "crust", "image", "veg"] }
+    }));
+  }
+  return items;
+}
+var PIZZAISH;
+var init_pizzaHut = __esm({
+  "server/workers/parsers/pizzaHut.ts"() {
+    init_contract();
+    PIZZAISH = /pizza|margherita|farmhouse|paneer|veggie|cheese|bbq|schezwan|chilli|habanero|nashville|korean|onion|corn|peppy|chicken|sausage|taco|hut/i;
+  }
+});
+
 // server/workers/verticals/food.ts
 function citySlug(city, raw) {
   if (city) {
@@ -3862,6 +3940,7 @@ var init_food = __esm({
     init_swiggy();
     init_httpClient();
     init_dominos();
+    init_pizzaHut();
     init_curlCffiFetch();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
@@ -3932,6 +4011,24 @@ var init_food = __esm({
             if (!products.length) throw new AcquisitionError("EMPTY_RESPONSE", "Domino's menu page carried no parseable products");
             const items = dominosItems(products, ctx.source, raw);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Domino's menu had no item matching this query");
+            return items;
+          }
+        },
+        {
+          // Pizza Hut India: Next.js SSR menu with real rupee prices for most items
+          // (customisable variants carry price:null and are skipped).
+          sourceId: "w_food_pizzahut",
+          name: "Food worker: Pizza Hut India menu",
+          priority: 13,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const dishish = /pizza|margherita|farmhouse|paneer|veggie|cheese|bbq|schezwan|chilli|habanero|nashville|korean|taco|hut|mexican/i.test(raw);
+            if (!dishish) return [];
+            const url = "https://www.pizzahut.co.in/menu/pizzas";
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3 });
+            if (r.status !== 200) throw new AcquisitionError("ACCESS_CHALLENGE", `Pizza Hut HTTP ${r.status}`);
+            const items = pizzaHutItems(r.body, ctx.source, raw, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Pizza Hut menu carried no priced item matching this query");
             return items;
           }
         },
@@ -6160,6 +6257,88 @@ var init_redbusSearch = __esm({
   }
 });
 
+// server/workers/parsers/zingbus.ts
+function zingbusSlug(city) {
+  let c = city.toLowerCase().trim().replace(/\s*\((?:[a-z]{3})\)\s*/g, " ").replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  c = ZING_ALIAS[c] || c;
+  return c.replace(/\s+/g, "-");
+}
+function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
+  const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) return [];
+  let root;
+  try {
+    root = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  let pt = null;
+  const find = (o, depth) => {
+    if (pt || depth > 10 || o == null) return;
+    if (Array.isArray(o)) {
+      for (const v of o.slice(0, 60)) find(v, depth + 1);
+      return;
+    }
+    if (typeof o === "object") {
+      if (o.pTableData && typeof o.pTableData === "object") {
+        pt = o.pTableData;
+        return;
+      }
+      for (const v of Object.values(o)) find(v, depth + 1);
+    }
+  };
+  find(root, 0);
+  if (!pt) return [];
+  const fare = Number(pt.minFare);
+  if (!Number.isFinite(fare) || fare <= 0) return [];
+  const from = String(pt.fromCityName || fromCity);
+  const to = String(pt.toCityName || toCity);
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const route = `${from} to ${to}`.toLowerCase();
+  const busTypes = Array.isArray(pt.busTypeArr) ? pt.busTypeArr.slice(0, 4).join("; ") : "";
+  return [newRawItem(source, {
+    title: `${from} to ${to} zingbus (lowest fare across ${pt.busCount || "all"} services)`,
+    brand: "zingbus",
+    price: fare,
+    currency: "INR",
+    seller: "zingbus",
+    sellerUrl: pageUrl,
+    travel: { route, seatType: busTypes || "varies (seater/sleeper/AC)" },
+    attributes: {
+      route,
+      min_fare: String(fare),
+      max_fare: String(pt.maxFare ?? ""),
+      service_count: String(pt.busCount ?? ""),
+      avg_duration: String(pt.travelTime ?? ""),
+      first_departure: String(pt.firstBusTime ?? ""),
+      last_departure: String(pt.lastBusTime ?? ""),
+      image: "",
+      price_basis: `minimum route fare as published by zingbus.com on ${today}`,
+      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pt.maxFare ?? "?"} across ${pt.busCount ?? "?"} services) scraped from zingbus.com on ${today}`
+    },
+    identifiers: { sku: `zingbus-${route.replace(/\s+/g, "-")}` },
+    evidence: { sourceUrl: pageUrl, extractedFields: ["pTableData minFare", "maxFare", "busCount", "travelTime", "firstBusTime"] }
+  })];
+}
+var ZING_ALIAS;
+var init_zingbus = __esm({
+  "server/workers/parsers/zingbus.ts"() {
+    init_contract();
+    ZING_ALIAS = {
+      bengaluru: "bangalore",
+      mysuru: "mysore",
+      "mumbai (bombay)": "mumbai",
+      bombay: "mumbai",
+      calcutta: "kolkata",
+      gurgaon: "gurugram",
+      pondicherry: "puducherry",
+      varanasi: "banaras",
+      "new delhi": "delhi",
+      "delhi ncr": "delhi"
+    };
+  }
+});
+
 // server/workers/verticals/bus.ts
 function routeFromQuery3(raw) {
   const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, " ").replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -6177,6 +6356,7 @@ var init_bus = __esm({
     init_redbusRoute();
     init_redbusSearch();
     init_curlCffiFetch();
+    init_zingbus();
     busWorker = {
       vertical: "bus",
       tasks: [
@@ -6327,6 +6507,30 @@ var init_bus = __esm({
             });
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus services HTTP ${r.status}`, r.status);
             return parseAbhiBusServices(r.body, ctx.source, route);
+          }
+        },
+        {
+          // zingbus: Next.js SEO route pages carry pTableData with the route's real
+          // minFare/maxFare, busCount, duration, first/last departure (per-bus inventory
+          // is sessioned-XHR only, so this is route-level fare data, like redBus route).
+          sourceId: "w_bus_zingbus",
+          name: "Bus worker: zingbus route fares (real min/max fare, timings)",
+          priority: 4,
+          maxPerMinute: 10,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const rt = routeFromQuery3(raw);
+            if (!rt) return [];
+            const from = zingbusSlug(rt.from);
+            const to = zingbusSlug(rt.to);
+            if (!from || !to) return [];
+            const url = `https://www.zingbus.com/bus-tickets/${from}-to-${to}-bus-route`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4 });
+            if (r.status === 404) throw new AcquisitionError("NOT_FOUND", `zingbus does not serve ${from}-to-${to} (no route page)`);
+            if (r.status !== 200) throw new AcquisitionError("ACCESS_CHALLENGE", `zingbus HTTP ${r.status}`, r.status);
+            const items = parseZingbusRoute(r.body, ctx.source, url, rt.from, rt.to);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `zingbus route page for ${from}-to-${to} carried no pTableData fare`);
+            return items;
           }
         },
         {

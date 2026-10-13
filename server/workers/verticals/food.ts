@@ -10,6 +10,7 @@ import type { RawSourceItem } from '../../types';
 import { parseSwiggyDishes } from '../parsers/swiggy';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseDominosMenu, dominosItems } from '../parsers/dominos';
+import { pizzaHutItems } from '../parsers/pizzaHut';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 /** Zomato city slugs for major Indian cities (others are tried as lowercase city names). */
@@ -66,6 +67,24 @@ export const foodWorker: VerticalWorker = {
         if (!products.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Domino\'s menu page carried no parseable products');
         const items = dominosItems(products, ctx.source, raw);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Domino\'s menu had no item matching this query');
+        return items;
+      },
+    },
+    {
+      // Pizza Hut India: Next.js SSR menu with real rupee prices for most items
+      // (customisable variants carry price:null and are skipped).
+      sourceId: 'w_food_pizzahut',
+      name: 'Food worker: Pizza Hut India menu',
+      priority: 13,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const dishish = /pizza|margherita|farmhouse|paneer|veggie|cheese|bbq|schezwan|chilli|habanero|nashville|korean|taco|hut|mexican/i.test(raw);
+        if (!dishish) return [];
+        const url = 'https://www.pizzahut.co.in/menu/pizzas';
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `Pizza Hut HTTP ${r.status}`);
+        const items = pizzaHutItems(r.body, ctx.source, raw, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Pizza Hut menu carried no priced item matching this query');
         return items;
       },
     },

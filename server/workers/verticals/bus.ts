@@ -11,6 +11,7 @@ import { parseAbhiBusServices, resolveAbhiBusCity, type AbhiBusRoute } from '../
 import { parseRedBusRoute } from '../parsers/redbusRoute';
 import { parseRedBusSearch, resolveRedBusCity, type RedBusRoute } from '../parsers/redbusSearch';
 import { cffiFetch } from '../../common/curlCffiFetch';
+import { parseZingbusRoute, zingbusSlug } from '../parsers/zingbus';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw
@@ -166,6 +167,30 @@ export const busWorker: VerticalWorker = {
         });
         if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `AbhiBus services HTTP ${r.status}`, r.status);
         return parseAbhiBusServices(r.body, ctx.source, route);
+      },
+    },
+    {
+      // zingbus: Next.js SEO route pages carry pTableData with the route's real
+      // minFare/maxFare, busCount, duration, first/last departure (per-bus inventory
+      // is sessioned-XHR only, so this is route-level fare data, like redBus route).
+      sourceId: 'w_bus_zingbus',
+      name: 'Bus worker: zingbus route fares (real min/max fare, timings)',
+      priority: 4,
+      maxPerMinute: 10,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const from = zingbusSlug(rt.from);
+        const to = zingbusSlug(rt.to);
+        if (!from || !to) return [];
+        const url = `https://www.zingbus.com/bus-tickets/${from}-to-${to}-bus-route`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 20_000 });
+        if (r.status === 404) throw new AcquisitionError('NOT_FOUND', `zingbus does not serve ${from}-to-${to} (no route page)`);
+        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `zingbus HTTP ${r.status}`, r.status);
+        const items = parseZingbusRoute(r.body, ctx.source, url, rt.from, rt.to);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `zingbus route page for ${from}-to-${to} carried no pTableData fare`);
+        return items;
       },
     },
     {
