@@ -11,6 +11,7 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 import { resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
+import { parseDistrictMovies, parseDistrictOffers, DISTRICT_MOVIES_URL } from '../parsers/district';
 import { createHash } from 'node:crypto';
 
 let recentCache: { at: number; rows: any } | null = null;
@@ -104,6 +105,26 @@ export const moviesWorker: VerticalWorker = {
           throw new AcquisitionError('EMPTY_RESPONSE', 'Cinepolis page carried no parseable movies');
         }
         return parseCinepolisMovies(data, ctx.source, queryTerm);
+      },
+    },
+    {
+      sourceId: 'w_movies_district',
+      name: 'Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)',
+      priority: 8,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const entity = String(ctx.query.entityName || '').trim();
+        const city = String(ctx.query.location?.city || '');
+        const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
+        const res = await cffiFetch(DISTRICT_MOVIES_URL, { timeoutMs: 25_000 });
+        if (res.status === 403 || res.status === 429) {
+          throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `District blocked: ${res.status}`, res.status);
+        }
+        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `District movies page ${res.status}`, res.status);
+        const movies = parseDistrictMovies(res.body);
+        if (movies.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'District page carried no parseable JSON-LD movies');
+        return parseDistrictOffers(movies, ctx.source, queryTerm);
       },
     },
     {
