@@ -1,7 +1,8 @@
 /**
  * Three-tier cache (Section 8):
  *   L1: in-process memory (cache-aside, request coalescing, stampede protection)
- *   L2: Redis when REDIS_URL is set (KVM4), transparently skipped otherwise
+ *   L2: Redis — ioredis/TCP via REDIS_URL (KVM4), or Upstash REST over HTTPS via
+ *       UPSTASH_REDIS_REST_URL/_TOKEN (works on Hostinger shared hosting). Skipped otherwise.
  *   L3: MySQL catalogue (owned by catalogueService, not this module)
  *
  * Redis is NEVER the permanent source of truth — only TTL'd derived data lives here.
@@ -37,8 +38,96 @@ async function getRedis(): Promise<any> {
   return redis;
 }
 
+// ---- Upstash REST L2 (HTTPS — the only Redis that works on shared hosting) ----
+const MAX_L2_BYTES = 900 * 1024; // keep very large responses L1-only (Upstash entry limits)
+
+async function restGet(key: string): Promise<string | null> {
+  if (!settings.redisRestUrl) return null;
+  try {
+    const r = await fetch(`${settings.redisRestUrl}/get/${encodeURIComponent(key)}`, {
+      headers: settings.redisRestToken ? { Authorization: `Bearer ${settings.redisRestToken}` } : {},
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return typeof j?.result === 'string' ? j.result : null;
+  } catch { return null; }
+}
+
+async function restSet(key: string, value: string, ttlSec: number): Promise<void> {
+  if (!settings.redisRestUrl) return;
+  try {
+    await fetch(settings.redisRestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(settings.redisRestToken ? { Authorization: `Bearer ${settings.redisRestToken}` } : {}),
+      },
+      body: JSON.stringify(['SET', key, value, 'EX', Math.max(60, ttlSec)]),
+    });
+  } catch { /* non-fatal */ }
+}
+
+/** The single read path L2 uses: TCP Redis first, then REST, else null. */
+async function l2Get(key: string): Promise<string | null> {
+  const r = await getRedis();
+  if (r) {
+    try { const v = await r.get(`t1s:${key}`); if (v) return v as string; } catch { /* fall through */ }
+  }
+  return restGet(`t1s:${key}`);
+}
+
+/** The single write path L2 uses: writes to whichever backend(s) are configured. */
+async function l2Set(key: string, value: string, ttlSec: number): Promise<void> {
+  if (value.length > MAX_L2_BYTES) return; // L1 still holds it; skip oversized L2 payloads
+  const r = await getRedis();
+  if (r) { try { await r.set(`t1s:${key}`, value, 'EX', ttlSec); } catch { /* non-fatal */ } }
+  if (!r || settings.redisRestUrl) await restSet(`t1s:${key}`, value, ttlSec);
+}
+
+/** Cache-aside read WITHOUT a loader (search responses are written by cachePut after acquisition). */
+export async function cacheGet<T>(key: string): Promise<{ value: T | null; fresh: boolean; stale: boolean }> {
+  const now = Date.now();
+  const l1e = l1.get(key);
+  if (l1e && l1e.expiresAt > now) return { value: l1e.value as T, fresh: true, stale: false };
+  if (l1e && l1e.staleUntil > now) return { value: l1e.value as T, fresh: false, stale: true };
+  // L2 promotion into L1 (caller supplies TTL via cachePut on the next refresh)
+  const raw = await l2Get(key);
+  if (raw) {
+    try { return { value: JSON.parse(raw) as T, fresh: false, stale: true }; } catch { return { value: null, fresh: false, stale: false }; }
+  }
+  return { value: null, fresh: false, stale: false };
+}
+
+/** Explicit cache write (L1 + L2). staleSec defaults to 3x TTL. */
+export function cachePut(key: string, value: unknown, ttlSec: number, staleSec?: number) {
+  const stale = (staleSec ?? ttlSec * 3) * 1000;
+  l1.set(key, { value, expiresAt: Date.now() + ttlSec * 1000, staleUntil: Date.now() + stale });
+  const payload = JSON.stringify(value);
+  void l2Set(key, payload, ttlSec);
+}
+
+/**
+ * Stale-while-revalidate for cacheGet/cachePut users: refresh at most once per key
+ * concurrently (process-local inflight map + optional Redis lock), fire-and-forget.
+ * Never throws into the request path.
+ */
+export function revalidateInBackground(key: string, ttlSec: number, refresh: () => Promise<unknown>) {
+  if (inflight.has(key)) return;
+  const p = (async () => {
+    const done = await withLock(`swr:${key}`, async () => {
+      const v = await refresh();
+      if (v !== undefined && v !== null) cachePut(key, v, ttlSec);
+      return true;
+    });
+    return done;
+  })().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  p.catch(() => undefined); // swallow background errors
+}
+
 export async function initCache() {
   await getRedis();
+  if (settings.redisRestUrl && !settings.redisUrl) log.info('Cache', 'L2 Upstash REST connected (shared-hosting mode)');
 }
 
 // ---- Cache key builder (Section 8: keys include every offer-affecting dimension) ----
@@ -143,5 +232,6 @@ export async function withLock<T>(name: string, fn: () => Promise<T>, opts: { tt
 }
 
 export function cacheStats() {
-  return { l1Entries: l1.size, l1MaxAgeMs: 10 * 60 * 1000, inflight: inflight.size, l2: settings.redisUrl ? 'redis' : 'disabled' };
+  const l2 = settings.redisUrl ? 'redis' : (settings.redisRestUrl ? 'redis-rest' : 'disabled');
+  return { l1Entries: l1.size, l1MaxAgeMs: 10 * 60 * 1000, inflight: inflight.size, l2 };
 }

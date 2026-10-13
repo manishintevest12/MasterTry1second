@@ -42,7 +42,7 @@ apiRouter.get('/health', async (_req: Request, res: Response) => {
     status: 'online',
     engine: 'Try1Second Independent Metasearch Engine v1.0',
     dataSource: store.kind === 'mysql' ? 'mysql' : 'file-fallback (set MYSQL_URL for production)',
-    l2Cache: settings.redisUrl ? 'redis' : 'disabled (set REDIS_URL on KVM4)',
+    l2Cache: settings.redisUrl ? 'redis' : (settings.redisRestUrl ? 'redis-rest (Upstash HTTPS)' : 'disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)'),
     searchApi: settings.searchApi.enabled ? 'optional-adapter-enabled' : 'optional-adapter-disabled',
     productionWarnings: missing,
     timestamp: new Date().toISOString(),

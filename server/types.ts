@@ -243,6 +243,8 @@ export interface SearchStateFlags {
   sourcesSucceeded: string[];
   sourcesFailed: Array<{ sourceId: string; failureClass: FailureClass; error: string }>;
   reusedCatalogue: boolean;
+  /** True when this response was replayed from the response cache (L1/L2). */
+  reusedCache?: boolean;
   triggeredRefresh: boolean;
   honestNotice?: string; // user-facing honest limitation, e.g. no sources configured
 }

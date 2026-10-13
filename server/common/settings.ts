@@ -22,6 +22,15 @@ export const settings = {
       : (process.env.DATABASE_URL || process.env.MYSQL_URL || ''),
   redisUrl: process.env.REDIS_URL || '',
 
+  /**
+   * HTTPS Redis (shared-hosting friendly): Upstash free tier via its REST API.
+   * Works on Hostinger shared hosting (HTTPS-only egress, no TCP 6379 needed).
+   * Set both in hPanel: UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN.
+   * REDIS_URL (ioredis/TCP, KVM4) takes precedence when both are present.
+   */
+  redisRestUrl: process.env.UPSTASH_REDIS_REST_URL || '',
+  redisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN || '',
+
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
   /** First-admin bootstrap: any account registered with this email gets the admin role. */

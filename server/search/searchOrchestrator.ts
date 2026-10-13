@@ -14,7 +14,7 @@
  *  - Slow sources never block verified results (progressive, bounded parallel acquisition).
  */
 import type { AdapterResult, NormalizedOffer, ParsedQuery, SearchResponse, SearchStateFlags } from '../types';
-import { buildCacheKey, cached } from '../common/cache';
+import { buildCacheKey, cacheGet, cachePut, revalidateInBackground } from '../common/cache';
 import { log } from '../common/logger';
 import { aiAssistedUnderstanding, understandQuery } from '../query/queryUnderstanding';
 import { selectSources } from '../sources/registry';
@@ -80,6 +80,18 @@ function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
   };
 }
 
+/**
+ * Cache policy (Section 8, tuned for instant page loads):
+ *   Travel (flights/hotels/bus/cab/movies) — fares move: 5 min fresh, 15 min stale-serve.
+ *   Everything else (ecommerce/grocery/food/…) — 15 min fresh, 45 min stale-serve.
+ * Stale responses are served IMMEDIATELY (milliseconds) while a background refresh
+ * re-acquires live prices. Fresh results are only ever as old as the TTL above.
+ */
+function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } {
+  if (['flights', 'hotels', 'bus', 'cab', 'movies'].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
+  return { ttlSec: 900, staleSec: 2700 };
+}
+
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   const totalStart = Date.now();
 
@@ -120,14 +132,58 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
     cfg: parsed.configuration ? JSON.stringify(parsed.configuration) : '',
   });
 
-  const cachedSearch = await cached<SearchResponse | null>(cacheKey, 60, async () => null);
-  if (cachedSearch.value && cachedSearch.fresh) {
+  const { ttlSec, staleSec } = searchCacheTtl(vertical);
+  const cachedSearch = await cacheGet<SearchResponse>(cacheKey);
+  if (cachedSearch.value) {
     const v = cachedSearch.value as SearchResponse;
-    // Mark honestly: served from cache
+    // Honesty rule (Section 9): a replayed live result is CACHED_VERIFIED, never LIVE_VERIFIED.
+    for (const o of v.results as any[]) {
+      if (o.freshnessStatus === 'LIVE_VERIFIED') o.freshnessStatus = 'CACHED_VERIFIED';
+      if (o.provenance) o.provenance.replayedFromCache = true;
+    }
     v.state.servedFrom = 'cache';
+    v.state.reusedCache = true;
     v.latencyMs = Date.now() - totalStart;
+    v.totalSearchLatencyMs = v.latencyMs;
+    // Stale-while-revalidate: serve instantly, refresh prices in the background (once per key).
+    if (!cachedSearch.fresh) {
+      revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
+    }
     return v;
   }
+
+  const response = await runLivePipeline(input, parsed);
+  cachePut(cacheKey, response, ttlSec, staleSec);
+  return response;
+}
+
+/** Full acquisition pipeline (cache miss / background refresh path). */
+async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Promise<SearchResponse> {
+  const totalStart = Date.now();
+  let parsed: ParsedQuery = parsedIn ?? understandQuery(input.query, {
+    pincode: input.pincode,
+    city: input.city,
+    lat: input.lat,
+    lng: input.lng,
+  });
+  if (input.vertical) parsed.vertical = input.vertical as any;
+  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...(input.travelDates.return ? { return: input.travelDates.return } : {}) };
+  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
+  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
+  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
+    parsed = await aiAssistedUnderstanding(parsed);
+  }
+  const vertical = parsed.vertical || 'ecommerce';
+  parsed.vertical = vertical;
+
+  const state: SearchStateFlags = {
+    servedFrom: 'unavailable',
+    sourcesAttempted: [],
+    sourcesSucceeded: [],
+    sourcesFailed: [],
+    reusedCatalogue: false,
+    triggeredRefresh: false,
+  };
 
   // 3. L3 CATALOGUE — eligible fresh, verified results returned first (Section 6)
   const catalogueRows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });

@@ -29,7 +29,13 @@ export async function createApp(): Promise<express.Express> {
 
   // Validate + migrate durable storage, load source config, start L2 cache + workers
   await bootstrapBackend();
-  if (settings.env !== 'test') { startWorkers(); bootstrapAffiliateSync(); }
+  if (settings.env !== 'test') {
+    startWorkers();
+    bootstrapAffiliateSync();
+    // Instant first paint: pre-warm the most popular searches in the background
+    // so page-load searches hit warm cache (Section 8 cron-warmer).
+    import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
+  }
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');
