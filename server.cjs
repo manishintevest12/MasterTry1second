@@ -6715,7 +6715,7 @@ var init_bus = __esm({
           maxPerMinute: 24,
           // City resolution + per-bus searchResults + (only if needed) route-page fallback:
           // three sequential round-trips legitimately need more than the 18s default budget.
-          timeoutMs: 4e4,
+          timeoutMs: 45e3,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
@@ -6751,14 +6751,20 @@ var init_bus = __esm({
               const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
               const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
               const sr = Date.now();
-              const r2 = await ctx.fetch(u, {
-                method: "POST",
-                expectJson: true,
-                maxBytes: 6e6,
-                timeoutMs: 14e3,
-                headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
-                body: "{}"
-              });
+              let r2;
+              try {
+                r2 = await ctx.fetch(u, {
+                  method: "POST",
+                  expectJson: true,
+                  maxBytes: 6e6,
+                  timeoutMs: 2e4,
+                  headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
+                  body: "{}"
+                });
+              } catch (e) {
+                steps.push(`searchResults=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
+                r2 = { status: 0, body: "" };
+              }
               steps.push(`searchResults=${r2.latencyMs ?? Date.now() - sr}ms/${r2.status}`);
               if (r2.status === 200) {
                 const items2 = parseRedBusSearch(r2.body, ctx.source, route);
