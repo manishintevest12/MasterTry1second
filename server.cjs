@@ -3370,6 +3370,122 @@ var init_emtFareCalendar = __esm({
   }
 });
 
+// server/workers/parsers/emtAirbus.ts
+function emtEncrypt(plain) {
+  const c = (0, import_crypto6.createCipheriv)("aes-128-cbc", Buffer.from(ENC_KEY, "utf8"), Buffer.from(ENC_KEY, "utf8"));
+  return Buffer.concat([c.update(Buffer.from(plain, "utf8")), c.final()]).toString("base64");
+}
+function parseEmtAirbus(jsonText) {
+  const d = JSON.parse(jsonText);
+  const groups = Array.isArray(d?.j) ? d.j : [];
+  const out = [];
+  for (const g of groups) {
+    for (const f of g?.s || []) {
+      const segKey = String(f?.segMatchingKey || "");
+      const legs = segKey.split("^").map((s) => s.trim());
+      const parsed = legs.map((leg) => {
+        const m = leg.match(SEG_RE);
+        if (m) return { dep: m[1], arr: m[2], ac: m[3], fn: m[4], full: true };
+        const n = leg.match(LEG_NO_ROUTE_RE);
+        if (n) return { dep: "", arr: "", ac: n[1], fn: n[2], full: false };
+        return null;
+      }).filter(Boolean);
+      if (parsed.length === 0 || !parsed.some((p) => p.full)) continue;
+      const fullLegs = parsed.filter((p) => p.full);
+      const depTime = fullLegs[0].dep;
+      const arrTime = fullLegs[fullLegs.length - 1].arr;
+      const airlineCode = parsed[0].ac;
+      const flightNo2 = parsed.map((p) => p.fn).join("-");
+      const fares = Array.isArray(f?.lstFr) ? f.lstFr : [];
+      let fare = 0;
+      let fareName = null;
+      for (const fr of fares) {
+        const tf = Number(fr?.TF) || 0;
+        if (tf > 0 && (fare === 0 || tf < fare)) {
+          fare = tf;
+          fareName = fr?.FN || null;
+        }
+      }
+      if (!fare || !depTime || !arrTime) continue;
+      const sd = String(f?.SD || "");
+      const stops = fullLegs.length === 1 ? "Non-stop" : `${fullLegs.length - 1} stop${fullLegs.length > 2 ? "s" : ""}`;
+      const [dh, dm] = depTime.split(":").map(Number);
+      const [ah, amm] = arrTime.split(":").map(Number);
+      let durMin = ah * 60 + amm - (dh * 60 + dm);
+      if (durMin < 0) durMin += 24 * 60;
+      out.push({
+        segKey,
+        airlineCode,
+        flightNo: flightNo2,
+        depTime,
+        arrTime,
+        fare,
+        fareName,
+        seats: String(f?.SeatAv ?? ""),
+        stops,
+        durationMin: durMin
+      });
+    }
+  }
+  return out;
+}
+function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, cap = 40) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-India%7C${toCode}-${encodeURIComponent(route.to)}-India%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
+  const seen = /* @__PURE__ */ new Set();
+  const items = [];
+  for (const f of flights.sort((a, b) => a.fare - b.fare)) {
+    const al = EMT_AIRLINES[f.airlineCode];
+    if (!al) continue;
+    const key = `${al.name}|${f.flightNo}|${f.depTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (items.length >= cap) break;
+    items.push(newRawItem(source, {
+      title: `${al.name} ${f.airlineCode}${f.flightNo} \xB7 ${routeLabel}`,
+      brand: al.name,
+      price: f.fare,
+      currency: "INR",
+      seller: al.name,
+      sellerUrl: al.url,
+      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
+      attributes: {
+        route: routeLabel,
+        travel_date: dateIso,
+        departure: f.depTime,
+        arrival: f.arrTime,
+        duration: hhmm(f.durationMin),
+        stops: f.stops,
+        seats: f.seats ? `${f.seats} seats left` : "",
+        fare_basis: f.fareName ? `${f.fareName} fare` : "",
+        price_basis: `live ${f.fareName || "airline"} fare observed on EaseMyTrip's flight search on ${today} (acquisition source, not seller)`,
+        data_note: `Fare acquired via EaseMyTrip flight search API on ${today}; booking is on ${al.name}'s own website. Fare may change at checkout.`,
+        deep_link_ref: emtListing
+      },
+      identifiers: { sku: `emt-airbus-${f.airlineCode}-${f.flightNo}-${dateIso}` },
+      evidence: {
+        sourceUrl: AIRBUS_URL,
+        extractedFields: ["segMatchingKey", "lstFr[].TF (INR)", "SeatAv", "SD (stops)"]
+      }
+    }));
+  }
+  return items;
+}
+var import_crypto6, ENC_KEY, AIRBUS_URL, SEG_RE, LEG_NO_ROUTE_RE, hhmm;
+var init_emtAirbus = __esm({
+  "server/workers/parsers/emtAirbus.ts"() {
+    import_crypto6 = require("crypto");
+    init_contract();
+    init_emtFareCalendar();
+    ENC_KEY = "hylW@zmEQdG@4Idr";
+    AIRBUS_URL = "https://flightservice-node.easemytrip.com/AirAvail_Lights/AirBus_New";
+    SEG_RE = /^[A-Z]{3}[A-Z]{3}[A-Za-z]{3}-\d{2}[A-Za-z]{3}\d{4}(\d{2}:\d{2})(\d{2}:\d{2})\s*([A-Z0-9]{2})\s*(\d+)$/;
+    LEG_NO_ROUTE_RE = /^\s*([A-Z0-9]{2})\s*(\d+)$/;
+    hhmm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+  }
+});
+
 // server/workers/parsers/indigoFlights.ts
 function pick(o, keys) {
   for (const k of keys) if (o[k] !== void 0 && o[k] !== null && o[k] !== "") return o[k];
@@ -3565,6 +3681,7 @@ var init_flights = __esm({
     init_ixigoFlights();
     init_httpClient();
     init_emtFareCalendar();
+    init_emtAirbus();
     init_indigoFlights();
     init_curlCffiFetch();
     IATA = {
@@ -3635,25 +3752,124 @@ var init_flights = __esm({
       vertical: "flights",
       tasks: [
         {
-          // EaseMyTrip fare calendar (metasearch acquisition): real cheapest per-day
-          // fare + operating airline. Seller = the AIRLINE; deeplink = airline's own site.
+          // EaseMyTrip AirBus_New flight search (reverse-engineered from EMT's public
+          // Angular bundles): token flow GIT->GUT, then one POST returns EVERY flight
+          // on the route/date with real INR fares. Seller = the operating AIRLINE,
+          // deeplink = the airline's own website (metasearch policy). The old fare
+          // calendar stays as fallback when the search API is unavailable.
           sourceId: "w_flights_emt",
+          name: "Flights worker: per-flight live fares via EMT search API (seller = airline website)",
           priority: 14,
+          maxPerMinute: 2,
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery(raw);
             if (!rt) return [];
-            ;
             const code = (s) => IATA[s.toLowerCase().trim()] || null;
             const from = rt.fromCode || code(rt.from);
             const to = rt.toCode || code(rt.to);
             if (!from || !to) return [];
-            const dIso = ctx.query?.travelDates?.depart;
-            const base = dIso && /^\d{4}-\d{2}-\d{2}$/.test(dIso) ? /* @__PURE__ */ new Date(`${dIso}T00:00:00`) : new Date(Date.now() + 7 * 864e5);
-            const dd = String(base.getDate()).padStart(2, "0");
-            const mm = String(base.getMonth() + 1).padStart(2, "0");
-            const yy = base.getFullYear();
-            const wantDate = `${dd}/${mm}/${yy}`;
+            const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const wantDate = dIso.split("-").reverse().join("/");
+            let stk = "";
+            try {
+              const rGit = await cffiFetch("https://gi.easemytrip.com/etm/api/etoken/GIT", {
+                impersonate: "chrome",
+                timeoutMs: 1e4,
+                method: "POST",
+                body: "{}",
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  Accept: "application/json",
+                  Origin: "https://www.easemytrip.com",
+                  Referer: "https://www.easemytrip.com/flight-search/listing",
+                  ATK: "c0ruxuOD/XqyNXB3kRAqvRUliyqhyFOOUwgDTCP1tLx09TRNEbblvRQLgfPz2ivf"
+                }
+              });
+              const git = JSON.parse(rGit.body || "{}");
+              if (!git.ITK || !git.b) throw new Error("GIT token missing");
+              const autk = emtEncrypt(`EMT|EMTWvggk6zYLVynBA56C3aNn4HLREMHV9bEP9Q|${git.b}|${git.ITK}`);
+              const rGut = await cffiFetch("https://gi.easemytrip.com/etm/api/etoken/GUT", {
+                impersonate: "chrome",
+                timeoutMs: 1e4,
+                method: "POST",
+                body: JSON.stringify({ UserName: "EMT", ITK: emtEncrypt(git.ITK), IP: emtEncrypt(git.b) }),
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  Accept: "application/json",
+                  Origin: "https://www.easemytrip.com",
+                  Referer: "https://www.easemytrip.com/flight-search/listing",
+                  autk
+                }
+              });
+              const gut = JSON.parse(rGut.body || "{}");
+              if (!gut.STK) throw new Error("GUT STK missing");
+              stk = gut.STK;
+            } catch (e) {
+              stk = "";
+            }
+            if (stk) {
+              const traceId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+              const body2 = JSON.stringify({
+                org: from,
+                dept: to,
+                deptDT: dIso,
+                arrDT: "",
+                adt: 1,
+                chd: 0,
+                inf: 0,
+                isDomestic: true,
+                isOneway: true,
+                airline: "Any",
+                Cabin: 3,
+                currCode: "INR",
+                appType: 1,
+                isSingleView: false,
+                ResType: 2,
+                userid: "",
+                IsDoubelSeat: false,
+                IsArmedForce: false,
+                IsFareFamily: false,
+                IsNBA: false,
+                CouponCode: "",
+                AgentCode: "",
+                IsWLAPP: false,
+                serviceid: "EMTSERVICE",
+                serviceDepatment: "",
+                IpAddress: "",
+                LoginKey: "",
+                UUID: "",
+                TKN: stk,
+                TraceId: traceId,
+                queryname: traceId
+              });
+              const r2 = await cffiFetch("https://flightservice-node.easemytrip.com/AirAvail_Lights/AirBus_New", {
+                impersonate: "chrome",
+                timeoutMs: 3e4,
+                method: "POST",
+                body: body2,
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  Accept: "application/json",
+                  Origin: "https://www.easemytrip.com",
+                  Referer: "https://www.easemytrip.com/flight-search/listing"
+                }
+              });
+              if (r2.status === 403 || r2.status === 429) {
+                throw new AcquisitionError(r2.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `EMT search API blocked: HTTP ${r2.status}`, r2.status);
+              }
+              if (r2.status === 200) {
+                let flights = [];
+                try {
+                  flights = parseEmtAirbus(r2.body);
+                } catch {
+                  flights = [];
+                }
+                const items2 = emtAirbusItems(flights, ctx.source, { from: rt.from, to: rt.to }, from, to, dIso);
+                if (items2.length) return items2;
+              }
+            }
             const body = JSON.stringify({ CalKey_: `${from}_${to}_rdate__${wantDate}_` });
             const r = await cffiFetch("https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth", {
               impersonate: "chrome",
@@ -3664,9 +3880,9 @@ var init_flights = __esm({
             });
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `EMT fare calendar HTTP ${r.status}`);
             const fares = parseEmtFareCalendar(r.body, wantDate);
-            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT fare calendar returned no per-day fares for this route");
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT returned no fares for this route (search API and calendar both empty)");
             const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate);
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT fare calendar had no fare with a known Indian carrier for this route");
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT had no fare with a known Indian carrier for this route");
             return items;
           }
         },
@@ -3883,7 +4099,7 @@ var init_flights = __esm({
 
 // server/workers/parsers/zomato.ts
 function parseZomatoRestaurants(html, source, searchUrl, platform) {
-  const fingerprint = (0, import_crypto6.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto7.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -3989,10 +4205,10 @@ function parseZomatoMenuPage(html) {
   }
   return { dishes: dishes.slice(0, 30), hints };
 }
-var import_crypto6;
+var import_crypto7;
 var init_zomato = __esm({
   "server/workers/parsers/zomato.ts"() {
-    import_crypto6 = require("crypto");
+    import_crypto7 = require("crypto");
     init_contract();
   }
 });
@@ -4005,7 +4221,7 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   } catch {
     return [];
   }
-  const fingerprint = (0, import_crypto7.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto8.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const cards = [];
   const stack = [d?.data];
   while (stack.length) {
@@ -4063,10 +4279,10 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   }
   return out.slice(0, 60);
 }
-var import_crypto7, IMG;
+var import_crypto8, IMG;
 var init_swiggy = __esm({
   "server/workers/parsers/swiggy.ts"() {
-    import_crypto7 = require("crypto");
+    import_crypto8 = require("crypto");
     init_contract();
     IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
   }
@@ -4935,7 +5151,7 @@ var init_cab = __esm({
 // server/workers/parsers/bankbazaarInsurance.ts
 function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   const $ = cheerio4.load(html);
-  const fingerprint = (0, import_crypto8.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto9.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -4982,10 +5198,10 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   });
   return out.slice(0, 30);
 }
-var import_crypto8, cheerio4;
+var import_crypto9, cheerio4;
 var init_bankbazaarInsurance = __esm({
   "server/workers/parsers/bankbazaarInsurance.ts"() {
-    import_crypto8 = require("crypto");
+    import_crypto9 = require("crypto");
     cheerio4 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -6764,7 +6980,7 @@ function parseAbhiBusServices(json, source, route) {
   }
   const services = Array.isArray(d?.services) ? d.services : [];
   if (!services.length) return [];
-  const fingerprint = (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route.fromName)}/${route.fromId}/${encodeURIComponent(route.toName)}/${route.toId}/${route.jdate}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -6808,10 +7024,10 @@ function parseAbhiBusServices(json, source, route) {
   }
   return out.slice(0, 40);
 }
-var import_crypto9;
+var import_crypto10;
 var init_abhibus = __esm({
   "server/workers/parsers/abhibus.ts"() {
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     init_contract();
   }
 });
@@ -6902,7 +7118,7 @@ function parseRedBusSearch(json, source, route) {
   }
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
-  const fingerprint = (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto11.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
   const searchUrl = `https://www.redbus.in/bus-tickets/${slug(route.fromName)}-to-${slug(route.toName)}.aspx`;
   const out = [];
@@ -6954,10 +7170,10 @@ function parseRedBusSearch(json, source, route) {
   }
   return out;
 }
-var import_crypto10;
+var import_crypto11;
 var init_redbusSearch = __esm({
   "server/workers/parsers/redbusSearch.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     init_contract();
   }
 });
@@ -7579,11 +7795,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto11, HttpAcquisitionAdapter;
+var cheerio5, import_crypto12, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto11 = require("crypto");
+    import_crypto12 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -7630,7 +7846,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -7679,10 +7895,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto12, StructuredDataAdapter;
+var import_crypto13, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto12 = require("crypto");
+    import_crypto13 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -7712,7 +7928,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -7769,10 +7985,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto13, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto14, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto13 = require("crypto");
+    import_crypto14 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -7820,7 +8036,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -7844,7 +8060,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -8011,7 +8227,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -8653,13 +8869,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto14.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto15.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto14;
+var import_crypto15;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto14 = require("crypto");
+    import_crypto15 = require("crypto");
   }
 });
 
@@ -9429,7 +9645,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto15.default.randomUUID();
+  const clickId = import_crypto16.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -9455,10 +9671,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto15, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto16, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto15 = __toESM(require("crypto"), 1);
+    import_crypto16 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -9956,16 +10172,16 @@ var init_productGrouping = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto16.default.randomBytes(16).toString("hex");
-  const hash = import_crypto16.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto17.default.randomBytes(16).toString("hex");
+  const hash = import_crypto17.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto16.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto16.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto17.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto17.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -9988,7 +10204,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto16.default.randomBytes(32).toString("hex");
+  const token = import_crypto17.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -10028,10 +10244,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto16, SESSION_TTL_SEC;
+var import_crypto17, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto16 = __toESM(require("crypto"), 1);
+    import_crypto17 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -10073,16 +10289,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto17.default.randomBytes(8).toString("hex");
-  const hash = import_crypto17.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto18.default.randomBytes(8).toString("hex");
+  const hash = import_crypto18.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto17.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto18.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto17.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto18.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -10115,7 +10331,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
-  const code = String(import_crypto17.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto18.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -10172,10 +10388,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean}`);
   return { ok: true, email: clean };
 }
-var import_crypto17, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto18, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto17 = __toESM(require("crypto"), 1);
+    import_crypto18 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -10218,8 +10434,8 @@ async function verifyFirebaseIdToken(idToken) {
     const certs = await getCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto18.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto18.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto19.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto19.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
     if (!signatureOk) return null;
@@ -10235,10 +10451,10 @@ async function verifyFirebaseIdToken(idToken) {
     return null;
   }
 }
-var import_crypto18, CERT_URL, certCache, CERT_TTL_MS;
+var import_crypto19, CERT_URL, certCache, CERT_TTL_MS;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto18 = __toESM(require("crypto"), 1);
+    import_crypto19 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -10311,7 +10527,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto19.default.randomUUID();
+  const key = idempotencyKey || import_crypto20.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -10426,10 +10642,10 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto19, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+var import_crypto20, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto19 = __toESM(require("crypto"), 1);
+    import_crypto20 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -10440,7 +10656,7 @@ var init_rewardsEngine = __esm({
 
 // server/affiliate/deeplink.ts
 function secret() {
-  return process.env.AFFILIATE_SECRET || import_crypto20.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto21.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -10450,15 +10666,15 @@ function unb64url(s) {
 }
 function createMaskingPointer(destination, opts = {}) {
   const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
-  const sig = import_crypto20.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto21.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 function resolveMaskingPointer(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
-  const expect = import_crypto20.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  if (sig.length !== expect.length || !import_crypto20.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  const expect = import_crypto21.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto21.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -10515,7 +10731,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
-  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto20.default.randomBytes(6).toString("hex"));
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto21.default.randomBytes(6).toString("hex"));
   return out.replace(/\{[a-z0-9_]+\}/gi, "");
 }
 function parseJsonObj(v) {
@@ -10528,7 +10744,7 @@ function parseJsonObj(v) {
   }
 }
 async function recordPointerClick(dest, offerId, network) {
-  const clickId = import_crypto20.default.randomUUID();
+  const clickId = import_crypto21.default.randomUUID();
   try {
     const store2 = getStore();
     await store2.execute(
@@ -10541,10 +10757,10 @@ async function recordPointerClick(dest, offerId, network) {
   }
   return clickId;
 }
-var import_crypto20, AFFILIATE_TTL_SEC;
+var import_crypto21, AFFILIATE_TTL_SEC;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
-    import_crypto20 = __toESM(require("crypto"), 1);
+    import_crypto21 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -11299,7 +11515,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto21, apiRouter;
+var import_express, import_crypto22, apiRouter;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -11311,7 +11527,7 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto21 = __toESM(require("crypto"), 1);
+    import_crypto22 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_deeplink();
@@ -11574,7 +11790,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto21.default.randomBytes(32).toString("hex");
+      const token = import_crypto22.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -11600,7 +11816,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto21.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto22.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -11608,7 +11824,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto21.default.randomBytes(32).toString("hex");
+      const token = import_crypto22.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),

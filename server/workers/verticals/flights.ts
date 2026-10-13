@@ -12,6 +12,7 @@ import { loadOpenFlights, parseRoute } from '../parsers/openflights';
 import { parseIxigoFlights, parseIxigoOffers } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
+import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
 import { parseIndigoSearch, indigoItems } from '../parsers/indigoFlights';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
@@ -58,22 +59,87 @@ export const flightsWorker: VerticalWorker = {
   vertical: 'flights',
   tasks: [
     {
-      // EaseMyTrip fare calendar (metasearch acquisition): real cheapest per-day
-      // fare + operating airline. Seller = the AIRLINE; deeplink = airline's own site.
+      // EaseMyTrip AirBus_New flight search (reverse-engineered from EMT's public
+      // Angular bundles): token flow GIT->GUT, then one POST returns EVERY flight
+      // on the route/date with real INR fares. Seller = the operating AIRLINE,
+      // deeplink = the airline's own website (metasearch policy). The old fare
+      // calendar stays as fallback when the search API is unavailable.
       sourceId: 'w_flights_emt',
+      name: 'Flights worker: per-flight live fares via EMT search API (seller = airline website)',
       priority: 14,
+      maxPerMinute: 2,
+      timeoutMs: 40_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
         if (!rt) return [];
-;
         const code = (s: string) => IATA[s.toLowerCase().trim()] || null;
         const from = rt.fromCode || code(rt.from); const to = rt.toCode || code(rt.to);
-        if (!from || !to) return []; // unknown city — honest skip (calendar needs IATA codes)
-        const dIso = ctx.query?.travelDates?.depart;
-        const base = dIso && /^\d{4}-\d{2}-\d{2}$/.test(dIso) ? new Date(`${dIso}T00:00:00`) : new Date(Date.now() + 7 * 86400_000);
-        const dd = String(base.getDate()).padStart(2, '0'); const mm = String(base.getMonth() + 1).padStart(2, '0'); const yy = base.getFullYear();
-        const wantDate = `${dd}/${mm}/${yy}`;
+        if (!from || !to) return [];
+        const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const wantDate = dIso.split('-').reverse().join('/');
+        // --- token flow (all constants are in EMT's public SearchJS.js) ---
+        let stk = '';
+        try {
+          const rGit = await cffiFetch('https://gi.easemytrip.com/etm/api/etoken/GIT', {
+            impersonate: 'chrome', timeoutMs: 10_000, method: 'POST', body: '{}',
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json',
+              Origin: 'https://www.easemytrip.com', Referer: 'https://www.easemytrip.com/flight-search/listing',
+              ATK: 'c0ruxuOD/XqyNXB3kRAqvRUliyqhyFOOUwgDTCP1tLx09TRNEbblvRQLgfPz2ivf',
+            },
+          });
+          const git = JSON.parse(rGit.body || '{}');
+          if (!git.ITK || !git.b) throw new Error('GIT token missing');
+          const autk = emtEncrypt(`EMT|EMTWvggk6zYLVynBA56C3aNn4HLREMHV9bEP9Q|${git.b}|${git.ITK}`);
+          const rGut = await cffiFetch('https://gi.easemytrip.com/etm/api/etoken/GUT', {
+            impersonate: 'chrome', timeoutMs: 10_000, method: 'POST',
+            body: JSON.stringify({ UserName: 'EMT', ITK: emtEncrypt(git.ITK), IP: emtEncrypt(git.b) }),
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json',
+              Origin: 'https://www.easemytrip.com', Referer: 'https://www.easemytrip.com/flight-search/listing',
+              autk,
+            },
+          });
+          const gut = JSON.parse(rGut.body || '{}');
+          if (!gut.STK) throw new Error('GUT STK missing');
+          stk = gut.STK;
+        } catch (e: any) {
+          // fall through to the fare-calendar fallback below
+          stk = '';
+        }
+        if (stk) {
+          const traceId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          const body = JSON.stringify({
+            org: from, dept: to, deptDT: dIso, arrDT: '',
+            adt: 1, chd: 0, inf: 0, isDomestic: true, isOneway: true,
+            airline: 'Any', Cabin: 3, currCode: 'INR', appType: 1,
+            isSingleView: false, ResType: 2, userid: '', IsDoubelSeat: false,
+            IsArmedForce: false, IsFareFamily: false, IsNBA: false,
+            CouponCode: '', AgentCode: '', IsWLAPP: false, serviceid: 'EMTSERVICE',
+            serviceDepatment: '', IpAddress: '', LoginKey: '', UUID: '',
+            TKN: stk, TraceId: traceId, queryname: traceId,
+          });
+          const r = await cffiFetch('https://flightservice-node.easemytrip.com/AirAvail_Lights/AirBus_New', {
+            impersonate: 'chrome', timeoutMs: 30_000, method: 'POST', body,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json',
+              Origin: 'https://www.easemytrip.com', Referer: 'https://www.easemytrip.com/flight-search/listing',
+            },
+          });
+          if (r.status === 403 || r.status === 429) {
+            throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `EMT search API blocked: HTTP ${r.status}`, r.status);
+          }
+          if (r.status === 200) {
+            let flights: ReturnType<typeof parseEmtAirbus> = [];
+            try { flights = parseEmtAirbus(r.body); } catch { flights = []; }
+            const items = emtAirbusItems(flights, ctx.source, { from: rt.from, to: rt.to }, from, to, dIso);
+            if (items.length) return items;
+          }
+        }
+        // --- fallback: fare calendar (route-level cheapest fare) ---
         const body = JSON.stringify({ CalKey_: `${from}_${to}_rdate__${wantDate}_` });
         const r = await cffiFetch('https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth', {
           impersonate: 'chrome', timeoutMs: 25_000, method: 'POST', body,
@@ -81,9 +147,9 @@ export const flightsWorker: VerticalWorker = {
         });
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `EMT fare calendar HTTP ${r.status}`);
         const fares = parseEmtFareCalendar(r.body, wantDate);
-        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT fare calendar returned no per-day fares for this route');
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT returned no fares for this route (search API and calendar both empty)');
         const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate);
-        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT fare calendar had no fare with a known Indian carrier for this route');
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT had no fare with a known Indian carrier for this route');
         return items;
       },
     },
