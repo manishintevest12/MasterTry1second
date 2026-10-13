@@ -2754,6 +2754,308 @@ var init_cityAlias = __esm({
   }
 });
 
+// server/workers/parsers/agodaHotels.ts
+function agodaCitySlugs(city) {
+  const out = [];
+  for (const v of cityVariants(city)) {
+    const slug = `${slugOf(v)}-in`;
+    if (!out.includes(slug)) out.push(slug);
+  }
+  return out.slice(0, 6);
+}
+function extractAgodaCityId(html) {
+  const m = html.match(/search\?city=(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function extractAgodaPageConfig(html) {
+  const m = html.match(/agoda\.pageConfig\s*=\s*(\{[\s\S]*?\})\s*<\/script>/);
+  if (!m) return null;
+  try {
+    const seg = m[1].slice(0, 4e3);
+    const cor2 = seg.match(/correlationId\s*:\s*["']([^"']+)["']/);
+    const ana2 = seg.match(/analyticsSessionId\s*:\s*["']([^"']+)["']/);
+    if (cor2 && ana2) return { correlationId: cor2[1], analyticsSessionId: ana2[1] };
+  } catch {
+  }
+  const cor = html.match(/"correlationId"\s*:\s*"([^"]+)"/);
+  const ana = html.match(/"analyticsSessionId"\s*:\s*"([^"]+)"/);
+  if (cor && ana) return { correlationId: cor[1], analyticsSessionId: ana[1] };
+  return null;
+}
+function agodaGateHeaders(cfg, epochMs) {
+  const gate = Buffer.from(`${epochMs}||/graphql/search`).toString("base64");
+  return {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/plain, */*",
+    Origin: AGODA_WEB,
+    "AG-LANGUAGE-LOCALE": "en-us",
+    "AG-CID": "-1",
+    "AG-PAGE-TYPE-ID": "103",
+    "AG-RETRY-ATTEMPT": "0",
+    "AG-REQUEST-ATTEMPT": "1",
+    "Access-Control-Max-Age": "7200",
+    "x-gate-meta": gate,
+    ...cfg.correlationId ? { "AG-CORRELATION-ID": cfg.correlationId } : {},
+    ...cfg.analyticsSessionId ? { "AG-ANALYTICS-SESSION-ID": cfg.analyticsSessionId } : {}
+  };
+}
+function buildAgodaCitySearchVars(cityId, checkin, checkout) {
+  const inMs = Date.parse(`${checkin}T00:00:00Z`);
+  const outMs = Date.parse(`${checkout}T00:00:00Z`);
+  const los = Number.isFinite(outMs) && outMs > inMs ? Math.max(1, Math.round((outMs - inMs) / 864e5)) : 1;
+  const ci = `${checkin}T00:00:00.000Z`;
+  const co = new Date(inMs + los * 864e5).toISOString().slice(0, 10) + "T00:00:00.000Z";
+  const now = nowIso();
+  const searchId = crypto.randomUUID();
+  return {
+    CitySearchRequest: {
+      cityId,
+      searchRequest: {
+        searchCriteria: {
+          bookingDate: now,
+          checkInDate: ci,
+          los,
+          rooms: 1,
+          adults: 2,
+          children: 0,
+          childAges: [],
+          currency: "INR",
+          sorting: { sortField: "Ranking", sortOrder: "Desc" },
+          requiredBasis: "PRPN",
+          requiredPrice: "Exclusive",
+          isUserLoggedIn: false,
+          travellerType: "AllGuests",
+          ratePlans: [],
+          suggestionLimit: 0,
+          synchronous: false,
+          isRoomSuggestionRequested: false
+        },
+        searchContext: {
+          locale: "en-us",
+          cid: -1,
+          origin: "US",
+          platform: 1,
+          deviceTypeId: 1,
+          storefrontId: 3,
+          pageTypeId: 103,
+          endpointSearchType: "CitySearch",
+          searchId,
+          userId: "",
+          memberId: 0,
+          experiments: { forceByVariant: null, forceByExperiment: [{ id: "JGCW-204", variant: "B" }] },
+          isRetry: false,
+          showCMS: false,
+          whiteLabelKey: "",
+          ipAddress: null
+        },
+        page: { pageSize: 30, pageNumber: 1 }
+      }
+    },
+    ContentSummaryRequest: {
+      context: {
+        rawUserId: "",
+        memberId: 0,
+        userOrigin: "US",
+        locale: "en-us",
+        apo: false,
+        searchCriteria: { cityId },
+        platform: { id: 1 },
+        storefrontId: 3,
+        cid: "-1",
+        occupancy: { numberOfAdults: 2, numberOfChildren: 0, checkIn: ci },
+        deviceTypeId: 1,
+        whiteLabelKey: "",
+        correlationId: "",
+        forceExperimentsByIdNew: [{ key: "JGCW-204", value: "B" }]
+      },
+      summary: { highlightedFeaturesOrderPriority: null, includeHotelCharacter: false },
+      reviews: {
+        commentary: null,
+        demographics: { providerIds: null, filter: { defaultProviderOnly: true } },
+        summaries: { providerIds: null, apo: true, limit: 1 },
+        cumulative: { providerIds: null },
+        filters: null
+      },
+      images: { page: null, maxWidth: 0, maxHeight: 0, imageSizes: null, indexOffset: null },
+      rooms: {
+        images: null,
+        featureLimit: 0,
+        filterCriteria: null,
+        includeMissing: false,
+        includeSoldOut: false,
+        includeDmcRoomId: false,
+        soldOutRoomCriteria: null,
+        showRoomSize: true,
+        showRoomFacilities: true,
+        showRoomName: false
+      },
+      nonHotelAccommodation: true,
+      engagement: true,
+      highlights: { maxNumberOfItems: 0, images: { imageSizes: [{ key: "full", size: { width: 0, height: 0 } }] } },
+      personalizedInformation: true,
+      localInformation: { images: null },
+      features: null,
+      rateCategories: null,
+      contentRateCategories: null,
+      synopsis: true
+    },
+    PricingSummaryRequest: {
+      cheapestOnly: true,
+      isSSR: true,
+      context: {
+        isAllowBookOnRequest: false,
+        abTests: [9021, 9023, 9024, 9025, 9027, 9029].map((testId) => ({ testId, abUser: "B" })),
+        clientInfo: {
+          cid: -1,
+          languageId: 1,
+          languageUse: 1,
+          origin: "US",
+          platform: 1,
+          searchId: crypto.randomUUID(),
+          storefront: 3,
+          userId: "",
+          ipAddress: null
+        },
+        experiment: [{ name: "JGCW-204", variant: "B" }],
+        sessionInfo: { isLogin: false, memberId: 0, sessionId: 1 }
+      },
+      pricing: {
+        bookingDate: now,
+        checkIn: ci,
+        checkout: co,
+        currency: "INR",
+        details: { cheapestPriceOnly: false, itemBreakdown: false, priceBreakdown: false },
+        filters: { cheapestRoomFilters: null, filterAPO: false, ratePlans: [1], secretDealOnly: false, suppliers: [] },
+        features: {
+          calculateRareRoomBadge: false,
+          crossOutRate: false,
+          isAPSPeek: false,
+          isAllOcc: false,
+          isApsEnabled: false,
+          isIncludeUsdAndLocalCurrency: false,
+          isMSE: true,
+          isRPM2Included: true,
+          maxSuggestions: 0,
+          isEnableSupplierFinancialInfo: false,
+          isLoggingAuctionData: false,
+          newRateModel: false,
+          overrideOccupancy: false,
+          filterCheapestRoomEscapesPackage: false,
+          priusId: 0,
+          synchronous: false,
+          enableRichContentOffer: false,
+          showCouponAmountInUserCurrency: false,
+          disableEscapesPackage: false,
+          enablePushDayUseRates: false,
+          enableDayUseCor: false,
+          ignoreRoomsCountForNha: false,
+          enableSuggestPriceExclusiveWithFees: false
+        },
+        includedPriceInfo: false,
+        occupancy: { adults: 2, children: 0, rooms: 1, childAges: [] },
+        requiredBasis: "PRPN",
+        requiredPrice: "Exclusive",
+        ratePlans: [],
+        sorting: { sortField: "Ranking", sortOrder: "Desc" }
+      },
+      suggestedPrice: "Exclusive"
+    }
+  };
+}
+function extractAgodaProperties(gql) {
+  const props = gql?.data?.citySearch?.properties;
+  return Array.isArray(props) ? props : [];
+}
+function parseAgodaHotels(props) {
+  const first = (v) => Array.isArray(v) && v.length ? v[0] : void 0;
+  const out = [];
+  for (const p of props) {
+    if (!p || typeof p !== "object") continue;
+    const info = p.content?.informationSummary || {};
+    const name = String(info.displayName || "").trim();
+    const propertyId = String(p.propertyId || "").trim();
+    if (!name || !/^\d+$/.test(propertyId)) continue;
+    const rev = p.content?.reviews?.cumulative;
+    let score = null;
+    let reviews = null;
+    if (rev && typeof rev === "object") {
+      score = typeof rev.score === "number" ? rev.score : null;
+      reviews = typeof rev.reviewCount === "number" ? rev.reviewCount : null;
+    }
+    const offer = first(p.pricing?.offers);
+    const roomOffer = first(offer?.roomOffers);
+    const pricing = first(roomOffer?.room?.pricing) || {};
+    const perNight = pricing?.price?.perNight || {};
+    const exclusive = perNight?.exclusive?.display;
+    const inclusive = perNight?.inclusive?.display;
+    const pricePerNight = typeof exclusive === "number" ? exclusive : typeof inclusive === "number" ? inclusive : null;
+    const priceInclusive = typeof inclusive === "number" ? inclusive : null;
+    const imgEntry = first(first(p.content?.images?.hotelImages)?.urls);
+    const rawImg = typeof imgEntry?.value === "string" ? imgEntry.value : null;
+    const imageUrl = rawImg ? rawImg.startsWith("//") ? `https:${rawImg}` : rawImg : null;
+    out.push({
+      propertyId,
+      name,
+      accommodationType: info.accommodationType != null ? String(info.accommodationType) : null,
+      cityName: info.address?.city?.name ? String(info.address.city.name) : null,
+      score,
+      reviews,
+      pricePerNight,
+      priceInclusive,
+      currency: String(pricing.currency || "INR"),
+      imageUrl,
+      lat: typeof info.geoInfo?.latitude === "number" ? info.geoInfo.latitude : null,
+      lon: typeof info.geoInfo?.longitude === "number" ? info.geoInfo.longitude : null,
+      available: p.pricing?.isAvailable === true
+    });
+  }
+  return out;
+}
+function parseAgodaOffers(hotels, source, city, meta) {
+  const out = [];
+  const srpUrl = `${AGODA_WEB}/search?city=${meta.cityId}&checkIn=${meta.checkin}&los=${meta.los}`;
+  for (const h of hotels.slice(0, 25)) {
+    if (!h.pricePerNight) continue;
+    const attrs = {
+      image_url: h.imageUrl,
+      rating: h.score != null ? String(h.score / 10) : null,
+      // Agoda scores are /10 → /5 scale
+      review_count: h.reviews,
+      city: h.cityName || city,
+      latitude: h.lat,
+      longitude: h.lon,
+      property_id: h.propertyId,
+      price_basis: h.priceInclusive != null ? `per night on Agoda (tax-exclusive \u20B9${Math.round(h.pricePerNight)}; inclusive \u20B9${Math.round(h.priceInclusive)})` : "per night on Agoda (tax-exclusive)",
+      data_note: "Live per-night rates observed on Agoda search"
+    };
+    out.push(newRawItem(source, {
+      title: h.name,
+      seller: "Agoda",
+      sellerUrl: srpUrl,
+      // redirect only to the site that owns the price
+      currency: h.currency,
+      price: Math.round(h.pricePerNight),
+      attributes: attrs,
+      evidence: {
+        sourceUrl: srpUrl,
+        sourceReference: h.propertyId,
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+var AGODA_WEB, nowIso, AGODA_CITY_SEARCH_QUERY;
+var init_agodaHotels = __esm({
+  "server/workers/parsers/agodaHotels.ts"() {
+    init_contract();
+    init_cityAlias();
+    AGODA_WEB = "https://www.agoda.com";
+    nowIso = () => (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, ".000Z");
+    AGODA_CITY_SEARCH_QUERY = "query citySearch($CitySearchRequest: CitySearchRequest!, $ContentSummaryRequest: ContentSummaryRequest!, $PricingSummaryRequest: PricingRequestParameters) { citySearch(CitySearchRequest: $CitySearchRequest) { properties(ContentSummaryRequest: $ContentSummaryRequest, PricingSummaryRequest: $PricingSummaryRequest) { propertyId content { informationSummary { displayName accommodationType address { city { name } } geoInfo { latitude longitude } rating } images { hotelImages { id urls { key value } } } reviews { cumulative { reviewCount score } } } pricing { isAvailable offers { roomOffers { room { pricing { currency price { perNight { exclusive { display originalPrice } inclusive { display originalPrice } } } } } } } } } } }";
+  }
+});
+
 // server/workers/verticals/hotels.ts
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
@@ -2772,7 +3074,7 @@ function stayDates(q3) {
   const end = ret && /\d{4}-\d{2}-\d{2}/.test(ret) ? new Date(ret) : new Date(base.getTime() + 864e5);
   return { checkin: fmt(base), checkout: fmt(end) };
 }
-var hotelsWorker;
+var agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -2785,6 +3087,8 @@ var init_hotels = __esm({
     init_curlCffiFetch();
     init_httpClient();
     init_cityAlias();
+    init_agodaHotels();
+    agodaCityIdCache = /* @__PURE__ */ new Map();
     hotelsWorker = {
       vertical: "hotels",
       tasks: [
@@ -3024,12 +3328,82 @@ var init_hotels = __esm({
         },
         // ---- Owner-mandated hotel sources: attempted live on every search, honestly reported ----
         {
+          // Agoda LIVE (13 Oct 2026): the SSR shell resolves cityId via SEO city pages,
+          // then the token-gated GraphQL /graphql/search endpoint (gate: x-gate-meta
+          // base64 epoch + AG-* headers from pageConfig) returns 30 hotels with real
+          // INR per-night rates. Verified Goa + Bali. Details: parsers/agodaHotels.ts.
           sourceId: "w_hotels_agoda",
-          name: "Hotels worker: Agoda (probe)",
-          priority: 19,
-          run: async () => {
-            await cffiFetch("https://www.agoda.com/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Agoda serves an SSR shell; hotel prices load via token-gated XHRs that are not available unauthenticated to browserless HTTP.");
+          name: "Hotels worker: Agoda GraphQL live rates",
+          priority: 6,
+          maxPerMinute: 4,
+          timeoutMs: 9e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            let cityId = agodaCityIdCache.get(city.toLowerCase());
+            if (!cityId) {
+              for (const slug of agodaCitySlugs(city)) {
+                const r = await cffiFetch(`https://www.agoda.com/city/${slug}.html`, {
+                  impersonate: "chrome",
+                  timeoutMs: 2e4,
+                  headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
+                });
+                if (r.status !== 200) continue;
+                const id = extractAgodaCityId(r.body);
+                if (id) {
+                  cityId = id;
+                  agodaCityIdCache.set(city.toLowerCase(), id);
+                  break;
+                }
+              }
+            }
+            if (!cityId) throw new AcquisitionError("EMPTY_RESPONSE", `Agoda has no city page for "${city}"`);
+            const los0 = Math.max(1, Math.round((Date.parse(`${checkout}T00:00:00Z`) - Date.parse(`${checkin}T00:00:00Z`)) / 864e5));
+            const shell = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
+              impersonate: "chrome",
+              timeoutMs: 25e3,
+              headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
+            });
+            if (shell.status === 403 || shell.status === 429) {
+              throw new AcquisitionError(shell.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda blocked: ${shell.status}`, shell.status);
+            }
+            if (shell.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda HTTP ${shell.status}`, shell.status);
+            const cfg = extractAgodaPageConfig(shell.body);
+            if (!cfg) throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda SRP carried no pageConfig");
+            const gqlRes = await cffiFetch("https://www.agoda.com/graphql/search", {
+              method: "POST",
+              impersonate: "chrome",
+              timeoutMs: 6e4,
+              headers: {
+                ...agodaGateHeaders(cfg, Date.now()),
+                Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
+                "AG-REQUEST-ID": crypto.randomUUID()
+              },
+              body: JSON.stringify({
+                query: AGODA_CITY_SEARCH_QUERY,
+                variables: buildAgodaCitySearchVars(cityId, checkin, checkout),
+                operationName: "citySearch"
+              })
+            });
+            if (gqlRes.status === 403 || gqlRes.status === 429) {
+              throw new AcquisitionError(gqlRes.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+            }
+            if (gqlRes.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status);
+            let gql;
+            try {
+              gql = JSON.parse(gqlRes.body);
+            } catch {
+              throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda GraphQL response not valid JSON");
+            }
+            if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
+              throw new AcquisitionError("MALFORMED_RESPONSE", `Agoda GraphQL errors: ${String(gql.errors[0]?.message || "").slice(0, 160)}`);
+            }
+            const props = extractAgodaProperties(gql);
+            const hotels = parseAgodaHotels(props);
+            const priced = hotels.filter((h) => h.pricePerNight);
+            if (priced.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Agoda GraphQL returned no priced hotels");
+            return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });
           }
         },
         {
@@ -10417,7 +10791,7 @@ function parseDbUtc(v) {
   if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(s)) return new Date(s.replace(" ", "T")).getTime();
   return (/* @__PURE__ */ new Date(s.replace(" ", "T") + "Z")).getTime();
 }
-function nowIso() {
+function nowIso2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
 }
 async function isEligibleAdmin(email) {
@@ -10442,7 +10816,7 @@ async function requestAdminOtp(email) {
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
-    [clean, hashOtp(code), expiresAt, 0, nowIso()]
+    [clean, hashOtp(code), expiresAt, 0, nowIso2()]
   );
   const eligible = await isEligibleAdmin(clean);
   if (!eligible) {

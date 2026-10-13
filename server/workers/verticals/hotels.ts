@@ -15,6 +15,15 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
 import { cityVariants, slugOf } from '../../common/cityAlias';
 
+import {
+  agodaCitySlugs, extractAgodaCityId, extractAgodaPageConfig, agodaGateHeaders,
+  AGODA_CITY_SEARCH_QUERY, buildAgodaCitySearchVars, extractAgodaProperties,
+  parseAgodaHotels, parseAgodaOffers,
+} from '../parsers/agodaHotels';
+
+/** city (lowercase) → Agoda CityId, learned from SEO city pages (stable ids). */
+const agodaCityIdCache = new Map<string, number>();
+
 function cityFromQuery(ctx: { query: any }): string | null {
   const q = ctx.query;
   const raw = String(q.rawQuery || '').trim();
@@ -252,12 +261,78 @@ export const hotelsWorker: VerticalWorker = {
     },
     // ---- Owner-mandated hotel sources: attempted live on every search, honestly reported ----
     {
+      // Agoda LIVE (13 Oct 2026): the SSR shell resolves cityId via SEO city pages,
+      // then the token-gated GraphQL /graphql/search endpoint (gate: x-gate-meta
+      // base64 epoch + AG-* headers from pageConfig) returns 30 hotels with real
+      // INR per-night rates. Verified Goa + Bali. Details: parsers/agodaHotels.ts.
       sourceId: 'w_hotels_agoda',
-      name: 'Hotels worker: Agoda (probe)',
-      priority: 19,
-      run: async () => {
-        await cffiFetch('https://www.agoda.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Agoda serves an SSR shell; hotel prices load via token-gated XHRs that are not available unauthenticated to browserless HTTP.');
+      name: 'Hotels worker: Agoda GraphQL live rates',
+      priority: 6,
+      maxPerMinute: 4,
+      timeoutMs: 90_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+
+        // 1. cityId from an SEO city page (module-level cache, ids are stable).
+        let cityId = agodaCityIdCache.get(city.toLowerCase());
+        if (!cityId) {
+          for (const slug of agodaCitySlugs(city)) {
+            const r = await cffiFetch(`https://www.agoda.com/city/${slug}.html`, {
+              impersonate: 'chrome', timeoutMs: 20_000,
+              headers: { Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
+            });
+            if (r.status !== 200) continue; // unknown slug → try next spelling
+            const id = extractAgodaCityId(r.body);
+            if (id) { cityId = id; agodaCityIdCache.set(city.toLowerCase(), id); break; }
+          }
+        }
+        if (!cityId) throw new AcquisitionError('EMPTY_RESPONSE', `Agoda has no city page for "${city}"`);
+
+        // 2. SRP shell → pageConfig correlation/analytics ids (also primes cookies).
+        const los0 = Math.max(1, Math.round((Date.parse(`${checkout}T00:00:00Z`) - Date.parse(`${checkin}T00:00:00Z`)) / 86_400_000));
+        const shell = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
+          impersonate: 'chrome', timeoutMs: 25_000,
+          headers: { Accept: 'text/html', 'Accept-Language': 'en-US,en;q=0.9' },
+        });
+        if (shell.status === 403 || shell.status === 429) {
+          throw new AcquisitionError(shell.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Agoda blocked: ${shell.status}`, shell.status);
+        }
+        if (shell.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Agoda HTTP ${shell.status}`, shell.status);
+        const cfg = extractAgodaPageConfig(shell.body);
+        if (!cfg) throw new AcquisitionError('MALFORMED_RESPONSE', 'Agoda SRP carried no pageConfig');
+
+        // 3. gated GraphQL citySearch.
+        const gqlRes = await cffiFetch('https://www.agoda.com/graphql/search', {
+          method: 'POST',
+          impersonate: 'chrome',
+          timeoutMs: 60_000,
+          headers: {
+            ...agodaGateHeaders(cfg, Date.now()),
+            Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
+            'AG-REQUEST-ID': crypto.randomUUID(),
+          },
+          body: JSON.stringify({
+            query: AGODA_CITY_SEARCH_QUERY,
+            variables: buildAgodaCitySearchVars(cityId, checkin, checkout),
+            operationName: 'citySearch',
+          }),
+        });
+        if (gqlRes.status === 403 || gqlRes.status === 429) {
+          throw new AcquisitionError(gqlRes.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+        }
+        if (gqlRes.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status);
+        let gql: any;
+        try { gql = JSON.parse(gqlRes.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Agoda GraphQL response not valid JSON'); }
+        if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
+          throw new AcquisitionError('MALFORMED_RESPONSE', `Agoda GraphQL errors: ${String(gql.errors[0]?.message || '').slice(0, 160)}`);
+        }
+        const props = extractAgodaProperties(gql);
+        const hotels = parseAgodaHotels(props);
+        const priced = hotels.filter((h) => h.pricePerNight);
+        if (priced.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Agoda GraphQL returned no priced hotels');
+        return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });
       },
     },
     {
