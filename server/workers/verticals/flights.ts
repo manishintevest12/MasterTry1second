@@ -11,6 +11,7 @@ import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { loadOpenFlights, parseRoute } from '../parsers/openflights';
 import { parseIxigoFlights, parseIxigoOffers } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
+import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
@@ -28,6 +29,48 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
 export const flightsWorker: VerticalWorker = {
   vertical: 'flights',
   tasks: [
+    {
+      // EaseMyTrip fare calendar (metasearch acquisition): real cheapest per-day
+      // fare + operating airline. Seller = the AIRLINE; deeplink = airline's own site.
+      sourceId: 'w_flights_emt',
+      priority: 14,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const IATA: Record<string, string> = {
+          delhi: 'DEL', 'new delhi': 'DEL', mumbai: 'BOM', bombay: 'BOM', bangalore: 'BLR', bengaluru: 'BLR',
+          hyderabad: 'HYD', chennai: 'MAA', kolkata: 'CCU', pune: 'PNQ', ahmedabad: 'AMD', jaipur: 'JAI',
+          goa: 'GOI', panaji: 'GOI', lucknow: 'LKO', nagpur: 'NAG', indore: 'IDR', surat: 'STV',
+          patna: 'PAT', bhopal: 'BHO', coimbatore: 'CJB', kochi: 'COK', ernakulam: 'COK', guwahati: 'GAU',
+          chandigarh: 'IXC', dehradun: 'DED', amritsar: 'ATQ', varanasi: 'VNS', srinagar: 'SXR',
+          trivandrum: 'TRV', thiruvananthapuram: 'TRV', vizag: 'VTZ', visakhapatnam: 'VTZ', madurai: 'IXM',
+          udaipur: 'UDR', jodhpur: 'JDH', ranchi: 'IXR', raipur: 'RPR', bhubaneswar: 'BBI', imphal: 'IMF',
+          leh: 'IXL', bagdogra: 'IXB', aurangabad: 'IXU', mangalore: 'IXE',
+          vadodara: 'BDQ', rajkot: 'RAJ', jammu: 'IXJ', allahabad: 'IXD', prayagraj: 'IXD',
+          gorakhpur: 'GOP', jharsuguda: 'JRG', dibrugarh: 'DIB', tezpur: 'TEZ', kanpur: 'KNU',
+          mysore: 'MYQ', hubli: 'HBX', belgaum: 'IXG', kolhapur: 'KLH', nashik: 'ISK', shirdi: 'SAG',
+          tirupati: 'TIR',
+        };
+        const code = (s: string) => IATA[s.toLowerCase().trim()] || null;
+        const from = code(rt.from); const to = code(rt.to);
+        if (!from || !to) return []; // unknown city — honest skip (calendar needs IATA codes)
+        const base = new Date(Date.now() + 7 * 86400_000);
+        const dd = String(base.getDate()).padStart(2, '0'); const mm = String(base.getMonth() + 1).padStart(2, '0'); const yy = base.getFullYear();
+        const wantDate = `${dd}/${mm}/${yy}`;
+        const body = JSON.stringify({ CalKey_: `${from}_${to}_rdate__${wantDate}_` });
+        const r = await cffiFetch('https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth', {
+          impersonate: 'chrome', timeoutMs: 25_000, method: 'POST', body,
+          headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: 'https://www.easemytrip.com', Referer: 'https://www.easemytrip.com/' },
+        });
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `EMT fare calendar HTTP ${r.status}`);
+        const fares = parseEmtFareCalendar(r.body, wantDate);
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT fare calendar returned no per-day fares for this route');
+        const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT fare calendar had no fare with a known Indian carrier for this route');
+        return items;
+      },
+    },
     {
       // Ixigo SSRs the flight search page: __NEXT_DATA__ ships up to 100
       // real flight entries for the date (airline, flight number, total

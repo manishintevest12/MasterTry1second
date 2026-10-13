@@ -2877,6 +2877,78 @@ var init_ixigoFlights = __esm({
   }
 });
 
+// server/workers/parsers/emtFareCalendar.ts
+function parseEmtFareCalendar(jsonText, wantDate) {
+  const data = JSON.parse(jsonText);
+  if (!Array.isArray(data) || !data[0]) return [];
+  const rows = ["FstRow", "SndRow", "TrdRow", "ForthRow", "FifthRow", "SixRow"];
+  const fares = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const rn of rows) {
+    const cells = data[0][rn] || [];
+    for (const c of cells) {
+      if (!c?.fulDate || !c.bookMsg) continue;
+      const fare = Number(String(c.bookMsg).replace(/[^0-9]/g, ""));
+      if (!fare || fare <= 0 || seen.has(c.fulDate)) continue;
+      seen.add(c.fulDate);
+      fares.push({ date: c.fulDate, fare, airlineCode: c.AirlineCode || null });
+    }
+  }
+  return fares;
+}
+function emtFareItems(fares, source, route, wantDate) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const airline = (code) => code && EMT_AIRLINES[code] ? EMT_AIRLINES[code] : null;
+  const exact = fares.find((f) => f.date === wantDate && airline(f.airlineCode));
+  const upcoming = fares.filter((f) => airline(f.airlineCode)).sort((a, b) => a.fare - b.fare);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const al = airline(chosen.airlineCode);
+  const isExact = exact ? chosen.date === exact.date : false;
+  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  return [newRawItem(source, {
+    title: `${al.name} ${routeLabel} ${isExact ? `on ${chosen.date}` : `(cheapest upcoming, ${chosen.date})`} from \u20B9${chosen.fare}`,
+    brand: al.name,
+    price: chosen.fare,
+    currency: "INR",
+    seller: al.name,
+    sellerUrl: al.url,
+    travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.date,
+      fare: String(chosen.fare),
+      airline_code: chosen.airlineCode || "",
+      price_basis: `cheapest fare observed on EaseMyTrip's live fare calendar on ${today} (acquisition source, not seller)`,
+      data_note: `Fare acquired via EaseMyTrip fare calendar on ${today}; booking is on ${al.name}'s own website. Price is the cheapest carrier fare for this route/date and may change at checkout.`,
+      image: ""
+    },
+    identifiers: { sku: `emt-${chosen.airlineCode}-${route.from}-${route.to}-${chosen.date.replace(/\//g, "-")}` },
+    evidence: {
+      sourceUrl: "https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth",
+      extractedFields: ["bookMsg (fare)", "AirlineCode", "fulDate"]
+    }
+  })];
+}
+var EMT_AIRLINES;
+var init_emtFareCalendar = __esm({
+  "server/workers/parsers/emtFareCalendar.ts"() {
+    init_contract();
+    EMT_AIRLINES = {
+      "6E": { name: "IndiGo", url: "https://www.goindigo.in/" },
+      QP: { name: "Akasa Air", url: "https://www.akasaair.com/" },
+      AI: { name: "Air India", url: "https://www.airindia.com/" },
+      IX: { name: "Air India Express", url: "https://www.airindiaexpress.com/" },
+      SG: { name: "SpiceJet", url: "https://www.spicejet.com/" },
+      UK: { name: "Vistara", url: "https://www.airvistara.com/" },
+      G8: { name: "Go First", url: "https://www.flygofirst.com/" },
+      "9I": { name: "Alliance Air", url: "https://www.allianceair.in/" },
+      I5: { name: "AirAsia India", url: "https://www.airasia.co.in/" },
+      QZ: { name: "IndiGo", url: "https://www.goindigo.in/" }
+    };
+  }
+});
+
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
@@ -2894,11 +2966,109 @@ var init_flights = __esm({
     init_openflights();
     init_ixigoFlights();
     init_httpClient();
+    init_emtFareCalendar();
     init_curlCffiFetch();
     URL_AP = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
     flightsWorker = {
       vertical: "flights",
       tasks: [
+        {
+          // EaseMyTrip fare calendar (metasearch acquisition): real cheapest per-day
+          // fare + operating airline. Seller = the AIRLINE; deeplink = airline's own site.
+          sourceId: "w_flights_emt",
+          priority: 14,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const IATA = {
+              delhi: "DEL",
+              "new delhi": "DEL",
+              mumbai: "BOM",
+              bombay: "BOM",
+              bangalore: "BLR",
+              bengaluru: "BLR",
+              hyderabad: "HYD",
+              chennai: "MAA",
+              kolkata: "CCU",
+              pune: "PNQ",
+              ahmedabad: "AMD",
+              jaipur: "JAI",
+              goa: "GOI",
+              panaji: "GOI",
+              lucknow: "LKO",
+              nagpur: "NAG",
+              indore: "IDR",
+              surat: "STV",
+              patna: "PAT",
+              bhopal: "BHO",
+              coimbatore: "CJB",
+              kochi: "COK",
+              ernakulam: "COK",
+              guwahati: "GAU",
+              chandigarh: "IXC",
+              dehradun: "DED",
+              amritsar: "ATQ",
+              varanasi: "VNS",
+              srinagar: "SXR",
+              trivandrum: "TRV",
+              thiruvananthapuram: "TRV",
+              vizag: "VTZ",
+              visakhapatnam: "VTZ",
+              madurai: "IXM",
+              udaipur: "UDR",
+              jodhpur: "JDH",
+              ranchi: "IXR",
+              raipur: "RPR",
+              bhubaneswar: "BBI",
+              imphal: "IMF",
+              leh: "IXL",
+              bagdogra: "IXB",
+              aurangabad: "IXU",
+              mangalore: "IXE",
+              vadodara: "BDQ",
+              rajkot: "RAJ",
+              jammu: "IXJ",
+              allahabad: "IXD",
+              prayagraj: "IXD",
+              gorakhpur: "GOP",
+              jharsuguda: "JRG",
+              dibrugarh: "DIB",
+              tezpur: "TEZ",
+              kanpur: "KNU",
+              mysore: "MYQ",
+              hubli: "HBX",
+              belgaum: "IXG",
+              kolhapur: "KLH",
+              nashik: "ISK",
+              shirdi: "SAG",
+              tirupati: "TIR"
+            };
+            const code = (s) => IATA[s.toLowerCase().trim()] || null;
+            const from = code(rt.from);
+            const to = code(rt.to);
+            if (!from || !to) return [];
+            const base = new Date(Date.now() + 7 * 864e5);
+            const dd = String(base.getDate()).padStart(2, "0");
+            const mm = String(base.getMonth() + 1).padStart(2, "0");
+            const yy = base.getFullYear();
+            const wantDate = `${dd}/${mm}/${yy}`;
+            const body = JSON.stringify({ CalKey_: `${from}_${to}_rdate__${wantDate}_` });
+            const r = await cffiFetch("https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth", {
+              impersonate: "chrome",
+              timeoutMs: 25e3,
+              method: "POST",
+              body,
+              headers: { "Content-Type": "application/json; charset=utf-8", Origin: "https://www.easemytrip.com", Referer: "https://www.easemytrip.com/" }
+            });
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `EMT fare calendar HTTP ${r.status}`);
+            const fares = parseEmtFareCalendar(r.body, wantDate);
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT fare calendar returned no per-day fares for this route");
+            const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT fare calendar had no fare with a known Indian carrier for this route");
+            return items;
+          }
+        },
         {
           // Ixigo SSRs the flight search page: __NEXT_DATA__ ships up to 100
           // real flight entries for the date (airline, flight number, total
