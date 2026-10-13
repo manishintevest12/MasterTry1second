@@ -36,19 +36,38 @@ const TYPE_OPTIONS: { id: QuickAppPartnerType; label: string; desc: string; badg
   { id: 'CPS', label: 'CPS', desc: 'Cost Per Sale / Order Commission', badgeColor: 'bg-amber-50 text-amber-800 border-amber-200' },
 ];
 
-const PRESET_ICONS = [
-  { name: 'Food & Dining', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Restaurant Gourmet', url: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=120&auto=format&fit=crop&q=80' },
-  { name: 'E-Commerce Gadget', url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Electronics Tech', url: 'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=120&auto=format&fit=crop&q=80' },
-  { name: '10-Min Grocery', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Supermarket Fast', url: 'https://images.unsplash.com/photo-1518843875459-f738682238a6?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Fintech Credit', url: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Banking Loans', url: 'https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Flights Aviation', url: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Cabs Mobility', url: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=120&auto=format&fit=crop&q=80' },
-  { name: 'Cinema Movies', url: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=120&auto=format&fit=crop&q=80' },
+const PRESET_ICONS: { name: string; domain: string }[] = [
+  { name: 'Swiggy', domain: 'swiggy.com' },
+  { name: 'Zomato', domain: 'zomato.com' },
+  { name: 'Blinkit', domain: 'blinkit.com' },
+  { name: 'Zepto', domain: 'zeptonow.com' },
+  { name: 'Domino\u2019s', domain: 'dominos.co.in' },
+  { name: 'Amazon', domain: 'amazon.in' },
+  { name: 'Flipkart', domain: 'flipkart.com' },
+  { name: 'Myntra', domain: 'myntra.com' },
+  { name: 'Ajio', domain: 'ajio.com' },
+  { name: 'Meesho', domain: 'meesho.com' },
+  { name: 'Tata CLiQ', domain: 'tatacliq.com' },
+  { name: 'BigBasket', domain: 'bigbasket.com' },
+  { name: 'MakeMyTrip', domain: 'makemytrip.com' },
+  { name: 'Cleartrip', domain: 'cleartrip.com' },
+  { name: 'Goibibo', domain: 'goibibo.com' },
+  { name: 'Yatra', domain: 'yatra.com' },
+  { name: 'redBus', domain: 'redbus.in' },
+  { name: 'AbhiBus', domain: 'abhibus.com' },
+  { name: 'IndiGo', domain: 'goindigo.in' },
+  { name: 'Uber', domain: 'uber.com' },
+  { name: 'Ola', domain: 'olacabs.com' },
+  { name: 'BookMyShow', domain: 'in.bookmyshow.com' },
+  { name: 'Paytm', domain: 'paytm.com' },
+  { name: 'Policybazaar', domain: 'policybazaar.com' },
+  { name: 'Paisabazaar', domain: 'paisabazaar.com' },
+  { name: 'BankBazaar', domain: 'bankbazaar.com' },
+  { name: 'CRED', domain: 'cred.club' },
+  { name: 'Groww', domain: 'groww.in' },
 ];
+
+const faviconUrl = (domain: string) => `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
 
 export const QuickAppsAdminTab: React.FC = () => {
   const {
@@ -74,7 +93,7 @@ export const QuickAppsAdminTab: React.FC = () => {
   // Form State
   const [formState, setFormState] = useState({
     name: '',
-    iconUrl: PRESET_ICONS[0].url,
+    iconUrl: '',
     category: 'Food Delivery & Dining',
     type: 'CPI - Android' as QuickAppPartnerType,
     deepLink: 'swiggy://open?utm_source=try1second',
@@ -92,7 +111,7 @@ export const QuickAppsAdminTab: React.FC = () => {
     setEditingPartner(null);
     setFormState({
       name: '',
-      iconUrl: PRESET_ICONS[0].url,
+      iconUrl: '',
       category: 'Food Delivery & Dining',
       type: 'CPI - Android',
       deepLink: '',
@@ -830,9 +849,22 @@ export const QuickAppsAdminTab: React.FC = () => {
                     required
                     value={formState.iconUrl}
                     onChange={(e) => setFormState({ ...formState, iconUrl: e.target.value })}
-                    placeholder="https://images.unsplash.com/..."
+                    placeholder="Paste logo URL or pick a brand / fetch from web URL"
                     className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-mono text-xs focus:outline-hidden focus:border-red-500 shadow-2xs"
                   />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        const host = new URL(formState.webUrl.startsWith('http') ? formState.webUrl : `https://${formState.webUrl}`).hostname;
+                        setFormState({ ...formState, iconUrl: faviconUrl(host) });
+                      } catch { /* invalid webUrl */ }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold cursor-pointer shrink-0"
+                    title="Fetch the brand logo from the partner's website"
+                  >
+                    Logo from Web URL
+                  </button>
                   <img
                     src={formState.iconUrl}
                     alt="Preview"
@@ -849,7 +881,7 @@ export const QuickAppsAdminTab: React.FC = () => {
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => setFormState({ ...formState, iconUrl: preset.url })}
+                      onClick={() => setFormState({ ...formState, iconUrl: faviconUrl(preset.domain) })}
                       className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] whitespace-nowrap cursor-pointer transition-colors"
                     >
                       {preset.name}

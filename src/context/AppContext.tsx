@@ -2110,7 +2110,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ==========================================
   const [quickAppPartners, setQuickAppPartners] = useState<QuickAppPartner[]>(() => {
     try {
-      const saved = localStorage.getItem('t1s_quick_app_partners');
+      const saved = localStorage.getItem('t1s_quick_app_partners_v2');
       if (saved) {
         const parsed: QuickAppPartner[] = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -2139,7 +2139,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = [newPartner, ...quickAppPartners];
     setQuickAppPartners(updated);
     try {
-      localStorage.setItem('t1s_quick_app_partners', JSON.stringify(updated));
+      localStorage.setItem('t1s_quick_app_partners_v2', JSON.stringify(updated));
     } catch {}
     addToast('success', 'Quick App Registered', `Added partner "${newPartner.name}" with model ${newPartner.type}`);
     return newPartner;
@@ -2149,7 +2149,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = quickAppPartners.map((p) => (p.id === id ? { ...p, ...updates } : p));
     setQuickAppPartners(updated);
     try {
-      localStorage.setItem('t1s_quick_app_partners', JSON.stringify(updated));
+      localStorage.setItem('t1s_quick_app_partners_v2', JSON.stringify(updated));
     } catch {}
     addToast('info', 'Partner Updated', 'Quick App configuration updated.');
   };
@@ -2158,7 +2158,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updated = quickAppPartners.filter((p) => p.id !== id);
     setQuickAppPartners(updated);
     try {
-      localStorage.setItem('t1s_quick_app_partners', JSON.stringify(updated));
+      localStorage.setItem('t1s_quick_app_partners_v2', JSON.stringify(updated));
     } catch {}
     addToast('alert', 'Partner Removed', 'Quick App removed from directory.');
   };

@@ -4,12 +4,12 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-swiggy',
     name: 'Swiggy Food & Instamart',
-    iconUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=swiggy.com&sz=128',
     category: 'Food Delivery & Groceries',
     type: 'CPI - Android',
     deepLink: 'swiggy://open?utm_source=try1second&utm_medium=affiliate',
     webUrl: 'https://www.swiggy.com',
-    description: 'Order restaurant food & 10-minute groceries. Flat 50% OFF on first 3 app orders.',
+    description: 'Order restaurant food and 10-minute grocery delivery (Instamart) across Indian cities.',
     payoutRate: '₹45 / Android Install',
     payoutAmount: 45,
     status: 'active',
@@ -22,12 +22,12 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-zomato',
     name: 'Zomato Dining & Delivery',
-    iconUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=zomato.com&sz=128',
     category: 'Food Delivery & Dining',
     type: 'CPC',
     deepLink: 'zomato://order?ref=try1second',
     webUrl: 'https://www.zomato.com',
-    description: 'Explore menu discounts, gold dining savings & live delivery tracking across 500+ cities.',
+    description: 'Restaurant discovery, food delivery and dining-out savings across 500+ Indian cities.',
     payoutRate: '₹18 / Click',
     payoutAmount: 18,
     status: 'active',
@@ -40,12 +40,12 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-flipkart',
     name: 'Flipkart Online Shopping',
-    iconUrl: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=flipkart.com&sz=128',
     category: 'E-Commerce & Electronics',
     type: 'CPS',
     deepLink: 'flipkart://open?affid=try1second&affExtParam1=instant',
     webUrl: 'https://www.flipkart.com',
-    description: 'Mega savings on smartphones, fashion, laptops & big billion day offers with instant credit.',
+    description: 'Shop smartphones, fashion, electronics and more on the large Indian homegrown marketplace.',
     payoutRate: '8.5% CPS / Sale',
     payoutAmount: 120,
     status: 'active',
@@ -58,7 +58,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-amazon',
     name: 'Amazon India Shopping & Pay',
-    iconUrl: 'https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=amazon.in&sz=128',
     category: 'E-Commerce & Gadgets',
     type: 'CPS',
     deepLink: 'amazon://home?tag=try1sec-21',
@@ -76,7 +76,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-blinkit',
     name: 'Blinkit Instant Groceries',
-    iconUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=blinkit.com&sz=128',
     category: '10-Min Quick Grocery',
     type: 'CPI - Android',
     deepLink: 'blinkit://explore?source=try1second',
@@ -94,7 +94,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-zepto',
     name: 'Zepto 10-Min Supermarket',
-    iconUrl: 'https://images.unsplash.com/photo-1518843875459-f738682238a6?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=zeptonow.com&sz=128',
     category: '10-Min Quick Grocery',
     type: 'CPI - IOS',
     deepLink: 'zepto://home?utm_campaign=try1second_ios',
@@ -112,7 +112,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-cred',
     name: 'CRED Credit Card Payments & Perks',
-    iconUrl: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=cred.club&sz=128',
     category: 'Fintech & Credit Cards',
     type: 'CPI - IOS',
     deepLink: 'cred://home?invite=TRY1SEC',
@@ -130,7 +130,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-tataneu',
     name: 'Tata Neu Super App',
-    iconUrl: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=tataneu.com&sz=128',
     category: 'Super App & Retail',
     type: 'CPI - Windows',
     deepLink: 'tataneu://explore?ref=try1second_win',
@@ -148,7 +148,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-makemytrip',
     name: 'MakeMyTrip Flights & Hotels',
-    iconUrl: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=makemytrip.com&sz=128',
     category: 'Travel & Flights',
     type: 'CPC',
     deepLink: 'makemytrip://flightsearch?affil=try1second',
@@ -166,7 +166,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-policybazaar',
     name: 'PolicyBazaar Health & Term Cover',
-    iconUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=policybazaar.com&sz=128',
     category: 'Insurance & Healthcare',
     type: 'CPL',
     deepLink: 'policybazaar://quotes?source=try1sec_cpl',
@@ -184,7 +184,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-hdfcloans',
     name: 'HDFC Bank Express Loans',
-    iconUrl: 'https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=hdfcbank.com&sz=128',
     category: 'Banking & Personal Loans',
     type: 'CPL',
     deepLink: 'https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec',
@@ -202,7 +202,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-uber',
     name: 'Uber Cabs & City Rides',
-    iconUrl: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=uber.com&sz=128',
     category: 'Cabs & Ride-Hailing',
     type: 'CPC',
     deepLink: 'uber://?client_id=try1second&action=setPickup',
@@ -220,7 +220,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-bookmyshow',
     name: 'BookMyShow Cinema & Concerts',
-    iconUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=bookmyshow.com&sz=128',
     category: 'Movies & Entertainment',
     type: 'CPS',
     deepLink: 'bookmyshow://home?campaign=try1second_cps',
@@ -238,7 +238,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-groww',
     name: 'Groww Stocks & Mutual Funds',
-    iconUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=groww.in&sz=128',
     category: 'Fintech & Investments',
     type: 'CPI - Android',
     deepLink: 'groww://app?referrer=try1second',
@@ -256,7 +256,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-microsoft',
     name: 'Microsoft Store & PC Deals',
-    iconUrl: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=120&auto=format&fit=crop&q=80',
+    iconUrl: 'https://www.google.com/s2/favicons?domain=microsoft.com&sz=128',
     category: 'Software & Productivity',
     type: 'CPI - Windows',
     deepLink: 'ms-windows-store://home?referrer=try1second',
