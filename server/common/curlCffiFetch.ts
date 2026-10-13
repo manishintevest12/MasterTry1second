@@ -79,6 +79,8 @@ export async function pythonDiagnostics(): Promise<{ chosen: string; probes: PyP
 export interface CffiResponse {
   status: number;
   body: string;
+  /** Present when requested via opts.returnCookies: the session cookie jar after the call. */
+  cookies?: Record<string, string>;
 }
 
 export async function cffiFetch(
@@ -89,6 +91,10 @@ export async function cffiFetch(
     body?: string;
     timeoutMs?: number;
     impersonate?: string;
+    /** Seed the session cookie jar with these cookies (registrable domain of the URL). */
+    cookies?: Record<string, string>;
+    /** Return the session cookie jar after the call (for multi-step handshakes). */
+    returnCookies?: boolean;
   } = {},
 ): Promise<CffiResponse> {
   const payload = JSON.stringify({
@@ -96,6 +102,8 @@ export async function cffiFetch(
     method: opts.method || 'GET',
     headers: opts.headers || {},
     ...(opts.body ? { body: opts.body } : {}),
+    ...(opts.cookies ? { cookies: opts.cookies } : {}),
+    ...(opts.returnCookies ? { returnCookies: true } : {}),
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 20_000) / 1000)),
     impersonate: opts.impersonate || 'safari17_0',
   });
@@ -120,7 +128,7 @@ export async function cffiFetch(
       clearTimeout(timer);
       try {
         const res = JSON.parse(out || '{}');
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? '') });
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ''), ...(res.cookies ? { cookies: res.cookies as Record<string, string> } : {}) });
         reject(new AcquisitionError('SERVER_ERROR', `curl_cffi bridge error: ${res.error || err || 'unknown'}`));
       } catch {
         reject(new AcquisitionError('SERVER_ERROR', `curl_cffi bridge bad output: ${err.slice(0, 200)}`));

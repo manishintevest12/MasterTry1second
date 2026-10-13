@@ -7,6 +7,7 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseBlinkit } from '../parsers/blinkit';
+import { parseBigbasket } from '../parsers/bigbasket';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
@@ -26,7 +27,6 @@ const q = (ctx: { query: any }) =>
 
 const QUICK_FAILS: Array<{ sourceId: string; url: (t: string) => string; probe: string; note: string }> = [
   { sourceId: 'w_grocery_zepto', url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: 'https://www.zeptonow.com/', note: 'Zeptonow returns a 202 JS challenge shell to browserless HTTP' },
-  { sourceId: 'w_grocery_bigbasket', url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: 'https://www.bigbasket.com/ps/?q=milk', note: 'BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403' },
   { sourceId: 'w_grocery_flipkart_minutes', url: (t) => `https://www.flipkart.com/minutes-store`, probe: 'https://www.flipkart.com/minutes-store', note: 'Flipkart Minutes store is a JS shell with no SSR product prices' },
 ];
 
@@ -210,6 +210,59 @@ export const groceryWorker: VerticalWorker = {
         if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `Blinkit search API HTTP ${r.status}`, r.status);
         const items = parseBlinkit(r.body, ctx.source, url, cityLabel, 16);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `Blinkit returned no products for "${term}" at ${cityLabel} (not serviceable or no match)`);
+        return items;
+      },
+    },
+    {
+      // BigBasket LIVE: listing-svc answers real JSON once the session carries location cookies.
+      // Handshake (3 calls, same cookie jar): homepage -> serviceable(lat,lng) -> listing-svc.
+      sourceId: 'w_grocery_bigbasket',
+      name: 'Grocery worker: BigBasket listing API',
+      priority: 13,
+      timeoutMs: 60_000,
+      run: async (ctx: any) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const loc = ctx.query.location || {};
+        const coords =
+          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
+            ? ([loc.lat, loc.lng] as [number, number])
+            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
+        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
+        const [lat, lng] = coords;
+        const BB = 'https://www.bigbasket.com';
+        const baseHeaders = {
+          Accept: 'application/json',
+          'x-channel': 'BB-WEB',
+          'x-entry-context': 'bb-b2c',
+          'x-entry-context-id': '100',
+          Origin: BB,
+          Referer: `${BB}/ps/?q=${encodeURIComponent(term)}`,
+        };
+        // Step 1: homepage -> session cookies (Akamai bm_* + _bb_*)
+        const home = await cffiFetch(`${BB}/`, { impersonate: 'chrome', timeoutMs: 20_000, returnCookies: true });
+        if (home.status !== 200 || !home.cookies) throw new AcquisitionError('ACCESS_CHALLENGE', `BigBasket homepage HTTP ${home.status}`);
+        // Step 2: serviceable lookup -> real place info for lat/lng
+        const svUrl = `${BB}/ui-svc/v1/serviceable/?lat=${lat}&lng=${lng}&send_all_serviceability=true`;
+        const sv = await cffiFetch(svUrl, { impersonate: 'chrome', headers: baseHeaders, timeoutMs: 15_000, cookies: home.cookies, returnCookies: true });
+        let pi: any = {};
+        try { pi = JSON.parse(sv.body).places_info || {}; } catch { /* fall through with raw coords */ }
+        const area = String(pi.area || cityLabel);
+        const pincode = String(pi.pincode || '');
+        // Step 3: set the location cookies the web app sets, then fetch the listing.
+        const addrCookie = `${pi.lat ?? lat}_${pi.lng ?? lng}_${area}_${pincode}_1_false_true_true_Express`;
+        const listingUrl = `${BB}/listing-svc/v2/products?type=ps&slug=${encodeURIComponent(term)}&page=1`;
+        const r = await cffiFetch(listingUrl, {
+          impersonate: 'chrome',
+          timeoutMs: 25_000,
+          headers: { ...baseHeaders, 'x-latitude': String(pi.lat ?? lat), 'x-longitude': String(pi.lng ?? lng) },
+          cookies: { ...sv.cookies, _bb_addressinfo: addrCookie, _bb_pin_code: pincode, _bb_lat_long: Buffer.from(`${lat}|${lng}`).toString('base64') },
+        });
+        if (r.status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', `BigBasket listing API HTTP 403 (Akamai)`);
+        if (r.status === 400) throw new AcquisitionError('EMPTY_RESPONSE', `BigBasket listing API rejected the location handshake (HTTP 400)`);
+        if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `BigBasket listing API HTTP ${r.status}`, r.status);
+        const items = parseBigbasket(r.body, ctx.source, listingUrl, cityLabel, 16);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `BigBasket returned no products for "${term}" at ${cityLabel}`);
         return items;
       },
     },

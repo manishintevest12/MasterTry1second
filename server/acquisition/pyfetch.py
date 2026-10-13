@@ -77,13 +77,38 @@ def main() -> None:
     timeout = float(req.get("timeoutSec") or 20)
     impersonate = str(req.get("impersonate") or "safari17_0")
 
+    seed_cookies = req.get("cookies") or {}
+    return_cookies = bool(req.get("returnCookies"))
+
+    def _seed_domain(url: str) -> str:
+        """Seed cookies on the registrable domain of the request URL (e.g. .bigbasket.com)."""
+        try:
+            from urllib.parse import urlparse
+            host = (urlparse(url).hostname or "").split(".")
+            return "." + ".".join(host[-2:]) if len(host) >= 2 else "." + ".".join(host)
+        except Exception:
+            return ""
+
     try:
         with cffi_requests.Session(impersonate=impersonate) as s:
+            if isinstance(seed_cookies, dict) and seed_cookies:
+                dom = _seed_domain(url)
+                for k, v in seed_cookies.items():
+                    try:
+                        s.cookies.set(str(k), str(v), domain=dom)
+                    except Exception:
+                        pass
             if method == "POST":
                 r = s.post(url, headers=headers, data=body, timeout=timeout)
             else:
                 r = s.get(url, headers=headers, timeout=timeout)
-        print(json.dumps({"ok": True, "status": int(r.status_code), "body": r.text}))
+            out = {"ok": True, "status": int(r.status_code), "body": r.text}
+            if return_cookies:
+                try:
+                    out["cookies"] = {k: str(v) for k, v in s.cookies.get_dict().items()}
+                except Exception:
+                    out["cookies"] = {}
+        print(json.dumps(out))
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
 

@@ -985,6 +985,8 @@ async function cffiFetch(url, opts = {}) {
     method: opts.method || "GET",
     headers: opts.headers || {},
     ...opts.body ? { body: opts.body } : {},
+    ...opts.cookies ? { cookies: opts.cookies } : {},
+    ...opts.returnCookies ? { returnCookies: true } : {},
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
     impersonate: opts.impersonate || "safari17_0"
   });
@@ -1011,7 +1013,7 @@ async function cffiFetch(url, opts = {}) {
       clearTimeout(timer);
       try {
         const res = JSON.parse(out || "{}");
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? "") });
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ""), ...res.cookies ? { cookies: res.cookies } : {} });
         reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge error: ${res.error || err || "unknown"}`));
       } catch {
         reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
@@ -4621,6 +4623,73 @@ var init_blinkit = __esm({
   }
 });
 
+// server/workers/parsers/bigbasket.ts
+function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const tabs = root?.tabs;
+  if (!Array.isArray(tabs)) return [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const tab of tabs) {
+    const products = tab?.product_info?.products;
+    if (!Array.isArray(products)) continue;
+    for (const p of products) {
+      const name = String(p.desc || "").trim();
+      if (!name) continue;
+      const sp = num(p.pricing?.discount?.prim_price?.sp);
+      if (!sp) continue;
+      const mrp = num(p.pricing?.discount?.mrp);
+      const pack = String(p.w || "").trim();
+      const id = String(p.id || "");
+      const key = id || `${name}|${pack}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const avail = p.availability?.avail_status === "001" && p.availability?.not_for_sale !== true;
+      const img = String(p.images?.[0]?.l || p.images?.[0]?.m || p.images?.[0]?.s || "");
+      const brand = String(p.brand?.name || "").trim() || void 0;
+      const url = p.absolute_url ? `https://www.bigbasket.com${p.absolute_url}` : `https://www.bigbasket.com/ps/?q=${encodeURIComponent(name)}`;
+      out.push(newRawItem(source, {
+        title: `${name}${pack ? ` (${pack})` : ""}`.slice(0, 200),
+        brand,
+        price: sp,
+        listPrice: mrp && mrp > sp ? mrp : void 0,
+        currency: "INR",
+        seller: "BigBasket",
+        sellerUrl: url,
+        availability: avail ? "in_stock" : "out_of_stock",
+        location: { city: cityLabel },
+        attributes: {
+          platform: "BigBasket",
+          ...pack ? { quantity: pack.slice(0, 60) } : {},
+          ...img ? { image_url: img } : {},
+          ...p.category?.tlc_name ? { category: String(p.category.tlc_name).slice(0, 80) } : {},
+          price_basis: `BigBasket price for ${cityLabel} (slotted delivery zone)`,
+          data_note: "Price extracted from BigBasket listing API (bigbasket.com); final price at checkout may vary"
+        },
+        identifiers: id ? { sku: id, ...p.ean_code ? { gtin: String(p.ean_code) } : {} } : void 0,
+        evidence: { sourceUrl: pageUrl, sourceReference: id, extractedFields: ["desc", "w", "pricing.discount.prim_price.sp", "pricing.discount.mrp", "availability.avail_status", "images[0].l"] }
+      }));
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
+var num;
+var init_bigbasket = __esm({
+  "server/workers/parsers/bigbasket.ts"() {
+    init_contract();
+    num = (v) => {
+      const n = Number(String(v ?? "").replace(/,/g, ""));
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+  }
+});
+
 // server/workers/verticals/grocery.ts
 function imRupees(m) {
   if (!m || typeof m !== "object") return void 0;
@@ -4720,6 +4789,7 @@ var init_grocery = __esm({
     init_amazonIn();
     init_flipkart();
     init_blinkit();
+    init_bigbasket();
     init_httpClient();
     init_curlCffiFetch();
     GCITY_COORDS = {
@@ -4745,7 +4815,6 @@ var init_grocery = __esm({
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
     QUICK_FAILS = [
       { sourceId: "w_grocery_zepto", url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: "https://www.zeptonow.com/", note: "Zeptonow returns a 202 JS challenge shell to browserless HTTP" },
-      { sourceId: "w_grocery_bigbasket", url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: "https://www.bigbasket.com/ps/?q=milk", note: "BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403" },
       { sourceId: "w_grocery_flipkart_minutes", url: (t) => `https://www.flipkart.com/minutes-store`, probe: "https://www.flipkart.com/minutes-store", note: "Flipkart Minutes store is a JS shell with no SSR product prices" }
     ];
     IM_BASE = "https://instamart.swiggy.com";
@@ -4805,6 +4874,56 @@ var init_grocery = __esm({
             if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `Blinkit search API HTTP ${r.status}`, r.status);
             const items = parseBlinkit(r.body, ctx.source, url, cityLabel, 16);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Blinkit returned no products for "${term}" at ${cityLabel} (not serviceable or no match)`);
+            return items;
+          }
+        },
+        {
+          // BigBasket LIVE: listing-svc answers real JSON once the session carries location cookies.
+          // Handshake (3 calls, same cookie jar): homepage -> serviceable(lat,lng) -> listing-svc.
+          sourceId: "w_grocery_bigbasket",
+          name: "Grocery worker: BigBasket listing API",
+          priority: 13,
+          timeoutMs: 6e4,
+          run: async (ctx) => {
+            const term = q2(ctx);
+            if (!term) return [];
+            const loc = ctx.query.location || {};
+            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
+            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
+            const [lat, lng] = coords;
+            const BB = "https://www.bigbasket.com";
+            const baseHeaders = {
+              Accept: "application/json",
+              "x-channel": "BB-WEB",
+              "x-entry-context": "bb-b2c",
+              "x-entry-context-id": "100",
+              Origin: BB,
+              Referer: `${BB}/ps/?q=${encodeURIComponent(term)}`
+            };
+            const home = await cffiFetch(`${BB}/`, { impersonate: "chrome", timeoutMs: 2e4, returnCookies: true });
+            if (home.status !== 200 || !home.cookies) throw new AcquisitionError("ACCESS_CHALLENGE", `BigBasket homepage HTTP ${home.status}`);
+            const svUrl = `${BB}/ui-svc/v1/serviceable/?lat=${lat}&lng=${lng}&send_all_serviceability=true`;
+            const sv = await cffiFetch(svUrl, { impersonate: "chrome", headers: baseHeaders, timeoutMs: 15e3, cookies: home.cookies, returnCookies: true });
+            let pi = {};
+            try {
+              pi = JSON.parse(sv.body).places_info || {};
+            } catch {
+            }
+            const area = String(pi.area || cityLabel);
+            const pincode = String(pi.pincode || "");
+            const addrCookie = `${pi.lat ?? lat}_${pi.lng ?? lng}_${area}_${pincode}_1_false_true_true_Express`;
+            const listingUrl = `${BB}/listing-svc/v2/products?type=ps&slug=${encodeURIComponent(term)}&page=1`;
+            const r = await cffiFetch(listingUrl, {
+              impersonate: "chrome",
+              timeoutMs: 25e3,
+              headers: { ...baseHeaders, "x-latitude": String(pi.lat ?? lat), "x-longitude": String(pi.lng ?? lng) },
+              cookies: { ...sv.cookies, _bb_addressinfo: addrCookie, _bb_pin_code: pincode, _bb_lat_long: Buffer.from(`${lat}|${lng}`).toString("base64") }
+            });
+            if (r.status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `BigBasket listing API HTTP 403 (Akamai)`);
+            if (r.status === 400) throw new AcquisitionError("EMPTY_RESPONSE", `BigBasket listing API rejected the location handshake (HTTP 400)`);
+            if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `BigBasket listing API HTTP ${r.status}`, r.status);
+            const items = parseBigbasket(r.body, ctx.source, listingUrl, cityLabel, 16);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `BigBasket returned no products for "${term}" at ${cityLabel}`);
             return items;
           }
         },
@@ -5772,7 +5891,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num = (key) => {
+  const num2 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -5783,8 +5902,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num("servicecount")) || 0,
-    operators: field("operators") || num("operators") || "",
+    servicecount: Number(num2("servicecount")) || 0,
+    operators: field("operators") || num2("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
