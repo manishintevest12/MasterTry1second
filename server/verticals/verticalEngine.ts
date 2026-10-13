@@ -91,7 +91,7 @@ class FlightEngine extends VerticalEngine {
         if (!m) return offers;
         const norm = (x: string) => {
           const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
-          let t = x.replace(/\([^)]*\)/g, '').replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+          let t = x.replace(/\([^)]*\)/g, '').replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, '').replace(/\b(on|for|at|tomorrow|today|tonight|night|morning|evening|next\s+\w+)\b/gi, '').replace(/\b\d{1,2}[a-z]*\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, '').replace(/\b\d{4}-\d{2}-\d{2}\b/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
           if (t === 'new delhi') t = 'delhi';
           if (t === 'bengaluru') t = 'bangalore';
           if (t === 'bombay') t = 'mumbai';

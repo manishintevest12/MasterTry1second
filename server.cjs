@@ -2337,6 +2337,110 @@ var init_openflights = __esm({
   }
 });
 
+// server/workers/parsers/ixigoFlights.ts
+function parseIxigoFlights(nextData) {
+  const entries = nextData?.props?.pageProps?.cheapFlightsData;
+  if (!Array.isArray(entries)) return [];
+  const flights = [];
+  for (const e of entries) {
+    const airline = String(e.airline || "").trim();
+    const fare = Number(e.fare);
+    if (!airline || !Number.isFinite(fare) || fare <= 0) continue;
+    let fn = String(e.flightNumber || "").trim();
+    fn = fn.replace(/^[A-Z]{3}-[A-Z]{3}-/, "");
+    let duration = null;
+    const dur = parseInt(String(e.duration ?? ""), 10);
+    if (Number.isFinite(dur) && dur > 0) duration = dur;
+    flights.push({
+      airline,
+      airlineCode: e.airlineCode ? String(e.airlineCode) : null,
+      flightNumber: fn || null,
+      fare: Math.round(fare),
+      departureDate: String(e.departure_date || e.date || ""),
+      departureTime: e.departure_time ? String(e.departure_time) : null,
+      arrivalDate: e.arrival_date ? String(e.arrival_date) : null,
+      arrivalTime: e.arrival_time ? String(e.arrival_time) : null,
+      durationMinutes: duration,
+      stops: Number.isFinite(Number(e.numOfStops)) ? Number(e.numOfStops) : null
+    });
+  }
+  return flights;
+}
+function parseIxigoOffers(flights, source, from, to, date) {
+  const AIRLINE_SITES = {
+    "indigo": "https://www.goindigo.in",
+    "air india": "https://www.airindia.com",
+    "air-india express": "https://www.airindiaexpress.com",
+    "air india express": "https://www.airindiaexpress.com",
+    "akasa air": "https://www.akasaair.com",
+    "spicejet": "https://www.spicejet.com",
+    "vistara": "https://www.airindia.com"
+  };
+  const siteFor = (airline) => {
+    const k = airline.toLowerCase().trim();
+    for (const [name, url] of Object.entries(AIRLINE_SITES)) {
+      if (k === name || k.replace(/[^a-z ]/g, "").includes(name)) return { seller: airline.trim(), url };
+    }
+    return null;
+  };
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const bestFare = /* @__PURE__ */ new Map();
+  for (const f of flights) {
+    if (!f.flightNumber) continue;
+    const key = `${f.airlineCode || f.airline}|${f.flightNumber}|${f.departureTime}`;
+    if (!bestFare.has(key) || f.fare < bestFare.get(key)) {
+      bestFare.set(key, f.fare);
+      if (!seen.has(key)) seen.add(key);
+    }
+  }
+  for (const f of flights) {
+    if (!f.flightNumber) continue;
+    const key = `${f.airlineCode || f.airline}|${f.flightNumber}|${f.departureTime}`;
+    if (!seen.has(key)) continue;
+    seen.delete(key);
+    const site = siteFor(f.airline);
+    if (!site) continue;
+    const attrs = {
+      airline: f.airline,
+      airline_code: f.airlineCode,
+      flight_number: f.flightNumber,
+      departure_date: f.departureDate,
+      departure_time: f.departureTime,
+      arrival_date: f.arrivalDate,
+      arrival_time: f.arrivalTime,
+      duration_minutes: f.durationMinutes,
+      stops: f.stops,
+      route: `${from} \u2192 ${to}`,
+      price_basis: "cheapest observed total one-way fare for 1 adult (economy)",
+      data_note: `Fare observed via Ixigo metasearch at ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 16)}Z; booking is on ${site.seller}'s own website`
+    };
+    out.push(newRawItem(source, {
+      title: `${f.airline} ${f.flightNumber} \xB7 ${from} \u2192 ${to}`,
+      seller: site.seller,
+      sellerUrl: site.url,
+      // deeplink ONLY to the airline website, never to Ixigo
+      currency: "INR",
+      price: bestFare.get(key),
+      travel: { route: `${from} to ${to}`.toLowerCase(), date, seatType: "economy" },
+      attributes: attrs,
+      evidence: {
+        sourceUrl: `${IXIGO_WEB}/search/flight/`,
+        sourceReference: f.flightNumber,
+        extractedFields: ["title", "price", "airline", "flight_number", "departure_time", "arrival_time", "duration", "stops"]
+      }
+    }));
+  }
+  return out.slice(0, 40);
+}
+var IXIGO_WEB;
+var init_ixigoFlights = __esm({
+  "server/workers/parsers/ixigoFlights.ts"() {
+    init_contract();
+    IXIGO_WEB = "https://www.ixigo.com";
+  }
+});
+
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const m = raw.match(/([a-zA-Z][a-zA-Z\s]{1,24}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|-)\s+([a-zA-Z][a-zA-Z\s]{1,24}(?:\s*\([A-Za-z]{3}\))?)/);
@@ -2352,11 +2456,46 @@ var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
     init_verticalWorker();
     init_openflights();
+    init_ixigoFlights();
     init_httpClient();
+    init_curlCffiFetch();
     URL_AP = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
     flightsWorker = {
       vertical: "flights",
       tasks: [
+        {
+          // Ixigo SSRs the flight search page: __NEXT_DATA__ ships up to 100
+          // real flight entries for the date (airline, flight number, total
+          // fare, times, stops). City names are accepted directly.
+          sourceId: "w_flights_ixigo",
+          name: "Flights worker: real fares via Ixigo SSR (seller = airline website)",
+          priority: 1,
+          maxPerMinute: 6,
+          timeoutMs: 35e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const dep = ctx.query?.travelDates?.depart && /\d{4}-\d{2}-\d{2}/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const url = `https://www.ixigo.com/search/flight/${encodeURIComponent(rt.from.toLowerCase())}/${encodeURIComponent(rt.to.toLowerCase())}/${dep}/1/0`;
+            const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Ixigo blocked: ${res.status}`, res.status);
+            }
+            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Ixigo HTTP ${res.status}`, res.status);
+            const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+            if (!m) throw new AcquisitionError("MALFORMED_RESPONSE", "Ixigo SRP carried no __NEXT_DATA__");
+            let next;
+            try {
+              next = JSON.parse(m[1]);
+            } catch {
+              throw new AcquisitionError("MALFORMED_RESPONSE", "Ixigo __NEXT_DATA__ not valid JSON");
+            }
+            const flights = parseIxigoFlights(next);
+            if (flights.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Ixigo SRP had no priced flights");
+            return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep);
+          }
+        },
         {
           sourceId: "w_flights_openflights",
           name: "Flights worker: OpenFlights airline-route data (worldwide)",
@@ -5428,7 +5567,7 @@ var init_verticalEngine = __esm({
             if (!m) return offers;
             const norm = (x) => {
               const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
-              let t = x.replace(/\([^)]*\)/g, "").replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+              let t = x.replace(/\([^)]*\)/g, "").replace(/\b(flight|flights|ticket|tickets|from|cheapest|direct|return|one-way|oneway|airport)\b/gi, "").replace(/\b(on|for|at|tomorrow|today|tonight|night|morning|evening|next\s+\w+)\b/gi, "").replace(/\b\d{1,2}[a-z]*\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, "").replace(/\b\d{4}-\d{2}-\d{2}\b/g, "").replace(/\s+/g, " ").trim().toLowerCase();
               if (t === "new delhi") t = "delhi";
               if (t === "bengaluru") t = "bangalore";
               if (t === "bombay") t = "mumbai";
