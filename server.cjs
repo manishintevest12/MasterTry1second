@@ -3637,7 +3637,100 @@ function indigoItems(flights, source, fromCity, toCity, fromCode, toCode, depart
   }
   return items;
 }
-var FLIGHT_NO, num, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS;
+async function indigoWebFareCalendar(cffiFetch2, fromCode, toCode, depIso) {
+  const base = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Origin: "https://www.goindigo.in",
+    Referer: "https://www.goindigo.in/",
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  };
+  const rTok = await cffiFetch2(WEB_TOKEN_URL, {
+    impersonate: "chrome",
+    timeoutMs: 12e3,
+    method: "POST",
+    body: JSON.stringify({ strToken: "", subscriptionKey: WEB_BOOKING_KEY }),
+    headers: { ...base, User_key: WEB_SESSION_KEY }
+  });
+  if (rTok.status !== 200) return [];
+  let tok;
+  const walk = (o) => {
+    if (o && typeof o === "object") {
+      for (const k of Object.keys(o)) {
+        if (k === "token" && typeof o[k] === "string" && o[k].split(".").length === 3) return o[k];
+        const r2 = walk(o[k]);
+        if (r2) return r2;
+      }
+    }
+    return void 0;
+  };
+  try {
+    let raw = JSON.parse(rTok.body);
+    if (typeof raw === "string") raw = JSON.parse(raw);
+    tok = walk(raw);
+  } catch {
+    return [];
+  }
+  if (!tok) return [];
+  const endIso = new Date((/* @__PURE__ */ new Date(`${depIso}T00:00:00Z`)).getTime() + 62 * 864e5).toISOString().slice(0, 10);
+  const body = JSON.stringify({
+    startDate: `${depIso}T00:00:00`,
+    endDate: `${endIso}T00:00:00`,
+    origin: fromCode,
+    destination: toCode,
+    currencyCode: "INR",
+    promoCode: "",
+    lowestIn: "M"
+  });
+  const r = await cffiFetch2(WEB_FARECAL_URL, {
+    impersonate: "chrome",
+    timeoutMs: 15e3,
+    method: "POST",
+    body,
+    headers: { ...base, User_key: WEB_BOOKING_KEY, Authorization: `Bearer ${tok}` }
+  });
+  if (r.status !== 200) return [];
+  try {
+    const d = JSON.parse(r.body);
+    const low = d?.data?.lowFares;
+    if (!Array.isArray(low)) return [];
+    return low.filter((e) => e?.date && Number(e?.price) > 0).map((e) => ({
+      date: String(e.date).slice(0, 10),
+      price: Math.round(Number(e.price)),
+      category: String(e.category || "")
+    }));
+  } catch {
+    return [];
+  }
+}
+function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const exact = fares.find((f) => f.date === depIso);
+  if (!exact || exact.price <= 0) return [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const route = `${fromCity} to ${toCity}`.toLowerCase();
+  const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${depIso}&pax=A1`;
+  return [newRawItem(source, {
+    title: `IndiGo ${fromCode} to ${toCode} on ${depIso} from \u20B9${exact.price}`,
+    brand: "IndiGo",
+    price: exact.price,
+    currency: "INR",
+    seller: "IndiGo",
+    sellerUrl: deeplink,
+    travel: { route, seatType: "Economy", date: depIso },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      travel_date: depIso,
+      fare_class: exact.category ? `${exact.category}-category fare` : "",
+      price_basis: `cheapest economy fare returned by IndiGo's own fare-calendar API on ${today} for this route and date`
+    },
+    identifiers: { sku: `indigo-farecal-${fromCode}-${toCode}-${depIso}` },
+    evidence: {
+      sourceUrl: WEB_FARECAL_URL,
+      extractedFields: ["data.lowFares[].price (INR)", "date", "category"]
+    }
+  })];
+}
+var FLIGHT_NO, num, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
@@ -3657,6 +3750,10 @@ var init_indigoFlights = __esm({
     ARR_KEYS = ["arrivalTime", "arrTime", "arrivalDateTime", "sta", "scheduledArrival", "toTime"];
     DUR_KEYS = ["duration", "travelTime", "journeyDuration", "flightDuration", "totalDuration"];
     FLIGHT_DETAIL_KEYS = ["flightDetail", "flightInfo", "flightDetails", "segment", "leg"];
+    WEB_SESSION_KEY = "654a6a3cc4998e498e5c0c8ead072915";
+    WEB_BOOKING_KEY = "15faf8ddf1e8354e90e54fa098e8b1a8";
+    WEB_TOKEN_URL = "https://api-prod-session-skyplus6e.goindigo.in/v2/token/create";
+    WEB_FARECAL_URL = "https://api-prod-booking-skyplus6e.goindigo.in/v1/getfarecalendar";
   }
 });
 
@@ -4009,21 +4106,31 @@ var init_flights = __esm({
               throw new AcquisitionError("SERVER_ERROR", `IndiGo API unreachable: ${String(e?.message || e)}`);
             }
             if (r.status === 403 || r.status === 429) {
+              try {
+                const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
+                const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
+                if (calItems.length) return calItems;
+              } catch {
+              }
               throw new AcquisitionError(
                 r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
-                `IndiGo API edge blocked this server's IP (Akamai ${r.status}); the endpoint itself needs only the app's static user_key.`,
+                `IndiGo mobile search API edge-blocked (Akamai ${r.status}) and web fare calendar returned no fare for this route/date.`,
                 r.status
               );
             }
             if (r.status === 400 || r.status === 404 || r.status >= 500) {
               throw new AcquisitionError("SERVER_ERROR", `IndiGo API HTTP ${r.status}: ${(r.body || "").slice(0, 180)}`, r.status);
             }
-            const flights = parseIndigoSearch(r.body);
-            if (flights.length === 0) {
-              const snippet = (r.body || "").replace(/\s+/g, " ").slice(0, 220);
-              throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
+            const flights = r.status === 200 ? parseIndigoSearch(r.body) : [];
+            if (flights.length > 0) return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
+            try {
+              const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
+              const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
+              if (calItems.length) return calItems;
+            } catch {
             }
-            return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
+            const snippet = (r.body || "").replace(/\s+/g, " ").slice(0, 220);
+            throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
           }
         },
         {

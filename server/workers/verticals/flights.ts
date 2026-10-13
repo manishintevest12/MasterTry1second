@@ -13,7 +13,7 @@ import { parseIxigoFlights, parseIxigoOffers } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
-import { parseIndigoSearch, indigoItems } from '../parsers/indigoFlights';
+import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 /** City name → IATA code (major Indian + a few intl airports we actually serve). */
@@ -271,18 +271,30 @@ export const flightsWorker: VerticalWorker = {
           throw new AcquisitionError('SERVER_ERROR', `IndiGo API unreachable: ${String(e?.message || e)}`);
         }
         if (r.status === 403 || r.status === 429) {
+          // Akamai edge block on the mobile search API is the expected case from
+          // datacenter IPs — try the web fare-calendar fallback before giving up.
+          try {
+            const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
+            const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
+            if (calItems.length) return calItems;
+          } catch { /* fall through */ }
           throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED',
-            `IndiGo API edge blocked this server's IP (Akamai ${r.status}); the endpoint itself needs only the app's static user_key.`, r.status);
+            `IndiGo mobile search API edge-blocked (Akamai ${r.status}) and web fare calendar returned no fare for this route/date.`, r.status);
         }
         if (r.status === 400 || r.status === 404 || r.status >= 500) {
           throw new AcquisitionError('SERVER_ERROR', `IndiGo API HTTP ${r.status}: ${(r.body || '').slice(0, 180)}`, r.status);
         }
-        const flights = parseIndigoSearch(r.body);
-        if (flights.length === 0) {
-          const snippet = (r.body || '').replace(/\s+/g, ' ').slice(0, 220);
-          throw new AcquisitionError('EMPTY_RESPONSE', `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
-        }
-        return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
+        const flights = r.status === 200 ? parseIndigoSearch(r.body) : [];
+        if (flights.length > 0) return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
+        // fallback: web fare-calendar flow (works where the mobile search API is
+        // Akamai-gated) — IndiGo's own cheapest fare for the exact date
+        try {
+          const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
+          const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
+          if (calItems.length) return calItems;
+        } catch { /* fall through to the honest error below */ }
+        const snippet = (r.body || '').replace(/\s+/g, ' ').slice(0, 220);
+        throw new AcquisitionError('EMPTY_RESPONSE', `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
       },
     },
 

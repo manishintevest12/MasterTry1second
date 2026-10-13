@@ -216,3 +216,127 @@ export function indigoItems(
   }
   return items;
 }
+
+// ---------------------------------------------------------------------------
+// WEB fare-calendar fallback (13 Oct 2026): the mobile search endpoint is
+// Akamai-edge-gated from datacenter IPs, but IndiGo's own booking widget calls
+// a fare calendar that works browserless end-to-end. Constants all ship in
+// goindigo.in's public homepage config (window._env_booking) and the
+// public booking webpack bundle (chunk 352):
+//   1. POST api-prod-session-skyplus6e.goindigo.in/v2/token/create
+//      headers: User_key = <session key>; body {strToken:'', subscriptionKey:<booking key>}
+//      -> {data:{token:{token: JWT}}}
+//   2. POST api-prod-booking-skyplus6e.goindigo.in/v1/getfarecalendar
+//      headers: User_key = <booking key>, Authorization: Bearer <JWT>
+//      body {startDate ISO, endDate ISO(+62d), origin, destination,
+//            currencyCode:'INR', promoCode:'', lowestIn:'M'}
+//      -> {data:{lowFares:[{date, price, category:'L'|'M'|'H'}]}}
+// Verified live: DEL-BOM 2026-10-20 = Rs6757 == EMT's IndiGo cheapest fare.
+// ---------------------------------------------------------------------------
+const WEB_SESSION_KEY = '654a6a3cc4998e498e5c0c8ead072915';
+const WEB_BOOKING_KEY = '15faf8ddf1e8354e90e54fa098e8b1a8';
+const WEB_TOKEN_URL = 'https://api-prod-session-skyplus6e.goindigo.in/v2/token/create';
+const WEB_FARECAL_URL = 'https://api-prod-booking-skyplus6e.goindigo.in/v1/getfarecalendar';
+
+export interface IndigoDayFare {
+  date: string;      // YYYY-MM-DD
+  price: number;    // INR
+  category: string; // L | M | H
+}
+
+/** Run the web token flow + fare calendar; returns [] on any failure. */
+export async function indigoWebFareCalendar(
+  cffiFetch: (url: string, opts: any) => Promise<{ status: number; body: string }>,
+  fromCode: string,
+  toCode: string,
+  depIso: string,
+): Promise<IndigoDayFare[]> {
+  const base = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    Origin: 'https://www.goindigo.in', Referer: 'https://www.goindigo.in/',
+    Accept: 'application/json', 'Content-Type': 'application/json',
+  };
+  const rTok = await cffiFetch(WEB_TOKEN_URL, {
+    impersonate: 'chrome', timeoutMs: 12_000, method: 'POST',
+    body: JSON.stringify({ strToken: '', subscriptionKey: WEB_BOOKING_KEY }),
+    headers: { ...base, User_key: WEB_SESSION_KEY },
+  });
+  if (rTok.status !== 200) return [];
+  let tok: string | undefined;
+  const walk = (o: any): any => {
+    if (o && typeof o === 'object') {
+      for (const k of Object.keys(o)) {
+        if (k === 'token' && typeof o[k] === 'string' && (o[k] as string).split('.').length === 3) return o[k];
+        const r = walk(o[k]);
+        if (r) return r;
+      }
+    }
+    return undefined;
+  };
+  try {
+    let raw = JSON.parse(rTok.body);
+    if (typeof raw === 'string') raw = JSON.parse(raw);
+    tok = walk(raw);
+  } catch { return []; }
+  if (!tok) return [];
+  const endIso = new Date(new Date(`${depIso}T00:00:00Z`).getTime() + 62 * 86400_000).toISOString().slice(0, 10);
+  const body = JSON.stringify({
+    startDate: `${depIso}T00:00:00`, endDate: `${endIso}T00:00:00`,
+    origin: fromCode, destination: toCode,
+    currencyCode: 'INR', promoCode: '', lowestIn: 'M',
+  });
+  const r = await cffiFetch(WEB_FARECAL_URL, {
+    impersonate: 'chrome', timeoutMs: 15_000, method: 'POST', body,
+    headers: { ...base, User_key: WEB_BOOKING_KEY, Authorization: `Bearer ${tok}` },
+  });
+  if (r.status !== 200) return [];
+  try {
+    const d = JSON.parse(r.body);
+    const low = d?.data?.lowFares;
+    if (!Array.isArray(low)) return [];
+    return low
+      .filter((e: any) => e?.date && Number(e?.price) > 0)
+      .map((e: any) => ({
+        date: String(e.date).slice(0, 10),
+        price: Math.round(Number(e.price)),
+        category: String(e.category || ''),
+      }));
+  } catch { return []; }
+}
+
+/** One honest offer: IndiGo's own cheapest fare for the exact requested date. */
+export function indigoDayFareItems(
+  fares: IndigoDayFare[],
+  source: SourceConfig,
+  fromCity: string,
+  toCity: string,
+  fromCode: string,
+  toCode: string,
+  depIso: string,
+): RawSourceItem[] {
+  const exact = fares.find((f) => f.date === depIso);
+  if (!exact || exact.price <= 0) return [];
+  const today = new Date().toISOString().slice(0, 10);
+  const route = `${fromCity} to ${toCity}`.toLowerCase();
+  const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${depIso}&pax=A1`;
+  return [newRawItem(source, {
+    title: `IndiGo ${fromCode} to ${toCode} on ${depIso} from ₹${exact.price}`,
+    brand: 'IndiGo',
+    price: exact.price,
+    currency: 'INR',
+    seller: 'IndiGo',
+    sellerUrl: deeplink,
+    travel: { route, seatType: 'Economy', date: depIso },
+    attributes: {
+      route: `${fromCity} → ${toCity}`,
+      travel_date: depIso,
+      fare_class: exact.category ? `${exact.category}-category fare` : '',
+      price_basis: `cheapest economy fare returned by IndiGo's own fare-calendar API on ${today} for this route and date`,
+    },
+    identifiers: { sku: `indigo-farecal-${fromCode}-${toCode}-${depIso}` },
+    evidence: {
+      sourceUrl: WEB_FARECAL_URL,
+      extractedFields: ['data.lowFares[].price (INR)', 'date', 'category'],
+    },
+  })];
+}
