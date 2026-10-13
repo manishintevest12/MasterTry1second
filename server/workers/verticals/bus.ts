@@ -10,7 +10,12 @@ import { AcquisitionError } from '../../common/httpClient';
 import { parseAbhiBusServices, resolveAbhiBusCity, type AbhiBusRoute } from '../parsers/abhibus';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
-  const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, ' ')
+  const cleaned = raw
+    .replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, ' ')
+    .replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, ' ')
+    .replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, ' ')
+    .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, ' ')
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/gi, ' ')
     .replace(/\s+/g, ' ').trim();
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|from)\s+(.{2,40})/);
   if (!m) return null;
