@@ -12358,11 +12358,7 @@ async function bootWarm() {
     log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
   }
 }
-async function main() {
-  const args = process.argv.slice(2);
-  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
-  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
-  await runMigrations();
+async function warmPass(limit, verticalFilter, forceSeed) {
   const store2 = getStore();
   const rows = await store2.query(
     `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
@@ -12373,19 +12369,34 @@ async function main() {
      ORDER BY n DESC
      LIMIT ?`,
     verticalFilter ? [verticalFilter, limit] : [limit]
-  );
-  const useSeed = rows.length === 0 || args.includes("--seed");
-  if (rows.length === 0 && !useSeed) {
-    log.info("Cron", "Warmer: no recent queries to warm yet");
-    process.exit(0);
-  }
+  ).catch(() => []);
+  const useSeed = forceSeed || rows.length === 0;
   if (useSeed) {
     log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
     await warmRows(SEED_QUERIES, "Cron");
-    process.exit(0);
+    return;
   }
   await warmRows(rows, "Cron");
-  process.exit(0);
+}
+async function main() {
+  const args = process.argv.slice(2);
+  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
+  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
+  const forceSeed = args.includes("--seed");
+  const intervalArg = Number((args.find((a) => a.startsWith("--interval=")) || "--interval=0").split("=")[1]);
+  const intervalMin = intervalArg > 0 ? intervalArg : process.env.CRON_INTERVAL_MIN ? Number(process.env.CRON_INTERVAL_MIN) : 0;
+  await runMigrations();
+  if (!intervalMin || !Number.isFinite(intervalMin) || intervalMin <= 0) {
+    await warmPass(limit, verticalFilter, forceSeed);
+    process.exit(0);
+  }
+  log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
+  await warmPass(limit, verticalFilter, forceSeed);
+  setInterval(() => {
+    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
+      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
+    });
+  }, intervalMin * 6e4);
 }
 var SEED_QUERIES;
 var init_warm = __esm({

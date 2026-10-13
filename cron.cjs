@@ -1404,8 +1404,68 @@ var init_ajio = __esm({
   }
 });
 
+// server/workers/parsers/tatacliq.ts
+function parseTataCliq(rawBody, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const groups = Array.isArray(root?.response) ? root.response : [];
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const grp of groups) {
+    const results = grp?.product_search_page?.search_result || [];
+    for (const p of results) {
+      const name = String(p.productname || p.productTitle || "").trim();
+      const price = Number(p.price?.sellingPrice?.doubleValue);
+      if (!name || !Number.isFinite(price) || price <= 0) continue;
+      const sku = String(p.ussid || p.productId || "");
+      if (sku && seen.has(sku)) continue;
+      if (sku) seen.add(sku);
+      const mrpVal = Number(p.price?.mrpPrice?.doubleValue);
+      const mrp = Number.isFinite(mrpVal) && mrpVal > price ? mrpVal : void 0;
+      const brand = p.brandname ? String(p.brandname) : void 0;
+      const rel = String(p.webURL || "");
+      const url = rel ? `https://www.tatacliq.com${rel.startsWith("/") ? rel : `/${rel}`}` : "https://www.tatacliq.com";
+      let img;
+      const rawImg = String(p.imageURL || "");
+      if (rawImg) img = rawImg.startsWith("http") ? rawImg : `https:${rawImg}`;
+      items.push(newRawItem(source, {
+        title: (brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name).slice(0, 200),
+        brand,
+        model: p.productId ? String(p.productId) : void 0,
+        price,
+        listPrice: mrp,
+        currency: "INR",
+        seller: "Tata CLiQ",
+        sellerUrl: url,
+        attributes: {
+          brand: brand || "",
+          discount: p.discountPercent ? `${p.discountPercent}%` : "",
+          image: img || "",
+          in_stock: p.inStockFlag === false ? "false" : "true",
+          ...p.averageRating ? { rating: String(p.averageRating) } : {},
+          ...p.totalNoOfReviews ? { review_count: String(p.totalNoOfReviews) } : {},
+          data_note: `Product as listed on Tata CLiQ search API, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+        },
+        identifiers: sku ? { sku } : void 0,
+        evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "discount", "image", "url"] }
+      }));
+      if (items.length >= 40) return items;
+    }
+  }
+  return items;
+}
+var init_tatacliq = __esm({
+  "server/workers/parsers/tatacliq.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/ecommerce.ts
-var q, ecommerceWorker;
+var import_node_crypto, q, ecommerceWorker;
 var init_ecommerce = __esm({
   "server/workers/verticals/ecommerce.ts"() {
     init_verticalWorker();
@@ -1413,6 +1473,8 @@ var init_ecommerce = __esm({
     init_flipkart();
     init_myntra();
     init_ajio();
+    init_tatacliq();
+    import_node_crypto = require("node:crypto");
     init_httpClient();
     init_curlCffiFetch();
     q = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").trim();
@@ -1498,13 +1560,37 @@ var init_ecommerce = __esm({
           }
         },
         {
+          // Tata CLiQ: web SPA's search BFF (reverse-engineered 13 Oct 2026).
+          // x-auth / X-ACCESS-TOKEN = AES-192-CBC(current epoch seconds) with a
+          // key extracted from the obfuscated client bundle; body is pure JSON.
           sourceId: "w_ecom_tatacliq",
-          name: "Ecom worker: Tata CLiQ (probe)",
+          name: "Ecom worker: Tata CLiQ (search BFF)",
           priority: 16,
           run: async (ctx) => {
-            const term = q(ctx) || "products";
-            await cffiFetch(`https://www.tatacliq.com/search/?text=${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Tata CLiQ search is a JS-rendered SPA shell; cmdity-federator search API paths are not available unauthenticated to browserless HTTP.");
+            const term = q(ctx);
+            if (!term) return [];
+            const searchText = encodeURIComponent(`${term}:relevance:inStockFlag:true`);
+            const params = "isTextSearch=true&isFilter=false&qc=false&page=0&isKeywordRedirect=true&isKeywordRedirectEnabled=true&isFilterDataRequired=false&isMDE=true&isSuggested=false&isPwa=true&pageSize=20&typeID=all&channel=mobile";
+            const url = `https://searchbff.tatacliq.com/v2/products/mpl/search?searchText=${searchText}&${params}&originalSearchText=${encodeURIComponent(term)}`;
+            const key = "Vwdu3LWvHSOhAusUG9xfFw==";
+            const ts = String(Math.floor(Date.now() / 1e3));
+            const cipher = (0, import_node_crypto.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+            const token = cipher.update(ts, "utf8", "base64") + cipher.final("base64");
+            const r = await cffiFetch(url, {
+              impersonate: "chrome",
+              timeoutMs: 15e3,
+              headers: {
+                Accept: "application/json",
+                authorization: "Bearer ",
+                "x-auth": token,
+                "X-ACCESS-TOKEN": token
+              }
+            });
+            if (r.status === 401) throw new AcquisitionError("ACCESS_CHALLENGE", "Tata CLiQ search BFF rejected the x-auth token", r.status);
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Tata CLiQ search BFF HTTP ${r.status}`, r.status);
+            const items = parseTataCliq(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Tata CLiQ search BFF returned no parseable products");
+            return items;
           }
         }
       ]
@@ -5314,7 +5400,7 @@ async function fetchJsonNode(url) {
   if (!r.ok) throw new AcquisitionError("SERVER_ERROR", `regions fetch ${r.status}`);
   return r.json();
 }
-var import_node_crypto, recentCache, moviesWorker;
+var import_node_crypto2, recentCache, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -5326,7 +5412,7 @@ var init_movies = __esm({
     init_ticketnew();
     init_cinepolis();
     init_district();
-    import_node_crypto = require("node:crypto");
+    import_node_crypto2 = require("node:crypto");
     recentCache = null;
     moviesWorker = {
       vertical: "movies",
@@ -5362,7 +5448,7 @@ var init_movies = __esm({
             const payload = JSON.parse(res.body);
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : "";
-            const fingerprint = (0, import_node_crypto.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
+            const fingerprint = (0, import_node_crypto2.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
             return parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
           }
         },
@@ -5614,6 +5700,90 @@ var init_redbusRoute = __esm({
   }
 });
 
+// server/workers/parsers/redbusSearch.ts
+function resolveRedBusCity(docs, city) {
+  if (!Array.isArray(docs) || !docs.length) return null;
+  const flat = [];
+  for (const g of docs) {
+    if (g?.doclist?.docs) flat.push(...g.doclist.docs);
+    else flat.push(g);
+  }
+  const lower = String(city || "").toLowerCase();
+  const cities = flat.filter((d) => String(d?.locationType || "").toUpperCase() === "CITY" && Number(d?.ID) > 0);
+  const pool = cities.length ? cities : flat.filter((d) => Number(d?.ID) > 0);
+  const exact = pool.find((d) => String(d?.Name || "").toLowerCase() === lower);
+  const chosen = exact || pool[0];
+  return chosen ? { id: Number(chosen.ID), name: String(chosen.Name || city) } : null;
+}
+function parseRedBusSearch(json, source, route) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
+  if (!inventories.length) return [];
+  const fingerprint = (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+  const searchUrl = `https://www.redbus.in/bus-tickets/${slug(route.fromName)}-to-${slug(route.toName)}.aspx`;
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const inv of inventories) {
+    const fares = Array.isArray(inv?.fareList) ? inv.fareList.map(Number).filter((f) => f > 0) : [];
+    if (!fares.length) continue;
+    const fare = Math.min(...fares);
+    const key = `${inv.serviceId}|${inv.routeId}|${inv.travelsName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const operator = String(inv.travelsName || "").trim() || "redBus operator";
+    const busType = String(inv.busType || "").trim();
+    const seats = Number(inv.availableSeats);
+    const totalSeats = Number(inv.totalSeats);
+    const rating = Number(inv.totalRatings) > 0 ? String(Math.round(Number(inv.totalRatings) * 10) / 10) : void 0;
+    const durMin = Number(inv.journeyDurationMin);
+    const duration = durMin > 0 ? `${Math.floor(durMin / 60)}h ${durMin % 60}m` : void 0;
+    out.push(newRawItem(source, {
+      title: `${operator} \xB7 ${busType}`.slice(0, 200),
+      price: fare,
+      currency: "INR",
+      ...fares.length > 1 ? { listPrice: Math.max(...fares) } : {},
+      seller: "redBus",
+      sellerUrl: searchUrl,
+      availability: seats > 0 ? "in_stock" : "out_of_stock",
+      travel: { route: `${route.fromName} \u2192 ${route.toName}`, date: route.doj, seatType: busType || "unknown" },
+      attributes: {
+        operator,
+        ...inv.departureTime ? { departure: `${inv.departureTime.slice(11, 16)}${inv.arrivalTime ? ` \u2192 ${inv.arrivalTime.slice(11, 16)} (+1)` : ""}` } : {},
+        ...duration ? { duration } : {},
+        ...Number.isFinite(seats) ? { seats_available: String(seats) } : {},
+        ...Number.isFinite(totalSeats) && totalSeats > 0 ? { total_seats: String(totalSeats) } : {},
+        ...rating ? { rating, rating_count: String(inv.numberOfReviews || "") } : {},
+        ...inv.isSleeper ? { sleeper: "yes" } : {},
+        ...inv.isAc ? { ac: "yes" } : {},
+        ...Array.isArray(inv.amenities) && inv.amenities.length ? { amenities: String(inv.amenities.length) } : {},
+        ...inv.standardBpName ? { boarding_point: String(inv.standardBpName) } : {},
+        ...inv.standardDpName ? { dropping_point: String(inv.standardDpName) } : {},
+        platform: "redBus",
+        data_note: "Live per-service fare and seats from redBus public web API"
+      },
+      evidence: {
+        sourceUrl: searchUrl,
+        rawFingerprint: fingerprint,
+        extractedFields: ["travelsName", "busType", "fareList", "departureTime", "arrivalTime", "availableSeats", "serviceId", "routeId"]
+      }
+    }));
+  }
+  return out;
+}
+var import_crypto10;
+var init_redbusSearch = __esm({
+  "server/workers/parsers/redbusSearch.ts"() {
+    import_crypto10 = require("crypto");
+    init_contract();
+  }
+});
+
 // server/workers/verticals/bus.ts
 function routeFromQuery3(raw) {
   const cleaned = raw.replace(/\b(bus|buses|volvo|sleeper|ticket|tickets|book|redbus|fare|price|for|travel)\b/gi, " ").replace(/\b(today|tonight|tomorrow|day after tomorrow|this week|this weekend|next week|next day)\b/gi, " ").replace(/\b(?:on|at)\s+(?:mon|tues?|wed(?:nes)?|thur?s?|fri|sat(?:ur)?|sun)day\b/gi, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -5629,25 +5799,72 @@ var init_bus = __esm({
     init_httpClient();
     init_abhibus();
     init_redbusRoute();
+    init_redbusSearch();
     init_curlCffiFetch();
     busWorker = {
       vertical: "bus",
       tasks: [
         {
-          // redBus route pages embed a live dataInfo JSON (min fare, service/operator counts)
+          // redBus LIVE per-service fares. The SRP bundle (indSearch) builds
+          // POST /rpw/api/searchResults?fromCity&toCity&DOJ with a JSON body — the same
+          // public web gateway the site's own SPA uses. City ids come from
+          // GET /rpw/api/citySuggestion?search=<city>. Each inventory carries the real
+          // fareList, timings, seat counts and operator rating. Falls back to the
+          // route-page dataInfo summary when the ids can't be resolved (small towns).
           sourceId: "w_bus_redbus",
-          name: "Bus worker: redBus route-level fare summary",
-          priority: 5,
+          name: "Bus worker: redBus live services (real fares, timings, seats)",
+          priority: 2,
+          maxPerMinute: 8,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
             const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const url = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
-            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            const pageUrl = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
+            let resolved = {};
+            try {
+              const getJson = async (url) => {
+                const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
+                if (r2.status !== 200) throw new AcquisitionError("SERVER_ERROR", `redBus suggestion HTTP ${r2.status}`, r2.status);
+                try {
+                  return JSON.parse(r2.body);
+                } catch {
+                  throw new AcquisitionError("MALFORMED_RESPONSE", "redBus citySuggestion non-JSON");
+                }
+              };
+              const [fromDocs, toDocs] = await Promise.all([
+                getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
+                getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
+              ]);
+              resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
+            } catch (e) {
+              if (e instanceof AcquisitionError && (e.failureClass === "SERVER_ERROR" || e.failureClass === "MALFORMED_RESPONSE")) {
+              } else {
+                throw e;
+              }
+            }
+            const depart = String(ctx.query.travelDates?.depart || "");
+            const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+            if (resolved.from && resolved.to) {
+              const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
+              const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
+              const r2 = await ctx.fetch(u, {
+                method: "POST",
+                expectJson: true,
+                maxBytes: 6e6,
+                timeoutMs: 25e3,
+                headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
+                body: "{}"
+              });
+              if (r2.status === 200) {
+                const items2 = parseRedBusSearch(r2.body, ctx.source, route);
+                if (items2.length) return items2;
+              }
+            }
+            const r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 3e4 });
             if (r.status === 404) return [];
             if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status}`, r.status);
-            const items = parseRedBusRoute(r.body, ctx.source, url);
+            const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "redBus route page carried no parseable dataInfo fare");
             return items;
           }
@@ -6342,7 +6559,7 @@ init_logger();
 
 // server/sources/adapters/httpAcquisitionAdapter.ts
 var cheerio5 = __toESM(require("cheerio"), 1);
-var import_crypto10 = require("crypto");
+var import_crypto11 = require("crypto");
 init_httpClient();
 init_contract();
 function toNumber(v) {
@@ -6431,7 +6648,7 @@ var HttpAcquisitionAdapter = class {
           availability: o.availability,
           evidence: {
             sourceUrl: url,
-            rawFingerprint: (0, import_crypto10.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+            rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
             extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
           }
         })
@@ -6457,7 +6674,7 @@ var HttpAcquisitionAdapter = class {
 };
 
 // server/sources/adapters/structuredDataAdapter.ts
-var import_crypto11 = require("crypto");
+var import_crypto12 = require("crypto");
 init_httpClient();
 init_contract();
 function validateOpenLibrary(json) {
@@ -6508,7 +6725,7 @@ var StructuredDataAdapter = class {
         maxConcurrency: source.rateLimit.maxConcurrency
       });
       if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-      const fingerprint = (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+      const fingerprint = (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
       if (source.config.schema === "openlibrary_search") {
         const docs = validateOpenLibrary(JSON.parse(res.body));
         const rawItems = docs.slice(0, 20).map(
@@ -6563,7 +6780,7 @@ var StructuredDataAdapter = class {
 };
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto12 = require("crypto");
+var import_crypto13 = require("crypto");
 init_httpClient();
 init_settings();
 init_logger();
@@ -6611,7 +6828,7 @@ var AffiliateFeedAdapter = class {
             expiresAt: c.validity_end || c.expires_at,
             evidence: {
               sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-              rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+              rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
               extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
             }
           })
@@ -6635,7 +6852,7 @@ var AffiliateFeedAdapter = class {
           expiresAt: o.expires_at || o.valid_to,
           evidence: {
             sourceUrl: o.url || o.deeplink,
-            rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+            rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
             extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
           }
         })
@@ -6802,7 +7019,7 @@ var SearchProviderAdapter = class {
           availability: "unknown",
           evidence: {
             sourceUrl: p.link || p.url,
-            rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+            rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
             extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
           }
         })
@@ -7371,7 +7588,7 @@ function validateOffer(offer, query) {
 }
 
 // server/pipeline/freshness.ts
-var import_crypto13 = require("crypto");
+var import_crypto14 = require("crypto");
 function computeFreshness(offer, clock, policy, isLiveAcquisition, validated) {
   const now = Date.now();
   const fetched = new Date(clock.fetchedAt).getTime();
@@ -7398,7 +7615,7 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto13.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto14.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
 
@@ -8346,11 +8563,7 @@ async function bootWarm() {
     log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
   }
 }
-async function main() {
-  const args = process.argv.slice(2);
-  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
-  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
-  await runMigrations();
+async function warmPass(limit, verticalFilter, forceSeed) {
   const store2 = getStore();
   const rows = await store2.query(
     `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
@@ -8361,19 +8574,34 @@ async function main() {
      ORDER BY n DESC
      LIMIT ?`,
     verticalFilter ? [verticalFilter, limit] : [limit]
-  );
-  const useSeed = rows.length === 0 || args.includes("--seed");
-  if (rows.length === 0 && !useSeed) {
-    log.info("Cron", "Warmer: no recent queries to warm yet");
-    process.exit(0);
-  }
+  ).catch(() => []);
+  const useSeed = forceSeed || rows.length === 0;
   if (useSeed) {
     log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
     await warmRows(SEED_QUERIES, "Cron");
-    process.exit(0);
+    return;
   }
   await warmRows(rows, "Cron");
-  process.exit(0);
+}
+async function main() {
+  const args = process.argv.slice(2);
+  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
+  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
+  const forceSeed = args.includes("--seed");
+  const intervalArg = Number((args.find((a) => a.startsWith("--interval=")) || "--interval=0").split("=")[1]);
+  const intervalMin = intervalArg > 0 ? intervalArg : process.env.CRON_INTERVAL_MIN ? Number(process.env.CRON_INTERVAL_MIN) : 0;
+  await runMigrations();
+  if (!intervalMin || !Number.isFinite(intervalMin) || intervalMin <= 0) {
+    await warmPass(limit, verticalFilter, forceSeed);
+    process.exit(0);
+  }
+  log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
+  await warmPass(limit, verticalFilter, forceSeed);
+  setInterval(() => {
+    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
+      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
+    });
+  }, intervalMin * 6e4);
 }
 main().catch((e) => {
   log.error("Cron", "Warmer crashed", { error: String(e) });
