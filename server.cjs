@@ -9994,6 +9994,15 @@ var init_verticalEngine = __esm({
 });
 
 // server/catalogue/catalogueService.ts
+var catalogueService_exports = {};
+__export(catalogueService_exports, {
+  findCatalogueOffers: () => findCatalogueOffers,
+  persistOffer: () => persistOffer,
+  priceHistoryForEntity: () => priceHistoryForEntity,
+  recordPriceSnapshot: () => recordPriceSnapshot,
+  refreshCandidates: () => refreshCandidates,
+  updateVolatileFields: () => updateVolatileFields
+});
 async function persistOffer(offer, raw, source) {
   const store2 = getStore();
   try {
@@ -10144,6 +10153,17 @@ async function updateVolatileFields(rowId, patch) {
     );
   } catch (e) {
     log.debug("Catalogue", "Volatile update failed", { error: String(e).slice(0, 100) });
+  }
+}
+async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
+  const store2 = getStore();
+  try {
+    return await store2.query(
+      `SELECT effective_price, captured_at FROM price_history WHERE canonical_entity_id = ? ORDER BY captured_at DESC LIMIT ?`,
+      [canonicalEntityId, limit]
+    );
+  } catch {
+    return [];
   }
 }
 var init_catalogueService = __esm({
@@ -12005,6 +12025,7 @@ function offerToComparisonItem(o) {
   const sellerLabel = seller === "Verified source" ? String(o.vendor || seller) : seller;
   return {
     id: o.id,
+    canonicalEntityId: o.canonicalEntityId ?? o.canonical_entity_id ?? null,
     vertical: o.vertical,
     title: o.title,
     subtitle: sellerLabel,
@@ -12127,6 +12148,19 @@ var init_routes = __esm({
         health: getAllHealth(),
         cache: cacheStats()
       });
+    });
+    apiRouter.get("/history", async (req, res) => {
+      const entity = Number(req.query.entity);
+      if (!entity || entity <= 0) return res.status(400).json({ success: false, error: "entity (canonical id) is required" });
+      const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 120);
+      try {
+        const { priceHistoryForEntity: priceHistoryForEntity2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        const rows = await priceHistoryForEntity2(entity, limit);
+        const points = rows.map((r) => ({ price: Number(r.effective_price), capturedAt: r.captured_at })).filter((p) => Number.isFinite(p.price) && p.price > 0);
+        res.json({ success: true, points });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "history lookup failed" });
+      }
     });
     apiRouter.post("/search", async (req, res) => {
       const input = {
