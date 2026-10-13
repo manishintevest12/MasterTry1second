@@ -10,6 +10,7 @@
 import { settings } from './settings';
 import { log } from './logger';
 import type { FailureClass } from '../types';
+import { cffiFetch } from './curlCffiFetch';
 
 export class AcquisitionError extends Error {
   constructor(public failureClass: FailureClass, message: string, public httpStatus?: number) {
@@ -130,6 +131,29 @@ export async function httpAcquire(url: string, opts: HttpOptions): Promise<HttpR
     // Bounded retry loop for retryable failures only
     while (true) {
       attempt++;
+      // PRIMARY TRANSPORT: curl_cffi with Chrome TLS impersonation (owner acquisition
+      // policy). Plain Node fetch has an undici TLS/JA3 fingerprint that Akamai/Cloudflare
+      // edge gates detect, so several mandatory sources serve bot shells to it while the
+      // same request via cffi returns the real page. If the cffi bridge is unavailable
+      // (python missing) or errors, we fall through to plain fetch below — never fabricate.
+      if (attempt === 1 && method === 'GET') {
+        try {
+          const cffi = await cffiFetch(url, { headers, timeoutMs });
+          if (cffi.status >= 200 && cffi.status < 500 && cffi.body) {
+            const truncated = cffi.body.length > maxResponseBytes ? cffi.body.slice(0, maxResponseBytes) : cffi.body;
+            if (cffi.status === 429) { /* fall through to plain fetch path below */ }
+            else {
+              return {
+                ok: cffi.status >= 200 && cffi.status < 300,
+                status: cffi.status,
+                body: truncated,
+                contentType: expectJson ? 'application/json' : 'text/html',
+                latencyMs: Date.now() - start,
+              };
+            }
+          }
+        } catch { /* cffi unavailable or failed — plain fetch is the honest fallback */ }
+      }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {

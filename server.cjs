@@ -923,6 +923,73 @@ var init_health = __esm({
   }
 });
 
+// server/common/curlCffiFetch.ts
+async function cffiFetch(url, opts = {}) {
+  const payload = JSON.stringify({
+    url,
+    method: opts.method || "GET",
+    headers: opts.headers || {},
+    ...opts.body ? { body: opts.body } : {},
+    timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
+    impersonate: opts.impersonate || "safari17_0"
+  });
+  return new Promise((resolve, reject) => {
+    const child = (0, import_node_child_process.spawn)("python3", [HELPER], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new AcquisitionError("TIMEOUT", "curl_cffi bridge timed out"));
+    }, (opts.timeoutMs || 2e4) + 5e3);
+    child.stdout.on("data", (d) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d) => {
+      err += d.toString();
+    });
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(new AcquisitionError("CAPABILITY_UNAVAILABLE", `python3 bridge unavailable: ${e.message}`));
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      try {
+        const res = JSON.parse(out || "{}");
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? "") });
+        reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge error: ${res.error || err || "unknown"}`));
+      } catch {
+        reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
+      }
+    });
+    child.stdin.write(payload);
+    child.stdin.end();
+  });
+}
+var import_node_child_process, import_node_path, import_node_fs, import_node_url, import_meta, HELPER;
+var init_curlCffiFetch = __esm({
+  "server/common/curlCffiFetch.ts"() {
+    import_node_child_process = require("node:child_process");
+    import_node_path = __toESM(require("node:path"), 1);
+    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_url = require("node:url");
+    init_httpClient();
+    import_meta = {};
+    HELPER = (() => {
+      const cands = [];
+      try {
+        cands.push(import_node_path.default.join(import_node_path.default.dirname((0, import_node_url.fileURLToPath)(import_meta.url)), "..", "acquisition", "pyfetch.py"));
+      } catch {
+      }
+      try {
+        cands.push(import_node_path.default.join(__dirname, "server", "acquisition", "pyfetch.py"));
+      } catch {
+      }
+      cands.push(import_node_path.default.join(process.cwd(), "server", "acquisition", "pyfetch.py"));
+      return cands.find((c) => import_node_fs.default.existsSync(c)) || cands[cands.length - 1];
+    })();
+  }
+});
+
 // server/common/httpClient.ts
 function takeToken(sourceId, maxPerMinute) {
   const now = Date.now();
@@ -999,6 +1066,25 @@ async function httpAcquire(url, opts) {
     let retryAfterMs = 0;
     while (true) {
       attempt++;
+      if (attempt === 1 && method === "GET") {
+        try {
+          const cffi = await cffiFetch(url, { headers, timeoutMs });
+          if (cffi.status >= 200 && cffi.status < 500 && cffi.body) {
+            const truncated = cffi.body.length > maxResponseBytes ? cffi.body.slice(0, maxResponseBytes) : cffi.body;
+            if (cffi.status === 429) {
+            } else {
+              return {
+                ok: cffi.status >= 200 && cffi.status < 300,
+                status: cffi.status,
+                body: truncated,
+                contentType: expectJson ? "application/json" : "text/html",
+                latencyMs: Date.now() - start2
+              };
+            }
+          }
+        } catch {
+        }
+      }
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
@@ -1078,6 +1164,7 @@ var init_httpClient = __esm({
   "server/common/httpClient.ts"() {
     init_settings();
     init_logger();
+    init_curlCffiFetch();
     AcquisitionError = class extends Error {
       constructor(failureClass, message, httpStatus) {
         super(message);
@@ -2325,73 +2412,6 @@ var init_ixigoHotels = __esm({
       [/royal orchid/i, "https://www.royalorchidhotels.com/"],
       [/sun-n-sand|sun n sand/i, "https://www.sunnsandhotels.com/"]
     ];
-  }
-});
-
-// server/common/curlCffiFetch.ts
-async function cffiFetch(url, opts = {}) {
-  const payload = JSON.stringify({
-    url,
-    method: opts.method || "GET",
-    headers: opts.headers || {},
-    ...opts.body ? { body: opts.body } : {},
-    timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
-    impersonate: opts.impersonate || "safari17_0"
-  });
-  return new Promise((resolve, reject) => {
-    const child = (0, import_node_child_process.spawn)("python3", [HELPER], { stdio: ["pipe", "pipe", "pipe"] });
-    let out = "";
-    let err = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new AcquisitionError("TIMEOUT", "curl_cffi bridge timed out"));
-    }, (opts.timeoutMs || 2e4) + 5e3);
-    child.stdout.on("data", (d) => {
-      out += d.toString();
-    });
-    child.stderr.on("data", (d) => {
-      err += d.toString();
-    });
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      reject(new AcquisitionError("CAPABILITY_UNAVAILABLE", `python3 bridge unavailable: ${e.message}`));
-    });
-    child.on("close", () => {
-      clearTimeout(timer);
-      try {
-        const res = JSON.parse(out || "{}");
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? "") });
-        reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge error: ${res.error || err || "unknown"}`));
-      } catch {
-        reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
-      }
-    });
-    child.stdin.write(payload);
-    child.stdin.end();
-  });
-}
-var import_node_child_process, import_node_path, import_node_fs, import_node_url, import_meta, HELPER;
-var init_curlCffiFetch = __esm({
-  "server/common/curlCffiFetch.ts"() {
-    import_node_child_process = require("node:child_process");
-    import_node_path = __toESM(require("node:path"), 1);
-    import_node_fs = __toESM(require("node:fs"), 1);
-    import_node_url = require("node:url");
-    init_httpClient();
-    import_meta = {};
-    HELPER = (() => {
-      const cands = [];
-      try {
-        cands.push(import_node_path.default.join(import_node_path.default.dirname((0, import_node_url.fileURLToPath)(import_meta.url)), "..", "acquisition", "pyfetch.py"));
-      } catch {
-      }
-      try {
-        cands.push(import_node_path.default.join(__dirname, "server", "acquisition", "pyfetch.py"));
-      } catch {
-      }
-      cands.push(import_node_path.default.join(process.cwd(), "server", "acquisition", "pyfetch.py"));
-      return cands.find((c) => import_node_fs.default.existsSync(c)) || cands[cands.length - 1];
-    })();
   }
 });
 
@@ -7175,7 +7195,7 @@ async function runSearch(input) {
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
   let liveOffers = [];
   if (enabledSources.length > 0) {
-    const outcome = await acquireParallel(parsed, { maxSources: 6 });
+    const outcome = await acquireParallel(parsed, { maxSources: 16 });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));

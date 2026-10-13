@@ -146,7 +146,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   let liveOffers: NormalizedOffer[] = [];
   if (enabledSources.length > 0) {
     // 5. PARALLEL INDEPENDENT SOURCE ACQUISITION (Section 5)
-    const outcome = await acquireParallel(parsed, { maxSources: 6 });
+    const outcome = await acquireParallel(parsed, { maxSources: 16 });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
