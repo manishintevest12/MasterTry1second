@@ -13,6 +13,7 @@ import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from 
 import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
+import { cityVariants, slugOf } from '../../common/cityAlias';
 
 function cityFromQuery(ctx: { query: any }): string | null {
   const q = ctx.query;
@@ -79,11 +80,19 @@ export const hotelsWorker: VerticalWorker = {
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
-        const slug = ixigoHotelsSlug(city);
-        const url = `https://www.ixigo.com/hotels/${slug}`;
-        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
-        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'FORBIDDEN', `Ixigo hotels HTTP ${r.status}`, r.status);
-        const items = parseIxigoHotels(r.body, ctx.source, url, city);
+        let items: any[] = [];
+        let url = '';
+        let lastStatus = 0;
+        for (const variant of cityVariants(city)) {
+          url = `https://www.ixigo.com/hotels/${ixigoHotelsSlug(variant)}`;
+          const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+          lastStatus = r.status;
+          if (r.status === 404) continue; // this spelling has no page: try the next alias
+          if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'FORBIDDEN', `Ixigo hotels HTTP ${r.status}`, r.status);
+          items = parseIxigoHotels(r.body, ctx.source, url, city);
+          if (items.length) break;
+        }
+        if (!items.length && lastStatus === 404) throw new AcquisitionError('NOT_FOUND', `Ixigo has no hotels page for "${city}"`, 404);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `No Ixigo hotels parsed for "${city}" (slug may not exist for this city)`);
         return items;
       },
@@ -100,18 +109,31 @@ export const hotelsWorker: VerticalWorker = {
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city) return [];
-        const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        // curl_cffi (chrome impersonation) — Cleartrip serves plain node-fetch a bot page without __NEXT_DATA__
-        const res = await cffiFetch(`https://www.cleartrip.com/hotels/india/${slug}`, { impersonate: 'chrome', timeoutMs: 25_000 });
-        if (res.status === 403 || res.status === 429) {
-          throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Cleartrip blocked: ${res.status}`, res.status);
-        }
-        if (res.status === 404) throw new AcquisitionError('NOT_FOUND', `Cleartrip has no SEO page for '${city}'`, res.status);
-        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Cleartrip SRP HTTP ${res.status}`, res.status);
-        const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
-        if (!m) throw new AcquisitionError('MALFORMED_RESPONSE', 'Cleartrip SRP carried no __NEXT_DATA__');
+        // curl_cffi (chrome impersonation) — Cleartrip serves plain node-fetch a bot page without __NEXT_DATA__.
+        // Cleartrip only knows legacy spellings (bangalore, "new delhi"), so walk the alias variants and
+        // retry once per variant: it intermittently returns a shell without __NEXT_DATA__.
         let next: any;
-        try { next = JSON.parse(m[1]); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Cleartrip __NEXT_DATA__ not valid JSON'); }
+        let lastErr: AcquisitionError | undefined;
+        for (const variant of cityVariants(city)) {
+          for (let attempt = 0; attempt < 2 && !next; attempt++) {
+            const res = await cffiFetch(`https://www.cleartrip.com/hotels/india/${slugOf(variant)}`, { impersonate: 'chrome', timeoutMs: 25_000 });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Cleartrip blocked: ${res.status}`, res.status);
+            }
+            if (res.status === 404) { lastErr = new AcquisitionError('NOT_FOUND', `Cleartrip has no SEO page for '${variant}'`, res.status); break; }
+            if (res.status !== 200) { lastErr = new AcquisitionError('SERVER_ERROR', `Cleartrip SRP HTTP ${res.status}`, res.status); break; }
+            const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+            if (!m) { lastErr = new AcquisitionError('MALFORMED_RESPONSE', 'Cleartrip SRP carried no __NEXT_DATA__'); continue; }
+            try {
+              const parsed = JSON.parse(m[1]);
+              if (parseCleartripHotels(parsed).length > 0) next = parsed;
+              else lastErr = new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip SRP had no priced hotel cards');
+            } catch { lastErr = new AcquisitionError('MALFORMED_RESPONSE', 'Cleartrip __NEXT_DATA__ not valid JSON'); }
+            break;
+          }
+          if (next) break;
+        }
+        if (!next) throw lastErr || new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip returned nothing for this destination');
         const hotels = parseCleartripHotels(next);
         if (hotels.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip SRP had no priced hotel cards');
         return parseCleartripOffers(hotels, ctx.source);

@@ -69,6 +69,27 @@ export async function resolveBmsRegion(city: string | undefined, fetchJson: (url
 
 /** Extract the movie-name tokens from a parsed entity, stripping generic/location words.
  *  "jailer 2 movie tickets bengaluru" -> "jailer 2". Returns '' for browse-style queries. */
+/**
+ * The city the USER TYPED wins over the device/profile city ("movies in mumbai" from an Indore
+ * device must show Mumbai shows). Only fires when, after stripping movie noise, exactly one
+ * non-noise token remains AND that token is a BookMyShow region name/alias (400+ cities) —
+ * so "chennai express" stays a movie title, never a city browse.
+ */
+const MOVIE_QUERY_NOISE = /\b(movie|movies|ticket|tickets|show|shows|showing|showtime|showtimes|today|tonight|now|near|me|latest|current|cinema|cinemas|this|weekend|book|buy|watch|bms|near\s+me)\b/gi;
+export async function cityFromMovieQuery(raw: string, fallback: string | undefined, fetchJson: (url: string) => Promise<any>): Promise<string | undefined> {
+  const cleaned = normCity(String(raw || '').replace(MOVIE_QUERY_NOISE, ' ').replace(/[^a-z\s]/gi, ' '));
+  const tokens = cleaned.split(' ').filter(Boolean);
+  if (tokens.length !== 1) return fallback;
+  try {
+    await resolveBmsRegion(fallback || tokens[0], fetchJson); // warms the alias-aware regionsCache
+    if (regionsCache) {
+      const r = regionsCache.aliases.get(tokens[0]);
+      if (r) return r.regionName;
+    }
+  } catch { /* region list unreachable: keep the device city */ }
+  return fallback;
+}
+
 export function extractMovieQuery(entity: string, cityTokens: string[]): string {
   const clean = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) =>
     w && !cityTokens.includes(w) &&

@@ -9,7 +9,7 @@ import { wikidataFetch, recentIndianFilms, parseRecentFilms, searchFilmEntity } 
 import { AcquisitionError } from '../../common/httpClient';
 import { getOverride, dynamicScannerEngine } from '../../acquisition/selfHeal';
 import { cffiFetch } from '../../common/curlCffiFetch';
-import { resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
+import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
 import { parseDistrictMovies, parseDistrictOffers, DISTRICT_MOVIES_URL } from '../parsers/district';
@@ -39,7 +39,8 @@ export const moviesWorker: VerticalWorker = {
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '').trim();
         const entity = String(ctx.query.entityName || '').trim();
-        const region = await resolveBmsRegion(ctx.query.location?.city, fetchJsonNode);
+        const typedCity = await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode);
+        const region = await resolveBmsRegion(typedCity, fetchJsonNode);
         const healedBase = await getOverride('w_movies_bookmyshow', 'explore_api_path').then(async (pth) => { const host = await getOverride('w_movies_bookmyshow', 'api_host'); return pth && host ? `${host}${pth}/v1/discover` : null; }).catch(() => null);
         let res = await cffiFetch(bmsDiscoverUrl(region, healedBase), { headers: bmsDiscoverHeaders(region), timeoutMs: 25_000 });
         if ((res.status === 404 || res.status === 410) && !healedBase) {
@@ -69,7 +70,7 @@ export const moviesWorker: VerticalWorker = {
       timeoutMs: 30_000,
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
-        const city = String(ctx.query.location?.city || '');
+        const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
         const keys = ticketnewCityKeys(city);
         if (keys.length === 0) return []; // city unknown to TicketNew — honest empty, no substitute
         const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
@@ -101,7 +102,7 @@ export const moviesWorker: VerticalWorker = {
       timeoutMs: 30_000,
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
-        const city = String(ctx.query.location?.city || '');
+        const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
         const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
         const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25_000 });
         if (res.status === 403 || res.status === 429) {
@@ -123,7 +124,7 @@ export const moviesWorker: VerticalWorker = {
       timeoutMs: 30_000,
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
-        const city = String(ctx.query.location?.city || '');
+        const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
         const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
         const res = await cffiFetch(DISTRICT_MOVIES_URL, { timeoutMs: 25_000 });
         if (res.status === 403 || res.status === 429) {
@@ -143,7 +144,8 @@ export const moviesWorker: VerticalWorker = {
       timeoutMs: 30_000,
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
-        const cityToks = (normCity(String(ctx.query.location?.city || ''))).split(' ').filter(Boolean);
+        const effCity = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
+        const cityToks = (normCity(effCity)).split(' ').filter(Boolean);
         const movieTerm = entity ? extractMovieQuery(entity, cityToks) : '';
         if (movieTerm) {
           // Strict token boundary: only keep hits whose label actually contains the query

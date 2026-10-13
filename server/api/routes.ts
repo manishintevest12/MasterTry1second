@@ -28,6 +28,7 @@ import { loadSourcesFromDb } from '../sources/registry';
 import { scrapeLiveUrl } from '../../src/server/realDataAcquisition';
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
+import { pythonDiagnostics } from '../common/curlCffiFetch';
 
 export const apiRouter = Router();
 
@@ -44,6 +45,11 @@ apiRouter.get('/health', async (_req: Request, res: Response) => {
     productionWarnings: missing,
     timestamp: new Date().toISOString(),
   });
+});
+
+/** Which Python interpreters the host offers and whether curl_cffi loads in them (shared-hosting diagnostics). */
+apiRouter.get('/health/transport', async (_req: Request, res: Response) => {
+  try { res.json({ ok: true, ...(await pythonDiagnostics()) }); } catch (e: any) { res.status(500).json({ ok: false, error: String(e?.message || e) }); }
 });
 
 apiRouter.get('/status', (_req, res) => {

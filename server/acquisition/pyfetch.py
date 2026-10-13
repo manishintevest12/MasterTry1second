@@ -34,8 +34,13 @@ def _vendor_paths():
     return []
 
 
+_PROBE = len(sys.argv) > 1 and sys.argv[1] == '--probe'
+
 try:
     from curl_cffi import requests as cffi_requests
+    if _PROBE:
+        print(json.dumps({"version": "%d.%d" % sys.version_info[:2], "cffi": True}))
+        sys.exit(0)
 except Exception:  # system install missing: fall back to the vendored wheels
     _err = None
     for _p in _vendor_paths():
@@ -43,7 +48,13 @@ except Exception:  # system install missing: fall back to the vendored wheels
             sys.path.insert(0, _p)
     try:
         from curl_cffi import requests as cffi_requests
+        if _PROBE:
+            print(json.dumps({"version": "%d.%d" % sys.version_info[:2], "cffi": True, "vendored": True}))
+            sys.exit(0)
     except Exception as exc:  # pragma: no cover - deployment guard
+        if _PROBE:
+            print(json.dumps({"version": "%d.%d" % sys.version_info[:2], "cffi": False, "error": str(exc)[:160]}))
+            sys.exit(0)
         print(json.dumps({"ok": False, "error": "curl_cffi not installed (python %d.%d, vendored: %s): %s" % (sys.version_info[0], sys.version_info[1], bool(_vendor_paths()), exc)}))
         sys.exit(0)
 

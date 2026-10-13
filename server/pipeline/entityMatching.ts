@@ -68,9 +68,11 @@ export async function resolveCanonicalEntity(offer: NormalizedOffer): Promise<Ma
         matchEvidence: `deterministic score ${best.score.toFixed(2)}`,
       };
     }
-    // Not confidently matched: create a NEW canonical entity (never merge on look-alike titles)
+    // Not confidently matched: create a NEW canonical entity (never merge on look-alike titles).
+    // Parallel offers of the same title race here: ON DUPLICATE + LAST_INSERT_ID makes the loser
+    // of the race reuse the winner's row id instead of throwing 'Duplicate entry uq_entity'.
     const res = await store.execute(
-      'INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?)',
+      'INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)',
       [offer.vertical, offer.title.slice(0, 500), offer.brand || null],
     );
     return {

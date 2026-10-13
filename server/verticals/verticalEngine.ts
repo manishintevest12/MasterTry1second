@@ -89,15 +89,24 @@ export function routeFilter(offers: NormalizedOffer[], query: ParsedQuery): Norm
 }
 /** Keep only offers located in the typed city/destination (hotels, food, grocery browse). */
 export function destinationFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
-  const q = normPlace(query.rawQuery || '');
+  // "Indore, India" / "Goa, Goa, India": the destination is the part before the first comma; country and
+  // state tails never help matching (offers say "Indore", not "Indore India").
+  const head = String(query.rawQuery || '').split(',')[0];
+  const q = normPlace(head);
   const city = (query.location?.city || '').toLowerCase();
   const target = q.city || city;
   if (!target) return offers;
-  const kept = offers.filter((o) => {
+  // Match on every spelling of the destination (Bengaluru = Bangalore, Gurugram = Gurgaon, Delhi = New Delhi).
+  const names = new Set<string>([target]);
+  for (const [k, v] of Object.entries(PLACE_ALIASES)) { if (v === target) names.add(k); if (k === target) names.add(v); }
+  for (const g of [['delhi', 'new delhi'], ['mysuru', 'mysore'], ['puducherry', 'pondicherry'], ['prayagraj', 'allahabad'], ['kochi', 'cochin'], ['thiruvananthapuram', 'trivandrum'], ['mangaluru', 'mangalore'], ['visakhapatnam', 'vizag']]) {
+    if (g.includes(target)) g.forEach((x) => names.add(x));
+  }
+  return offers.filter((o) => {
     const hay = `${o.location?.city || ''} ${o.attributes?.['destination'] || ''} ${o.attributes?.['city'] || ''} ${o.title}`.toLowerCase();
-    return hay.includes(target);
+    for (const n of names) if (hay.includes(n)) return true;
+    return false;
   });
-  return kept;
 }
 
 function travelFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {

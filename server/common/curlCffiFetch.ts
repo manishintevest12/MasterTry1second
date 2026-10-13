@@ -24,6 +24,58 @@ const HELPER = (() => {
   return cands.find((c) => fs.existsSync(c)) || cands[cands.length - 1];
 })();
 
+/**
+ * Shared hosting (CloudLinux) ships an ancient system `python3` (3.6) but usually ALSO offers newer
+ * interpreters (python3.9/3.11, /opt/alt/pythonNN/bin/python3, a hPanel virtualenv). Probe candidates once,
+ * keep the first one that can really `import curl_cffi` (system install or the vendored wheels).
+ */
+const PY_CANDIDATES = (): string[] => {
+  const c: string[] = [];
+  if (process.env.PYTHON_BIN) c.push(process.env.PYTHON_BIN);
+  for (const v of ['3.13', '3.12', '3.11', '3.10', '3.9', '3.8', '3.7']) c.push(`python${v}`);
+  for (const v of ['313', '312', '311', '310', '39', '38', '37']) c.push(`/opt/alt/python${v}/bin/python3`);
+  c.push('/usr/local/bin/python3', '/usr/bin/python3.11', '/usr/bin/python3.9', 'python3', 'python');
+  return Array.from(new Set(c));
+};
+
+export interface PyProbe { bin: string; version?: string; cffi: boolean; error?: string }
+let pyChoice: Promise<string> | undefined;
+const probeResults: PyProbe[] = [];
+
+function runProbe(bin: string): Promise<PyProbe> {
+  return new Promise((resolve) => {
+    let out = '';
+    let done = false;
+    const fin = (r: PyProbe) => { if (!done) { done = true; clearTimeout(timer); resolve(r); } };
+    let child: ReturnType<typeof spawn>;
+    try { child = spawn(bin, [HELPER, '--probe'], { stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e: any) { return resolve({ bin, cffi: false, error: String(e?.message || e) }); }
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } fin({ bin, cffi: false, error: 'probe timeout' }); }, 6000);
+    child.stdout?.on('data', (d: Buffer) => { out += d.toString(); });
+    child.on('error', (e) => fin({ bin, cffi: false, error: e.message }));
+    child.on('close', () => { try { const j = JSON.parse(out); fin({ bin, version: j.version, cffi: !!j.cffi, error: j.error }); } catch { fin({ bin, cffi: false, error: 'no probe output' }); } });
+  });
+}
+
+export function pythonBin(): Promise<string> {
+  if (!pyChoice) {
+    pyChoice = (async () => {
+      for (const bin of PY_CANDIDATES()) {
+        const r = await runProbe(bin);
+        if (r.version || r.error !== undefined) probeResults.push(r);
+        if (r.cffi) return bin;
+      }
+      return 'python3';
+    })();
+  }
+  return pyChoice;
+}
+
+/** For /api/health/transport: which interpreters exist and whether curl_cffi loads in each. */
+export async function pythonDiagnostics(): Promise<{ chosen: string; probes: PyProbe[] }> {
+  const chosen = await pythonBin();
+  return { chosen, probes: probeResults.filter((p) => p.version || p.cffi) };
+}
+
 export interface CffiResponse {
   status: number;
   body: string;
@@ -48,8 +100,9 @@ export async function cffiFetch(
     impersonate: opts.impersonate || 'safari17_0',
   });
 
+  const py = await pythonBin();
   return new Promise<CffiResponse>((resolve, reject) => {
-    const child = spawn('python3', [HELPER], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(py, [HELPER], { stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
     const timer = setTimeout(() => {

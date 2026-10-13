@@ -924,6 +924,61 @@ var init_health = __esm({
 });
 
 // server/common/curlCffiFetch.ts
+function runProbe(bin) {
+  return new Promise((resolve) => {
+    let out = "";
+    let done = false;
+    const fin = (r) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timer);
+        resolve(r);
+      }
+    };
+    let child;
+    try {
+      child = (0, import_node_child_process.spawn)(bin, [HELPER, "--probe"], { stdio: ["ignore", "pipe", "pipe"] });
+    } catch (e) {
+      return resolve({ bin, cffi: false, error: String(e?.message || e) });
+    }
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+      }
+      fin({ bin, cffi: false, error: "probe timeout" });
+    }, 6e3);
+    child.stdout?.on("data", (d) => {
+      out += d.toString();
+    });
+    child.on("error", (e) => fin({ bin, cffi: false, error: e.message }));
+    child.on("close", () => {
+      try {
+        const j = JSON.parse(out);
+        fin({ bin, version: j.version, cffi: !!j.cffi, error: j.error });
+      } catch {
+        fin({ bin, cffi: false, error: "no probe output" });
+      }
+    });
+  });
+}
+function pythonBin() {
+  if (!pyChoice) {
+    pyChoice = (async () => {
+      for (const bin of PY_CANDIDATES()) {
+        const r = await runProbe(bin);
+        if (r.version || r.error !== void 0) probeResults.push(r);
+        if (r.cffi) return bin;
+      }
+      return "python3";
+    })();
+  }
+  return pyChoice;
+}
+async function pythonDiagnostics() {
+  const chosen = await pythonBin();
+  return { chosen, probes: probeResults.filter((p) => p.version || p.cffi) };
+}
 async function cffiFetch(url, opts = {}) {
   const payload = JSON.stringify({
     url,
@@ -933,8 +988,9 @@ async function cffiFetch(url, opts = {}) {
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
     impersonate: opts.impersonate || "safari17_0"
   });
+  const py = await pythonBin();
   return new Promise((resolve, reject) => {
-    const child = (0, import_node_child_process.spawn)("python3", [HELPER], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = (0, import_node_child_process.spawn)(py, [HELPER], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
@@ -965,7 +1021,7 @@ async function cffiFetch(url, opts = {}) {
     child.stdin.end();
   });
 }
-var import_node_child_process, import_node_path, import_node_fs, import_node_url, import_meta, HELPER;
+var import_node_child_process, import_node_path, import_node_fs, import_node_url, import_meta, HELPER, PY_CANDIDATES, pyChoice, probeResults;
 var init_curlCffiFetch = __esm({
   "server/common/curlCffiFetch.ts"() {
     import_node_child_process = require("node:child_process");
@@ -987,6 +1043,15 @@ var init_curlCffiFetch = __esm({
       cands.push(import_node_path.default.join(process.cwd(), "server", "acquisition", "pyfetch.py"));
       return cands.find((c) => import_node_fs.default.existsSync(c)) || cands[cands.length - 1];
     })();
+    PY_CANDIDATES = () => {
+      const c = [];
+      if (process.env.PYTHON_BIN) c.push(process.env.PYTHON_BIN);
+      for (const v of ["3.13", "3.12", "3.11", "3.10", "3.9", "3.8", "3.7"]) c.push(`python${v}`);
+      for (const v of ["313", "312", "311", "310", "39", "38", "37"]) c.push(`/opt/alt/python${v}/bin/python3`);
+      c.push("/usr/local/bin/python3", "/usr/bin/python3.11", "/usr/bin/python3.9", "python3", "python");
+      return Array.from(new Set(c));
+    };
+    probeResults = [];
   }
 });
 
@@ -2450,6 +2515,45 @@ var init_ixigoHotels = __esm({
   }
 });
 
+// server/common/cityAlias.ts
+function cityVariants(city) {
+  const n = norm(city);
+  const out = [n];
+  for (const g of ALIAS_GROUPS) if (g.includes(n)) {
+    for (const a of g) if (!out.includes(a)) out.push(a);
+  }
+  return out;
+}
+var ALIAS_GROUPS, norm, slugOf;
+var init_cityAlias = __esm({
+  "server/common/cityAlias.ts"() {
+    ALIAS_GROUPS = [
+      ["bengaluru", "bangalore"],
+      ["delhi", "new delhi"],
+      ["gurugram", "gurgaon"],
+      ["mysuru", "mysore"],
+      ["puducherry", "pondicherry"],
+      ["prayagraj", "allahabad"],
+      ["kochi", "cochin"],
+      ["thiruvananthapuram", "trivandrum"],
+      ["mumbai", "bombay"],
+      ["kolkata", "calcutta"],
+      ["chennai", "madras"],
+      ["vadodara", "baroda"],
+      ["varanasi", "banaras", "benares"],
+      ["pune", "poona"],
+      ["mangaluru", "mangalore"],
+      ["visakhapatnam", "vizag"],
+      ["shimla", "simla"],
+      ["kozhikode", "calicut"],
+      ["panaji", "panjim", "goa"],
+      ["ayodhya", "faizabad"]
+    ];
+    norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    slugOf = (s) => norm(s).replace(/\s+/g, "-");
+  }
+});
+
 // server/workers/verticals/hotels.ts
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
@@ -2480,6 +2584,7 @@ var init_hotels = __esm({
     init_ixigoHotels();
     init_curlCffiFetch();
     init_httpClient();
+    init_cityAlias();
     hotelsWorker = {
       vertical: "hotels",
       tasks: [
@@ -2523,11 +2628,19 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
-            const slug = ixigoHotelsSlug(city);
-            const url = `https://www.ixigo.com/hotels/${slug}`;
-            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
-            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "FORBIDDEN", `Ixigo hotels HTTP ${r.status}`, r.status);
-            const items = parseIxigoHotels(r.body, ctx.source, url, city);
+            let items = [];
+            let url = "";
+            let lastStatus = 0;
+            for (const variant of cityVariants(city)) {
+              url = `https://www.ixigo.com/hotels/${ixigoHotelsSlug(variant)}`;
+              const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+              lastStatus = r.status;
+              if (r.status === 404) continue;
+              if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "FORBIDDEN", `Ixigo hotels HTTP ${r.status}`, r.status);
+              items = parseIxigoHotels(r.body, ctx.source, url, city);
+              if (items.length) break;
+            }
+            if (!items.length && lastStatus === 404) throw new AcquisitionError("NOT_FOUND", `Ixigo has no hotels page for "${city}"`, 404);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `No Ixigo hotels parsed for "${city}" (slug may not exist for this city)`);
             return items;
           }
@@ -2544,21 +2657,39 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city) return [];
-            const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-            const res = await cffiFetch(`https://www.cleartrip.com/hotels/india/${slug}`, { impersonate: "chrome", timeoutMs: 25e3 });
-            if (res.status === 403 || res.status === 429) {
-              throw new AcquisitionError(res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Cleartrip blocked: ${res.status}`, res.status);
-            }
-            if (res.status === 404) throw new AcquisitionError("NOT_FOUND", `Cleartrip has no SEO page for '${city}'`, res.status);
-            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Cleartrip SRP HTTP ${res.status}`, res.status);
-            const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
-            if (!m) throw new AcquisitionError("MALFORMED_RESPONSE", "Cleartrip SRP carried no __NEXT_DATA__");
             let next;
-            try {
-              next = JSON.parse(m[1]);
-            } catch {
-              throw new AcquisitionError("MALFORMED_RESPONSE", "Cleartrip __NEXT_DATA__ not valid JSON");
+            let lastErr;
+            for (const variant of cityVariants(city)) {
+              for (let attempt = 0; attempt < 2 && !next; attempt++) {
+                const res = await cffiFetch(`https://www.cleartrip.com/hotels/india/${slugOf(variant)}`, { impersonate: "chrome", timeoutMs: 25e3 });
+                if (res.status === 403 || res.status === 429) {
+                  throw new AcquisitionError(res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Cleartrip blocked: ${res.status}`, res.status);
+                }
+                if (res.status === 404) {
+                  lastErr = new AcquisitionError("NOT_FOUND", `Cleartrip has no SEO page for '${variant}'`, res.status);
+                  break;
+                }
+                if (res.status !== 200) {
+                  lastErr = new AcquisitionError("SERVER_ERROR", `Cleartrip SRP HTTP ${res.status}`, res.status);
+                  break;
+                }
+                const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+                if (!m) {
+                  lastErr = new AcquisitionError("MALFORMED_RESPONSE", "Cleartrip SRP carried no __NEXT_DATA__");
+                  continue;
+                }
+                try {
+                  const parsed = JSON.parse(m[1]);
+                  if (parseCleartripHotels(parsed).length > 0) next = parsed;
+                  else lastErr = new AcquisitionError("EMPTY_RESPONSE", "Cleartrip SRP had no priced hotel cards");
+                } catch {
+                  lastErr = new AcquisitionError("MALFORMED_RESPONSE", "Cleartrip __NEXT_DATA__ not valid JSON");
+                }
+                break;
+              }
+              if (next) break;
             }
+            if (!next) throw lastErr || new AcquisitionError("EMPTY_RESPONSE", "Cleartrip returned nothing for this destination");
             const hotels = parseCleartripHotels(next);
             if (hotels.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Cleartrip SRP had no priced hotel cards");
             return parseCleartripOffers(hotels, ctx.source);
@@ -3751,26 +3882,26 @@ var init_savaariCabs = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm2 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm2(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm(cells[0] || "").toLowerCase();
-    const rt = norm(cells[1] || "").toLowerCase();
-    const f = norm(from || "").toLowerCase();
-    const t = norm(to || "").toLowerCase();
+    const rf = norm2(cells[0] || "").toLowerCase();
+    const rt = norm2(cells[1] || "").toLowerCase();
+    const f = norm2(from || "").toLowerCase();
+    const t = norm2(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm(cells[0] || "")} to ${norm(cells[1] || "")} cab (one-way)`,
+        title: `${norm2(cells[0] || "")} to ${norm2(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -3780,7 +3911,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm(cells[0] || "")} to ${norm(cells[1] || "")}`,
+          route: `${norm2(cells[0] || "")} to ${norm2(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -4473,6 +4604,20 @@ async function resolveBmsRegion(city, fetchJson) {
   }
   return { regionCode: DEFAULT_REGION.regionCode, regionSlug: DEFAULT_REGION.regionSlug, regionName: DEFAULT_REGION.regionName };
 }
+async function cityFromMovieQuery(raw, fallback, fetchJson) {
+  const cleaned = normCity(String(raw || "").replace(MOVIE_QUERY_NOISE, " ").replace(/[^a-z\s]/gi, " "));
+  const tokens = cleaned.split(" ").filter(Boolean);
+  if (tokens.length !== 1) return fallback;
+  try {
+    await resolveBmsRegion(fallback || tokens[0], fetchJson);
+    if (regionsCache) {
+      const r = regionsCache.aliases.get(tokens[0]);
+      if (r) return r.regionName;
+    }
+  } catch {
+  }
+  return fallback;
+}
 function extractMovieQuery(entity, cityTokens) {
   const clean = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
   return clean.join(" ");
@@ -4542,7 +4687,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
   }
   return out.slice(0, 40);
 }
-var REGIONS_URL, DISCOVER_BASE, DEFAULT_REGION, regionsCache;
+var REGIONS_URL, DISCOVER_BASE, DEFAULT_REGION, regionsCache, MOVIE_QUERY_NOISE;
 var init_bookmyshow = __esm({
   "server/workers/parsers/bookmyshow.ts"() {
     init_contract();
@@ -4550,6 +4695,7 @@ var init_bookmyshow = __esm({
     DISCOVER_BASE = "https://in.bookmyshow.com/api/explore/v1/discover";
     DEFAULT_REGION = { regionCode: "BANG", regionSlug: "bengaluru", regionName: "Bengaluru" };
     regionsCache = null;
+    MOVIE_QUERY_NOISE = /\b(movie|movies|ticket|tickets|show|shows|showing|showtime|showtimes|today|tonight|now|near|me|latest|current|cinema|cinemas|this|weekend|book|buy|watch|bms|near\s+me)\b/gi;
   }
 });
 
@@ -4802,7 +4948,8 @@ var init_movies = __esm({
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "").trim();
             const entity = String(ctx.query.entityName || "").trim();
-            const region = await resolveBmsRegion(ctx.query.location?.city, fetchJsonNode);
+            const typedCity = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode);
+            const region = await resolveBmsRegion(typedCity, fetchJsonNode);
             const healedBase = await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
               const host = await getOverride("w_movies_bookmyshow", "api_host");
               return pth && host ? `${host}${pth}/v1/discover` : null;
@@ -4835,7 +4982,7 @@ var init_movies = __esm({
           timeoutMs: 3e4,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
-            const city = String(ctx.query.location?.city || "");
+            const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
             const keys = ticketnewCityKeys(city);
             if (keys.length === 0) return [];
             const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
@@ -4873,7 +5020,7 @@ var init_movies = __esm({
           timeoutMs: 3e4,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
-            const city = String(ctx.query.location?.city || "");
+            const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
             const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
             const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25e3 });
             if (res.status === 403 || res.status === 429) {
@@ -4895,7 +5042,7 @@ var init_movies = __esm({
           timeoutMs: 3e4,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
-            const city = String(ctx.query.location?.city || "");
+            const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
             const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
             const res = await cffiFetch(DISTRICT_MOVIES_URL, { timeoutMs: 25e3 });
             if (res.status === 403 || res.status === 429) {
@@ -4915,7 +5062,8 @@ var init_movies = __esm({
           timeoutMs: 3e4,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
-            const cityToks = normCity(String(ctx.query.location?.city || "")).split(" ").filter(Boolean);
+            const effCity = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
+            const cityToks = normCity(effCity).split(" ").filter(Boolean);
             const movieTerm = entity ? extractMovieQuery(entity, cityToks) : "";
             if (movieTerm) {
               const hits = await searchFilmEntity(movieTerm, ctx.source);
@@ -6755,7 +6903,7 @@ async function resolveCanonicalEntity(offer) {
       };
     }
     const res = await store2.execute(
-      "INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?)",
+      "INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
       [offer.vertical, offer.title.slice(0, 500), offer.brand || null]
     );
     return {
@@ -6912,15 +7060,24 @@ function routeFilter(offers, query) {
   });
 }
 function destinationFilter(offers, query) {
-  const q3 = normPlace(query.rawQuery || "");
+  const head = String(query.rawQuery || "").split(",")[0];
+  const q3 = normPlace(head);
   const city = (query.location?.city || "").toLowerCase();
   const target = q3.city || city;
   if (!target) return offers;
-  const kept = offers.filter((o) => {
+  const names = /* @__PURE__ */ new Set([target]);
+  for (const [k, v] of Object.entries(PLACE_ALIASES)) {
+    if (v === target) names.add(k);
+    if (k === target) names.add(v);
+  }
+  for (const g of [["delhi", "new delhi"], ["mysuru", "mysore"], ["puducherry", "pondicherry"], ["prayagraj", "allahabad"], ["kochi", "cochin"], ["thiruvananthapuram", "trivandrum"], ["mangaluru", "mangalore"], ["visakhapatnam", "vizag"]]) {
+    if (g.includes(target)) g.forEach((x) => names.add(x));
+  }
+  return offers.filter((o) => {
     const hay = `${o.location?.city || ""} ${o.attributes?.["destination"] || ""} ${o.attributes?.["city"] || ""} ${o.title}`.toLowerCase();
-    return hay.includes(target);
+    for (const n of names) if (hay.includes(n)) return true;
+    return false;
   });
-  return kept;
 }
 function travelFilter(offers, query) {
   if (!query.travelDates?.depart) return offers;
@@ -8948,6 +9105,7 @@ var init_routes = __esm({
     init_realDataAcquisition();
     init_catalogueStore();
     init_logger();
+    init_curlCffiFetch();
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", async (_req, res) => {
       const store2 = getStore();
@@ -8961,6 +9119,13 @@ var init_routes = __esm({
         productionWarnings: missing,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
+    });
+    apiRouter.get("/health/transport", async (_req, res) => {
+      try {
+        res.json({ ok: true, ...await pythonDiagnostics() });
+      } catch (e) {
+        res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
     });
     apiRouter.get("/status", (_req, res) => {
       res.json({
@@ -9653,7 +9818,7 @@ async function specialProbe(kind) {
   }
   throw new Error("unknown probe " + kind);
 }
-async function runProbe(targetId, name, vertical, probe) {
+async function runProbe2(targetId, name, vertical, probe) {
   const testedAt = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   const base = { source_id: targetId, source_name: name, vertical, capability: probe.capability, tested_at: testedAt };
   if (probe.retiredNote) {
@@ -9722,7 +9887,7 @@ async function runAcceptanceTests() {
   const jobs = [];
   for (const t of ACCEPTANCE_TARGETS) {
     for (const p of t.probes) {
-      jobs.push(runProbe(t.id, t.name, t.vertical, p).catch((e) => ({
+      jobs.push(runProbe2(t.id, t.name, t.vertical, p).catch((e) => ({
         source_id: t.id,
         source_name: t.name,
         vertical: t.vertical,
