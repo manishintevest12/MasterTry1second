@@ -6743,10 +6743,7 @@ var init_bus = __esm({
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
             } catch (e) {
-              if (e instanceof AcquisitionError && (e.failureClass === "SERVER_ERROR" || e.failureClass === "MALFORMED_RESPONSE")) {
-              } else {
-                throw e;
-              }
+              if (e instanceof AcquisitionError && e.failureClass === "TIMEOUT") steps.push(`suggest=TIMEOUT(${steps.join(" ") || "none"})`);
             }
             const depart = String(ctx.query.travelDates?.depart || "");
             const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);

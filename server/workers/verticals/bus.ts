@@ -67,9 +67,9 @@ export const busWorker: VerticalWorker = {
           ]);
           resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
         } catch (e) {
-          if (e instanceof AcquisitionError && (e.failureClass === 'SERVER_ERROR' || e.failureClass === 'MALFORMED_RESPONSE')) {
-            // citySuggestion unavailable — fall through to the route-page fallback below
-          } else { throw e; }
+          // citySuggestion unavailable (error, non-JSON, or a tarpit timeout) —
+          // record the step and fall through to the route-page fallback below.
+          if (e instanceof AcquisitionError && e.failureClass === 'TIMEOUT') steps.push(`suggest=TIMEOUT(${steps.join(' ') || 'none'})`);
         }
 
         const depart = String(ctx.query.travelDates?.depart || '');
