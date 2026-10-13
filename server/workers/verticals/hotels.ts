@@ -9,6 +9,7 @@ import { photonGeocode, parseOverpassHotels, overpassHotelQuery } from '../parse
 import { parseBookingHotels } from '../parsers/booking';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
+import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
 
@@ -64,6 +65,37 @@ export const hotelsWorker: VerticalWorker = {
         const hotels = parseCleartripHotels(next);
         if (hotels.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip SRP had no priced hotel cards');
         return parseCleartripOffers(hotels, ctx.source);
+      },
+    },
+    {
+      // Airbnb SSRs the full search page: <script data-deferred-state-0>
+      // carries StaysSearch results (property name, stay total + nights
+      // qualifier -> per-night rate, rating, photos, listing deeplink).
+      // Airbnb totals are divided by the parsed night count - never fabricated.
+      sourceId: 'w_hotels_airbnb',
+      name: 'Hotels worker: Airbnb SSR stays (live per-night rates)',
+      priority: 2,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        const url = `https://www.airbnb.co.in/s/${encodeURIComponent(city)}/homes?checkin=${checkin}&checkout=${checkout}&adults=2`;
+        const res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (res.status === 403 || res.status === 429) {
+          throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Airbnb blocked: ${res.status}`, res.status);
+        }
+        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Airbnb HTTP ${res.status}`, res.status);
+        const m = res.body.match(/<script[^>]+data-deferred-state-0[^>]*>([\s\S]*?)<\/script>/);
+        if (!m) throw new AcquisitionError('MALFORMED_RESPONSE', 'Airbnb SRP carried no deferred state');
+        let deferred: any;
+        try { deferred = JSON.parse(m[1]); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Airbnb deferred state not valid JSON'); }
+        const results = extractAirbnbSearchResults(deferred);
+        if (results.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Airbnb deferred state had no stays');
+        const stays = parseAirbnbStays(results);
+        if (stays.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Airbnb results had no parseable stays');
+        return parseAirbnbOffers(stays, ctx.source, city);
       },
     },
     {
