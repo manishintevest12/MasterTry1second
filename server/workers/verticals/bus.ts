@@ -50,10 +50,14 @@ export const busWorker: VerticalWorker = {
         const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
         const pageUrl = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
 
+        const steps: string[] = [];
+        const t0 = Date.now();
         let resolved: { from?: { id: number; name: string } | null; to?: { id: number; name: string } | null } = {};
         try {
           const getJson = async (url: string): Promise<any> => {
-            const r = await ctx.fetch(url, { expectJson: true, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
+            const s = Date.now();
+            const r = await ctx.fetch(url, { expectJson: true, timeoutMs: 8_000, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
+            steps.push(`suggest=${r.latencyMs ?? Date.now() - s}ms/${r.status}`);
             if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `redBus suggestion HTTP ${r.status}`, r.status);
             try { return JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'redBus citySuggestion non-JSON'); }
           };
@@ -74,14 +78,16 @@ export const busWorker: VerticalWorker = {
         if (resolved.from && resolved.to) {
           const route: RedBusRoute = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
           const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
+          const sr = Date.now();
           const r = await ctx.fetch(u, {
             method: 'POST',
             expectJson: true,
             maxBytes: 6_000_000,
-            timeoutMs: 25_000,
+            timeoutMs: 14_000,
             headers: { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.redbus.in', Referer: pageUrl },
             body: '{}',
           });
+          steps.push(`searchResults=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
           if (r.status === 200) {
             const items = parseRedBusSearch(r.body, ctx.source, route);
             if (items.length) return items;
@@ -92,11 +98,13 @@ export const busWorker: VerticalWorker = {
           // searchResults endpoint failed — fall through to the route-page dataInfo fallback
         }
 
-        const r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 30_000 });
+        const rp = Date.now();
+        const r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
+        steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
         if (r.status === 404) return []; // route page not published — honest unavailable
-        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `redBus HTTP ${r.status}`, r.status);
+        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `redBus HTTP ${r.status} [${steps.join(' ')}]`, r.status);
         const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
-        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'redBus route page carried no parseable dataInfo fare');
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `redBus route page carried no parseable dataInfo fare [${steps.join(' ')}]`);
         return items;
       },
     },
