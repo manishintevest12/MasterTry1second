@@ -157,6 +157,16 @@ export interface ToastNotification {
   timestamp: Date;
 }
 
+export interface SourcesReport {
+  query: string;
+  at: number;
+  attempted: string[];
+  succeeded: string[];
+  failed: Array<{ sourceId: string; failureClass?: string; error?: string }>;
+  resultsCount: number;
+  servedFrom?: string;
+}
+
 interface AppContextType {
   vertical: VerticalId;
   setVertical: (v: VerticalId) => void;
@@ -271,6 +281,8 @@ interface AppContextType {
     latencyMs: number;
     sourcesCount: number;
   };
+  /** Per-vertical report of every source attempted on the last search (live / no results / unavailable + reason). */
+  sourcesReport: Record<string, SourcesReport>;
   triggerLiveLocationScrape: (overrideQuery?: string, overrideLoc?: UserLocationState, overrideTravel?: { depart?: string; return?: string }) => Promise<void>;
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
@@ -908,6 +920,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Real-Time Native Web Scraper State
   const [isScrapingLive, setIsScrapingLive] = useState<boolean>(false);
+  const [sourcesReport, setSourcesReport] = useState<Record<string, SourcesReport>>({});
   const [lastScrapeInfo, setLastScrapeInfo] = useState<{
     timestamp: string;
     location: string;
@@ -966,6 +979,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       if (response.ok) {
         const data = await response.json();
+        // Always record which websites were asked and what each one said (even when nothing came back).
+        setSourcesReport((prev) => ({
+          ...prev,
+          [vertical]: {
+            query: targetQuery,
+            at: Date.now(),
+            attempted: data.sourcesAttempted || [],
+            succeeded: data.sourcesSucceeded || [],
+            failed: data.sourcesFailed || [],
+            resultsCount: data.resultsCount ?? (data.results?.length || 0),
+            servedFrom: data.servedFrom,
+          },
+        }));
+        if (!data.results || data.results.length === 0) {
+          // A search shows ONLY what was searched: drop stale rows of an earlier query for this vertical.
+          setItems((prev) => prev.filter((it) => it.vertical !== vertical));
+        }
         if (data.results && data.results.length > 0) {
           setItems((prev) => {
             // A search shows ONLY what was searched. Items of this vertical from earlier
@@ -985,7 +1015,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             timestamp: 'Just now',
             location: targetQuery ? `${targetQuery} (${targetLoc.city})` : `${targetLoc.locality}, ${targetLoc.city} (${targetLoc.pincode})`,
             latencyMs: data.latencyMs || 140,
-            sourcesCount: 18,
+            sourcesCount: (data.sourcesAttempted || []).length,
           });
           return;
         }
@@ -2261,6 +2291,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         spinWinners,
         isScrapingLive,
         lastScrapeInfo,
+        sourcesReport,
         triggerLiveLocationScrape,
         proxies,
         addResidentialProxy,

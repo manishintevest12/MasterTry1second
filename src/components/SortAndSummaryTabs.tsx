@@ -1,3 +1,4 @@
+import SourcesPanel from './SourcesPanel';
 import React from 'react';
 import { Sparkles, Zap, Award, MapPin, RotateCw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
@@ -121,6 +122,8 @@ export const SortAndSummaryTabs: React.FC = () => {
           </span>
         </button>
       </div>
+
+      <SourcesPanel vertical={vertical as string} />
 
       {/* Live Scraper Engine Status Bar */}
       <div className="mt-2 pt-2 border-t border-slate-100 px-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px]">

@@ -19,11 +19,33 @@ puzzles/CAPTCHAs — a hard block is reported as blocked, per owner policy.
 import json
 import sys
 
+import os
+
+
+def _vendor_paths():
+    """Shared-hosting friendly: no pip/root. Prebuilt manylinux wheels are vendored in
+    python-vendor/ (shared curl_cffi + per-Python-version cffi backend)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for root in (os.path.join(here, '..', '..', 'python-vendor'), os.path.join(os.getcwd(), 'python-vendor')):
+        root = os.path.abspath(root)
+        lib = os.path.join(root, 'lib_py%d%d' % sys.version_info[:2])
+        if os.path.isdir(lib):
+            return [lib, os.path.join(root, 'shared')]
+    return []
+
+
 try:
     from curl_cffi import requests as cffi_requests
-except Exception:  # pragma: no cover - deployment guard
-    print(json.dumps({"ok": False, "error": "curl_cffi not installed"}))
-    sys.exit(0)
+except Exception:  # system install missing: fall back to the vendored wheels
+    _err = None
+    for _p in _vendor_paths():
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+    try:
+        from curl_cffi import requests as cffi_requests
+    except Exception as exc:  # pragma: no cover - deployment guard
+        print(json.dumps({"ok": False, "error": "curl_cffi not installed (python %d.%d, vendored: %s): %s" % (sys.version_info[0], sys.version_info[1], bool(_vendor_paths()), exc)}))
+        sys.exit(0)
 
 
 def main() -> None:
