@@ -4559,7 +4559,7 @@ function imRupees(m) {
   return Math.round((units + nanos / 1e9) * 100) / 100;
 }
 function collectImProducts(node, out, depth = 0) {
-  if (!node || depth > 20 || out.length > 900) return;
+  if (!node || depth > 20 || out.length > 2500) return;
   if (Array.isArray(node)) {
     for (const v of node) collectImProducts(v, out, depth + 1);
     return;
@@ -4597,7 +4597,7 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
     if (!name) continue;
     const hay = `${name} ${p.brand || ""} ${p.category || ""}`.toLowerCase();
     let score = 0;
-    for (const t of tokens) if (hay.includes(t)) score++;
+    for (const t of tokens) if (hay.includes(t) || t.endsWith("s") && hay.includes(t.slice(0, -1))) score++;
     if (score === 0) continue;
     if (tokens.length > 1 && score < tokens.length) score -= 0.5;
     const imageId = (v.imageIds || [])[0];
@@ -4707,7 +4707,7 @@ var init_grocery = __esm({
           sourceId: "w_grocery_instamart",
           name: "Grocery worker: Swiggy Instamart storefront APIs",
           priority: 12,
-          timeoutMs: 45e3,
+          timeoutMs: 55e3,
           run: async (ctx) => {
             const term = q2(ctx);
             if (!term) return [];
@@ -4723,7 +4723,7 @@ var init_grocery = __esm({
             if (pod) storeId = pod[1];
             const products = [];
             const sources2 = [homeUrl];
-            const layouts = extractImLayouts(home.body).slice(0, 8);
+            const layouts = extractImLayouts(home.body).slice(0, 18);
             const calls = [{ endpoint: "campaign/listing/v2", id: "35019" }, ...layouts];
             for (const c of calls) {
               const url = c.endpoint === "layout/v2" ? `${IM_BASE}/api/instamart/layout/v2?layoutId=${c.id}&storeId=${storeId}&clusterId=&lat=${lat}&lng=${lng}&clientId=INSTAMART-APP` : `${IM_BASE}/api/instamart/campaign/listing/v2?layoutId=${c.id}&clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
@@ -4741,7 +4741,7 @@ var init_grocery = __esm({
                 if (products.length > before) sources2.push(url);
               } catch {
               }
-              if (products.length > 600) break;
+              if (products.length > 1500) break;
             }
             const items = buildImItems(products, term, cityLabel, sources2[0], 12);
             if (!items.length) {

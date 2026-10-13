@@ -68,7 +68,7 @@ function imRupees(m?: ImMoney): number | undefined {
 
 /** Structure-agnostic walker: pull every ItemCollectionCard-style product object out of an Instamart payload. */
 function collectImProducts(node: any, out: ImProduct[], depth = 0): void {
-  if (!node || depth > 20 || out.length > 900) return;
+  if (!node || depth > 20 || out.length > 2500) return;
   if (Array.isArray(node)) { for (const v of node) collectImProducts(v, out, depth + 1); return; }
   if (typeof node !== 'object') return;
   const looksLikeProduct =
@@ -108,7 +108,8 @@ function buildImItems(products: ImProduct[], term: string, cityLabel: string, so
     if (!name) continue;
     const hay = `${name} ${p.brand || ''} ${p.category || ''}`.toLowerCase();
     let score = 0;
-    for (const t of tokens) if (hay.includes(t)) score++;
+    // plural-insensitive: 'drinks' matches 'drink', 'chips' stays 'chips'
+    for (const t of tokens) if (hay.includes(t) || (t.endsWith('s') && hay.includes(t.slice(0, -1)))) score++;
     if (score === 0) continue;
     if (tokens.length > 1 && score < tokens.length) score -= 0.5; // partial matches rank below full matches
     const imageId = (v.imageIds || [])[0];
@@ -179,7 +180,7 @@ export const groceryWorker: VerticalWorker = {
       sourceId: 'w_grocery_instamart',
       name: 'Grocery worker: Swiggy Instamart storefront APIs',
       priority: 12,
-      timeoutMs: 45_000,
+      timeoutMs: 55_000,
       run: async (ctx: any) => {
         const term = q(ctx);
         if (!term) return [];
@@ -202,7 +203,7 @@ export const groceryWorker: VerticalWorker = {
         const sources: string[] = [homeUrl];
 
         // Collect product grids: Top Deals campaign + home banner layouts (cap requests).
-        const layouts = extractImLayouts(home.body).slice(0, 8);
+        const layouts = extractImLayouts(home.body).slice(0, 18);
         const calls: Array<{ endpoint: string; id: string }> = [{ endpoint: 'campaign/listing/v2', id: '35019' }, ...layouts];
         for (const c of calls) {
           const url =
@@ -220,7 +221,7 @@ export const groceryWorker: VerticalWorker = {
           } catch {
             /* one grid failing never blocks the source */
           }
-          if (products.length > 600) break;
+          if (products.length > 1500) break;
         }
         const items = buildImItems(products, term, cityLabel, sources[0], 12);
         if (!items.length) {

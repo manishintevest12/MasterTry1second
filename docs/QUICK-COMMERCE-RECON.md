@@ -53,3 +53,14 @@ instamart.swiggy.com (home APIs), stores.swiggy.com
 ## Earlier banked findings (see git history)
 - Blinkit web routes from Wayback: /v1/layout/feed, /v1/layout/product_suggestion,
   /v1/layout/listing_widgets, /v1/consumerweb/eta, /v5/carts (edge-gated on www).
+
+## Instamart LIVE worker (13 Oct 2026, commit 31a1dc7)
+
+Ungated storefront APIs (instamart.swiggy.com, no auth, datacenter-IP curl_cffi `impersonate=chrome`):
+- `GET /api/instamart/home/v2?clientId=INSTAMART-APP&lat&lng` → storeId (podId in PageConfigs), banner deeplinks (`swiggy://stores/instamart/campaign-collection/listing|mxn?...layoutId=N`, category)
+- `GET /api/instamart/campaign/listing/v2?layoutId=35019&clientId=INSTAMART-APP&lat&lng` → Top Deals ItemCollectionCard (40+ products, incl. produce/atta at real zone prices)
+- `GET /api/instamart/layout/v2?layoutId=N&storeId&clusterId=&lat&lng&clientId=INSTAMART-APP` → banner/category product grids (mxn deeplinks fetch HERE; `campaign/mxn/v2` 400s)
+- Products: `displayName`, `brand`, `category`, `inStock/isAvail`, `variations[0].{skuId,quantityDescription,imageIds[],price.{mrp,offerPrice,discountValue}}` (units+nanos INR); images `https://media-assets.swiggy.com/swiggy/image/upload/<imageId>`
+- GOTCHA: campaign listing nests items at JSON depth 13 (`data.cards[0].card.card.navigationTabs[0].cards[1].gridElements.infoWithStyle.items`) — structure-agnostic walker needs depth cap ≥ 15
+- Gated (202 empty, edge rule): `/api/instamart/search/v2` (POST), `search/mart/v2`, `search/suggest-items/v2`, `collection/v2`, `collection/items`
+- Worker `w_grocery_instamart`: home → storeId + 18 layouts → grids (client-side plural-stem query filter) → 12 offers; honest EMPTY when no whole-product match. Verified: Indore chips 1/biscuits 12, Mumbai masala 3/baby wipes 4/cookies 12.
