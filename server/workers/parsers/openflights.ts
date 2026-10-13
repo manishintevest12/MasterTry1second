@@ -76,6 +76,16 @@ export function matchAirports(airports: Airport[], input: string): Airport[] {
   return hit;
 }
 
+const AIRLINE_SITES: Array<[RegExp, string]> = [
+  [/indigo/i, 'https://www.goindigo.in/'], [/air india express/i, 'https://www.airindiaexpress.com/'], [/air india/i, 'https://www.airindia.com/'],
+  [/spicejet/i, 'https://www.spicejet.com/'], [/akasa/i, 'https://www.akasaair.com/'], [/vistara/i, 'https://www.airindia.com/'],
+  [/alliance air/i, 'https://www.allianceair.in/'], [/star air/i, 'https://www.starair.in/'], [/fly ?91/i, 'https://flybig.in/'],
+];
+function airlineSiteFor(name: string): string | undefined {
+  for (const [re, u] of AIRLINE_SITES) if (re.test(name)) return u;
+  return undefined;
+}
+
 export function parseRoute(airports: Airport[], airlines: Airline[], routes: Route[], source: SourceConfig, fromCity: string, toCity: string, date: string | undefined, sourceUrl: string): RawSourceItem[] {
   const fromAirports = matchAirports(airports, fromCity);
   const toAirports = matchAirports(airports, toCity);
@@ -103,12 +113,13 @@ export function parseRoute(airports: Airport[], airlines: Airline[], routes: Rou
     const dstAp = toAirports.find((a) => a.iata === r0.dstIata)!;
     out.push(newRawItem(source, {
       title: `${airlineName}: ${srcAp.city} (${srcAp.iata}) → ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: 'OpenFlights (open data)',
-      sellerUrl: sourceUrl,
+      seller: airlineName.slice(0, 100),
+      sellerUrl: airlineSiteFor(airlineName) || sourceUrl,
       currency: 'INR',
       travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...(date ? { date } : {}), seatType: 'unknown' },
       attributes: {
         airline: airlineName.slice(0, 100),
+        ...(r0.airlineIata ? { airline_code: r0.airlineIata } : {}),
         from_iata: srcAp.iata,
         to_iata: dstAp.iata,
         scheduled_services: String(rs.length),

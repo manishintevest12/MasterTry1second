@@ -2772,6 +2772,10 @@ function matchAirports(airports, input) {
   if (!hit.length) hit = airports.filter((a) => a.name.toLowerCase().includes(target));
   return hit;
 }
+function airlineSiteFor(name) {
+  for (const [re, u] of AIRLINE_SITES) if (re.test(name)) return u;
+  return void 0;
+}
 function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, sourceUrl) {
   const fromAirports = matchAirports(airports, fromCity);
   const toAirports = matchAirports(airports, toCity);
@@ -2797,12 +2801,13 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
     const dstAp = toAirports.find((a) => a.iata === r0.dstIata);
     out.push(newRawItem(source, {
       title: `${airlineName}: ${srcAp.city} (${srcAp.iata}) \u2192 ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: "OpenFlights (open data)",
-      sellerUrl: sourceUrl,
+      seller: airlineName.slice(0, 100),
+      sellerUrl: airlineSiteFor(airlineName) || sourceUrl,
       currency: "INR",
       travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...date ? { date } : {}, seatType: "unknown" },
       attributes: {
         airline: airlineName.slice(0, 100),
+        ...r0.airlineIata ? { airline_code: r0.airlineIata } : {},
         from_iata: srcAp.iata,
         to_iata: dstAp.iata,
         scheduled_services: String(rs.length),
@@ -2818,7 +2823,7 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
   }
   return out.slice(0, 20);
 }
-var BASE, cache, CITY_ALIASES;
+var BASE, cache, CITY_ALIASES, AIRLINE_SITES;
 var init_openflights = __esm({
   "server/workers/parsers/openflights.ts"() {
     init_contract();
@@ -2844,6 +2849,17 @@ var init_openflights = __esm({
       "dubai international": "dubai",
       "abu dhabi": "abu dhabi"
     };
+    AIRLINE_SITES = [
+      [/indigo/i, "https://www.goindigo.in/"],
+      [/air india express/i, "https://www.airindiaexpress.com/"],
+      [/air india/i, "https://www.airindia.com/"],
+      [/spicejet/i, "https://www.spicejet.com/"],
+      [/akasa/i, "https://www.akasaair.com/"],
+      [/vistara/i, "https://www.airindia.com/"],
+      [/alliance air/i, "https://www.allianceair.in/"],
+      [/star air/i, "https://www.starair.in/"],
+      [/fly ?91/i, "https://flybig.in/"]
+    ];
   }
 });
 
@@ -2877,7 +2893,7 @@ function parseIxigoFlights(nextData) {
   return flights;
 }
 function parseIxigoOffers(flights, source, from, to, date) {
-  const AIRLINE_SITES = {
+  const AIRLINE_SITES2 = {
     "indigo": "https://www.goindigo.in",
     "air india": "https://www.airindia.com",
     "air-india express": "https://www.airindiaexpress.com",
@@ -2888,7 +2904,7 @@ function parseIxigoOffers(flights, source, from, to, date) {
   };
   const siteFor2 = (airline) => {
     const k = airline.toLowerCase().trim();
-    for (const [name, url] of Object.entries(AIRLINE_SITES)) {
+    for (const [name, url] of Object.entries(AIRLINE_SITES2)) {
       if (k === name || k.replace(/[^a-z ]/g, "").includes(name)) return { seller: airline.trim(), url };
     }
     return null;
@@ -6571,6 +6587,118 @@ var init_freshness = __esm({
   }
 });
 
+// server/pipeline/brandImage.ts
+function hostOf(u) {
+  try {
+    return u ? new URL(u).hostname.replace(/^www\./, "") : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function brandImageFor(o) {
+  const attrs = o.attributes || {};
+  if (o.vertical === "flights") {
+    const code = String(attrs.airline_code || "").toUpperCase();
+    const iata = /^[A-Z0-9]{2}$/.test(code) ? code : AIRLINE_IATA[String(attrs.airline || o.seller || "").toLowerCase().trim()];
+    if (iata) return `https://www.gstatic.com/flights/airline_logos/70px/${iata}.png`;
+  }
+  const label = `${o.seller || ""} ${o.vendor || ""}`;
+  let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
+  if (!dom) {
+    const h = hostOf(o.sellerUrl);
+    if (h && !DATA_HOST.test(h)) dom = h;
+  }
+  return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : void 0;
+}
+function withBrandImages(offers) {
+  for (const o of offers) {
+    const a = o.attributes || (o.attributes = {});
+    if (a.image_url || a.image) continue;
+    const img = brandImageFor(o);
+    if (img) {
+      a.image_url = img;
+      a.image_is_brand_logo = "true";
+    }
+  }
+  return offers;
+}
+var AIRLINE_IATA, BRAND_DOMAIN, DATA_HOST;
+var init_brandImage = __esm({
+  "server/pipeline/brandImage.ts"() {
+    AIRLINE_IATA = {
+      "indigo": "6E",
+      "spicejet": "SG",
+      "air india": "AI",
+      "air india express": "IX",
+      "air-india express": "IX",
+      "akasa air": "QP",
+      "akasa": "QP",
+      "vistara": "UK",
+      "alliance air": "9I",
+      "star air": "S5",
+      "fly91": "IC",
+      "emirates": "EK",
+      "qatar airways": "QR",
+      "etihad airways": "EY",
+      "singapore airlines": "SQ",
+      "thai airways": "TG",
+      "british airways": "BA",
+      "lufthansa": "LH",
+      "air arabia": "G9",
+      "flydubai": "FZ",
+      "oman air": "WY",
+      "airasia": "AK"
+    };
+    BRAND_DOMAIN = [
+      [/redbus/i, "redbus.in"],
+      [/abhibus/i, "abhibus.com"],
+      [/zingbus/i, "zingbus.com"],
+      [/intrcity/i, "intrcity.com"],
+      [/vrl/i, "vrlbus.in"],
+      [/srs travels/i, "srsbooking.com"],
+      [/savaari/i, "savaari.com"],
+      [/quick ?ride/i, "quickride.in"],
+      [/ola\b/i, "olacabs.com"],
+      [/uber/i, "uber.com"],
+      [/rapido/i, "rapido.bike"],
+      [/cleartrip/i, "cleartrip.com"],
+      [/airbnb/i, "airbnb.co.in"],
+      [/makemytrip/i, "makemytrip.com"],
+      [/goibibo/i, "goibibo.com"],
+      [/booking\.com/i, "booking.com"],
+      [/easemytrip/i, "easemytrip.com"],
+      [/ixigo/i, "ixigo.com"],
+      [/swiggy/i, "swiggy.com"],
+      [/zomato/i, "zomato.com"],
+      [/domino/i, "dominos.co.in"],
+      [/bookmyshow/i, "bookmyshow.com"],
+      [/ticketnew/i, "ticketnew.com"],
+      [/cinepolis/i, "cinepolisindia.com"],
+      [/district/i, "district.in"],
+      [/pvr|inox/i, "pvrcinemas.com"],
+      [/amazon/i, "amazon.in"],
+      [/flipkart/i, "flipkart.com"],
+      [/myntra/i, "myntra.com"],
+      [/ajio/i, "ajio.com"],
+      [/bankbazaar/i, "bankbazaar.com"],
+      [/paisabazaar/i, "paisabazaar.com"],
+      [/policybazaar/i, "policybazaar.com"],
+      [/bajaj/i, "bajajfinserv.in"],
+      [/money ?view/i, "moneyview.in"],
+      [/kreditbee/i, "kreditbee.in"],
+      [/hdfc ergo/i, "hdfcergo.com"],
+      [/hdfc/i, "hdfcbank.com"],
+      [/acko/i, "acko.com"],
+      [/digit/i, "godigit.com"],
+      [/insurancedekho/i, "insurancedekho.com"],
+      [/sbi/i, "sbi.co.in"],
+      [/icici/i, "icicibank.com"],
+      [/axis/i, "axisbank.com"]
+    ];
+    DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
+  }
+});
+
 // server/pipeline/entityMatching.ts
 function matchScore(offer, entity) {
   let score = 0;
@@ -7338,7 +7466,7 @@ async function runSearch(input) {
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
-  const ranked = rankOffers(combined, { userPincode: input.pincode, userCity: input.city });
+  const ranked = rankOffers(withBrandImages(combined), { userPincode: input.pincode, userCity: input.city });
   if (ranked.length === 0) {
     state.servedFrom = "unavailable";
     state.honestNotice = enabledSources.length === 0 ? "No data sources are enabled and verified for this vertical yet. Real results appear once a source is configured and passes validation \u2014 we never show invented prices." : "All configured sources were attempted but returned no verified offers for this query. Partial or cached data appears only when it passes freshness rules.";
@@ -7444,6 +7572,7 @@ var init_searchOrchestrator = __esm({
     init_validation();
     init_pricing();
     init_freshness();
+    init_brandImage();
     init_entityMatching();
     init_ranking();
     init_verticalEngine();

@@ -52,7 +52,9 @@ export function brandLogoUrl(item: { vertical: string; specs?: Record<string, st
     if (iata) return `https://www.gstatic.com/flights/airline_logos/70px/${iata}.png`;
   }
   const name = `${item.provider || ''} ${item.subtitle || ''}`;
-  const dom = brandDomain(name) || item.sellerQuotes?.[0]?.sourceDomain?.replace(/^www\./, '');
+  let dom = brandDomain(name) || item.sellerQuotes?.[0]?.sourceDomain?.replace(/^www\./, '');
+  // Data hosts (open-data mirrors, APIs) are never a brand: show initials instead of their favicon.
+  if (dom && /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|osrm|project-osrm)\./i.test(dom)) dom = undefined;
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=64` : undefined;
 }
 

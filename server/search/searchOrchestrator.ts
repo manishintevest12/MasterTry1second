@@ -23,6 +23,7 @@ import { dedupeOffers, normalizeOffer } from '../pipeline/normalization';
 import { validateOffer } from '../pipeline/validation';
 import { computeEffectivePrice } from '../pipeline/pricing';
 import { computeFreshness, isServable } from '../pipeline/freshness';
+import { withBrandImages } from '../pipeline/brandImage';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { getVerticalEngine } from '../verticals/verticalEngine';
@@ -173,7 +174,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   combined = await attachAffiliateDeepLinks(combined);
 
   // 10. RANKING — comparable offers only, explainable scores
-  const ranked = rankOffers(combined, { userPincode: input.pincode, userCity: input.city });
+  const ranked = rankOffers(withBrandImages(combined), { userPincode: input.pincode, userCity: input.city });
 
   // State determination — honest, never overclaims
   if (ranked.length === 0) {
