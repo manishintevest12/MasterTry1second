@@ -10,6 +10,7 @@ import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
+import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
 import { createHash } from 'node:crypto';
 
 let recentCache: { at: number; rows: any } | null = null;
@@ -81,6 +82,28 @@ export const moviesWorker: VerticalWorker = {
         }
         if (lastErr instanceof AcquisitionError) throw lastErr;
         return []; // honest empty when the listing pages do not resolve
+      },
+    },
+    {
+      sourceId: 'w_movies_cinepolis',
+      name: 'Movies worker: Cinepolis India listing (Next.js SSR __NEXT_DATA__, now-showing + coming-soon)',
+      priority: 9,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const entity = String(ctx.query.entityName || '').trim();
+        const city = String(ctx.query.location?.city || '');
+        const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
+        const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25_000 });
+        if (res.status === 403 || res.status === 429) {
+          throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `Cinepolis blocked: ${res.status}`, res.status);
+        }
+        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Cinepolis listing ${res.status}`, res.status);
+        const data = parseCinepolisPage(res.body);
+        if (data.nowPlaying.length === 0 && data.comingSoon.length === 0) {
+          throw new AcquisitionError('EMPTY_RESPONSE', 'Cinepolis page carried no parseable movies');
+        }
+        return parseCinepolisMovies(data, ctx.source, queryTerm);
       },
     },
     {

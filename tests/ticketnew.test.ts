@@ -70,6 +70,17 @@ test('tn: strict token matching — an unknown movie name yields an honest empty
   assert.equal(parseTicketNewMovies(movies, source, 'chennai', 'kantara chapter 2').length, 0);
 });
 
+test('tn: format duplicates (2D/3D rows of the same title) collapse into one offer', () => {
+  const body = nextPageBody([
+    { id: 'A1', name: 'Jailer 2', appImgPath: 'https://b.zmtcdn.com/a.jpg', totalSessionCount: 10 },
+    { id: 'A2', name: 'Jailer 2', appImgPath: 'https://b.zmtcdn.com/a.jpg', totalSessionCount: 12 },
+    { id: 'B', name: 'Dorothy', appImgPath: 'https://b.zmtcdn.com/b.jpg', totalSessionCount: 8 },
+  ]);
+  const movies = parseTicketNewMoviesPage(body, 'chennai');
+  const offers = parseTicketNewMovies(movies, source, 'chennai', '');
+  assert.equal(offers.length, 2);
+});
+
 test('tn: malformed or plain-HTML body yields no items (never invented)', () => {
   assert.equal(parseTicketNewMoviesPage('<html><body>Access Denied</body></html>', 'chennai').length, 0);
 });

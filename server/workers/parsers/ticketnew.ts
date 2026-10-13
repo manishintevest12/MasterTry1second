@@ -88,11 +88,14 @@ export function parseTicketNewMovies(
   queryTerm: string,
 ): RawSourceItem[] {
   const out: RawSourceItem[] = [];
-  for (const mv of movies.slice(0, 25)) {
+  const seen = new Set<string>(); // one listing carries 2D/3D/IMAX rows for the same title — emit once
+  for (const mv of movies.slice(0, 40)) {
     const title = String(mv.name || '').trim();
     if (!title) continue;
     if (queryTerm && !matchesQuery(title, queryTerm)) continue; // strict, no fuzzy substitutes
     const slug = ticketnewSlug(title);
+    if (seen.has(slug)) continue;
+    seen.add(slug);
     const attrs: Record<string, any> = {
       image_url: mv.appImgPath ? String(mv.appImgPath) : null,
       language: mv.lang || null,
