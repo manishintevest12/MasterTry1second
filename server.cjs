@@ -1433,6 +1433,155 @@ var init_flipkart = __esm({
   }
 });
 
+// server/workers/parsers/myntra.ts
+function findProductArrays(o, depth = 0) {
+  const out = [];
+  if (depth > 8 || !o || typeof o !== "object") return out;
+  if (Array.isArray(o)) {
+    for (const v of o) out.push(...findProductArrays(v, depth + 1));
+    return out;
+  }
+  if (o["products"] && Array.isArray(o["products"]) && o["products"].length && typeof o["products"][0] === "object" && "productName" in o["products"][0]) {
+    out.push(o["products"]);
+  }
+  for (const v of Object.values(o)) out.push(...findProductArrays(v, depth + 1));
+  return out;
+}
+function parseMyntra(html, source, pageUrl) {
+  let root = null;
+  const direct = /window\.__myx\s*=\s*(\{[\s\S]*?\})\s*;\s*<\/script>/.exec(html);
+  if (direct) {
+    try {
+      root = JSON.parse(direct[1]);
+    } catch {
+    }
+  }
+  if (!root) {
+    const start2 = /window\.__myx\s*=\s*\{/.exec(html);
+    if (start2) {
+      const from = start2.index + start2[0].length - 1;
+      let depth = 0, inStr = false, esc = false, end = -1;
+      for (let i = from; i < html.length; i++) {
+        const ch = html[i];
+        if (inStr) {
+          if (esc) esc = false;
+          else if (ch === "\\") esc = true;
+          else if (ch === '"') inStr = false;
+          continue;
+        }
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            end = i;
+            break;
+          }
+        }
+      }
+      if (end > 0) {
+        try {
+          root = JSON.parse(html.slice(from, end + 1));
+        } catch {
+        }
+      }
+    }
+  }
+  if (!root) return [];
+  const arrays = findProductArrays(root);
+  const products = arrays.sort((a, b) => b.length - a.length)[0] || [];
+  const items = [];
+  for (const p of products.slice(0, 40)) {
+    const name = String(p.productName || p.product || "").trim();
+    const price = Number(p.price);
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    const mrp = Number(p.mrp) > price ? Number(p.mrp) : void 0;
+    const landing = String(p.landingPageUrl || "");
+    const url = landing ? `https://www.myntra.com/${landing.replace(/^\/+/, "")}` : "https://www.myntra.com";
+    const img = p.searchImage ? String(p.searchImage).replace(/^http:/, "https:") : void 0;
+    items.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      brand: p.brand ? String(p.brand).slice(0, 120) : void 0,
+      model: p.productId ? String(p.productId) : void 0,
+      price,
+      listPrice: mrp,
+      currency: "INR",
+      seller: "Myntra",
+      sellerUrl: url,
+      attributes: {
+        brand: p.brand ? String(p.brand) : "",
+        category: p.category ? String(p.category) : "",
+        rating: p.rating ? String(Number(p.rating).toFixed(1)) : "",
+        rating_count: p.ratingCount ? String(p.ratingCount) : "",
+        discount: p.discountDisplayLabel ? String(p.discountDisplayLabel).replace(/[()]/g, "") : "",
+        image: img || "",
+        data_note: `Product as listed on Myntra search, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: p.productId ? { sku: String(p.productId) } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "rating", "image", "landingPageUrl"] }
+    }));
+  }
+  return items;
+}
+var init_myntra = __esm({
+  "server/workers/parsers/myntra.ts"() {
+    init_contract();
+  }
+});
+
+// server/workers/parsers/ajio.ts
+function pickImage(p) {
+  const direct = p.fnlColorVariantData?.outfitPictureURL;
+  if (direct) return String(direct).replace(/^http:/, "https:");
+  const media = p.images?.[0]?.media;
+  const url = media?.[0]?.mediumImageUrl || media?.[0]?.imageUrl;
+  return url ? String(url).replace(/^http:/, "https:") : void 0;
+}
+function parseAjio(rawBody, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const products = Array.isArray(root?.products) ? root.products : [];
+  const items = [];
+  for (const p of products.slice(0, 40)) {
+    const name = String(p.name || "").trim();
+    const price = Number(p.price?.value);
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    const mrp = Number(p.wasPriceData?.value) > price ? Number(p.wasPriceData?.value) : void 0;
+    const brand = p.fnlColorVariantData?.brandName ? String(p.fnlColorVariantData.brandName) : void 0;
+    const rel = String(p.url || "");
+    const url = rel ? `https://www.ajio.com${rel.startsWith("/") ? rel : `/${rel}`}` : "https://www.ajio.com";
+    const img = pickImage(p);
+    items.push(newRawItem(source, {
+      title: (brand ? `${brand} ${name}` : name).slice(0, 200),
+      brand,
+      model: p.code ? String(p.code) : void 0,
+      price,
+      listPrice: mrp,
+      currency: "INR",
+      seller: "Ajio",
+      sellerUrl: url,
+      attributes: {
+        brand: brand || "",
+        discount: p.discountPercent ? `${p.discountPercent}%` : "",
+        image: img || "",
+        data_note: `Product as listed on Ajio search API, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: p.code ? { sku: String(p.code) } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "discount", "image", "url"] }
+    }));
+  }
+  return items;
+}
+var init_ajio = __esm({
+  "server/workers/parsers/ajio.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/ecommerce.ts
 var q, ecommerceWorker;
 var init_ecommerce = __esm({
@@ -1440,6 +1589,8 @@ var init_ecommerce = __esm({
     init_verticalWorker();
     init_amazonIn();
     init_flipkart();
+    init_myntra();
+    init_ajio();
     init_httpClient();
     q = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").trim();
     ecommerceWorker = {
@@ -1480,6 +1631,35 @@ var init_ecommerce = __esm({
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Flipkart HTTP ${r.status}`, r.status);
             const items = parseFlipkart(r.body, ctx.source, url);
             if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Flipkart presented a challenge page");
+            return items;
+          }
+        },
+        {
+          // Myntra: SSR page with the full result set inside window.__myx
+          sourceId: "w_ecom_myntra",
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const slug = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+            const url = `https://www.myntra.com/${encodeURIComponent(slug)}`;
+            const r = await ctx.fetch(url);
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Myntra HTTP ${r.status}`, r.status);
+            const items = parseMyntra(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Myntra page carried no parseable products");
+            return items;
+          }
+        },
+        {
+          // Ajio: direct JSON search API
+          sourceId: "w_ecom_ajio",
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = `https://www.ajio.com/api/search?fields=FULL&query=${encodeURIComponent(term)}&pageSize=40`;
+            const r = await ctx.fetch(url);
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Ajio HTTP ${r.status}`, r.status);
+            const items = parseAjio(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Ajio API returned no parseable products");
             return items;
           }
         }
@@ -2047,6 +2227,107 @@ var init_airbnbHotels = __esm({
   }
 });
 
+// server/workers/parsers/ixigoHotels.ts
+function pickImage2(h) {
+  const list = h.imageInfoList;
+  if (Array.isArray(list)) {
+    for (const e of list) {
+      const u = e?.imageUrl || e?.url || e?.thumbUrl || e?.mainImage || e?.image;
+      if (typeof u === "string" && u) return u.replace(/^http:/, "https:");
+      const dyn = e?.dynamicImageUrl || e?.cdnUrl;
+      if (typeof dyn === "string" && dyn) return dyn.replace(/^http:/, "https:");
+    }
+  }
+  return void 0;
+}
+function siteFor(name, city) {
+  for (const [re, url] of CHAIN_SITES) {
+    if (re.test(name)) return { url, chain: true };
+  }
+  const q3 = encodeURIComponent(`${name} ${city} hotel official website booking`);
+  return { url: `https://www.google.com/search?q=${q3}`, chain: false };
+}
+function parseIxigoHotels(html, source, pageUrl, city) {
+  const m = /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
+  if (!m) return [];
+  let root;
+  try {
+    root = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const results = root?.props?.pageProps?.hotelsData?.result?.searchResults;
+  if (!Array.isArray(results)) return [];
+  const items = [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  for (const h of results.slice(0, 20)) {
+    const name = String(h.name || "").trim();
+    const fare = Number(h.fareDetail?.displayedBaseFare);
+    if (!name || !Number.isFinite(fare) || fare <= 0) continue;
+    const site = siteFor(name, h.city || city);
+    const img = pickImage2(h);
+    items.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      brand: name.slice(0, 200),
+      price: Math.round(fare),
+      currency: "INR",
+      seller: name.slice(0, 120),
+      sellerUrl: site.url,
+      location: { city: String(h.city || city) },
+      attributes: {
+        hotel_id: h.hotelId ? String(h.hotelId) : "",
+        locality: String(h.locality || ""),
+        city: String(h.city || city),
+        star_rating: h.starRating ? String(h.starRating) : "",
+        user_rating: h.userRating ? String(h.userRating) : "",
+        user_rating_count: h.userRatingCount ? String(h.userRatingCount) : "",
+        user_rating_category: String(h.userRatingCategory || ""),
+        top_offerings: Array.isArray(h.topOfferings) ? h.topOfferings.slice(0, 5).join(", ") : "",
+        image: img || "",
+        price_basis: "per night, base fare as published by Ixigo",
+        chain_site: site.chain ? "brand official website" : "web search for official site",
+        data_note: `Price observed on Ixigo (metasearch) on ${today}; booking is via the hotel's own channels, never via Ixigo`
+      },
+      identifiers: h.hotelId ? { sku: String(h.hotelId) } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["name", "displayedBaseFare", "locality", "city", "ratings", "image"] }
+    }));
+  }
+  return items;
+}
+function ixigoHotelsSlug(city) {
+  return `hotels-in-${city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-")}`;
+}
+var CHAIN_SITES;
+var init_ixigoHotels = __esm({
+  "server/workers/parsers/ixigoHotels.ts"() {
+    init_contract();
+    CHAIN_SITES = [
+      [/radisson|park inn|country inn/i, "https://www.radissonhotels.com/en-in/"],
+      [/marriott|courtyard|renaissance|le meridien|westin|sheraton|four points|aloft|moxy|st\.? regis|ritz/i, "https://www.marriott.com/"],
+      [/hilton|doubletree|embassy suites|hampton/i, "https://www.hilton.com/en/"],
+      [/holiday inn|intercontinental|crowne plaza|indigo|voco|avid|ihg/i, "https://www.ihg.com/"],
+      [/novotel|ibis|mercure|sofitel|pullman|fairmont|swissotel|movenpick|mövenpick|247|accent|grand mercure|all seasons/i, "https://all.accor.com/"],
+      [/taj|vivanta|ginger| SeleQtions/i, "https://www.tajhotels.com/en-in/"],
+      [/oberoi|trident/i, "https://www.oberoigroup.com/"],
+      [/itc ?hotel|welcome ?hotel|welcomhotel|fortune ?park/i, "https://www.itchotels.com/"],
+      [/lemon ?tree/i, "https://www.lemontreehotels.com/"],
+      [/the park|zone by the park/i, "https://theparkhotels.com/"],
+      [/hyatt|grand hyatt|hyatt ?regency|hyatt ?centric|andaz/i, "https://www.hyatt.com/"],
+      [/shangri-?la/i, "https://www.shangri-la.com/"],
+      [/kempinski/i, "https://www.kempinski.com/"],
+      [/four seasons/i, "https://www.fourseasons.com/"],
+      [/the grand|leela/i, "https://www.theleela.com/"],
+      [/oyo/i, "https://www.oyorooms.com/"],
+      [/fabhotel/i, "https://www.fabhotels.com/"],
+      [/treebo/i, "https://treebohotels.com/"],
+      [/zebnest|zostel/i, "https://www.zostel.com/"],
+      [/the orchid/i, "https://www.orchidhotel.com/"],
+      [/royal orchid/i, "https://www.royalorchidhotels.com/"],
+      [/sun-n-sand|sun n sand/i, "https://www.sunnsandhotels.com/"]
+    ];
+  }
+});
+
 // server/common/curlCffiFetch.ts
 async function cffiFetch(url, opts = {}) {
   const payload = JSON.stringify({
@@ -2141,11 +2422,29 @@ var init_hotels = __esm({
     init_wikidataHotels();
     init_cleartripHotels();
     init_airbnbHotels();
+    init_ixigoHotels();
     init_curlCffiFetch();
     init_httpClient();
     hotelsWorker = {
       vertical: "hotels",
       tasks: [
+        {
+          // Ixigo hotels (metasearch acquisition): SEO listing page carries __NEXT_DATA__
+          // with hotel names + per-night base fares. Seller = the hotel property, never Ixigo.
+          sourceId: "w_hotels_ixigo",
+          priority: 14,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city || city.length < 3) return [];
+            const slug = ixigoHotelsSlug(city);
+            const url = `https://www.ixigo.com/hotels/${slug}`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "FORBIDDEN", `Ixigo hotels HTTP ${r.status}`, r.status);
+            const items = parseIxigoHotels(r.body, ctx.source, url, city);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `No Ixigo hotels parsed for "${city}" (slug may not exist for this city)`);
+            return items;
+          }
+        },
         {
           // Real nightly rates from Cleartrip's Next.js SEO SRP: __NEXT_DATA__
           // ships full hotel cards (price, slashed price, rating, locality,
@@ -2481,7 +2780,7 @@ function parseIxigoOffers(flights, source, from, to, date) {
     "spicejet": "https://www.spicejet.com",
     "vistara": "https://www.airindia.com"
   };
-  const siteFor = (airline) => {
+  const siteFor2 = (airline) => {
     const k = airline.toLowerCase().trim();
     for (const [name, url] of Object.entries(AIRLINE_SITES)) {
       if (k === name || k.replace(/[^a-z ]/g, "").includes(name)) return { seller: airline.trim(), url };
@@ -2504,7 +2803,7 @@ function parseIxigoOffers(flights, source, from, to, date) {
     const key = `${f.airlineCode || f.airline}|${f.flightNumber}|${f.departureTime}`;
     if (!seen.has(key)) continue;
     seen.delete(key);
-    const site = siteFor(f.airline);
+    const site = siteFor2(f.airline);
     if (!site) continue;
     const attrs = {
       airline: f.airline,
@@ -2919,6 +3218,137 @@ var init_osrmCab = __esm({
   }
 });
 
+// server/workers/parsers/savaariCabs.ts
+function savaariRouteSlug(city) {
+  return city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+}
+function parseSavaariCabs(html, source, pageUrl, from, to) {
+  const items = [];
+  const seenFares = [];
+  const re = /<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
+  let m;
+  while (m = re.exec(html)) {
+    let data;
+    try {
+      data = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    const blocks = Array.isArray(data) ? data : [data];
+    for (const b of blocks) {
+      const qa = b?.mainEntity;
+      if (!Array.isArray(qa)) continue;
+      for (const q3 of qa) {
+        const text = String(q3?.acceptedAnswer?.text || "");
+        const vary = /from\s+Rs\.?\s*([\d,]+)\s*\(([^)]*)\)\s*to\s+Rs\.?\s*([\d,]+)\s*\(([^)]*)\)/i.exec(text);
+        if (vary) {
+          seenFares.push({ fare: Number(vary[1].replace(/,/g, "")), label: vary[2].replace(/\bfor\b/gi, "").trim() || "base vehicle" });
+          seenFares.push({ fare: Number(vary[3].replace(/,/g, "")), label: vary[4].replace(/\bfor\b/gi, "").trim() || "top vehicle" });
+          continue;
+        }
+        const starts = /starts\s+from\s+Rs\.?\s*([\d,]+)\s*(?:for\s+([^.,]+))?/i.exec(text);
+        if (starts) seenFares.push({ fare: Number(starts[1].replace(/,/g, "")), label: (starts[2] || "one-way cab service").trim() });
+        if (!vary && !starts) {
+          const bare = /Rs\.?\s*([\d,]{4,6})/.exec(text);
+          if (bare) seenFares.push({ fare: Number(bare[1].replace(/,/g, "")), label: "one-way cab service" });
+        }
+      }
+    }
+  }
+  if (!seenFares.length) return [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const lo = Math.min(...seenFares.map((f) => f.fare));
+  const hi = Math.max(...seenFares.map((f) => f.fare));
+  const loLabel = seenFares.find((f) => f.fare === lo)?.label || "one-way";
+  const hiLabel = seenFares.find((f) => f.fare === hi)?.label || "one-way";
+  for (const { fare, label } of seenFares.slice(0, 6)) {
+    items.push(newRawItem(source, {
+      title: `${from} to ${to} cab (${label}, one-way)`,
+      brand: "Savaari",
+      price: Math.round(fare),
+      currency: "INR",
+      seller: "Savaari",
+      sellerUrl: pageUrl,
+      // the price-owning website itself
+      travel: { route: `${from} to ${to}`.toLowerCase(), seatType: "unknown" },
+      attributes: {
+        pickup: from,
+        drop: to,
+        route: `${from} to ${to}`,
+        vehicle_type: `cab (${label})`,
+        vehicle_class: label,
+        trip_type: "one-way",
+        fare_range: `Rs ${lo} (base) - Rs ${hi}`,
+        price_basis: `route fare as published by savaari.com on ${today}`,
+        image: "",
+        data_note: `Route fare scraped from savaari.com route page on ${today}`
+      },
+      identifiers: { sku: `savaari-${from}-${to}-${label}`.toLowerCase().replace(/\s+/g, "-") },
+      evidence: { sourceUrl: pageUrl, extractedFields: ["FAQPage ld+json fare text"] }
+    }));
+  }
+  return items;
+}
+var init_savaariCabs = __esm({
+  "server/workers/parsers/savaariCabs.ts"() {
+    init_contract();
+  }
+});
+
+// server/workers/parsers/quickRideCabs.ts
+function parseQuickRideCabs(html, source, pageUrl, from, to) {
+  const items = [];
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  const norm = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const fare = (s) => {
+    const m = /([\d,]{3,7})/.exec(norm(s).replace(/[₹]/g, ""));
+    return m ? Number(m[1].replace(/,/g, "")) : null;
+  };
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  for (const row of rows) {
+    const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
+    if (cells.length < 4) continue;
+    const rf = norm(cells[0] || "").toLowerCase();
+    const rt = norm(cells[1] || "").toLowerCase();
+    const f = norm(from || "").toLowerCase();
+    const t = norm(to || "").toLowerCase();
+    const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
+    if (!routeMatch) continue;
+    const oneWay = fare(cells[2] || "");
+    const roundTrip = fare(cells[3] || "");
+    if (oneWay && oneWay > 0) {
+      items.push(newRawItem(source, {
+        title: `${norm(cells[0] || "")} to ${norm(cells[1] || "")} cab (one-way)`,
+        brand: "Quick Ride",
+        price: Math.round(oneWay),
+        currency: "INR",
+        seller: "Quick Ride",
+        sellerUrl: pageUrl,
+        travel: { route: `${from} to ${to}`.toLowerCase(), seatType: "unknown" },
+        attributes: {
+          pickup: from,
+          drop: to,
+          route: `${norm(cells[0] || "")} to ${norm(cells[1] || "")}`,
+          vehicle_type: "cab (outstation)",
+          trip_type: "one-way",
+          round_trip_fare: roundTrip ? String(roundTrip) : "",
+          price_basis: `route fare as published on quickride.in on ${today}`,
+          image: "",
+          data_note: `Route fare scraped from quickride.in outstation fare table on ${today}`
+        },
+        identifiers: { sku: `quickride-${rf}-${rt}-ow`.replace(/\s+/g, "-") },
+        evidence: { sourceUrl: pageUrl, extractedFields: ["fare table row"] }
+      }));
+    }
+  }
+  return items;
+}
+var init_quickRideCabs = __esm({
+  "server/workers/parsers/quickRideCabs.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/cab.ts
 function routeFromQuery2(raw) {
   const cleaned = raw.replace(/\b(cab|taxi|ride|auto|uber|ola|rapido|book|a|an|the|price|fare|for|drop|pickup|from|need|want|go|going)\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -2931,10 +3361,50 @@ var init_cab = __esm({
   "server/workers/verticals/cab.ts"() {
     init_verticalWorker();
     init_osrmCab();
+    init_savaariCabs();
+    init_quickRideCabs();
+    init_curlCffiFetch();
     init_httpClient();
     cabWorker = {
       vertical: "cab",
       tasks: [
+        {
+          // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
+          sourceId: "w_cab_savaari",
+          name: "Cab worker: Savaari outstation route fares",
+          priority: 5,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const rt = routeFromQuery2(raw);
+            if (!rt) return [];
+            const from = savaariRouteSlug(rt.from);
+            const to = savaariRouteSlug(rt.to);
+            const url = `https://www.savaari.com/${from}/${from}-to-${to}-cabs`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            if (r.status === 404) return [];
+            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `Savaari HTTP ${r.status}`, r.status);
+            const items = parseSavaariCabs(r.body, ctx.source, url, rt.from, rt.to);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Savaari route page carried no parseable fares");
+            return items;
+          }
+        },
+        {
+          // QuickRide (direct operator): static outstation fare table
+          sourceId: "w_cab_quickride",
+          name: "Cab worker: QuickRide outstation fare table",
+          priority: 6,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const rt = routeFromQuery2(raw);
+            if (!rt) return [];
+            const url = "https://quickride.in/outstation-taxi.php";
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `QuickRide HTTP ${r.status}`, r.status);
+            const items = parseQuickRideCabs(r.body, ctx.source, url, rt.from, rt.to);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `QuickRide fare table has no row for ${rt.from} to ${rt.to}`);
+            return items;
+          }
+        },
         {
           sourceId: "w_cab_osrm",
           name: "Cab worker: OSRM real-distance fare estimate",

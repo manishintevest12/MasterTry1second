@@ -5,6 +5,9 @@
  */
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { buildCabEstimate } from '../parsers/osrmCab';
+import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs';
+import { parseQuickRideCabs } from '../parsers/quickRideCabs';
+import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
@@ -18,6 +21,43 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
 export const cabWorker: VerticalWorker = {
   vertical: 'cab',
   tasks: [
+    {
+      // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
+      sourceId: 'w_cab_savaari',
+      name: 'Cab worker: Savaari outstation route fares',
+      priority: 5,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const from = savaariRouteSlug(rt.from);
+        const to = savaariRouteSlug(rt.to);
+        const url = `https://www.savaari.com/${from}/${from}-to-${to}-cabs`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        if (r.status === 404) return []; // route page not published — nothing fabricated
+        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `Savaari HTTP ${r.status}`, r.status);
+        const items = parseSavaariCabs(r.body, ctx.source, url, rt.from, rt.to);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Savaari route page carried no parseable fares');
+        return items;
+      },
+    },
+    {
+      // QuickRide (direct operator): static outstation fare table
+      sourceId: 'w_cab_quickride',
+      name: 'Cab worker: QuickRide outstation fare table',
+      priority: 6,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const url = 'https://quickride.in/outstation-taxi.php';
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `QuickRide HTTP ${r.status}`, r.status);
+        const items = parseQuickRideCabs(r.body, ctx.source, url, rt.from, rt.to);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `QuickRide fare table has no row for ${rt.from} to ${rt.to}`);
+        return items;
+      },
+    },
     {
       sourceId: 'w_cab_osrm',
       name: 'Cab worker: OSRM real-distance fare estimate',

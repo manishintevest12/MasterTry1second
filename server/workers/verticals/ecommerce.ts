@@ -6,6 +6,8 @@
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
+import { parseMyntra } from '../parsers/myntra';
+import { parseAjio } from '../parsers/ajio';
 import { AcquisitionError } from '../../common/httpClient';
 
 const q = (ctx: { query: any }) => String(ctx.query.entityName || ctx.query.rawQuery || '').trim();
@@ -48,6 +50,35 @@ export const ecommerceWorker: VerticalWorker = {
         if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Flipkart HTTP ${r.status}`, r.status);
         const items = parseFlipkart(r.body, ctx.source, url);
         if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Flipkart presented a challenge page');
+        return items;
+      },
+    },
+    {
+      // Myntra: SSR page with the full result set inside window.__myx
+      sourceId: 'w_ecom_myntra',
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const slug = term.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+        const url = `https://www.myntra.com/${encodeURIComponent(slug)}`;
+        const r = await ctx.fetch(url);
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Myntra HTTP ${r.status}`, r.status);
+        const items = parseMyntra(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Myntra page carried no parseable products');
+        return items;
+      },
+    },
+    {
+      // Ajio: direct JSON search API
+      sourceId: 'w_ecom_ajio',
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url = `https://www.ajio.com/api/search?fields=FULL&query=${encodeURIComponent(term)}&pageSize=40`;
+        const r = await ctx.fetch(url);
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Ajio HTTP ${r.status}`, r.status);
+        const items = parseAjio(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Ajio API returned no parseable products');
         return items;
       },
     },

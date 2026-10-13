@@ -10,6 +10,7 @@ import { parseBookingHotels } from '../parsers/booking';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
+import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
 
@@ -38,6 +39,23 @@ function stayDates(q: any): { checkin: string; checkout: string } {
 export const hotelsWorker: VerticalWorker = {
   vertical: 'hotels',
   tasks: [
+    {
+      // Ixigo hotels (metasearch acquisition): SEO listing page carries __NEXT_DATA__
+      // with hotel names + per-night base fares. Seller = the hotel property, never Ixigo.
+      sourceId: 'w_hotels_ixigo',
+      priority: 14,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const slug = ixigoHotelsSlug(city);
+        const url = `https://www.ixigo.com/hotels/${slug}`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'FORBIDDEN', `Ixigo hotels HTTP ${r.status}`, r.status);
+        const items = parseIxigoHotels(r.body, ctx.source, url, city);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `No Ixigo hotels parsed for "${city}" (slug may not exist for this city)`);
+        return items;
+      },
+    },
     {
       // Real nightly rates from Cleartrip's Next.js SEO SRP: __NEXT_DATA__
       // ships full hotel cards (price, slashed price, rating, locality,
