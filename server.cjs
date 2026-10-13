@@ -4855,22 +4855,21 @@ var init_grocery = __esm({
             const cityLabel = loc.city ? String(loc.city) : "Mumbai";
             const [lat, lng] = coords;
             const url = `https://blinkit.com/v1/layout/search?q=${encodeURIComponent(term)}&search_type=type_to_search`;
-            const r = await cffiFetch(url, {
-              impersonate: "chrome",
-              method: "POST",
-              body: "{}",
-              timeoutMs: 22e3,
-              headers: {
-                app_client: "consumer_web",
-                lat: String(lat),
-                lon: String(lng),
-                Accept: "application/json",
-                "Content-Type": "application/json",
-                Origin: "https://blinkit.com",
-                Referer: `https://blinkit.com/s/?q=${encodeURIComponent(term)}`
-              }
-            });
-            if (r.status === 403 || r.status === 202) throw new AcquisitionError("ACCESS_CHALLENGE", `Blinkit search API HTTP ${r.status}`);
+            const blHeaders = {
+              app_client: "consumer_web",
+              lat: String(lat),
+              lon: String(lng),
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              Origin: "https://blinkit.com",
+              Referer: `https://blinkit.com/s/?q=${encodeURIComponent(term)}`
+            };
+            let r = { status: 0, body: "" };
+            for (const profile of ["chrome", "safari17_0", "chrome110"]) {
+              r = await cffiFetch(url, { impersonate: profile, method: "POST", body: "{}", timeoutMs: 22e3, headers: blHeaders });
+              if (r.status === 200 && r.body) break;
+            }
+            if (r.status === 403 || r.status === 202) throw new AcquisitionError("ACCESS_CHALLENGE", `Blinkit search API HTTP ${r.status} (tried 3 TLS fingerprints)`);
             if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `Blinkit search API HTTP ${r.status}`, r.status);
             const items = parseBlinkit(r.body, ctx.source, url, cityLabel, 16);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Blinkit returned no products for "${term}" at ${cityLabel} (not serviceable or no match)`);
