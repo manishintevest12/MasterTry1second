@@ -6191,11 +6191,358 @@ var init_district = __esm({
   }
 });
 
+// server/workers/parsers/districtGw.ts
+function gwCitySlug(city) {
+  return (city || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function gwGuestToken() {
+  const rnd = (n, alphabet) => Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  const digits18 = String(Math.floor(Math.random() * 1e18)).padStart(18, "0");
+  return `${Date.now()}_${digits18}_${rnd(10, "0123456789abcdefghijklmnopqrstuvwxyz")}`;
+}
+function gwHeaders(host) {
+  return {
+    Accept: "application/json",
+    Referer: `${GW_HOSTS[host]}/movies`,
+    "api_source": "district",
+    "x-app-type": "ed_web",
+    "x-guest-token": gwGuestToken()
+  };
+}
+async function gwJson(host, path9, timeoutMs = 12e3) {
+  try {
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path9}`, { headers: gwHeaders(host), timeoutMs });
+    if (res.status !== 200) return null;
+    return JSON.parse(res.body);
+  } catch {
+    return null;
+  }
+}
+async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
+  if (!citySlug2) return [];
+  const d = await gwJson(host, `/gw/consumer/movies/v3/cinemas?city=${encodeURIComponent(citySlug2)}`, timeoutMs);
+  const cinemas = d?.data?.cinemas || d?.cinemas || [];
+  const out = [];
+  for (const c of cinemas) {
+    const id = Number(c?.id);
+    const name = String(c?.name || "").trim();
+    if (Number.isInteger(id) && name) out.push({ id, name });
+  }
+  return out;
+}
+async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
+  const byTitle = /* @__PURE__ */ new Map();
+  const norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
+  for (const cinema of cinemas.slice(0, maxCinemas)) {
+    const d = await gwJson(host, `/gw/consumer/movies/v3/cinema?meta=1&reqData=1&cinemaId=${cinema.id}`, timeoutMs);
+    if (!d) continue;
+    const meta = d?.meta || {};
+    const moviesMeta = meta.movies || [];
+    const grouped = meta.groupedMovies || [];
+    const titleByMid = /* @__PURE__ */ new Map();
+    for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
+    const contentByTitle = /* @__PURE__ */ new Map();
+    for (const g of grouped) {
+      const lbl = norm2(String(g?.label || ""));
+      if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
+    }
+    const posterByMid = /* @__PURE__ */ new Map();
+    for (const mv of moviesMeta) posterByMid.set(String(mv?.id || ""), String(mv?.appImgPath || "") || "");
+    const sessions = d?.pageData?.sessions || d?.pageData?.showtimes || [];
+    for (const ss of sessions) {
+      const mid = String(ss?.mid || "");
+      const title = titleByMid.get(mid) || "";
+      if (!title) continue;
+      const key = norm2(title);
+      if (!key) continue;
+      const areas = [];
+      for (const a of ss?.areas || []) {
+        const price = Number(a?.price);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        areas.push({ label: String(a?.label || ""), price, avail: Number(a?.sAvail) || 0 });
+      }
+      if (!areas.length) continue;
+      let agg = byTitle.get(key);
+      if (!agg) {
+        agg = {
+          mids: /* @__PURE__ */ new Set(),
+          title,
+          minPrice: Infinity,
+          maxPrice: 0,
+          showCount: 0,
+          theatres: [],
+          contentId: null,
+          posterUrl: null,
+          censor: null,
+          durationMin: null,
+          genres: null
+        };
+        byTitle.set(key, agg);
+      }
+      agg.mids.add(mid);
+      agg.showCount += 1;
+      if (!agg.theatres.includes(cinema.name)) agg.theatres.push(cinema.name);
+      const contentId = contentByTitle.get(key);
+      if (contentId && !agg.contentId) agg.contentId = contentId;
+      const mvMeta = moviesMeta.find((mv) => String(mv?.id) === mid);
+      if (mvMeta) {
+        agg.posterUrl = agg.posterUrl || (String(mvMeta?.appImgPath || "") || null);
+        agg.censor = agg.censor || (mvMeta?.censor ? String(mvMeta.censor) : null);
+        agg.durationMin = agg.durationMin || (Number(mvMeta?.duration) || null);
+        agg.genres = agg.genres || (Array.isArray(mvMeta?.grn) ? mvMeta.grn.join(", ") : null);
+      }
+      for (const a of areas) {
+        agg.minPrice = Math.min(agg.minPrice, a.price);
+        agg.maxPrice = Math.max(agg.maxPrice, a.price);
+      }
+    }
+  }
+  return byTitle;
+}
+async function gwCritique(host, contentId, timeoutMs = 12e3) {
+  if (!Number.isInteger(contentId) || contentId <= 0) return null;
+  const d = await gwJson(host, `/gw/consumer/movies/v1/content/critique?content_id=${contentId}`, timeoutMs);
+  if (!d) return null;
+  const out = { reviews: [], ratings: [] };
+  for (const r of d?.reviews || []) {
+    const text = String(r?.text || "").trim();
+    if (!text) continue;
+    out.reviews.push({
+      text: text.slice(0, 600),
+      reviewer: r?.reviewer ? String(r.reviewer) : null,
+      source: r?.dwh_source?.name ? String(r.dwh_source.name) : null
+    });
+  }
+  for (const rr of d?.ratings || []) {
+    const value = String(rr?.value || "").trim();
+    if (!value) continue;
+    out.ratings.push({
+      value,
+      ratedBy: rr?.rated_by ? String(rr.rated_by) : rr?.dwh_source?.name ? String(rr.dwh_source.name) : "Critics",
+      base: Number(rr?.dwh_source?.rating_base) || null
+    });
+  }
+  return out.reviews.length || out.ratings.length ? out : null;
+}
+function extractTrailerUrl(body) {
+  const re = /https:\/\/www\.youtube\.com\/(?:embed\/|watch\?v=|live\/)([\w-]{6,20})/g;
+  let m;
+  const skip = /trailer-page|\/channel|\/embed\/videoseries/i;
+  while ((m = re.exec(body)) !== null) {
+    const win = body.slice(Math.max(0, m.index - 80), m.index + 120);
+    if (skip.test(win)) continue;
+    if (/trailer|promo|teaser/i.test(win)) return `https://www.youtube.com/watch?v=${m[1]}`;
+  }
+  return null;
+}
+var GW_HOSTS;
+var init_districtGw = __esm({
+  "server/workers/parsers/districtGw.ts"() {
+    init_curlCffiFetch();
+    GW_HOSTS = {
+      district: "https://www.district.in",
+      ticketnew: "https://www.ticketnew.com"
+    };
+  }
+});
+
+// server/workers/parsers/imdbRatings.ts
+async function fetchWithTimeout(url, ms, init = {}) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+async function ensureDataset() {
+  try {
+    const stale = !(0, import_node_fs3.existsSync)(RATINGS_FILE) || Date.now() - (0, import_node_fs3.statSync)(RATINGS_FILE).mtimeMs > RATINGS_TTL_MS;
+    if (!stale) return true;
+    const res = await fetchWithTimeout(RATINGS_URL, 6e4);
+    if (!res.ok || !res.body) return (0, import_node_fs3.existsSync)(RATINGS_FILE);
+    await (0, import_promises.pipeline)(res.body, (0, import_node_fs3.createWriteStream)(RATINGS_FILE));
+    tconstIndex = null;
+    return true;
+  } catch {
+    return (0, import_node_fs3.existsSync)(RATINGS_FILE);
+  }
+}
+function datasetPromise() {
+  datasetReady ??= ensureDataset().finally(() => {
+    setTimeout(() => {
+      datasetReady = null;
+    }, 6e4).unref?.();
+  });
+  return datasetReady;
+}
+async function lookupTconst(tt) {
+  if (ratingCache.has(tt)) return ratingCache.get(tt);
+  if (!await datasetPromise()) {
+    ratingCache.set(tt, null);
+    return null;
+  }
+  const wanted = /* @__PURE__ */ new Set([tt]);
+  for (const k of ratingCache.keys()) if (k) wanted.add(k);
+  return new Promise((resolve) => {
+    let found = null;
+    const rl = import_node_readline.default.createInterface({ input: (0, import_node_fs3.createReadStream)(RATINGS_FILE).pipe((0, import_node_zlib.createGunzip)()) });
+    rl.on("line", (line) => {
+      const tab = line.indexOf("	");
+      if (tab <= 0) return;
+      const id = line.slice(0, tab);
+      if (!wanted.has(id)) return;
+      const rest = line.slice(tab + 1).split("	");
+      const rating = Number(rest[0]);
+      const votes = Number(rest[1]);
+      if (Number.isFinite(rating) && rating > 0) {
+        ratingCache.set(id, { rating, votes: Number.isFinite(votes) ? votes : 0, at: Date.now() });
+        if (id === tt) found = ratingCache.get(tt);
+      }
+    });
+    rl.on("close", () => {
+      if (!ratingCache.has(tt)) ratingCache.set(tt, null);
+      resolve(found);
+    });
+    rl.on("error", () => {
+      ratingCache.set(tt, null);
+      resolve(null);
+    });
+  });
+}
+async function imdbTconst(title) {
+  const key = normTitle(title);
+  if (!key) return null;
+  const hit = titleCache.get(key);
+  if (hit !== void 0) {
+    if (hit === null) return null;
+    return Date.now() - hit.at < CACHE_TTL_MS ? hit.tt : null;
+  }
+  try {
+    const s = await fetchWithTimeout(
+      `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&uselang=en&type=item&limit=5&search=${encodeURIComponent(title)}`,
+      1e4
+    );
+    if (!s.ok) {
+      titleCache.set(key, null);
+      return null;
+    }
+    const sj = await s.json();
+    const candidates = sj?.search || [];
+    const filmish = candidates.filter((c) => /film|movie|motion picture/i.test(String(c?.description || "")));
+    const pick2 = (filmish[0] || candidates[0])?.id;
+    if (!pick2) {
+      titleCache.set(key, null);
+      return null;
+    }
+    const e = await fetchWithTimeout(
+      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids=${encodeURIComponent(pick2)}&props=claims`,
+      1e4
+    );
+    if (!e.ok) {
+      titleCache.set(key, null);
+      return null;
+    }
+    const ej = await e.json();
+    const claims = ej?.entities?.[pick2]?.claims || {};
+    const p345 = claims?.P345?.[0]?.mainsnak?.datavalue?.value;
+    const tt = typeof p345 === "string" && /^tt\d+$/.test(p345) ? p345 : null;
+    titleCache.set(key, tt ? { tt, at: Date.now() } : null);
+    return tt;
+  } catch {
+    titleCache.set(key, null);
+    return null;
+  }
+}
+async function imdbRatingFor(title) {
+  try {
+    const tt = await imdbTconst(title);
+    if (!tt) return null;
+    const row = await lookupTconst(tt);
+    if (!row || Date.now() - row.at > CACHE_TTL_MS) {
+      if (row) return { tt, rating: row.rating, votes: row.votes };
+    }
+    if (!row) return null;
+    return { tt, rating: row.rating, votes: row.votes };
+  } catch {
+    return null;
+  }
+}
+var import_node_zlib, import_node_fs3, import_node_os, import_node_path3, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
+var init_imdbRatings = __esm({
+  "server/workers/parsers/imdbRatings.ts"() {
+    import_node_zlib = require("node:zlib");
+    import_node_fs3 = require("node:fs");
+    import_node_os = require("node:os");
+    import_node_path3 = require("node:path");
+    import_promises = require("node:stream/promises");
+    import_node_readline = __toESM(require("node:readline"), 1);
+    RATINGS_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz";
+    RATINGS_FILE = (0, import_node_path3.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
+    RATINGS_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
+    CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+    ratingCache = /* @__PURE__ */ new Map();
+    titleCache = /* @__PURE__ */ new Map();
+    tconstIndex = null;
+    datasetReady = null;
+    normTitle = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+});
+
 // server/workers/verticals/movies.ts
 async function fetchJsonNode(url) {
   const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2e4) });
   if (!r.ok) throw new AcquisitionError("SERVER_ERROR", `regions fetch ${r.status}`);
   return r.json();
+}
+function matchAgg(aggs, title) {
+  if (!aggs || aggs.size === 0) return null;
+  const toks = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
+  let best = null;
+  let bestScore = 0;
+  for (const agg of aggs.values()) {
+    const hay = agg.title.toLowerCase();
+    const score = toks.filter((x) => hay.includes(x)).length;
+    if (score === toks.length && score > bestScore) {
+      best = agg;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+async function enrichWithGw(o, aggs, gwHost) {
+  const agg = matchAgg(aggs, String(o.title || ""));
+  if (agg) {
+    o.price = agg.minPrice;
+    o.attributes = o.attributes || {};
+    o.attributes["price_band"] = agg.minPrice < agg.maxPrice ? `\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}` : `\u20B9${agg.minPrice}`;
+    o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
+    o.attributes["theatre_count"] = agg.theatres.length;
+    o.attributes["shows_today"] = agg.showCount;
+    o.attributes["data_note"] = `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
+    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
+    const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
+    if (crit) {
+      if (crit.ratings.length) {
+        o.attributes["critic_rating"] = crit.ratings.map((r) => `${r.value} (${r.ratedBy})`).slice(0, 3).join(" | ");
+        o.evidence.extractedFields = [...o.evidence.extractedFields || [], "critic_rating"];
+      }
+      if (crit.reviews.length) {
+        const r0 = crit.reviews[0];
+        o.attributes["critic_review"] = `${r0.source ? `[${r0.source}] ` : ""}${r0.text}`;
+        o.evidence.extractedFields = [...o.evidence.extractedFields || [], "critic_review"];
+      }
+    }
+  }
+  const imdb = await imdbRatingFor(String(o.title || "")).catch(() => null);
+  if (imdb) {
+    o.attributes = o.attributes || {};
+    o.attributes["imdb_rating"] = `${imdb.rating.toFixed(1)} (${imdb.votes.toLocaleString("en-IN")} votes)`;
+    o.attributes["imdb_id"] = imdb.tt;
+    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
+  }
 }
 var import_node_crypto2, recentCache, moviesWorker;
 var init_movies = __esm({
@@ -6209,6 +6556,8 @@ var init_movies = __esm({
     init_ticketnew();
     init_cinepolis();
     init_district();
+    init_districtGw();
+    init_imdbRatings();
     import_node_crypto2 = require("node:crypto");
     recentCache = null;
     moviesWorker = {
@@ -6254,7 +6603,7 @@ var init_movies = __esm({
           name: "Movies worker: TicketNew now-showing (Next.js __NEXT_DATA__, city-aware)",
           priority: 8,
           maxPerMinute: 6,
-          timeoutMs: 3e4,
+          timeoutMs: 45e3,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
@@ -6277,7 +6626,10 @@ var init_movies = __esm({
                   lastErr = new Error("no movies parsed");
                   continue;
                 }
-                return parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+                const offers = parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+                const aggs = await gwCityMovieAggregates("ticketnew", key, 8).catch(() => null);
+                for (const o of offers.slice(0, 5)) await enrichWithGw(o, aggs, "ticketnew");
+                return offers;
               } catch (e) {
                 lastErr = e;
                 if (e instanceof AcquisitionError && (e.failureClass === "FORBIDDEN" || e.failureClass === "RATE_LIMITED")) throw e;
@@ -6314,7 +6666,7 @@ var init_movies = __esm({
           name: "Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)",
           priority: 8,
           maxPerMinute: 6,
-          timeoutMs: 3e4,
+          timeoutMs: 55e3,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
@@ -6327,19 +6679,31 @@ var init_movies = __esm({
             const movies = parseDistrictMovies(res.body);
             if (movies.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "District page carried no parseable JSON-LD movies");
             const offers = parseDistrictOffers(movies, ctx.source, queryTerm);
-            for (const o of offers.slice(0, 3)) {
+            const gwCity = gwCitySlug(city);
+            const aggs = gwCity ? await gwCityMovieAggregates("district", gwCity, 10).catch(() => null) : null;
+            for (const o of offers.slice(0, 5)) {
+              await enrichWithGw(o, aggs, "district");
               const url = String(o.sellerUrl || "");
               if (!/^https:\/\/www\.district\.in\/movies\//.test(url)) continue;
               try {
                 const page = await cffiFetch(url, { timeoutMs: 2e4 });
                 if (page.status !== 200) continue;
-                const band = districtPriceBands(page.body);
-                if (!band) continue;
-                o.price = band.from;
-                o.attributes = o.attributes || {};
-                o.attributes["price_band"] = `\u20B9${band.from}\u2013\u20B9${band.to}`;
-                o.attributes["data_note"] = `Ticket prices from District's session price bands (\u20B9${band.from}\u2013\u20B9${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
-                o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_band_from", "price_band_to"];
+                const trailer = extractTrailerUrl(page.body);
+                if (trailer) {
+                  o.attributes = o.attributes || {};
+                  o.attributes["trailer_url"] = trailer;
+                  o.evidence.extractedFields = [...o.evidence.extractedFields || [], "trailer_url"];
+                }
+                if (o.price == null) {
+                  const band = districtPriceBands(page.body);
+                  if (band) {
+                    o.price = band.from;
+                    o.attributes = o.attributes || {};
+                    o.attributes["price_band"] = `\u20B9${band.from}\u2013\u20B9${band.to}`;
+                    o.attributes["data_note"] = `Ticket prices from District's session price bands (\u20B9${band.from}\u2013\u20B9${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
+                    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_band_from", "price_band_to"];
+                  }
+                }
               } catch {
               }
             }
@@ -13110,18 +13474,18 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path3.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path4.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs3.default.statSync(file);
+    const st = import_node_fs4.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs3.default.unlinkSync(file);
+    import_node_fs4.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs3.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs3.default.openSync(file, "wx");
-    import_node_fs3.default.writeSync(fd, String(process.pid));
-    import_node_fs3.default.closeSync(fd);
+    import_node_fs4.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs4.default.openSync(file, "wx");
+    import_node_fs4.default.writeSync(fd, String(process.pid));
+    import_node_fs4.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -13143,11 +13507,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs3, import_node_path3, import_promise3, STALE_MS;
+var import_node_fs4, import_node_path4, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs3 = __toESM(require("node:fs"), 1);
-    import_node_path3 = __toESM(require("node:path"), 1);
+    import_node_fs4 = __toESM(require("node:fs"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();

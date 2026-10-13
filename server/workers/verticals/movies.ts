@@ -13,6 +13,8 @@ import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeader
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
 import { parseDistrictMovies, parseDistrictOffers, districtPriceBands, DISTRICT_MOVIES_URL } from '../parsers/district';
+import { gwCitySlug, gwCityMovieAggregates, gwCritique, gwMatch, extractTrailerUrl, type GwMovieAgg } from '../parsers/districtGw';
+import { imdbRatingFor } from '../parsers/imdbRatings';
 import { createHash } from 'node:crypto';
 
 let recentCache: { at: number; rows: any } | null = null;
@@ -25,6 +27,59 @@ async function fetchJsonNode(url: string): Promise<any> {
   const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
   if (!r.ok) throw new AcquisitionError('SERVER_ERROR', `regions fetch ${r.status}`);
   return r.json();
+}
+
+
+/** Match an offer title against gw aggregates (all tokens present). Returns the best hit. */
+function matchAgg(aggs: Map<string, GwMovieAgg> | null, title: string): GwMovieAgg | null {
+  if (!aggs || aggs.size === 0) return null;
+  const toks = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
+  let best: GwMovieAgg | null = null;
+  let bestScore = 0;
+  for (const agg of aggs.values()) {
+    const hay = agg.title.toLowerCase();
+    const score = toks.filter((x) => hay.includes(x)).length;
+    if (score === toks.length && score > bestScore) { best = agg; bestScore = score; }
+  }
+  return best;
+}
+
+/** Attach gw real seat prices / theatres / shows + IMDb rating to an offer. Best-effort, honest skip. */
+async function enrichWithGw(
+  o: any,
+  aggs: Map<string, GwMovieAgg> | null,
+  gwHost: 'district' | 'ticketnew',
+): Promise<void> {
+  const agg = matchAgg(aggs, String(o.title || ''));
+  if (agg) {
+    o.price = agg.minPrice; // REAL area-level seat price observed in live sessions
+    o.attributes = o.attributes || {};
+    o.attributes['price_band'] = agg.minPrice < agg.maxPrice ? `₹${agg.minPrice}–₹${agg.maxPrice}` : `₹${agg.minPrice}`;
+    o.attributes['theatres'] = agg.theatres.slice(0, 6).join(' | ');
+    o.attributes['theatre_count'] = agg.theatres.length;
+    o.attributes['shows_today'] = agg.showCount;
+    o.attributes['data_note'] = `Real area-level seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
+    (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_min', 'price_max', 'theatres', 'shows_today'];
+    const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
+    if (crit) {
+      if (crit.ratings.length) {
+        o.attributes['critic_rating'] = crit.ratings.map((r) => `${r.value} (${r.ratedBy})`).slice(0, 3).join(' | ');
+        (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'critic_rating'];
+      }
+      if (crit.reviews.length) {
+        const r0 = crit.reviews[0];
+        o.attributes['critic_review'] = `${r0.source ? `[${r0.source}] ` : ''}${r0.text}`;
+        (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'critic_review'];
+      }
+    }
+  }
+  const imdb = await imdbRatingFor(String(o.title || '')).catch(() => null);
+  if (imdb) {
+    o.attributes = o.attributes || {};
+    o.attributes['imdb_rating'] = `${imdb.rating.toFixed(1)} (${imdb.votes.toLocaleString('en-IN')} votes)`;
+    o.attributes['imdb_id'] = imdb.tt;
+    (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'imdb_rating'];
+  }
 }
 
 export const moviesWorker: VerticalWorker = {
@@ -67,7 +122,7 @@ export const moviesWorker: VerticalWorker = {
       name: 'Movies worker: TicketNew now-showing (Next.js __NEXT_DATA__, city-aware)',
       priority: 8,
       maxPerMinute: 6,
-      timeoutMs: 30_000,
+      timeoutMs: 45_000,
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
         const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
@@ -84,7 +139,12 @@ export const moviesWorker: VerticalWorker = {
             if (res.status !== 200) { lastErr = new Error(`TN listing ${res.status}`); continue; }
             const movies = parseTicketNewMoviesPage(res.body, key);
             if (movies.length === 0) { lastErr = new Error('no movies parsed'); continue; }
-            return parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+            const offers = parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+            // REAL SEAT PRICES + THEATRES: TicketNew runs the same District gw mesh.
+            // Fetch the city's cinema sessions (guest token) and attach live prices.
+            const aggs = await gwCityMovieAggregates('ticketnew', key, 8).catch(() => null);
+            for (const o of offers.slice(0, 5)) await enrichWithGw(o, aggs, 'ticketnew');
+            return offers;
           } catch (e: any) {
             lastErr = e;
             if (e instanceof AcquisitionError && (e.failureClass === 'FORBIDDEN' || e.failureClass === 'RATE_LIMITED')) throw e;
@@ -121,7 +181,7 @@ export const moviesWorker: VerticalWorker = {
       name: 'Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)',
       priority: 8,
       maxPerMinute: 6,
-      timeoutMs: 30_000,
+      timeoutMs: 55_000,
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
         const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
@@ -134,22 +194,38 @@ export const moviesWorker: VerticalWorker = {
         const movies = parseDistrictMovies(res.body);
         if (movies.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'District page carried no parseable JSON-LD movies');
         const offers = parseDistrictOffers(movies, ctx.source, queryTerm);
-        // SEAT-SELECTION PRICES: each matched movie's showtimes page carries the real session
-        // price histogram District's own seat-selection filter uses. Deep-dive the first few
-        // matched movies so the card shows a truthful "tickets from ₹X" instead of nothing.
-        for (const o of offers.slice(0, 3)) {
+        // REAL SEAT PRICES + THEATRES + CRITICS: District's public gw sessions carry live
+        // area-level prices (the same prices the seat-selection flow charges). Aggregate the
+        // city's cinema sessions with a guest token, then deep-dive movie pages for trailers.
+        const gwCity = gwCitySlug(city);
+        const aggs = gwCity ? await gwCityMovieAggregates('district', gwCity, 10).catch(() => null) : null;
+        for (const o of offers.slice(0, 5)) {
+          await enrichWithGw(o, aggs, 'district');
+          // Trailer: the movie's own web page embeds the YouTube trailer (SSR).
           const url = String(o.sellerUrl || '');
           if (!/^https:\/\/www\.district\.in\/movies\//.test(url)) continue;
           try {
             const page = await cffiFetch(url, { timeoutMs: 20_000 });
             if (page.status !== 200) continue;
-            const band = districtPriceBands(page.body);
-            if (!band) continue;
-            o.price = band.from; o.attributes = o.attributes || {};
-            o.attributes['price_band'] = `₹${band.from}–₹${band.to}`;
-            o.attributes['data_note'] = `Ticket prices from District's session price bands (₹${band.from}–₹${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
-            (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_band_from', 'price_band_to'];
-          } catch { /* price deep-dive is best-effort; the offer stays honest without it */ }
+            const trailer = extractTrailerUrl(page.body);
+            if (trailer) {
+              o.attributes = o.attributes || {};
+              o.attributes['trailer_url'] = trailer;
+              (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'trailer_url'];
+            }
+            // Fallback price source when the gw mesh declined for this city: the session
+            // price histogram on the movie page (band-level, still real District data).
+            if (o.price == null) {
+              const band = districtPriceBands(page.body);
+              if (band) {
+                o.price = band.from;
+                o.attributes = o.attributes || {};
+                o.attributes['price_band'] = `₹${band.from}–₹${band.to}`;
+                o.attributes['data_note'] = `Ticket prices from District's session price bands (₹${band.from}–₹${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
+                (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_band_from', 'price_band_to'];
+              }
+            }
+          } catch { /* trailer/page deep-dive is best-effort; the offer stays honest without it */ }
         }
         return offers;
       },
