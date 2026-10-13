@@ -144,28 +144,6 @@ export interface ExclusiveOffer {
   badge: string;
 }
 
-export interface CreditCardReward {
-  id: string;
-  cardName: string;
-  bank: string;
-  bankCode?: 'HDFC' | 'SBI' | 'ICICI' | 'AXIS' | 'AMEX' | 'IDFC' | 'KOTAK' | 'INDUSIND' | string;
-  category?: 'cashback' | 'travel' | 'shopping' | 'lifetime_free' | 'fuel_dining' | 'rupay';
-  annualFee: string;
-  joiningFee?: string;
-  rewardRate: string;
-  bestVerticals: VerticalId[];
-  highlight: string;
-  extraSavingsNote: string;
-  applyUrl: string;
-  joiningPerks?: string;
-  cardImageUrl?: string;
-  rating?: number;
-  reviewCount?: number;
-  keyPerks?: string[];
-  creditScoreRequired?: string;
-  isPopular?: boolean;
-}
-
 export interface ReferredFriend {
   id: string;
   name: string;
