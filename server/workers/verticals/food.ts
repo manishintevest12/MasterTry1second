@@ -68,6 +68,24 @@ export const foodWorker: VerticalWorker = {
       },
     },
     {
+      sourceId: 'w_food_eatsure',
+      name: 'Food worker: EatSure (Rebel Foods) menu',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.eatsure.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', `EatSure serves a JS shell to browserless HTTP (menu/prices load via sessioned XHR after city/location selection, no SSR product data). Searched the site, sitemaps and main bundle: no unauthenticated menu API found.`);
+      },
+    },
+    {
+      sourceId: 'w_food_ovenstory',
+      name: 'Food worker: Oven Story pizza menu',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.ovenstory.in/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', `Oven Story (Rebel Foods) serves a JS shell to browserless HTTP: sitemap lists 334 product URLs but every product page renders the same empty shell; prices load via sessioned XHR only.`);
+      },
+    },
+    {
       sourceId: 'w_food_swiggy',
       name: 'Food worker: Swiggy dish search (dish, price, photo, restaurant)',
       priority: 5,
