@@ -10,7 +10,7 @@ const SOURCE_LABELS: Record<string, string> = {
   agoda: 'Agoda', airbnb: 'Airbnb', osm: 'OpenStreetMap', wikidata: 'Wikidata', abhibus: 'AbhiBus', redbus: 'redBus',
   osrm: 'Distance estimate', osrm_estimate: 'Distance estimate', affiliate_vcommission: 'VCommission offers', structured_books: 'Books catalogue', savaari: 'Savaari', quickride: 'QuickRide', ola: 'Ola', uber: 'Uber', indrive: 'InDrive',
   meru: 'Meru', fastdeals: 'Fastdeals / Snap-E', amazon_in: 'Amazon.in', flipkart: 'Flipkart', myntra: 'Myntra', ajio: 'Ajio',
-  meesho: 'Meesho', tatacliq: 'Tata CLiQ', blinkit: 'Blinkit', zepto: 'Zepto', instamart: 'Swiggy Instamart', qcapi: 'BlinkIt · Zepto · Instamart · BigBasket · DMart · JioMart (QuickCommerce API)',
+  meesho: 'Meesho', tatacliq: 'Tata CLiQ', blinkit: 'Blinkit', zepto: 'Zepto', instamart: 'Swiggy Instamart',
   bigbasket: 'BigBasket', flipkart_minutes: 'Flipkart Minutes', swiggy: 'Swiggy', zomato: 'Zomato', dominos: "Domino's",
   eatsure: 'EatSure', ovenstory: 'Oven Story', bookmyshow: 'BookMyShow', ticketnew: 'TicketNew', cinepolis: 'Cinepolis',
   district: 'District', paisabazaar: 'Paisabazaar', bankbazaar: 'BankBazaar', policybazaar: 'Policybazaar', moneyview: 'Money View',

@@ -8,8 +8,6 @@ import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
-import { newRawItem } from '../../sources/contract';
-import type { RawSourceItem } from '../../types';
 
 // City coordinates for quick-commerce APIs (BlinkIt/Zepto/etc. price by delivery zone).
 const GCITY_COORDS: Record<string, [number, number]> = {
@@ -51,86 +49,6 @@ export const groceryWorker: VerticalWorker = {
         throw new AcquisitionError('EMPTY_RESPONSE', src.note.replace(/returns|serves/, 'served'));
       },
     })),
-    {
-      // Actowiz QuickCommerce API (api.quickcommerceapi.com, owner-sourced) — official
-      // REST API for the six owner-mandated quick-commerce platforms that are edge-gated
-      // to browserless HTTP. Key in QUICKCOMMERCE_API_KEY (hPanel env; owner supplies it).
-      // Public API contract: GET /v1/search?q&lat&lon&platform  (X-API-Key header).
-      sourceId: 'w_grocery_qcapi',
-      name: 'Grocery worker: QuickCommerce API (BlinkIt, Zepto, Instamart, BigBasket, DMart, JioMart)',
-      priority: 5,
-      maxPerMinute: 12,
-      timeoutMs: 60_000,
-      run: async (ctx) => {
-        const key = String(process.env.QUICKCOMMERCE_API_KEY || '').trim();
-        if (!key) throw new AcquisitionError('EMPTY_RESPONSE', 'QuickCommerce API credentials not configured: set QUICKCOMMERCE_API_KEY in hPanel env (api.quickcommerceapi.com — BlinkIt/Zepto/Instamart/BigBasket/DMart/JioMart search; demo keys are rejected with 401 — the owner will supply the original key).');
-        const term = q(ctx);
-        if (!term) return [];
-        const city = String(ctx.query.location?.city || '').toLowerCase().trim();
-        const lat = Number(ctx.query.location?.lat) || (GCITY_COORDS[city] || GCITY_COORDS['new delhi'])[0];
-        const lon = Number(ctx.query.location?.lng) || (GCITY_COORDS[city] || GCITY_COORDS['new delhi'])[1];
-        const pincode = String(ctx.query.location?.pincode || '');
-        const platforms: Array<[apiPlatform: string, seller: string, site: string]> = [
-          ['BlinkIt', 'Blinkit', 'https://blinkit.com'],
-          ['Zepto', 'Zepto', 'https://www.zeptonow.com'],
-          ['Swiggy', 'Swiggy Instamart', 'https://www.swiggy.com/instamart'],
-          ['BigBasket', 'BigBasket', 'https://www.bigbasket.com'],
-          ['DMart', 'DMart', 'https://www.dmart.in'],
-          ['JioMart', 'JioMart', 'https://www.jiomart.com'],
-        ];
-        const items: RawSourceItem[] = [];
-        const errors: string[] = [];
-        for (const [apiPlatform, seller, site] of platforms) {
-          const url = `https://api.quickcommerceapi.com/v1/search?q=${encodeURIComponent(term)}&lat=${lat}&lon=${lon}&platform=${apiPlatform}${pincode ? `&pincode=${pincode}` : ''}`;
-          let r: Awaited<ReturnType<typeof cffiFetch>>;
-          try {
-            r = await cffiFetch(url, { timeoutMs: 9_000, headers: { 'X-API-Key': key, Accept: 'application/json' } });
-          } catch { errors.push(`${apiPlatform}: fetch failed`); continue; }
-          if (r.status === 401 || r.status === 403) {
-            throw new AcquisitionError('FORBIDDEN', `QuickCommerce API rejected credentials (HTTP ${r.status}) — set a valid QUICKCOMMERCE_API_KEY`, r.status);
-          }
-          if (r.status !== 200) { errors.push(`${apiPlatform}: HTTP ${r.status}`); continue; }
-          let j: any; try { j = JSON.parse(r.body); } catch { errors.push(`${apiPlatform}: non-JSON`); continue; }
-          const rows: any[] = Array.isArray(j) ? j : (j?.items || j?.products || j?.results || j?.data?.items || j?.data || []);
-          let emitted = 0;
-          for (const it of rows) {
-            if (emitted >= 8) break;
-            const name = String(it?.name || it?.title || '').trim();
-            const price = Math.round(Number(it?.price ?? it?.selling_price ?? it?.discounted_price ?? it?.display_price ?? NaN));
-            if (!name || !Number.isFinite(price) || price <= 0) continue;
-            const pack = String(it?.quantity || it?.pack_size || it?.packaging || '').trim();
-            const img = typeof it?.image_url === 'string' ? it.image_url : (typeof it?.image === 'string' ? it.image : undefined);
-            const link = typeof it?.url === 'string' ? it.url : (typeof it?.link === 'string' ? it.link : site);
-            const mrp = Math.round(Number(it?.mrp ?? it?.list_price ?? NaN));
-            items.push(newRawItem(ctx.source, {
-              title: pack ? `${name} (${pack})` : name.slice(0, 200),
-              brand: String(it?.brand || seller).slice(0, 100),
-              price, currency: 'INR',
-              seller, sellerUrl: /^https?:\/\//.test(link) ? link : site,
-              ...(img ? { images: [img.slice(0, 400)] } : {}),
-              location: { city: ctx.query.location?.city || '' },
-              attributes: {
-                product: name.slice(0, 200),
-                ...(pack ? { pack_size: pack.slice(0, 60) } : {}),
-                ...(pincode ? { delivery_pincode: pincode } : {}),
-                ...(Number.isFinite(mrp) && mrp > price ? { mrp: String(mrp) } : {}),
-                ...(it?.sku_id || it?.product_id ? { sku: String(it.sku_id ?? it.product_id).slice(0, 60) } : {}),
-                platform: seller,
-                price_basis: 'Live search price via QuickCommerce API on ' + new Date().toISOString().slice(0, 10),
-                data_note: 'Price from api.quickcommerceapi.com (Actowiz) for the delivery zone; verify on ' + seller + ' at checkout',
-              },
-              identifiers: { sku: `${apiPlatform}-${String(it?.sku_id ?? it?.product_id ?? name).slice(0, 40)}`.toLowerCase().replace(/\s+/g, '-') },
-              evidence: { sourceUrl: url, sourceReference: name.slice(0, 80), extractedFields: ['name', 'price'] },
-            }));
-            emitted += 1;
-          }
-        }
-        if (!items.length) {
-          throw new AcquisitionError('EMPTY_RESPONSE', `QuickCommerce API returned no products${errors.length ? ` (${errors.join('; ').slice(0, 200)})` : ''}`);
-        }
-        return items;
-      },
-    },
     {
       sourceId: 'w_grocery_amazon_in',
       name: 'Grocery worker: Amazon.in grocery listings',
