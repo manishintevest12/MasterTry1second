@@ -4551,7 +4551,98 @@ var init_insurance = __esm({
 });
 
 // server/workers/verticals/grocery.ts
-var q2, QUICK_FAILS, groceryWorker;
+function imRupees(m) {
+  if (!m || typeof m !== "object") return void 0;
+  const units = Number(m.units);
+  if (!Number.isFinite(units)) return void 0;
+  const nanos = Number(m.nanos) || 0;
+  return Math.round((units + nanos / 1e9) * 100) / 100;
+}
+function collectImProducts(node, out, depth = 0) {
+  if (!node || depth > 20 || out.length > 900) return;
+  if (Array.isArray(node)) {
+    for (const v of node) collectImProducts(v, out, depth + 1);
+    return;
+  }
+  if (typeof node !== "object") return;
+  const looksLikeProduct = typeof node.displayName === "string" && Array.isArray(node.variations) && node.variations.length > 0;
+  if (looksLikeProduct) out.push(node);
+  for (const v of Object.values(node)) collectImProducts(v, out, depth + 1);
+}
+function extractImLayouts(body) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  const re = /swiggy:\/\/stores\/instamart\/(campaign-collection\/listing|campaign-collection\/mxn|category)[^"\\]{0,160}?layoutId=(\d+)/g;
+  for (const m of body.matchAll(re)) {
+    const id = m[2];
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, endpoint: m[1].includes("listing") ? "campaign/listing/v2" : "layout/v2" });
+  }
+  return out;
+}
+function imTokenize(term) {
+  return term.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length >= 2 && !["the", "and"].includes(t));
+}
+function buildImItems(products, term, cityLabel, sourceUrl, cap) {
+  const tokens = imTokenize(term);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const scored = [];
+  for (const p of products) {
+    const v = (p.variations || [])[0] || {};
+    const price = imRupees(v.price?.offerPrice) ?? imRupees(v.price?.mrp);
+    if (price == null || price <= 0) continue;
+    const mrp = imRupees(v.price?.mrp);
+    const name = String(p.displayName || "");
+    if (!name) continue;
+    const hay = `${name} ${p.brand || ""} ${p.category || ""}`.toLowerCase();
+    let score = 0;
+    for (const t of tokens) if (hay.includes(t)) score++;
+    if (score === 0) continue;
+    if (tokens.length > 1 && score < tokens.length) score -= 0.5;
+    const imageId = (v.imageIds || [])[0];
+    const imageUrl = imageId ? `https://media-assets.swiggy.com/swiggy/image/upload/${imageId}` : void 0;
+    const inStock = p.inStock === true && p.isAvail !== false;
+    const item = {
+      title: `${name}${v.quantityDescription ? ` (${v.quantityDescription})` : ""}`,
+      price,
+      listPrice: mrp && mrp > price ? mrp : void 0,
+      brand: p.brand ? String(p.brand).slice(0, 120) : void 0,
+      identifiers: v.skuId ? { sku: v.skuId, vendorProductId: v.spinId || void 0 } : void 0,
+      attributes: {
+        platform: "Swiggy Instamart",
+        ...v.quantityDescription ? { quantity: v.quantityDescription.slice(0, 60) } : {},
+        ...p.category ? { category: String(p.category).slice(0, 80) } : {},
+        ...imageUrl ? { image_url: imageUrl } : {},
+        price_basis: `Instamart offer price for ${cityLabel} (10-min delivery zone)`,
+        data_note: "Price extracted from Swiggy Instamart storefront APIs (instamart.swiggy.com); final price at checkout may vary"
+      },
+      seller: "Swiggy Instamart",
+      sellerUrl: `${IM_BASE}/instamart/search?query=${encodeURIComponent(name)}`,
+      availability: inStock ? "in_stock" : "out_of_stock",
+      location: { city: cityLabel },
+      evidence: {
+        sourceUrl,
+        sourceReference: v.skuId,
+        extractedFields: ["displayName", "variations[0].price.offerPrice", "variations[0].price.mrp", "inStock"]
+      },
+      fetchedAt: now
+    };
+    scored.push({ item, score });
+  }
+  scored.sort((a, b) => b.score - a.score || a.item.price - b.item.price);
+  const seenNames = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const { item } of scored) {
+    const key = item.title.toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+    out.push({ ...item, sourceId: "w_grocery_instamart" });
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+var GCITY_COORDS, q2, QUICK_FAILS, IM_BASE, IM_HEADERS, groceryWorker;
 var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
@@ -4559,14 +4650,39 @@ var init_grocery = __esm({
     init_flipkart();
     init_httpClient();
     init_curlCffiFetch();
+    GCITY_COORDS = {
+      "new delhi": [28.6315, 77.2167],
+      delhi: [28.6315, 77.2167],
+      noida: [28.5355, 77.391],
+      gurgaon: [28.4595, 77.0266],
+      bengaluru: [12.9716, 77.5946],
+      bangalore: [12.9716, 77.5946],
+      mumbai: [19.076, 72.8777],
+      pune: [18.5204, 73.8567],
+      hyderabad: [17.385, 78.4867],
+      chennai: [13.0827, 80.2707],
+      kolkata: [22.5726, 88.3639],
+      ahmedabad: [23.0225, 72.5714],
+      jaipur: [26.9124, 75.7873],
+      lucknow: [26.8467, 80.9462],
+      indore: [22.7196, 75.8577],
+      chandigarh: [30.7333, 76.7794],
+      kochi: [9.9312, 76.2673],
+      nagpur: [21.1458, 79.0882]
+    };
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
     QUICK_FAILS = [
       { sourceId: "w_grocery_blinkit", url: (t) => `https://blinkit.com/cn/${encodeURIComponent(t)}/cid/12`, probe: "https://blinkit.com/", note: "Blinkit returns an Akamai/bot challenge page (403, no product data) to browserless HTTP" },
       { sourceId: "w_grocery_zepto", url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: "https://www.zeptonow.com/", note: "Zeptonow returns a 202 JS challenge shell to browserless HTTP" },
-      { sourceId: "w_grocery_instamart", url: (t) => `https://www.swiggy.com/instamart/search?str=${encodeURIComponent(t)}`, probe: "https://www.swiggy.com/instamart", note: "Swiggy Instamart web/app endpoints return 403/202 challenge to browserless HTTP (restaurant dapi works, instamart is separately gated)" },
       { sourceId: "w_grocery_bigbasket", url: (t) => `https://www.bigbasket.com/ps/?q=${encodeURIComponent(t)}`, probe: "https://www.bigbasket.com/ps/?q=milk", note: "BigBasket serves the search page but SSRData is null; product-search APIs (/mapi etc.) are Akamai 403" },
       { sourceId: "w_grocery_flipkart_minutes", url: (t) => `https://www.flipkart.com/minutes-store`, probe: "https://www.flipkart.com/minutes-store", note: "Flipkart Minutes store is a JS shell with no SSR product prices" }
     ];
+    IM_BASE = "https://instamart.swiggy.com";
+    IM_HEADERS = {
+      Accept: "application/json",
+      Origin: IM_BASE,
+      Referer: IM_BASE + "/"
+    };
     groceryWorker = {
       vertical: "grocery",
       tasks: [
@@ -4584,6 +4700,57 @@ var init_grocery = __esm({
             throw new AcquisitionError("EMPTY_RESPONSE", src2.note.replace(/returns|serves/, "served"));
           }
         })),
+        {
+          // Swiggy Instamart LIVE: ungated storefront endpoints (reverse-engineered from the
+          // instamart web bundle). Search path is edge-gated, so we pull product grids
+          // (home banners + Top Deals campaign) and filter client-side by the query.
+          sourceId: "w_grocery_instamart",
+          name: "Grocery worker: Swiggy Instamart storefront APIs",
+          priority: 12,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const term = q2(ctx);
+            if (!term) return [];
+            const loc = ctx.query.location || {};
+            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
+            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
+            const [lat, lng] = coords;
+            const homeUrl = `${IM_BASE}/api/instamart/home/v2?clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
+            const home = await cffiFetch(homeUrl, { impersonate: "chrome", headers: IM_HEADERS, timeoutMs: 2e4 });
+            if (home.status !== 200 || !home.body) throw new AcquisitionError("ACCESS_CHALLENGE", `Instamart home/v2 HTTP ${home.status}`);
+            let storeId = "";
+            const pod = home.body.match(/"podId":\s*"?(\d+)"?/) || home.body.match(/"storeId":\s*"?(\d+)"?/);
+            if (pod) storeId = pod[1];
+            const products = [];
+            const sources2 = [homeUrl];
+            const layouts = extractImLayouts(home.body).slice(0, 8);
+            const calls = [{ endpoint: "campaign/listing/v2", id: "35019" }, ...layouts];
+            for (const c of calls) {
+              const url = c.endpoint === "layout/v2" ? `${IM_BASE}/api/instamart/layout/v2?layoutId=${c.id}&storeId=${storeId}&clusterId=&lat=${lat}&lng=${lng}&clientId=INSTAMART-APP` : `${IM_BASE}/api/instamart/campaign/listing/v2?layoutId=${c.id}&clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
+              try {
+                const r = await cffiFetch(url, { impersonate: "chrome", headers: IM_HEADERS, timeoutMs: 15e3 });
+                if (r.status !== 200 || !r.body) continue;
+                let json;
+                try {
+                  json = JSON.parse(r.body);
+                } catch {
+                  continue;
+                }
+                const before = products.length;
+                collectImProducts(json, products);
+                if (products.length > before) sources2.push(url);
+              } catch {
+              }
+              if (products.length > 600) break;
+            }
+            const items = buildImItems(products, term, cityLabel, sources2[0], 12);
+            if (!items.length) {
+              const detail = `Instamart storefront grids carried ${products.length} products, none matching "${term}" (search endpoint is edge-gated; home storeId=${storeId || "n/a"})`;
+              throw new AcquisitionError("EMPTY_RESPONSE", detail);
+            }
+            return items;
+          }
+        },
         {
           sourceId: "w_grocery_amazon_in",
           name: "Grocery worker: Amazon.in grocery listings",
