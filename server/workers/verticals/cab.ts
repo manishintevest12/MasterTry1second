@@ -23,6 +23,53 @@ export const cabWorker: VerticalWorker = {
   tasks: [
     {
       // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
+      // ---- Owner-mandated cab sources: attempted live on every cab search, honestly reported ----
+      sourceId: 'w_cab_ola',
+      name: 'Cab worker: Ola (probe)',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.olacabs.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        if (r.status === 403 || r.status === 202) throw new AcquisitionError('ACCESS_CHALLENGE', 'Ola web (olacabs.com) returns an Akamai challenge to browserless HTTP; fares are app-only.');
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Ola served no web fare data to browserless HTTP; fare estimates are app-only.');
+      },
+    },
+    {
+      sourceId: 'w_cab_uber',
+      name: 'Cab worker: Uber India (probe)',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.uber.com/global/en/price-estimate/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        const shell = r.status !== 200 || (r.body.length > 100_000 && !r.body.includes('"prices"') && !r.body.includes('__NEXT_DATA__'));
+        throw new AcquisitionError(shell ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE', 'Uber price-estimate page is a JS shell; live estimates come from a sessioned riders.uber.com API unavailable to browserless HTTP — available only on app.');
+      },
+    },
+    {
+      sourceId: 'w_cab_indrive',
+      name: 'Cab worker: InDrive India (probe)',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://indrive.com/en-in/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'InDrive publishes no fare list anywhere on the web — its model is rider-offered (negotiated) fares set per-ride in the app.');
+      },
+    },
+    {
+      sourceId: 'w_cab_meru',
+      name: 'Cab worker: Meru (probe)',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.meru.in/fares', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Meru consumer cab booking has been folded into Mahindra Alyte (enterprise mobility); meru.in carries no consumer cab fares anymore — available only on app.');
+      },
+    },
+    {
+      sourceId: 'w_cab_fastdeals',
+      name: 'Cab worker: Fastdeals/Snap-E (probe)',
+      priority: 15,
+      run: async () => {
+        throw new AcquisitionError('EMPTY_RESPONSE', 'No authoritative web presence found for the Fastdeals/Snap-E cab service (fastdeals.in is an unrelated laptop store); no fare data exists on the open web for this source.');
+      },
+    },
+    {
       sourceId: 'w_cab_savaari',
       name: 'Cab worker: Savaari outstation route fares',
       priority: 5,

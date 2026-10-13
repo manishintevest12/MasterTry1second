@@ -3682,6 +3682,53 @@ var init_cab = __esm({
       tasks: [
         {
           // Savaari (direct operator): route page FAQ JSON-LD carries real one-way fares
+          // ---- Owner-mandated cab sources: attempted live on every cab search, honestly reported ----
+          sourceId: "w_cab_ola",
+          name: "Cab worker: Ola (probe)",
+          priority: 15,
+          run: async () => {
+            const r = await cffiFetch("https://www.olacabs.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            if (r.status === 403 || r.status === 202) throw new AcquisitionError("ACCESS_CHALLENGE", "Ola web (olacabs.com) returns an Akamai challenge to browserless HTTP; fares are app-only.");
+            throw new AcquisitionError("EMPTY_RESPONSE", "Ola served no web fare data to browserless HTTP; fare estimates are app-only.");
+          }
+        },
+        {
+          sourceId: "w_cab_uber",
+          name: "Cab worker: Uber India (probe)",
+          priority: 15,
+          run: async () => {
+            const r = await cffiFetch("https://www.uber.com/global/en/price-estimate/", { impersonate: "chrome", timeoutMs: 12e3 });
+            const shell = r.status !== 200 || r.body.length > 1e5 && !r.body.includes('"prices"') && !r.body.includes("__NEXT_DATA__");
+            throw new AcquisitionError(shell ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE", "Uber price-estimate page is a JS shell; live estimates come from a sessioned riders.uber.com API unavailable to browserless HTTP \u2014 available only on app.");
+          }
+        },
+        {
+          sourceId: "w_cab_indrive",
+          name: "Cab worker: InDrive India (probe)",
+          priority: 15,
+          run: async () => {
+            const r = await cffiFetch("https://indrive.com/en-in/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "InDrive publishes no fare list anywhere on the web \u2014 its model is rider-offered (negotiated) fares set per-ride in the app.");
+          }
+        },
+        {
+          sourceId: "w_cab_meru",
+          name: "Cab worker: Meru (probe)",
+          priority: 15,
+          run: async () => {
+            const r = await cffiFetch("https://www.meru.in/fares", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Meru consumer cab booking has been folded into Mahindra Alyte (enterprise mobility); meru.in carries no consumer cab fares anymore \u2014 available only on app.");
+          }
+        },
+        {
+          sourceId: "w_cab_fastdeals",
+          name: "Cab worker: Fastdeals/Snap-E (probe)",
+          priority: 15,
+          run: async () => {
+            throw new AcquisitionError("EMPTY_RESPONSE", "No authoritative web presence found for the Fastdeals/Snap-E cab service (fastdeals.in is an unrelated laptop store); no fare data exists on the open web for this source.");
+          }
+        },
+        {
           sourceId: "w_cab_savaari",
           name: "Cab worker: Savaari outstation route fares",
           priority: 5,
@@ -4908,6 +4955,40 @@ var init_bus = __esm({
           // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
           // /wap/SearchStations resolves city -> station id, /buslist/v3/services
           // returns live per-service fares, timings, bus type and seat counts.
+          // ---- Owner-mandated bus sources: attempted live on every bus search, honestly reported ----
+          sourceId: "w_bus_makemytrip",
+          name: "Bus worker: MakeMyTrip bus (probe)",
+          priority: 15,
+          run: async (ctx) => {
+            await cffiFetch("https://bus.makemytrip.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "MakeMyTrip bus search serves an empty JS shell to browserless HTTP; live service lists require a sessioned app API (Akamai-gated elsewhere on makemytrip.com).");
+          }
+        },
+        {
+          sourceId: "w_bus_yatra",
+          name: "Bus worker: Yatra bus (probe)",
+          priority: 15,
+          run: async () => {
+            try {
+              const r = await cffiFetch("https://www.yatra.com/bus-booking/delhi-to-jaipur-buses", { impersonate: "chrome", timeoutMs: 12e3 });
+              const gated = r.status !== 200 || r.body.length < 5e3;
+              throw new AcquisitionError(gated ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", "Yatra bus pages fail/reset the HTTP/2 stream to browserless HTTP clients; no SSR fare data available.");
+            } catch (e) {
+              if (e instanceof AcquisitionError) throw e;
+              throw new AcquisitionError("ACCESS_CHALLENGE", "Yatra bus pages fail/reset the HTTP/2 stream to browserless HTTP clients; no SSR fare data available.");
+            }
+          }
+        },
+        {
+          sourceId: "w_bus_ixigo",
+          name: "Bus worker: Ixigo bus (probe)",
+          priority: 15,
+          run: async () => {
+            await cffiFetch("https://www.ixigo.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Ixigo publishes no bus SSR pages at all (sitemap has flights only); its bus results render from an AbhiBus-sourced CSR shell with no server-side fares.");
+          }
+        },
+        {
           sourceId: "w_bus_abhibus",
           name: "Bus worker: AbhiBus live services (real fares, timings, seats)",
           priority: 1,

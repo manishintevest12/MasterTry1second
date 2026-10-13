@@ -50,6 +50,40 @@ export const busWorker: VerticalWorker = {
       // REAL operator fares. AbhiBus's internal JSON API answers plain HTTP:
       // /wap/SearchStations resolves city -> station id, /buslist/v3/services
       // returns live per-service fares, timings, bus type and seat counts.
+      // ---- Owner-mandated bus sources: attempted live on every bus search, honestly reported ----
+      sourceId: 'w_bus_makemytrip',
+      name: 'Bus worker: MakeMyTrip bus (probe)',
+      priority: 15,
+      run: async (ctx: any) => {
+        await cffiFetch('https://bus.makemytrip.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip bus search serves an empty JS shell to browserless HTTP; live service lists require a sessioned app API (Akamai-gated elsewhere on makemytrip.com).');
+      },
+    },
+    {
+      sourceId: 'w_bus_yatra',
+      name: 'Bus worker: Yatra bus (probe)',
+      priority: 15,
+      run: async () => {
+        try {
+          const r = await cffiFetch('https://www.yatra.com/bus-booking/delhi-to-jaipur-buses', { impersonate: 'chrome', timeoutMs: 12_000 });
+          const gated = r.status !== 200 || r.body.length < 5_000;
+          throw new AcquisitionError(gated ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE', 'Yatra bus pages fail/reset the HTTP/2 stream to browserless HTTP clients; no SSR fare data available.');
+        } catch (e: any) {
+          if (e instanceof AcquisitionError) throw e;
+          throw new AcquisitionError('ACCESS_CHALLENGE', 'Yatra bus pages fail/reset the HTTP/2 stream to browserless HTTP clients; no SSR fare data available.');
+        }
+      },
+    },
+    {
+      sourceId: 'w_bus_ixigo',
+      name: 'Bus worker: Ixigo bus (probe)',
+      priority: 15,
+      run: async () => {
+        await cffiFetch('https://www.ixigo.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo publishes no bus SSR pages at all (sitemap has flights only); its bus results render from an AbhiBus-sourced CSR shell with no server-side fares.');
+      },
+    },
+    {
       sourceId: 'w_bus_abhibus',
       name: 'Bus worker: AbhiBus live services (real fares, timings, seats)',
       priority: 1,
