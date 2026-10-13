@@ -126,4 +126,12 @@ async function main() {
   }, intervalMin * 60_000);
 }
 
-main().catch((e) => { log.error('Cron', 'Warmer crashed', { error: String(e) }); process.exit(1); });
+// CRITICAL (fix, 13 Oct): only run the cron CLI when this file IS the script
+// (node cron.cjs / tsx server/cron/warm.ts). The server imports the SAME module
+// for bootWarm() — without this guard that import ALSO launched a full 20-query
+// warm pass and then process.exit(0), KILLING the freshly booted server (the
+// boot→warm→exit→restart loop seen in production logs on 13 Oct 13:19).
+const invokedAsScript = /cron/.test(String(process.argv[1] || ''));
+if (invokedAsScript) {
+  main().catch((e) => { log.error('Cron', 'Warmer crashed', { error: String(e) }); process.exit(1); });
+}

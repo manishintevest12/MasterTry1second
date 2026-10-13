@@ -30,11 +30,17 @@ export async function createApp(): Promise<express.Express> {
   // Validate + migrate durable storage, load source config, start L2 cache + workers
   await bootstrapBackend();
   if (settings.env !== 'test') {
-    startWorkers();
-    bootstrapAffiliateSync();
-    // Instant first paint: pre-warm the most popular searches in the background
-    // so page-load searches hit warm cache (Section 8 cron-warmer).
-    import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
+    // SINGLETON BACKGROUND (fix for the double-instance boot seen in production logs,
+    // 13 Oct): the app supervisor can start two instances; only the lock holder runs
+    // the refresh workers, affiliate sync and boot-warm. Everyone still serves HTTP.
+    const { runSingleton } = await import('./common/singleton');
+    await runSingleton('background', async () => {
+      startWorkers();
+      bootstrapAffiliateSync();
+      // Instant first paint: pre-warm the most popular searches in the background
+      // so page-load searches hit warm cache (Section 8 cron-warmer).
+      import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
+    });
   }
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`

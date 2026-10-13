@@ -12530,18 +12530,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path8, params = {}) {
+      async apiGet(path9, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path8}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path9}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path8, params);
+          return this.apiGet(path9, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path8} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path9} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -12924,6 +12924,80 @@ var init_api = __esm({
   }
 });
 
+// server/common/singleton.ts
+var singleton_exports = {};
+__export(singleton_exports, {
+  acquireSingletonLock: () => acquireSingletonLock,
+  runSingleton: () => runSingleton
+});
+async function mysqlLock(name) {
+  const conn = await import_promise3.default.createConnection(settings.mysqlUrl);
+  try {
+    const [rows] = await conn.query(
+      "SELECT COALESCE(GET_LOCK(?, 0), 0) AS releasable",
+      [`try1second_${name}`]
+    );
+    const ok = Number(rows?.[0]?.releasable) === 1;
+    if (!ok) {
+      await conn.end();
+      return false;
+    }
+    conn.on("error", () => void 0);
+    return true;
+  } catch {
+    try {
+      await conn.end();
+    } catch {
+    }
+    return false;
+  }
+}
+function fileLock(name) {
+  const file = import_node_path3.default.join(dataDir, `singleton-${name}.lock`);
+  try {
+    const st = import_node_fs3.default.statSync(file);
+    if (Date.now() - st.mtimeMs < STALE_MS) return false;
+    import_node_fs3.default.unlinkSync(file);
+  } catch {
+  }
+  try {
+    import_node_fs3.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs3.default.openSync(file, "wx");
+    import_node_fs3.default.writeSync(fd, String(process.pid));
+    import_node_fs3.default.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function acquireSingletonLock(name) {
+  try {
+    if (settings.mysqlUrl) return await mysqlLock(name);
+  } catch {
+  }
+  return fileLock(name);
+}
+async function runSingleton(name, fn) {
+  const held = await acquireSingletonLock(name);
+  if (!held) {
+    log.info("Bootstrap", `Background duties deferred \u2014 another app instance already runs "${name}"`);
+    return false;
+  }
+  await fn();
+  return true;
+}
+var import_node_fs3, import_node_path3, import_promise3, STALE_MS;
+var init_singleton = __esm({
+  "server/common/singleton.ts"() {
+    import_node_fs3 = __toESM(require("node:fs"), 1);
+    import_node_path3 = __toESM(require("node:path"), 1);
+    import_promise3 = __toESM(require("mysql2/promise"), 1);
+    init_settings();
+    init_logger();
+    STALE_MS = 10 * 6e4;
+  }
+});
+
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
@@ -13003,7 +13077,7 @@ async function main() {
     });
   }, intervalMin * 6e4);
 }
-var SEED_QUERIES;
+var SEED_QUERIES, invokedAsScript;
 var init_warm = __esm({
   "server/cron/warm.ts"() {
     init_db();
@@ -13025,10 +13099,13 @@ var init_warm = __esm({
       { query: "delhi to jaipur", vertical: "bus" },
       { query: "goa", vertical: "hotels" }
     ];
-    main().catch((e) => {
-      log.error("Cron", "Warmer crashed", { error: String(e) });
-      process.exit(1);
-    });
+    invokedAsScript = /cron/.test(String(process.argv[1] || ""));
+    if (invokedAsScript) {
+      main().catch((e) => {
+        log.error("Cron", "Warmer crashed", { error: String(e) });
+        process.exit(1);
+      });
+    }
   }
 });
 
@@ -13056,9 +13133,12 @@ async function createApp() {
   app.use("/api/v1", affiliateRouter2);
   await bootstrapBackend2();
   if (settings2.env !== "test") {
-    startWorkers2();
-    bootstrapAffiliateSync2();
-    Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
+    const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
+    await runSingleton2("background", async () => {
+      startWorkers2();
+      bootstrapAffiliateSync2();
+      Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
+    });
   }
   const dist = import_path4.default.resolve(__dirname2, "dist");
   if (import_fs3.default.existsSync(dist)) {
