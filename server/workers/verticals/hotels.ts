@@ -8,6 +8,8 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { photonGeocode, parseOverpassHotels, overpassHotelQuery } from '../parsers/osmTravel';
 import { parseBookingHotels } from '../parsers/booking';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
+import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
+import { cffiFetch } from '../../common/curlCffiFetch';
 import { AcquisitionError } from '../../common/httpClient';
 
 function cityFromQuery(ctx: { query: any }): string | null {
@@ -15,7 +17,7 @@ function cityFromQuery(ctx: { query: any }): string | null {
   const raw = String(q.rawQuery || '').trim();
   // The destination the USER TYPED always wins over their device/profile city
   // (searching "Goa" from Delhi must never return Delhi hotels).
-  const strip = (x: string) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|book|cheap|best|check-?in:?|tomorrow|today)\b/gi, ' ')
+  const strip = (x: string) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, ' ')
     .replace(/,.*$/, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
   const cleaned = strip(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
@@ -35,6 +37,35 @@ function stayDates(q: any): { checkin: string; checkout: string } {
 export const hotelsWorker: VerticalWorker = {
   vertical: 'hotels',
   tasks: [
+    {
+      // Real nightly rates from Cleartrip's Next.js SEO SRP: __NEXT_DATA__
+      // ships full hotel cards (price, slashed price, rating, locality,
+      // Flipkart-CDN images, hotel-details deeplinks). No API keys, no browser.
+      sourceId: 'w_hotels_cleartrip',
+      name: 'Hotels worker: Cleartrip SEO SRP (live nightly rates via __NEXT_DATA__)',
+      priority: 1,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const slug = city.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        // curl_cffi (chrome impersonation) — Cleartrip serves plain node-fetch a bot page without __NEXT_DATA__
+        const res = await cffiFetch(`https://www.cleartrip.com/hotels/india/${slug}`, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (res.status === 403 || res.status === 429) {
+          throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Cleartrip blocked: ${res.status}`, res.status);
+        }
+        if (res.status === 404) throw new AcquisitionError('NOT_FOUND', `Cleartrip has no SEO page for '${city}'`, res.status);
+        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Cleartrip SRP HTTP ${res.status}`, res.status);
+        const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+        if (!m) throw new AcquisitionError('MALFORMED_RESPONSE', 'Cleartrip SRP carried no __NEXT_DATA__');
+        let next: any;
+        try { next = JSON.parse(m[1]); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Cleartrip __NEXT_DATA__ not valid JSON'); }
+        const hotels = parseCleartripHotels(next);
+        if (hotels.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip SRP had no priced hotel cards');
+        return parseCleartripOffers(hotels, ctx.source);
+      },
+    },
     {
       sourceId: 'w_hotels_booking',
       name: 'Hotels worker: Booking.com live rates (worldwide)',
