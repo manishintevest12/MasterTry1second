@@ -9,6 +9,7 @@ import { buildCabEstimate } from '../parsers/osrmCab';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseAbhiBusServices, resolveAbhiBusCity, type AbhiBusRoute } from '../parsers/abhibus';
 import { parseRedBusRoute } from '../parsers/redbusRoute';
+import { parseRedBusSearch, resolveRedBusCity, type RedBusRoute } from '../parsers/redbusSearch';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
@@ -28,20 +29,66 @@ export const busWorker: VerticalWorker = {
   vertical: 'bus',
   tasks: [
     {
-      // redBus route pages embed a live dataInfo JSON (min fare, service/operator counts)
+      // redBus LIVE per-service fares. The SRP bundle (indSearch) builds
+      // POST /rpw/api/searchResults?fromCity&toCity&DOJ with a JSON body — the same
+      // public web gateway the site's own SPA uses. City ids come from
+      // GET /rpw/api/citySuggestion?search=<city>. Each inventory carries the real
+      // fareList, timings, seat counts and operator rating. Falls back to the
+      // route-page dataInfo summary when the ids can't be resolved (small towns).
       sourceId: 'w_bus_redbus',
-      name: 'Bus worker: redBus route-level fare summary',
-      priority: 5,
+      name: 'Bus worker: redBus live services (real fares, timings, seats)',
+      priority: 2,
+      maxPerMinute: 8,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
         if (!rt) return [];
         const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
-        const url = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
-        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        const pageUrl = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
+
+        let resolved: { from?: { id: number; name: string } | null; to?: { id: number; name: string } | null } = {};
+        try {
+          const getJson = async (url: string): Promise<any> => {
+            const r = await ctx.fetch(url, { expectJson: true, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
+            if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `redBus suggestion HTTP ${r.status}`, r.status);
+            try { return JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'redBus citySuggestion non-JSON'); }
+          };
+          const [fromDocs, toDocs] = await Promise.all([
+            getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
+            getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`),
+          ]);
+          resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
+        } catch (e) {
+          if (e instanceof AcquisitionError && (e.failureClass === 'SERVER_ERROR' || e.failureClass === 'MALFORMED_RESPONSE')) {
+            // citySuggestion unavailable — fall through to the route-page fallback below
+          } else { throw e; }
+        }
+
+        const depart = String(ctx.query.travelDates?.depart || '');
+        const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+        if (resolved.from && resolved.to) {
+          const route: RedBusRoute = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
+          const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
+          const r = await ctx.fetch(u, {
+            method: 'POST',
+            expectJson: true,
+            maxBytes: 6_000_000,
+            timeoutMs: 25_000,
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.redbus.in', Referer: pageUrl },
+            body: '{}',
+          });
+          if (r.status === 200) {
+            const items = parseRedBusSearch(r.body, ctx.source, route);
+            if (items.length) return items;
+          }
+          // No live services for the resolved ids/date — fall through to route-page fallback
+        }
+
+        const r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 30_000 });
         if (r.status === 404) return []; // route page not published — honest unavailable
         if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `redBus HTTP ${r.status}`, r.status);
-        const items = parseRedBusRoute(r.body, ctx.source, url);
+        const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'redBus route page carried no parseable dataInfo fare');
         return items;
       },
