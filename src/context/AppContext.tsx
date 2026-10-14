@@ -5,7 +5,7 @@ import { firebaseConfigured, signInWithGoogleAndGetToken } from '../utils/fireba
 
 /** Map a persisted catalogue row (real acquisition) to the feed item shape.
  *  Honesty rules: rating/history stay empty when unverified — never fabricated. */
-const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab'] as const;
+const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab','creditcards'] as const;
 function catalogueRowToItem(row: any): ComparisonItem | null {
   if (!COMPARISON_VERTICALS.includes(row?.vertical)) return null; // unsupported verticals are not forced in
   const price = Number(row.effective_price ?? row.mandatory_total ?? 0);
@@ -890,6 +890,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       cab: `${targetLoc.city || 'Indore'} to Bhopal`,
       loans: 'personal loan',
       insurance: 'health insurance',
+      creditcards: 'best credit card',
     };
     const rawQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
     const targetQuery = rawQuery && rawQuery.trim() ? rawQuery : (DEFAULT_QUERY[vertical] || '');
@@ -1010,6 +1011,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       { id: 'movies', query: 'movies', dated: true },
       { id: 'loans', query: 'personal loan' },
       { id: 'insurance', query: 'health insurance' },
+      { id: 'creditcards', query: 'hdfc credit card' },
     ];
     let cancelled = false;
     // Small concurrency (3) so the active tab's own request is never starved on shared hosting.

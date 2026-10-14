@@ -103,6 +103,14 @@ export const VERTICAL_META: Record<
     criteria: ['Claim Settlement Ratio', 'Cashless Hospital Network', 'No Room Rent Capping', 'Ease of Claim Filing'],
     sampleQueries: ['1 Crore health cover with zero co-pay', 'Term life with 99%+ claim settlement', 'Comprehensive car cover with zero depreciation'],
   },
+  creditcards: {
+    name: 'Credit Cards',
+    icon: 'CreditCard',
+    description: 'Fees, rewards, APR & benefits compared across issuers, direct from banks',
+    searchPlaceholder: 'Search cards (e.g. HDFC travel card, lifetime free, cashback)',
+    criteria: ['Annual Fee', 'Reward Rate', 'Interest Rate', 'Lounge Access'],
+    sampleQueries: ['HDFC credit card', 'lifetime free credit card', 'travel card with lounge access', 'cashback card'],
+  },
   cab: {
     name: 'Cab & Rides',
     icon: 'Car',

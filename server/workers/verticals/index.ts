@@ -9,4 +9,5 @@ import './insurance';
 import './grocery';
 import './movies';
 import './bus';
+import './creditcards';
 export { allVerticalWorkers, getVerticalWorker } from '../verticalWorker';

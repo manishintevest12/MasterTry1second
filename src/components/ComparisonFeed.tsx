@@ -9,6 +9,8 @@ import { HotelDealCard } from './HotelDealCard';
 import { groupHotels } from '../utils/hotelGroups';
 import { groupOffers } from '../utils/offerGroups';
 import { NativeAdCard } from './NativeAdCard';
+import { CreditCardCard } from './CreditCardCard';
+import { CreditCardsCompareModal } from './CreditCardsCompareModal';
 import { VERTICAL_META } from '../data/mockData';
 import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X } from 'lucide-react';
 
@@ -29,6 +31,18 @@ export const ComparisonFeed: React.FC = () => {
   } = useApp();
 
   const meta = VERTICAL_META[vertical] || VERTICAL_META.flights;
+
+  // Credit-cards compare tray: up to 3 cards selected for side-by-side comparison.
+  const [ccCompare, setCcCompare] = useState<Array<any>>([]);
+  const toggleCcCompare = (it: any) => {
+    setCcCompare((prev) => {
+      const exists = prev.find((x) => x.id === it.id);
+      if (exists) return prev.filter((x) => x.id !== it.id);
+      if (prev.length >= 3) return [...prev.slice(1), it]; // keep the latest 3
+      return [...prev, it];
+    });
+  };
+  const [ccCompareOpen, setCcCompareOpen] = useState(false);
 
   // Filter by vertical
   let filtered = items.filter((it) => it.vertical === vertical);
@@ -264,11 +278,53 @@ export const ComparisonFeed: React.FC = () => {
               {/* Standard Organic Result Cards */}
               {isHotels
                 ? visibleHotels.map((g) => <HotelDealCard key={g.key + g.best.item.id} group={g} />)
+                : vertical === 'creditcards'
+                  ? visibleGroups.map((g) => (
+                      <CreditCardCard
+                        key={g.key + g.best.item.id}
+                        group={g}
+                        selectedForCompare={ccCompare.some((c) => c.id === g.best.item.id)}
+                        onToggleCompare={toggleCcCompare}
+                      />
+                    ))
                 : visibleGroups.map((g) => (
                     ['flights', 'bus', 'cab'].includes(g.vertical)
                       ? <TravelDealRow key={g.key + g.best.item.id} group={g} />
                       : <ComparisonCard key={g.key + g.best.item.id} group={g} />
                   ))}
+
+              {/* Credit-cards compare tray: fixed bar with the chosen cards */}
+              {vertical === 'creditcards' && ccCompare.length > 0 && (
+                <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-[92vw]">
+                  <div className="flex items-center gap-3 bg-slate-900 text-white rounded-2xl pl-4 pr-2 py-2 shadow-2xl border border-slate-700">
+                    <span className="text-xs font-bold whitespace-nowrap">{ccCompare.length} card{ccCompare.length > 1 ? 's' : ''} selected</span>
+                    <div className="hidden sm:flex items-center gap-1.5 overflow-x-auto max-w-[50vw]">
+                      {ccCompare.map((c) => (
+                        <span key={c.id} className="flex items-center gap-1 bg-slate-800 rounded-full pl-2.5 pr-1 py-1 text-[11px] font-semibold whitespace-nowrap">
+                          {String(c.title).slice(0, 26)}{String(c.title).length > 26 ? '…' : ''}
+                          <button type="button" onClick={() => toggleCcCompare(c)} className="hover:bg-slate-700 rounded-full p-0.5 cursor-pointer"><X className="w-3 h-3" /></button>
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={ccCompare.length < 2}
+                      onClick={() => setCcCompareOpen(true)}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl px-4 py-1.5 text-xs font-extrabold cursor-pointer whitespace-nowrap"
+                    >
+                      Compare Now
+                    </button>
+                  </div>
+                </div>
+              )}
+              {vertical === 'creditcards' && (
+                <CreditCardsCompareModal
+                  open={ccCompareOpen}
+                  cards={ccCompare}
+                  onClose={() => setCcCompareOpen(false)}
+                  onRemove={(id) => toggleCcCompare(ccCompare.find((c) => c.id === id))}
+                />
+              )}
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
               {shouldShowLoadMore && (

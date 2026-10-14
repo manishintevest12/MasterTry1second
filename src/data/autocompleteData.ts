@@ -344,6 +344,15 @@ export const AUTOCOMPLETE_CATEGORIES: Record<string, string[]> = {
     'Family Health Floater (Cashless in 10,000+ Hospitals)',
     'International Travel Insurance (Worldwide)',
   ],
+  creditcards: [
+    'HDFC Credit Cards (Millennia, Regalia, Infinia)',
+    'Lifetime Free Credit Cards (Zero Annual Fee)',
+    'Travel Cards with Airport Lounge Access',
+    'Best Cashback Cards (Amazon, Flipkart, Myntra)',
+    'RuPay UPI Credit Cards',
+    'Fuel Credit Cards (1% Surcharge Waiver)',
+    'Premium Metal Cards (Atlas, Infinia)',
+  ],
   movie: [
     'All Theatres & Multiplexes',
     'IMAX 3D Experience',

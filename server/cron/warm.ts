@@ -31,6 +31,8 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string }> = 
   { query: 'Indore', vertical: 'hotels', city: 'Indore' },
   { query: 'personal loan', vertical: 'loans' },
   { query: 'health insurance', vertical: 'insurance' },
+  { query: 'hdfc credit card', vertical: 'creditcards' },
+  { query: 'best credit card', vertical: 'creditcards' },
   { query: 'iphone', vertical: 'ecommerce' },
   { query: 'pizza', vertical: 'food', city: 'Indore' },
   { query: 'delhi to jaipur', vertical: 'bus' },

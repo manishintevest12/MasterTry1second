@@ -13,6 +13,8 @@ import { parseZomatoRestaurants } from '../workers/parsers/zomato';
 import { parseBookingHotels } from '../workers/parsers/booking';
 import { parseBankBazaarLoans } from '../workers/parsers/bankbazaarLoans';
 import { parseBankBazaarInsurance } from '../workers/parsers/bankbazaarInsurance';
+import { parseCardInsiderCard } from '../workers/parsers/cardInsider';
+import { parsePaisabazaarCard } from '../workers/parsers/paisabazaarCards';
 import { parseOverpassHotels, overpassHotelQuery } from '../workers/parsers/osmTravel';
 import { loadOpenFlights, parseRoute } from '../workers/parsers/openflights';
 import { recentIndianFilms } from '../workers/parsers/wikidataMovies';
@@ -169,6 +171,13 @@ async function runProbe(targetId: string, name: string, vertical: string, probe:
       else if (probe.parser === 'booking') items = parseBookingHotels(r.body, SRC, probe.url, '2026-11-01', '2026-11-02');
       else if (probe.parser === 'bankbazaarLoans') items = parseBankBazaarLoans(r.body, SRC, probe.url, 'home loan');
       else if (probe.parser === 'bankbazaarInsurance') items = parseBankBazaarInsurance(r.body, SRC, probe.url, 'term life insurance');
+      else if (probe.parser === 'cardInsider') {
+        const c = parseCardInsiderCard(r.body, probe.url);
+        items = c ? [c] : [];
+      } else if (probe.parser === 'paisabazaarCards') {
+        const c = parsePaisabazaarCard(r.body, probe.url);
+        items = c ? [c] : [];
+      }
       else if (probe.parser === 'openlibrary') {
         const j = JSON.parse(r.body);
         items = (j?.docs || []).slice(0, 5).map((d: any) => ({ title: d.title, author: (d.author_name || [])[0], isbn: (d.isbn || [])[0], first_publish_year: d.first_publish_year }));

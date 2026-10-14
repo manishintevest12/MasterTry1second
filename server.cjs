@@ -406,6 +406,7 @@ var init_types = __esm({
       "insurance",
       "movies",
       "bus",
+      "creditcards",
       "coupons",
       "giftcards",
       "banking"
@@ -508,7 +509,7 @@ async function aiAssistedUnderstanding(query) {
     const { GoogleGenAI } = await import("@google/genai");
     const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
     const prompt = `Classify this Indian shopping/travel search query. Return strict JSON only:
-{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
+{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|creditcards|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
 Rules: Do NOT include prices, stock, or availability. Do NOT guess unstated fields.
 Query: ${query.rawQuery}`;
     const res = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
@@ -545,11 +546,12 @@ var init_queryUnderstanding = __esm({
       cab: ["cab", "taxi", "uber", "ola", "rapido", "ride to", "auto", "drop to", "pick up", "pickup and drop"],
       loans: ["loan", "personal loan", "home loan", "car loan", "credit line", "borrow", "lender", "interest rate", "emi"],
       insurance: ["insurance", "policy", "premium", "term plan", "health cover", "bike insurance", "car insurance", "insurer"],
+      creditcards: ["credit card", "credit cards", "creditcard", "cc for", "best credit card", "lifetime free card", "travel card", "cashback card", "regalia", "millennia", "infinia", "amex", "rupay card", "annual fee card", "forex card"],
       movies: ["movie", "cinema", "pvr", "showtime", "show", "ticket for", "film", "concert", "event", "bookmyshow"],
       bus: ["bus", "buses", "volvo", "redbus", "sleeper bus", "bus ticket", "bus to"],
       coupons: ["coupon", "coupons", "promo code", "voucher", "discount code", "offer code", "cashback offer", "deal"],
       giftcards: ["gift card", "gift cards", "giftcard", "voucher card", "gift voucher"],
-      banking: ["credit card", "debit card", "card offer", "bank offer", "hdfc offer", "sbi offer", "axis offer", "icici offer", "no cost emi", "card discount"]
+      banking: ["credit card offer", "credit card offers", "credit card discount", "credit card emi", "debit card", "card offer", "bank offer", "hdfc offer", "sbi offer", "axis offer", "icici offer", "no cost emi", "card discount"]
     };
     PINCODE_RE = /\b(\d{6})\b/;
     MAJOR_CITIES = [
@@ -592,7 +594,7 @@ function getStore() {
   if (store) return store;
   if (settings.mysqlUrl) {
     try {
-      const pool = import_promise.default.createPool({
+      const pool2 = import_promise.default.createPool({
         uri: settings.mysqlUrl,
         waitForConnections: true,
         connectionLimit: 10,
@@ -603,7 +605,7 @@ function getStore() {
         timezone: "Z"
         // KVM4 sizing: small pool, bounded queue
       });
-      store = new MysqlStore(pool);
+      store = new MysqlStore(pool2);
       log.info("DataStore", "MySQL/MariaDB pool initialized (durable source of truth)");
     } catch (err) {
       log.error("DataStore", "MySQL pool init failed, using file fallback", { error: err.message });
@@ -704,9 +706,9 @@ var init_db = __esm({
     init_settings();
     init_logger();
     MysqlStore = class _MysqlStore {
-      constructor(pool) {
+      constructor(pool2) {
         this.kind = "mysql";
-        this.pool = pool;
+        this.pool = pool2;
       }
       static {
         /**
@@ -4295,9 +4297,9 @@ function routeFromQuery(raw) {
   const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const codeOf = (s) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
-  const clean = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
-  const from = clean(m[1]);
-  const to = clean(m[2]);
+  const clean3 = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
+  const from = clean3(m[1]);
+  const to = clean3(m[2]);
   if (!from || !to) return null;
   return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
@@ -5509,8 +5511,8 @@ function parseBharatTaxiCabs(html, source, pageUrl, from, to) {
     for (const row of rows) {
       const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) ?? [];
       if (cells.length < 2) continue;
-      const clean = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
-      parsed.push({ car: clean(cells[0] ?? ""), price: clean(cells[1] ?? "") });
+      const clean3 = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+      parsed.push({ car: clean3(cells[0] ?? ""), price: clean3(cells[1] ?? "") });
     }
     const isFlat = parsed.length > 0 && parsed.every((p) => /^[₹rs\.]*\s?[\d,]{3,6}$/i.test(p.price)) && parsed.every((p) => !/km/i.test(p.price));
     if (isFlat) {
@@ -6816,14 +6818,14 @@ async function cityFromMovieQuery(raw, fallback, fetchJson) {
   return fallback;
 }
 function extractMovieQuery(entity, cityTokens) {
-  const clean = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
-  return clean.join(" ");
+  const clean3 = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
+  return clean3.join(" ");
 }
 function matchesQuery(title, query) {
-  const toks = normCity(query).split(" ").filter((t) => t.length > 1 && !["in", "near", "movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing"].includes(t));
-  if (!toks.length) return true;
+  const toks2 = normCity(query).split(" ").filter((t) => t.length > 1 && !["in", "near", "movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing"].includes(t));
+  if (!toks2.length) return true;
   const hay = normCity(title);
-  return toks.every((t) => hay.includes(t));
+  return toks2.every((t) => hay.includes(t));
 }
 function bmsDiscoverUrl(region, healedBase) {
   const base = healedBase && /^https:\/\/in\.bookmyshow\.com\//.test(healedBase) ? healedBase.replace(/\/$/, "") : DISCOVER_BASE;
@@ -6992,10 +6994,10 @@ function parseCinepolisPage(body) {
     return { nowPlaying: [], comingSoon: [] };
   }
   const pp = d?.props?.pageProps || {};
-  const clean = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
+  const clean3 = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
   const np = pp.nowPlayingMoviesData;
-  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean(Object.values(np)) : clean(np);
-  return { nowPlaying, comingSoon: clean(pp.comingSoonMoviesData) };
+  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean3(Object.values(np)) : clean3(np);
+  return { nowPlaying, comingSoon: clean3(pp.comingSoonMoviesData) };
 }
 function cinepolisDisplayTitle(title) {
   return title.replace(/\s*\((?:[A-Z]{2,8}(?:\s+WI\s+[A-Z]{2,8})?(?:\s+\([^)]*\))?(?:\s+\(\d+D\))?)?\)\s*$/i, "").trim() || title;
@@ -7440,13 +7442,13 @@ async function fetchJsonNode(url) {
 }
 function matchAgg(aggs, title) {
   if (!aggs || aggs.size === 0) return null;
-  const toks = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
+  const toks2 = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
   let best = null;
   let bestScore = 0;
   for (const agg of aggs.values()) {
     const hay = agg.title.toLowerCase();
-    const score = toks.filter((x) => hay.includes(x)).length;
-    if (score === toks.length && score > bestScore) {
+    const score = toks2.filter((x) => hay.includes(x)).length;
+    if (score === toks2.length && score > bestScore) {
       best = agg;
       bestScore = score;
     }
@@ -7868,9 +7870,9 @@ function resolveRedBusCity(docs, city) {
   }
   const lower = String(city || "").toLowerCase();
   const cities = flat.filter((d) => String(d?.locationType || "").toUpperCase() === "CITY" && Number(d?.ID) > 0);
-  const pool = cities.length ? cities : flat.filter((d) => Number(d?.ID) > 0);
-  const exact = pool.find((d) => String(d?.Name || "").toLowerCase() === lower);
-  const chosen = exact || pool[0];
+  const pool2 = cities.length ? cities : flat.filter((d) => Number(d?.ID) > 0);
+  const exact = pool2.find((d) => String(d?.Name || "").toLowerCase() === lower);
+  const chosen = exact || pool2[0];
   return chosen ? { id: Number(chosen.ID), name: String(chosen.Name || city) } : null;
 }
 function parseRedBusSearch(json, source, route) {
@@ -8282,6 +8284,484 @@ var init_bus = __esm({
   }
 });
 
+// server/workers/parsers/cardInsider.ts
+function feeToInr(fee) {
+  if (!fee) return void 0;
+  if (/lifetime\s*free|life\s*time\s*free|^nil$|^free$|no (joining|annual|renewal) fee/i.test(fee)) return 0;
+  const m = /(?:₹|rs\.?\s?)\s*([\d,]+(?:\.\d+)?)/i.exec(fee);
+  if (m) return Number(m[1].replace(/,/g, ""));
+  return void 0;
+}
+function linesOf(html) {
+  const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>/gi, " ");
+  return body.replace(/<[^>]+>/g, "\n").split("\n").map(clean).filter(Boolean);
+}
+function valueAfter(lines, label, from = 0, to = lines.length) {
+  const i = lines.findIndex((l, k) => k >= from && k < to && l.toLowerCase() === label.toLowerCase());
+  if (i < 0 || i + 1 >= lines.length) return void 0;
+  const v = lines[i + 1];
+  if (!v || NA.test(v)) return void 0;
+  return v;
+}
+function detectNetwork(text) {
+  if (/rupay/i.test(text)) return "RuPay";
+  if (/diners/i.test(text)) return "Diners Club";
+  if (/american express|\bamex\b/i.test(text)) return "American Express";
+  if (/mastercard|master card/i.test(text)) return "Mastercard";
+  if (/\bvisa\b/i.test(text)) return "Visa";
+  return void 0;
+}
+function parseApr(interest) {
+  if (!interest) return {};
+  const ann = /(\d{1,2}(?:\.\d+)?)\s*%\s*(?:p\.?a\.?|annually|per annum|annual)/i.exec(interest) || /\((\d{1,2}(?:\.\d+)?)\s*%\s*annual/i.exec(interest);
+  if (ann) return { apr: `${ann[1]}%`, aprMax: Number(ann[1]) };
+  const mo = /(\d{1,2}(?:\.\d+)?)\s*%\s*(?:per\s*month|p\.?m\.?|monthly)/i.exec(interest);
+  if (mo) {
+    const a = Math.round(Number(mo[1]) * 12 * 10) / 10;
+    return { apr: `${a}%`, aprMax: a };
+  }
+  return {};
+}
+function rewardRange(rate) {
+  if (!rate) return void 0;
+  const nums = [...rate.matchAll(/(\d{1,2}(?:\.\d+)?)\s*%/g)].map((m) => Number(m[1])).filter((n) => n > 0 && n <= 30);
+  if (!nums.length) return void 0;
+  const lo = Math.min(...nums), hi = Math.max(...nums);
+  return lo === hi ? `${hi}%` : `${lo}\u2013${hi}%`;
+}
+function parseCardInsiderCard(html, cardUrl) {
+  const lines = linesOf(html);
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+  let name = h1 ? clean(h1[1].replace(/<[^>]+>/g, " ")) : "";
+  name = name.replace(/\s*[-–—|:]\s*(review|apply).*$/i, "").replace(/\s+review.*$/i, "").trim();
+  if (!name || !/card/i.test(name)) return null;
+  const feesFrom = Math.max(0, lines.findIndex((l) => /^fees and$/i.test(l)));
+  const joining = valueAfter(lines, "Joining Fee", feesFrom) || valueAfter(lines, "Joining Fee");
+  const renewal = valueAfter(lines, "Renewal Fee", feesFrom) || valueAfter(lines, "Renewal Fee") || valueAfter(lines, "Annual Fee");
+  if (!joining && !renewal) return null;
+  const rewardsFrom = Math.max(0, lines.findIndex((l) => /^rewards and$/i.test(l)));
+  const rewardsTo = feesFrom > rewardsFrom ? feesFrom : lines.length;
+  const rewardRate = valueAfter(lines, "Rewards Rate", rewardsFrom, rewardsTo) || valueAfter(lines, "Reward Rate", rewardsFrom, rewardsTo);
+  const interest = valueAfter(lines, "Interest Rates", feesFrom) || valueAfter(lines, "Interest Rate", feesFrom);
+  const { apr, aprMax } = parseApr(interest);
+  const ratingM = /(\d(?:\.\d)?)\s*\/\s*5/.exec(lines.slice(0, 80).join(" "));
+  const img = [...html.matchAll(/https:\/\/cardinsider\.com\/wp-content\/uploads\/[^"'\s)]+?\.(?:webp|png|jpg|jpeg)/gi)].map((m) => m[0]).filter((u) => !/-\d{2,4}x\d{2,4}\./.test(u))[0];
+  const bankSlug = /cardinsider\.com\/([a-z0-9-]+)\//i.exec(cardUrl)?.[1] || "";
+  return {
+    name,
+    bank: BANK_NAMES[bankSlug] || bankSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    network: detectNetwork(name) || detectNetwork(valueAfter(lines, "Card Network") || ""),
+    joiningFee: joining,
+    joiningFeeInr: feeToInr(joining),
+    annualFee: renewal,
+    annualFeeInr: feeToInr(renewal),
+    rewardRate,
+    welcomeBenefit: valueAfter(lines, "Welcome Benefits", rewardsFrom, rewardsTo) || valueAfter(lines, "Welcome Benefits"),
+    domesticLounge: valueAfter(lines, "Domestic Lounge", rewardsFrom, rewardsTo),
+    intlLounge: valueAfter(lines, "International Lounge", rewardsFrom, rewardsTo),
+    forexMarkup: valueAfter(lines, "Forex Markup", feesFrom) || valueAfter(lines, "Forex Markup"),
+    apr,
+    aprMax,
+    fuelWaiver: valueAfter(lines, "Fuel Surcharge Waiver", feesFrom),
+    bestFor: valueAfter(lines, "Best Suitable For"),
+    rating: ratingM ? Number(ratingM[1]) : void 0,
+    imageUrl: img,
+    cardUrl
+  };
+}
+function parseIssuerIndex(html, bankSlug) {
+  const re = new RegExp(`https://cardinsider\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi");
+  const out = /* @__PURE__ */ new Set();
+  for (const m of html.matchAll(re)) {
+    const slug = m[1];
+    if (!/credit-card$/.test(slug)) continue;
+    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug)) continue;
+    out.add(m[0]);
+  }
+  return [...out];
+}
+function bankCardUrl(bankSlug, cardName) {
+  const q3 = encodeURIComponent(cardName);
+  const BASE2 = {
+    "hdfc-bank": "https://www.hdfc.bank.in/credit-cards",
+    "sbi-card": "https://www.sbicard.com/en/personal/credit-cards.page",
+    "axis-bank": "https://www.axis.bank.in/cards/credit-card",
+    "icici-bank": "https://www.icici.bank.in/personal-banking/cards/credit-card",
+    "idfc-first-bank": "https://www.idfcfirst.bank.in/credit-card",
+    "kotak-mahindra-bank": "https://www.kotak.com/en/personal-banking/cards/credit-cards.html",
+    "indusind-bank": "https://www.indusind.bank.in/in/en/personal/cards/credit-card.html",
+    "au-bank": "https://www.aubank.in/personal-banking/credit-cards",
+    "yes-bank": "https://www.yesbank.in/personal-banking/yes-individual/cards/credit-cards",
+    "bank-of-baroda": "https://www.bobcard.co.in/credit-cards",
+    "american-express": "https://www.americanexpress.com/in/credit-cards/",
+    "standard-chartered": "https://www.sc.com/in/credit-cards/",
+    "rbl-bank": "https://www.rblbank.com/product/cards/credit-cards",
+    "hsbc": "https://www.hsbc.co.in/credit-cards/"
+  };
+  return BASE2[bankSlug] || `https://cardinsider.com/${bankSlug}/`;
+}
+function cardToRawItem(c, source, bankSlug, fingerprintSeed) {
+  const attrs = {
+    bank: c.bank,
+    ...c.network ? { network: c.network } : {},
+    ...c.joiningFee ? { joining_fee: c.joiningFee } : {},
+    ...c.joiningFeeInr !== void 0 ? { joining_fee_inr: String(c.joiningFeeInr) } : {},
+    ...c.annualFee ? { annual_fee: c.annualFee } : {},
+    ...c.annualFeeInr !== void 0 ? { annual_fee_inr: String(c.annualFeeInr) } : {},
+    ...c.rewardRate ? { reward_rate_text: c.rewardRate.slice(0, 220) } : {},
+    ...rewardRange(c.rewardRate) ? { reward_rate: rewardRange(c.rewardRate) } : {},
+    ...c.welcomeBenefit ? { welcome_benefit: c.welcomeBenefit.slice(0, 160) } : {},
+    ...c.domesticLounge ? { domestic_lounge: c.domesticLounge.slice(0, 160) } : {},
+    ...c.intlLounge ? { international_lounge: c.intlLounge.slice(0, 160) } : {},
+    ...c.forexMarkup ? { forex_markup: c.forexMarkup } : {},
+    ...c.apr ? { apr: c.apr } : {},
+    ...c.fuelWaiver ? { fuel_waiver: c.fuelWaiver.slice(0, 200) } : {},
+    ...c.bestFor ? { best_for: c.bestFor } : {},
+    ...c.rating !== void 0 ? { rating: String(c.rating) } : {},
+    ...c.imageUrl ? { image_url: c.imageUrl } : {},
+    card_page: c.cardUrl,
+    price_basis: "annual (renewal) fee published for the card; rewards and APR as stated by the issuer",
+    data_note: `Fees, rewards and APR as published (via CardInsider review of the issuer's terms), observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; final eligibility and charges are decided by the bank on application`
+  };
+  return newRawItem(source, {
+    title: c.name.slice(0, 200),
+    seller: c.bank,
+    sellerUrl: bankCardUrl(bankSlug, c.name),
+    currency: "INR",
+    price: c.annualFeeInr,
+    // comparable metric: yearly fee (0 = lifetime free). undefined when the page does not state it
+    attributes: attrs,
+    evidence: {
+      sourceUrl: c.cardUrl,
+      sourceReference: `${bankSlug}:${c.name}`,
+      rawFingerprint: (0, import_crypto12.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
+      extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : [], ...c.rewardRate ? ["reward_rate"] : [], ...c.apr ? ["apr"] : []]
+    }
+  });
+}
+var import_crypto12, NA, clean, BANK_NAMES;
+var init_cardInsider = __esm({
+  "server/workers/parsers/cardInsider.ts"() {
+    import_crypto12 = require("crypto");
+    init_contract();
+    NA = /^(n\/?a|not applicable|nil|none|-+)$/i;
+    clean = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+    BANK_NAMES = {
+      "hdfc-bank": "HDFC Bank",
+      "axis-bank": "Axis Bank",
+      "sbi-card": "SBI Card",
+      "icici-bank": "ICICI Bank",
+      "kotak-mahindra-bank": "Kotak Mahindra Bank",
+      "idfc-first-bank": "IDFC FIRST Bank",
+      "au-bank": "AU Small Finance Bank",
+      "indusind-bank": "IndusInd Bank",
+      "yes-bank": "YES Bank",
+      "bank-of-baroda": "Bank of Baroda",
+      "american-express": "American Express",
+      "standard-chartered": "Standard Chartered",
+      "hsbc": "HSBC",
+      "rbl-bank": "RBL Bank",
+      "federal-bank": "Federal Bank",
+      "indian-bank": "Indian Bank",
+      "pnb": "Punjab National Bank",
+      "bobcard": "BOBCARD",
+      "onecard": "OneCard"
+    };
+  }
+});
+
+// server/workers/parsers/paisabazaarCards.ts
+function parsePaisabazaarCard(html, url) {
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+  const name = h1 ? clean2(h1[1].replace(/<[^>]+>/g, " ")) : "";
+  if (!name || !/credit card/i.test(name)) return null;
+  const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>/gi, " ");
+  const L = body.replace(/<[^>]+>/g, "\n").split("\n").map(clean2).filter(Boolean);
+  const feesAt = L.findIndex((l) => /^fees\s*&\s*charges$/i.test(l));
+  const val = (label) => {
+    const i = L.findIndex((l, k) => k >= Math.max(0, feesAt - 6) && l.toLowerCase() === label.toLowerCase());
+    return i >= 0 ? L[i + 1] : void 0;
+  };
+  const joining = val("Joining Fee");
+  const annual = val("Annual Fee");
+  if (!joining && !annual) return null;
+  const bankSlug = /paisabazaar\.com\/([a-z0-9-]+)\//i.exec(url)?.[1] || "";
+  const imgs = [...html.matchAll(/https:\/\/www\.paisabazaar\.com\/wp-content\/uploads\/[^"'\s)]+\.(?:webp|png|jpg|jpeg)/gi)].map((m) => m[0]);
+  const slugWords = name.toLowerCase().split(/\W+/).filter((w) => w.length > 3 && w !== "credit" && w !== "card");
+  const img = imgs.find((u) => slugWords.some((w) => u.toLowerCase().includes(w)));
+  return { name, bank: BANK_NAMES[bankSlug] || bankSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), joiningFee: joining, annualFee: annual, annualFeeInr: feeToInr(annual), imageUrl: img, network: detectNetwork(name), url };
+}
+function parsePaisabazaarIndex(html, bankSlug) {
+  const out = /* @__PURE__ */ new Set();
+  for (const m of html.matchAll(new RegExp(`https://www\\.paisabazaar\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi"))) {
+    const s = m[1];
+    if (!/credit-card$/.test(s) || /^(credit-card|best|how|check|.*fees-charges|.*offers|.*-vs-.*|.*bill-payment.*|.*limit.*|.*login.*|.*customer-care.*|.*eligibility.*)$/.test(s)) continue;
+    out.add(m[0]);
+  }
+  return [...out];
+}
+function pbToRawItem(c, source, bankSlug, seed) {
+  return newRawItem(source, {
+    title: c.name.slice(0, 200),
+    seller: c.bank,
+    sellerUrl: bankCardUrl(bankSlug, c.name),
+    currency: "INR",
+    price: c.annualFeeInr,
+    attributes: {
+      bank: c.bank,
+      ...c.network ? { network: c.network } : {},
+      ...c.joiningFee ? { joining_fee: c.joiningFee } : {},
+      ...c.annualFee ? { annual_fee: c.annualFee } : {},
+      ...c.annualFeeInr !== void 0 ? { annual_fee_inr: String(c.annualFeeInr) } : {},
+      ...c.imageUrl ? { image_url: c.imageUrl } : {},
+      card_page: c.url,
+      price_basis: "annual (renewal) fee published for the card",
+      data_note: `Fees as published on Paisabazaar's card page, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; the bank decides final charges on application`
+    },
+    evidence: {
+      sourceUrl: c.url,
+      sourceReference: `${bankSlug}:${c.name}`,
+      rawFingerprint: (0, import_crypto13.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
+      extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : []]
+    }
+  });
+}
+var import_crypto13, clean2;
+var init_paisabazaarCards = __esm({
+  "server/workers/parsers/paisabazaarCards.ts"() {
+    import_crypto13 = require("crypto");
+    init_contract();
+    init_cardInsider();
+    clean2 = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  }
+});
+
+// server/workers/parsers/bankCardLinks.ts
+async function bankCardIndex(bankSlug) {
+  const hub = HUBS[bankSlug];
+  if (!hub) return [];
+  const hit = CACHE.get(bankSlug);
+  if (hit && Date.now() - hit.at < TTL) return hit.links;
+  try {
+    const seen = /* @__PURE__ */ new Map();
+    const bodies = [];
+    const r = await cffiFetch(hub.url, { impersonate: "chrome", timeoutMs: 2e4 });
+    if (r.status === 200) bodies.push({ body: r.body, sitemap: false });
+    if (hub.sitemap) {
+      const sm = await cffiFetch(hub.sitemap, { impersonate: "chrome", timeoutMs: 2e4 });
+      if (sm.status === 200) bodies.push({ body: sm.body, sitemap: true });
+    }
+    if (!bodies.length) return hit?.links || [];
+    const hrefs = [];
+    for (const b of bodies) {
+      const re = b.sitemap ? /<loc>([^<]+)<\/loc>/g : /href="([^"#?]+)"/g;
+      for (const m of b.body.matchAll(re)) hrefs.push(m[1]);
+    }
+    for (const raw of hrefs) {
+      let h = raw;
+      if (h.startsWith(hub.base)) h = h.slice(hub.base.length);
+      if (!h.startsWith("/") || !hub.pathRe.test(h)) continue;
+      const slug = h.split("/").pop().replace(/\.page$/, "");
+      if (NOISE.test(slug)) continue;
+      seen.set(hub.base + h, slug);
+    }
+    const links = [...seen].map(([url, slug]) => ({ url, slug }));
+    CACHE.set(bankSlug, { at: Date.now(), links });
+    return links;
+  } catch {
+    return hit?.links || [];
+  }
+}
+async function resolveBankCardUrl(bankSlug, cardName) {
+  const idx = await bankCardIndex(bankSlug);
+  if (!idx.length) return null;
+  const want = toks(cardName).filter((t) => !GENERIC.has(t));
+  if (!want.length) return null;
+  let best = null;
+  for (const l of idx) {
+    const st = new Set(toks(l.slug.replace(/-/g, " ")));
+    const hit = want.filter((t) => st.has(t) || [...st].some((x) => x.startsWith(t) && t.length > 3)).length;
+    if (hit < want.length) continue;
+    const extra = [...st].filter((t) => !GENERIC.has(t) && !want.includes(t)).length;
+    if (!best || extra < best.extra) best = { url: l.url, score: hit, extra };
+  }
+  return best ? best.url : null;
+}
+var HUBS, NOISE, CACHE, TTL, GENERIC, toks;
+var init_bankCardLinks = __esm({
+  "server/workers/parsers/bankCardLinks.ts"() {
+    init_curlCffiFetch();
+    HUBS = {
+      "hdfc-bank": { url: "https://www.hdfc.bank.in/credit-cards", base: "https://www.hdfc.bank.in", pathRe: /^\/credit-cards\/[a-z0-9-]+$/ },
+      "axis-bank": { url: "https://www.axis.bank.in/cards/credit-card", base: "https://www.axis.bank.in", pathRe: /^\/cards\/credit-card\/[a-z0-9-]+$/ },
+      "icici-bank": { url: "https://www.icici.bank.in/personal-banking/cards/credit-card", base: "https://www.icici.bank.in", pathRe: /^\/personal-banking\/cards\/credit-card\/[a-z0-9-]+$/ },
+      "idfc-first-bank": { url: "https://www.idfcfirst.bank.in/credit-card", base: "https://www.idfcfirst.bank.in", pathRe: /^\/credit-card\/[a-z0-9-]+$/, sitemap: "https://www.idfcfirst.bank.in/sitemap.xml" },
+      // SBI Card's hub is client-rendered; its public sitemap lists every card page.
+      "sbi-card": { url: "https://www.sbicard.com/en/personal/credit-cards.html", base: "https://www.sbicard.com", pathRe: /^\/en\/personal\/credit-cards\/[a-z0-9-]+\.html$/, sitemap: "https://www.sbicard.com/sitemap.xml" }
+    };
+    NOISE = /blog|calculator|emi|pin|bill|offers?$|apply-now|statement|faq|debit|kisan|business|nri|corporate|upgrade|limit|status|balance|against|add-on|secured|compare|documents|rewards$|benefits|services|programme|do-not-call|commercial|track|lounge-access|lifetime-free|metal|micro|wow|manage|login|register/i;
+    CACHE = /* @__PURE__ */ new Map();
+    TTL = 6 * 36e5;
+    GENERIC = /* @__PURE__ */ new Set(["credit", "card", "cards", "bank", "hdfc", "axis", "icici", "sbi", "idfc", "first", "the", "and", "visa", "mastercard", "rupay", "world", "signature", "platinum", "lifetime", "free"]);
+    toks = (s) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 1);
+  }
+});
+
+// server/workers/verticals/creditcards.ts
+function queryPlan(raw) {
+  const q3 = raw || "";
+  const banks = BANK_ALIASES.filter((b) => b.re.test(q3)).map((b) => b.slug);
+  const tokens = q3.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 2 && !STOP.has(t) && !BANK_ALIASES.some((b) => b.re.test(t)));
+  return { banks, tokens, intents: INTENTS.filter((i) => i.re.test(q3)) };
+}
+function banksFor(plan, universe, map = (s) => s) {
+  const wanted = plan.banks.map((b) => universe.find((u) => map(u) === b) || b).filter((b) => universe.includes(b));
+  return wanted.length ? wanted : universe.slice(0, 6);
+}
+async function pool(items, size, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(...await Promise.all(items.slice(i, i + size).map(fn)));
+  return out;
+}
+async function ciTask(ctx) {
+  const plan = queryPlan(`${ctx.query.rawQuery || ""} ${ctx.query.entityName || ""}`);
+  const banks = banksFor(plan, CI_BANKS);
+  const indexes = await pool(banks, 4, async (b) => {
+    const r = await cffiFetch(`https://cardinsider.com/${b}/`, { impersonate: "chrome", timeoutMs: 15e3 });
+    return { b, status: r.status, links: r.status === 200 ? parseIssuerIndex(r.body, b) : [] };
+  });
+  if (indexes.every((i) => i.status !== 200)) throw new AcquisitionError("SERVER_ERROR", `CardInsider issuer pages HTTP ${indexes.map((i) => i.status).join("/")}`);
+  let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
+  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split("/").filter(Boolean).pop().replace(/-/g, " "), plan.tokens));
+  targets = targets.slice(0, plan.intents.length ? 90 : MAX_CARDS + 10);
+  if (!targets.length) throw new AcquisitionError("EMPTY_RESPONSE", "CardInsider lists no card matching this search");
+  const pages = await pool(targets, 8, async (t) => {
+    try {
+      const r = await cffiFetch(t.u, { impersonate: "chrome", timeoutMs: 15e3 });
+      return { t, r };
+    } catch {
+      return { t, r: null };
+    }
+  });
+  const out = [];
+  for (const { t, r } of pages) {
+    if (!r || r.status !== 200) continue;
+    const c = parseCardInsiderCard(r.body, t.u);
+    if (!c) continue;
+    if (plan.intents.length) {
+      const hay = `${c.name} ${c.bestFor || ""} ${c.rewardRate || ""} ${c.domesticLounge || ""} ${c.intlLounge || ""} ${c.joiningFee || ""} ${c.annualFee || ""} ${c.fuelWaiver || ""}`;
+      if (!plan.intents.every((i) => i.test(hay))) continue;
+    }
+    const item = cardToRawItem(c, ctx.source, t.b, r.body);
+    const official = await resolveBankCardUrl(t.b, c.name);
+    if (official) {
+      item.sellerUrl = official;
+      item.attributes.official_page = official;
+    } else item.attributes.apply_note = "Card-specific bank page not found; link opens the bank's credit-card hub";
+    out.push(item);
+    if (out.length >= MAX_CARDS) break;
+  }
+  if (!out.length) throw new AcquisitionError("EMPTY_RESPONSE", "No CardInsider card page matched this search");
+  return out;
+}
+async function pbTask(ctx) {
+  const plan = queryPlan(`${ctx.query.rawQuery || ""} ${ctx.query.entityName || ""}`);
+  const banks = banksFor(plan, PB_BANKS, (s) => PB_TO_CI[s] || s);
+  const indexes = await pool(banks, 4, async (b) => {
+    const r = await cffiFetch(`https://www.paisabazaar.com/${b}/credit-card/`, { impersonate: "chrome", timeoutMs: 15e3 });
+    return { b, status: r.status, links: r.status === 200 ? parsePaisabazaarIndex(r.body, b) : [] };
+  });
+  let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
+  if (!targets.length) throw new AcquisitionError(indexes.some((i) => i.status === 403) ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", `Paisabazaar issuer pages gave no card links (HTTP ${indexes.map((i) => i.status).join("/")})`);
+  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split("/").filter(Boolean).pop().replace(/-/g, " "), plan.tokens));
+  targets = targets.slice(0, plan.intents.length ? 60 : 30);
+  const pages = await pool(targets, 6, async (t) => {
+    try {
+      return { t, r: await cffiFetch(t.u, { impersonate: "chrome", timeoutMs: 15e3 }) };
+    } catch {
+      return { t, r: null };
+    }
+  });
+  const out = [];
+  for (const { t, r } of pages) {
+    if (!r || r.status !== 200) continue;
+    const c = parsePaisabazaarCard(r.body, t.u);
+    if (!c) continue;
+    if (plan.intents.length && !plan.intents.every((i) => i.test(`${c.name} ${c.joiningFee || ""} ${c.annualFee || ""}`))) continue;
+    const ciSlug = PB_TO_CI[t.b] || t.b;
+    const item = pbToRawItem(c, ctx.source, ciSlug, r.body);
+    const official = await resolveBankCardUrl(ciSlug, c.name);
+    if (official) {
+      item.sellerUrl = official;
+      item.attributes.official_page = official;
+    }
+    out.push(item);
+    if (out.length >= MAX_CARDS) break;
+  }
+  if (!out.length) throw new AcquisitionError("EMPTY_RESPONSE", "No Paisabazaar card page matched this search");
+  return out;
+}
+var CI_BANKS, PB_BANKS, PB_TO_CI, BANK_ALIASES, INTENTS, STOP, nameMatches, MAX_CARDS, creditCardsWorker;
+var init_creditcards = __esm({
+  "server/workers/verticals/creditcards.ts"() {
+    init_verticalWorker();
+    init_httpClient();
+    init_curlCffiFetch();
+    init_cardInsider();
+    init_paisabazaarCards();
+    init_bankCardLinks();
+    CI_BANKS = ["hdfc-bank", "sbi-card", "axis-bank", "icici-bank", "idfc-first-bank", "indusind-bank", "au-bank", "yes-bank", "rbl-bank", "american-express", "bank-of-baroda", "standard-chartered", "kotak-mahindra-bank"];
+    PB_BANKS = ["hdfc-bank", "axis-bank", "icici-bank", "sbi-card", "idfc-first-bank", "indusind-bank", "au-small-finance-bank", "yes-bank", "rbl-bank", "amex-bank", "bobcard", "kotak-mahindra-bank"];
+    PB_TO_CI = { "au-small-finance-bank": "au-bank", "amex-bank": "american-express", bobcard: "bank-of-baroda" };
+    BANK_ALIASES = [
+      { slug: "hdfc-bank", re: /\bhdfc\b/i },
+      { slug: "sbi-card", re: /\bsbi\b/i },
+      { slug: "axis-bank", re: /\baxis\b/i },
+      { slug: "icici-bank", re: /\bicici\b/i },
+      { slug: "idfc-first-bank", re: /\bidfc\b/i },
+      { slug: "indusind-bank", re: /indusind/i },
+      { slug: "au-bank", re: /\bau\b|au small/i },
+      { slug: "yes-bank", re: /\byes bank\b|\byes\b/i },
+      { slug: "rbl-bank", re: /\brbl\b/i },
+      { slug: "american-express", re: /amex|american express/i },
+      { slug: "bank-of-baroda", re: /\bbob\b|baroda|bobcard/i },
+      { slug: "standard-chartered", re: /standard chartered|\bsc\b/i },
+      { slug: "kotak-mahindra-bank", re: /kotak/i }
+    ];
+    INTENTS = [
+      { re: /travel|lounge|airport|miles/i, test: (t) => /lounge|miles|travel|air|vistara|indigo|atlas|flight/i.test(t) },
+      { re: /cash\s*back|cashback/i, test: (t) => /cashback/i.test(t) },
+      { re: /lifetime\s*free|\bltf\b|no annual fee|zero fee/i, test: (t) => /lifetime free/i.test(t) },
+      { re: /fuel|petrol|diesel/i, test: (t) => /fuel|petrol|indian oil|bpcl|hpcl/i.test(t) },
+      { re: /shopping|online|amazon|flipkart/i, test: (t) => /shopping|amazon|flipkart|myntra|online/i.test(t) },
+      { re: /dining|food|swiggy|zomato/i, test: (t) => /dining|swiggy|zomato|food/i.test(t) },
+      { re: /rupay|upi/i, test: (t) => /rupay/i.test(t) }
+    ];
+    STOP = /* @__PURE__ */ new Set(["credit", "card", "cards", "best", "top", "compare", "comparison", "india", "bank", "for", "with", "the", "and", "in", "a", "of", "to", "me", "my", "cc", "free", "lifetime", "travel", "cashback", "cash", "back", "fuel", "shopping", "online", "dining", "rupay", "lounge"]);
+    nameMatches = (name, tokens) => !tokens.length || tokens.every((t) => name.toLowerCase().includes(t));
+    MAX_CARDS = 40;
+    creditCardsWorker = {
+      vertical: "creditcards",
+      tasks: [
+        { sourceId: "w_creditcards_cardinsider", name: "Credit cards worker: CardInsider issuer index + card pages (SSR)", priority: 10, timeoutMs: 4e4, run: ciTask },
+        { sourceId: "w_creditcards_paisabazaar", name: "Credit cards worker: Paisabazaar issuer index + card pages (SSR)", priority: 11, timeoutMs: 4e4, run: pbTask },
+        {
+          sourceId: "w_creditcards_bankbazaar",
+          name: "Credit cards worker: BankBazaar (probe)",
+          priority: 20,
+          run: async () => {
+            const r = await cffiFetch("https://www.bankbazaar.com/credit-card.html", { impersonate: "chrome", timeoutMs: 15e3 });
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `BankBazaar HTTP ${r.status}`, r.status);
+            if (looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "BankBazaar presented a challenge page");
+            throw new AcquisitionError("EMPTY_RESPONSE", "BankBazaar credit-card hub is a client-rendered list: it publishes card names but no per-card fee or reward table to browserless HTTP.");
+          }
+        }
+      ]
+    };
+    registerVerticalWorker(creditCardsWorker);
+  }
+});
+
 // server/workers/verticals/index.ts
 var init_verticals = __esm({
   "server/workers/verticals/index.ts"() {
@@ -8295,6 +8775,7 @@ var init_verticals = __esm({
     init_grocery();
     init_movies();
     init_bus();
+    init_creditcards();
     init_verticalWorker();
   }
 });
@@ -8559,11 +9040,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto12, HttpAcquisitionAdapter;
+var cheerio5, import_crypto14, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto12 = require("crypto");
+    import_crypto14 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -8610,7 +9091,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -8659,10 +9140,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto13, StructuredDataAdapter;
+var import_crypto15, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto13 = require("crypto");
+    import_crypto15 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -8692,7 +9173,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto15.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -8749,10 +9230,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto14, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto16, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto14 = require("crypto");
+    import_crypto16 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -8800,7 +9281,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -8824,7 +9305,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -8991,7 +9472,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -9572,6 +10053,12 @@ var init_validation = __esm({
         { name: "premium", present: (o) => o.prices.mandatoryTotal !== void 0, blocking: false },
         { name: "indicative_flag", present: (o) => o.attributes["quote_type"] === "indicative" || o.attributes["quote_type"] === "quoted", blocking: false }
       ],
+      creditcards: [
+        { name: "card", present: (o) => Boolean(o.title) },
+        { name: "issuer", present: (o) => Boolean(o.vendor) },
+        { name: "annual_fee", present: (o) => o.prices.mandatoryTotal !== void 0 || Boolean(o.attributes["annual_fee"]), blocking: false },
+        { name: "published_flag", present: (o) => o.attributes["quote_type"] === "published_terms" || o.attributes["rate_type"] === "published", blocking: false }
+      ],
       movies: [
         { name: "event", present: (o) => Boolean(o.title) },
         { name: "venue", present: (o) => Boolean(o.attributes["venue"] || o.vendor), blocking: false },
@@ -9639,13 +10126,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto15.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto17.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto15;
+var import_crypto17;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto15 = require("crypto");
+    import_crypto17 = require("crypto");
   }
 });
 
@@ -9895,7 +10382,7 @@ function rankOffers(offers, opts = {}) {
     }
   }
   let ordered = [...byEntity.values()].flat();
-  const SERVICE_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "flights", "hotels", "bus", "cab", "movies"]);
+  const SERVICE_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "flights", "hotels", "bus", "cab", "movies"]);
   const verticalSet = new Set(ordered.map((x) => x.o.vertical));
   if (verticalSet.size === 1 && SERVICE_VERTICALS.has([...verticalSet][0])) {
     const tier = (x) => isComparable(x.o.freshnessStatus) ? 0 : 1;
@@ -10021,7 +10508,7 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var NON_COMPARISON_VERTICALS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
+var NON_COMPARISON_VERTICALS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
     NON_COMPARISON_VERTICALS = [
@@ -10037,7 +10524,8 @@ var init_verticalEngine = __esm({
       "cab",
       "insurance",
       "loans",
-      "movies"
+      "movies",
+      "creditcards"
     ];
     PLACE_ALIASES = {
       "new delhi": "delhi",
@@ -10150,6 +10638,14 @@ var init_verticalEngine = __esm({
         })) });
       }
     };
+    CreditCardEngine = class extends VerticalEngine {
+      constructor() {
+        super({ vertical: "creditcards", displayName: "Credit Cards", postProcess: (offers) => offers.map((o) => ({
+          ...o,
+          attributes: { ...o.attributes, rate_type: o.attributes["rate_type"] || "published", quote_type: "published_terms" }
+        })) });
+      }
+    };
     MovieEventEngine = class extends VerticalEngine {
       constructor() {
         super({ vertical: "movies", displayName: "Movies & Events" });
@@ -10194,6 +10690,7 @@ var init_verticalEngine = __esm({
       cab: new CabEngine(),
       loans: new LoanEngine(),
       insurance: new InsuranceEngine(),
+      creditcards: new CreditCardEngine(),
       movies: new MovieEventEngine(),
       bus: new BusEngine(),
       food: new FoodDeliveryEngine(),
@@ -10435,7 +10932,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto16.default.randomUUID();
+  const clickId = import_crypto18.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -10461,10 +10958,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto16, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto18, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto16 = __toESM(require("crypto"), 1);
+    import_crypto18 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -10773,10 +11270,14 @@ function sizeTokens(text) {
   }
   return Array.from(new Set(out)).sort();
 }
+function ccCardKey(title) {
+  const words2 = String(title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !CC_GENERIC.has(w));
+  return words2.length ? [...new Set(words2)].sort().join(" ") : null;
+}
 function productSig(title, brand) {
   const t = String(title || "").toLowerCase();
   const sizes = sizeTokens(t).join(",");
-  const words2 = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
+  const words2 = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE2.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
   const b = String(brand || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const uniq = Array.from(new Set(words2));
   if (uniq.length < 2) return null;
@@ -10815,6 +11316,22 @@ function groupSameProduct(items, extra = () => ({})) {
       const mc = { sig: null, vertical: it.vertical, members: [it], movieKey: mk };
       clusters.push(mc);
       slots.push(mc);
+      continue;
+    }
+    if (it.vertical === "creditcards") {
+      const k = ccCardKey(it.title);
+      if (!k) {
+        slots.push(it);
+        continue;
+      }
+      const hit2 = clusters.find((c3) => c3.vertical === "creditcards" && c3.movieKey === k);
+      if (hit2) {
+        hit2.members.push(it);
+        continue;
+      }
+      const c2 = { sig: null, vertical: it.vertical, members: [it], movieKey: k };
+      clusters.push(c2);
+      slots.push(c2);
       continue;
     }
     if (it.vertical !== "ecommerce" && it.vertical !== "grocery") {
@@ -10861,7 +11378,7 @@ function groupSameProduct(items, extra = () => ({})) {
       q3.isLowest = i === 0 && q3.price > 0;
     });
     const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
-    const head = priced[0] || members[0];
+    const head = members[0].vertical === "creditcards" ? [...members].sort((a, b) => Object.keys(a.specs || {}).length - Object.keys(b.specs || {}).length).pop() : priced[0] || members[0];
     const withImg = members.find((m) => m.imageUrl);
     const mergedSpecs = { ...head.specs || {} };
     const FEATURE_KEYS = [
@@ -10892,7 +11409,7 @@ function groupSameProduct(items, extra = () => ({})) {
       if (m === head) continue;
       for (const [k, v] of Object.entries(m.specs || {})) {
         const nk = normKey(k);
-        const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk);
+        const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk) || members[0].vertical === "creditcards";
         if (!wanted) continue;
         if (!have.has(nk) && v != null && String(v).trim() !== "") {
           mergedSpecs[k] = v;
@@ -10904,11 +11421,11 @@ function groupSameProduct(items, extra = () => ({})) {
   }
   return out;
 }
-var UNIT_RE, NOISE, UNIT_CANON;
+var UNIT_RE, NOISE2, UNIT_CANON, CC_GENERIC;
 var init_productGrouping = __esm({
   "server/pipeline/productGrouping.ts"() {
     UNIT_RE = /(\d+(?:\.\d+)?)\s*(kg|g|gm|gms|gram|grams|ml|l|ltr|litre|liter|litres|liters|pcs|pc|pack|units?|tb|gb|mb|mm|cm|inch|in)\b/g;
-    NOISE = /* @__PURE__ */ new Set([
+    NOISE2 = /* @__PURE__ */ new Set([
       "the",
       "and",
       "with",
@@ -10961,21 +11478,22 @@ var init_productGrouping = __esm({
       inch: "in",
       in: "in"
     };
+    CC_GENERIC = /* @__PURE__ */ new Set(["bank", "credit", "card", "cards", "visa", "mastercard", "master", "rupay", "infinite"]);
   }
 });
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto17.default.randomBytes(16).toString("hex");
-  const hash = import_crypto17.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto19.default.randomBytes(16).toString("hex");
+  const hash = import_crypto19.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto17.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto17.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto19.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto19.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -10998,7 +11516,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto17.default.randomBytes(32).toString("hex");
+  const token = import_crypto19.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -11038,10 +11556,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto17, SESSION_TTL_SEC;
+var import_crypto19, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto17 = __toESM(require("crypto"), 1);
+    import_crypto19 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -11083,16 +11601,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto18.default.randomBytes(8).toString("hex");
-  const hash = import_crypto18.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto20.default.randomBytes(8).toString("hex");
+  const hash = import_crypto20.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto18.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto20.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto18.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto20.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -11114,30 +11632,30 @@ async function isEligibleAdmin(email) {
   return rows.length > 0 && rows[0].role === "admin";
 }
 async function requestAdminOtp(email) {
-  const clean = String(email || "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return { ok: false, sent: false, error: "A valid email address is required" };
+  const clean3 = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean3)) return { ok: false, sent: false, error: "A valid email address is required" };
   const store2 = getStore();
-  const recent = await store2.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean]);
+  const recent = await store2.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean3]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1e3;
   const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: "Too many codes requested. Try again later." };
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
-  await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
-  const code = String(import_crypto18.default.randomInt(0, 1e6)).padStart(6, "0");
+  await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+  const code = String(import_crypto20.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
-    [clean, hashOtp(code), expiresAt, 0, nowIso2()]
+    [clean3, hashOtp(code), expiresAt, 0, nowIso2()]
   );
-  const eligible = await isEligibleAdmin(clean);
+  const eligible = await isEligibleAdmin(clean3);
   if (!eligible) {
     log.info("Otp", `OTP requested for non-admin email (no mail sent)`);
     return { ok: true, sent: false };
   }
   const mail = await sendEmail(
-    clean,
+    clean3,
     "Your Try1Second admin login code",
     `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto">
        <h2>Try1Second Admin Login</h2>
@@ -11148,44 +11666,44 @@ async function requestAdminOtp(email) {
     `Your Try1Second admin login code: ${code} (expires in 10 minutes)`
   );
   if (!mail.ok) {
-    await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
+    await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
     log.warn("Otp", `OTP email delivery failed for admin: ${mail.error}`);
     return { ok: false, sent: false, error: "Could not send the login code right now. Please try again later.", deliveryError: mail.error };
   }
-  log.info("Otp", `Admin OTP sent to ${clean}`);
+  log.info("Otp", `Admin OTP sent to ${clean3}`);
   return { ok: true, sent: true };
 }
 async function verifyAdminOtp(email, code) {
-  const clean = String(email || "").trim().toLowerCase();
+  const clean3 = String(email || "").trim().toLowerCase();
   const otp = String(code || "").replace(/\D/g, "");
-  if (!clean || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
+  if (!clean3 || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
   const store2 = getStore();
-  const rows = await store2.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean]);
+  const rows = await store2.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean3]);
   if (rows.length === 0) return { ok: false, error: "No active code. Request a new one." };
   const row = rows[rows.length - 1];
   if (Number(row.attempts || 0) >= MAX_VERIFY_ATTEMPTS) {
-    await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
+    await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
     return { ok: false, error: "Too many incorrect attempts. Request a new code." };
   }
   const exp = parseDbUtc(row.expires_at);
   if (!Number.isFinite(exp) || exp < Date.now()) {
-    await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
+    await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
     return { ok: false, error: "Code expired. Request a new one." };
   }
   if (!verifyOtpHash(otp, row.code_hash)) {
     await store2.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
     return { ok: false, error: "Incorrect code" };
   }
-  await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean]);
-  const eligible = await isEligibleAdmin(clean);
+  await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+  const eligible = await isEligibleAdmin(clean3);
   if (!eligible) return { ok: false, error: "Invalid code" };
-  log.info("Otp", `Admin OTP verified for ${clean}`);
-  return { ok: true, email: clean };
+  log.info("Otp", `Admin OTP verified for ${clean3}`);
+  return { ok: true, email: clean3 };
 }
-var import_crypto18, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto20, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto18 = __toESM(require("crypto"), 1);
+    import_crypto20 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -11228,8 +11746,8 @@ async function verifyFirebaseIdToken(idToken) {
     const certs = await getCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto19.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto19.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto21.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto21.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
     if (!signatureOk) return null;
@@ -11273,8 +11791,8 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const certs = certsOverride || await getGoogleCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto19.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto19.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto21.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto21.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
     return {
@@ -11289,10 +11807,10 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto19, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
+var import_crypto21, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto19 = __toESM(require("crypto"), 1);
+    import_crypto21 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -11367,7 +11885,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto20.default.randomUUID();
+  const key = idempotencyKey || import_crypto22.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -11482,10 +12000,10 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto20, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+var import_crypto22, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto20 = __toESM(require("crypto"), 1);
+    import_crypto22 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -11504,7 +12022,7 @@ __export(deeplink_exports, {
   safeDomain: () => safeDomain2
 });
 function secret() {
-  return process.env.AFFILIATE_SECRET || import_crypto21.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto23.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -11514,15 +12032,15 @@ function unb64url(s) {
 }
 function createMaskingPointer(destination, opts = {}) {
   const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
-  const sig = import_crypto21.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 function resolveMaskingPointer(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
-  const expect = import_crypto21.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  if (sig.length !== expect.length || !import_crypto21.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  const expect = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto23.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -11579,7 +12097,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
-  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto21.default.randomBytes(6).toString("hex"));
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto23.default.randomBytes(6).toString("hex"));
   return out.replace(/\{[a-z0-9_]+\}/gi, "");
 }
 function parseJsonObj(v) {
@@ -11592,7 +12110,7 @@ function parseJsonObj(v) {
   }
 }
 async function recordPointerClick(dest, offerId, network) {
-  const clickId = import_crypto21.default.randomUUID();
+  const clickId = import_crypto23.default.randomUUID();
   try {
     const store2 = getStore();
     await store2.execute(
@@ -11605,10 +12123,10 @@ async function recordPointerClick(dest, offerId, network) {
   }
   return clickId;
 }
-var import_crypto21, AFFILIATE_TTL_SEC;
+var import_crypto23, AFFILIATE_TTL_SEC;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
-    import_crypto21 = __toESM(require("crypto"), 1);
+    import_crypto23 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -12297,9 +12815,9 @@ function extractRoute(text) {
   const t = text.toLowerCase().replace(/[?.!,]/g, " ");
   const pair = t.match(/\b([a-z][a-z .]{1,24}?)\s+(?:to|se|\u2192|->)\s+([a-z][a-z .]{1,24}?)(?=\s+(?:flight|flights|bus|buses|ka|ki|ke|rate|price|fare|cab|taxi|kal|tomorrow|today|aaj|on|for)\b|\s*$)/i);
   if (!pair) return null;
-  const clean = (s) => s.replace(FILLER, " ").replace(/\s+/g, " ").trim();
-  const a = clean(pair[1]);
-  const b = clean(pair[2]);
+  const clean3 = (s) => s.replace(FILLER, " ").replace(/\s+/g, " ").trim();
+  const a = clean3(pair[1]);
+  const b = clean3(pair[2]);
   if (!a || !b) return null;
   const title = (s) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
   return `${title(a)} to ${title(b)}`;
@@ -12377,7 +12895,7 @@ function isAccessory(title) {
   return ACCESSORY_WORDS.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
 }
 function identityTokens(title) {
-  return Array.from(new Set(words(title).filter((w) => !STOP.has(w) && !COLORS.has(w) && w.length > 1)));
+  return Array.from(new Set(words(title).filter((w) => !STOP2.has(w) && !COLORS.has(w) && w.length > 1)));
 }
 function isSameProduct(pastedTitle, candidateTitle) {
   const wantsAccessory = isAccessory(pastedTitle);
@@ -12396,7 +12914,7 @@ function isSameProduct(pastedTitle, candidateTitle) {
   const hit = soft.filter((w) => have.has(w)).length;
   return hit / soft.length >= 0.6;
 }
-var ACCESSORY_WORDS, STOP, TIERS, COLORS;
+var ACCESSORY_WORDS, STOP2, TIERS, COLORS;
 var init_sameProduct = __esm({
   "server/lens/sameProduct.ts"() {
     ACCESSORY_WORDS = [
@@ -12437,7 +12955,7 @@ var init_sameProduct = __esm({
       "dock",
       "wallet"
     ];
-    STOP = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
+    STOP2 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
     TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
     COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
   }
@@ -13553,6 +14071,13 @@ function offerToComparisonItem(o) {
   if (attrs["showtime"]) parts.push(String(attrs["showtime"]));
   if (o.location?.city) parts.push(`${o.location.city}`);
   if (attrs["in_stock"] === "false" || o.availability === "out_of_stock") parts.push("Currently out of stock");
+  if (o.vertical === "creditcards") {
+    if (attrs["joining_fee"]) parts.push(`Joining ${attrs["joining_fee"]}`);
+    if (attrs["annual_fee"]) parts.push(`Renewal ${attrs["annual_fee"]}`);
+    if (attrs["reward_rate"]) parts.push(`Rewards ${attrs["reward_rate"]}`);
+    if (attrs["apr"]) parts.push(`APR ${attrs["apr"]}`);
+    if (attrs["best_for"]) parts.push(String(attrs["best_for"]));
+  }
   if (!parts.length && attrs["data_note"]) parts.push(String(attrs["data_note"]));
   const description = parts.join(" \xB7 ").slice(0, 300);
   const featurePills = [
@@ -13587,7 +14112,7 @@ function offerToComparisonItem(o) {
     primaryPrice: price,
     originalPrice: list > price ? list : 0,
     priceAvailable: price > 0,
-    unit: "per unit",
+    unit: o.vertical === "creditcards" ? "per year" : "per unit",
     currency: o.prices?.currency || "INR",
     features: featurePills,
     specs,
@@ -13640,7 +14165,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto22, apiRouter;
+var import_express, import_crypto24, apiRouter;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -13652,7 +14177,7 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto22 = __toESM(require("crypto"), 1);
+    import_crypto24 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_deeplink();
@@ -13770,8 +14295,8 @@ var init_routes = __esm({
         }
       }
       const response = await runSearch(input);
-      const STOP2 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
-      const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP2.has(w));
+      const STOP3 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
+      const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP3.has(w));
       const stem = (w) => w.replace(/(ies|es|s)$/, "");
       const stems = words2.map(stem);
       const scored = response.results.map((o) => {
@@ -14162,7 +14687,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto22.default.randomBytes(32).toString("hex");
+      const token = import_crypto24.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -14190,7 +14715,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto22.default.randomBytes(32).toString("hex");
+      const token = import_crypto24.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -14216,7 +14741,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto22.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto24.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -14224,7 +14749,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto22.default.randomBytes(32).toString("hex");
+      const token = import_crypto24.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -14438,7 +14963,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto23.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto25.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -14668,10 +15193,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto23, strip, clip, COUPON_TXT;
+var import_crypto25, strip, clip, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto23 = require("crypto");
+    import_crypto25 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();
@@ -14927,6 +15452,15 @@ var init_acceptanceRegistry = __esm({
       { id: "bankbazaar_loans", name: "BankBazaar loans", vertical: "loans", tier: "implemented", probes: [
         { capability: "lender rates", url: "https://www.bankbazaar.com/home-loan.html", parser: "bankbazaarLoans" }
       ] },
+      { id: "cardinsider", name: "CardInsider credit cards", vertical: "creditcards", tier: "implemented", probes: [
+        { capability: "credit card fees and rewards", url: "https://cardinsider.com/hdfc-bank/hdfc-bank-millennia-credit-card/", parser: "cardInsider" }
+      ] },
+      { id: "paisabazaar_cards", name: "Paisabazaar credit cards", vertical: "creditcards", tier: "implemented", probes: [
+        { capability: "credit card fees", url: "https://www.paisabazaar.com/axis-bank/flipkart-axis-bank-credit-card/", parser: "paisabazaarCards" }
+      ] },
+      { id: "bankbazaar_creditcards", name: "BankBazaar credit cards", vertical: "creditcards", tier: "mandated", probes: [
+        { capability: "credit card list", url: "https://www.bankbazaar.com/credit-card.html" }
+      ] },
       { id: "bankbazaar_insurance", name: "BankBazaar insurance", vertical: "insurance", tier: "implemented", probes: [
         { capability: "insurer CSR", url: "https://www.bankbazaar.com/insurance/term-insurance.html", parser: "bankbazaarInsurance" }
       ] },
@@ -15092,7 +15626,13 @@ async function runProbe2(targetId, name, vertical, probe) {
       else if (probe.parser === "booking") items = parseBookingHotels(r.body, SRC, probe.url, "2026-11-01", "2026-11-02");
       else if (probe.parser === "bankbazaarLoans") items = parseBankBazaarLoans(r.body, SRC, probe.url, "home loan");
       else if (probe.parser === "bankbazaarInsurance") items = parseBankBazaarInsurance(r.body, SRC, probe.url, "term life insurance");
-      else if (probe.parser === "openlibrary") {
+      else if (probe.parser === "cardInsider") {
+        const c = parseCardInsiderCard(r.body, probe.url);
+        items = c ? [c] : [];
+      } else if (probe.parser === "paisabazaarCards") {
+        const c = parsePaisabazaarCard(r.body, probe.url);
+        items = c ? [c] : [];
+      } else if (probe.parser === "openlibrary") {
         const j = JSON.parse(r.body);
         items = (j?.docs || []).slice(0, 5).map((d) => ({ title: d.title, author: (d.author_name || [])[0], isbn: (d.isbn || [])[0], first_publish_year: d.first_publish_year }));
       }
@@ -15189,6 +15729,8 @@ var init_acceptanceRunner = __esm({
     init_booking();
     init_bankbazaarLoans();
     init_bankbazaarInsurance();
+    init_cardInsider();
+    init_paisabazaarCards();
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
@@ -15933,6 +16475,8 @@ var init_warm = __esm({
       { query: "Indore", vertical: "hotels", city: "Indore" },
       { query: "personal loan", vertical: "loans" },
       { query: "health insurance", vertical: "insurance" },
+      { query: "hdfc credit card", vertical: "creditcards" },
+      { query: "best credit card", vertical: "creditcards" },
       { query: "iphone", vertical: "ecommerce" },
       { query: "pizza", vertical: "food", city: "Indore" },
       { query: "delhi to jaipur", vertical: "bus" },

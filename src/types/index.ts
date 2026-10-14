@@ -8,6 +8,7 @@ export type VerticalId =
   | 'movie'
   | 'loans'
   | 'insurance'
+  | 'creditcards'
   | 'cab'
   | 'trains'
   | 'pharmacy'

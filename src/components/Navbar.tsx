@@ -21,7 +21,7 @@ import {
   Train,
   Pill,
   Receipt,
-} from 'lucide-react';
+  CreditCard,} from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId, MainNavTab } from '../types';
@@ -99,6 +99,8 @@ export const Navbar: React.FC = () => {
         return <Landmark className="w-4 h-4 text-teal-500" />;
       case 'insurance':
         return <ShieldCheck className="w-4 h-4 text-sky-500" />;
+      case 'creditcards':
+        return <CreditCard className="w-4 h-4 text-red-600" />;
       case 'cab':
         return <Car className="w-4 h-4 text-yellow-500" />;
       case 'trains':

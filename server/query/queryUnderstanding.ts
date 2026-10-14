@@ -18,11 +18,12 @@ const VERTICAL_KEYWORDS: Record<VerticalId, string[]> = {
   cab: ['cab', 'taxi', 'uber', 'ola', 'rapido', 'ride to', 'auto', 'drop to', 'pick up', 'pickup and drop'],
   loans: ['loan', 'personal loan', 'home loan', 'car loan', 'credit line', 'borrow', 'lender', 'interest rate', 'emi'],
   insurance: ['insurance', 'policy', 'premium', 'term plan', 'health cover', 'bike insurance', 'car insurance', 'insurer'],
+  creditcards: ['credit card', 'credit cards', 'creditcard', 'cc for', 'best credit card', 'lifetime free card', 'travel card', 'cashback card', 'regalia', 'millennia', 'infinia', 'amex', 'rupay card', 'annual fee card', 'forex card'],
   movies: ['movie', 'cinema', 'pvr', 'showtime', 'show', 'ticket for', 'film', 'concert', 'event', 'bookmyshow'],
   bus: ['bus', 'buses', 'volvo', 'redbus', 'sleeper bus', 'bus ticket', 'bus to'],
   coupons: ['coupon', 'coupons', 'promo code', 'voucher', 'discount code', 'offer code', 'cashback offer', 'deal'],
   giftcards: ['gift card', 'gift cards', 'giftcard', 'voucher card', 'gift voucher'],
-  banking: ['credit card', 'debit card', 'card offer', 'bank offer', 'hdfc offer', 'sbi offer', 'axis offer', 'icici offer', 'no cost emi', 'card discount'],
+  banking: ['credit card offer', 'credit card offers', 'credit card discount', 'credit card emi', 'debit card', 'card offer', 'bank offer', 'hdfc offer', 'sbi offer', 'axis offer', 'icici offer', 'no cost emi', 'card discount'],
 };
 
 const PINCODE_RE = /\b(\d{6})\b/;
@@ -149,7 +150,7 @@ export async function aiAssistedUnderstanding(query: ParsedQuery): Promise<Parse
     const { GoogleGenAI } = await import('@google/genai');
     const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
     const prompt = `Classify this Indian shopping/travel search query. Return strict JSON only:
-{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
+{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|creditcards|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
 Rules: Do NOT include prices, stock, or availability. Do NOT guess unstated fields.
 Query: ${query.rawQuery}`;
     const res = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });

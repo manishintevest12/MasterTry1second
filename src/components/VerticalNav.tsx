@@ -10,6 +10,7 @@ import {
   Film,
   Landmark,
   ShieldCheck,
+  CreditCard,
   Car,
 } from 'lucide-react';
 import { VerticalId } from '../types';
@@ -33,6 +34,7 @@ const VERTICALS: VerticalTabItem[] = [
   { id: 'cab', name: 'Cab & Rides', icon: Car, tagline: 'Surge & Fare Check' },
   { id: 'loans', name: 'Loans', icon: Landmark, tagline: 'Lowest APR & EMI' },
   { id: 'insurance', name: 'Insurance', icon: ShieldCheck, tagline: '1 Cr Health & Car' },
+  { id: 'creditcards', name: 'Credit Cards', icon: CreditCard, tagline: 'Fees, Rewards, APR' },
 ];
 
 export const VerticalNav: React.FC = () => {

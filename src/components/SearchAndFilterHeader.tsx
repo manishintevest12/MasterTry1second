@@ -1512,6 +1512,27 @@ const handleSelectJourneyDate = (formattedDate: string) => {
       )}
 
       {/* ========================================================
+          9b. CREDIT CARDS quick picks
+          ======================================================== */}
+      {vertical === 'creditcards' && (
+        <div className="bg-gradient-to-r from-slate-900 to-rose-950 py-4 px-4 sm:px-6 lg:px-8 text-white shadow-inner">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-bold text-rose-300">Quick picks:</span>
+            {AUTOCOMPLETE_CATEGORIES.creditcards.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => { setSearchQuery(t); triggerLiveLocationScrape(t); }}
+                className="px-3 py-1 rounded-lg font-bold text-xs bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
           BOTTOM AI PROMPT PRESETS (COMMON HELPER STRIP)
           ======================================================== */}
       <div className="bg-slate-50 py-2 px-4 sm:px-6 lg:px-8 border-t border-slate-200/80">

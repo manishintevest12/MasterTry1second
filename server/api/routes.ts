@@ -151,6 +151,14 @@ function offerToComparisonItem(o: any) {
   if (attrs['showtime']) parts.push(String(attrs['showtime']));
   if (o.location?.city) parts.push(`${o.location.city}`);
   if (attrs['in_stock'] === 'false' || o.availability === 'out_of_stock') parts.push('Currently out of stock');
+  // Credit cards: the comparable facts the issuer published (fees, rewards, APR).
+  if (o.vertical === 'creditcards') {
+    if (attrs['joining_fee']) parts.push(`Joining ${attrs['joining_fee']}`);
+    if (attrs['annual_fee']) parts.push(`Renewal ${attrs['annual_fee']}`);
+    if (attrs['reward_rate']) parts.push(`Rewards ${attrs['reward_rate']}`);
+    if (attrs['apr']) parts.push(`APR ${attrs['apr']}`);
+    if (attrs['best_for']) parts.push(String(attrs['best_for']));
+  }
   if (!parts.length && attrs['data_note']) parts.push(String(attrs['data_note']));
   const description = parts.join(' · ').slice(0, 300);
   const featurePills = [
@@ -185,7 +193,7 @@ function offerToComparisonItem(o: any) {
     primaryPrice: price,
     originalPrice: list > price ? list : 0,
     priceAvailable: price > 0,
-    unit: 'per unit',
+    unit: o.vertical === 'creditcards' ? 'per year' : 'per unit',
     currency: o.prices?.currency || 'INR',
     features: featurePills,
     specs,

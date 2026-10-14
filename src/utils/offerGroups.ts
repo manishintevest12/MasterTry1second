@@ -94,6 +94,10 @@ export function offerKey(it: ComparisonItem): string {
   if ((v as string) === 'movies' || (v as string) === 'movie') {
     return `m|${tokens(it.title)}`;
   }
+  if (v === 'creditcards') {
+    // Same card across CardInsider/Paisabazaar = one card (bank + card name words).
+    return `cc|${tokens(it.title)}|${norm(spec(it, 'bank'))}`;
+  }
   if (v === 'loans') {
     return `l|${tokens(it.title)}|${norm(spec(it, 'loan type'))}`;
   }

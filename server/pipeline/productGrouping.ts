@@ -38,6 +38,15 @@ export function sizeTokens(text: string): string[] {
 
 export interface ProductSig { brand: string; words: string[]; sizes: string; }
 
+/** Generic words present in almost every credit-card name; they never distinguish cards. */
+const CC_GENERIC = new Set(['bank', 'credit', 'card', 'cards', 'visa', 'mastercard', 'master', 'rupay', 'infinite']);
+/** Distinctive identity of a credit card: its non-generic name tokens, sorted (order-free). */
+function ccCardKey(title: string): string | null {
+  const words = String(title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter((w) => w.length > 1 && !CC_GENERIC.has(w));
+  return words.length ? [...new Set(words)].sort().join(' ') : null;
+}
+
 export function productSig(title: string, brand?: string): ProductSig | null {
   const t = String(title || '').toLowerCase();
   const sizes = sizeTokens(t).join(',');
@@ -113,6 +122,19 @@ export function groupSameProduct<T extends { id: string; vertical: string; title
       clusters.push(mc); slots.push(mc);
       continue;
     }
+    if (it.vertical === 'creditcards') {
+      // Same card listed by CardInsider and Paisabazaar = ONE card. STRICT identity: the
+      // distinctive name tokens (everything except generic card words) must match EXACTLY,
+      // because 'Flipkart Axis Bank Credit Card' and '... Super Elite Credit Card' are
+      // different cards even though most words overlap. A wrong merge is worse than two cards.
+      const k = ccCardKey(it.title);
+      if (!k) { slots.push(it); continue; }
+      const hit = clusters.find((c) => c.vertical === 'creditcards' && c.movieKey === k);
+      if (hit) { hit.members.push(it); continue; }
+      const c: Cluster = { sig: null, vertical: it.vertical, members: [it], movieKey: k };
+      clusters.push(c); slots.push(c);
+      continue;
+    }
     if (it.vertical !== 'ecommerce' && it.vertical !== 'grocery') { slots.push(it); continue; }
     const { brand, gtin } = extra(it);
     const sig = productSig(it.title, brand);
@@ -141,7 +163,11 @@ export function groupSameProduct<T extends { id: string; vertical: string; title
     const quotes = Array.from(bySeller.values()).sort((a, b) => (a.price > 0 ? a.price : Infinity) - (b.price > 0 ? b.price : Infinity));
     quotes.forEach((q, i) => { q.isLowest = i === 0 && q.price > 0; });
     const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
-    const head = priced[0] || members[0];
+    // Credit cards: the fee is the issuer's own number, identical across sources — so the
+    // RICHEST listing (most published fee/reward fields) becomes the head, not the cheapest.
+    const head = (members[0] as any).vertical === 'creditcards'
+      ? [...members].sort((a, b) => Object.keys(a.specs || {}).length - Object.keys(b.specs || {}).length).pop()!
+      : (priced[0] || members[0]);
     const withImg = members.find((m) => m.imageUrl);
     // UNION THE CARD'S SPEC PANEL: one film's card merges every site, and different sites
     // contribute different real attributes (trailer from District, IMDb/critics/theatres from
@@ -157,7 +183,8 @@ export function groupSameProduct<T extends { id: string; vertical: string; title
       if (m === head) continue;
       for (const [k, v] of Object.entries(m.specs || {})) {
         const nk = normKey(k);
-        const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk);
+        const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk)
+          || ((members[0] as any).vertical === 'creditcards'); // cards: union every issuer-published field
         if (!wanted) continue;
         if (!have.has(nk) && v != null && String(v).trim() !== '') {
           mergedSpecs[k] = v; have.add(nk);

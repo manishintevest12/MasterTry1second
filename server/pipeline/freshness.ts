@@ -24,6 +24,7 @@ const VERTICAL_DEFAULT_TTL: Record<VerticalId, { liveVerified: number; fresh: nu
   cab: { liveVerified: 300, fresh: 900, maxStale: 3600 },
   loans: { liveVerified: 86400, fresh: 86400, maxStale: 604800 },
   insurance: { liveVerified: 86400, fresh: 86400, maxStale: 604800 },
+  creditcards: { liveVerified: 86400, fresh: 86400, maxStale: 604800 },
   movies: { liveVerified: 900, fresh: 3600, maxStale: 86400 },
   bus: { liveVerified: 600, fresh: 1800, maxStale: 86400 },
   coupons: { liveVerified: 3600, fresh: 21600, maxStale: 259200 },

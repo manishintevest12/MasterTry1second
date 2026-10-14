@@ -19,7 +19,7 @@ const NON_COMPARISON_VERTICALS: string[] = [
   'coupons', 'giftcards', 'banking',
   // Listing/discovery verticals: the queried entity (dish, city, insurer, route) is not
   // part of the offer title, so title-token filtering would wrongly drop real results.
-  'food', 'hotels', 'flights', 'bus', 'cab', 'insurance', 'loans', 'movies',
+  'food', 'hotels', 'flights', 'bus', 'cab', 'insurance', 'loans', 'movies', 'creditcards',
 ];
 
 function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
@@ -228,6 +228,15 @@ class InsuranceEngine extends VerticalEngine {
   }
 }
 
+class CreditCardEngine extends VerticalEngine {
+  constructor() {
+    super({ vertical: 'creditcards', displayName: 'Credit Cards', postProcess: (offers) => offers.map((o) => ({
+      ...o,
+      attributes: { ...o.attributes, rate_type: o.attributes['rate_type'] || 'published', quote_type: 'published_terms' },
+    })) });
+  }
+}
+
 class MovieEventEngine extends VerticalEngine {
   constructor() { super({ vertical: 'movies', displayName: 'Movies & Events' }); }
 }
@@ -262,6 +271,7 @@ const ENGINES: Record<VerticalId, VerticalEngine> = {
   cab: new CabEngine(),
   loans: new LoanEngine(),
   insurance: new InsuranceEngine(),
+  creditcards: new CreditCardEngine(),
   movies: new MovieEventEngine(),
   bus: new BusEngine(),
   food: new FoodDeliveryEngine(),

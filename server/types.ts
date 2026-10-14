@@ -30,13 +30,14 @@ export type VerticalId =
   | 'insurance'
   | 'movies'
   | 'bus'
+  | 'creditcards'
   | 'coupons'
   | 'giftcards'
   | 'banking';
 
 export const ALL_VERTICALS: VerticalId[] = [
   'food', 'grocery', 'ecommerce', 'flights', 'hotels', 'cab', 'loans',
-  'insurance', 'movies', 'bus', 'coupons', 'giftcards', 'banking',
+  'insurance', 'movies', 'bus', 'creditcards', 'coupons', 'giftcards', 'banking',
 ];
 
 // ============ Query understanding ============

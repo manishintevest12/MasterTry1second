@@ -93,6 +93,12 @@ const VERTICAL_RULES: Record<VerticalId, FieldRule[]> = {
     { name: 'premium', present: (o) => o.prices.mandatoryTotal !== undefined, blocking: false },
     { name: 'indicative_flag', present: (o) => o.attributes['quote_type'] === 'indicative' || o.attributes['quote_type'] === 'quoted', blocking: false },
   ],
+  creditcards: [
+    { name: 'card', present: (o) => Boolean(o.title) },
+    { name: 'issuer', present: (o) => Boolean(o.vendor) },
+    { name: 'annual_fee', present: (o) => o.prices.mandatoryTotal !== undefined || Boolean(o.attributes['annual_fee']), blocking: false },
+    { name: 'published_flag', present: (o) => o.attributes['quote_type'] === 'published_terms' || o.attributes['rate_type'] === 'published', blocking: false },
+  ],
   movies: [
     { name: 'event', present: (o) => Boolean(o.title) },
     { name: 'venue', present: (o) => Boolean(o.attributes['venue'] || o.vendor), blocking: false },

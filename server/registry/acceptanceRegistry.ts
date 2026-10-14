@@ -10,6 +10,8 @@ export type AcceptanceStatus =
   | 'TEMPORARILY_UNAVAILABLE' | 'SOURCE_RETIRED';
 
 export type ParserKind =
+  | 'cardInsider'
+  | 'paisabazaarCards'
   | 'amazonIn' | 'flipkart' | 'zomato' | 'booking' | 'bankbazaarLoans' | 'bankbazaarInsurance'
   | 'overpass' | 'openflights' | 'wikidata' | 'osrm' | 'openlibrary' | 'vcommission';
 
@@ -206,6 +208,12 @@ export const ACCEPTANCE_TARGETS: AcceptanceTarget[] = [
     { capability: 'route distance/duration', url: 'osrm', parser: 'osrm' } ] },
   { id: 'bankbazaar_loans', name: 'BankBazaar loans', vertical: 'loans', tier: 'implemented', probes: [
     { capability: 'lender rates', url: 'https://www.bankbazaar.com/home-loan.html', parser: 'bankbazaarLoans' } ] },
+  { id: 'cardinsider', name: 'CardInsider credit cards', vertical: 'creditcards', tier: 'implemented', probes: [
+    { capability: 'credit card fees and rewards', url: 'https://cardinsider.com/hdfc-bank/hdfc-bank-millennia-credit-card/', parser: 'cardInsider' } ] },
+  { id: 'paisabazaar_cards', name: 'Paisabazaar credit cards', vertical: 'creditcards', tier: 'implemented', probes: [
+    { capability: 'credit card fees', url: 'https://www.paisabazaar.com/axis-bank/flipkart-axis-bank-credit-card/', parser: 'paisabazaarCards' } ] },
+  { id: 'bankbazaar_creditcards', name: 'BankBazaar credit cards', vertical: 'creditcards', tier: 'mandated', probes: [
+    { capability: 'credit card list', url: 'https://www.bankbazaar.com/credit-card.html' } ] },
   { id: 'bankbazaar_insurance', name: 'BankBazaar insurance', vertical: 'insurance', tier: 'implemented', probes: [
     { capability: 'insurer CSR', url: 'https://www.bankbazaar.com/insurance/term-insurance.html', parser: 'bankbazaarInsurance' } ] },
   { id: 'open_library', name: 'Open Library', vertical: 'ecommerce', tier: 'implemented', probes: [
