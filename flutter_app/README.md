@@ -6,6 +6,41 @@ Plus Jakarta Sans, bold type — and the same core promise: **every price
 shown is verified live by the Try1Second engine; unavailable sources are
 reported honestly, never mocked.**
 
+## v1.5.0 — Full website parity (14 Oct 2026)
+
+Complete rebuild of the app shell to mirror try1second.com screen-for-screen:
+
+- **Home** — dark `#0D0714` hero (engine pill, 4 stat tiles, gradient
+  headline, Price Lens bar with Find Cheapest → in-app product page),
+  Ask Try1Second AI (text + voice), Quick Apps rail, 11 vertical cards,
+  referral teaser.
+- **Compare** — vertical tabs + per-vertical search forms. Route fields
+  use the website's exact city autocomplete dataset (180 cities with
+  badges/subtext) and per-vertical preset suggestion lists; text fields
+  drive live `/api/scrape/live` searches with grouped cards (one product =
+  one card, cheapest site first): TravelTile (flights/bus/cab), HotelCard
+  (Trivago-style), CreditCardTile (full-width card art, fees/rewards/APR),
+  GroupCard (ecommerce/grocery/food/movies/loans/insurance, % rates for
+  loans/insurance), sort tabs + filter, site rows with server-masked
+  `/api/out` redirects, price-alert sheet.
+- **AI Insights** — URL price scanner (`/api/scan/url`) + Deal Score tab
+  (score ring 0-100, buy/wait verdict, real history chart from
+  `/api/product-page`).
+- **Product page** — offers, real price history, deal score, related
+  products, alert creation.
+- **Rewards** — Deals & Coupons hub (store tiles with UP TO X% OFF, deal
+  cards with codes, all via `/api/out`), real Spin & Earn wheel
+  (`/api/rewards/spin`), referral link.
+- **Price Tracker** — server-side alerts (list/delete, target prices).
+- **Notifications** — price drops + announcements with unread badge,
+  mark-read, radar shortcut.
+- **Scanner Radar** — live source health from `/api/status` + verified
+  fetch log from `/api/provenance`.
+- **Profile** — Google sign-in (RS256 ID token → `/api/auth/google-mobile`
+  → session token in secure storage), wallet, logout clears everything.
+- **Auth lifecycle** — SplashGate verifies the saved session against
+  `/auth/me` before entering the shell.
+
 ## Features
 
 - **Metasearch across 11 verticals** — e-commerce, hotels, flights, bus,

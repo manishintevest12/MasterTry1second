@@ -4,8 +4,8 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/app_state.dart';
 import '../../core/theme.dart';
-import '../screens/results_screen.dart';
 import 'common.dart';
 
 /// Home: Price Lens (paste ANY product link -> cheapest across sites)
@@ -69,9 +69,7 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
       if (intent.understood && intent.vertical != null) {
         widget.onVerticalPicked?.call(intent.vertical!);
         if (mounted) {
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => ResultsScreen(query: intent.query, vertical: intent.vertical!),
-          ));
+          AppState.instance.openVertical(intent.vertical!, search: PendingSearch(intent.vertical!, intent.query, date: intent.date));
         }
       }
     } catch (e) {

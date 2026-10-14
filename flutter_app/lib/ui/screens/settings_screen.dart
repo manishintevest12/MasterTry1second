@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_state.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
 import '../widgets/common.dart';
@@ -45,6 +46,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       apiBase: _api.text,
       dark: _dark,
     );
+    final st = AppState.instance;
+    st.city = _city.text.trim().isNotEmpty ? _city.text.trim() : st.city;
+    st.pincode = _pincode.text.trim().isNotEmpty ? _pincode.text.trim() : st.pincode;
+    st.api = await _store.api();
+    st.cache.clear();
+    st.notifyListeners();
     setState(() => _saved = true);
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _saved = false);

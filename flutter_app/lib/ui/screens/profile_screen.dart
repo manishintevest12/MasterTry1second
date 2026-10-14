@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/app_state.dart';
 import '../../core/auth.dart';
-import '../../core/storage.dart';
 import '../../core/theme.dart';
-import '../widgets/common.dart';
-import '../widgets/logo.dart';
+import '../widgets/kit.dart';
+import 'alerts_screen.dart';
 import 'settings_screen.dart';
-import 'tracked_screen.dart';
 
-/// Profile: Google sign-in/out, account card, points, quick links.
-/// When Google login is not configured in this build it says so honestly.
+/// Profile (website ProfileModal): Google sign-in -> session, wallet with
+/// OmniPoints + spins, quick actions, honest sign-out. End-to-end auth:
+/// splash restores the token, /auth/me validates, logout clears everything.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -19,16 +19,15 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _state = AppState.instance;
   final _auth = AuthService.instance;
-  final _store = AppStore();
   RewardsSummary? _rewards;
-  bool _rewardsBusy = false;
 
   @override
   void initState() {
     super.initState();
     _auth.addListener(_onAuth);
-    _maybeLoadRewards();
+    _load();
   }
 
   @override
@@ -38,309 +37,140 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _onAuth() {
-    if (mounted) setState(() => _rewards = _auth.signedIn ? _rewards : null);
-    _maybeLoadRewards();
+    if (mounted) setState(() {});
+    _load();
   }
 
-  Future<void> _maybeLoadRewards() async {
+  Future<void> _load() async {
     if (!_auth.signedIn || _auth.token == null) return;
-    setState(() => _rewardsBusy = true);
     try {
-      final api = await _store.api();
-      final r = await api.rewards(_auth.token!);
+      final r = await _state.api.rewards(_auth.token!);
       if (mounted) setState(() => _rewards = r);
-    } catch (_) {
-      // rewards are optional profile info; failure is not surfaced as an error
-    } finally {
-      if (mounted) setState(() => _rewardsBusy = false);
-    }
+    } catch (_) {/* honest: keep last known wallet */}
   }
 
-  Future<void> _signIn() async {
-    final api = await _store.api();
-    final ok = await _auth.signInWithGoogle(api);
+  Future<void> _login() async {
+    final ok = await _auth.signInWithGoogle(_state.api);
     if (!mounted) return;
-    if (!ok && _auth.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_auth.error!), behavior: SnackBarBehavior.floating),
-      );
+    if (ok) {
+      toast(context, 'Signed in as ${_auth.user?.email}');
+      await _state.refreshBadges();
+    } else if (_auth.error != null) {
+      toast(context, _auth.error!, error: true);
     }
   }
 
+  Future<void> _logout() async {
+    await _auth.signOut();
+    await _state.refreshBadges();
+    if (mounted) toast(context, 'Signed out — session cleared');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final user = _auth.user;
-
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+    final signedIn = _auth.signedIn;
+    return Scaffold(
+      backgroundColor: isDark(context) ? T1SColors.slate950 : T1SColors.slate50,
+      appBar: AppBar(title: Text('Profile', style: tx(context, 16, w: FontWeight.w900))),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
         children: [
-          Row(children: [const T1SLogo(size: 38), const Spacer()]),
-          const SizedBox(height: 18),
-
-          if (user != null) ...[
-            // ---- Signed-in account card ----
-            T1SCard(
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      _Avatar(user: user, size: 54),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(user.name,
-                                style: T1SText.headline(context), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            const SizedBox(height: 2),
-                            Text(user.email,
-                                style: T1SText.body(context).copyWith(color: T1SColors.slate500),
-                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 26),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _Stat(
-                          label: 'POINTS',
-                          value: _rewardsBusy ? '…' : '${_rewards?.validPoints ?? '—'}',
-                        ),
-                      ),
-                      Expanded(
-                        child: _Stat(
-                          label: 'SPINS READY',
-                          value: _rewardsBusy ? '…' : '${_rewards?.availableSpins ?? '—'}',
-                        ),
-                      ),
-                      Expanded(
-                        child: _Stat(
-                          label: 'ACCOUNT',
-                          value: user.role == 'admin' ? 'Admin' : 'Standard',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            _LinkTile(
-              icon: Icons.favorite_border,
-              label: 'My watchlist',
-              sub: 'Tracked items with live re-check',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TrackedScreen())),
-            ),
-            const SizedBox(height: 10),
-            _LinkTile(
-              icon: Icons.tune,
-              label: 'Settings',
-              sub: 'City, pincode, backend URL, dark mode',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: T1SButton.secondary(
-                label: 'Sign out',
-                icon: const Icon(Icons.logout, size: 16),
-                onTap: () => _auth.signOut(),
-              ),
-            ),
-          ] else ...[
-            // ---- Signed-out: Google sign-in ----
-            T1SCard(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Column(
-                  children: [
-                    const CircleAvatar(
-                      radius: 30,
-                      backgroundColor: T1SColors.slate100,
-                      child: Text('1S', style: TextStyle(fontWeight: FontWeight.w900, color: T1SColors.slate500)),
-                    ),
-                    const SizedBox(height: 14),
-                    Text('Sign in to sync your rewards',
-                        style: T1SText.title(context), textAlign: TextAlign.center),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Your points, spin eligibility and prize history live in your Try1Second account.',
-                      style: T1SText.body(context).copyWith(color: T1SColors.slate500),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 18),
-                    _GoogleButton(
-                      busy: _auth.busy,
-                      enabled: _auth.isConfigured,
-                      onTap: _signIn,
-                    ),
-                    if (!_auth.isConfigured) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'Google sign-in is not configured in this build yet.',
-                        style: T1SText.label(context).copyWith(color: T1SColors.slate400),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                    if (_auth.error != null) ...[
-                      const SizedBox(height: 10),
-                      Text(_auth.error!, style: T1SText.label(context).copyWith(color: T1SColors.red)),
-                    ],
-                  ],
+          Box(
+            padding: const EdgeInsets.all(18),
+            child: Column(children: [
+              Container(
+                width: 58,
+                height: 58,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: T1SColors.slate950, shape: BoxShape.circle, border: Border.all(color: T1SColors.goldLight, width: 2)),
+                child: Text(
+                  signedIn ? (user?.initials ?? '1S') : '1S',
+                  style: tx(context, 18, w: FontWeight.w900, color: T1SColors.goldLight, mono: true),
                 ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                signedIn ? (user?.name ?? 'Try1Second Member') : 'Welcome to Try1Second',
+                style: tx(context, 16, w: FontWeight.w900),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                signedIn ? (user?.email ?? '') : 'Sign in to save your rewards, spins and vouchers across devices.',
+                textAlign: TextAlign.center,
+                style: tx(context, 11.5, color: muted(context)),
+              ),
+              if (signedIn) ...[
+                const SizedBox(height: 6),
+                Pill(user?.role == 'admin' ? 'Admin' : 'Tier 1', bg: T1SColors.amber300.withValues(alpha: 0.25), fg: const Color(0xFF78350F), size: 9),
+              ],
+              const SizedBox(height: 14),
+              if (!signedIn)
+                _GoogleButton(onTap: _auth.busy ? () {} : _login, busy: _auth.busy)
+              else
+                RedButton('Log out', onTap: _logout, icon: Icons.logout_rounded, expand: true),
+              if (!signedIn && !_auth.isConfigured) ...[
+                const SizedBox(height: 8),
+                Text('Google sign-in needs GOOGLE_SERVER_CLIENT_ID in this build.',
+                    textAlign: TextAlign.center, style: tx(context, 9.5, color: muted(context))),
+              ],
+            ]),
+          ),
+          if (signedIn) ...[
+            const SizedBox(height: 14),
+            Box(
+              padding: const EdgeInsets.all(14),
+              child: Column(children: [
+                _walletRow('Reward Balance', '${_rewards?.validPoints ?? _state.points}', 'OmniPoints', T1SColors.red, 17),
+                const Divider(height: 18),
+                _walletRow('Spins Unlocked', '${_rewards?.availableSpins ?? _state.spinsAvailable}', 'Free Spin(s)', T1SColors.emerald600, 12.5),
+              ]),
             ),
-            const SizedBox(height: 16),
-            _LinkTile(
-              icon: Icons.tune,
-              label: 'Settings',
-              sub: 'City, pincode, backend URL, dark mode',
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
-            ),
-            if (dark) const SizedBox(height: 4),
+            const SizedBox(height: 14),
+            T1SOutlineButton('Go to Spin & Earn Wheel', onTap: () { Navigator.pop(context); _state.go(NavTab.rewards); }, icon: Icons.casino_rounded),
+            const SizedBox(height: 8),
+            T1SOutlineButton('My Price Alerts', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsScreen())), icon: Icons.notifications_active_outlined),
           ],
+          const SizedBox(height: 14),
+          T1SOutlineButton('Settings', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())), icon: Icons.settings_outlined),
         ],
       ),
     );
   }
-}
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(value, style: T1SText.price(context).copyWith(fontSize: 17)),
-        const SizedBox(height: 2),
-        Text(label, style: T1SText.label(context).copyWith(letterSpacing: 0.5)),
-      ],
-    );
+  Widget _walletRow(String label, String value, String unit, Color color, double size) {
+    return Builder(builder: (c) {
+      return Row(children: [
+        Expanded(child: Text('$label:', style: tx(c, 11.5, color: muted(c)))),
+        Text('$value $unit', style: tx(c, size, w: FontWeight.w900, color: color, mono: true)),
+      ]);
+    });
   }
 }
 
-class _LinkTile extends StatelessWidget {
-  const _LinkTile({required this.icon, required this.label, required this.sub, this.onTap});
-  final IconData icon;
-  final String label;
-  final String sub;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return T1SCard(
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: T1SColors.red),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: T1SText.title(context)),
-                const SizedBox(height: 1),
-                Text(sub, style: T1SText.body(context).copyWith(fontSize: 11, color: T1SColors.slate500)),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, size: 18, color: dark ? T1SColors.slate600 : T1SColors.slate300),
-        ],
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.user, required this.size});
-  final AuthUser user;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final pic = user.picture;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: const LinearGradient(colors: [T1SColors.redLight, T1SColors.red]),
-        border: Border.all(color: dark ? T1SColors.slate800 : T1SColors.slate200, width: 2),
-      ),
-      child: ClipOval(
-        child: (pic != null && pic.startsWith('https://'))
-            ? Image.network(pic, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _initials(context))
-            : _initials(context),
-      ),
-    );
-  }
-
-  Widget _initials(BuildContext context) => Center(
-        child: Text(user.initials,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
-      );
-}
-
-/// Google-style sign-in button (white pill, G mark).
 class _GoogleButton extends StatelessWidget {
-  const _GoogleButton({required this.busy, required this.enabled, required this.onTap});
-  final bool busy;
-  final bool enabled;
+  const _GoogleButton({required this.onTap, required this.busy});
   final VoidCallback onTap;
-
+  final bool busy;
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return SizedBox(
-      height: 46,
-      child: Material(
-        color: dark ? Colors.white : Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          onTap: enabled && !busy ? onTap : null,
-          borderRadius: BorderRadius.circular(999),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: T1SColors.slate300),
-              boxShadow: const [BoxShadow(color: Color(0x110F172A), blurRadius: 6, offset: Offset(0, 2))],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (busy)
-                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                else ...[
-                  const Text('G',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF4285F4),
-                      )),
-                  const SizedBox(width: 10),
-                ],
-                Text(
-                  busy ? 'Signing in…' : 'Continue with Google',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1F2937)),
-                ),
-              ],
-            ),
-          ),
-        ),
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        backgroundColor: Colors.white,
+        side: const BorderSide(color: T1SColors.slate300),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(vertical: 13),
       ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        if (busy)
+          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red))
+        else
+          Image.network('https://www.google.com/s2/favicons?domain=google.com&sz=64', width: 18, height: 18,
+              errorBuilder: (_, __, ___) => const Icon(Icons.login_rounded, size: 16)),
+        const SizedBox(width: 10),
+        Text('Continue with Google', style: tx(context, 13, w: FontWeight.w800, color: const Color(0xFF1F2937))),
+      ]),
     );
   }
 }

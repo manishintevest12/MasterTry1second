@@ -10,6 +10,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'compare.dart';
+
 const String kDefaultApiBase = 'https://www.try1second.com';
 
 // ---------------------------------------------------------------------------
@@ -341,6 +343,177 @@ class AssistIntent {
       );
 }
 
+
+/// A live scrape/live response: website-parity ComparisonItems + honest source report.
+class LiveResponse {
+  final List<CompareItem> items;
+  final List<String> attempted;
+  final List<String> succeeded;
+  final List<String> failed;
+  final String servedFrom;
+  final int latencyMs;
+  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed, this.servedFrom, this.latencyMs);
+
+  factory LiveResponse.fromJson(Map<String, dynamic> j) => LiveResponse(
+        [
+          for (final r in (j['results'] as List? ?? const []))
+            if (r is Map<String, dynamic>) CompareItem.fromJson(r),
+        ],
+        [for (final x in (j['sourcesAttempted'] as List? ?? const [])) '$x'],
+        [for (final x in (j['sourcesSucceeded'] as List? ?? const [])) '$x'],
+        [for (final x in (j['sourcesFailed'] as List? ?? const [])) x is Map ? '${x['sourceId'] ?? x['id'] ?? x}' : '$x'],
+        '${j['servedFrom'] ?? ''}',
+        (j['latencyMs'] is num) ? (j['latencyMs'] as num).round() : 0,
+      );
+}
+
+/// One deal / coupon / bank offer (GET /api/deals).
+class Deal {
+  final int id;
+  final String merchantKey;
+  final String merchantName;
+  final String kind;
+  final String title;
+  final String? description;
+  final String? code;
+  final String? discountText;
+  final String? terms;
+  final String? validTill;
+  final String goUrl;
+  final String? imageUrl;
+  const Deal({
+    required this.id,
+    required this.merchantKey,
+    required this.merchantName,
+    required this.kind,
+    required this.title,
+    this.description,
+    this.code,
+    this.discountText,
+    this.terms,
+    this.validTill,
+    required this.goUrl,
+    this.imageUrl,
+  });
+  factory Deal.fromJson(Map<String, dynamic> j) => Deal(
+        id: (j['id'] is num) ? (j['id'] as num).toInt() : 0,
+        merchantKey: '${j['merchantKey'] ?? ''}',
+        merchantName: '${j['merchantName'] ?? ''}',
+        kind: '${j['kind'] ?? ''}',
+        title: '${j['title'] ?? ''}',
+        description: j['description'] == null ? null : '${j['description']}',
+        code: j['code'] == null ? null : '${j['code']}',
+        discountText: j['discountText'] == null ? null : '${j['discountText']}',
+        terms: j['terms'] == null ? null : '${j['terms']}',
+        validTill: j['validTill'] == null ? null : '${j['validTill']}',
+        goUrl: '${j['goUrl'] ?? ''}',
+        imageUrl: (j['imageUrl'] is String && (j['imageUrl'] as String).startsWith('http')) ? j['imageUrl'] as String : null,
+      );
+  int get percent => int.tryParse(RegExp(r'(\d{1,2})\s*%').firstMatch(discountText ?? '')?.group(1) ?? '') ?? 0;
+}
+
+class PriceAlert {
+  final int id;
+  final String productTitle;
+  final String searchQuery;
+  final String? sourceUrl;
+  final String? image;
+  final double targetPrice;
+  final double? priceAtSet;
+  final bool notified;
+  const PriceAlert({
+    required this.id,
+    required this.productTitle,
+    required this.searchQuery,
+    this.sourceUrl,
+    this.image,
+    required this.targetPrice,
+    this.priceAtSet,
+    this.notified = false,
+  });
+  factory PriceAlert.fromJson(Map<String, dynamic> j) => PriceAlert(
+        id: (j['id'] is num) ? (j['id'] as num).toInt() : 0,
+        productTitle: '${j['productTitle'] ?? j['product_title'] ?? ''}',
+        searchQuery: '${j['searchQuery'] ?? j['search_query'] ?? ''}',
+        sourceUrl: (j['sourceUrl'] ?? j['source_url']) == null ? null : '${j['sourceUrl'] ?? j['source_url']}',
+        image: j['image'] == null ? null : '${j['image']}',
+        targetPrice: Offer._num(j['targetPrice'] ?? j['target_price']),
+        priceAtSet: Offer._num(j['priceAtSet'] ?? j['price_at_set']) > 0 ? Offer._num(j['priceAtSet'] ?? j['price_at_set']) : null,
+        notified: j['notified'] == true || j['notified'] == 1 || j['notifiedAt'] != null || j['notified_at'] != null,
+      );
+}
+
+class AppNotification {
+  final String id;
+  final String title;
+  final String body;
+  final String kind;
+  final String? createdAt;
+  final bool read;
+  const AppNotification(this.id, this.title, this.body, this.kind, this.createdAt, this.read);
+  factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
+        '${j['id'] ?? ''}',
+        '${j['title'] ?? ''}',
+        '${j['body'] ?? j['message'] ?? ''}',
+        '${j['kind'] ?? j['type'] ?? ''}',
+        (j['createdAt'] ?? j['created_at'])?.toString(),
+        j['read'] == true || j['isRead'] == true,
+      );
+}
+
+class NotificationFeed {
+  final bool signedIn;
+  final int unread;
+  final List<AppNotification> items;
+  const NotificationFeed(this.signedIn, this.unread, this.items);
+}
+
+/// POST /api/product-page: same-product offers, related, REAL history, deal score.
+class ProductPage {
+  final bool found;
+  final String title;
+  final String? message;
+  final List<String> images;
+  final List<ProductOffer> offers;
+  final List<ProductOffer> related;
+  final List<HistoryPoint> history;
+  final String verdict; // great | good | fair | wait | unknown
+  final int score;
+  final String headline;
+  const ProductPage({
+    required this.found,
+    required this.title,
+    this.message,
+    this.images = const [],
+    this.offers = const [],
+    this.related = const [],
+    this.history = const [],
+    this.verdict = 'unknown',
+    this.score = 0,
+    this.headline = '',
+  });
+}
+
+class ProductOffer {
+  final String title;
+  final String seller;
+  final double price;
+  final double listPrice;
+  final String? image;
+  final double? rating;
+  final String goUrl;
+  const ProductOffer(this.title, this.seller, this.price, this.listPrice, this.image, this.rating, this.goUrl);
+  factory ProductOffer.fromJson(Map<String, dynamic> j) => ProductOffer(
+        '${j['title'] ?? ''}',
+        '${j['seller'] ?? ''}',
+        Offer._num(j['price']),
+        Offer._num(j['listPrice']),
+        j['image'] is String ? j['image'] as String : null,
+        (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
+        '${j['goUrl'] ?? ''}',
+      );
+}
+
 class Try1SecondApi {
   Try1SecondApi({String? baseUrl})
       : baseUrl = (baseUrl == null || baseUrl.trim().isEmpty)
@@ -453,6 +626,121 @@ class Try1SecondApi {
     }
     return const SpinPrize('Better luck next time', null);
   }
+
+
+  // -- website-parity data (same endpoints the site calls) -------------------
+
+  /// POST /api/scrape/live: the exact call the website makes for every vertical search.
+  Future<LiveResponse> live(
+    String vertical,
+    String query, {
+    String city = 'Indore',
+    String pincode = '452001',
+    String? depart,
+    String? returnDate,
+  }) async {
+    final dateSensitive = const ['hotels', 'flights', 'bus', 'cab', 'movies', 'movie'].contains(vertical);
+    final res = await _post('/api/scrape/live', {
+      'vertical': vertical == 'movie' ? 'movies' : vertical,
+      'query': query.trim(),
+      'pincode': pincode,
+      'city': city,
+      if (dateSensitive && depart != null) 'travelDates': {'depart': depart, if (returnDate != null) 'return': returnDate},
+    });
+    return LiveResponse.fromJson(res);
+  }
+
+  Future<List<Deal>> deals({String? kind, String? merchant, int limit = 200}) async {
+    final q = <String>['limit=$limit', if (kind != null) 'kind=${Uri.encodeQueryComponent(kind)}', if (merchant != null) 'merchant=${Uri.encodeQueryComponent(merchant)}'];
+    final res = await _get('/api/deals?${q.join('&')}');
+    return [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)];
+  }
+
+  Future<List<Deal>> dealsForSeller(String seller, {int limit = 6}) async {
+    final res = await _get('/api/deals/for-seller?seller=${Uri.encodeQueryComponent(seller)}&limit=$limit');
+    return [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)];
+  }
+
+  /// POST /api/product-page: link or typed product -> same-product offers + history + deal score.
+  Future<ProductPage> productPage(String input, {String? city, String? pincode}) async {
+    final isUrl = RegExp(r'https?://', caseSensitive: false).hasMatch(input);
+    final res = await _post('/api/product-page', {
+      if (isUrl) 'input': input.trim() else 'query': input.trim(),
+      if (city != null) 'city': city,
+      if (pincode != null) 'pincode': pincode,
+    });
+    final product = (res['product'] is Map) ? res['product'] as Map : const {};
+    if (res['found'] != true) {
+      return ProductPage(found: false, title: '${product['title'] ?? input}', message: res['message']?.toString());
+    }
+    final deal = (res['deal'] is Map) ? res['deal'] as Map : const {};
+    return ProductPage(
+      found: true,
+      title: '${product['title'] ?? input}',
+      message: res['message']?.toString(),
+      images: [for (final i in (res['images'] as List? ?? const [])) '$i'],
+      offers: [for (final o in (res['offers'] as List? ?? const [])) if (o is Map<String, dynamic>) ProductOffer.fromJson(o)],
+      related: [for (final o in (res['related'] as List? ?? const [])) if (o is Map<String, dynamic>) ProductOffer.fromJson(o)],
+      history: [
+        for (final p in (res['history'] as List? ?? const []))
+          if (p is Map<String, dynamic>) HistoryPoint.fromJson({'price': p['price'], 'capturedAt': p['capturedAt'], 'captured_at': p['capturedAt']}),
+      ].where((p) => p.price > 0).toList(),
+      verdict: '${deal['verdict'] ?? 'unknown'}',
+      score: (deal['score'] is num) ? (deal['score'] as num).round() : 0,
+      headline: '${deal['headline'] ?? deal['label'] ?? ''}',
+    );
+  }
+
+  Future<List<PriceAlert>> alerts(String token) async {
+    final res = await _get('/api/alerts', token: token);
+    return [for (final a in (res['alerts'] as List? ?? const [])) if (a is Map<String, dynamic>) PriceAlert.fromJson(a)];
+  }
+
+  Future<void> createAlert(
+    String token, {
+    required String productTitle,
+    required String searchQuery,
+    required double targetPrice,
+    double? priceAtSet,
+    String? sourceUrl,
+    String? image,
+  }) async {
+    await _post('/api/alerts', {
+      'productTitle': productTitle,
+      'searchQuery': searchQuery,
+      'targetPrice': targetPrice,
+      if (priceAtSet != null) 'priceAtSet': priceAtSet,
+      if (sourceUrl != null) 'sourceUrl': sourceUrl,
+      if (image != null) 'image': image,
+    }, token: token);
+  }
+
+  Future<void> deleteAlert(String token, int id) async {
+    final res = await _client.delete(Uri.parse('$baseUrl/api/alerts/$id'), headers: _headers(token));
+    if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('Could not delete alert');
+  }
+
+  Future<NotificationFeed> notifications({String? token}) async {
+    final res = await _get('/api/notifications', token: token);
+    return NotificationFeed(
+      res['signedIn'] == true,
+      (res['unread'] is num) ? (res['unread'] as num).toInt() : 0,
+      [for (final n in (res['items'] as List? ?? const [])) if (n is Map<String, dynamic>) AppNotification.fromJson(n)],
+    );
+  }
+
+  Future<void> markNotificationsRead(String token, {List<String>? ids}) async {
+    await _post('/api/notifications/read', {if (ids != null) 'ids': ids}, token: token);
+  }
+
+  Future<String?> referralLink(String token) async {
+    final res = await _post('/api/rewards/referral', {}, token: token);
+    final v = res['link'] ?? res['url'] ?? res['referralLink'] ?? res['code'];
+    return v?.toString();
+  }
+
+  /// Public GET for ad-hoc read endpoints (status, provenance, picks, ...).
+  Future<Map<String, dynamic>> getJson(String path, {String? token}) => _get(path, token: token);
 
   Uri searchUrl(String query) => Uri.parse(
         '$baseUrl/?q=${Uri.encodeQueryComponent(query)}',

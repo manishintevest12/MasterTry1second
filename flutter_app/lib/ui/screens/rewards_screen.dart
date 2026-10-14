@@ -1,14 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
+import '../../core/app_state.dart';
 import '../../core/auth.dart';
-import '../../core/storage.dart';
 import '../../core/theme.dart';
-import '../widgets/common.dart';
+import '../widgets/kit.dart';
 import 'profile_screen.dart';
 
-/// Rewards: points, spin eligibility and the Spin & Earn wheel — backed by the
-/// same account as the website (sign in with Google to sync).
+/// Rewards Hub (website RewardsHub + OffersHub): wallet with OmniPoints and
+/// free spins, the real Spin & Earn wheel, referral link, and the Deals &
+/// Coupons hub with per-store tiles (UP TO X% OFF) and live deal cards.
+/// Every deal routes through the server (affiliate injection stays server-side).
 class RewardsScreen extends StatefulWidget {
   const RewardsScreen({super.key});
 
@@ -17,215 +22,485 @@ class RewardsScreen extends StatefulWidget {
 }
 
 class _RewardsScreenState extends State<RewardsScreen> {
+  final _state = AppState.instance;
   final _auth = AuthService.instance;
-  RewardsSummary? _summary;
-  bool _loading = false;
-  String? _error;
-  bool _spinning = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _auth.addListener(_onAuth);
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _auth.removeListener(_onAuth);
-    super.dispose();
-  }
-
-  void _onAuth() {
-    if (mounted) setState(() {});
-    _load();
-  }
-
-  Future<void> _load() async {
-    if (!_auth.signedIn || _auth.token == null) {
-      setState(() => _summary = null);
-      return;
-    }
-    setState(() { _loading = true; _error = null; });
-    try {
-      final api = await _storeApi();
-      final s = await api.rewards(_auth.token!);
-      if (mounted) setState(() => _summary = s);
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<Try1SecondApi> _storeApi() => AppStore().api();
-
-  Future<void> _spin() async {
-    if (_spinning || _auth.token == null) return;
-    setState(() { _spinning = true; _error = null; });
-    try {
-      final api = await _storeApi();
-      final prize = await api.spin(_auth.token!);
-      if (!mounted) return;
-      await _load();
-      if (!mounted) return;
-      final dialogContext = context;
-      if (!dialogContext.mounted) return;
-      await showDialog<void>(
-        context: dialogContext,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 56, height: 56,
-                decoration: const BoxDecoration(gradient: T1SColors.badgeGradient, shape: BoxShape.circle),
-                child: const Icon(Icons.celebration, color: Colors.white),
-              ),
-              const SizedBox(height: 14),
-              Text('You won!', style: T1SText.headline(context)),
-              const SizedBox(height: 6),
-              Text(prize.name, style: T1SText.price(context), textAlign: TextAlign.center),
-              if (prize.description != null) ...[
-                const SizedBox(height: 4),
-                Text(prize.description!, style: T1SText.body(context).copyWith(color: T1SColors.slate500), textAlign: TextAlign.center),
-              ],
-            ],
-          ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Nice'))],
-        ),
-      );
-    } catch (e) {
-      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _spinning = false);
-    }
-  }
+  int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
-    final signedIn = _auth.signedIn;
-    final s = _summary;
-
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-        children: [
-          Text('Rewards', style: T1SText.display(context).copyWith(fontSize: 22)),
-          const SizedBox(height: 4),
-          Text('Earn points on every redirection. 100 points = one spin.',
-              style: T1SText.body(context).copyWith(color: T1SColors.slate500)),
-          const SizedBox(height: 16),
-
-          if (!signedIn) ...[
-            T1SCard(
-              child: Column(
-                children: [
-                  const Icon(Icons.card_giftcard, size: 34, color: T1SColors.red),
-                  const SizedBox(height: 12),
-                  Text('Sign in to see your rewards', style: T1SText.title(context), textAlign: TextAlign.center),
-                  const SizedBox(height: 4),
-                  Text('Your points and spins live in your Try1Second account — the same one as the website.',
-                      style: T1SText.body(context).copyWith(color: T1SColors.slate500),
-                      textAlign: TextAlign.center),
-                  const SizedBox(height: 14),
-                  T1SButton.primary(label: 'Go to Profile', onTap: () => Navigator.of(context)
-                      .push(MaterialPageRoute(builder: (_) => const ProfileScreen()))),
-                ],
-              ),
-            ),
-          ] else ...[
-            // Wallet card
-            T1SCard(
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _Stat(label: 'POINTS', value: _loading ? '…' : '${s?.validPoints ?? '—'}'),
-                      _Stat(label: 'SPINS READY', value: _loading ? '…' : '${s?.availableSpins ?? '—'}'),
-                      _Stat(label: 'PTS / SPIN', value: '${s?.pointsPerSpin ?? 100}'),
-                    ],
-                  ),
-                  const Divider(height: 26),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: T1SButton.primary(
-                      label: _spinning
-                          ? 'Spinning…'
-                          : 'Spin & Earn',
-                      icon: _spinning
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.casino, size: 17),
-                      onTap: _spinning ? null : _spin,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              T1SCard(
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.info_outline, size: 17, color: T1SColors.red),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(_error!, style: T1SText.body(context))),
-                ]),
-              ),
+    return DefaultTabController(
+      length: 3,
+      child: Column(children: [
+        Container(
+          color: isDark(context) ? T1SColors.slate900 : Colors.white,
+          child: TabBar(
+            labelColor: T1SColors.red,
+            unselectedLabelColor: muted(context),
+            indicatorColor: T1SColors.red,
+            labelStyle: tx(context, 12.5, w: FontWeight.w900),
+            onTap: (i) => setState(() => _tab = i),
+            tabs: const [
+              Tab(icon: Icon(Icons.local_offer_rounded, size: 15), text: 'Deals & Coupons'),
+              Tab(icon: Icon(Icons.casino_rounded, size: 15), text: 'Spin & Earn'),
+              Tab(icon: Icon(Icons.group_add_rounded, size: 15), text: 'Refer & Earn'),
             ],
-          ],
-          const SizedBox(height: 16),
-
-          const SectionHeader('HOW REWARDS WORK'),
-          T1SCard(
-            child: Column(
-              children: const [
-                _RuleRow(icon: Icons.touch_app, text: 'Every merchant redirection you make earns one valid point.'),
-                _RuleRow(icon: Icons.casino_outlined, text: '100 valid points unlock one spin eligibility.'),
-                _RuleRow(icon: Icons.lock_outline, text: 'Spin results are visible only to you.'),
-                _RuleRow(icon: Icons.block, text: 'Points never convert to cash — vouchers & prizes only.'),
-              ],
-            ),
           ),
-        ],
-      ),
+        ),
+        Expanded(
+          child: TabBarView(children: [
+            _DealsHub(state: _state),
+            const _SpinTab(),
+            const _ReferralTab(),
+          ]),
+        ),
+      ]),
     );
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value});
-  final String label;
-  final String value;
+// ---------------------------------------------------------------------------
+// Deals hub
+// ---------------------------------------------------------------------------
+
+class _DealsHub extends StatefulWidget {
+  const _DealsHub({required this.state});
+  final AppState state;
+
+  @override
+  State<_DealsHub> createState() => _DealsHubState();
+}
+
+class _DealsHubState extends State<_DealsHub> {
+  List<Deal>? _deals;
+  String? _error;
+  String? _merchant;
+  bool _busy = false;
+  final _ctrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({String? merchant}) async {
+    setState(() => _busy = true);
+    try {
+      final d = await widget.state.api.deals(merchant: (merchant ?? '').isEmpty ? null : merchant, limit: 200);
+      if (mounted) setState(() { _deals = d; _error = null; _merchant = (merchant ?? '').isEmpty ? null : merchant; });
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final deals = _deals ?? const <Deal>[];
+    final filtered = _ctrl.text.isEmpty
+        ? deals
+        : deals.where((d) => d.title.toLowerCase().contains(_ctrl.text.toLowerCase()) || d.merchantName.toLowerCase().contains(_ctrl.text.toLowerCase())).toList();
+
+    // per-merchant tiles (website OffersHub store tiles)
+    final byMerchant = <String, List<Deal>>{};
+    for (final d in deals) {
+      byMerchant.putIfAbsent(d.merchantName, () => []).add(d);
+    }
+    final tiles = byMerchant.entries.toList()
+      ..sort((a, b) {
+        final ap = a.value.map((d) => d.percent).reduce(math.max);
+        final bp = b.value.map((d) => d.percent).reduce(math.max);
+        return bp.compareTo(ap);
+      });
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
-        Text(value, style: T1SText.price(context).copyWith(fontSize: 19)),
-        const SizedBox(height: 2),
-        Text(label, style: T1SText.label(context).copyWith(letterSpacing: 0.5)),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              decoration: const InputDecoration(hintText: 'Search deals, coupons, stores…', isDense: true, prefixIcon: Icon(Icons.search, size: 16)),
+              style: tx(context, 12),
+            ),
+          ),
+          if (_merchant != null) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _load(merchant: ''),
+              child: Pill('$_merchant ×', fg: T1SColors.red, bg: T1SColors.red50, size: 10),
+            ),
+          ],
+          const SizedBox(width: 8),
+          if (_busy) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
+        ]),
+        const SizedBox(height: 14),
+
+        if (_error != null)
+          Box(padding: const EdgeInsets.all(12), child: Text(_error!, style: tx(context, 11.5, color: T1SColors.red))),
+
+        if (deals.isEmpty && !_busy && _error == null)
+          Box(
+            padding: const EdgeInsets.all(22),
+            child: Column(children: [
+              Icon(Icons.local_offer_outlined, size: 30, color: T1SColors.slate300),
+              const SizedBox(height: 10),
+              Text('No live deals right now', style: tx(context, 13.5, w: FontWeight.w900)),
+              const SizedBox(height: 5),
+              Text('The engine re-acquires fresh deals automatically.', textAlign: TextAlign.center, style: tx(context, 11, color: muted(context))),
+            ]),
+          ),
+
+        if (tiles.isNotEmpty) ...[
+          SectionTitle('STORES · LIVE DEALS', trailing: Text('${deals.length} deals', style: tx(context, 10, color: muted(context)))),
+          SizedBox(
+            height: 116,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: tiles.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (c, i) {
+                final e = tiles[i];
+                final maxPct = e.value.map((d) => d.percent).reduce(math.max);
+                return GestureDetector(
+                  onTap: () => _load(merchant: e.key),
+                  child: _StoreTile(name: e.key, count: e.value.length, maxPct: maxPct, deal: e.value.firstWhere((d) => d.imageUrl != null, orElse: () => e.value.first)),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+
+        if (filtered.isNotEmpty) ...[
+          SectionTitle(_merchant == null ? 'LIVE DEALS · AUTO-ACQUIRED' : '$_merchant DEALS'),
+          for (final d in filtered) ...[
+            _DealCard(deal: d),
+            const SizedBox(height: 10),
+          ],
+        ],
       ],
     );
   }
 }
 
-class _RuleRow extends StatelessWidget {
-  const _RuleRow({required this.icon, required this.text});
-  final IconData icon;
-  final String text;
+class _StoreTile extends StatelessWidget {
+  const _StoreTile({required this.name, required this.count, required this.maxPct, required this.deal});
+  final String name;
+  final int count;
+  final int maxPct;
+  final Deal deal;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, size: 16, color: T1SColors.red),
-        const SizedBox(width: 10),
-        Expanded(child: Text(text, style: T1SText.body(context).copyWith(fontSize: 11.5))),
+    return Container(
+      width: 128,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: isDark(context) ? T1SColors.slate900 : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border(context)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: NetImage(deal.imageUrl, fit: BoxFit.cover, fallbackIcon: Icons.storefront_outlined, width: 112)),
+        const SizedBox(height: 6),
+        if (maxPct > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(color: T1SColors.greenBg, borderRadius: BorderRadius.circular(5)),
+            child: Text('UP TO $maxPct% OFF', style: tx(context, 8.5, w: FontWeight.w900, color: T1SColors.emerald600)),
+          ),
+        const SizedBox(height: 4),
+        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10.5, w: FontWeight.w900)),
+        Text('$count live deal${count == 1 ? '' : 's'}', style: tx(context, 8.5, color: muted(context))),
       ]),
+    );
+  }
+}
+
+class _DealCard extends StatelessWidget {
+  const _DealCard({required this.deal});
+  final Deal deal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Box(
+      padding: EdgeInsets.zero,
+      clip: true,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        NetImage(deal.imageUrl, width: 84, height: 84, fallbackIcon: Icons.sell_outlined),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Pill(deal.merchantName, fg: T1SColors.red, bg: T1SColors.red50, size: 8.5),
+                const SizedBox(width: 5),
+                Pill(deal.kind.toUpperCase(), bg: isDark(context) ? T1SColors.slate800 : T1SColors.slate100, fg: muted(context), size: 8),
+              ]),
+              const SizedBox(height: 4),
+              Text(deal.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w800, h: 1.25)),
+              if (deal.discountText != null && deal.discountText!.isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(deal.discountText!, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.emerald600)),
+              ],
+              const SizedBox(height: 7),
+              Row(children: [
+                if (deal.code != null && deal.code!.isNotEmpty)
+                  GestureDetector(
+                    onLongPress: () { Clipboard.setData(ClipboardData(text: deal.code!)); toast(context, 'Code copied: ${deal.code!}'); },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: border(context)),
+                      ),
+                      child: Text('CODE: ${deal.code}', style: tx(context, 9, w: FontWeight.w800, mono: true)),
+                    ),
+                  )
+                else
+                  Text(deal.validTill != null ? 'till ${deal.validTill}' : 'live now', style: tx(context, 9.5, color: muted(context))),
+                const Spacer(),
+                RedButton('Get Deal', onTap: deal.goUrl.isEmpty ? null : () => openDeal(deal.goUrl), dense: true),
+              ]),
+            ]),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Spin & Earn
+// ---------------------------------------------------------------------------
+
+class _SpinTab extends StatefulWidget {
+  const _SpinTab();
+
+  @override
+  State<_SpinTab> createState() => _SpinTabState();
+}
+
+class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin {
+  final _state = AppState.instance;
+  final _auth = AuthService.instance;
+  RewardsSummary? _summary;
+  SpinPrize? _prize;
+  bool _spinning = false;
+  bool _busy = false;
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3));
+
+  @override
+  void initState() {
+    super.initState();
+    _auth.addListener(_load);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    _auth.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (!_auth.signedIn || _auth.token == null) {
+      if (mounted) setState(() => _summary = null);
+      return;
+    }
+    try {
+      final s = await _state.api.rewards(_auth.token!);
+      if (mounted) setState(() => _summary = s);
+      _state.points = s.validPoints;
+      _state.spinsAvailable = s.availableSpins;
+      _state.notifyListeners();
+    } catch (_) {/* honest: keep last wallet */}
+  }
+
+  Future<void> _spin() async {
+    if (_busy || _spinning) return;
+    if (!_auth.signedIn || _auth.token == null) {
+      toast(context, 'Sign in to spin the wheel', error: true);
+      return;
+    }
+    if ((_summary?.availableSpins ?? 0) < 1) {
+      toast(context, 'You need ${_summary?.pointsPerSpin ?? 100} points for a spin');
+      return;
+    }
+    setState(() { _spinning = true; _prize = null; });
+    _c.forward(from: 0);
+    try {
+      final p = await _state.api.spin(_auth.token!);
+      await Future.delayed(const Duration(milliseconds: 3100));
+      if (mounted) setState(() { _prize = p; _spinning = false; });
+      await _load();
+      await _state.refreshBadges();
+    } catch (e) {
+      if (mounted) setState(() => _spinning = false);
+      toast(context, '$e'.replaceFirst('Exception: ', ''), error: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _summary;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        Box(
+          padding: const EdgeInsets.all(18),
+          child: Column(children: [
+            Row(children: [
+              Expanded(child: _wallet('OmniPoints', '${s?.validPoints ?? _state.points}', T1SColors.red, 22)),
+              Expanded(child: _wallet('Free Spins', '${s?.availableSpins ?? 0}', T1SColors.emerald600, 22)),
+            ]),
+            if (s != null) ...[
+              const SizedBox(height: 6),
+              Text('${s.pointsPerSpin} points = 1 spin', style: tx(context, 10, color: muted(context))),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 18),
+        Box(
+          padding: const EdgeInsets.all(22),
+          child: Column(children: [
+            RotationTransition(
+              turns: _spinning
+                  ? Tween(begin: 0.0, end: 5.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutExpo))
+                  : const AlwaysStoppedAnimation<double>(0.0),
+              child: Container(
+                width: 168,
+                height: 168,
+                decoration: const BoxDecoration(shape: BoxShape.circle, gradient: T1SColors.badgeGradient, boxShadow: [BoxShadow(color: Color(0x33E7000B), blurRadius: 26, spreadRadius: 3)]),
+                child: const Icon(Icons.casino_rounded, size: 64, color: Colors.white),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(_prize != null ? 'You won: ${_prize!.name}' : (_spinning ? 'Spinning…' : 'Spin & Earn'),
+                style: tx(context, 15, w: FontWeight.w900, color: _prize != null ? T1SColors.emerald600 : ink(context))),
+            if (_prize?.description != null) ...[
+              const SizedBox(height: 4),
+              Text(_prize!.description!, textAlign: TextAlign.center, style: tx(context, 11.5, color: muted(context))),
+            ],
+            const SizedBox(height: 16),
+            RedButton(_spinning ? 'Spinning…' : 'SPIN THE WHEEL', onTap: _spin, loading: _spinning, expand: true),
+            if (!_auth.signedIn) ...[
+              const SizedBox(height: 8),
+              Text('Sign in from Profile to unlock spins.', style: tx(context, 10, color: muted(context))),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 16),
+        Box(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('HOW EARNING WORKS', style: tx(context, 10.5, w: FontWeight.w900, ls: 0.7, color: muted(context))),
+            const SizedBox(height: 10),
+            _row('1', 'Every merchant redirection earns 1 OmniPoint.'),
+            _row('2', 'Every friend who joins via your referral link adds 1 point.'),
+            _row('3', 'Redeem ${s?.pointsPerSpin ?? 100} points per spin for vouchers & cashback.'),
+          ]),
+        ),
+      ],
+    );
+  }
+
+  Widget _row(String n, String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(width: 18, height: 18, alignment: Alignment.center, decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(6)), child: Text(n, style: tx(context, 9, w: FontWeight.w900, color: Colors.white))),
+          const SizedBox(width: 8),
+          Expanded(child: Text(t, style: tx(context, 11.5, color: muted(context)))),
+        ]),
+      );
+
+  Widget _wallet(String label, String value, Color color, double size) =>
+      Builder(builder: (c) => Column(children: [
+            Text(value, style: tx(c, size, w: FontWeight.w900, color: color, mono: true)),
+            const SizedBox(height: 2),
+            Text(label, style: tx(c, 10, w: FontWeight.w800, color: muted(c))),
+          ]));
+}
+
+// ---------------------------------------------------------------------------
+// Referral
+// ---------------------------------------------------------------------------
+
+class _ReferralTab extends StatefulWidget {
+  const _ReferralTab();
+
+  @override
+  State<_ReferralTab> createState() => _ReferralTabState();
+}
+
+class _ReferralTabState extends State<_ReferralTab> {
+  final _state = AppState.instance;
+  final _auth = AuthService.instance;
+  String? _link;
+  String? _error;
+  bool _busy = false;
+
+  Future<void> _load() async {
+    if (!_auth.signedIn || _auth.token == null) return;
+    setState(() => _busy = true);
+    try {
+      final l = await _state.api.referralLink(_auth.token!);
+      if (mounted) setState(() { _link = l; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        Box(
+          padding: const EdgeInsets.all(20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.group_add_rounded, size: 18, color: T1SColors.orange500),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Refer & Earn', style: tx(context, 15, w: FontWeight.w900))),
+            ]),
+            const SizedBox(height: 8),
+            Text('Earn 1 Point for Every Referral. Spin at 100 Points.',
+                style: tx(context, 12.5, w: FontWeight.w800, h: 1.3)),
+            const SizedBox(height: 6),
+            Text('Invite friends using your personal Try1Second referral link. Every friend who joins accredits 1 point directly to your wallet.',
+                style: tx(context, 11, color: muted(context), h: 1.45)),
+            const SizedBox(height: 14),
+            if (!_auth.signedIn)
+              Text('Sign in from Profile to get your referral link.', style: tx(context, 11.5, color: muted(context)))
+            else ...[
+              if (_busy) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
+              if (_error != null) Text(_error!, style: tx(context, 11.5, color: T1SColors.red)),
+              if (_link != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50, borderRadius: BorderRadius.circular(10), border: Border.all(color: border(context))),
+                  child: Text(_link!, style: tx(context, 11, mono: true), maxLines: 2, overflow: TextOverflow.ellipsis),
+                ),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(
+                    child: RedButton('Copy link', onTap: () { Clipboard.setData(ClipboardData(text: _link!)); toast(context, 'Referral link copied'); }, icon: Icons.copy_rounded),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: T1SOutlineButton('Refresh', onTap: _load)),
+                ]),
+              ],
+            ],
+          ]),
+        ),
+      ],
     );
   }
 }

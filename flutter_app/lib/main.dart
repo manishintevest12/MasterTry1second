@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'core/auth.dart';
-import 'core/storage.dart';
+import 'core/app_state.dart';
 import 'core/theme.dart';
 import 'ui/main_shell.dart';
+import 'ui/screens/product_screen.dart';
+import 'ui/screens/radar_screen.dart';
 import 'ui/splash_gate.dart';
 
 void main() {
@@ -19,29 +20,34 @@ class Try1SecondApp extends StatefulWidget {
 }
 
 class _Try1SecondAppState extends State<Try1SecondApp> {
-  final _store = AppStore();
+  final _state = AppState.instance;
   bool _dark = false;
+  bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    _store.darkMode().then((v) {
-      if (mounted) setState(() => _dark = v);
-    });
-    // Restore a saved Google session while the splash is still covering the UI.
-    _store.api().then((api) => AuthService.instance.restore(api));
-    // React instantly when dark mode is toggled on the Settings screen.
-    _store.darkModeNotifier.addListener(_onDarkChanged);
-  }
-
-  void _onDarkChanged() {
-    if (mounted) setState(() => _dark = _store.darkModeNotifier.value);
+    _state.store.darkModeNotifier.addListener(_onDarkFromStore);
+    _boot();
   }
 
   @override
   void dispose() {
-    _store.darkModeNotifier.removeListener(_onDarkChanged);
+    _state.store.darkModeNotifier.removeListener(_onDarkFromStore);
     super.dispose();
+  }
+
+  void _onDarkFromStore() => _onDark(_state.store.darkModeNotifier.value);
+
+  void _onDark(bool v) {
+    if (mounted) setState(() => _dark = v);
+  }
+
+  /// Splash holds until the API is ready and the saved session (if any) has
+  /// been validated, so the app opens on the right screen with fresh badges.
+  Future<void> _boot() async {
+    await _state.init();
+    if (mounted) setState(() => _ready = true);
   }
 
   @override
@@ -52,7 +58,21 @@ class _Try1SecondAppState extends State<Try1SecondApp> {
       theme: t1sLightTheme(),
       darkTheme: t1sDarkTheme(),
       themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
-      home: const SplashGate(child: MainShell()),
+      navigatorKey: AppState.instance.navigator,
+      routes: {
+        'radar': (_) => const RadarScreen(),
+        'product': (_) => _ProductRoute(),
+      },
+      home: SplashGate(ready: _ready, child: const MainShell()),
     );
+  }
+}
+
+class _ProductRoute extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final input = args is PendingSearch ? args.query : (args is String ? args : '');
+    return ProductScreen(input: input);
   }
 }

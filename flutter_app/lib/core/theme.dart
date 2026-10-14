@@ -29,6 +29,35 @@ abstract final class T1SColors {
   static const greenBg = Color(0xFFF0FDF4);
   static const greenBorder = Color(0xFFBBF7D0);
 
+  // Website dark hero + accent palette (HomeView / FixedBottomBar spec)
+  static const heroBg = Color(0xFF0D0714);
+  static const heroGrid = Color(0xFF2A1B40);
+  static const redPillBg = Color(0xB3450A0A); // red-950/70
+  static const redPillBorder = Color(0x99991B1B); // red-800/60
+  static const red300 = Color(0xFFFCA5A5);
+  static const red400 = Color(0xFFF87171);
+  static const red500 = Color(0xFFEF4444);
+  static const rose500 = Color(0xFFF43F5E);
+  static const amber300 = Color(0xFFFCD34D);
+  static const amber400 = Color(0xFFFBBF24);
+  static const amber500 = Color(0xFFF59E0B);
+  static const emerald400 = Color(0xFF34D399);
+  static const emerald500 = Color(0xFF10B981);
+  static const emerald600 = Color(0xFF059669);
+  static const sky300 = Color(0xFF7DD3FC);
+  static const sky400 = Color(0xFF38BDF8);
+  static const blue600 = Color(0xFF2563EB);
+  static const blue50 = Color(0xFFEFF6FF);
+  static const orange500 = Color(0xFFF97316);
+  static const orange600 = Color(0xFFEA580C);
+  static const orange50 = Color(0xFFFFF7ED);
+  static const red50 = Color(0xFFFEF2F2);
+  static const red200 = Color(0xFFFECACA);
+  static const slate700 = Color(0xFF334155);
+
+  static const heroGradientText = LinearGradient(colors: [red500, rose500, amber400]);
+  static const ctaGradient = LinearGradient(colors: [orange500, amber500]);
+
   static const badgeGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
