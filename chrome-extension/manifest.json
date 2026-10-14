@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Try1Second \u2014 Cross-Site Price History & Alerts",
   "short_name": "Try1Second",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Live cross-site price comparison, real price history graphs and price-drop alerts \u2014 powered by the independent Try1Second metasearch engine. Never shows invented prices.",
   "permissions": [
     "storage",
