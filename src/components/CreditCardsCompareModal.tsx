@@ -41,7 +41,30 @@ export const CreditCardsCompareModal: React.FC<{
           <h3 className="text-sm font-extrabold text-slate-900">Credit Card Comparison</h3>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><X className="w-4 h-4 text-slate-500" /></button>
         </div>
-        <div className="overflow-auto p-5">
+        {/* Mobile (<sm): one stacked block per card, label/value rows inside — no horizontal scroll. */}
+        <div className="sm:hidden p-4 space-y-4">
+          {cards.map((c) => (
+            <div key={c.id} className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="relative bg-slate-50 px-3 pt-3 pb-2">
+                <div className="flex items-start gap-3 pr-6">
+                  {c.imageUrl && <img src={c.imageUrl} alt={c.title} className="w-24 h-16 object-contain rounded-lg border border-slate-200 bg-white p-1 shrink-0" />}
+                  <p className="text-xs font-extrabold text-slate-900 leading-snug">{String(c.title)}</p>
+                </div>
+                <button type="button" onClick={() => onRemove(c.id)} className="absolute top-2 right-2 p-1 rounded-full hover:bg-slate-200 cursor-pointer"><X className="w-3.5 h-3.5 text-slate-400" /></button>
+              </div>
+              <dl className="px-3 pb-2">
+                {ROWS.map((row) => (
+                  <div key={row.label} className="flex justify-between gap-3 py-1.5 border-t border-slate-100 text-xs">
+                    <dt className="text-slate-500 font-bold shrink-0 max-w-[45%]">{row.label}</dt>
+                    <dd className="text-right text-slate-800 font-semibold break-words">{row.get(c)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
+        {/* Desktop (sm+): side-by-side grid comparison. */}
+        <div className="hidden sm:block overflow-auto p-5">
           <div className="grid gap-4" style={{ gridTemplateColumns: `160px repeat(${cards.length}, minmax(150px, 1fr))` }}>
             <div />
             {cards.map((c) => (

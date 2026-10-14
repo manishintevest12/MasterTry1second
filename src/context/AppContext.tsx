@@ -875,6 +875,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     overrideTravel?: { depart?: string; return?: string },
   ) => {
     setIsScrapingLive(true);
+    // Mobile UX: a user-initiated search (header buttons, voice, quick picks, AI assistant)
+    // auto-scrolls to the results section so the user never has to hunt for results on a
+    // small screen. Tab-switch/background triggers (no explicit query) never scroll.
+    const userInitiated = overrideQuery !== undefined;
+    const scrollToResults = () => {
+      requestAnimationFrame(() => {
+        try {
+          document.getElementById('t1s-results-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch {}
+      });
+    };
+    if (userInitiated) scrollToResults(); // jump to the live-scraping loader straight away
     const targetLoc = overrideLoc || userLocation;
     // Empty search box -> the vertical's own sensible starting query (what its placeholder suggests),
     // so a tab shows real data the moment it opens. These are SEARCH TERMS, never fake results.
@@ -977,6 +989,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch {
       // offline or fast fallback
     } finally {
+      // second hop: land at the top of the freshly rendered results (or empty state)
+      if (userInitiated) scrollToResults();
       setIsScrapingLive(false);
     }
 
@@ -1725,6 +1739,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const path = (window.location.pathname || '').toLowerCase();
       const hash = (window.location.hash || '').toLowerCase();
       const search = (window.location.search || '').toLowerCase();
+
+      // Shareable/deep-linkable verticals: #vertical=<id> opens that comparison tab
+      // (e.g. #vertical=creditcards). Unknown ids are ignored — never guessed.
+      const vMatch = /#vertical=([a-z]+)/.exec(hash);
+      if (vMatch && (COMPARISON_VERTICALS as readonly string[]).includes(vMatch[1])) {
+        setVertical(vMatch[1] as any);
+        setActiveNavTab('compare');
+        setCurrentSecretRoute('/');
+      }
 
       if (
         path.includes('merchantinstab2b') ||

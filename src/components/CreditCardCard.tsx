@@ -167,7 +167,7 @@ export const CreditCardCard: React.FC<Props> = ({ group, selectedForCompare, onT
                 <div className="text-[10px] text-slate-400 mt-0.5">Seen on {group.rows.length} sites</div>
               )}
             </div>
-            <div className="flex sm:flex-col gap-2">
+            <div className="flex flex-wrap sm:flex-col gap-2">
               <button
                 type="button"
                 onClick={() => onToggleCompare(item)}
