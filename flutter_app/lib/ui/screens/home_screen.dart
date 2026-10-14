@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../../core/auth.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
+import '../../core/api.dart';
 import '../../core/verticals.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
 import 'results_screen.dart';
+import '../widgets/home_lens_and_assistant.dart';
 import 'profile_screen.dart';
 
 /// Home: brand header, search bar, vertical grid, recents.
@@ -25,12 +27,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final _store = AppStore();
   String _vertical = 'ecommerce';
   List<String> _recents = [];
+  Try1SecondApi? _api;
 
   @override
   void initState() {
     super.initState();
     _vertical = widget.initialVertical ?? 'ecommerce';
     _store.recents().then((r) => setState(() => _recents = r));
+    _store.api().then((api) => setState(() => _api = api));
   }
 
   void _go([String? overrideQuery]) {
@@ -110,6 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Searching in: ${current.name}',
                   style: T1SText.label(context).copyWith(color: T1SColors.red),
                 ),
+
+                // Price Lens (paste any product link) + AI assistant (text/voice)
+                const SizedBox(height: 16),
+                if (_api != null)
+                  HomeLensAndAssistant(
+                    api: _api!,
+                    onVerticalPicked: (v) => setState(() {
+                      if (verticalById(v) != null) _vertical = v;
+                    }),
+                  ),
 
                 const SizedBox(height: 22),
                 const SectionHeader('VERTICALS'),

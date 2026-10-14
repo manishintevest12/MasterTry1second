@@ -282,6 +282,65 @@ class ScanResult {
   const ScanResult({required this.title, required this.vertical, required this.provider, required this.price, this.url});
 }
 
+/// One Price Lens result: a verified same-product offer with a real price.
+class LensOffer {
+  final String id;
+  final String title;
+  final String seller;
+  final double price;
+  final String goUrl;
+  const LensOffer({required this.id, required this.title, required this.seller, required this.price, required this.goUrl});
+  factory LensOffer.fromJson(Map<String, dynamic> j) => LensOffer(
+        id: '${j['id'] ?? ''}',
+        title: '${j['title'] ?? ''}',
+        seller: '${j['seller'] ?? ''}',
+        price: Offer._num(j['price']),
+        goUrl: '${j['goUrl'] ?? ''}',
+      );
+}
+
+/// POST /api/lens response: the product read from the pasted link + cheapest real offers.
+class LensResponse {
+  final bool found;
+  final String? title;
+  final String merchant;
+  final double? pagePrice;
+  final double? savingVsPage;
+  final String? message;
+  final List<LensOffer> offers;
+  const LensResponse({required this.found, this.title, this.merchant = '', this.pagePrice, this.savingVsPage, this.message, this.offers = const []});
+  factory LensResponse.fromJson(Map<String, dynamic> j) {
+    final product = (j['product'] as Map?) ?? const {};
+    final pvc = (j['pageVsCheapest'] as Map?);
+    return LensResponse(
+      found: j['found'] == true,
+      title: product['title'] == null ? null : '${product['title']}',
+      merchant: '${product['merchant'] ?? ''}',
+      pagePrice: Offer._num(product['pagePrice']),
+      savingVsPage: pvc == null ? null : Offer._num(pvc['saving']),
+      message: j['message'] == null ? null : '${j['message']}',
+      offers: ((j['results'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LensOffer.fromJson).toList(),
+    );
+  }
+}
+
+/// POST /api/assist/intent response: which vertical to open and what to search there.
+class AssistIntent {
+  final bool understood;
+  final String? vertical;
+  final String query;
+  final String? date;
+  final String reply;
+  const AssistIntent({required this.understood, this.vertical, required this.query, this.date, required this.reply});
+  factory AssistIntent.fromJson(Map<String, dynamic> j) => AssistIntent(
+        understood: j['understood'] == true,
+        vertical: j['vertical'] == null ? null : '${j['vertical']}',
+        query: '${j['query'] ?? ''}',
+        date: j['date'] == null ? null : '${j['date']}',
+        reply: '${j['reply'] ?? ''}',
+      );
+}
+
 class Try1SecondApi {
   Try1SecondApi({String? baseUrl})
       : baseUrl = (baseUrl == null || baseUrl.trim().isEmpty)
@@ -357,6 +416,14 @@ class Try1SecondApi {
       url: url.trim(),
     );
   }
+
+  /// Price Lens: paste ANY product link -> the same product's cheapest verified price across sites.
+  Future<LensResponse> lens(String input) async =>
+      LensResponse.fromJson(await _post('/api/lens', {'input': input.trim()}));
+
+  /// Home AI assistant: a typed or spoken question -> which vertical + query (+ date).
+  Future<AssistIntent> assistIntent(String text) async =>
+      AssistIntent.fromJson(await _post('/api/assist/intent', {'text': text.trim()}));
 
   // -- auth + rewards --------------------------------------------------------
 
