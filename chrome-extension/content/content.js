@@ -23,7 +23,7 @@
 
   const logoSvg = `
     <span class="t1s-lockup" role="img" aria-label="Try1Second">
-      <span class="t1s-ic"><img src="${chrome.runtime.getURL('images/logo-icon.png')}" alt="" /><span class="t1s-ring"></span></span>
+      <span class="t1s-ic"><img src="${chrome.runtime.getURL('images/logo-icon.png')}" alt="" /><span class="t1s-ring"></span><span class="t1s-sweep"></span><svg class="t1s-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0L14 9.5 24 12 14 14.5 12 24 10 14.5 0 12 10 9.5Z" fill="#fff"/></svg></span>
       <img class="t1s-wd" src="${chrome.runtime.getURL('images/logo-wordmark.png')}" alt="" />
     </span>`;
 

@@ -120,12 +120,21 @@
 /* Animated Try1Second logo lockup */
 .t1s-lockup { display: inline-flex; align-items: center; height: 30px; }
 .t1s-lockup img { height: 30px; width: auto; max-width: none; display: block; }
+.t1s-lockup { display: inline-flex; align-items: center; gap: 6px; }
 .t1s-lockup .t1s-ic { position: relative; display: inline-flex; height: 30px; }
-.t1s-lockup .t1s-ic img { transform-origin: 50% 70%; animation: t1s-tap 3.6s ease-in-out infinite; }
-.t1s-lockup .t1s-ring { position: absolute; inset: 8%; border-radius: 50%; border: 2px solid rgba(231,0,11,.55); opacity: 0; animation: t1s-ripple 3.6s ease-out infinite; }
-.t1s-lockup .t1s-wd { margin-left: -2px; animation: t1s-wordin .6s cubic-bezier(.2,.8,.2,1) both; }
-.t1s-lockup:hover .t1s-ic img { animation: t1s-tap .6s ease-in-out 1; }
-@keyframes t1s-tap { 0%,70%,100%{transform:translateY(0) scale(1) rotate(0)} 78%{transform:translateY(2px) scale(.93) rotate(-4deg)} 88%{transform:translateY(-1px) scale(1.06) rotate(2deg)} }
-@keyframes t1s-ripple { 0%,74%{transform:scale(.6);opacity:0} 80%{opacity:.9} 100%{transform:scale(1.7);opacity:0} }
-@keyframes t1s-wordin { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
-@media (prefers-reduced-motion: reduce) { .t1s-lockup img, .t1s-lockup .t1s-ring { animation: none !important; } }
+.t1s-lockup .t1s-ic img { height: 30px; width: auto; transform-origin: 50% 62%; animation: t1s-tick 3.6s cubic-bezier(.3,.7,.3,1) infinite; }
+.t1s-lockup .t1s-ring { position: absolute; inset: 14% 14% 10% 14%; border-radius: 50%; border: 2px solid rgba(251,191,36,.75); opacity: 0; animation: t1s-ring 3.6s ease-out infinite; }
+.t1s-lockup .t1s-sweep { position: absolute; inset: 14% 14% 10% 14%; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: conic-gradient(from 0deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 270deg, rgba(255,236,170,.95) 350deg, rgba(255,255,255,0) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: t1s-sweep 3.6s linear infinite; }
+.t1s-lockup .t1s-spark { position: absolute; top: -2%; right: -4%; width: 26%; height: 26%; opacity: 0; filter: drop-shadow(0 0 3px rgba(255,255,255,.9)); animation: t1s-twinkle 3.6s ease-in-out infinite; }
+.t1s-lockup .t1s-wd { height: 16px; width: auto; animation: t1s-wordin .75s cubic-bezier(.2,.8,.2,1) both; }
+.t1s-lockup:hover .t1s-ic img { animation: t1s-tick .7s cubic-bezier(.3,.7,.3,1) 1; }
+.t1s-lockup:hover .t1s-sweep { animation: t1s-sweep 1s linear 1; }
+@keyframes t1s-tick { 0%,62%,100%{transform:translateY(0) scale(1) rotate(0)} 70%{transform:translateY(2px) scale(.94) rotate(-3deg)} 80%{transform:translateY(-1px) scale(1.05) rotate(2deg)} 90%{transform:none} }
+@keyframes t1s-ring { 0%,66%{transform:scale(.7);opacity:0} 72%{opacity:.9} 100%{transform:scale(1.55);opacity:0} }
+@keyframes t1s-sweep { 0%{transform:rotate(0);opacity:0} 4%{opacity:1} 58%{opacity:1} 62%,100%{transform:rotate(360deg);opacity:0} }
+@keyframes t1s-twinkle { 0%,12%,30%,100%{opacity:0;transform:scale(.4)} 18%{opacity:1;transform:scale(1) rotate(45deg)} 24%{opacity:.5;transform:scale(.7)} 76%{opacity:0} 82%{opacity:1;transform:scale(1.1) rotate(45deg)} 88%{opacity:0} }
+@keyframes t1s-wordin { from{opacity:0;transform:translateX(-8px);clip-path:inset(0 100% 0 0)} to{opacity:1;transform:none;clip-path:inset(0 0 0 0)} }
+@media (prefers-reduced-motion: reduce) { .t1s-lockup img, .t1s-lockup .t1s-ring, .t1s-lockup .t1s-sweep, .t1s-lockup .t1s-spark { animation: none !important; } }

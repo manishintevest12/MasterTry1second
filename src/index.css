@@ -22,33 +22,70 @@
   background: #94a3b8;
 }
 
-/* ===== Try1Second animated logo (header, footer, modals) ===== */
-.t1s-logo-icon img { transform-origin: 50% 70%; }
+/* ===== Try1Second dynamic logo (header, footer, modals) =====
+   One 3.6s cycle: sweep arc runs around the dial, then the tile "ticks" (press + gold ring pulse).
+   Sparkle twinkles on its own beat; wordmark slides in once; swoosh draws; orange dot bounces. */
+.t1s-logo-icon img { transform-origin: 50% 62%; }
 .t1s-logo-ring {
-  position: absolute; inset: 8% 8% 8% 8%; border-radius: 9999px;
-  border: 2px solid rgba(231,0,11,.55); opacity: 0; pointer-events: none;
+  position: absolute; inset: 14% 14% 10% 14%; border-radius: 9999px;
+  border: 2px solid rgba(251,191,36,.75); opacity: 0; pointer-events: none;
 }
-.t1s-logo-anim .t1s-logo-icon img { animation: t1s-tap 3.6s ease-in-out infinite; }
-.t1s-logo-anim .t1s-logo-ring { animation: t1s-ripple 3.6s ease-out infinite; }
-.t1s-logo-anim .t1s-logo-word { animation: t1s-word-in .7s cubic-bezier(.2,.8,.2,1) both; }
-.t1s-logo-anim:hover .t1s-logo-icon img { animation: t1s-tap .6s ease-in-out 1; }
-.t1s-logo-anim:hover .t1s-logo-ring { animation: t1s-ripple .6s ease-out 1; }
-@keyframes t1s-tap {
-  0%, 70%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
-  78% { transform: translateY(2px) scale(.93) rotate(-4deg); }
-  88% { transform: translateY(-1px) scale(1.06) rotate(2deg); }
+/* sweeping arc on the gold ring: conic gradient masked to a thin ring */
+.t1s-logo-sweep {
+  position: absolute; inset: 14% 14% 10% 14%; border-radius: 9999px; pointer-events: none; opacity: 0;
+  background: conic-gradient(from 0deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0) 270deg, rgba(255,236,170,.95) 350deg, rgba(255,255,255,0) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
 }
-@keyframes t1s-ripple {
-  0%, 74% { transform: scale(.6); opacity: 0; }
-  80% { opacity: .9; }
-  100% { transform: scale(1.7); opacity: 0; }
+.t1s-logo-spark {
+  position: absolute; top: -2%; right: -4%; width: 26%; height: 26%; pointer-events: none;
+  opacity: 0; transform-origin: 50% 50%; filter: drop-shadow(0 0 3px rgba(255,255,255,.9));
+}
+.t1s-logo-word { transform-origin: 0 50%; }
+.t1s-logo-anim .t1s-logo-icon img { animation: t1s-tick 3.6s cubic-bezier(.3,.7,.3,1) infinite; }
+.t1s-logo-anim .t1s-logo-ring { animation: t1s-ring 3.6s ease-out infinite; }
+.t1s-logo-anim .t1s-logo-sweep { animation: t1s-sweep 3.6s linear infinite; }
+.t1s-logo-anim .t1s-logo-spark { animation: t1s-twinkle 3.6s ease-in-out infinite; }
+.t1s-logo-anim .t1s-logo-word { animation: t1s-word-in .75s cubic-bezier(.2,.8,.2,1) both; }
+.t1s-logo-anim .t1s-logo-tag { animation: t1s-word-in .9s .25s cubic-bezier(.2,.8,.2,1) both; }
+.t1s-logo-anim:hover .t1s-logo-icon img { animation: t1s-tick .7s cubic-bezier(.3,.7,.3,1) 1; }
+.t1s-logo-anim:hover .t1s-logo-ring { animation: t1s-ring .7s ease-out 1; }
+.t1s-logo-anim:hover .t1s-logo-sweep { animation: t1s-sweep 1s linear 1; }
+@keyframes t1s-tick {
+  0%, 62%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+  70% { transform: translateY(2px) scale(.94) rotate(-3deg); }
+  80% { transform: translateY(-1px) scale(1.05) rotate(2deg); }
+  90% { transform: translateY(0) scale(1) rotate(0deg); }
+}
+@keyframes t1s-ring {
+  0%, 66% { transform: scale(.7); opacity: 0; }
+  72% { opacity: .9; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+@keyframes t1s-sweep {
+  0% { transform: rotate(0deg); opacity: 0; }
+  4% { opacity: 1; }
+  58% { opacity: 1; }
+  62%, 100% { transform: rotate(360deg); opacity: 0; }
+}
+@keyframes t1s-twinkle {
+  0%, 12%, 30%, 100% { opacity: 0; transform: scale(.4) rotate(0deg); }
+  18% { opacity: 1; transform: scale(1) rotate(45deg); }
+  24% { opacity: .5; transform: scale(.7) rotate(70deg); }
+  76% { opacity: 0; transform: scale(.4); }
+  82% { opacity: 1; transform: scale(1.1) rotate(45deg); }
+  88% { opacity: 0; transform: scale(.4) rotate(90deg); }
 }
 @keyframes t1s-word-in {
-  from { opacity: 0; transform: translateX(-10px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(-10px); clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; transform: translateX(0); clip-path: inset(0 0 0 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .t1s-logo-anim .t1s-logo-icon img,
   .t1s-logo-anim .t1s-logo-ring,
+  .t1s-logo-anim .t1s-logo-sweep,
+  .t1s-logo-anim .t1s-logo-spark,
+  .t1s-logo-anim .t1s-logo-tag,
   .t1s-logo-anim .t1s-logo-word { animation: none !important; }
+  .t1s-logo-spark { opacity: .9; }
 }

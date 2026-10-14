@@ -41,7 +41,7 @@ class _SplashGateState extends State<SplashGate> {
               child: const Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  T1SLogo(size: 64),
+                  T1SLogo(size: 64, tagline: true),
                   SizedBox(height: 26),
                   SizedBox(
                     width: 150,

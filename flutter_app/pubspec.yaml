@@ -33,6 +33,7 @@ flutter:
     - assets/images/logo-icon.png
     - assets/images/logo-wordmark.png
     - assets/images/logo-full.png
+    - assets/images/logo-tagline.png
 
 flutter_launcher_icons:
   android: true
@@ -40,4 +41,4 @@ flutter_launcher_icons:
   image_path: "assets/images/app-icon-1024.png"
   remove_alpha_ios: true
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/logo-icon.png"
+  adaptive_icon_foreground: "assets/images/adaptive-fg.png"
