@@ -14,6 +14,7 @@ import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
+import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 /** City name → IATA code (major Indian + a few intl airports we actually serve). */
@@ -295,6 +296,51 @@ export const flightsWorker: VerticalWorker = {
         } catch { /* fall through to the honest error below */ }
         const snippet = (r.body || '').replace(/\s+/g, ' ').slice(0, 220);
         throw new AcquisitionError('EMPTY_RESPONSE', `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
+      },
+    },
+
+    {
+      // Akasa Air official low-fare calendar (their own booking API, browserless):
+      // GET /api/ibe/availability/v2/search returns a 61-day XML calendar of the
+      // lowest Akasa fare per date for the route. Akasa is the operating airline,
+      // so seller = Akasa Air and the deeplink goes to Akasa's booking flow.
+      // The per-flight availability/search POST needs a generateToken call that
+      // is edge-blocked (nginx 403) from datacenter IPs — calendar only.
+      sourceId: 'w_flights_akasa',
+      name: 'Flights worker: Akasa Air live fares (official IBE fare calendar)',
+      priority: 7,
+      maxPerMinute: 2,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
+        const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+        if (!from || !to) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        let r;
+        try {
+          r = await cffiFetch(akasaFareCalendarUrl(from, to, dep), {
+            impersonate: 'chrome', timeoutMs: 22_000,
+            headers: { Origin: 'https://www.akasaair.com', Referer: 'https://www.akasaair.com/booking' },
+          });
+        } catch (e: any) {
+          throw new AcquisitionError('SERVER_ERROR', `Akasa Air API unreachable: ${String(e?.message || e)}`);
+        }
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED',
+            `Akasa Air fare-calendar API edge-blocked (HTTP ${r.status}).`, r.status);
+        }
+        if (r.status === 400 || r.status >= 500) {
+          throw new AcquisitionError('SERVER_ERROR', `Akasa Air API HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 180)}`, r.status);
+        }
+        const fares = r.status === 200 ? parseAkasaFareCalendar(r.body) : [];
+        const items = akasaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
+        if (items.length) return items;
+        throw new AcquisitionError('EMPTY_RESPONSE', `Akasa Air has no bookable fare on the calendar for ${from}-${to} (dep ${dep}).`);
       },
     },
 

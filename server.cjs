@@ -4164,6 +4164,70 @@ var init_indigoFlights = __esm({
   }
 });
 
+// server/workers/parsers/akasaFlights.ts
+function akasaFareCalendarUrl(fromCode, toCode, depIso) {
+  const start2 = `${depIso}T00:00:00%2B05:30`;
+  return `${AKASA_API_BASE}/availability/v2/search?origin=${fromCode}&destination=${toCode}&startDate=${start2}&numberOfPassengers=1&channel=WEB&currencyCode=INR`;
+}
+function parseAkasaFareCalendar(xml) {
+  const out = [];
+  const blocks = xml.match(/<data>[\s\S]*?<\/data>/g) || [];
+  for (const b of blocks) {
+    const date = b.match(/<date>([^<]+)<\/date>/)?.[1]?.slice(0, 10) || null;
+    const price = Number(b.match(/<price>([^<]+)<\/price>/)?.[1] || 0);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    out.push({
+      date,
+      price,
+      isLowest: /<isLowest>true<\/isLowest>/.test(b),
+      noFlights: /<noFlights>true<\/noFlights>/.test(b),
+      soldOut: /<soldOut>true<\/soldOut>/.test(b)
+    });
+  }
+  return out;
+}
+function akasaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const bookable = fares.filter((f) => f.price > 0 && !f.noFlights && !f.soldOut);
+  const exact = bookable.find((f) => f.date === depIso);
+  const upcoming = [...bookable].sort((a, b) => a.price - b.price);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const deeplink = `${AKASA_WEB}/booking`;
+  return [newRawItem(source, {
+    title: `Akasa Air ${routeLabel} ${isExact ? `on ${chosen.date}` : `(cheapest upcoming, ${chosen.date})`} from \u20B9${Math.round(chosen.price)}`,
+    brand: "Akasa Air",
+    price: Math.round(chosen.price),
+    currency: "INR",
+    seller: "Akasa Air",
+    sellerUrl: deeplink,
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.date },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.date,
+      fare_class: "lowest economy fare (taxes included) from Akasa Air's own fare calendar",
+      price_basis: `lowest Akasa Air fare returned by Akasa's own booking API on ${today} for this route${isExact ? " and date" : " within the next 60 days"}`,
+      data_note: `Fare acquired from Akasa Air's official low-fare calendar on ${today}; booking is on Akasa Air's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `akasa-${fromCode}-${toCode}-${chosen.date}` },
+    evidence: {
+      sourceUrl: akasaFareCalendarUrl(fromCode, toCode, depIso),
+      extractedFields: ["data[].date", "data[].price (INR)", "isLowest", "noFlights", "soldOut"]
+    }
+  })];
+}
+var AKASA_API_BASE, AKASA_WEB;
+var init_akasaFlights = __esm({
+  "server/workers/parsers/akasaFlights.ts"() {
+    init_contract();
+    AKASA_API_BASE = "https://prod-bl.qp.akasaair.com/api/ibe";
+    AKASA_WEB = "https://www.akasaair.com";
+  }
+});
+
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const KNOWN_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
@@ -4187,6 +4251,7 @@ var init_flights = __esm({
     init_emtFareCalendar();
     init_emtAirbus();
     init_indigoFlights();
+    init_akasaFlights();
     init_curlCffiFetch();
     IATA = {
       delhi: "DEL",
@@ -4538,6 +4603,52 @@ var init_flights = __esm({
             }
             const snippet = (r.body || "").replace(/\s+/g, " ").slice(0, 220);
             throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
+          }
+        },
+        {
+          // Akasa Air official low-fare calendar (their own booking API, browserless):
+          // GET /api/ibe/availability/v2/search returns a 61-day XML calendar of the
+          // lowest Akasa fare per date for the route. Akasa is the operating airline,
+          // so seller = Akasa Air and the deeplink goes to Akasa's booking flow.
+          // The per-flight availability/search POST needs a generateToken call that
+          // is edge-blocked (nginx 403) from datacenter IPs — calendar only.
+          sourceId: "w_flights_akasa",
+          name: "Flights worker: Akasa Air live fares (official IBE fare calendar)",
+          priority: 7,
+          maxPerMinute: 2,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
+            const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            let r;
+            try {
+              r = await cffiFetch(akasaFareCalendarUrl(from, to, dep), {
+                impersonate: "chrome",
+                timeoutMs: 22e3,
+                headers: { Origin: "https://www.akasaair.com", Referer: "https://www.akasaair.com/booking" }
+              });
+            } catch (e) {
+              throw new AcquisitionError("SERVER_ERROR", `Akasa Air API unreachable: ${String(e?.message || e)}`);
+            }
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(
+                r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
+                `Akasa Air fare-calendar API edge-blocked (HTTP ${r.status}).`,
+                r.status
+              );
+            }
+            if (r.status === 400 || r.status >= 500) {
+              throw new AcquisitionError("SERVER_ERROR", `Akasa Air API HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 180)}`, r.status);
+            }
+            const fares = r.status === 200 ? parseAkasaFareCalendar(r.body) : [];
+            const items = akasaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
+            if (items.length) return items;
+            throw new AcquisitionError("EMPTY_RESPONSE", `Akasa Air has no bookable fare on the calendar for ${from}-${to} (dep ${dep}).`);
           }
         },
         {

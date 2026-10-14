@@ -2,7 +2,7 @@
 
 Every browserless acquisition recipe that WORKS today, so future work never
 re-recon's a cracked source. Endpoint-level details live in each parser file
-(named in brackets). Scorecard: Ecom 5, Hotels 4, Flights 3, Bus 3, Cab 4,
+(named in brackets). Scorecard: Ecom 5, Hotels 4, Flights 4, Bus 3, Cab 4,
 Food 4, Grocery 4/5, Movies 5, Loans 7, Insurance 6 live.
 
 Rules that made these work: curl_cffi `impersonate:'chrome'` first (cffi is the
@@ -22,6 +22,13 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   /v1/getfarecalendar (User_key=booking key, Bearer; body ISO startDate/endDate,
   lowestIn:'M') → data.lowFares 63-day per-day fares. Gotchas: ISO dates NOT
   yyyyMMdd, flat body NOT FlightInfoPayload, header spelled User_key.
+
+- **Akasa Air** [akasaFlights.ts] — GET prod-bl.qp.akasaair.com/api/ibe/
+  availability/v2/search?origin=&destination=&startDate=<ISO with %2B05:30 —
+  bare yyyy-mm-dd is a 400>&numberOfPassengers=1&channel=WEB&currencyCode=INR
+  → XML 61-day low-fare calendar (data[].date/price, noFlights/soldOut flags).
+  Per-flight POST availability/search needs token/generateToken → nginx 403
+  from datacenter IPs (do NOT re-recon without a new angle).
 
 ## Bus
 - **AbhiBus** [abhibus.ts] — edge.abhibus.com API, per-bus fares.
@@ -84,5 +91,7 @@ Akamai/Bot-Manager: MMT, Goibibo, Yatra (HTTP/2 reset), Agoda (graphql gate
 headers cracked but needs runtime-built document), Trip.com, Marriott, Hilton,
 Trivago (/gw/graphql), Kayak, Skyscanner, Zepto (Kong 429), Flipkart Minutes,
 Meesho, Instamart search/collection (202), api-prod-flight host search,
+Cleartrip flights (all /flights/* paths 403 Akamai from datacenter IPs while
+/hotels/* paths pass — route-level SEO pages 403 too),
 MMT bus 16KB shell, BMS quickbook, redBus protobuf capi. Akamai _abck sensor
 needs real JS execution — out of browserless scope; retry only from new IPs.
