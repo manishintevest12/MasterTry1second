@@ -34,7 +34,7 @@ const VERTICAL_RULES: Record<VerticalId, FieldRule[]> = {
     { name: 'price', present: (o) => o.prices.mandatoryTotal !== undefined },
     { name: 'currency', present: (o) => isSupportedCurrency(o.prices.currency) },
     { name: 'seller', present: (o) => Boolean(o.seller) },
-    { name: 'identity', present: (o) => Boolean(o.identifiers.gtin || o.identifiers.sku || o.brand || o.attributes['model']) },
+    { name: 'identity', present: (o) => Boolean(o.identifiers.gtin || o.identifiers.sku || o.identifiers.asin || o.identifiers.vendorProductId || o.identifiers.vendor_product_id || o.brand || o.attributes['model']) },
     { name: 'stock', present: (o) => o.availability !== 'unknown', blocking: false },
     { name: 'delivery_fee', present: (o) => o.prices.fees.deliveryFee !== undefined, blocking: false },
   ],

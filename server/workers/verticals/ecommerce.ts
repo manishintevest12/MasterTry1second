@@ -20,27 +20,46 @@ export const ecommerceWorker: VerticalWorker = {
   tasks: [
     {
       sourceId: 'w_ecom_amazon_in',
+      // Amazon.in now fronts repeated browserless hits with an Imperva "bm-verify"
+      // interstitial: HTTP 200 + <meta refresh URL='...?bm-verify=TOKEN'>. Following
+      // that URL once with the SAME cookie session returns the real results page,
+      // so we run the acquisition as a cffi session handshake instead of a plain GET.
+      timeoutMs: 40_000,
       run: async (ctx) => {
         const term = q(ctx);
         if (!term) return [];
         const url = `https://www.amazon.in/s?k=${encodeURIComponent(term)}`;
-        let items: ReturnType<typeof parseAmazonIn> = [];
-        let lastBody = '';
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          const r = await ctx.fetch(url);
-          if (r.status === 200) {
-            lastBody = r.body;
-            items = parseAmazonIn(r.body, ctx.source, url);
-            if (items.length) break;
-          } else if (attempt === 1 && r.status >= 500) {
-            await new Promise((res) => setTimeout(res, 1500));
-            continue;
-          } else {
-            throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'FORBIDDEN', `Amazon.in HTTP ${r.status}`, r.status);
+        let body = '';
+        let status = 0;
+        const r1 = await cffiFetch(url, { timeoutMs: 18_000, returnCookies: true });
+        body = r1.body; status = r1.status;
+        if (status === 200 && body.includes('bm-verify')) {
+          const m = body.match(/URL='([^']+)'/);
+          if (m) {
+            const vUrl = m[1].startsWith('/') ? 'https://www.amazon.in' + m[1] : m[1];
+            await new Promise((res) => setTimeout(res, 1200));
+            const r2 = await cffiFetch(vUrl, { cookies: r1.cookies, returnCookies: true, timeoutMs: 22_000 });
+            body = r2.body; status = r2.status;
+            // one more bounce in case the edge chains tokens
+            if (status === 200 && body.includes('bm-verify')) {
+              const m2 = body.match(/URL='([^']+)'/);
+              if (m2) {
+                await new Promise((res) => setTimeout(res, 1200));
+                const v2 = m2[1].startsWith('/') ? 'https://www.amazon.in' + m2[1] : m2[1];
+                const r3 = await cffiFetch(v2, { cookies: r2.cookies, timeoutMs: 22_000 });
+                body = r3.body; status = r3.status;
+              }
+            }
           }
         }
-        if (!items.length && looksLikeChallenge(lastBody)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Amazon.in presented a challenge page');
-        return items;
+        if (status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', 'Amazon.in HTTP 403 (edge denied)', 403);
+        if (status !== 200) throw new AcquisitionError('FORBIDDEN', `Amazon.in HTTP ${status}`, status);
+        const items = parseAmazonIn(body, ctx.source, url);
+        if (items.length) return items;
+        if (body.includes('bm-verify') || looksLikeChallenge(body)) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', 'Amazon.in presented a bm-verify challenge that did not clear');
+        }
+        throw new AcquisitionError('EMPTY_RESPONSE', `Amazon.in carried no parseable products (body ${body.length} bytes)`);
       },
     },
     {

@@ -54,7 +54,7 @@ export function looksLikeChallenge(body: string): boolean {
   // real product listings are absent and the page self-describes as automated.
   const head = body.slice(0, 6000);
   const shell = body.length < 120_000;
-  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
+  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|bm-verify|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
   return markers.test(head) && !/application\/ld\+json/i.test(head)
     || (shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body));
 }

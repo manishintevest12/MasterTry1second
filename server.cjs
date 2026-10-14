@@ -1444,7 +1444,7 @@ var init_devFixtures = __esm({
 function looksLikeChallenge(body) {
   const head = body.slice(0, 6e3);
   const shell = body.length < 12e4;
-  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
+  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|bm-verify|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
   return markers.test(head) && !/application\/ld\+json/i.test(head) || shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
@@ -1945,27 +1945,48 @@ var init_ecommerce = __esm({
       tasks: [
         {
           sourceId: "w_ecom_amazon_in",
+          // Amazon.in now fronts repeated browserless hits with an Imperva "bm-verify"
+          // interstitial: HTTP 200 + <meta refresh URL='...?bm-verify=TOKEN'>. Following
+          // that URL once with the SAME cookie session returns the real results page,
+          // so we run the acquisition as a cffi session handshake instead of a plain GET.
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const term = q(ctx);
             if (!term) return [];
             const url = `https://www.amazon.in/s?k=${encodeURIComponent(term)}`;
-            let items = [];
-            let lastBody = "";
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              const r = await ctx.fetch(url);
-              if (r.status === 200) {
-                lastBody = r.body;
-                items = parseAmazonIn(r.body, ctx.source, url);
-                if (items.length) break;
-              } else if (attempt === 1 && r.status >= 500) {
-                await new Promise((res) => setTimeout(res, 1500));
-                continue;
-              } else {
-                throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "FORBIDDEN", `Amazon.in HTTP ${r.status}`, r.status);
+            let body = "";
+            let status = 0;
+            const r1 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+            body = r1.body;
+            status = r1.status;
+            if (status === 200 && body.includes("bm-verify")) {
+              const m = body.match(/URL='([^']+)'/);
+              if (m) {
+                const vUrl = m[1].startsWith("/") ? "https://www.amazon.in" + m[1] : m[1];
+                await new Promise((res) => setTimeout(res, 1200));
+                const r2 = await cffiFetch(vUrl, { cookies: r1.cookies, returnCookies: true, timeoutMs: 22e3 });
+                body = r2.body;
+                status = r2.status;
+                if (status === 200 && body.includes("bm-verify")) {
+                  const m2 = body.match(/URL='([^']+)'/);
+                  if (m2) {
+                    await new Promise((res) => setTimeout(res, 1200));
+                    const v2 = m2[1].startsWith("/") ? "https://www.amazon.in" + m2[1] : m2[1];
+                    const r3 = await cffiFetch(v2, { cookies: r2.cookies, timeoutMs: 22e3 });
+                    body = r3.body;
+                    status = r3.status;
+                  }
+                }
               }
             }
-            if (!items.length && looksLikeChallenge(lastBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a challenge page");
-            return items;
+            if (status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in HTTP 403 (edge denied)", 403);
+            if (status !== 200) throw new AcquisitionError("FORBIDDEN", `Amazon.in HTTP ${status}`, status);
+            const items = parseAmazonIn(body, ctx.source, url);
+            if (items.length) return items;
+            if (body.includes("bm-verify") || looksLikeChallenge(body)) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a bm-verify challenge that did not clear");
+            }
+            throw new AcquisitionError("EMPTY_RESPONSE", `Amazon.in carried no parseable products (body ${body.length} bytes)`);
           }
         },
         {
@@ -9414,7 +9435,7 @@ var init_validation = __esm({
         { name: "price", present: (o) => o.prices.mandatoryTotal !== void 0 },
         { name: "currency", present: (o) => isSupportedCurrency(o.prices.currency) },
         { name: "seller", present: (o) => Boolean(o.seller) },
-        { name: "identity", present: (o) => Boolean(o.identifiers.gtin || o.identifiers.sku || o.brand || o.attributes["model"]) },
+        { name: "identity", present: (o) => Boolean(o.identifiers.gtin || o.identifiers.sku || o.identifiers.asin || o.identifiers.vendorProductId || o.identifiers.vendor_product_id || o.brand || o.attributes["model"]) },
         { name: "stock", present: (o) => o.availability !== "unknown", blocking: false },
         { name: "delivery_fee", present: (o) => o.prices.fees.deliveryFee !== void 0, blocking: false }
       ],
