@@ -28,6 +28,9 @@ import { initCache, cacheStats } from '../common/cache';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
 import { scrapeLiveUrl } from '../../src/server/realDataAcquisition';
+import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle } from '../lens/productLink';
+import { interpretAssistantQuestion } from '../lens/assistantIntent';
+import { isSameProduct } from '../lens/sameProduct';
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
 import { pythonDiagnostics } from '../common/curlCffiFetch';
@@ -351,6 +354,61 @@ apiRouter.post('/scan/url', async (req, res) => {
   };
   saveItemToCatalogue(catalogueItem as any);
   res.json({ success: true, item: catalogueItem, rawScan: scan });
+});
+
+// ============ Price Lens: paste any product link -> cheapest across sites ============
+apiRouter.post('/lens', async (req, res) => {
+  const input = String(req.body?.input || req.body?.url || '').trim().slice(0, 2000);
+  const url = extractUrl(input);
+  if (!url) return res.status(400).json({ success: false, error: 'Paste a product link (https://...) to compare.' });
+  const safe = isSafePublicUrl(url);
+  if (!safe.ok) return res.status(400).json({ success: false, error: safe.reason || 'That link cannot be used.' });
+
+  const product = await resolveProductFromLink(url);
+  if (!product.title) {
+    return res.json({
+      success: true, found: false, product,
+      message: product.fetchStatus === 'blocked'
+        ? `${product.merchant || 'That site'} blocks automated reads and the link has no readable product name. Try typing the product name instead.`
+        : 'Could not read a product name from that link. Try typing the product name instead.',
+      results: [],
+    });
+  }
+  const lensQuery = searchableTitle(product.title);
+  const response = await runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput);
+  const priced = response.results
+    .map((o: any) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 }))
+    .filter((x) => x.price > 0 && isSameProduct(lensQuery, String(x.o.title || '')));
+  const results = priced
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 30)
+    .map(({ o, price }) => ({
+      id: o.id,
+      title: o.title,
+      seller: String(o.seller || o.vendor || ''),
+      price,
+      listPrice: Number(o.prices?.listPrice ?? 0) || 0,
+      image: o.image || o.images?.[0] || null,
+      availability: o.availability || 'unknown',
+      goUrl: o.sellerUrl ? createMaskingPointer(o.sellerUrl, { offerId: String(o.id || '') }) : '',
+    }));
+  res.json({
+    success: true,
+    found: true,
+    product,
+    searchedAs: lensQuery,
+    cheapest: results[0] || null,
+    pageVsCheapest: product.pagePrice && results[0] ? { pagePrice: product.pagePrice, cheapest: results[0].price, saving: Math.max(0, product.pagePrice - results[0].price) } : null,
+    servedFrom: response.state?.servedFrom,
+    message: results.length ? undefined : 'No verified listing of this exact product was found on our sources right now.',
+    results,
+  });
+});
+
+// ============ Home AI assistant: question (typed or spoken) -> vertical + query ============
+apiRouter.post('/assist/intent', (req, res) => {
+  const text = String(req.body?.text || '').slice(0, 300);
+  res.json({ success: true, ...interpretAssistantQuestion(text) });
 });
 
 // ============ Catalogue & provenance ============

@@ -286,6 +286,9 @@ interface AppContextType {
   /** Per-vertical report of every source attempted on the last search (live / no results / unavailable + reason). */
   sourcesReport: Record<string, SourcesReport>;
   triggerLiveLocationScrape: (overrideQuery?: string, overrideLoc?: UserLocationState, overrideTravel?: { depart?: string; return?: string }) => Promise<void>;
+  /** Home AI assistant handoff: the vertical's search form consumes this once to fill its boxes and search. */
+  pendingAssistantSearch: { vertical: string; query: string; date?: string } | null;
+  setPendingAssistantSearch: (p: { vertical: string; query: string; date?: string } | null) => void;
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
   proxies: ResidentialProxyConfig[];
@@ -815,6 +818,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       `${cleanName} signed up via your link. 1 Point has been added to your wallet towards your next prize spin!`
     );
   };
+
+  const [pendingAssistantSearch, setPendingAssistantSearch] = useState<{ vertical: string; query: string; date?: string } | null>(null);
 
   const handleSetVertical = (newVertical: VerticalId) => {
     setVertical(newVertical);
@@ -2249,6 +2254,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         lastScrapeInfo,
         sourcesReport,
         triggerLiveLocationScrape,
+        pendingAssistantSearch,
+        setPendingAssistantSearch,
         proxies,
         addResidentialProxy,
         bulkAddResidentialProxies,

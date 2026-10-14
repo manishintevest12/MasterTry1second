@@ -86,6 +86,8 @@ var init_settings = __esm({
       resendApiKey: process.env.RESEND_API_KEY || "",
       /** Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side. */
       firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "",
+      /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
+      googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "").split(",").map((e) => e.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
       cuelinks: {
         apiKey: process.env.CUELINKS_API_KEY || "",
@@ -2564,10 +2566,10 @@ function parseAirbnbStays(results) {
     }
     if (!/^\d{5,}$/.test(listingId)) continue;
     const primary = r.structuredDisplayPrice?.primaryLine || {};
-    const priceNum = parseInr3(primary.price);
+    const priceNum2 = parseInr3(primary.price);
     const qualifier = String(primary.qualifier || "");
     const nightsMatch = qualifier.match(/for\s+(\d+)\s+nights?/i);
-    const nights = nightsMatch ? parseInt(nightsMatch[1], 10) : priceNum ? 1 : 0;
+    const nights = nightsMatch ? parseInt(nightsMatch[1], 10) : priceNum2 ? 1 : 0;
     const ratingRaw = String(r.avgRatingLocalized || "");
     const ratingMatch = ratingRaw.match(/^([\d.]+)\s*(?:\((\d+)\))?/);
     const coord = r.demandStayListing?.location?.coordinate;
@@ -2576,9 +2578,9 @@ function parseAirbnbStays(results) {
       roomType: r.title ? String(r.title) : null,
       listingId,
       deeplink: `${AIRBNB_WEB}/rooms/${listingId}`,
-      priceTotal: priceNum,
+      priceTotal: priceNum2,
       nights,
-      pricePerNight: nights > 0 ? Math.round(priceNum / nights) : priceNum,
+      pricePerNight: nights > 0 ? Math.round(priceNum2 / nights) : priceNum2,
       rating: ratingMatch ? ratingMatch[1] : null,
       reviews: ratingMatch && ratingMatch[2] ? parseInt(ratingMatch[2], 10) : null,
       imageUrl: r.contextualPictures?.[0]?.picture || null,
@@ -4859,12 +4861,12 @@ function parseDominosMenu(htmlEscaped) {
 function dominosItems(products, source, query) {
   const q3 = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!q3) return [];
-  const words = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "pizza", "order", "buy", "price"].includes(w));
+  const words2 = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "pizza", "order", "buy", "price"].includes(w));
   const pizzaish = /pizza|margherita|farmhouse|paneer|corn|cheese|garlic|bread|taco|burger|chicken|veg|cake|dessert|sides|wings|lava|parcel|meltz|taco/i.test(q3);
   const scored = products.map((p) => {
     const hay = `${p.displayName} ${p.family} ${p.description}`.toLowerCase();
     let score = 0;
-    for (const w of words) if (hay.includes(w)) score += 1;
+    for (const w of words2) if (hay.includes(w)) score += 1;
     if (hay.includes(q3)) score += 3;
     return { p, score };
   }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.p.currentPrice - b.p.currentPrice);
@@ -4934,11 +4936,11 @@ function pizzaHutItems(rawBody, source, query, pageUrl) {
     }
   }
   const q3 = query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-  const words = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "order", "buy", "price"].includes(w));
+  const words2 = q3.split(" ").filter((w) => w.length > 2 && !["the", "and", "for", "with", "order", "buy", "price"].includes(w));
   const scored = products.map((p) => {
     const hay = `${p.title} ${p.desc || ""} ${p.type || ""} ${sizeLabel(p)}`.toLowerCase();
     let score = 0;
-    for (const w of words) if (hay.includes(w)) score += 1;
+    for (const w of words2) if (hay.includes(w)) score += 1;
     if (q3 && hay.includes(q3)) score += 3;
     if (p.popular) score += 0.5;
     return { p, score };
@@ -10560,9 +10562,9 @@ function sizeTokens(text) {
 function productSig(title, brand) {
   const t = String(title || "").toLowerCase();
   const sizes = sizeTokens(t).join(",");
-  const words = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
+  const words2 = t.replace(UNIT_RE, " ").replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !NOISE.has(w)).map((w) => w.replace(/(ies|es|s)$/, ""));
   const b = String(brand || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const uniq = Array.from(new Set(words));
+  const uniq = Array.from(new Set(words2));
   if (uniq.length < 2) return null;
   return { brand: b, words: uniq, sizes };
 }
@@ -11029,7 +11031,51 @@ async function verifyFirebaseIdToken(idToken) {
     return null;
   }
 }
-var import_crypto19, CERT_URL, certCache, CERT_TTL_MS;
+async function getGoogleCertificates() {
+  if (googleCertCache && Date.now() - googleCertCache.fetchedAt < CERT_TTL_MS) return googleCertCache.certs;
+  const res = await fetch(GOOGLE_CERT_URL);
+  if (!res.ok) throw new Error(`Could not fetch Google public certs (HTTP ${res.status})`);
+  const certs = await res.json();
+  googleCertCache = { certs, fetchedAt: Date.now() };
+  return certs;
+}
+async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOauthClientIds, certsOverride) {
+  if (!allowedAudiences.length) return null;
+  try {
+    const parts = String(idToken || "").split(".");
+    if (parts.length !== 3) return null;
+    const header = JSON.parse(base64UrlDecode(parts[0]).toString("utf8"));
+    const payload = JSON.parse(base64UrlDecode(parts[1]).toString("utf8"));
+    if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
+    if (!allowedAudiences.includes(String(payload.aud))) return null;
+    if (payload.iss !== "https://accounts.google.com" && payload.iss !== "accounts.google.com") return null;
+    const now = Math.floor(Date.now() / 1e3);
+    if (typeof payload.exp !== "number" || payload.exp <= now) return null;
+    if (typeof payload.iat !== "number" || payload.iat > now + 60) return null;
+    if (typeof payload.sub !== "string" || !payload.sub || payload.sub.length > 128) return null;
+    if (typeof payload.email !== "string" || !payload.email) return null;
+    const verified = payload.email_verified === true || payload.email_verified === "true";
+    if (!verified) return null;
+    const certs = certsOverride || await getGoogleCertificates();
+    const certPem = certs[header.kid];
+    if (!certPem) return null;
+    const publicKey = new import_crypto19.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto19.default.createVerify("RSA-SHA256");
+    verifier.update(`${parts[0]}.${parts[1]}`);
+    if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
+    return {
+      uid: payload.sub,
+      email: String(payload.email).toLowerCase(),
+      emailVerified: true,
+      displayName: typeof payload.name === "string" ? payload.name : void 0,
+      picture: typeof payload.picture === "string" ? payload.picture : void 0
+    };
+  } catch (err) {
+    log.warn("GoogleAuth", `ID token verification failed: ${err.message}`);
+    return null;
+  }
+}
+var import_crypto19, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
     import_crypto19 = __toESM(require("crypto"), 1);
@@ -11038,6 +11084,8 @@ var init_firebaseAuth = __esm({
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
     certCache = null;
     CERT_TTL_MS = 60 * 60 * 1e3;
+    GOOGLE_CERT_URL = "https://www.googleapis.com/oauth2/v1/certs";
+    googleCertCache = null;
   }
 });
 
@@ -11818,6 +11866,336 @@ var init_realDataAcquisition = __esm({
   }
 });
 
+// server/lens/productLink.ts
+function isSafePublicUrl(raw) {
+  let u;
+  try {
+    u = new URL(String(raw).trim());
+  } catch {
+    return { ok: false, reason: "Not a valid link" };
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return { ok: false, reason: "Only http(s) links are supported" };
+  if (u.username || u.password) return { ok: false, reason: "Links with credentials are not allowed" };
+  const h = u.hostname.toLowerCase();
+  if (!h.includes(".") || h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return { ok: false, reason: "That host is not allowed" };
+  if (/^\[/.test(h) || h.includes(":")) return { ok: false, reason: "IPv6 hosts are not allowed" };
+  const ip = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ip) {
+    const [a, b] = [Number(ip[1]), Number(ip[2])];
+    if (a === 10 || a === 127 || a === 0 || a === 169 && b === 254 || a === 172 && b >= 16 && b <= 31 || a === 192 && b === 168 || a >= 224) {
+      return { ok: false, reason: "Private network addresses are not allowed" };
+    }
+  }
+  if (u.href.length > 2e3) return { ok: false, reason: "Link is too long" };
+  return { ok: true, url: u };
+}
+function extractUrl(text) {
+  const m = String(text || "").match(/https?:\/\/[^\s<>"']+/i);
+  return m ? m[0].replace(/[),.;]+$/, "") : null;
+}
+function merchantFor(host) {
+  const h = host.replace(/^www\./, "").toLowerCase();
+  for (const [re, name] of MERCHANTS) if (re.test(h)) return name;
+  return h;
+}
+function titleFromSlug(u) {
+  const segs = decodeURIComponent(u.pathname).split("/").filter(Boolean);
+  let best = "";
+  for (const seg of segs) {
+    const words2 = seg.replace(/\.(html?|php|aspx?)$/i, "").split(/[-_+]+/).filter(Boolean);
+    const good = words2.filter((w) => !JUNK_SLUG.test(w) && !/^\d{8,}$/.test(w));
+    if (good.length >= 2 && good.join(" ").length > best.length) best = good.join(" ");
+  }
+  best = best.replace(/\s+/g, " ").trim();
+  return best.length >= 4 ? best.slice(0, 160) : null;
+}
+function cleanTitle(t) {
+  return t.replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|meesho|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, "").replace(/^(buy|shop)\s+/i, "").replace(/\s+(online|at best price|best price)\b.*$/i, "").replace(/\s*:\s*amazon\.in.*$/i, "").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+function priceNum(v) {
+  const n = Math.round(parseFloat(String(v ?? "").replace(/[^\d.]/g, "")));
+  return Number.isFinite(n) && n > 0 && n < 1e8 ? n : null;
+}
+function searchableTitle(t) {
+  const paren = t.match(/\(([^)]{2,40})\)/);
+  const noParen = t.replace(/\([^)]*\)/g, " ");
+  let head = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
+  const words2 = head.split(" ");
+  if (words2.length > 8) head = words2.slice(0, 8).join(" ");
+  const cap = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
+  return (head + cap).trim() || t.slice(0, 80);
+}
+function parseProductHtml(html) {
+  const $ = cheerio7.load(html);
+  let title = null;
+  let titleSource = "none";
+  let pagePrice = null;
+  let image = null;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (title) return;
+    try {
+      const data = JSON.parse($(el).contents().text());
+      const nodes = Array.isArray(data) ? data : data?.["@graph"] ? data["@graph"] : [data];
+      for (const n of nodes) {
+        const type = Array.isArray(n?.["@type"]) ? n["@type"] : [n?.["@type"]];
+        if (type.includes("Product") && n.name) {
+          title = cleanTitle(String(n.name));
+          titleSource = "json-ld";
+          const offer = Array.isArray(n.offers) ? n.offers[0] : n.offers;
+          pagePrice = priceNum(offer?.price ?? offer?.lowPrice);
+          const img = Array.isArray(n.image) ? n.image[0] : n.image;
+          image = typeof img === "string" && img.startsWith("https://") ? img : null;
+          break;
+        }
+      }
+    } catch {
+    }
+  });
+  if (!title) {
+    const og = $('meta[property="og:title"]').attr("content");
+    if (og && og.trim().length > 3) {
+      title = cleanTitle(og);
+      titleSource = "og";
+    }
+  }
+  if (!title) {
+    const t = $("title").first().text();
+    if (t && t.trim().length > 3) {
+      title = cleanTitle(t);
+      titleSource = "page-title";
+    }
+  }
+  if (!pagePrice) pagePrice = priceNum($('meta[property="product:price:amount"]').attr("content") || $('meta[property="og:price:amount"]').attr("content"));
+  if (!image) {
+    const ogi = $('meta[property="og:image"]').attr("content");
+    image = ogi && ogi.startsWith("https://") ? ogi : null;
+  }
+  if (title && /(access denied|robot check|captcha|just a moment|attention required|are you a human|request blocked)/i.test(title)) {
+    return { title: null, titleSource: "none", pagePrice: null, image: null };
+  }
+  return { title, titleSource, pagePrice, image };
+}
+async function resolveProductFromLink(rawUrl) {
+  const safe = isSafePublicUrl(rawUrl);
+  if (!safe.ok || !safe.url) {
+    return { title: null, titleSource: "none", merchant: "", domain: "", pagePrice: null, image: null, fetchStatus: "skipped" };
+  }
+  const u = safe.url;
+  const domain = u.hostname.replace(/^www\./, "");
+  const merchant = merchantFor(u.hostname);
+  const slugTitle = titleFromSlug(u);
+  let parsed = { title: null, titleSource: "none", pagePrice: null, image: null };
+  let fetchStatus = "failed";
+  try {
+    const res = await cffiFetch(u.href, {
+      impersonate: "chrome",
+      timeoutMs: 12e3,
+      headers: { "Accept-Language": "en-IN,en;q=0.9", Accept: "text/html,application/xhtml+xml" }
+    });
+    if (res.status >= 200 && res.status < 300 && res.body) {
+      parsed = parseProductHtml(res.body.slice(0, 3e6));
+      fetchStatus = "ok";
+    } else {
+      fetchStatus = res.status === 403 || res.status === 429 || res.status === 503 ? "blocked" : "failed";
+    }
+  } catch {
+    fetchStatus = "failed";
+  }
+  if (parsed.title) return { ...parsed, title: parsed.title, merchant, domain, fetchStatus };
+  if (slugTitle) return { title: slugTitle, titleSource: "url-slug", merchant, domain, pagePrice: null, image: null, fetchStatus };
+  return { title: null, titleSource: "none", merchant, domain, pagePrice: null, image: null, fetchStatus };
+}
+var cheerio7, MERCHANTS, JUNK_SLUG;
+var init_productLink = __esm({
+  "server/lens/productLink.ts"() {
+    cheerio7 = __toESM(require("cheerio"), 1);
+    init_curlCffiFetch();
+    MERCHANTS = [
+      [/(^|\.)amazon\.(in|com)$/, "Amazon India"],
+      [/(^|\.)flipkart\.com$/, "Flipkart"],
+      [/(^|\.)myntra\.com$/, "Myntra"],
+      [/(^|\.)ajio\.com$/, "Ajio"],
+      [/(^|\.)tatacliq\.com$/, "Tata CLiQ"],
+      [/(^|\.)meesho\.com$/, "Meesho"],
+      [/(^|\.)nykaa\.com$/, "Nykaa"],
+      [/(^|\.)croma\.com$/, "Croma"],
+      [/(^|\.)reliancedigital\.in$/, "Reliance Digital"],
+      [/(^|\.)snapdeal\.com$/, "Snapdeal"],
+      [/(^|\.)jiomart\.com$/, "JioMart"],
+      [/(^|\.)lenskart\.com$/, "Lenskart"],
+      [/(^|\.)bigbasket\.com$/, "BigBasket"],
+      [/(^|\.)blinkit\.com$/, "Blinkit"],
+      [/(^|\.)zeptonow\.com$/, "Zepto"],
+      [/(^|\.)swiggy\.com$/, "Swiggy"]
+    ];
+    JUNK_SLUG = /^(dp|gp|p|product|products|item|itm|buy|pd|shop|s|ip|sku|b0[a-z0-9]{8}|[a-z]{0,3}\d[a-z0-9]{6,})$/i;
+  }
+});
+
+// server/lens/assistantIntent.ts
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function parseSpokenDate(text, now = /* @__PURE__ */ new Date()) {
+  const t = text.toLowerCase();
+  const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const add = (n) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + n);
+    return isoDate(d);
+  };
+  if (/\b(parso|day after tomorrow)\b/.test(t)) return add(2);
+  if (/\b(kal|tomorrow|tmrw)\b/.test(t)) return add(1);
+  if (/\b(aaj|today|tonight)\b/.test(t)) return add(0);
+  const m = t.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/);
+  if (m) {
+    const day = Number(m[1]);
+    const mon = MONTHS.indexOf(m[2]);
+    let d = new Date(base.getFullYear(), mon, day);
+    if (d < base) d = new Date(base.getFullYear() + 1, mon, day);
+    if (d.getDate() === day) return isoDate(d);
+  }
+  return void 0;
+}
+function extractRoute(text) {
+  const t = text.toLowerCase().replace(/[?.!,]/g, " ");
+  const pair = t.match(/\b([a-z][a-z .]{1,24}?)\s+(?:to|se|\u2192|->)\s+([a-z][a-z .]{1,24}?)(?=\s+(?:flight|flights|bus|buses|ka|ki|ke|rate|price|fare|cab|taxi|kal|tomorrow|today|aaj|on|for)\b|\s*$)/i);
+  if (!pair) return null;
+  const clean = (s) => s.replace(FILLER, " ").replace(/\s+/g, " ").trim();
+  const a = clean(pair[1]);
+  const b = clean(pair[2]);
+  if (!a || !b) return null;
+  const title = (s) => s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  return `${title(a)} to ${title(b)}`;
+}
+function istToday(now = /* @__PURE__ */ new Date()) {
+  const ist = new Date(now.getTime() + 5.5 * 36e5);
+  return new Date(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
+}
+function interpretAssistantQuestion(raw, now = istToday()) {
+  const text = String(raw || "").trim().slice(0, 300);
+  if (text.length < 2) return { understood: false, vertical: null, query: "", reply: 'Type or say what you want to compare, e.g. "Delhi to Mumbai flight".' };
+  const parsed = understandQuery(text);
+  let vertical = parsed.vertical || null;
+  const lower = text.toLowerCase();
+  const route = extractRoute(text);
+  if (!vertical && route) vertical = "flights";
+  if (vertical === "movies" || vertical === "movie") vertical = "movies";
+  if (!vertical || !(vertical in LABEL)) {
+    return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
+  }
+  const date = ["flights", "bus", "cab", "hotels", "movies"].includes(vertical) ? parseSpokenDate(text, now) : void 0;
+  let query;
+  if (["flights", "bus", "cab"].includes(vertical)) {
+    query = route || text.replace(FILLER, " ").replace(/\s+/g, " ").trim();
+  } else if (vertical === "hotels") {
+    const city = parsed.location?.city || (lower.match(/\b(?:in|at|near)\s+([a-z ]{3,30})/)?.[1] ?? "").trim();
+    query = (city || text.replace(FILLER, " ")).replace(/\s+/g, " ").trim();
+    query = query.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  } else {
+    query = text.replace(FILLER, " ").replace(/\s+/g, " ").trim() || text;
+  }
+  if (!query) query = text;
+  const when = date ? ` for ${date}` : "";
+  return {
+    understood: true,
+    vertical,
+    query,
+    ...date ? { date } : {},
+    reply: `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`
+  };
+}
+var LABEL, FILLER, MONTHS;
+var init_assistantIntent = __esm({
+  "server/lens/assistantIntent.ts"() {
+    init_queryUnderstanding();
+    LABEL = {
+      flights: "Flights",
+      hotels: "Hotels",
+      bus: "Bus",
+      ecommerce: "E-Commerce",
+      grocery: "Grocery",
+      food: "Food",
+      movies: "Movies",
+      loans: "Loans",
+      insurance: "Insurance",
+      cab: "Cab"
+    };
+    FILLER = /\b(batao|bata\s*do|bataiye|dikhao|dikha\s*do|dikhaiye|dhundo|dhoondo|chahiye|chahie|kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|ka\s*rate|rate|rates|price|prices|fare|fares|kimat|keemat|please|pls|show|tell|me|find|search|check|what|is|are|the|of|for|a|an|i|want|need|looking|cheapest|sasta|sabse|best|flight|flights|airfare|ticket|tickets|bus|buses|hotel|hotels|cab|taxi)\b/gi;
+    MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  }
+});
+
+// server/lens/sameProduct.ts
+function words(t) {
+  return t.toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
+}
+function isAccessory(title) {
+  const t = ` ${title.toLowerCase()} `;
+  return ACCESSORY_WORDS.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
+}
+function identityTokens(title) {
+  return Array.from(new Set(words(title).filter((w) => !STOP.has(w) && !COLORS.has(w) && w.length > 1)));
+}
+function isSameProduct(pastedTitle, candidateTitle) {
+  const wantsAccessory = isAccessory(pastedTitle);
+  if (!wantsAccessory && isAccessory(candidateTitle)) return false;
+  const need = identityTokens(pastedTitle);
+  if (need.length === 0) return false;
+  const have = new Set(words(candidateTitle));
+  const hard = need.filter((w) => /\d/.test(w));
+  if (hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w));
+  if (soft.length === 0) return hard.length > 0;
+  const hit = soft.filter((w) => have.has(w)).length;
+  return hit / soft.length >= 0.6;
+}
+var ACCESSORY_WORDS, STOP, COLORS;
+var init_sameProduct = __esm({
+  "server/lens/sameProduct.ts"() {
+    ACCESSORY_WORDS = [
+      "case",
+      "cover",
+      "back cover",
+      "pouch",
+      "sleeve",
+      "skin",
+      "screen guard",
+      "screen protector",
+      "tempered",
+      "protector",
+      "charger",
+      "adapter",
+      "adaptor",
+      "cable",
+      "strap",
+      "band",
+      "stand",
+      "holder",
+      "mount",
+      "stylus",
+      "sticker",
+      "cleaner",
+      "refill",
+      "replacement",
+      "spare",
+      "lens guard",
+      "camera protector",
+      "magsafe",
+      "mag-safe",
+      "pop socket",
+      "popsocket",
+      "bumper",
+      "ring light",
+      "tripod",
+      "dock",
+      "wallet"
+    ];
+    STOP = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
+    COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
+  }
+});
+
 // server/marketing/placements.ts
 var placements_exports = {};
 __export(placements_exports, {
@@ -11969,6 +12347,472 @@ var init_placements = __esm({
   }
 });
 
+// server/marketing/appLinks.ts
+var appLinks_exports = {};
+__export(appLinks_exports, {
+  APP_LINK_KEYS: () => APP_LINK_KEYS,
+  deleteAppLink: () => deleteAppLink,
+  getPublicAppLinks: () => getPublicAppLinks,
+  listAppLinks: () => listAppLinks,
+  upsertAppLink: () => upsertAppLink,
+  validateAppLinkUrl: () => validateAppLinkUrl
+});
+function validateAppLinkUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return { ok: false, error: "URL is required" };
+  if (s.length > 500) return { ok: false, error: "URL is too long (max 500 characters)" };
+  let u;
+  try {
+    u = new URL(s);
+  } catch {
+    return { ok: false, error: "Enter a full URL starting with https://" };
+  }
+  if (u.protocol !== "https:") return { ok: false, error: "Only https:// links are allowed" };
+  if (u.username || u.password) return { ok: false, error: "URL must not contain credentials" };
+  if (!u.hostname.includes(".")) return { ok: false, error: "URL host looks invalid" };
+  return { ok: true, url: u.toString() };
+}
+async function listAppLinks(includeInactive = false) {
+  const rows = await getStore().query(
+    "SELECT link_key, url, version, is_active, updated_at FROM app_links ORDER BY link_key ASC LIMIT 20"
+  );
+  return includeInactive ? rows : rows.filter((r) => Number(r.is_active) === 1 || r.is_active === true);
+}
+async function getPublicAppLinks() {
+  const out = { chrome_extension: null, android_app: null, ios_app: null };
+  try {
+    for (const r of await listAppLinks(false)) {
+      if (APP_LINK_KEYS.includes(r.link_key)) out[r.link_key] = { url: r.url, version: r.version || null };
+    }
+  } catch {
+  }
+  return out;
+}
+async function upsertAppLink(input) {
+  const key = String(input.link_key || "").trim().toLowerCase();
+  if (!APP_LINK_KEYS.includes(key)) return { ok: false, error: "Unknown link key" };
+  const v = validateAppLinkUrl(input.url);
+  if (!v.ok) return { ok: false, error: v.error };
+  const version = String(input.version ?? "").trim().slice(0, 30) || null;
+  const active = input.is_active === false ? 0 : 1;
+  const store2 = getStore();
+  const existing = await store2.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
+  if (existing.length) {
+    await store2.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active, key]);
+  } else {
+    await store2.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active]);
+  }
+  return { ok: true };
+}
+async function deleteAppLink(key) {
+  await getStore().execute("DELETE FROM app_links WHERE link_key = ?", [String(key || "").trim().toLowerCase()]);
+}
+var APP_LINK_KEYS;
+var init_appLinks = __esm({
+  "server/marketing/appLinks.ts"() {
+    init_db();
+    APP_LINK_KEYS = ["chrome_extension", "android_app", "ios_app"];
+  }
+});
+
+// src/data/quickAppsData.ts
+var quickAppsData_exports = {};
+__export(quickAppsData_exports, {
+  INITIAL_QUICK_APP_PARTNERS: () => INITIAL_QUICK_APP_PARTNERS,
+  INITIAL_REDIRECTION_LOGS: () => INITIAL_REDIRECTION_LOGS
+});
+var INITIAL_QUICK_APP_PARTNERS, INITIAL_REDIRECTION_LOGS;
+var init_quickAppsData = __esm({
+  "src/data/quickAppsData.ts"() {
+    INITIAL_QUICK_APP_PARTNERS = [
+      {
+        id: "qapp-swiggy",
+        name: "Swiggy Food & Instamart",
+        iconUrl: "https://www.google.com/s2/favicons?domain=swiggy.com&sz=128",
+        category: "Food Delivery & Groceries",
+        type: "CPI - Android",
+        deepLink: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
+        webUrl: "https://www.swiggy.com",
+        description: "Order restaurant food and 10-minute grocery delivery (Instamart) across Indian cities.",
+        payoutRate: "\u20B945 / Android Install",
+        payoutAmount: 45,
+        status: "active",
+        rating: 4.6,
+        downloadsOrUsers: "100M+ Downloads",
+        badge: "Trending",
+        bgColor: "bg-orange-500",
+        createdAt: "2026-09-01"
+      },
+      {
+        id: "qapp-zomato",
+        name: "Zomato Dining & Delivery",
+        iconUrl: "https://www.google.com/s2/favicons?domain=zomato.com&sz=128",
+        category: "Food Delivery & Dining",
+        type: "CPC",
+        deepLink: "zomato://order?ref=try1second",
+        webUrl: "https://www.zomato.com",
+        description: "Restaurant discovery, food delivery and dining-out savings across 500+ Indian cities.",
+        payoutRate: "\u20B918 / Click",
+        payoutAmount: 18,
+        status: "active",
+        rating: 4.5,
+        downloadsOrUsers: "100M+ Users",
+        badge: "Hot Offer",
+        bgColor: "bg-rose-600",
+        createdAt: "2026-09-02"
+      },
+      {
+        id: "qapp-flipkart",
+        name: "Flipkart Online Shopping",
+        iconUrl: "https://www.google.com/s2/favicons?domain=flipkart.com&sz=128",
+        category: "E-Commerce & Electronics",
+        type: "CPS",
+        deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
+        webUrl: "https://www.flipkart.com",
+        description: "Shop smartphones, fashion, electronics and more on the large Indian homegrown marketplace.",
+        payoutRate: "8.5% CPS / Sale",
+        payoutAmount: 120,
+        status: "active",
+        rating: 4.4,
+        downloadsOrUsers: "500M+ Downloads",
+        badge: "Top Cashback",
+        bgColor: "bg-blue-600",
+        createdAt: "2026-09-03"
+      },
+      {
+        id: "qapp-amazon",
+        name: "Amazon India Shopping & Pay",
+        iconUrl: "https://www.google.com/s2/favicons?domain=amazon.in&sz=128",
+        category: "E-Commerce & Gadgets",
+        type: "CPS",
+        deepLink: "amazon://home?tag=try1sec-21",
+        webUrl: "https://www.amazon.in",
+        description: "Prime 1-day delivery on 10 million products, Amazon Pay UPI cashback & electronics.",
+        payoutRate: "9.0% CPS / Sale",
+        payoutAmount: 150,
+        status: "active",
+        rating: 4.4,
+        downloadsOrUsers: "500M+ Users",
+        badge: "Verified Partner",
+        bgColor: "bg-slate-900",
+        createdAt: "2026-09-04"
+      },
+      {
+        id: "qapp-blinkit",
+        name: "Blinkit Instant Groceries",
+        iconUrl: "https://www.google.com/s2/favicons?domain=blinkit.com&sz=128",
+        category: "10-Min Quick Grocery",
+        type: "CPI - Android",
+        deepLink: "blinkit://explore?source=try1second",
+        webUrl: "https://www.blinkit.com",
+        description: "Farm-fresh milk, bread, fruits, electronics & home essentials delivered in 10 minutes.",
+        payoutRate: "\u20B950 / Android Install",
+        payoutAmount: 50,
+        status: "active",
+        rating: 4.7,
+        downloadsOrUsers: "50M+ Downloads",
+        badge: "Lightning 10m",
+        bgColor: "bg-amber-400",
+        createdAt: "2026-09-05"
+      },
+      {
+        id: "qapp-zepto",
+        name: "Zepto 10-Min Supermarket",
+        iconUrl: "https://www.google.com/s2/favicons?domain=zeptonow.com&sz=128",
+        category: "10-Min Quick Grocery",
+        type: "CPI - IOS",
+        deepLink: "zepto://home?utm_campaign=try1second_ios",
+        webUrl: "https://www.zeptonow.com",
+        description: "Zero surge delivery fees, super saver deals & fresh groceries in under 10 minutes on iOS.",
+        payoutRate: "\u20B965 / iOS Install",
+        payoutAmount: 65,
+        status: "active",
+        rating: 4.8,
+        downloadsOrUsers: "20M+ iOS Users",
+        badge: "iOS Exclusive",
+        bgColor: "bg-purple-700",
+        createdAt: "2026-09-06"
+      },
+      {
+        id: "qapp-cred",
+        name: "CRED Credit Card Payments & Perks",
+        iconUrl: "https://www.google.com/s2/favicons?domain=cred.club&sz=128",
+        category: "Fintech & Credit Cards",
+        type: "CPI - IOS",
+        deepLink: "cred://home?invite=TRY1SEC",
+        webUrl: "https://cred.club",
+        description: "Pay credit card bills, win guaranteed cashbacks & unlock premium members-only luxury rewards.",
+        payoutRate: "\u20B990 / iOS Install",
+        payoutAmount: 90,
+        status: "active",
+        rating: 4.7,
+        downloadsOrUsers: "15M+ High Net Worth",
+        badge: "HNI Premium",
+        bgColor: "bg-black",
+        createdAt: "2026-09-07"
+      },
+      {
+        id: "qapp-tataneu",
+        name: "Tata Neu Super App",
+        iconUrl: "https://www.google.com/s2/favicons?domain=tataneu.com&sz=128",
+        category: "Super App & Retail",
+        type: "CPI - Windows",
+        deepLink: "tataneu://explore?ref=try1second_win",
+        webUrl: "https://www.tataneu.com",
+        description: "One stop for BigBasket, Croma, Air India, Taj Hotels & Westside with 5% NeuCoins reward.",
+        payoutRate: "\u20B935 / Windows Install",
+        payoutAmount: 35,
+        status: "active",
+        rating: 4.2,
+        downloadsOrUsers: "50M+ Downloads",
+        badge: "Windows Super App",
+        bgColor: "bg-purple-900",
+        createdAt: "2026-09-08"
+      },
+      {
+        id: "qapp-makemytrip",
+        name: "MakeMyTrip Flights & Hotels",
+        iconUrl: "https://www.google.com/s2/favicons?domain=makemytrip.com&sz=128",
+        category: "Travel & Flights",
+        type: "CPC",
+        deepLink: "makemytrip://flightsearch?affil=try1second",
+        webUrl: "https://www.makemytrip.com",
+        description: "Compare non-stop flight fares, zero cancellation fee hotels & bus tickets across India.",
+        payoutRate: "\u20B925 / Click",
+        payoutAmount: 25,
+        status: "active",
+        rating: 4.5,
+        downloadsOrUsers: "100M+ Bookings",
+        badge: "Cheapest Flights",
+        bgColor: "bg-red-600",
+        createdAt: "2026-09-09"
+      },
+      {
+        id: "qapp-policybazaar",
+        name: "PolicyBazaar Health & Term Cover",
+        iconUrl: "https://www.google.com/s2/favicons?domain=policybazaar.com&sz=128",
+        category: "Insurance & Healthcare",
+        type: "CPL",
+        deepLink: "policybazaar://quotes?source=try1sec_cpl",
+        webUrl: "https://www.policybazaar.com",
+        description: "Compare 50+ life, health & motor insurance plans side-by-side with 100% cashless claims.",
+        payoutRate: "\u20B9450 / Qualified Lead",
+        payoutAmount: 450,
+        status: "active",
+        rating: 4.6,
+        downloadsOrUsers: "40M+ Policies",
+        badge: "High Payout CPL",
+        bgColor: "bg-blue-700",
+        createdAt: "2026-09-10"
+      },
+      {
+        id: "qapp-hdfcloans",
+        name: "HDFC Bank Express Loans",
+        iconUrl: "https://www.google.com/s2/favicons?domain=hdfcbank.com&sz=128",
+        category: "Banking & Personal Loans",
+        type: "CPL",
+        deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
+        webUrl: "https://www.hdfcbank.com",
+        description: "Pre-approved instant personal loans up to \u20B940 Lakhs with 10.5% interest & zero paperwork.",
+        payoutRate: "\u20B9650 / Disbursal Lead",
+        payoutAmount: 650,
+        status: "active",
+        rating: 4.7,
+        downloadsOrUsers: "India\u2019s #1 Private Bank",
+        badge: "High Value CPL",
+        bgColor: "bg-blue-900",
+        createdAt: "2026-09-11"
+      },
+      {
+        id: "qapp-uber",
+        name: "Uber Cabs & City Rides",
+        iconUrl: "https://www.google.com/s2/favicons?domain=uber.com&sz=128",
+        category: "Cabs & Ride-Hailing",
+        type: "CPC",
+        deepLink: "uber://?client_id=try1second&action=setPickup",
+        webUrl: "https://www.uber.com",
+        description: "Instant reliable cabs, airport express rides & moto bikes in 120+ Indian cities in 3 minutes.",
+        payoutRate: "\u20B920 / Click",
+        payoutAmount: 20,
+        status: "active",
+        rating: 4.5,
+        downloadsOrUsers: "Global #1 Mobility",
+        badge: "Fast Pickup",
+        bgColor: "bg-slate-950",
+        createdAt: "2026-09-12"
+      },
+      {
+        id: "qapp-bookmyshow",
+        name: "BookMyShow Cinema & Concerts",
+        iconUrl: "https://www.google.com/s2/favicons?domain=bookmyshow.com&sz=128",
+        category: "Movies & Entertainment",
+        type: "CPS",
+        deepLink: "bookmyshow://home?campaign=try1second_cps",
+        webUrl: "https://in.bookmyshow.com",
+        description: "Book IMAX movies, live music festivals, standup comedy & sports tickets with zero convenience fee.",
+        payoutRate: "6.0% CPS / Sale",
+        payoutAmount: 40,
+        status: "active",
+        rating: 4.6,
+        downloadsOrUsers: "50M+ Moviegoers",
+        badge: "Blockbuster",
+        bgColor: "bg-red-700",
+        createdAt: "2026-09-13"
+      },
+      {
+        id: "qapp-groww",
+        name: "Groww Stocks & Mutual Funds",
+        iconUrl: "https://www.google.com/s2/favicons?domain=groww.in&sz=128",
+        category: "Fintech & Investments",
+        type: "CPI - Android",
+        deepLink: "groww://app?referrer=try1second",
+        webUrl: "https://groww.in",
+        description: "Zero brokerage Demat account, direct mutual fund SIPs, IPO bidding & intraday stock trades.",
+        payoutRate: "\u20B975 / Android Install",
+        payoutAmount: 75,
+        status: "active",
+        rating: 4.7,
+        downloadsOrUsers: "40M+ Investors",
+        badge: "Top Demat App",
+        bgColor: "bg-emerald-600",
+        createdAt: "2026-09-14"
+      },
+      {
+        id: "qapp-microsoft",
+        name: "Microsoft Store & PC Deals",
+        iconUrl: "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
+        category: "Software & Productivity",
+        type: "CPI - Windows",
+        deepLink: "ms-windows-store://home?referrer=try1second",
+        webUrl: "https://www.microsoft.com/store",
+        description: "Download essential PC apps, Xbox games, Windows utilities & cloud office suites seamlessly.",
+        payoutRate: "\u20B940 / Windows Install",
+        payoutAmount: 40,
+        status: "active",
+        rating: 4.3,
+        downloadsOrUsers: "Windows PC Official",
+        badge: "Windows Verified",
+        bgColor: "bg-sky-600",
+        createdAt: "2026-09-15"
+      }
+    ];
+    INITIAL_REDIRECTION_LOGS = [
+      {
+        id: "redr-101",
+        partnerId: "qapp-swiggy",
+        partnerName: "Swiggy Food & Instamart",
+        partnerIconUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - Android",
+        deepLink: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
+        targetUrl: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
+        timestamp: "Today, 10:14 AM",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8)",
+        payoutAmount: 45,
+        status: "opened_app"
+      },
+      {
+        id: "redr-102",
+        partnerId: "qapp-flipkart",
+        partnerName: "Flipkart Online Shopping",
+        partnerIconUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPS",
+        deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
+        targetUrl: "flipkart://open?affid=try1second&affExtParam1=instant",
+        timestamp: "Today, 09:42 AM",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 13; SM-S918B)",
+        payoutAmount: 120,
+        status: "converted"
+      },
+      {
+        id: "redr-103",
+        partnerId: "qapp-zepto",
+        partnerName: "Zepto 10-Min Supermarket",
+        partnerIconUrl: "https://images.unsplash.com/photo-1518843875459-f738682238a6?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - IOS",
+        deepLink: "zepto://home?utm_campaign=try1second_ios",
+        targetUrl: "zepto://home?utm_campaign=try1second_ios",
+        timestamp: "Today, 08:30 AM",
+        devicePlatform: "iOS",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)",
+        payoutAmount: 65,
+        status: "opened_app"
+      },
+      {
+        id: "redr-104",
+        partnerId: "qapp-policybazaar",
+        partnerName: "PolicyBazaar Health & Term Cover",
+        partnerIconUrl: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPL",
+        deepLink: "policybazaar://quotes?source=try1sec_cpl",
+        targetUrl: "policybazaar://quotes?source=try1sec_cpl",
+        timestamp: "Yesterday, 11:15 PM",
+        devicePlatform: "Web",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0",
+        payoutAmount: 450,
+        status: "converted"
+      },
+      {
+        id: "redr-105",
+        partnerId: "qapp-zomato",
+        partnerName: "Zomato Dining & Delivery",
+        partnerIconUrl: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPC",
+        deepLink: "zomato://order?ref=try1second",
+        targetUrl: "zomato://order?ref=try1second",
+        timestamp: "Yesterday, 07:45 PM",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 14; OnePlus 12)",
+        payoutAmount: 18,
+        status: "redirected"
+      },
+      {
+        id: "redr-106",
+        partnerId: "qapp-cred",
+        partnerName: "CRED Credit Card Payments & Perks",
+        partnerIconUrl: "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - IOS",
+        deepLink: "cred://home?invite=TRY1SEC",
+        targetUrl: "cred://home?invite=TRY1SEC",
+        timestamp: "Yesterday, 04:20 PM",
+        devicePlatform: "iOS",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X)",
+        payoutAmount: 90,
+        status: "opened_app"
+      },
+      {
+        id: "redr-107",
+        partnerId: "qapp-tataneu",
+        partnerName: "Tata Neu Super App",
+        partnerIconUrl: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - Windows",
+        deepLink: "tataneu://explore?ref=try1second_win",
+        targetUrl: "tataneu://explore?ref=try1second_win",
+        timestamp: "Yesterday, 02:10 PM",
+        devicePlatform: "Windows",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/123.0",
+        payoutAmount: 35,
+        status: "opened_app"
+      },
+      {
+        id: "redr-108",
+        partnerId: "qapp-hdfcloans",
+        partnerName: "HDFC Bank Express Loans",
+        partnerIconUrl: "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPL",
+        deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
+        targetUrl: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
+        timestamp: "2 days ago",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 14; Galaxy S24)",
+        payoutAmount: 650,
+        status: "converted"
+      }
+    ];
+  }
+});
+
 // server/api/routes.ts
 var routes_exports = {};
 __export(routes_exports, {
@@ -12117,6 +12961,9 @@ var init_routes = __esm({
     init_settings();
     init_registry();
     init_realDataAcquisition();
+    init_productLink();
+    init_assistantIntent();
+    init_sameProduct();
     init_catalogueStore();
     init_logger();
     init_curlCffiFetch();
@@ -12219,10 +13066,10 @@ var init_routes = __esm({
         }
       }
       const response = await runSearch(input);
-      const STOP = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
-      const words = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
+      const STOP2 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
+      const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP2.has(w));
       const stem = (w) => w.replace(/(ies|es|s)$/, "");
-      const stems = words.map(stem);
+      const stems = words2.map(stem);
       const scored = response.results.map((o) => {
         const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
         const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
@@ -12294,6 +13141,51 @@ var init_routes = __esm({
       saveItemToCatalogue(catalogueItem);
       res.json({ success: true, item: catalogueItem, rawScan: scan });
     });
+    apiRouter.post("/lens", async (req, res) => {
+      const input = String(req.body?.input || req.body?.url || "").trim().slice(0, 2e3);
+      const url = extractUrl(input);
+      if (!url) return res.status(400).json({ success: false, error: "Paste a product link (https://...) to compare." });
+      const safe = isSafePublicUrl(url);
+      if (!safe.ok) return res.status(400).json({ success: false, error: safe.reason || "That link cannot be used." });
+      const product = await resolveProductFromLink(url);
+      if (!product.title) {
+        return res.json({
+          success: true,
+          found: false,
+          product,
+          message: product.fetchStatus === "blocked" ? `${product.merchant || "That site"} blocks automated reads and the link has no readable product name. Try typing the product name instead.` : "Could not read a product name from that link. Try typing the product name instead.",
+          results: []
+        });
+      }
+      const lensQuery = searchableTitle(product.title);
+      const response = await runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode });
+      const priced = response.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0 && isSameProduct(lensQuery, String(x.o.title || "")));
+      const results = priced.sort((a, b) => a.price - b.price).slice(0, 30).map(({ o, price }) => ({
+        id: o.id,
+        title: o.title,
+        seller: String(o.seller || o.vendor || ""),
+        price,
+        listPrice: Number(o.prices?.listPrice ?? 0) || 0,
+        image: o.image || o.images?.[0] || null,
+        availability: o.availability || "unknown",
+        goUrl: o.sellerUrl ? createMaskingPointer(o.sellerUrl, { offerId: String(o.id || "") }) : ""
+      }));
+      res.json({
+        success: true,
+        found: true,
+        product,
+        searchedAs: lensQuery,
+        cheapest: results[0] || null,
+        pageVsCheapest: product.pagePrice && results[0] ? { pagePrice: product.pagePrice, cheapest: results[0].price, saving: Math.max(0, product.pagePrice - results[0].price) } : null,
+        servedFrom: response.state?.servedFrom,
+        message: results.length ? void 0 : "No verified listing of this exact product was found on our sources right now.",
+        results
+      });
+    });
+    apiRouter.post("/assist/intent", (req, res) => {
+      const text = String(req.body?.text || "").slice(0, 300);
+      res.json({ success: true, ...interpretAssistantQuestion(text) });
+    });
     apiRouter.get("/catalogue", async (_req, res) => {
       try {
         const rows = await getStore().query(
@@ -12323,6 +13215,33 @@ var init_routes = __esm({
         res.json({ success: true, active: Boolean(slot), slot });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not load ad slot" });
+      }
+    });
+    apiRouter.get("/app-links", async (_req, res) => {
+      try {
+        const { getPublicAppLinks: getPublicAppLinks2 } = await Promise.resolve().then(() => (init_appLinks(), appLinks_exports));
+        res.json({ success: true, links: await getPublicAppLinks2() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load app links" });
+      }
+    });
+    apiRouter.get("/quick-apps", async (_req, res) => {
+      try {
+        const { INITIAL_QUICK_APP_PARTNERS: INITIAL_QUICK_APP_PARTNERS2 } = await Promise.resolve().then(() => (init_quickAppsData(), quickAppsData_exports));
+        const apps = INITIAL_QUICK_APP_PARTNERS2.filter((p) => p.status === "active").map((p) => ({
+          id: p.id,
+          name: p.name,
+          iconUrl: p.iconUrl,
+          category: p.category,
+          description: p.description,
+          webUrl: p.webUrl,
+          rating: p.rating,
+          downloadsOrUsers: p.downloadsOrUsers || null,
+          badge: p.badge || null
+        }));
+        res.json({ success: true, apps });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load quick apps" });
       }
     });
     apiRouter.get("/provenance", async (_req, res) => {
@@ -12390,6 +13309,34 @@ var init_routes = __esm({
         new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
       ]);
       res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0 } });
+    });
+    apiRouter.post("/auth/google-mobile", async (req, res) => {
+      if (!settings.googleOauthClientIds.length) {
+        return res.status(503).json({ success: false, error: "Mobile Google sign-in is not configured (set GOOGLE_OAUTH_CLIENT_IDS)" });
+      }
+      const idToken = String(req.body?.idToken || "");
+      if (!idToken) return res.status(400).json({ success: false, error: "Missing Google ID token" });
+      const claims = await verifyGoogleIdToken(idToken);
+      if (!claims) return res.status(401).json({ success: false, error: "Google sign-in could not be verified" });
+      const store2 = getStore();
+      let rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+      if (rows.length === 0) {
+        await store2.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
+          claims.email,
+          claims.displayName || null,
+          "user",
+          claims.uid
+        ]);
+        rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+      }
+      const row = rows[0];
+      const token = import_crypto22.default.randomBytes(32).toString("hex");
+      await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+        token,
+        Number(row.id),
+        new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
+      ]);
+      res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0, picture: claims.picture } });
     });
     apiRouter.get("/auth/me", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
@@ -13155,6 +14102,7 @@ var init_adminRoutes = __esm({
     init_logger();
     init_affiliateNetwork();
     init_placements();
+    init_appLinks();
     init_logger();
     init_acceptanceRunner();
     adminRouter = (0, import_express2.Router)();
@@ -13334,6 +14282,32 @@ var init_adminRoutes = __esm({
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not save ad slot" });
+      }
+    });
+    adminRouter.get("/app-links", async (_req, res) => {
+      try {
+        res.json({ success: true, links: await listAppLinks(true) });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load app links" });
+      }
+    });
+    adminRouter.post("/app-links", async (req, res) => {
+      try {
+        const result = await upsertAppLink(req.body || {});
+        if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+        audit(req, "app_link.upsert", req.body?.link_key, { url: req.body?.url, version: req.body?.version });
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save app link" });
+      }
+    });
+    adminRouter.delete("/app-links/:key", async (req, res) => {
+      try {
+        await deleteAppLink(req.params.key);
+        audit(req, "app_link.delete", req.params.key);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete app link" });
       }
     });
     adminRouter.post("/validate-destination", (req, res) => {

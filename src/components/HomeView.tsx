@@ -20,6 +20,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId } from '../types';
+import { PriceLensAndAssistant } from './PriceLensAndAssistant';
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -150,8 +151,11 @@ export const HomeView: React.FC = () => {
         </div>
       </section>
 
+      {/* PRICE LENS (paste any product link) + AI ASSISTANT (text/voice) */}
+      <PriceLensAndAssistant />
+
       {/* QUICK APPS SECTION - COMPANY LOGOS ONLY */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="flex items-center gap-2">

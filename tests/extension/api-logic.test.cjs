@@ -9,9 +9,9 @@ global.chrome = {
 const fs = require('fs');
 const vm = require('vm');
 const code = fs.readFileSync('chrome-extension/lib/api.js', 'utf8') +
-  '\n;globalThis.__t1s = { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_SCRIPT };';
+  '\n;globalThis.__t1s = { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_SCRIPT, looksLikeLink };';
 vm.runInThisContext(code);
-const { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_SCRIPT } = globalThis.__t1s;
+const { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_SCRIPT, looksLikeLink } = globalThis.__t1s;
 
 (async () => {
   let pass = 0, fail = 0;
@@ -55,6 +55,13 @@ const { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_
   // 8) IS_CONTENT_SCRIPT detection is false in Node/SW context
   t('not detected as content script', IS_CONTENT_SCRIPT === false);
 
+  // 9) Price Lens: a pasted link (alone or inside share text) is a link; a product name is not
+  t('plain url is a link', looksLikeLink('https://www.flipkart.com/apple-iphone-17/p/itm1') === true);
+  t('share blurb with url is a link', looksLikeLink('Check this https://dl.flipkart.com/s/abc so cheap') === true);
+  t('product name is not a link', looksLikeLink('boAt Airdopes 141') === false);
+  t('empty is not a link', looksLikeLink('') === false);
+
   console.log(`pass ${pass} / fail ${fail}`);
   process.exit(fail ? 1 : 0);
 })();
+

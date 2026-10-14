@@ -53,6 +53,22 @@ async function apiSearch(query, { vertical = 'ecommerce', city, pincode } = {}) 
   return data;
 }
 
+/** POST /api/lens — paste ANY product link, get the same product's cheapest real price across sites. */
+async function apiLens(input) {
+  const data = await t1sFetch('/api/lens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: String(input).slice(0, 2000) }),
+  });
+  if (!data || data.success === false) throw new Error(data?.error || 'Could not check that link');
+  return data;
+}
+
+/** True when the box holds a link (alone or inside pasted share text) rather than a product name. */
+function looksLikeLink(text) {
+  return /https?:\/\/[^\s]+/i.test(String(text || ''));
+}
+
 /** GET /api/history?entity=<canonicalEntityId> — real recorded price history. */
 async function apiHistory(entityId, limit = HISTORY_LIMIT) {
   const data = await t1sFetch(`/api/history?entity=${encodeURIComponent(entityId)}&limit=${limit}`);

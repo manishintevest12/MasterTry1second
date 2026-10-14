@@ -15,10 +15,57 @@ document.querySelectorAll('.t1s-tab').forEach((btn) => {
 });
 
 // ---------- search ----------
+async function doLens(input) {
+  const box = $('#results');
+  box.innerHTML = spinnerRow('Reading the product and comparing live prices…');
+  try {
+    const res = await apiLens(input);
+    if (!res.found) {
+      box.innerHTML = `<div class="t1s-status t1s-muted">${esc(res.message || 'Could not read a product from that link. Try typing the product name.')}</div>`;
+      return;
+    }
+    const rows = res.results || [];
+    if (!rows.length) {
+      box.innerHTML = `<div class="t1s-status t1s-muted">${esc(res.message || 'No verified listing of this exact product right now.')}</div>`;
+      return;
+    }
+    const best = rows[0];
+    const saving = res.pageVsCheapest && res.pageVsCheapest.saving > 0 ? `<div class="t1s-lens-save">Saves ${inr(res.pageVsCheapest.saving)} vs this page</div>` : '';
+    box.innerHTML = `
+      <div class="t1s-lens-best">
+        <div class="t1s-lens-head">Cheapest we found</div>
+        <div class="t1s-item-title">${esc(res.product?.title || '')}</div>
+        <div class="t1s-item-row">
+          <div>
+            <span class="t1s-item-price">${inr(best.price)}</span>
+            <div class="t1s-item-site">${esc(best.seller)}</div>
+            ${saving}
+          </div>
+          <button class="t1s-btn t1s-item-open" data-go="0">Buy</button>
+        </div>
+      </div>`;
+    box.querySelector('[data-go="0"]').addEventListener('click', () => { if (best.goUrl) chrome.tabs.create({ url: (new URL(best.goUrl, 'https://www.try1second.com')).href }); });
+    for (const [i, r] of rows.slice(1, 8).entries()) {
+      const div = document.createElement('div');
+      div.className = 't1s-item';
+      div.innerHTML = `
+        <div class="t1s-item-row">
+          <div><div class="t1s-item-site"><strong>${esc(r.seller)}</strong></div><div class="t1s-item-more">${esc((r.title || '').slice(0, 60))}</div></div>
+          <div style="text-align:right"><span class="t1s-item-price">${inr(r.price)}</span><br/><button class="t1s-btn t1s-item-open" data-go="${i + 1}">Open</button></div>
+        </div>`;
+      div.querySelector('[data-go]').addEventListener('click', () => { if (r.goUrl) chrome.tabs.create({ url: (new URL(r.goUrl, 'https://www.try1second.com')).href }); });
+      box.appendChild(div);
+    }
+  } catch (err) {
+    box.innerHTML = `<div class="t1s-status t1s-muted">Try1Second unreachable (${esc(err.message || 'error')}). No prices were invented.</div>`;
+  }
+}
+
 async function doSearch() {
   const q = $('#q').value.trim();
   const box = $('#results');
   if (!q) return;
+  if (looksLikeLink(q)) return doLens(q);
   box.innerHTML = spinnerRow('Searching across sites…');
   try {
     const { t1sCity = '', t1sPincode = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode']);
@@ -58,6 +105,16 @@ async function doSearch() {
   }
 }
 $('#go').addEventListener('click', doSearch);
+$('#check-page').addEventListener('click', async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const url = tab && tab.url;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    $('#results').innerHTML = '<div class="t1s-status t1s-muted">Open a product page first, then press this button.</div>';
+    return;
+  }
+  $('#q').value = url;
+  doLens(url);
+});
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
 
 const spinnerRow = (msg) => `<div class="t1s-status"><span class="t1s-spin"></span>${esc(msg)}</div>`;

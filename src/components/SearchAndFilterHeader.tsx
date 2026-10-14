@@ -58,6 +58,8 @@ export const SearchAndFilterHeader: React.FC = () => {
     isGpsLocating,
     triggerLiveLocationScrape,
     items,
+    pendingAssistantSearch,
+    setPendingAssistantSearch,
   } = useApp();
 
   // MOVIES: live now-playing titles from the loaded movie results (real data,
@@ -169,6 +171,38 @@ const handleSelectJourneyDate = (formattedDate: string) => {
     const a = clean(from), b = clean(to);
     return a && b ? `${a} to ${b}` : (b || a);
   };
+
+  // Home AI assistant handoff: fill this vertical's own boxes with what the user asked, then search.
+  React.useEffect(() => {
+    const p = pendingAssistantSearch;
+    if (!p || p.vertical !== vertical) return;
+    setPendingAssistantSearch(null);
+    const q = p.query;
+    const dmy = (iso?: string) => {
+      if (!iso) return undefined;
+      const [y, m, d] = iso.split('-').map(Number);
+      return y && m && d ? `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}` : undefined;
+    };
+    const split = (text: string) => {
+      const sides = text.split(/\s+to\s+/i);
+      return sides.length === 2 ? { a: sides[0].trim(), b: sides[1].trim() } : null;
+    };
+    const dateDisplay = dmy(p.date);
+    if (vertical === 'flights') {
+      const r = split(q);
+      if (r) { setOrigin(r.a); setDestination(r.b); }
+      if (dateDisplay) setDateStr(dateDisplay);
+    } else if (vertical === 'bus') {
+      const r = split(q);
+      if (r) { setBusFrom(r.a); setBusTo(r.b); }
+      if (dateDisplay) setBusDate(dateDisplay);
+    } else if (vertical === 'hotels') {
+      setHotelDestination(q);
+    }
+    setSearchQuery(q);
+    triggerLiveLocationScrape(q, undefined, p.date && (vertical === 'flights' || vertical === 'bus' || vertical === 'hotels' || vertical === 'cab') ? { depart: p.date } : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAssistantSearch, vertical]);
 
   const handleOpenLocationModal = (ctx: 'food' | 'grocery' | 'cab') => {
     setLocationModalContext(ctx);
