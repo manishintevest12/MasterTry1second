@@ -132,6 +132,24 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   (extractRateRange needs no 'p.a.' suffix).
 
 ## Known-blocked (honest probes, do NOT re-recon without new angle)
+### Flights deep-recon verdicts (14 Oct 2026, after Expedia flights went live)
+- MakeMyTrip flights — BLOCKED from datacenter IPs: /flight/search?itinerary=...
+  serves a 6-byte "200-OK" application/json stub from AkamaiGHost; Googlebot UA
+  gets HTTP/2 reset; SEO pages (cheap-flights-*.html) are static marketing, no
+  live fares; the SPA shell (fetchable via POST /api/search/flight/search)
+  contains only the client app, no SSR fare data; app host
+  flights-cb.makemytrip.com exposes ONLY GET /api/pre-search-validation
+  (Go validator oracle, 'FlightSearchRequest.Itinerary required'; all other
+  paths default 400 {"Response":"Bad Request"}); PWA chunk sets on
+  jsak.mmtcdn.com are open but the federated search widget contains no fare
+  API. Probe w_flights_makemytrip attempts the live SRP URL each search.
+- Goibibo flights — BLOCKED: www.goibibo.com/flights/* = HTTP/2 stream reset or
+  504 AkamaiGHost (edge accepted, origin tarpits); forced HTTP/1.1 hangs;
+  m.goibibo.com 503; flights.goibibo.com 403 "Access Denied" (Akamai) on all
+  paths incl. app-header POSTs; api.goibibo.com 503 "DNS failure" (origin gone);
+  gfs/fss/gateway/flight-scanapi hosts do not resolve. Probe w_flights_goibibo
+  attempts the live SRP URL each search. Both MMT-group sites: retest only from
+  a new IP (production Hostinger pull) — gate is IP-reputation based.
 Akamai/Bot-Manager: MMT, Goibibo, Yatra (HTTP/2 reset), Agoda (graphql gate
 headers cracked but needs runtime-built document), Trip.com, Marriott, Hilton,
 Trivago (/gw/graphql), Kayak, Skyscanner, Zepto (Kong 429), Flipkart Minutes,

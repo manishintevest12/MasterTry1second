@@ -277,8 +277,36 @@ export const flightsWorker: VerticalWorker = {
       name: 'Flights worker: MakeMyTrip flights (probe)',
       priority: 15,
       run: async () => {
-        await cffiFetch('https://www.makemytrip.com/flights/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip flight search serves an empty shell to browserless HTTP; fare lists load via Akamai-sensor-gated sessioned APIs (bot challenge on 302 to makemytrip.global).');
+        // Attempt the real SRP URL live (dynamic date) so a gate lift is detected on any IP.
+        const dd = new Date(Date.now() + 7 * 86400_000);
+        const dmy = `${String(dd.getUTCDate()).padStart(2, '0')}/${String(dd.getUTCMonth() + 1).padStart(2, '0')}/${dd.getUTCFullYear()}`;
+        const iso = dd.toISOString().slice(0, 10);
+        const r = await cffiFetch(
+          `https://www.makemytrip.com/flight/search?itinerary=IDR-DEL-${dmy}&tripType=O&pax=1-0-0&cabinClass=E`,
+          { impersonate: 'chrome', timeoutMs: 12_000 },
+        );
+        if (r.status === 200 && (r.body || '').length > 50_000) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: AkamaiGHost stub).');
+        }
+        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip flight SRP serves a 6-byte "200-OK" application/json stub from AkamaiGHost to browserless datacenter HTTP; Googlebot UA gets HTTP/2 reset; the app API host flights-cb.makemytrip.com exposes only a GET pre-search-validation route (Go validator, no fares); SEO pages carry no live fares (recon 14 Oct 2026). Retest from production IP after deploy.');
+      },
+    },
+    {
+      sourceId: 'w_flights_goibibo',
+      name: 'Flights worker: Goibibo flights (probe)',
+      priority: 15,
+      run: async () => {
+        // Attempt the real SRP URL live (dynamic date) so a gate lift is detected on any IP.
+        const dd = new Date(Date.now() + 7 * 86400_000);
+        const iso = dd.toISOString().slice(0, 10);
+        const r = await cffiFetch(
+          `https://www.goibibo.com/flights/search/?source=Indore&destination=New%20Delhi&triptype=O&tripdate=${iso}&adults=1`,
+          { impersonate: 'chrome', timeoutMs: 12_000 },
+        );
+        if (r.status === 200 && (r.body || '').length > 50_000) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', 'Goibibo SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: Akamai 504/reset).');
+        }
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Goibibo flights is edge-gated to browserless datacenter HTTP: www.goibibo.com/flights/* gives HTTP/2 stream reset or 504 AkamaiGHost gateway timeouts; m.goibibo.com 503; flights.goibibo.com returns Akamai "Access Denied" 403 on all paths; api.goibibo.com 503 DNS failure (recon 14 Oct 2026). Retest from production IP after deploy.');
       },
     },
     {
