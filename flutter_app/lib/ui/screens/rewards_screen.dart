@@ -72,10 +72,17 @@ class _DealsHub extends StatefulWidget {
 
 class _DealsHubState extends State<_DealsHub> {
   List<Deal>? _deals;
+  Map<String, int> _counts = const {};
   String? _error;
   String? _merchant;
+  String? _vertical; // null = All
+  String? _kind; // null = All
   bool _busy = false;
   final _ctrl = TextEditingController();
+
+  static const _kinds = <String, String>{
+    'coupon': 'Coupons', 'bank_offer': 'Bank offers', 'sale': 'Sales', 'cashback': 'Cashback',
+  };
 
   @override
   void initState() {
@@ -83,11 +90,23 @@ class _DealsHubState extends State<_DealsHub> {
     _load();
   }
 
-  Future<void> _load({String? merchant}) async {
+  Future<void> _load({String? merchant, String? vertical}) async {
     setState(() => _busy = true);
     try {
-      final d = await widget.state.api.deals(merchant: (merchant ?? '').isEmpty ? null : merchant, limit: 200);
-      if (mounted) setState(() { _deals = d; _error = null; _merchant = (merchant ?? '').isEmpty ? null : merchant; });
+      final feed = await widget.state.api.deals(
+        merchant: (merchant ?? _merchant ?? '').isEmpty ? null : (merchant ?? _merchant),
+        vertical: vertical ?? _vertical,
+        limit: 200,
+      );
+      if (mounted) {
+        setState(() {
+          _deals = feed.deals;
+          _counts = feed.counts;
+          _error = null;
+          if (merchant != null) _merchant = merchant.isEmpty ? null : merchant;
+          if (vertical != null) _vertical = vertical.isEmpty ? null : vertical;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
@@ -97,14 +116,33 @@ class _DealsHubState extends State<_DealsHub> {
 
   @override
   Widget build(BuildContext context) {
-    final deals = _deals ?? const <Deal>[];
-    final filtered = _ctrl.text.isEmpty
+    // Owner decision: a deal without a real image never renders.
+    final deals = (_deals ?? const <Deal>[]).where((d) => (d.imageUrl ?? '').startsWith('http')).toList();
+    final q = _ctrl.text.toLowerCase();
+    final filtered = q.isEmpty
         ? deals
-        : deals.where((d) => d.title.toLowerCase().contains(_ctrl.text.toLowerCase()) || d.merchantName.toLowerCase().contains(_ctrl.text.toLowerCase())).toList();
+        : deals.where((d) =>
+            d.title.toLowerCase().contains(q) ||
+            d.merchantName.toLowerCase().contains(q) ||
+            (d.description ?? '').toLowerCase().contains(q)).toList();
 
-    // per-merchant tiles (website OffersHub store tiles)
-    final byMerchant = <String, List<Deal>>{};
+    // vertical chips from live data (server counts first, local derivation as fallback)
+    final vCounts = <String, int>{};
     for (final d in deals) {
+      final v = d.verticalLabel;
+      if (v.isNotEmpty) vCounts[v] = (vCounts[v] ?? 0) + 1;
+    }
+    final serverCounts = _counts.isNotEmpty ? _counts : vCounts;
+    final vLabel = <String, String>{
+      'ecommerce': 'Shopping', 'flights': 'Flights', 'hotels': 'Hotels', 'bus': 'Bus', 'cab': 'Cab',
+      'food': 'Food', 'grocery': 'Grocery', 'movies': 'Movies', 'loans': 'Loans', 'insurance': 'Insurance', 'creditcards': 'Cards',
+    };
+    final chipVerticals = (serverCounts.isNotEmpty ? serverCounts.keys : vCounts.keys).toList()..sort((a, b) => (serverCounts[b] ?? vCounts[b] ?? 0).compareTo(serverCounts[a] ?? vCounts[a] ?? 0));
+
+    // per-merchant tiles filtered by the active vertical
+    final tilesForVertical = deals.where((d) => _vertical == null || d.verticalLabel == _vertical).toList();
+    final byMerchant = <String, List<Deal>>{};
+    for (final d in tilesForVertical) {
       byMerchant.putIfAbsent(d.merchantName, () => []).add(d);
     }
     final tiles = byMerchant.entries.toList()
@@ -114,73 +152,154 @@ class _DealsHubState extends State<_DealsHub> {
         return bp.compareTo(ap);
       });
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-      children: [
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _ctrl,
-              decoration: const InputDecoration(hintText: 'Search deals, coupons, stores…', isDense: true, prefixIcon: Icon(Icons.search, size: 16)),
-              style: tx(context, 12),
+    return RefreshIndicator(
+      color: T1SColors.red,
+      onRefresh: () => _load(merchant: _merchant ?? ''),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        children: [
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                decoration: const InputDecoration(hintText: 'Search deals, coupons, stores…', isDense: true, prefixIcon: Icon(Icons.search, size: 16)),
+                style: tx(context, 12),
+                onSubmitted: (_) => setState(() {}),
+              ),
             ),
-          ),
-          if (_merchant != null) ...[
+            if (_merchant != null) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _load(merchant: ''),
+                child: Pill('$_merchant ×', fg: T1SColors.red, bg: T1SColors.red50, size: 10),
+              ),
+            ],
             const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _load(merchant: ''),
-              child: Pill('$_merchant ×', fg: T1SColors.red, bg: T1SColors.red50, size: 10),
+            if (_busy) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
+          ]),
+          const SizedBox(height: 10),
+
+          // vertical filter chips
+          if (chipVerticals.isNotEmpty) ...[
+            SizedBox(
+              height: 30,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: chipVerticals.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                itemBuilder: (c, i) {
+                  if (i == 0) {
+                    return _filterChip(c, label: 'All', selected: _vertical == null, onTap: () => _load(vertical: ''));
+                  }
+                  final v = chipVerticals[i - 1];
+                  final n = serverCounts[v] ?? 0;
+                  return _filterChip(c, label: '${vLabel[v] ?? v} ($n)', selected: _vertical == v, onTap: () => _load(vertical: v));
+                },
+              ),
             ),
+            const SizedBox(height: 8),
           ],
-          const SizedBox(width: 8),
-          if (_busy) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
-        ]),
-        const SizedBox(height: 14),
 
-        if (_error != null)
-          Box(padding: const EdgeInsets.all(12), child: Text(_error!, style: tx(context, 11.5, color: T1SColors.red))),
-
-        if (deals.isEmpty && !_busy && _error == null)
-          Box(
-            padding: const EdgeInsets.all(22),
-            child: Column(children: [
-              Icon(Icons.local_offer_outlined, size: 30, color: T1SColors.slate300),
-              const SizedBox(height: 10),
-              Text('No live deals right now', style: tx(context, 13.5, w: FontWeight.w900)),
-              const SizedBox(height: 5),
-              Text('The engine re-acquires fresh deals automatically.', textAlign: TextAlign.center, style: tx(context, 11, color: muted(context))),
-            ]),
-          ),
-
-        if (tiles.isNotEmpty) ...[
-          SectionTitle('STORES · LIVE DEALS', trailing: Text('${deals.length} deals', style: tx(context, 10, color: muted(context)))),
+          // kind filter chips
           SizedBox(
-            height: 116,
+            height: 30,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: tiles.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemCount: _kinds.length + 1,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
               itemBuilder: (c, i) {
-                final e = tiles[i];
-                final maxPct = e.value.map((d) => d.percent).reduce(math.max);
-                return GestureDetector(
-                  onTap: () => _load(merchant: e.key),
-                  child: _StoreTile(name: e.key, count: e.value.length, maxPct: maxPct, deal: e.value.firstWhere((d) => d.imageUrl != null, orElse: () => e.value.first)),
-                );
+                if (i == 0) {
+                  return _filterChip(c, label: 'All types', selected: _kind == null, onTap: () => setState(() => _kind = null));
+                }
+                final k = _kinds.keys.elementAt(i - 1);
+                final selected = _kind == k;
+                return _filterChip(c, label: _kinds[k]!, selected: selected, onTap: () => setState(() => _kind = selected ? null : k));
               },
             ),
           ),
-          const SizedBox(height: 18),
-        ],
+          const SizedBox(height: 12),
 
-        if (filtered.isNotEmpty) ...[
-          SectionTitle(_merchant == null ? 'LIVE DEALS · AUTO-ACQUIRED' : '$_merchant DEALS'),
-          for (final d in filtered) ...[
-            _DealCard(deal: d),
-            const SizedBox(height: 10),
+          if (_error != null)
+            Box(padding: const EdgeInsets.all(12), child: Text(_error!, style: tx(context, 11.5, color: T1SColors.red))),
+
+          if (deals.isEmpty && _busy)
+            Column(children: [ for (var i = 0; i < 3; i++) ...[
+              Box(padding: const EdgeInsets.all(12), child: Row(children: [
+                Container(width: 64, height: 64, decoration: BoxDecoration(color: muted(context).withOpacity(.08), borderRadius: BorderRadius.circular(12))),
+                const SizedBox(width: 10),
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Container(width: 140, height: 12, decoration: BoxDecoration(color: muted(context).withOpacity(.08), borderRadius: BorderRadius.circular(4))),
+                  const SizedBox(height: 6),
+                  Container(width: 90, height: 10, decoration: BoxDecoration(color: muted(context).withOpacity(.08), borderRadius: BorderRadius.circular(4))),
+                ]),
+              ])),
+              const SizedBox(height: 10),
+            ]]),
+
+          if (deals.isEmpty && !_busy && _error == null)
+            Box(
+              padding: const EdgeInsets.all(22),
+              child: Column(children: [
+                Icon(Icons.local_offer_outlined, size: 30, color: T1SColors.slate300),
+                const SizedBox(height: 10),
+                Text('No live offers for this category right now', style: tx(context, 13.5, w: FontWeight.w900)),
+                const SizedBox(height: 5),
+                Text('The engine re-acquires fresh deals automatically.', textAlign: TextAlign.center, style: tx(context, 11, color: muted(context))),
+              ]),
+            ),
+
+          if (tiles.isNotEmpty) ...[
+            SectionTitle('STORES · LIVE DEALS', trailing: Text('${deals.length} deals', style: tx(context, 10, color: muted(context)))),
+            SizedBox(
+              height: 116,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: tiles.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (c, i) {
+                  final e = tiles[i];
+                  final maxPct = e.value.map((d) => d.percent).reduce(math.max);
+                  return GestureDetector(
+                    onTap: () => _load(merchant: e.key),
+                    child: _StoreTile(name: e.key, count: e.value.length, maxPct: maxPct, deal: e.value.firstWhere((d) => d.imageUrl != null, orElse: () => e.value.first)),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
+
+          if (filtered.isNotEmpty) ...[
+            SectionTitle(_merchant == null ? 'LIVE DEALS · AUTO-ACQUIRED' : '$_merchant DEALS'),
+            for (final d in _kindFiltered(filtered)) ...[
+              _DealCard(deal: d),
+              const SizedBox(height: 10),
+            ],
           ],
         ],
-      ],
+      ),
+    );
+  }
+
+  List<Deal> _kindFiltered(List<Deal> deals) {
+    final base = _kind == null ? deals : deals.where((d) => d.kind == _kind).toList();
+    return base;
+  }
+
+  Widget _filterChip(BuildContext context, {required String label, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: () { HapticFeedback.selectionClick(); onTap(); },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? T1SColors.red : (isDark(context) ? T1SColors.slate800 : Colors.white),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? T1SColors.red : border(context)),
+        ),
+        child: Text(label, style: tx(context, 10.5, w: FontWeight.w800, color: selected ? Colors.white : null)),
+      ),
     );
   }
 }
@@ -226,50 +345,95 @@ class _DealCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasCode = deal.code != null && deal.code!.isNotEmpty;
     return Box(
       padding: EdgeInsets.zero,
       clip: true,
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        NetImage(deal.imageUrl, width: 84, height: 84, fallbackIcon: Icons.sell_outlined),
+        NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Pill(deal.merchantName, fg: T1SColors.red, bg: T1SColors.red50, size: 8.5),
                 const SizedBox(width: 5),
-                Pill(deal.kind.toUpperCase(), bg: isDark(context) ? T1SColors.slate800 : T1SColors.slate100, fg: muted(context), size: 8),
+                Pill(deal.kind.replaceAll('_', ' ').toUpperCase(), bg: isDark(context) ? T1SColors.slate800 : T1SColors.slate100, fg: muted(context), size: 8),
               ]),
-              const SizedBox(height: 4),
-              Text(deal.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w800, h: 1.25)),
+              const SizedBox(height: 6),
+              Text(deal.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 12.5, w: FontWeight.w800, h: 1.25)),
               if (deal.discountText != null && deal.discountText!.isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(deal.discountText!, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.emerald600)),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(color: T1SColors.greenBg, borderRadius: BorderRadius.circular(6)),
+                  child: Text(deal.discountText!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.emerald600)),
+                ),
               ],
-              const SizedBox(height: 7),
+              const SizedBox(height: 6),
+              Text(deal.validTill != null && deal.validTill!.isNotEmpty ? 'Valid till ${deal.validTill}' : 'Live now', style: tx(context, 9.5, color: muted(context))),
+              const SizedBox(height: 9),
               Row(children: [
-                if (deal.code != null && deal.code!.isNotEmpty)
-                  GestureDetector(
-                    onLongPress: () { Clipboard.setData(ClipboardData(text: deal.code!)); toast(context, 'Code copied: ${deal.code!}'); },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: border(context)),
-                      ),
-                      child: Text('CODE: ${deal.code}', style: tx(context, 9, w: FontWeight.w800, mono: true)),
-                    ),
+                if (hasCode)
+                  Expanded(
+                    child: _CopyCodePill(code: deal.code!),
                   )
                 else
-                  Text(deal.validTill != null ? 'till ${deal.validTill}' : 'live now', style: tx(context, 9.5, color: muted(context))),
-                const Spacer(),
+                  const Spacer(),
+                const SizedBox(width: 8),
                 RedButton('Get Deal', onTap: deal.goUrl.isEmpty ? null : () => openDeal(deal.goUrl), dense: true),
               ]),
             ]),
           ),
         ),
       ]),
+    );
+  }
+}
+
+class _CopyCodePill extends StatefulWidget {
+  const _CopyCodePill({required this.code});
+  final String code;
+
+  @override
+  State<_CopyCodePill> createState() => _CopyCodePillState();
+}
+
+class _CopyCodePillState extends State<_CopyCodePill> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    HapticFeedback.selectionClick();
+    if (mounted) setState(() => _copied = true);
+    toast(context, 'Code copied');
+    Future.delayed(const Duration(seconds: 2), () { if (mounted) setState(() => _copied = false); });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _copy,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: _copied ? T1SColors.emerald600 : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _copied ? T1SColors.emerald600 : T1SColors.red.withOpacity(.45)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(_copied ? Icons.check_rounded : Icons.copy_rounded, size: 12, color: _copied ? Colors.white : T1SColors.red),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              _copied ? 'Copied' : 'Copy ${widget.code}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: tx(context, 10, w: FontWeight.w900, mono: true, color: _copied ? Colors.white : T1SColors.red),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

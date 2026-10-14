@@ -44,7 +44,7 @@ const kVerticals = <VerticalMeta>[
     kind: SearchKind.route,
     cover: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&auto=format&fit=crop&q=80',
     defaultFrom: 'Indore (IDR)',
-    defaultTo: 'New Delhi (DEL)',
+    defaultTo: 'Delhi (DEL)',
     samples: ['Direct flights under ₹30,000', 'Morning departure with meals included', 'Refundable ticket with 25kg luggage'],
   ),
   VerticalMeta(
@@ -171,16 +171,17 @@ VerticalMeta verticalById(String id) {
 
 bool isKnownVertical(String id) => kVerticals.any((v) => v.id == (id == 'movies' ? 'movie' : id));
 
-/// Default search seed per vertical (website DEFAULT_QUERY, so a tab shows real data on open).
-String defaultQueryFor(String vertical, String city) {
+/// Default search seed per vertical (website DEFAULT_QUERY + SEED_QUERIES, so a tab shows real data on open).
+String defaultQueryFor(String vertical, [String? city]) {
+  final targetCity = (city == null || city.trim().isEmpty) ? 'Indore' : city.trim();
   switch (vertical) {
     case 'flights':
       return 'Indore (IDR) to Delhi (DEL)';
     case 'hotels':
-      return city;
+      return targetCity;
     case 'bus':
     case 'cab':
-      return '$city to Bhopal';
+      return '$targetCity to Bhopal';
     case 'ecommerce':
       return 'mobile phone';
     case 'grocery':

@@ -125,7 +125,7 @@ class AppState extends ChangeNotifier {
   Future<List<Deal>> deals({String? kind}) async {
     final k = kind ?? 'all';
     if (_dealsByKind[k] != null) return _dealsByKind[k]!;
-    final d = await api.deals(kind: kind);
+    final d = (await api.deals(kind: kind)).deals;
     _dealsByKind[k] = d;
     return d;
   }

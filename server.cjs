@@ -3316,7 +3316,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA2 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA3 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -7356,9 +7356,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path9, timeoutMs = 12e3) {
+async function gwJson(host, path10, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path9}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path10}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -8276,7 +8276,7 @@ var init_bus = __esm({
             const t0 = Date.now();
             let resolved = {};
             try {
-              const getJson = async (url) => {
+              const getJson2 = async (url) => {
                 const s = Date.now();
                 const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 8e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
                 steps.push(`suggest=${r2.latencyMs ?? Date.now() - s}ms/${r2.status}`);
@@ -8288,8 +8288,8 @@ var init_bus = __esm({
                 }
               };
               const [fromDocs, toDocs] = await Promise.all([
-                getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
-                getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
+                getJson2(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
+                getJson2(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
             } catch (e) {
@@ -8383,7 +8383,7 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const getJson = async (url) => {
+            const getJson2 = async (url) => {
               const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json" } });
               if (r2.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus HTTP ${r2.status} on ${url.split("?")[0]}`, r2.status);
               try {
@@ -8393,8 +8393,8 @@ var init_bus = __esm({
               }
             };
             const [from, to] = await Promise.all([
-              resolveAbhiBusCity(getJson, rt.from),
-              resolveAbhiBusCity(getJson, rt.to)
+              resolveAbhiBusCity(getJson2, rt.from),
+              resolveAbhiBusCity(getJson2, rt.to)
             ]);
             if (!from || !to) throw new AcquisitionError("NOT_FOUND", `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
             const depart = String(ctx.query.travelDates?.depart || "");
@@ -10340,6 +10340,109 @@ var init_freshness = __esm({
   }
 });
 
+// server/pipeline/lenderLogo.ts
+function load7() {
+  if (cache3) return cache3;
+  try {
+    cache3 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+  } catch {
+    cache3 = {};
+  }
+  return cache3;
+}
+function persist2() {
+  if (saveTimer2) return;
+  saveTimer2 = setTimeout(() => {
+    saveTimer2 = null;
+    try {
+      import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
+      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache3 || {}));
+    } catch {
+    }
+  }, 1500);
+}
+function lenderNameFrom(raw) {
+  return String(raw || "").replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|bike|used car|property|credit card|loan|loans|insurance|health|term|life|motor|travel|plan|policy|emi|interest rates?|rates?)\b/gi, " ").replace(/[|:–—-].*$/, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+}
+async function getJson(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: ctl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+async function lookup(nameRaw) {
+  const name = LENDER_ALIAS[nameRaw.toLowerCase()] || nameRaw;
+  const s = await getJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
+  const ids = (s?.search || []).map((x) => x.id).filter(Boolean);
+  if (!ids.length) return null;
+  const e = await getJson(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${ids.join("|")}`);
+  for (const id of ids) {
+    const ent = e?.entities?.[id];
+    const desc = String(ent?.descriptions?.en?.value || "").toLowerCase();
+    if (desc && !/(bank|insur|financ|lender|nbfc|credit|loan|capital|assurance|fintech|company|corporation|holding)/.test(desc)) continue;
+    const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
+    if (file) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(file).replace(/ /g, "_"))}?width=256`;
+  }
+  return null;
+}
+function resolveLenderLogo(rawName) {
+  const name = lenderNameFrom(rawName);
+  if (name.length < 3) return Promise.resolve(null);
+  const key = name.toLowerCase();
+  const c = load7();
+  const hit = c[key];
+  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS)) return Promise.resolve(hit.url);
+  const running2 = inflight2.get(key);
+  if (running2) return running2;
+  const p = lookup(name).catch(() => null).then((url) => {
+    c[key] = { url, at: Date.now() };
+    persist2();
+    return url;
+  }).finally(() => inflight2.delete(key));
+  inflight2.set(key, p);
+  return p;
+}
+var import_node_fs4, import_node_path4, UA, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache3, inflight2, saveTimer2, LENDER_ALIAS;
+var init_lenderLogo = __esm({
+  "server/pipeline/lenderLogo.ts"() {
+    import_node_fs4 = __toESM(require("node:fs"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
+    UA = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos.json");
+    MISS_TTL_MS = 7 * 864e5;
+    FETCH_TIMEOUT_MS = 4e3;
+    cache3 = null;
+    inflight2 = /* @__PURE__ */ new Map();
+    saveTimer2 = null;
+    LENDER_ALIAS = {
+      sbi: "State Bank of India",
+      pnb: "Punjab National Bank",
+      bob: "Bank of Baroda",
+      hdfc: "HDFC Bank",
+      hdfcl: "HDFC Bank",
+      icici: "ICICI Bank",
+      idbi: "IDBI Bank",
+      idfc: "IDFC First Bank",
+      "idfc first": "IDFC First Bank",
+      hdbfs: "HDB Financial Services",
+      "hdb financial": "HDB Financial Services",
+      kotak: "Kotak Mahindra Bank",
+      iob: "Indian Overseas Bank",
+      ubi: "Union Bank of India",
+      lic: "Life Insurance Corporation",
+      canara: "Canara Bank",
+      union: "Union Bank of India",
+      axis: "Axis Bank",
+      "yes bank": "Yes Bank"
+    };
+  }
+});
+
 // server/pipeline/brandImage.ts
 function hostOf(u) {
   try {
@@ -10354,6 +10457,11 @@ function brandImageFor(o) {
     const code = String(attrs.airline_code || "").toUpperCase();
     const iata = /^[A-Z0-9]{2}$/.test(code) ? code : AIRLINE_IATA[String(attrs.airline || o.seller || "").toLowerCase().trim()];
     if (iata) return `https://www.gstatic.com/flights/airline_logos/70px/${iata}.png`;
+  }
+  if (LENDER_VERTICALS.has(String(o.vertical))) {
+    const lenderLabel = `${o.title || ""} ${attrs.bank || ""} ${attrs.provider || ""} ${attrs.insurer || ""} ${attrs.lender || ""}`;
+    const ld = LENDER_DOMAIN.find(([re]) => re.test(lenderLabel))?.[1];
+    if (ld) return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(ld)}&sz=128`;
   }
   const label = `${o.seller || ""} ${o.vendor || ""}`;
   let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
@@ -10375,9 +10483,32 @@ function withBrandImages(offers) {
   }
   return offers;
 }
-var AIRLINE_IATA, BRAND_DOMAIN, DATA_HOST;
+async function withLenderLogos(offers) {
+  const targets = offers.filter((o) => {
+    if (!LENDER_VERTICAL_IDS.has(String(o.vertical))) return false;
+    const a = o.attributes || {};
+    return !a.image_url || a.image_is_brand_logo === "true";
+  });
+  const names = Array.from(new Set(targets.map((o) => String(o.attributes?.bank || o.title || ""))));
+  const logos = /* @__PURE__ */ new Map();
+  await Promise.all(names.map(async (n) => {
+    logos.set(n, await resolveLenderLogo(n));
+  }));
+  for (const o of targets) {
+    const a = o.attributes || (o.attributes = {});
+    const logo = logos.get(String(o.attributes?.bank || o.title || ""));
+    if (logo) {
+      a.image_url = logo;
+      a.image_is_brand_logo = "true";
+      a.image_is_lender_logo = "true";
+    }
+  }
+  return offers;
+}
+var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, LENDER_VERTICAL_IDS;
 var init_brandImage = __esm({
   "server/pipeline/brandImage.ts"() {
+    init_lenderLogo();
     AIRLINE_IATA = {
       "indigo": "6E",
       "spicejet": "SG",
@@ -10448,7 +10579,82 @@ var init_brandImage = __esm({
       [/icici/i, "icicibank.com"],
       [/axis/i, "axisbank.com"]
     ];
+    LENDER_DOMAIN = [
+      [/axis/i, "axisbank.com"],
+      [/union bank/i, "unionbankofindia.co.in"],
+      [/idfc/i, "idfcfirstbank.com"],
+      [/\bsbi\b|state bank/i, "sbi.co.in"],
+      [/\bpnb\b|punjab national/i, "pnbindia.in"],
+      [/indusind/i, "indusind.com"],
+      [/hdfc ergo/i, "hdfcergo.com"],
+      [/hdfc/i, "hdfcbank.com"],
+      [/icici lombard/i, "icicilombard.com"],
+      [/icici pru|icici prudential/i, "iciciprulife.com"],
+      [/icici/i, "icicibank.com"],
+      [/kotak/i, "kotak.com"],
+      [/yes bank/i, "yesbank.in"],
+      [/bank of baroda|\bbob\b/i, "bankofbaroda.in"],
+      [/canara/i, "canarabank.com"],
+      [/bank of india/i, "bankofindia.co.in"],
+      [/bank of maharashtra/i, "bankofmaharashtra.in"],
+      [/central bank/i, "centralbankofindia.co.in"],
+      [/indian bank/i, "indianbank.in"],
+      [/indian overseas|\biob\b/i, "iob.in"],
+      [/uco bank/i, "ucobank.com"],
+      [/punjab (&|and) sind/i, "psbindia.com"],
+      [/federal bank/i, "federalbank.co.in"],
+      [/rbl/i, "rblbank.com"],
+      [/au small|au bank/i, "aubank.in"],
+      [/bandhan/i, "bandhanbank.com"],
+      [/idbi/i, "idbibank.in"],
+      [/south indian/i, "southindianbank.com"],
+      [/karnataka bank/i, "karnatakabank.com"],
+      [/city union/i, "cityunionbank.com"],
+      [/standard chartered/i, "sc.com"],
+      [/hsbc/i, "hsbc.co.in"],
+      [/citi/i, "citibank.co.in"],
+      [/american express|amex/i, "americanexpress.com"],
+      [/dbs/i, "dbs.com"],
+      [/tata capital/i, "tatacapital.com"],
+      [/tata aig/i, "tataaig.com"],
+      [/bajaj (finserv|finance)/i, "bajajfinserv.in"],
+      [/bajaj allianz/i, "bajajallianz.com"],
+      [/hero fincorp/i, "herofincorp.com"],
+      [/fullerton|sumitomo/i, "smfgindia.com"],
+      [/piramal/i, "piramalfinance.com"],
+      [/aditya birla/i, "adityabirlacapital.com"],
+      [/poonawalla/i, "poonawallafincorp.com"],
+      [/lendingkart/i, "lendingkart.com"],
+      [/navi/i, "navi.com"],
+      [/kreditbee/i, "kreditbee.in"],
+      [/money ?view/i, "moneyview.in"],
+      [/cashe/i, "getcashe.com"],
+      [/fibe|earlysalary/i, "myfibe.com"],
+      [/mpokket/i, "mpokket.in"],
+      [/stashfin/i, "stashfin.com"],
+      [/lic\b|life insurance corp/i, "licindia.in"],
+      [/star health/i, "starhealth.in"],
+      [/care health/i, "careinsurance.com"],
+      [/niva|max bupa/i, "nivabupa.com"],
+      [/new india/i, "newindia.co.in"],
+      [/national insurance/i, "nationalinsurance.nic.co.in"],
+      [/oriental/i, "orientalinsurance.org.in"],
+      [/united india/i, "uiic.co.in"],
+      [/royal sundaram/i, "royalsundaram.in"],
+      [/reliance general/i, "reliancegeneral.co.in"],
+      [/sbi general/i, "sbigeneral.in"],
+      [/sbi life/i, "sbilife.co.in"],
+      [/future generali|generali/i, "generalicentral.com"],
+      [/chola/i, "cholainsurance.com"],
+      [/iffco/i, "iffcotokio.co.in"],
+      [/acko/i, "acko.com"],
+      [/digit/i, "godigit.com"],
+      [/manipal/i, "manipalcigna.com"],
+      [/aditya birla health/i, "adityabirlacapital.com"]
+    ];
+    LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "banking"]);
     DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
+    LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards"]);
   }
 });
 
@@ -11339,7 +11545,7 @@ async function runLivePipeline(input, parsedIn) {
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
-  const ranked = rankOffers(withBrandImages(combined), { userPincode: input.pincode, userCity: input.city });
+  const ranked = rankOffers(await withLenderLogos(withBrandImages(combined)), { userPincode: input.pincode, userCity: input.city });
   if (ranked.length === 0) {
     state.servedFrom = "unavailable";
     state.honestNotice = enabledSources.length === 0 ? "No data sources are enabled and verified for this vertical yet. Real results appear once a source is configured and passes validation \u2014 we never show invented prices." : "All configured sources were attempted but returned no verified offers for this query. Partial or cached data appears only when it passes freshness rules.";
@@ -12881,6 +13087,11 @@ function searchableTitle(t) {
   const cap = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
   return (head + cap).trim() || t.slice(0, 80);
 }
+function isMerchantNameTitle(title, domain, merchant) {
+  if (!title) return false;
+  const plain = (x) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return plain(title) === plain(domain) || plain(title) === plain(merchant);
+}
 function parseProductHtml(html) {
   const $ = cheerio7.load(html);
   let title = null;
@@ -12931,6 +13142,22 @@ function parseProductHtml(html) {
   }
   return { title, titleSource, pagePrice, image };
 }
+async function amazonBounceFetch(url) {
+  const r1 = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 18e3, returnCookies: true });
+  let body = r1?.body;
+  let jar = r1?.cookies;
+  for (let hop = 0; hop < 2; hop++) {
+    if (!(body && body.includes("bm-verify"))) break;
+    const m = String(body).match(/URL='([^']+)'/);
+    if (!m) break;
+    const v = m[1].startsWith("/") ? new URL(m[1], url).href : m[1];
+    await new Promise((res) => setTimeout(res, 1200));
+    const r2 = await cffiFetch(v, { impersonate: "chrome", cookies: jar, returnCookies: true, timeoutMs: 22e3 });
+    body = r2?.body;
+    jar = r2?.cookies;
+  }
+  return body && body.includes("bm-verify") ? null : body || null;
+}
 async function resolveProductFromLink(rawUrl) {
   const safe = isSafePublicUrl(rawUrl);
   if (!safe.ok || !safe.url) {
@@ -12942,20 +13169,35 @@ async function resolveProductFromLink(rawUrl) {
   const slugTitle = titleFromSlug(u);
   let parsed = { title: null, titleSource: "none", pagePrice: null, image: null };
   let fetchStatus = "failed";
+  const isAmazon = /(^|\.)amazon\.[a-z.]+$/i.test(u.hostname);
   try {
-    const res = await cffiFetch(u.href, {
-      impersonate: "chrome",
-      timeoutMs: 12e3,
-      headers: { "Accept-Language": "en-IN,en;q=0.9", Accept: "text/html,application/xhtml+xml" }
-    });
-    if (res.status >= 200 && res.status < 300 && res.body) {
-      parsed = parseProductHtml(res.body.slice(0, 3e6));
-      fetchStatus = "ok";
+    if (isAmazon) {
+      const body = await amazonBounceFetch(u.href);
+      if (body) {
+        parsed = parseProductHtml(body.slice(0, 3e6));
+        fetchStatus = "ok";
+      } else {
+        fetchStatus = "blocked";
+      }
     } else {
-      fetchStatus = res.status === 403 || res.status === 429 || res.status === 503 ? "blocked" : "failed";
+      const res = await cffiFetch(u.href, {
+        impersonate: "chrome",
+        timeoutMs: 12e3,
+        headers: { "Accept-Language": "en-IN,en;q=0.9", Accept: "text/html,application/xhtml+xml" }
+      });
+      if (res.status >= 200 && res.status < 300 && res.body) {
+        parsed = parseProductHtml(res.body.slice(0, 3e6));
+        fetchStatus = "ok";
+      } else {
+        fetchStatus = res.status === 403 || res.status === 429 || res.status === 503 ? "blocked" : "failed";
+      }
     }
   } catch {
     fetchStatus = "failed";
+  }
+  if (isMerchantNameTitle(parsed.title, domain, merchant)) {
+    parsed = { title: null, titleSource: "none", pagePrice: null, image: null };
+    if (fetchStatus === "ok") fetchStatus = "blocked";
   }
   if (parsed.title) return { ...parsed, title: parsed.title, merchant, domain, fetchStatus };
   if (slugTitle) return { title: slugTitle, titleSource: "url-slug", merchant, domain, pagePrice: null, image: null, fetchStatus };
@@ -13648,8 +13890,14 @@ var init_placements = __esm({
 var deals_exports = {};
 __export(deals_exports, {
   DEAL_KINDS: () => DEAL_KINDS,
+  MERCHANT_VERTICAL: () => MERCHANT_VERTICAL,
   dealsForSeller: () => dealsForSeller,
   deleteDeal: () => deleteDeal,
+  ensureDealsSchema: () => ensureDealsSchema,
+  findBestCoupon: () => findBestCoupon,
+  findBestOffer: () => findBestOffer,
+  forSellerWithBest: () => forSellerWithBest,
+  getDealsWithCounts: () => getDealsWithCounts,
   listAllDeals: () => listAllDeals,
   listPublicDeals: () => listPublicDeals,
   merchantKeyOf: () => merchantKeyOf,
@@ -13686,12 +13934,15 @@ function validateDeal(i) {
   const till = String(i.valid_till ?? "").trim();
   if (till && !/^\d{4}-\d{2}-\d{2}$/.test(till)) return { ok: false, error: "Valid-till must be YYYY-MM-DD" };
   const mo = i.min_order == null || i.min_order === "" ? null : Math.max(0, Math.round(Number(i.min_order)));
+  const mk = merchantKeyOf(i.merchant_key || merchant_name);
+  const vertical = String(i.vertical || MERCHANT_VERTICAL[mk] || "").trim() || null;
   return {
     ok: true,
     clean: {
-      merchant_key: merchantKeyOf(i.merchant_key || merchant_name),
+      merchant_key: mk,
       merchant_name,
       kind,
+      vertical,
       title,
       description: String(i.description ?? "").trim().slice(0, 600) || null,
       code,
@@ -13706,11 +13957,14 @@ function validateDeal(i) {
   };
 }
 function toPublicDeal(r) {
+  const mk = r.merchant_key;
+  const vert2 = r.vertical || MERCHANT_VERTICAL[mk] || null;
   return {
     id: Number(r.id),
-    merchantKey: r.merchant_key,
+    merchantKey: mk,
     merchantName: r.merchant_name,
     kind: r.kind,
+    vertical: vert2,
     title: r.title,
     description: r.description || null,
     code: r.code || null,
@@ -13722,36 +13976,127 @@ function toPublicDeal(r) {
     goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}` })
   };
 }
+async function ensureDealsSchema() {
+  if (schemaChecked) return;
+  schemaChecked = true;
+  const store2 = getStore();
+  try {
+    if (store2.kind === "mysql") {
+      try {
+        await store2.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
+      } catch {
+      }
+    }
+    const rows = await store2.query("SELECT id, merchant_key, vertical FROM deals");
+    for (const r of rows) {
+      if (!r.vertical || r.vertical === "") {
+        const v = MERCHANT_VERTICAL[r.merchant_key];
+        if (v) {
+          await store2.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
+        }
+      }
+    }
+  } catch {
+  }
+}
 async function listAllDeals() {
+  await ensureDealsSchema();
   return getStore().query("SELECT * FROM deals ORDER BY id DESC LIMIT 500").catch(() => []);
 }
-async function listPublicDeals(opts = {}) {
+async function getDealsWithCounts(opts = {}) {
+  await ensureDealsSchema();
   const rows = await getStore().query("SELECT * FROM deals WHERE is_active = ? ORDER BY sort_weight DESC, id DESC LIMIT 500", [1]).catch(() => []);
+  const live = rows.filter((r) => isLive(r));
+  const counts = {};
+  for (const r of live) {
+    const v = r.vertical || MERCHANT_VERTICAL[r.merchant_key];
+    if (v) {
+      counts[v] = (counts[v] || 0) + 1;
+    }
+  }
   const mk = opts.merchant ? merchantKeyOf(opts.merchant) : "";
-  return rows.filter((r) => isLive(r) && (!mk || r.merchant_key === mk) && (!opts.kind || r.kind === opts.kind)).slice(0, Math.min(200, opts.limit || 100)).map(toPublicDeal);
+  const filterHasImage = opts.hasImage === "1" || opts.hasImage === 1 || opts.hasImage === true || opts.hasImage === "true";
+  const filtered = live.filter((r) => {
+    if (mk && r.merchant_key !== mk) return false;
+    if (opts.kind && r.kind !== opts.kind) return false;
+    const v = r.vertical || MERCHANT_VERTICAL[r.merchant_key];
+    if (opts.vertical && v !== opts.vertical) return false;
+    if (filterHasImage && !Boolean(r.image_url && String(r.image_url).trim())) return false;
+    return true;
+  });
+  const deals = filtered.slice(0, Math.min(200, opts.limit || 100)).map(toPublicDeal);
+  return { deals, counts };
+}
+async function listPublicDeals(opts = {}) {
+  const { deals } = await getDealsWithCounts(opts);
+  return deals;
 }
 async function dealsForSeller(seller, limit = 6) {
   const rank = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
   const all = await listPublicDeals({ merchant: seller, limit: 100 });
   return all.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)).slice(0, limit);
 }
+function extractDiscountScore(d) {
+  const text = String(d.discountText || d.discount_text || "");
+  const pctMatch = text.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (pctMatch) return Number(pctMatch[1]);
+  const amtMatch = text.match(/(?:rs\.?|₹|\$)\s*([\d,]+)/i) || text.match(/([\d,]+)\s*(?:off|cashback|discount)/i);
+  if (amtMatch) {
+    const val = Number(amtMatch[1].replace(/,/g, ""));
+    if (!Number.isNaN(val) && val > 0) return val >= 100 ? val / 10 : val;
+  }
+  return 0;
+}
+function findBestCoupon(deals) {
+  const candidates = deals.filter((d) => d.kind === "coupon" || Boolean(d.code));
+  if (!candidates.length) return null;
+  const sorted = [...candidates].sort((a, b) => {
+    const scoreA = extractDiscountScore(a);
+    const scoreB = extractDiscountScore(b);
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    return (b.id || 0) - (a.id || 0);
+  });
+  return sorted[0];
+}
+function findBestOffer(deals) {
+  const candidates = deals.filter((d) => d.kind !== "coupon" && !d.code);
+  if (!candidates.length) return null;
+  const preferredKinds = /* @__PURE__ */ new Set(["bank_offer", "sale", "cashback"]);
+  const sorted = [...candidates].sort((a, b) => {
+    const prefA = preferredKinds.has(a.kind) ? 1e3 : 0;
+    const prefB = preferredKinds.has(b.kind) ? 1e3 : 0;
+    const scoreA = prefA + extractDiscountScore(a);
+    const scoreB = prefB + extractDiscountScore(b);
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    return (b.id || 0) - (a.id || 0);
+  });
+  return sorted[0];
+}
+async function forSellerWithBest(seller, limit = 6) {
+  const all = await listPublicDeals({ merchant: seller, limit: 100 });
+  const deals = await dealsForSeller(seller, limit);
+  const coupon = findBestCoupon(all);
+  const offer = findBestOffer(all);
+  return { deals, best: { offer, coupon } };
+}
 async function saveDeal(i) {
+  await ensureDealsSchema();
   const v = validateDeal(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
   const store2 = getStore();
-  const vals = [c.merchant_key, c.merchant_name, c.kind, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
+  const vals = [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
   if (i.id) {
     const ex = await store2.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
     if (!ex.length) return { ok: false, error: "Deal not found" };
     await store2.execute(
-      "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
+      "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, vertical=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
       [...vals, Number(i.id)]
     );
     return { ok: true, id: Number(i.id) };
   }
   await store2.execute(
-    "INSERT INTO deals (merchant_key, merchant_name, kind, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     vals
   );
   const row = await store2.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
@@ -13760,13 +14105,71 @@ async function saveDeal(i) {
 async function deleteDeal(id) {
   await getStore().execute("DELETE FROM deals WHERE id = ?", [Number(id)]);
 }
-var DEAL_KINDS, isLive;
+var DEAL_KINDS, MERCHANT_VERTICAL, isLive, schemaChecked;
 var init_deals = __esm({
   "server/marketing/deals.ts"() {
     init_db();
     init_deeplink();
     DEAL_KINDS = ["bank_offer", "coupon", "gift_card", "credit_card", "loan", "insurance", "movie", "cashback", "sale"];
+    MERCHANT_VERTICAL = {
+      amazon: "ecommerce",
+      flipkart: "ecommerce",
+      myntra: "ecommerce",
+      ajio: "ecommerce",
+      tatacliq: "ecommerce",
+      meesho: "ecommerce",
+      croma: "ecommerce",
+      nykaa: "ecommerce",
+      makemytrip: "flights",
+      goibibo: "hotels",
+      easemytrip: "hotels",
+      ixigo: "hotels",
+      yatra: "hotels",
+      cleartrip: "hotels",
+      goindigo: "flights",
+      akasaair: "flights",
+      booking: "hotels",
+      agoda: "hotels",
+      airbnb: "hotels",
+      redbus: "bus",
+      abhibus: "bus",
+      zingbus: "bus",
+      ola: "cab",
+      uber: "cab",
+      rapido: "cab",
+      savaari: "cab",
+      swiggy: "food",
+      zomato: "food",
+      dominos: "food",
+      pizzahut: "food",
+      eatsure: "food",
+      blinkit: "grocery",
+      zepto: "grocery",
+      instamart: "grocery",
+      bigbasket: "grocery",
+      bookmyshow: "movies",
+      district: "movies",
+      paytm: "movies",
+      pvr: "movies",
+      paisabazaar: "loans",
+      bankbazaar: "loans",
+      policybazaar: "loans",
+      moneyview: "loans",
+      kreditbee: "loans",
+      navi: "loans",
+      acko: "insurance",
+      digit: "insurance",
+      insurancedekho: "insurance",
+      ditto: "insurance",
+      coverfox: "insurance",
+      sbi: "creditcards",
+      hdfc: "creditcards",
+      axis: "creditcards",
+      icici: "creditcards",
+      cardinsider: "creditcards"
+    };
     isLive = (r, today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) => (Number(r.is_active) === 1 || r.is_active === true) && (!r.valid_till || String(r.valid_till).slice(0, 10) >= today);
+    schemaChecked = false;
   }
 });
 
@@ -14791,19 +15194,26 @@ var init_routes = __esm({
     });
     apiRouter.get("/deals", async (req, res) => {
       try {
-        const { listPublicDeals: listPublicDeals2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
-        const deals = await listPublicDeals2({ merchant: req.query.merchant, kind: req.query.kind, limit: Number(req.query.limit) || 100 });
-        res.json({ success: true, deals });
+        const { getDealsWithCounts: getDealsWithCounts2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+        const { deals, counts } = await getDealsWithCounts2({
+          merchant: req.query.merchant,
+          kind: req.query.kind,
+          vertical: req.query.vertical,
+          hasImage: req.query.hasImage,
+          limit: Number(req.query.limit) || 100
+        });
+        res.json({ success: true, deals, counts });
       } catch {
-        res.json({ success: true, deals: [] });
+        res.json({ success: true, deals: [], counts: {} });
       }
     });
     apiRouter.get("/deals/for-seller", async (req, res) => {
       try {
-        const { dealsForSeller: dealsForSeller2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
-        res.json({ success: true, deals: await dealsForSeller2(String(req.query.seller || ""), Number(req.query.limit) || 6) });
+        const { forSellerWithBest: forSellerWithBest2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+        const result = await forSellerWithBest2(String(req.query.seller || ""), Number(req.query.limit) || 6);
+        res.json({ success: true, deals: result.deals, best: result.best });
       } catch {
-        res.json({ success: true, deals: [] });
+        res.json({ success: true, deals: [], best: { offer: null, coupon: null } });
       }
     });
     apiRouter.get("/app-links", async (_req, res) => {
@@ -15275,13 +15685,14 @@ function extractAmazonCardDeals(html) {
 }
 function extractAmazonBankOffers(dpHtml, asin, title) {
   const out = [];
-  const text = dpHtml.replace(/<script[\s\S]*?<\/script>/g, " ");
-  const re = /(?:Bank Offer|Instant (?:Discount|Cashback)|Get (?:up to )?(?:₹|Rs\.?)\s?\d[\s\S]{0,180}?offer|No Cost EMI[^<]{0,120})[\s\S]{0,260}/gi;
+  const text = dpHtml.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;|&#\d+;/g, " ");
+  const re = /(?:Bank Offer|Instant (?:Discount|Cashback)|Get (?:up to )?(?:₹|Rs\.?)\s?\d[\s\S]{0,180}?offer|No Cost EMI[^.]{0,120})[\s\S]{0,260}/gi;
   const seen = /* @__PURE__ */ new Set();
   for (const m of text.matchAll(re)) {
-    const raw = strip(m[0].replace(/<[^>]+>/g, " ").replace(/\s*•\s*/g, " ")).slice(0, 220);
+    const raw = strip(m[0].replace(/\s*•\s*/g, " ")).slice(0, 220);
     if (!raw || raw.length < 20) continue;
-    const t = clip(raw.split(/(?<=offer|EMI)\b/)[0] || raw, 200);
+    if (!/[₹]|Rs\.?|\d\s*%/.test(raw)) continue;
+    const t = clip(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({
@@ -15328,23 +15739,81 @@ async function acquireAmazonDeals(queries = ["air fryer", "wireless earbuds", "s
   return out;
 }
 function cleanDeal(d) {
+  const merchantDomain = {
+    amazon: "amazon.in",
+    flipkart: "flipkart.com",
+    myntra: "myntra.com",
+    ajio: "ajio.com",
+    tatacliq: "tatacliq.com",
+    meesho: "meesho.com",
+    croma: "croma.com",
+    nykaa: "nykaa.com",
+    redbus: "redbus.in",
+    abhibus: "abhibus.com",
+    zingbus: "zingbus.com",
+    dominos: "dominos.co.in",
+    pizzahut: "pizzahut.co.in",
+    swiggy: "swiggy.com",
+    zomato: "zomato.com",
+    eatsure: "eatsure.com",
+    blinkit: "blinkit.com",
+    zepto: "zepto.com",
+    instamart: "swiggy.com",
+    bigbasket: "bigbasket.com",
+    bookmyshow: "in.bookmyshow.com",
+    district: "district.zomato.com",
+    paytm: "paytm.com",
+    makemytrip: "makemytrip.com",
+    goibibo: "goibibo.com",
+    easemytrip: "easemytrip.com",
+    ixigo: "ixigo.com",
+    yatra: "yatra.com",
+    cleartrip: "cleartrip.com",
+    goindigo: "goindigo.in",
+    akasaair: "akasaair.com",
+    booking: "booking.com",
+    agoda: "agoda.com",
+    airbnb: "airbnb.com",
+    ola: "olacabs.com",
+    uber: "uber.com",
+    rapido: "rapido.bike",
+    savaari: "savaari.com",
+    paisabazaar: "paisabazaar.com",
+    bankbazaar: "bankbazaar.com",
+    policybazaar: "policybazaar.com",
+    moneyview: "moneyview.in",
+    kreditbee: "kreditbee.in",
+    navi: "navi.com",
+    acko: "acko.com",
+    digit: "digit.in",
+    insurancedekho: "insurancedekho.com",
+    ditto: "dittoinsurance.com",
+    coverfox: "coverfox.com",
+    sbi: "sbicard.com",
+    hdfc: "hdfcbank.com",
+    axis: "axisbank.com",
+    icici: "icicibank.com",
+    cardinsider: "cardinsider.com"
+  };
+  const fallbackImg = merchantDomain[d.merchant_key] ? `https://www.google.com/s2/favicons?domain=${merchantDomain[d.merchant_key]}&sz=128` : null;
   return {
     merchant_key: d.merchant_key,
     merchant_name: d.merchant_name,
     kind: d.kind,
+    vertical: d.vertical || MERCHANT_VERTICAL[d.merchant_key] || null,
     title: clip(strip(d.title), 200),
     description: clip(strip(d.description || ""), 600) || null,
-    code: null,
+    code: clip(strip(d.code || ""), 60) || null,
     discount_text: clip(strip(d.discount_text || ""), 80) || null,
     min_order: null,
     terms: clip(strip(d.terms || ""), 600) || null,
     dest_url: String(d.dest_url).slice(0, 1e3),
-    valid_till: null,
+    valid_till: d.valid_till || null,
     sort_weight: d.sort_weight ?? 0,
     is_active: 1,
     source: "auto",
     dedupe_key: d.dedupe_key.slice(0, 180),
-    image_url: d.image_url || null
+    image_url: d.image_url || fallbackImg
   };
 }
 async function syncAutoDeals() {
@@ -15356,23 +15825,28 @@ async function syncAutoDeals() {
   const store2 = getStore();
   const now = /* @__PURE__ */ new Date();
   const outcomes = [];
+  try {
+    await store2.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
+  } catch {
+  }
   for (const p of providers) {
     try {
       const deals = await p.run();
       let saved = 0;
       for (const d of deals) {
         const c = cleanDeal(d);
+        if (!c.title || /<|class=|&#/.test(c.title)) continue;
         const ex = await store2.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
         if (ex.length) {
           await store2.execute(
-            "UPDATE deals SET merchant_name=?, kind=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?",
-            [c.merchant_name, c.kind, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]
+            "UPDATE deals SET merchant_name=?, kind=?, vertical=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?",
+            [c.merchant_name, c.kind, c.vertical, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]
           );
         } else {
           await store2.execute(
-            `INSERT INTO deals (merchant_key, merchant_name, kind, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [c.merchant_key, c.merchant_name, c.kind, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]
+            `INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]
           );
         }
         saved++;
@@ -15404,6 +15878,7 @@ var init_acquisition = __esm({
     init_curlCffiFetch();
     init_logger();
     init_db();
+    init_deals();
     strip = (s) => String(s || "").replace(/\s+/g, " ").trim();
     clip = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
     COUPON_TXT = /(?:₹|Rs\.?\s?)\s?(\d{2,5})\s?coupon|Save (?:up to )?(?:₹|Rs\.?\s?)(\d{2,5}) with (?:coupon| promo)|(\d{1,2})% (?:with )?coupon/i;
@@ -15681,7 +16156,7 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
+    const r = await fetch(url, { headers: { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
   } catch (e) {
@@ -15921,7 +16396,7 @@ function acceptanceTotals(rows) {
   const verticalsOk = new Set(rows.filter((r) => r.status === "LIVE_VERIFIED").map((r) => r.vertical));
   return { rows: rows.length, byStatus, verticalsWithLiveVerified: [...verticalsOk].sort(), sourcesTested: new Set(rows.filter((r) => r.status !== "SOURCE_RETIRED").map((r) => r.source_id)).size, sourcesRegistered: new Set(rows.map((r) => r.source_id)).size };
 }
-var UA, SRC, JS_SHELL_RE;
+var UA2, SRC, JS_SHELL_RE;
 var init_acceptanceRunner = __esm({
   "server/registry/acceptanceRunner.ts"() {
     init_acceptanceRegistry();
@@ -15938,7 +16413,7 @@ var init_acceptanceRunner = __esm({
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
-    UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    UA2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     SRC = {
       id: "acceptance_test",
       name: "acceptance-test",
@@ -17013,18 +17488,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path9, params = {}) {
+      async apiGet(path10, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path9}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path10}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path9, params);
+          return this.apiGet(path10, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path9} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path10} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -17436,18 +17911,18 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path4.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path5.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs4.default.statSync(file);
+    const st = import_node_fs5.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs4.default.unlinkSync(file);
+    import_node_fs5.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs4.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs4.default.openSync(file, "wx");
-    import_node_fs4.default.writeSync(fd, String(process.pid));
-    import_node_fs4.default.closeSync(fd);
+    import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs5.default.openSync(file, "wx");
+    import_node_fs5.default.writeSync(fd, String(process.pid));
+    import_node_fs5.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -17469,11 +17944,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs4, import_node_path4, import_promise3, STALE_MS;
+var import_node_fs5, import_node_path5, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs4 = __toESM(require("node:fs"), 1);
-    import_node_path4 = __toESM(require("node:path"), 1);
+    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();

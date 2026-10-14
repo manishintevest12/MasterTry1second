@@ -104,3 +104,22 @@ Cleartrip flights (all /flights/* paths 403 Akamai from datacenter IPs while
 /hotels/* paths pass — route-level SEO pages 403 too),
 MMT bus 16KB shell, BMS quickbook, redBus protobuf capi. Akamai _abck sensor
 needs real JS execution — out of browserless scope; retry only from new IPs.
+
+## Deals acquisition — cross-vertical probe (14 Oct 2026)
+
+Browserless cffiFetch probes of public offer/coupon pages. Verdicts are from the
+actual HTML served (samples inspected before discarding):
+
+- redBus /offers — BLOCKED: offer cards render client-side; SSR shell only (nav markup, no offer JSON).
+- Domino's /coupons — JS-SHELL: landing marketing text ("2 Regular Pizza @99") but no structured coupon list in HTML.
+- Pizza Hut /deals — JS-SHELL: same; body hidden pending client render.
+- EaseMyTrip /offers.html — BLOCKED: offers injected by JS; no flat-offer text in raw HTML.
+- Ixigo / MMT / Goibibo offers — BLOCKED: __NEXT_DATA__/JS-driven offers not present in served HTML snapshot.
+- Cleartrip /offers — BLOCKED (Akamai shell).
+- Paisabazaar card/loan promo pages — SSR HTML present but promo blocks are lead-gen modules, not discrete offers.
+- BigBasket offers — BLOCKED: app-gated JS shell.
+
+Live deal sources therefore remain the ecommerce set (Amazon, Myntra, TataCLiQ)
+with the favicon image fallback. Any further cross-vertical deals need a
+different acquisition path (sitemap coupons endpoints, mobile API reversing) —
+tracked as future work, no mock substitutes.

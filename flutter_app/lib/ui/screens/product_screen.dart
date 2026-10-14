@@ -6,6 +6,7 @@ import '../../core/compare.dart';
 import '../../core/theme.dart';
 import '../widgets/history_chart.dart';
 import '../widgets/kit.dart';
+import '../widgets/redirect_sheet.dart';
 import 'compare_screen.dart' show showTrackSheet;
 
 /// In-app product page (website ProductPageView): paste a link or type a product
@@ -224,7 +225,15 @@ class _Page extends StatelessWidget {
                 Text('${cheapest.seller} · ${inrAmount(cheapest.price)}', style: tx(context, 14, w: FontWeight.w900, mono: true)),
               ]),
             ),
-            RedButton('Buy', onTap: cheapest.goUrl.isEmpty ? null : () => openDeal(cheapest.goUrl), dense: true),
+            RedButton('Buy', onTap: cheapest.goUrl.isEmpty ? null : () => showRedirectSheet(
+              context,
+              sellerName: cheapest.seller,
+              title: page.title.isEmpty ? cheapest.title : page.title,
+              goUrl: cheapest.goUrl,
+              price: cheapest.price,
+              image: cheapest.image ?? (page.images.isNotEmpty ? page.images.first : null),
+              isLowest: true,
+            ), dense: true),
           ]),
         ),
         const SizedBox(height: 12),
@@ -271,7 +280,15 @@ class _Page extends StatelessWidget {
                   ]),
                 ]),
               ),
-              RedButton('Buy', onTap: o.goUrl.isEmpty ? null : () => openDeal(o.goUrl), dense: true),
+              RedButton('Buy', onTap: o.goUrl.isEmpty ? null : () => showRedirectSheet(
+                context,
+                sellerName: o.seller,
+                title: page.title.isEmpty ? o.title : page.title,
+                goUrl: o.goUrl,
+                price: o.price,
+                image: o.image ?? (page.images.isNotEmpty ? page.images.first : null),
+                isLowest: cheapest != null && o.price <= cheapest.price,
+              ), dense: true),
             ]),
           ),
           const SizedBox(height: 8),

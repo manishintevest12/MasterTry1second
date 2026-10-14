@@ -368,6 +368,19 @@ class LiveResponse {
 }
 
 /// One deal / coupon / bank offer (GET /api/deals).
+class DealsFeed {
+  final List<Deal> deals;
+  final Map<String, int> counts;
+  const DealsFeed({required this.deals, this.counts = const {}});
+}
+
+class SellerDeals {
+  final List<Deal> deals;
+  final Deal? bestOffer;
+  final Deal? bestCoupon;
+  const SellerDeals({required this.deals, this.bestOffer, this.bestCoupon});
+}
+
 class Deal {
   final int id;
   final String merchantKey;
@@ -381,6 +394,8 @@ class Deal {
   final String? validTill;
   final String goUrl;
   final String? imageUrl;
+  final String? vertical;
+  final String? minOrder;
   const Deal({
     required this.id,
     required this.merchantKey,
@@ -394,6 +409,8 @@ class Deal {
     this.validTill,
     required this.goUrl,
     this.imageUrl,
+    this.vertical,
+    this.minOrder,
   });
   factory Deal.fromJson(Map<String, dynamic> j) => Deal(
         id: (j['id'] is num) ? (j['id'] as num).toInt() : 0,
@@ -408,7 +425,32 @@ class Deal {
         validTill: j['validTill'] == null ? null : '${j['validTill']}',
         goUrl: '${j['goUrl'] ?? ''}',
         imageUrl: (j['imageUrl'] is String && (j['imageUrl'] as String).startsWith('http')) ? j['imageUrl'] as String : null,
+        vertical: j['vertical'] == null ? null : '${j['vertical']}',
+        minOrder: j['minOrder'] == null ? null : '${j['minOrder']}',
       );
+
+  /// Merchant -> vertical, mirroring the backend map (used when the API
+  /// response predates the vertical column).
+  static String verticalOfMerchant(String key) {
+    const m = <String, String>{
+      'amazon': 'ecommerce', 'flipkart': 'ecommerce', 'myntra': 'ecommerce', 'ajio': 'ecommerce',
+      'tatacliq': 'ecommerce', 'meesho': 'ecommerce', 'croma': 'ecommerce', 'nykaa': 'ecommerce',
+      'makemytrip': 'flights', 'goibibo': 'hotels', 'easemytrip': 'flights', 'ixigo': 'flights',
+      'yatra': 'flights', 'cleartrip': 'flights', 'goindigo': 'flights', 'akasaair': 'flights',
+      'booking': 'hotels', 'agoda': 'hotels', 'airbnb': 'hotels',
+      'redbus': 'bus', 'abhibus': 'bus', 'zingbus': 'bus',
+      'ola': 'cab', 'uber': 'cab', 'rapido': 'cab', 'savaari': 'cab', 'quickride': 'cab',
+      'swiggy': 'food', 'zomato': 'food', 'dominos': 'food', 'pizzahut': 'food', 'eatsure': 'food', 'toing': 'food',
+      'blinkit': 'grocery', 'zepto': 'grocery', 'instamart': 'grocery', 'bigbasket': 'grocery',
+      'bookmyshow': 'movies', 'district': 'movies', 'paytm': 'movies', 'ticketnew': 'movies', 'cinepolis': 'movies',
+      'paisabazaar': 'loans', 'bankbazaar': 'loans', 'moneyview': 'loans', 'kreditbee': 'loans', 'navi': 'loans', 'bajajfinserv': 'loans',
+      'policybazaar': 'insurance', 'acko': 'insurance', 'digit': 'insurance', 'insurancedekho': 'insurance', 'ditto': 'insurance', 'coverfox': 'insurance', 'hdfcergo': 'insurance',
+      'cardinsider': 'creditcards', 'sbi': 'creditcards', 'hdfc': 'creditcards', 'axis': 'creditcards', 'icici': 'creditcards',
+    };
+    return m[key] ?? '';
+  }
+
+  String get verticalLabel => (vertical != null && vertical!.isNotEmpty) ? vertical! : verticalOfMerchant(merchantKey);
   int get percent => int.tryParse(RegExp(r'(\d{1,2})\s*%').firstMatch(discountText ?? '')?.group(1) ?? '') ?? 0;
 }
 
@@ -650,15 +692,30 @@ class Try1SecondApi {
     return LiveResponse.fromJson(res);
   }
 
-  Future<List<Deal>> deals({String? kind, String? merchant, int limit = 200}) async {
-    final q = <String>['limit=$limit', if (kind != null) 'kind=${Uri.encodeQueryComponent(kind)}', if (merchant != null) 'merchant=${Uri.encodeQueryComponent(merchant)}'];
+  Future<DealsFeed> deals({String? kind, String? merchant, String? vertical, bool hasImage = false, int limit = 200}) async {
+    final q = <String>[
+      'limit=$limit',
+      if (kind != null) 'kind=${Uri.encodeQueryComponent(kind)}',
+      if (merchant != null) 'merchant=${Uri.encodeQueryComponent(merchant)}',
+      if (vertical != null) 'vertical=${Uri.encodeQueryComponent(vertical)}',
+      if (hasImage) 'hasImage=1',
+    ];
     final res = await _get('/api/deals?${q.join('&')}');
-    return [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)];
+    final counts = <String, int>{};
+    (res['counts'] as Map? ?? const {}).forEach((k, v) { if (k is String && v is num) counts[k] = v.toInt(); });
+    return DealsFeed(
+      deals: [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)],
+      counts: counts,
+    );
   }
 
-  Future<List<Deal>> dealsForSeller(String seller, {int limit = 6}) async {
+  Future<SellerDeals> dealsForSeller(String seller, {int limit = 6}) async {
     final res = await _get('/api/deals/for-seller?seller=${Uri.encodeQueryComponent(seller)}&limit=$limit');
-    return [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)];
+    final deals = [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)];
+    final best = res['best'] as Map?;
+    final offer = (best?['offer'] is Map<String, dynamic>) ? Deal.fromJson(best!['offer'] as Map<String, dynamic>) : null;
+    final coupon = (best?['coupon'] is Map<String, dynamic>) ? Deal.fromJson(best!['coupon'] as Map<String, dynamic>) : null;
+    return SellerDeals(deals: deals, bestOffer: offer, bestCoupon: coupon);
   }
 
   /// POST /api/product-page: link or typed product -> same-product offers + history + deal score.

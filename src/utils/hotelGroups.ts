@@ -1,4 +1,5 @@
 import type { ComparisonItem } from '../types';
+import { normalizeHotelName, sameHotel, type HotelComparable } from './hotelNormalize';
 
 /**
  * Groups hotel offers that are the SAME property across sources (name + city match) so one card can
@@ -31,14 +32,8 @@ export interface HotelGroup {
   best: HotelOfferRow;
 }
 
-const STOP = /\b(hotel|hotels|the|by|a|an|and|resort|resorts|inn|stay|stays|rooms?|boutique|suites?|residency|palace|near|in|at|of|best|luxury|premium|collection|o|oyo|international)\b/g;
 export function hotelKey(name: string, city = ''): string {
-  const c = city.toLowerCase();
-  let t = name.toLowerCase().replace(/&/g, ' ');
-  t = t.replace(/[^a-z0-9 ]/g, ' ');
-  if (c) t = t.replace(new RegExp(`\\b${c}\\b`, 'g'), ' ');
-  t = t.replace(STOP, ' ');
-  return [...new Set(t.split(/\s+/).filter(Boolean))].sort().join(' ');
+  return normalizeHotelName(name, city);
 }
 
 const spec = (it: ComparisonItem, ...ks: string[]) => {
@@ -63,7 +58,6 @@ export function groupHotels(items: ComparisonItem[]): HotelGroup[] {
   for (const it of items) {
     if (!it.priceAvailable && !it.primaryPrice) continue;
     const city = spec(it, 'city') || '';
-    // Ixigo's title/provider is the property name; Cleartrip/Airbnb's title is the property name too
     const name = it.title;
     const key = `${hotelKey(name, city)}|${city.toLowerCase()}`;
     const stars = Number(spec(it, 'star rating', 'stars')) || undefined;
@@ -94,35 +88,56 @@ export function groupHotels(items: ComparisonItem[]): HotelGroup[] {
     for (const extra of it.images || []) if (extra && !g.gallery.includes(extra)) g.gallery.push(extra);
     for (const a of amen) if (!g.amenities.includes(a)) g.amenities.push(a);
   }
-  // Second pass: merge groups whose distinctive tokens are a subset of the other's (same city only).
-  // "lalit" ⊂ "lalit grand"; needs >=1 token of 4+ chars so generic words never glue hotels together.
+
+  // Second pass: merge groups using similar-product / sameHotel matching
   const merged: HotelGroup[] = [];
-  const tokensOf = (g: HotelGroup) => new Set(g.key.split('|')[0].split(' ').filter(Boolean));
-  for (const g of [...groups.values()]) {
-    const tg = tokensOf(g);
+  for (const g of groups.values()) {
     const host = merged.find((m) => {
-      if ((m.city || '').toLowerCase() !== (g.city || '').toLowerCase()) return false;
-      const tm = tokensOf(m);
-      if (!tm.size || !tg.size) return false;
-      const [small, big] = tm.size <= tg.size ? [tm, tg] : [tg, tm];
-      if (![...small].every((t) => big.has(t))) return false;
-      if (![...small].some((t) => t.length >= 4)) return false;
-      // A bare single-token brand ("trident") must not absorb a specific branch ("trident nariman point"):
-      // the extra tokens of the bigger side must not name a different locality, so require the larger side to add <=1 token.
-      if (big.size - small.size > 1) return false;
-      // Different sites only: two rows from the SAME site are different listings, never merged.
+      // Create Comparable representation
+      const compM: HotelComparable = {
+        name: m.name,
+        city: m.city,
+        lat: Number(spec(m.best.item, 'lat', 'latitude')),
+        lng: Number(spec(m.best.item, 'lng', 'longitude')),
+        site: m.best.site,
+        specs: m.best.item.specs,
+      };
+      const compG: HotelComparable = {
+        name: g.name,
+        city: g.city,
+        lat: Number(spec(g.best.item, 'lat', 'latitude')),
+        lng: Number(spec(g.best.item, 'lng', 'longitude')),
+        site: g.best.site,
+        specs: g.best.item.specs,
+      };
+
+      // Check if any sites in g overlap with sites in m
       const sitesM = new Set(m.rows.map((r) => r.site));
-      return g.rows.every((r) => !sitesM.has(r.site));
+      if (g.rows.some((r) => sitesM.has(r.site))) {
+        return false;
+      }
+
+      return sameHotel(compM, compG);
     });
-    if (!host) { merged.push(g); continue; }
+
+    if (!host) {
+      merged.push(g);
+      continue;
+    }
+
     host.rows.push(...g.rows);
     if (!host.image && g.image) host.image = g.image;
     if (!host.stars && g.stars) host.stars = g.stars;
-    if (!host.rating10 && g.rating10) { host.rating10 = g.rating10; host.ratingCount = g.ratingCount; host.ratingLabel = g.ratingLabel; }
+    if (!host.rating10 && g.rating10) {
+      host.rating10 = g.rating10;
+      host.ratingCount = g.ratingCount;
+      host.ratingLabel = g.ratingLabel;
+    }
     if (!host.locality) host.locality = g.locality;
     for (const im of g.gallery) if (!host.gallery.includes(im)) host.gallery.push(im);
     for (const a of g.amenities) if (!host.amenities.includes(a)) host.amenities.push(a);
   }
+
   const out = merged;
   for (const g of out) {
     g.rows.sort((a, b) => a.price - b.price);
