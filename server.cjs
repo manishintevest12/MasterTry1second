@@ -4733,10 +4733,10 @@ var init_flights = __esm({
             if (r.status === 400 || r.status >= 500) {
               throw new AcquisitionError("SERVER_ERROR", `Akasa Air API HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 180)}`, r.status);
             }
-            const fares = r.status === 200 ? parseAkasaFareCalendar(r.body) : [];
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Akasa Air API HTTP ${r.status}`, r.status);
+            const fares = parseAkasaFareCalendar(r.body);
             const items = akasaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
-            if (items.length) return items;
-            throw new AcquisitionError("EMPTY_RESPONSE", `Akasa Air has no bookable fare on the calendar for ${from}-${to} (dep ${dep}).`);
+            return items;
           }
         },
         {

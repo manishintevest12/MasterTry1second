@@ -346,10 +346,14 @@ export const flightsWorker: VerticalWorker = {
         if (r.status === 400 || r.status >= 500) {
           throw new AcquisitionError('SERVER_ERROR', `Akasa Air API HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 180)}`, r.status);
         }
-        const fares = r.status === 200 ? parseAkasaFareCalendar(r.body) : [];
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Akasa Air API HTTP ${r.status}`, r.status);
+        const fares = parseAkasaFareCalendar(r.body);
         const items = akasaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
-        if (items.length) return items;
-        throw new AcquisitionError('EMPTY_RESPONSE', `Akasa Air has no bookable fare on the calendar for ${from}-${to} (dep ${dep}).`);
+        // Akasa is a small network: an empty 200 calendar for a route it doesn't
+        // fly is a SUCCESSFUL acquisition proving "no Akasa service here", not a
+        // failure. Returning [] keeps the circuit closed so routes Akasa DOES
+        // serve (e.g. DEL-BOM) are not suppressed by unrelated warm queries.
+        return items;
       },
     },
 
