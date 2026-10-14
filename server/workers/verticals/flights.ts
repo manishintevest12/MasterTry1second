@@ -15,6 +15,9 @@ import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
+import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
+import { parseExpediaFlights } from '../parsers/expediaFlights';
+import { usdToInrRate } from '../../common/fxRates';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 /** City name → IATA code (major Indian + a few intl airports we actually serve). */
@@ -54,6 +57,57 @@ function routeFromQuery(raw: string): { from: string; to: string; fromCode?: str
   const from = clean(m[1]); const to = clean(m[2]);
   if (!from || !to) return null;
   return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
+}
+
+/** Expedia flights live search (flights-shopping-pwa GraphQL, browserless):
+ *  1. GET the Flights-Search SRP with safari impersonation (primes Akamai cookies
+ *     + DUAID; chrome TLS is sampled/429 from datacenter IPs).
+ *  2. POST /graphql with the EXACT FlightsSearchResultsLoadedQuery document the
+ *     PWA ships (237 fragments, see parsers/expediaFlightsQuery.ts).
+ *  Expedia is the price-owning OTA: seller = Expedia, deeplink = expedia.com.
+ *  USD fares convert to INR via the live fxRates module (never a guessed rate). */
+async function expediaFlightsSearch(ctx: any, rt: { from: string; to: string; fromCode?: string; toCode?: string }, dIso: string): Promise<any[]> {
+  const codeOf = (s: string) => IATA[s.toLowerCase().trim()] || null;
+  const from = rt.fromCode || codeOf(rt.from); const to = rt.toCode || codeOf(rt.to);
+  if (!from || !to) return [];
+  const srpUrl = `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}` +
+    `&from=${encodeURIComponent(`${rt.from} (${from})`)}&to=${encodeURIComponent(`${rt.to} (${to})`)}&search-type=arsed&mode=search`;
+  let cookies: Record<string, string> | undefined;
+  const primed = await cffiFetch(srpUrl, {
+    impersonate: 'safari', timeoutMs: 30_000, returnCookies: true, cookies,
+    headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+  cookies = primed.cookies || cookies;
+  if (primed.status === 429 || (primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4000)))) {
+    throw new AcquisitionError('ACCESS_CHALLENGE', `expedia.com SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
+  }
+  if (primed.status !== 200) throw new AcquisitionError('SERVER_ERROR', `expedia.com SRP HTTP ${primed.status}`, primed.status);
+  const duaid = (primed.body.match(/"duaid":"([0-9a-f-]{36})"/) || [])[1] || cookies?.DUAID || '';
+  const y = +dIso.slice(0, 4), mo = +dIso.slice(5, 7), da = +dIso.slice(8, 10);
+  const payload = JSON.stringify({
+    operationName: 'FlightsSearchResultsLoadedQuery',
+    query: EXPEDIA_FLIGHTS_QUERY,
+    variables: {
+      context: { currency: 'USD', device: { type: 'DESKTOP' }, eapid: 0, identity: { authState: 'ANONYMOUS', duaid }, locale: 'en_US', privacyTrackingState: 'CAN_TRACK', siteId: 1, tpid: 1 },
+      journeyCriteria: [{ departureDate: { day: da, month: mo, year: y }, destination: to, origin: from }],
+      travelerDetails: [{ ages: null, count: 1, travelerType: 'ADULT' }],
+      searchPagination: { startingIndex: 0, size: 50 },
+    },
+  });
+  const r = await cffiFetch('https://www.expedia.com/graphql', {
+    method: 'POST', impersonate: 'safari', timeoutMs: 45_000, cookies, body: payload,
+    headers: {
+      'Content-Type': 'application/json', Accept: '*/*', Origin: 'https://www.expedia.com', Referer: srpUrl,
+      'client-info': 'flights-shopping-pwa,f658986df5e0a55d154dc12eef2e7d34978e8f73,us-west-2',
+      'x-page-id': 'page.Flights-Search,F,20',
+    },
+  });
+  if (r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', 'expedia.com flights GraphQL edge returned a bot challenge (HTTP 429)', 429);
+  if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `expedia.com flights GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+  const fx = await usdToInrRate(); // live USD->INR; null => keep USD as listed (never a guessed rate)
+  const items = parseExpediaFlights(r.body, ctx.source, { from: rt.from, to: rt.to, fromCode: from, toCode: to }, dIso, srpUrl, fx);
+  if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `expedia.com GraphQL returned no priced flight listings for ${from}-${to} on ${dIso}`);
+  return items;
 }
 
 export const flightsWorker: VerticalWorker = {
@@ -192,6 +246,29 @@ export const flightsWorker: VerticalWorker = {
         const flights = parseIxigoFlights(next);
         if (flights.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo SRP had no priced flights');
         return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep);
+      },
+    },
+    {
+      // Expedia flights (flights-shopping-pwa GraphQL): the SRP app POSTs
+      // FlightsSearchResultsLoadedQuery to /graphql — we replay the exact
+      // document the PWA ships (73KB, all fragments) after priming the SRP
+      // with safari TLS. Real per-flight USD fares converted honestly via
+      // live FX. Expedia is the price-owning OTA: seller = Expedia and the
+      // deeplink goes to expedia.com (owner deeplink policy), with a
+      // data_note crediting where the fare was observed.
+      sourceId: 'w_flights_expedia',
+      name: 'Flights worker: Expedia live fares (flights-shopping-pwa GraphQL)',
+      priority: 8,
+      maxPerMinute: 2,
+      timeoutMs: 50_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        return expediaFlightsSearch(ctx, rt, dIso);
       },
     },
     // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----

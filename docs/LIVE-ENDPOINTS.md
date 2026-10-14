@@ -23,6 +23,24 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   lowestIn:'M') → data.lowFares 63-day per-day fares. Gotchas: ISO dates NOT
   yyyyMMdd, flat body NOT FlightInfoPayload, header spelled User_key.
 
+- **Expedia flights** [expediaFlights.ts + expediaFlightsQuery.ts] (NEW 14 Oct 2026):
+  GET /Flights-Search?flight-type=oneway&from-date=YYYY-MM-DD&from=<City (IATA)>&to=<City (IATA)>&search-type=arsed&mode=search
+  (safari impersonation; the plain form WITHOUT search-type/mode redirects to /Flights)
+  → primes Akamai cookies + DUAID; then POST www.expedia.com/graphql operationName
+  FlightsSearchResultsLoadedQuery with client-info flights-shopping-pwa,f658986df...,
+  x-page-id page.Flights-Search,F,20 and the EXACT 73KB document the PWA ships
+  (237 fragments reconstructed from c.travel-assets.com/flights-shopping-pwa/*.js —
+  introspection is disabled, the document IS the schema contract). Variables:
+  journeyCriteria [{departureDate{day,month,year}, destination, origin IATA}],
+  travelerDetails [{ages:null, count:1, travelerType:"ADULT"}], searchPagination.
+  listings[] on FlightsStandardOffer: priceDisplay.rows[].elements[].price.text
+  ($ USD), graphic (Mark) = airline name+logo, secondarySection
+  FlightShoppingCardDurationTimeline = dep/arr time + stops + duration.
+  Expedia is the price-owning OTA: seller=Expedia, deeplink=expedia.com SRP;
+  USD→INR via live fxRates with attribution data_note.
+  NOTE: heavy SRP probing gets the whole expedia.com domain Akamai-rate-sampled
+  (429 Bot or Not?) on the sandbox IP for 30+ min — capture sparsely.
+
 - **Akasa Air** [akasaFlights.ts] — GET prod-bl.qp.akasaair.com/api/ibe/
   availability/v2/search?origin=&destination=&startDate=<ISO with %2B05:30 —
   bare yyyy-mm-dd is a 400>&numberOfPassengers=1&channel=WEB&currencyCode=INR
