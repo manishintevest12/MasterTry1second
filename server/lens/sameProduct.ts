@@ -14,6 +14,9 @@ const ACCESSORY_WORDS = [
 
 const STOP = new Set(['the', 'and', 'with', 'for', 'new', 'latest', 'combo', 'pack', 'of', 'in', 'by', 'free', 'a', 'an', 'online', 'buy', 'best', 'price']);
 
+/** Variant-tier words: '17' vs '17 Pro' are DIFFERENT products; the pasted title's tiers must match exactly. */
+const TIERS = new Set(['pro', 'max', 'plus', 'mini', 'ultra', 'lite', 'prime', 'air']);
+
 const COLORS = new Set(['black', 'white', 'blue', 'red', 'green', 'silver', 'gold', 'grey', 'gray', 'pink', 'purple', 'titanium', 'natural', 'midnight', 'starlight', 'yellow', 'orange', 'teal', 'ultramarine', 'lavender']);
 
 function words(t: string): string[] {
@@ -41,6 +44,11 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string): bool
   if (hard.some((w) => !have.has(w))) return false;
   const soft = need.filter((w) => !/\d/.test(w));
   if (soft.length === 0) return hard.length > 0;
+  // Tier words must match exactly both ways: no '17 Pro' when the user pasted '17', no 'Air' for 'Pro'.
+  const tiersOf = (ws: string[]) => new Set(ws.filter((w) => TIERS.has(w)));
+  const wantTiers = tiersOf(need);
+  const haveTiers = tiersOf(words(candidateTitle));
+  if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
   return hit / soft.length >= 0.6;
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isSafePublicUrl, extractUrl, titleFromSlug, cleanTitle, parseProductHtml, merchantFor } from '../server/lens/productLink';
+import { isSafePublicUrl, extractUrl, titleFromSlug, cleanTitle, parseProductHtml, merchantFor, stripComparisonBoilerplate } from '../server/lens/productLink';
 import { interpretAssistantQuestion, parseSpokenDate } from '../server/lens/assistantIntent';
 
 test('lens: private/local/odd URLs are refused (SSRF guard)', () => {
@@ -104,4 +104,41 @@ test('lens: keyword-stuffed marketplace titles shrink to brand + model (+ capaci
   assert.equal(searchableTitle('boAt Airdopes 141/8, Low Latency, ENx Tech, 42HRS Battery, Bluetooth Earbuds (Bold Black)'), 'boAt Airdopes 141');
   assert.equal(searchableTitle('Apple iPhone 17 (Black, 256 GB)'), 'Apple iPhone 17 256GB');
   assert.equal(searchableTitle('Sony WH-1000XM5 Wireless Headphones'), 'Sony WH-1000XM5 Wireless Headphones');
+});
+
+test('tracker links: "Price History of X from Flipkart 2_224849352" keeps only the product', () => {
+  assert.equal(stripComparisonBoilerplate('Price History of Apple iPhone 17 (Black, 256 GB) from Flipkart 2_224849352'), 'Apple iPhone 17 (Black, 256 GB)');
+  assert.equal(stripComparisonBoilerplate('Apple iPhone 17 Price in India - Buy at Rs 86,999 | BuyHatke'), 'Apple iPhone 17');
+  assert.equal(cleanTitle('Price History of Apple iPhone 17 (Black, 256 GB) from Flipkart 2_224849352'), 'Apple iPhone 17 (Black, 256 GB)');
+});
+
+test('tracker links: BuyHatke URL slug yields the product words without merchant/price tail', () => {
+  const t = titleFromSlug(new URL('https://buyhatke.com/flipkart-apple-iphone-17-black-256-gb-price-in-india-2-224849352'));
+  assert.equal(t, 'apple iphone 17 black 256 gb');
+  assert.equal(merchantFor('www.buyhatke.com'), 'BuyHatke');
+});
+
+import { analyseDeal } from '../server/lens/dealScore';
+test('deal score: no/short history gives NO score (never invented)', () => {
+  const a = analyseDeal(86999, []);
+  assert.equal(a.score, null);
+  assert.equal(a.verdict, 'unknown');
+  assert.equal(analyseDeal(86999, [{ price: 90000, capturedAt: '2026-10-01' }]).score, null);
+});
+test('deal score: at the all-time low and cheapest site scores high; at the high scores low', () => {
+  const hist = [100000, 99000, 98000, 97000, 96000].map((p, i) => ({ price: p, capturedAt: `2026-09-${10 + i}` }));
+  const great = analyseDeal(90000, hist, 90000);
+  const bad = analyseDeal(100000, hist, 90000);
+  assert.ok(great.score! >= 75, 'great=' + great.score);
+  assert.ok(bad.score! < 35, 'bad=' + bad.score);
+  assert.equal(great.allTimeLow, 90000);
+  assert.equal(great.breakup.reduce((s, b) => s + b.pts, 0), great.score);
+});
+
+test('same-product guard: tier variants (Pro/Max/Plus/Mini) are different products', async () => {
+  const { isSameProduct } = await import('../server/lens/sameProduct');
+  assert.equal(isSameProduct('apple iphone 17 black 256 gb', 'Apple iPhone 17 Pro (Silver, 256 GB)'), false);
+  assert.equal(isSameProduct('apple iphone 17 pro 256 gb', 'Apple iPhone 17 (Black, 256 GB)'), false);
+  assert.equal(isSameProduct('apple iphone 17 black 256 gb', 'Apple iPhone 17 (Sage, 256 GB)'), true); // colour is a variant, not a tier
+  assert.equal(isSameProduct('macbook air m3', 'MacBook Pro 14 M3'), false);
 });

@@ -10276,6 +10276,10 @@ var init_affiliateNetwork = __esm({
 });
 
 // server/search/searchOrchestrator.ts
+var searchOrchestrator_exports = {};
+__export(searchOrchestrator_exports, {
+  runSearch: () => runSearch
+});
 function rowToOffer(row, isLiveNow) {
   const status = row.freshness_status === "LIVE_VERIFIED" ? "CACHED_VERIFIED" : row.freshness_status;
   return {
@@ -11281,6 +11285,14 @@ var init_rewardsEngine = __esm({
 });
 
 // server/affiliate/deeplink.ts
+var deeplink_exports = {};
+__export(deeplink_exports, {
+  buildSecureDeeplink: () => buildSecureDeeplink,
+  createMaskingPointer: () => createMaskingPointer,
+  recordPointerClick: () => recordPointerClick,
+  resolveMaskingPointer: () => resolveMaskingPointer,
+  safeDomain: () => safeDomain2
+});
 function secret() {
   return process.env.AFFILIATE_SECRET || import_crypto21.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
@@ -11907,10 +11919,22 @@ function titleFromSlug(u) {
     if (good.length >= 2 && good.join(" ").length > best.length) best = good.join(" ");
   }
   best = best.replace(/\s+/g, " ").trim();
+  if (/(^|\.)(buyhatke|pricehistory)\./i.test(u.hostname) || /\bprice in india\b/i.test(best)) {
+    best = best.replace(/^(amazon|flipkart|myntra|ajio|tata cliq|tatacliq|meesho|nykaa|croma|snapdeal|jiomart)\s+/i, "").replace(/\s+price in india.*$/i, "").replace(/\s+\d{0,3}\s*\d{6,}$/i, "").trim();
+  }
   return best.length >= 4 ? best.slice(0, 160) : null;
 }
+function stripComparisonBoilerplate(t) {
+  let x = String(t || "").trim();
+  x = x.replace(/^(price\s+history|price\s+tracker|price\s+comparison|compare\s+prices?)\s+(of|for)\s+/i, "");
+  x = x.replace(/\s+from\s+(amazon(\.in)?|flipkart|myntra|ajio|tata\s?cliq|meesho|nykaa|croma|reliance\s?digital|snapdeal|jiomart)\b.*$/i, "");
+  x = x.replace(/\s*[|\u2013\u2014-]\s*(buyhatke|pricehistory\.app|pricebefore|smartprix|91mobiles|pricetree|mysmartprice|compareraja|desidime)[^|]*$/i, "");
+  x = x.replace(/\s+price\s+in\s+india\b.*$/i, "");
+  x = x.replace(/\s+(online\s+)?(price|prices)\s*(history|tracker|drop|comparison)?\s*$/i, "");
+  return x.replace(/\s+/g, " ").trim();
+}
 function cleanTitle(t) {
-  return t.replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|meesho|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, "").replace(/^(buy|shop)\s+/i, "").replace(/\s+(online|at best price|best price)\b.*$/i, "").replace(/\s*:\s*amazon\.in.*$/i, "").replace(/\s+/g, " ").trim().slice(0, 180);
+  return stripComparisonBoilerplate(t).replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|meesho|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, "").replace(/^(buy|shop)\s+/i, "").replace(/\s+(online|at best price|best price)\b.*$/i, "").replace(/\s*:\s*amazon\.in.*$/i, "").replace(/\s+/g, " ").trim().slice(0, 180);
 }
 function priceNum(v) {
   const n = Math.round(parseFloat(String(v ?? "").replace(/[^\d.]/g, "")));
@@ -12026,7 +12050,9 @@ var init_productLink = __esm({
       [/(^|\.)bigbasket\.com$/, "BigBasket"],
       [/(^|\.)blinkit\.com$/, "Blinkit"],
       [/(^|\.)zeptonow\.com$/, "Zepto"],
-      [/(^|\.)swiggy\.com$/, "Swiggy"]
+      [/(^|\.)swiggy\.com$/, "Swiggy"],
+      [/(^|\.)buyhatke\.com$/, "BuyHatke"],
+      [/(^|\.)pricehistory\.app$/, "PriceHistory"]
     ];
     JUNK_SLUG = /^(dp|gp|p|product|products|item|itm|buy|pd|shop|s|ip|sku|b0[a-z0-9]{8}|[a-z]{0,3}\d[a-z0-9]{6,})$/i;
   }
@@ -12127,6 +12153,12 @@ var init_assistantIntent = __esm({
 });
 
 // server/lens/sameProduct.ts
+var sameProduct_exports = {};
+__export(sameProduct_exports, {
+  identityTokens: () => identityTokens,
+  isAccessory: () => isAccessory,
+  isSameProduct: () => isSameProduct
+});
 function words(t) {
   return t.toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
 }
@@ -12147,10 +12179,14 @@ function isSameProduct(pastedTitle, candidateTitle) {
   if (hard.some((w) => !have.has(w))) return false;
   const soft = need.filter((w) => !/\d/.test(w));
   if (soft.length === 0) return hard.length > 0;
+  const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
+  const wantTiers = tiersOf(need);
+  const haveTiers = tiersOf(words(candidateTitle));
+  if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
   return hit / soft.length >= 0.6;
 }
-var ACCESSORY_WORDS, STOP, COLORS;
+var ACCESSORY_WORDS, STOP, TIERS, COLORS;
 var init_sameProduct = __esm({
   "server/lens/sameProduct.ts"() {
     ACCESSORY_WORDS = [
@@ -12192,7 +12228,182 @@ var init_sameProduct = __esm({
       "wallet"
     ];
     STOP = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
+    TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
     COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
+  }
+});
+
+// server/lens/dealScore.ts
+function analyseDeal(current, history, crossSiteLow) {
+  const prices = history.map((h) => Math.round(Number(h.price))).filter((p) => Number.isFinite(p) && p > 0);
+  if (!(current > 0) || prices.length < 2) {
+    return {
+      hasHistory: false,
+      points: prices.length,
+      current,
+      allTimeLow: prices.length ? Math.min(...prices) : null,
+      allTimeHigh: prices.length ? Math.max(...prices) : null,
+      average: null,
+      vsAveragePct: null,
+      score: null,
+      verdict: "unknown",
+      headline: "Not enough recorded price history yet to score this deal. We never guess.",
+      breakup: []
+    };
+  }
+  const low = Math.min(...prices, current);
+  const high = Math.max(...prices, current);
+  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+  const vsAvg = (current - avg) / avg * 100;
+  const range = Math.max(1, high - low);
+  const lowPts = Math.round(clamp(1 - (current - low) / range, 0, 1) * 40);
+  const avgPts = Math.round(clamp((-vsAvg + 0) / 15, 0, 1) * 35);
+  let sitePts = 12;
+  if (crossSiteLow && crossSiteLow > 0) sitePts = Math.round(clamp(1 - (current - crossSiteLow) / crossSiteLow / 0.1, 0, 1) * 25);
+  const score = clamp(lowPts + avgPts + sitePts, 0, 100);
+  const verdict = score >= 75 ? "great" : score >= 55 ? "good" : score >= 35 ? "fair" : "wait";
+  const headline = verdict === "great" ? "Lower than the average price. Good time to buy!" : verdict === "good" ? "A fair-to-good price compared with its history." : verdict === "fair" ? "Around its usual price. You may find it cheaper later." : "Higher than usual. Consider waiting or setting a price alert.";
+  return {
+    hasHistory: true,
+    points: prices.length,
+    current,
+    allTimeLow: low,
+    allTimeHigh: high,
+    average: avg,
+    vsAveragePct: Math.round(vsAvg * 10) / 10,
+    score,
+    verdict,
+    headline,
+    breakup: [
+      { label: "Closeness to all-time low", pts: lowPts, max: 40 },
+      { label: "Versus average price", pts: avgPts, max: 35 },
+      { label: "Versus other sites right now", pts: sitePts, max: 25 }
+    ]
+  };
+}
+var clamp;
+var init_dealScore = __esm({
+  "server/lens/dealScore.ts"() {
+    clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+  }
+});
+
+// server/lens/priceAlerts.ts
+var priceAlerts_exports = {};
+__export(priceAlerts_exports, {
+  alertEmail: () => alertEmail,
+  checkAlertsOnce: () => checkAlertsOnce,
+  createAlert: () => createAlert,
+  deleteAlert: () => deleteAlert,
+  listAlerts: () => listAlerts,
+  shouldNotify: () => shouldNotify,
+  validateAlert: () => validateAlert
+});
+function validateAlert(i) {
+  if (!i.userId) return { ok: false, error: "Sign in to set a price alert." };
+  if (!i.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(i.email)) return { ok: false, error: "A valid email is needed to notify you." };
+  if (!i.productTitle || String(i.productTitle).trim().length < 3) return { ok: false, error: "Product name is missing." };
+  if (!i.searchQuery || String(i.searchQuery).trim().length < 2) return { ok: false, error: "Product search text is missing." };
+  const t = Math.round(Number(i.targetPrice));
+  if (!Number.isFinite(t) || t <= 0 || t > 1e8) return { ok: false, error: "Enter a valid target price." };
+  if (i.priceAtSet && t >= Math.round(Number(i.priceAtSet))) return { ok: false, error: "Target must be lower than the current price." };
+  return { ok: true };
+}
+async function createAlert(i) {
+  const v = validateAlert(i);
+  if (!v.ok) return v;
+  const store2 = getStore();
+  const mine = (await store2.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive);
+  if (mine.length >= 50) return { ok: false, error: "You have reached the 50 active alert limit." };
+  const dup = mine.find((r) => String(r.search_query).toLowerCase() === i.searchQuery.trim().toLowerCase());
+  if (dup) {
+    await store2.execute(
+      "UPDATE price_alerts SET target_price=?, price_at_set=?, notified_at=?, email=? WHERE id=?",
+      [Math.round(i.targetPrice), i.priceAtSet ?? null, null, i.email, Number(dup.id)]
+    );
+    return { ok: true, id: Number(dup.id) };
+  }
+  const res = await store2.execute(
+    `INSERT INTO price_alerts (user_id, email, product_title, search_query, source_url, image, target_price, price_at_set, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      i.userId,
+      i.email,
+      i.productTitle.trim().slice(0, 300),
+      i.searchQuery.trim().slice(0, 300),
+      (i.sourceUrl || "").slice(0, 1e3) || null,
+      (i.image || "").slice(0, 1e3) || null,
+      Math.round(i.targetPrice),
+      i.priceAtSet ?? null,
+      1
+    ]
+  );
+  const rows = await store2.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
+  return { ok: true, id: Number(res?.insertId ?? rows[rows.length - 1]?.id) };
+}
+async function listAlerts(userId) {
+  const rows = await getStore().query("SELECT * FROM price_alerts WHERE user_id = ?", [userId]);
+  return rows.filter(isActive).sort((a, b) => Number(b.id) - Number(a.id));
+}
+async function deleteAlert(userId, id) {
+  const rows = await getStore().query("SELECT id FROM price_alerts WHERE user_id = ?", [userId]);
+  if (!rows.some((r) => Number(r.id) === Number(id))) return false;
+  await getStore().execute("UPDATE price_alerts SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  return true;
+}
+function shouldNotify(alert, livePrice) {
+  if (alert.notified_at) return false;
+  return Number.isFinite(livePrice) && livePrice > 0 && livePrice <= Number(alert.target_price);
+}
+function alertEmail(a, price, seller, url) {
+  const inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr(price)}`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
+  <h2 style="color:#E7000B;margin:0 0 8px">Your Try1Second price alert hit</h2>
+  <p><strong>${escapeHtml(a.product_title)}</strong></p>
+  <p style="font-size:22px;margin:6px 0"><strong>${inr(price)}</strong> on ${escapeHtml(seller)}</p>
+  <p style="color:#475569">Your target was ${inr(a.target_price)}.</p>
+  <p><a href="${url}" style="background:#E7000B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Open the deal</a></p>
+  <p style="color:#94a3b8;font-size:12px">Price observed live by Try1Second. Prices can change quickly.</p></div>`;
+  return { subject, html };
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+async function checkAlertsOnce(findLivePrice, baseUrl) {
+  const store2 = getStore();
+  const all = (await store2.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive(a) && !a.notified_at);
+  let notified = 0;
+  for (const a of all.slice(0, 40)) {
+    try {
+      const live = await findLivePrice(String(a.search_query), String(a.product_title));
+      await store2.execute(
+        "UPDATE price_alerts SET last_price=?, last_checked_at=? WHERE id=?",
+        [live?.price ?? null, (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]
+      );
+      if (live && shouldNotify(a, live.price)) {
+        const m = alertEmail(a, live.price, live.seller, live.url.startsWith("http") ? live.url : baseUrl + live.url);
+        const sent = await sendEmail(String(a.email), m.subject, m.html);
+        if (sent.ok) {
+          await store2.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
+          notified++;
+        } else {
+          log.warn("PriceAlerts", `Email not sent for alert ${a.id}: ${sent.error}`);
+        }
+      }
+    } catch (e) {
+      log.debug("PriceAlerts", `check failed for ${a.id}`, { error: String(e?.message || e).slice(0, 100) });
+    }
+  }
+  return { checked: all.length, notified };
+}
+var isActive;
+var init_priceAlerts = __esm({
+  "server/lens/priceAlerts.ts"() {
+    init_db();
+    init_mailer();
+    init_logger();
+    isActive = (r) => r.is_active === void 0 || r.is_active === null || Number(r.is_active) === 1 || r.is_active === true;
   }
 });
 
@@ -12964,6 +13175,8 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_sameProduct();
+    init_dealScore();
+    init_priceAlerts();
     init_catalogueStore();
     init_logger();
     init_curlCffiFetch();
@@ -13181,6 +13394,118 @@ var init_routes = __esm({
         message: results.length ? void 0 : "No verified listing of this exact product was found on our sources right now.",
         results
       });
+    });
+    apiRouter.post("/product-page", async (req, res) => {
+      const input = String(req.body?.input || req.body?.url || "").trim().slice(0, 2e3);
+      const textQuery = String(req.body?.query || "").trim().slice(0, 200);
+      const url = extractUrl(input);
+      let product = null;
+      let lensQuery = "";
+      if (url) {
+        const safe = isSafePublicUrl(url);
+        if (!safe.ok) return res.status(400).json({ success: false, error: safe.reason || "That link cannot be used." });
+        product = await resolveProductFromLink(url);
+        if (!product.title) {
+          return res.json({ success: true, found: false, product, message: product.fetchStatus === "blocked" ? `${product.merchant || "That site"} blocks automated reads and the link has no readable product name. Try typing the product name.` : "Could not read a product name from that link. Try typing the product name." });
+        }
+        lensQuery = searchableTitle(product.title);
+      } else if (textQuery.length >= 2) {
+        lensQuery = searchableTitle(textQuery);
+        product = { title: textQuery, titleSource: "typed", merchant: "", domain: "", pagePrice: null, image: null, fetchStatus: "skipped" };
+      } else {
+        return res.status(400).json({ success: false, error: "Paste a product link or type a product name." });
+      }
+      const response = await runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode });
+      const priceOf = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+      const all = response.results.map((o) => ({ o, price: priceOf(o) })).filter((x) => x.price > 0);
+      const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ""))).sort((a, b) => a.price - b.price);
+      const toRow = ({ o, price }) => {
+        const attrs = o.attributes || {};
+        const imgs = Array.from(new Set([
+          String(attrs.image_url || o.image || o.images?.[0] || ""),
+          ...String(attrs.image_urls || "").split("|")
+        ].filter((u) => u.startsWith("https://"))));
+        return {
+          id: o.id,
+          title: o.title,
+          seller: String(o.seller || o.vendor || ""),
+          price,
+          listPrice: Number(o.prices?.listPrice ?? 0) || 0,
+          image: imgs[0] || null,
+          images: imgs.slice(0, 8),
+          availability: o.availability || "unknown",
+          rating: Number(attrs.rating) || null,
+          reviews: Number(attrs.rating_count ?? attrs.review_count) || null,
+          canonicalEntityId: o.canonicalEntityId ?? null,
+          goUrl: o.sellerUrl ? createMaskingPointer(o.sellerUrl, { offerId: String(o.id || "") }) : ""
+        };
+      };
+      const offers = same.slice(0, 30).map(toRow);
+      const cheapest = offers[0] || null;
+      const seen = new Set(offers.map((r) => r.title.toLowerCase()));
+      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""))).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 10);
+      let history = [];
+      let historyEntity = null;
+      try {
+        const { priceHistoryForEntity: priceHistoryForEntity2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        for (const r of offers) {
+          const eid = Number(r.canonicalEntityId);
+          if (!eid) continue;
+          const rows = await priceHistoryForEntity2(eid, 120);
+          const pts = rows.map((x) => ({ price: Number(x.effective_price), capturedAt: x.captured_at })).filter((p) => p.price > 0);
+          if (pts.length) {
+            history = pts.reverse();
+            historyEntity = eid;
+            break;
+          }
+        }
+      } catch {
+      }
+      const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
+      const deal = analyseDeal(currentPrice, history, cheapest?.price ?? null);
+      const pageVsCheapest = product.pagePrice && cheapest ? { pagePrice: product.pagePrice, cheapest: cheapest.price, saving: Math.max(0, product.pagePrice - cheapest.price) } : null;
+      const images = Array.from(new Set([product.image, cheapest?.image, ...cheapest?.images || [], ...offers.map((o) => o.image)].filter((u) => typeof u === "string" && u.startsWith("https://")))).slice(0, 8);
+      res.json({
+        success: true,
+        found: true,
+        product,
+        searchedAs: lensQuery,
+        images,
+        cheapest,
+        offers,
+        related,
+        history,
+        historyEntity,
+        deal,
+        pageVsCheapest,
+        servedFrom: response.state?.servedFrom,
+        message: offers.length ? void 0 : "No verified listing of this exact product was found on our sources right now."
+      });
+    });
+    apiRouter.get("/alerts", authMiddleware, requireAuth, async (req, res) => {
+      const user = req.user;
+      res.json({ success: true, alerts: await listAlerts(Number(user.id)) });
+    });
+    apiRouter.post("/alerts", authMiddleware, requireAuth, async (req, res) => {
+      const user = req.user;
+      const b = req.body || {};
+      const r = await createAlert({
+        userId: Number(user.id),
+        email: String(user.email || b.email || ""),
+        productTitle: String(b.productTitle || ""),
+        searchQuery: String(b.searchQuery || ""),
+        sourceUrl: b.sourceUrl ? String(b.sourceUrl) : null,
+        image: b.image ? String(b.image) : null,
+        targetPrice: Number(b.targetPrice),
+        priceAtSet: b.priceAtSet ? Number(b.priceAtSet) : null
+      });
+      if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+      res.json({ success: true, id: r.id });
+    });
+    apiRouter.delete("/alerts/:id", authMiddleware, requireAuth, async (req, res) => {
+      const user = req.user;
+      const ok = await deleteAlert(Number(user.id), Number(req.params.id));
+      res.status(ok ? 200 : 404).json({ success: ok });
     });
     apiRouter.post("/assist/intent", (req, res) => {
       const text = String(req.body?.text || "").slice(0, 300);
@@ -14601,6 +14926,32 @@ function startWorkers() {
   }, 12 * 6e4);
   if (keepWarmTimer.unref) keepWarmTimer.unref();
   timers.push(keepWarmTimer);
+  const alertTimer = setInterval(() => {
+    void withLock("price-alerts", async () => {
+      try {
+        const { checkAlertsOnce: checkAlertsOnce2 } = await Promise.resolve().then(() => (init_priceAlerts(), priceAlerts_exports));
+        const { runSearch: runSearch2 } = await Promise.resolve().then(() => (init_searchOrchestrator(), searchOrchestrator_exports));
+        const { isSameProduct: isSameProduct2 } = await Promise.resolve().then(() => (init_sameProduct(), sameProduct_exports));
+        const { createMaskingPointer: createMaskingPointer2 } = await Promise.resolve().then(() => (init_deeplink(), deeplink_exports));
+        const { settings: settings2 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
+        const r = await checkAlertsOnce2(async (query) => {
+          const resp = await runSearch2({ query, vertical: "ecommerce" });
+          const best = (resp.results || []).map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0 && isSameProduct2(query, String(x.o.title || ""))).sort((a, b) => a.price - b.price)[0];
+          if (!best) return null;
+          return {
+            price: best.price,
+            seller: String(best.o.seller || best.o.vendor || "a seller"),
+            url: best.o.sellerUrl ? createMaskingPointer2(best.o.sellerUrl, { offerId: String(best.o.id || "") }) : settings2.appUrl || "https://www.try1second.com"
+          };
+        }, settings2.appUrl || "https://www.try1second.com");
+        if (r.checked) log.info("Worker", `Price alerts: ${r.checked} checked, ${r.notified} e-mailed`);
+      } catch (e) {
+        log.warn("Worker", "Price-alert pass failed (will retry)", { error: String(e?.message || e).slice(0, 120) });
+      }
+    }).catch(() => void 0);
+  }, 30 * 6e4);
+  if (alertTimer.unref) alertTimer.unref();
+  timers.push(alertTimer);
   const refreshTimer = setInterval(async () => {
     await withLock("refresh-worker", async () => {
       try {

@@ -31,6 +31,8 @@ import { scrapeLiveUrl } from '../../src/server/realDataAcquisition';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { isSameProduct } from '../lens/sameProduct';
+import { analyseDeal } from '../lens/dealScore';
+import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
 import { pythonDiagnostics } from '../common/curlCffiFetch';
@@ -403,6 +405,113 @@ apiRouter.post('/lens', async (req, res) => {
     message: results.length ? undefined : 'No verified listing of this exact product was found on our sources right now.',
     results,
   });
+});
+
+// ============ In-site product page (BuyHatke-style): one call returns everything ============
+// Same-product offers across sites + REAL recorded price history + honest deal score + related products.
+apiRouter.post('/product-page', async (req, res) => {
+  const input = String(req.body?.input || req.body?.url || '').trim().slice(0, 2000);
+  const textQuery = String(req.body?.query || '').trim().slice(0, 200);
+  const url = extractUrl(input);
+  let product: any = null;
+  let lensQuery = '';
+  if (url) {
+    const safe = isSafePublicUrl(url);
+    if (!safe.ok) return res.status(400).json({ success: false, error: safe.reason || 'That link cannot be used.' });
+    product = await resolveProductFromLink(url);
+    if (!product.title) {
+      return res.json({ success: true, found: false, product, message: product.fetchStatus === 'blocked'
+        ? `${product.merchant || 'That site'} blocks automated reads and the link has no readable product name. Try typing the product name.`
+        : 'Could not read a product name from that link. Try typing the product name.' });
+    }
+    lensQuery = searchableTitle(product.title);
+  } else if (textQuery.length >= 2) {
+    lensQuery = searchableTitle(textQuery);
+    product = { title: textQuery, titleSource: 'typed', merchant: '', domain: '', pagePrice: null, image: null, fetchStatus: 'skipped' };
+  } else {
+    return res.status(400).json({ success: false, error: 'Paste a product link or type a product name.' });
+  }
+
+  const response = await runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput);
+  const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+  const all = response.results.map((o: any) => ({ o, price: priceOf(o) })).filter((x) => x.price > 0);
+  const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ''))).sort((a, b) => a.price - b.price);
+  const toRow = ({ o, price }: any) => {
+    const attrs = o.attributes || {};
+    const imgs = Array.from(new Set([
+      String(attrs.image_url || o.image || o.images?.[0] || ''),
+      ...String(attrs.image_urls || '').split('|'),
+    ].filter((u: string) => u.startsWith('https://'))));
+    return {
+      id: o.id, title: o.title, seller: String(o.seller || o.vendor || ''), price,
+      listPrice: Number(o.prices?.listPrice ?? 0) || 0,
+      image: imgs[0] || null, images: imgs.slice(0, 8),
+      availability: o.availability || 'unknown',
+      rating: Number(attrs.rating) || null, reviews: Number(attrs.rating_count ?? attrs.review_count) || null,
+      canonicalEntityId: o.canonicalEntityId ?? null,
+      goUrl: o.sellerUrl ? createMaskingPointer(o.sellerUrl, { offerId: String(o.id || '') }) : '',
+    };
+  };
+  const offers = same.slice(0, 30).map(toRow);
+  const cheapest = offers[0] || null;
+
+  // Related: other priced ecommerce results that are NOT this product (de-duplicated by title).
+  const seen = new Set<string>(offers.map((r) => r.title.toLowerCase()));
+  const related = all
+    .filter((x) => !isSameProduct(lensQuery, String(x.o.title || '')))
+    .map(toRow)
+    .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
+    .slice(0, 10);
+
+  // Real history: first same-product offer that carries a canonical entity id with recorded points.
+  let history: Array<{ price: number; capturedAt: string }> = [];
+  let historyEntity: number | null = null;
+  try {
+    const { priceHistoryForEntity } = await import('../catalogue/catalogueService');
+    for (const r of offers) {
+      const eid = Number(r.canonicalEntityId);
+      if (!eid) continue;
+      const rows = await priceHistoryForEntity(eid, 120);
+      const pts = rows.map((x: any) => ({ price: Number(x.effective_price), capturedAt: x.captured_at })).filter((p: any) => p.price > 0);
+      if (pts.length) { history = pts.reverse(); historyEntity = eid; break; }
+    }
+  } catch { /* history is optional; absence is reported honestly */ }
+
+  const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
+  const deal = analyseDeal(currentPrice, history, cheapest?.price ?? null);
+  const pageVsCheapest = product.pagePrice && cheapest
+    ? { pagePrice: product.pagePrice, cheapest: cheapest.price, saving: Math.max(0, product.pagePrice - cheapest.price) } : null;
+  const images = Array.from(new Set([product.image, cheapest?.image, ...(cheapest?.images || []), ...offers.map((o) => o.image)].filter((u: any) => typeof u === 'string' && u.startsWith('https://')))).slice(0, 8);
+
+  res.json({
+    success: true, found: true, product, searchedAs: lensQuery, images,
+    cheapest, offers, related, history, historyEntity, deal, pageVsCheapest,
+    servedFrom: response.state?.servedFrom,
+    message: offers.length ? undefined : 'No verified listing of this exact product was found on our sources right now.',
+  });
+});
+
+// ============ Price alerts (signed-in users; e-mail when a verified price hits the target) ============
+apiRouter.get('/alerts', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  res.json({ success: true, alerts: await listAlerts(Number(user.id)) });
+});
+apiRouter.post('/alerts', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const b = req.body || {};
+  const r = await createAlert({
+    userId: Number(user.id), email: String(user.email || b.email || ''),
+    productTitle: String(b.productTitle || ''), searchQuery: String(b.searchQuery || ''),
+    sourceUrl: b.sourceUrl ? String(b.sourceUrl) : null, image: b.image ? String(b.image) : null,
+    targetPrice: Number(b.targetPrice), priceAtSet: b.priceAtSet ? Number(b.priceAtSet) : null,
+  });
+  if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+  res.json({ success: true, id: r.id });
+});
+apiRouter.delete('/alerts/:id', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const ok = await deleteAlert(Number(user.id), Number(req.params.id));
+  res.status(ok ? 200 : 404).json({ success: ok });
 });
 
 // ============ Home AI assistant: question (typed or spoken) -> vertical + query ============

@@ -18,6 +18,7 @@ import { FixedBottomBar } from './components/FixedBottomBar';
 import { RedirectionModal } from './components/RedirectionModal';
 import { ReviewModal } from './components/ReviewModal';
 import { PriceAlertModal } from './components/PriceAlertModal';
+import { ProductPageView } from './components/ProductPageView';
 import { PriceAlertsView } from './components/PriceAlertsView';
 import { BrowserExtensionModal } from './components/BrowserExtensionModal';
 import { NotificationsDrawer } from './components/NotificationsDrawer';
@@ -70,6 +71,7 @@ const MainContent: React.FC = () => {
         {activeNavTab === 'radar' && <RadarView />}
         {activeNavTab === 'insights' && <AiInsightsView />}
         {activeNavTab === 'tracker' && <PriceAlertsView />}
+        {activeNavTab === 'product' && <ProductPageView />}
         {activeNavTab === 'compare' && <ComparisonFeed />}
         {activeNavTab === 'rewards' && <RewardsHub />}
         {activeNavTab === 'admin' && (isAdminAuthenticated ? <AdminDashboard /> : <AdminLoginView />)}

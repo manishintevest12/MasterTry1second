@@ -38,6 +38,38 @@ export function startWorkers() {
   if (keepWarmTimer.unref) keepWarmTimer.unref();
   timers.push(keepWarmTimer);
 
+  // Price alerts (14 Oct): every 30 min re-search each active alert's product and e-mail the user
+  // once when a VERIFIED same-product price is at/below their target. No live price = no e-mail.
+  const alertTimer = setInterval(() => {
+    void withLock('price-alerts', async () => {
+      try {
+        const { checkAlertsOnce } = await import('../lens/priceAlerts');
+        const { runSearch } = await import('../search/searchOrchestrator');
+        const { isSameProduct } = await import('../lens/sameProduct');
+        const { createMaskingPointer } = await import('../affiliate/deeplink');
+        const { settings } = await import('../common/settings');
+        const r = await checkAlertsOnce(async (query) => {
+          const resp: any = await runSearch({ query, vertical: 'ecommerce' } as any);
+          const best = (resp.results || [])
+            .map((o: any) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 }))
+            .filter((x: any) => x.price > 0 && isSameProduct(query, String(x.o.title || '')))
+            .sort((a: any, b: any) => a.price - b.price)[0];
+          if (!best) return null;
+          return {
+            price: best.price,
+            seller: String(best.o.seller || best.o.vendor || 'a seller'),
+            url: best.o.sellerUrl ? createMaskingPointer(best.o.sellerUrl, { offerId: String(best.o.id || '') }) : (settings.appUrl || 'https://www.try1second.com'),
+          };
+        }, settings.appUrl || 'https://www.try1second.com');
+        if (r.checked) log.info('Worker', `Price alerts: ${r.checked} checked, ${r.notified} e-mailed`);
+      } catch (e: any) {
+        log.warn('Worker', 'Price-alert pass failed (will retry)', { error: String(e?.message || e).slice(0, 120) });
+      }
+    }).catch(() => undefined);
+  }, 30 * 60_000);
+  if (alertTimer.unref) alertTimer.unref();
+  timers.push(alertTimer);
+
   // Incremental refresh worker (demand-independent, popularity via ORDER BY fetched_at)
   const refreshTimer = setInterval(async () => {
     // Distributed lock prevents duplicate refresh when multiple processes run (KVM4)

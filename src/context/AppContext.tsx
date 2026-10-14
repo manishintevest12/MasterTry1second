@@ -288,6 +288,9 @@ interface AppContextType {
   triggerLiveLocationScrape: (overrideQuery?: string, overrideLoc?: UserLocationState, overrideTravel?: { depart?: string; return?: string }) => Promise<void>;
   /** Home AI assistant handoff: the vertical's search form consumes this once to fill its boxes and search. */
   pendingAssistantSearch: { vertical: string; query: string; date?: string } | null;
+  /** In-site product page (Price Lens click-through): what to load, and the opener. */
+  productPageRequest: { input?: string; query?: string; nonce: number } | null;
+  openProductPage: (req: { input?: string; query?: string }) => void;
   setPendingAssistantSearch: (p: { vertical: string; query: string; date?: string } | null) => void;
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
@@ -820,6 +823,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const [pendingAssistantSearch, setPendingAssistantSearch] = useState<{ vertical: string; query: string; date?: string } | null>(null);
+  const [productPageRequest, setProductPageRequest] = useState<{ input?: string; query?: string; nonce: number } | null>(null);
 
   const handleSetVertical = (newVertical: VerticalId) => {
     setVertical(newVertical);
@@ -2255,6 +2259,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sourcesReport,
         triggerLiveLocationScrape,
         pendingAssistantSearch,
+        productPageRequest,
+        openProductPage: (req: { input?: string; query?: string }) => {
+          setProductPageRequest({ ...req, nonce: Date.now() });
+          setActiveNavTab('product');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
         setPendingAssistantSearch,
         proxies,
         addResidentialProxy,

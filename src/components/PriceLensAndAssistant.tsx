@@ -37,58 +37,47 @@ const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 /** Price Lens: sits inside the hero, between the headline and the two launch buttons. */
 export const PriceLens: React.FC = () => {
-  // ---- Price Lens ----
+  const { openProductPage } = useApp();
   const [link, setLink] = useState('');
-  const [lensBusy, setLensBusy] = useState(false);
-  const [lens, setLens] = useState<LensResponse | null>(null);
-  const [lensError, setLensError] = useState<string | null>(null);
 
-  const runLens = async (text?: string) => {
+  // Click-through: a pasted link (or a typed product name) opens the in-site product page.
+  const go = (text?: string) => {
     const input = (text ?? link).trim();
     if (!input) return;
-    setLensBusy(true); setLensError(null); setLens(null);
-    try {
-      const res = await fetch('/api/lens', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input }) });
-      const data: LensResponse = await res.json();
-      if (!res.ok || data.success === false) throw new Error(data.error || 'Could not check that link');
-      setLens(data);
-    } catch (e: any) {
-      setLensError(String(e?.message || e));
-    } finally {
-      setLensBusy(false);
-    }
+    openProductPage(/https?:\/\//i.test(input) ? { input } : { query: input });
   };
-
-  const cheapest = lens?.cheapest;
 
   return (
     <div className="w-full max-w-3xl mb-6 text-slate-900">
-      {/* ============ PRICE LENS ============ */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-900/5 p-3 sm:p-4">
         <form
-          onSubmit={(e) => { e.preventDefault(); runLens(); }}
+          onSubmit={(e) => { e.preventDefault(); go(); }}
           className="flex items-center gap-2 bg-slate-50 border border-slate-200 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/15 rounded-xl px-3 py-2 transition-all"
         >
           <Link2 className="w-4 h-4 text-slate-400 shrink-0" />
           <input
             value={link}
             onChange={(e) => setLink(e.target.value)}
-            placeholder="Paste any product link (Amazon, Flipkart, Myntra…) to find it cheapest"
+            onPaste={(e) => {
+              const t = e.clipboardData.getData('text').trim();
+              if (/^https?:\/\/\S+$/i.test(t)) { e.preventDefault(); setLink(t); go(t); }
+            }}
+            placeholder="Paste any product link (Amazon, Flipkart, Myntra...) to find it cheapest"
             aria-label="Paste a product link"
             className="flex-1 min-w-0 bg-transparent outline-hidden text-sm text-slate-900 placeholder:text-slate-400 py-1"
           />
           {link && (
-            <button type="button" onClick={() => { setLink(''); setLens(null); setLensError(null); }} className="text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Clear">
+            <button type="button" onClick={() => setLink('')} className="text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Clear">
               <X className="w-4 h-4" />
             </button>
           )}
           <button
             type="submit"
-            disabled={lensBusy || !link.trim()}
+            disabled={!link.trim()}
             className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black cursor-pointer transition-colors"
           >
-            {lensBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-            <span>{lensBusy ? 'Checking' : 'Find Cheapest'}</span>
+            <Search className="w-3.5 h-3.5" />
+            <span>Find Cheapest</span>
           </button>
         </form>
 
@@ -108,86 +97,7 @@ export const PriceLens: React.FC = () => {
           ))}
           <span className="text-[10px] font-semibold text-slate-400 shrink-0">+ any shopping site</span>
         </div>
-
-        {lensError && (
-          <div className="mt-3 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-px" /><span>{lensError}</span>
-          </div>
-        )}
-
-        {lensBusy && (
-          <div className="mt-3 text-xs text-slate-500 flex items-center gap-2 px-1">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" /> Reading the product and comparing live prices across sites…
-          </div>
-        )}
-
-        {lens && lens.found === false && (
-          <div className="mt-3 flex items-start gap-2 text-xs text-slate-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-px text-amber-600" /><span>{lens.message}</span>
-          </div>
-        )}
-
-        {lens && lens.found && (
-          <div className="mt-4 border-t border-slate-100 pt-4">
-            <div className="flex items-start gap-3">
-              {lens.product?.image && (
-                <img src={lens.product.image} alt="" className="w-16 h-16 rounded-lg object-contain bg-slate-50 border border-slate-100 shrink-0" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">From {lens.product?.merchant}</p>
-                <h3 className="text-sm font-extrabold text-slate-900 leading-snug line-clamp-2">{lens.product?.title}</h3>
-                {lens.product?.pagePrice ? (
-                  <p className="text-xs text-slate-500 mt-0.5">This page shows <strong className="text-slate-800">{inr(lens.product.pagePrice)}</strong></p>
-                ) : null}
-              </div>
-            </div>
-
-            {cheapest ? (
-              <>
-                <div className="mt-3 rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-1"><TrendingDown className="w-3 h-3" /> Cheapest we found</p>
-                    <p className="text-xl font-black text-slate-900 leading-tight">{inr(cheapest.price)}</p>
-                    <p className="text-xs text-slate-600 truncate">on <strong>{cheapest.seller}</strong>
-                      {lens.pageVsCheapest && lens.pageVsCheapest.saving > 0 && (
-                        <span className="ml-1.5 text-emerald-700 font-bold">· saves {inr(lens.pageVsCheapest.saving)} vs this page</span>
-                      )}
-                    </p>
-                  </div>
-                  {cheapest.goUrl && (
-                    <a href={cheapest.goUrl} target="_blank" rel="noopener noreferrer sponsored" className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-red-600 text-white text-xs font-black transition-colors">
-                      Buy <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
-
-                <ul className="mt-3 divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden">
-                  {lens.results.slice(0, 8).map((r, i) => (
-                    <li key={r.id || i} className="flex items-center gap-3 px-3 py-2.5 bg-white hover:bg-slate-50">
-                      <span className="w-6 text-[11px] font-black text-slate-400">{i + 1}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-900 truncate">{r.seller}</p>
-                        <p className="text-[11px] text-slate-500 truncate">{r.title}</p>
-                      </div>
-                      <span className="text-sm font-black text-slate-900">{inr(r.price)}</span>
-                      {r.goUrl && (
-                        <a href={r.goUrl} target="_blank" rel="noopener noreferrer sponsored" className="text-slate-400 hover:text-red-600" aria-label={`Open on ${r.seller}`}>
-                          <ArrowRight className="w-4 h-4" />
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                {lens.message || 'No verified prices were found for this product right now.'}
-              </p>
-            )}
-          </div>
-        )}
       </div>
-
     </div>
   );
 };

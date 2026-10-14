@@ -13,7 +13,7 @@ export type VerticalId =
   | 'pharmacy'
   | 'bills_utilities';
 
-export type MainNavTab = 'home' | 'radar' | 'quickapps' | 'insights' | 'compare' | 'rewards' | 'admin' | 'merchant' | 'tracker';
+export type MainNavTab = 'home' | 'radar' | 'quickapps' | 'insights' | 'compare' | 'rewards' | 'admin' | 'merchant' | 'tracker' | 'product';
 export type RewardsSubTab = 'coupons' | 'offers' | 'spin' | 'cards';
 
 export interface UserLocationState {

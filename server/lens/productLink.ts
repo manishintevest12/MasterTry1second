@@ -37,6 +37,8 @@ const MERCHANTS: Array<[RegExp, string]> = [
   [/(^|\.)blinkit\.com$/, 'Blinkit'],
   [/(^|\.)zeptonow\.com$/, 'Zepto'],
   [/(^|\.)swiggy\.com$/, 'Swiggy'],
+  [/(^|\.)buyhatke\.com$/, 'BuyHatke'],
+  [/(^|\.)pricehistory\.app$/, 'PriceHistory'],
 ];
 
 /** Blocks localhost / private / link-local / metadata hosts so the lens can't be used to probe our network. */
@@ -83,12 +85,36 @@ export function titleFromSlug(u: URL): string | null {
     if (good.length >= 2 && good.join(' ').length > best.length) best = good.join(' ');
   }
   best = best.replace(/\s+/g, ' ').trim();
+  // Tracker slugs: "flipkart apple iphone 17 black 256 gb price in india 2 224849352"
+  if (/(^|\.)(buyhatke|pricehistory)\./i.test(u.hostname) || /\bprice in india\b/i.test(best)) {
+    best = best
+      .replace(/^(amazon|flipkart|myntra|ajio|tata cliq|tatacliq|meesho|nykaa|croma|snapdeal|jiomart)\s+/i, '')
+      .replace(/\s+price in india.*$/i, '')
+      .replace(/\s+\d{0,3}\s*\d{6,}$/i, '')
+      .trim();
+  }
   return best.length >= 4 ? best.slice(0, 160) : null;
+}
+
+/**
+ * Price-tracker / comparison sites wrap the real product name:
+ *   "Price History of Apple iPhone 17 (Black, 256 GB) from Flipkart 2_224849352"
+ *   "Apple iPhone 17 Price in India - Buy at Rs 86,999 | BuyHatke"
+ * Keep only the product name so the search uses the product, not the tracker's words.
+ */
+export function stripComparisonBoilerplate(t: string): string {
+  let x = String(t || '').trim();
+  x = x.replace(/^(price\s+history|price\s+tracker|price\s+comparison|compare\s+prices?)\s+(of|for)\s+/i, '');
+  x = x.replace(/\s+from\s+(amazon(\.in)?|flipkart|myntra|ajio|tata\s?cliq|meesho|nykaa|croma|reliance\s?digital|snapdeal|jiomart)\b.*$/i, '');
+  x = x.replace(/\s*[|\u2013\u2014-]\s*(buyhatke|pricehistory\.app|pricebefore|smartprix|91mobiles|pricetree|mysmartprice|compareraja|desidime)[^|]*$/i, '');
+  x = x.replace(/\s+price\s+in\s+india\b.*$/i, '');
+  x = x.replace(/\s+(online\s+)?(price|prices)\s*(history|tracker|drop|comparison)?\s*$/i, '');
+  return x.replace(/\s+/g, ' ').trim();
 }
 
 /** Cleans store boilerplate off a page title: "Buy X Online at Best Price | Amazon.in" -> "X". */
 export function cleanTitle(t: string): string {
-  return t
+  return stripComparisonBoilerplate(t)
     .replace(/\s*[|\u2013\u2014-]\s*(amazon\.in|flipkart\.com|myntra|ajio|tata ?cliq|meesho|nykaa|croma|reliance digital|snapdeal|jiomart|lenskart|bigbasket|blinkit)[^|]*$/i, '')
     .replace(/^(buy|shop)\s+/i, '')
     .replace(/\s+(online|at best price|best price)\b.*$/i, '')
