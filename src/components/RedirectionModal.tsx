@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ExternalLink,
   Sparkles,
@@ -8,9 +8,24 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { buildAffiliateDeepLink } from '../utils/deepLinkHelper';
+import { DealCard, type PublicDeal } from './DealCard';
 
 export const RedirectionModal: React.FC = () => {
   const { redirectionState, closeRedirection, userPoints, userLocation, affiliateIds } = useApp();
+  const [sellerDeals, setSellerDeals] = useState<PublicDeal[]>([]);
+  const sellerName = redirectionState.quote?.sellerName || '';
+  const open = redirectionState.isOpen;
+
+  // The seller's own live coupons / bank offers, so the customer knows what to apply at checkout.
+  useEffect(() => {
+    if (!open || !sellerName) { setSellerDeals([]); return; }
+    let cancelled = false;
+    fetch(`/api/deals/for-seller?seller=${encodeURIComponent(sellerName)}&limit=4`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setSellerDeals(d.deals || []); })
+      .catch(() => { if (!cancelled) setSellerDeals([]); });
+    return () => { cancelled = true; };
+  }, [open, sellerName]);
 
   if (!redirectionState.isOpen || !redirectionState.item || !redirectionState.quote) {
     return null;
@@ -48,7 +63,7 @@ export const RedirectionModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center relative overflow-hidden">
+      <div className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 text-center relative overflow-hidden">
         {/* Close Button */}
         <button
           type="button"
@@ -106,12 +121,23 @@ export const RedirectionModal: React.FC = () => {
               Your deal for <strong>{item.title}</strong> at <strong>₹{quote.price.toLocaleString('en-IN')}</strong> is locked with zero extra fees.
             </p>
 
-            <div className="p-3 bg-orange-50 rounded-xl border border-orange-200 text-xs text-orange-950 mb-6 flex items-center justify-between">
-              <span className="text-[11px]">Want Prize Wheel Spins?</span>
-              <strong className="text-xs font-bold text-orange-700">
-                Earn 1 Point per Friend Referred!
-              </strong>
-            </div>
+            {sellerDeals.length > 0 ? (
+              <div className="text-left mb-5">
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2">
+                  Save more at {quote.sellerName}
+                </p>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {sellerDeals.map((d) => <DealCard key={d.id} deal={d} compact />)}
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-orange-50 rounded-xl border border-orange-200 text-xs text-orange-950 mb-6 flex items-center justify-between">
+                <span className="text-[11px]">Want Prize Wheel Spins?</span>
+                <strong className="text-xs font-bold text-orange-700">
+                  Earn 1 Point per Friend Referred!
+                </strong>
+              </div>
+            )}
 
             <div className="flex items-center gap-2">
               <button

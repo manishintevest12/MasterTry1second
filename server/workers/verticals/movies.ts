@@ -49,6 +49,7 @@ async function enrichWithGw(
   o: any,
   aggs: Map<string, GwMovieAgg> | null,
   gwHost: 'district' | 'ticketnew',
+  forSite?: string,
 ): Promise<void> {
   const agg = matchAgg(aggs, String(o.title || ''));
   if (agg) {
@@ -58,7 +59,9 @@ async function enrichWithGw(
     o.attributes['theatres'] = agg.theatres.slice(0, 6).join(' | ');
     o.attributes['theatre_count'] = agg.theatres.length;
     o.attributes['shows_today'] = agg.showCount;
-    o.attributes['data_note'] = `Real area-level seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
+    o.attributes['data_note'] = forSite
+      ? `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${gwHost === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.`
+      : `Real area-level seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
     (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_min', 'price_max', 'theatres', 'shows_today'];
     const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
     if (crit) {
@@ -82,6 +85,9 @@ async function enrichWithGw(
   }
 }
 
+/** city|title -> last observed seat price (24h), so a gateway blip never blanks BMS prices. */
+const bmsLastPrice = new Map<string, { at: number; price: number; band?: string; note?: string }>();
+
 export const moviesWorker: VerticalWorker = {
   vertical: 'movies',
   tasks: [
@@ -90,7 +96,7 @@ export const moviesWorker: VerticalWorker = {
       name: 'Movies worker: BookMyShow now-showing discovery (posters + deeplinks, city-aware)',
       priority: 1,
       maxPerMinute: 6,
-      timeoutMs: 30_000,
+      timeoutMs: 60_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '').trim();
         const entity = String(ctx.query.entityName || '').trim();
@@ -114,7 +120,51 @@ export const moviesWorker: VerticalWorker = {
         const stripTokens = (normCity(region.regionName) + ' ' + normCity(String(ctx.query.location?.city || ''))).split(' ').filter(Boolean);
         const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : '';
         const fingerprint = createHash('sha256').update(res.body).digest('hex').slice(0, 16);
-        return parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+        const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+        // BMS' own quickbook/session API is edge-blocked, so its cards had NO price. The same
+        // movie in the same city is sold in the same theatres on District/TicketNew, whose public
+        // sessions gateway exposes live seat prices. Attach that observed band to BMS cards
+        // (labelled with its true origin). The gateway walk is time-boxed to 25s so the cards
+        // themselves are never lost, and a 24h last-known price covers a gateway blip.
+        // Honest skip when neither exists.
+        const gwCity = gwCitySlug(typedCity || region.regionName || '');
+        const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
+          Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+        let aggs: Map<string, GwMovieAgg> | null = null;
+        let host: 'district' | 'ticketnew' = 'district';
+        if (gwCity) {
+          aggs = await withTimeout(gwCityMovieAggregates('district', gwCity, 8).catch(() => null), 25_000);
+          if (!aggs || aggs.size === 0) {
+            host = 'ticketnew';
+            aggs = await withTimeout(gwCityMovieAggregates('ticketnew', gwCity, 6).catch(() => null), 15_000);
+          }
+        }
+        const keyOf = (o: any) => `${normCity(region.regionName)}|${String(o.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
+        for (const o of cards.slice(0, 14)) {
+          try {
+            const agg = matchAgg(aggs, String(o.title || ''));
+            if (agg) {
+              o.price = agg.minPrice;
+              o.attributes = o.attributes || {};
+              o.attributes['price_band'] = agg.minPrice < agg.maxPrice ? `₹${agg.minPrice}–₹${agg.maxPrice}` : `₹${agg.minPrice}`;
+              o.attributes['theatres'] = agg.theatres.slice(0, 6).join(' | ');
+              o.attributes['theatre_count'] = String(agg.theatres.length);
+              o.attributes['shows_today'] = String(agg.showCount);
+              o.attributes['data_note'] = `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${host === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on BookMyShow is shown at seat selection.`;
+              (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_min', 'price_max', 'theatres', 'shows_today'];
+              bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes['price_band'], note: o.attributes['data_note'] });
+            } else {
+              const last = bmsLastPrice.get(keyOf(o));
+              if (last && Date.now() - last.at < 24 * 3600_000) {
+                o.price = last.price;
+                o.attributes = o.attributes || {};
+                o.attributes['price_band'] = last.band || '';
+                o.attributes['data_note'] = `${last.note || 'Seat price observed earlier'} (last observed ${Math.round((Date.now() - last.at) / 60000)} min ago)`;
+              }
+            }
+          } catch { /* a single card never fails the source */ }
+        }
+        return cards;
       },
     },
     {

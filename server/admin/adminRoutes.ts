@@ -17,6 +17,9 @@ import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
 import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
 import { listAppLinks, upsertAppLink, deleteAppLink } from '../marketing/appLinks';
+import { listAllDeals, saveDeal, deleteDeal, DEAL_KINDS } from '../marketing/deals';
+import { listProfiles, saveProfile, deleteProfile, AFFILIATE_NETWORKS } from '../affiliate/profiles';
+import { syncAutoDeals } from '../deals/acquisition';
 import { listAllNotifications, createNotification, deactivateNotification, validateNotification } from '../notifications/notifications';
 import { log } from '../common/logger';
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
@@ -278,6 +281,53 @@ adminRouter.delete('/notifications/:id', async (req, res) => {
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not remove notification' });
   }
+});
+
+// ---- Deals auto-sync (merchant offers via cffi; admin deals untouched) ----
+adminRouter.post('/deals/sync', async (_req, res) => {
+  try { res.json({ success: true, outcomes: await syncAutoDeals() }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Sync failed' }); }
+});
+
+// ---- Affiliate profiles: network + tracking template per company, applied server-side on every click ----
+adminRouter.get('/affiliate-profiles', async (_req, res) => {
+  try { res.json({ success: true, networks: AFFILIATE_NETWORKS, profiles: await listProfiles() }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load affiliate profiles' }); }
+});
+adminRouter.post('/affiliate-profiles', async (req, res) => {
+  try {
+    const r = await saveProfile(req.body || {});
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    audit(req, 'affiliate_profile.save', String(req.body?.slug || ''));
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save affiliate profile' }); }
+});
+adminRouter.delete('/affiliate-profiles/:slug', async (req, res) => {
+  try { await deleteProfile(req.params.slug); audit(req, 'affiliate_profile.delete', req.params.slug); res.json({ success: true }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete affiliate profile' }); }
+});
+
+// ---- Deals registry (offers / coupons / bank, card, gift-card, loan, insurance, movie deals) ----
+adminRouter.get('/deals', async (_req, res) => {
+  try { res.json({ success: true, kinds: DEAL_KINDS, deals: await listAllDeals() }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load deals' }); }
+});
+
+adminRouter.post('/deals', async (req, res) => {
+  try {
+    const r = await saveDeal(req.body || {});
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    audit(req, req.body?.id ? 'deal.update' : 'deal.create', String(r.id ?? ''));
+    res.json({ success: true, id: r.id });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save deal' }); }
+});
+
+adminRouter.delete('/deals/:id', async (req, res) => {
+  try {
+    await deleteDeal(Number(req.params.id));
+    audit(req, 'deal.delete', req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete deal' }); }
 });
 
 adminRouter.delete('/app-links/:key', async (req, res) => {

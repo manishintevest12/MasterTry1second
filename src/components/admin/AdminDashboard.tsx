@@ -54,10 +54,12 @@ import { QuickAppsAdminTab } from './QuickAppsAdminTab';
 import { PlacementsTab } from './PlacementsTab';
 import { AppLinksTab } from './AppLinksTab';
 import { NotificationsTab } from './NotificationsTab';
+import { DealsTab } from './DealsTab';
 
 export type AdminTab =
   | 'app_links'
   | 'notifications'
+  | 'deals'
   | 'traffic_performance'
   | 'quick_apps'
   | 'merchant_vendors'
@@ -556,6 +558,16 @@ export const AdminDashboard: React.FC = () => {
               }`}
             >
               Extension &amp; App Links
+            </button>
+            <button
+              onClick={() => setActiveTab('deals')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'deals'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Deals &amp; Coupons
             </button>
             <button
               onClick={() => setActiveTab('notifications')}
@@ -1269,6 +1281,7 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'placements' && <PlacementsTab />}
         {activeTab === 'app_links' && <AppLinksTab />}
         {activeTab === 'notifications' && <NotificationsTab />}
+        {activeTab === 'deals' && <DealsTab />}
 
         {/* ================= TAB 11: 10-DIGIT MERCHANT VENDOR ACCESS MANAGEMENT ================= */}
         {activeTab === 'merchant_vendors' && <MerchantVendorIdsTab />}

@@ -240,6 +240,7 @@ export class FileStore implements DataStore {
           if (/^now\(\)$/i.test(expr)) row[col] = new Date().toISOString();
           else if (/^null$/i.test(expr)) row[col] = null;
           else if (expr === '?') row[col] = params[paramIdx >= 0 ? paramIdx : 0];
+          else if (/^-?\d+(\.\d+)?$/.test(expr)) row[col] = Number(expr); // numeric literal (is_active=1), NOT a column name
           else if (/^`?(\w+)`?\s*[-+]\s*(\d+)$/i.test(expr)) {
             const am = expr.match(/^`?(\w+)`?\s*([-+])\s*(\d+)$/i)!;
             const cur = Number(row[am[1]] || 0);

@@ -892,6 +892,7 @@ var init_db = __esm({
               if (/^now\(\)$/i.test(expr)) row[col] = (/* @__PURE__ */ new Date()).toISOString();
               else if (/^null$/i.test(expr)) row[col] = null;
               else if (expr === "?") row[col] = params[paramIdx >= 0 ? paramIdx : 0];
+              else if (/^-?\d+(\.\d+)?$/.test(expr)) row[col] = Number(expr);
               else if (/^`?(\w+)`?\s*[-+]\s*(\d+)$/i.test(expr)) {
                 const am = expr.match(/^`?(\w+)`?\s*([-+])\s*(\d+)$/i);
                 const cur = Number(row[am[1]] || 0);
@@ -3130,8 +3131,8 @@ var init_agodaHotels = __esm({
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
   const raw = String(q3.rawQuery || "").trim();
-  const strip = (x) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
-  const cleaned = strip(raw);
+  const strip2 = (x) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  const cleaned = strip2(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q3.location?.city) return String(q3.location.city);
   return null;
@@ -7452,7 +7453,7 @@ function matchAgg(aggs, title) {
   }
   return best;
 }
-async function enrichWithGw(o, aggs, gwHost) {
+async function enrichWithGw(o, aggs, gwHost, forSite) {
   const agg = matchAgg(aggs, String(o.title || ""));
   if (agg) {
     o.price = agg.minPrice;
@@ -7461,7 +7462,7 @@ async function enrichWithGw(o, aggs, gwHost) {
     o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
     o.attributes["theatre_count"] = agg.theatres.length;
     o.attributes["shows_today"] = agg.showCount;
-    o.attributes["data_note"] = `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
+    o.attributes["data_note"] = forSite ? `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${gwHost === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.` : `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
     const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
     if (crit) {
@@ -7484,7 +7485,7 @@ async function enrichWithGw(o, aggs, gwHost) {
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
   }
 }
-var import_node_crypto2, recentCache, moviesWorker;
+var import_node_crypto2, recentCache, bmsLastPrice, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -7500,6 +7501,7 @@ var init_movies = __esm({
     init_imdbRatings();
     import_node_crypto2 = require("node:crypto");
     recentCache = null;
+    bmsLastPrice = /* @__PURE__ */ new Map();
     moviesWorker = {
       vertical: "movies",
       tasks: [
@@ -7508,22 +7510,22 @@ var init_movies = __esm({
           name: "Movies worker: BookMyShow now-showing discovery (posters + deeplinks, city-aware)",
           priority: 1,
           maxPerMinute: 6,
-          timeoutMs: 3e4,
+          timeoutMs: 6e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "").trim();
             const entity = String(ctx.query.entityName || "").trim();
             const typedCity = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode);
             const region = await resolveBmsRegion(typedCity, fetchJsonNode);
             const healedBase = await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
-              const host = await getOverride("w_movies_bookmyshow", "api_host");
-              return pth && host ? `${host}${pth}/v1/discover` : null;
+              const host2 = await getOverride("w_movies_bookmyshow", "api_host");
+              return pth && host2 ? `${host2}${pth}/v1/discover` : null;
             }).catch(() => null);
             let res = await cffiFetch(bmsDiscoverUrl(region, healedBase), { headers: bmsDiscoverHeaders(region), timeoutMs: 25e3 });
             if ((res.status === 404 || res.status === 410) && !healedBase) {
               const rep = await dynamicScannerEngine.heal("w_movies_bookmyshow").catch(() => null);
               const fresh = rep?.healed ? await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
-                const host = await getOverride("w_movies_bookmyshow", "api_host");
-                return pth && host ? `${host}${pth}/v1/discover` : null;
+                const host2 = await getOverride("w_movies_bookmyshow", "api_host");
+                return pth && host2 ? `${host2}${pth}/v1/discover` : null;
               }).catch(() => null) : null;
               if (fresh) res = await cffiFetch(bmsDiscoverUrl(region, fresh), { headers: bmsDiscoverHeaders(region), timeoutMs: 25e3 });
             }
@@ -7535,7 +7537,45 @@ var init_movies = __esm({
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : "";
             const fingerprint = (0, import_node_crypto2.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
-            return parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+            const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+            const gwCity = gwCitySlug(typedCity || region.regionName || "");
+            const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+            let aggs = null;
+            let host = "district";
+            if (gwCity) {
+              aggs = await withTimeout(gwCityMovieAggregates("district", gwCity, 8).catch(() => null), 25e3);
+              if (!aggs || aggs.size === 0) {
+                host = "ticketnew";
+                aggs = await withTimeout(gwCityMovieAggregates("ticketnew", gwCity, 6).catch(() => null), 15e3);
+              }
+            }
+            const keyOf = (o) => `${normCity(region.regionName)}|${String(o.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
+            for (const o of cards.slice(0, 14)) {
+              try {
+                const agg = matchAgg(aggs, String(o.title || ""));
+                if (agg) {
+                  o.price = agg.minPrice;
+                  o.attributes = o.attributes || {};
+                  o.attributes["price_band"] = agg.minPrice < agg.maxPrice ? `\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}` : `\u20B9${agg.minPrice}`;
+                  o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
+                  o.attributes["theatre_count"] = String(agg.theatres.length);
+                  o.attributes["shows_today"] = String(agg.showCount);
+                  o.attributes["data_note"] = `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${host === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on BookMyShow is shown at seat selection.`;
+                  o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
+                  bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes["price_band"], note: o.attributes["data_note"] });
+                } else {
+                  const last = bmsLastPrice.get(keyOf(o));
+                  if (last && Date.now() - last.at < 24 * 36e5) {
+                    o.price = last.price;
+                    o.attributes = o.attributes || {};
+                    o.attributes["price_band"] = last.band || "";
+                    o.attributes["data_note"] = `${last.note || "Seat price observed earlier"} (last observed ${Math.round((Date.now() - last.at) / 6e4)} min ago)`;
+                  }
+                }
+              } catch {
+              }
+            }
+            return cards;
           }
         },
         {
@@ -12882,6 +12922,132 @@ var init_placements = __esm({
   }
 });
 
+// server/marketing/deals.ts
+var deals_exports = {};
+__export(deals_exports, {
+  DEAL_KINDS: () => DEAL_KINDS,
+  dealsForSeller: () => dealsForSeller,
+  deleteDeal: () => deleteDeal,
+  listAllDeals: () => listAllDeals,
+  listPublicDeals: () => listPublicDeals,
+  merchantKeyOf: () => merchantKeyOf,
+  saveDeal: () => saveDeal,
+  toPublicDeal: () => toPublicDeal,
+  validateDeal: () => validateDeal
+});
+function merchantKeyOf(name) {
+  const s = String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const first = s.split(" ")[0] || "";
+  const alias = { amzn: "amazon", "tata": "tatacliq", bms: "bookmyshow", book: "bookmyshow", paytm: "district" };
+  return alias[first] || first;
+}
+function httpsUrl(raw) {
+  try {
+    const u = new URL(String(raw || "").trim());
+    if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return null;
+    return u.toString().slice(0, 1e3);
+  } catch {
+    return null;
+  }
+}
+function validateDeal(i) {
+  const merchant_name = String(i.merchant_name || "").trim().slice(0, 120);
+  const title = String(i.title || "").trim().slice(0, 200);
+  const kind = String(i.kind || "").trim();
+  if (!merchant_name) return { ok: false, error: "Merchant name is required" };
+  if (!title) return { ok: false, error: "Title is required" };
+  if (!DEAL_KINDS.includes(kind)) return { ok: false, error: "Unknown deal type" };
+  const dest = httpsUrl(i.dest_url);
+  if (!dest) return { ok: false, error: "Destination must be a full https:// URL" };
+  const code = String(i.code ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 60) || null;
+  if (kind === "coupon" && !code) return { ok: false, error: "A coupon deal needs its code" };
+  const till = String(i.valid_till ?? "").trim();
+  if (till && !/^\d{4}-\d{2}-\d{2}$/.test(till)) return { ok: false, error: "Valid-till must be YYYY-MM-DD" };
+  const mo = i.min_order == null || i.min_order === "" ? null : Math.max(0, Math.round(Number(i.min_order)));
+  return {
+    ok: true,
+    clean: {
+      merchant_key: merchantKeyOf(i.merchant_key || merchant_name),
+      merchant_name,
+      kind,
+      title,
+      description: String(i.description ?? "").trim().slice(0, 600) || null,
+      code,
+      discount_text: String(i.discount_text ?? "").trim().slice(0, 80) || null,
+      min_order: Number.isFinite(mo) ? mo : null,
+      terms: String(i.terms ?? "").trim().slice(0, 600) || null,
+      dest_url: dest,
+      valid_till: till || null,
+      sort_weight: Math.max(-100, Math.min(100, Math.round(Number(i.sort_weight) || 0))),
+      is_active: i.is_active === false ? 0 : 1
+    }
+  };
+}
+function toPublicDeal(r) {
+  return {
+    id: Number(r.id),
+    merchantKey: r.merchant_key,
+    merchantName: r.merchant_name,
+    kind: r.kind,
+    title: r.title,
+    description: r.description || null,
+    code: r.code || null,
+    discountText: r.discount_text || null,
+    minOrder: r.min_order == null ? null : Number(r.min_order),
+    terms: r.terms || null,
+    imageUrl: r.image_url || null,
+    validTill: r.valid_till ? String(r.valid_till).slice(0, 10) : null,
+    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}` })
+  };
+}
+async function listAllDeals() {
+  return getStore().query("SELECT * FROM deals ORDER BY id DESC LIMIT 500").catch(() => []);
+}
+async function listPublicDeals(opts = {}) {
+  const rows = await getStore().query("SELECT * FROM deals WHERE is_active = ? ORDER BY sort_weight DESC, id DESC LIMIT 500", [1]).catch(() => []);
+  const mk = opts.merchant ? merchantKeyOf(opts.merchant) : "";
+  return rows.filter((r) => isLive(r) && (!mk || r.merchant_key === mk) && (!opts.kind || r.kind === opts.kind)).slice(0, Math.min(200, opts.limit || 100)).map(toPublicDeal);
+}
+async function dealsForSeller(seller, limit = 6) {
+  const rank = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
+  const all = await listPublicDeals({ merchant: seller, limit: 100 });
+  return all.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)).slice(0, limit);
+}
+async function saveDeal(i) {
+  const v = validateDeal(i);
+  if (!v.ok) return { ok: false, error: v.error };
+  const c = v.clean;
+  const store2 = getStore();
+  const vals = [c.merchant_key, c.merchant_name, c.kind, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
+  if (i.id) {
+    const ex = await store2.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
+    if (!ex.length) return { ok: false, error: "Deal not found" };
+    await store2.execute(
+      "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
+      [...vals, Number(i.id)]
+    );
+    return { ok: true, id: Number(i.id) };
+  }
+  await store2.execute(
+    "INSERT INTO deals (merchant_key, merchant_name, kind, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    vals
+  );
+  const row = await store2.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
+  return { ok: true, id: row[0] ? Number(row[0].id) : void 0 };
+}
+async function deleteDeal(id) {
+  await getStore().execute("DELETE FROM deals WHERE id = ?", [Number(id)]);
+}
+var DEAL_KINDS, isLive;
+var init_deals = __esm({
+  "server/marketing/deals.ts"() {
+    init_db();
+    init_deeplink();
+    DEAL_KINDS = ["bank_offer", "coupon", "gift_card", "credit_card", "loan", "insurance", "movie", "cashback", "sale"];
+    isLive = (r, today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) => (Number(r.is_active) === 1 || r.is_active === true) && (!r.valid_till || String(r.valid_till).slice(0, 10) >= today);
+  }
+});
+
 // server/marketing/appLinks.ts
 var appLinks_exports = {};
 __export(appLinks_exports, {
@@ -13894,6 +14060,23 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e?.message || "Could not load ad slot" });
       }
     });
+    apiRouter.get("/deals", async (req, res) => {
+      try {
+        const { listPublicDeals: listPublicDeals2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+        const deals = await listPublicDeals2({ merchant: req.query.merchant, kind: req.query.kind, limit: Number(req.query.limit) || 100 });
+        res.json({ success: true, deals });
+      } catch {
+        res.json({ success: true, deals: [] });
+      }
+    });
+    apiRouter.get("/deals/for-seller", async (req, res) => {
+      try {
+        const { dealsForSeller: dealsForSeller2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+        res.json({ success: true, deals: await dealsForSeller2(String(req.query.seller || ""), Number(req.query.limit) || 6) });
+      } catch {
+        res.json({ success: true, deals: [] });
+      }
+    });
     apiRouter.get("/app-links", async (_req, res) => {
       try {
         const { getPublicAppLinks: getPublicAppLinks2 } = await Promise.resolve().then(() => (init_appLinks(), appLinks_exports));
@@ -14112,6 +14295,389 @@ var init_routes = __esm({
       if (!r.ok) return res.status(400).json({ success: false, error: r.error });
       res.json({ success: true, message: "Fulfilment details submitted (visible only to prize fulfilment admins)" });
     });
+  }
+});
+
+// server/affiliate/profiles.ts
+function validateProfile(i) {
+  const slug = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
+  const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+  const network = String(i.network || "").trim().toLowerCase();
+  const template = String(i.template || "").trim();
+  if (!slug) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
+  if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
+  if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
+  if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
+  let probe;
+  try {
+    probe = new URL(template.replace(/\{[a-z0-9_]+\}/gi, "x"));
+  } catch {
+    return { ok: false, error: "Template must be a full https:// tracking link" };
+  }
+  if (probe.protocol !== "https:") return { ok: false, error: "Template must start with https://" };
+  if (template.length > 500) return { ok: false, error: "Template is too long (max 500)" };
+  return {
+    ok: true,
+    clean: {
+      slug,
+      company_domain: domain,
+      network,
+      template,
+      campaign_key: String(i.campaign_key ?? "").trim().slice(0, 160) || null,
+      subid_param: String(i.subid_param ?? "subid").trim().replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "subid",
+      active: i.active === false ? 0 : 1
+    }
+  };
+}
+async function listProfiles() {
+  return getStore().query("SELECT id, slug, company_domain, network, campaign_key, template, subid_param, active FROM affiliate_configs ORDER BY slug ASC LIMIT 300").catch(() => []);
+}
+async function saveProfile(i) {
+  const v = validateProfile(i);
+  if (!v.ok) return { ok: false, error: v.error };
+  const c = v.clean;
+  const store2 = getStore();
+  const ex = await store2.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
+  if (ex.length) {
+    await store2.execute(
+      "UPDATE affiliate_configs SET company_domain=?, network=?, campaign_key=?, template=?, subid_param=?, active=? WHERE slug=?",
+      [c.company_domain, c.network, c.campaign_key, c.template, c.subid_param, c.active, c.slug]
+    );
+  } else {
+    await store2.execute(
+      "INSERT INTO affiliate_configs (slug, company_domain, network, campaign_key, template, subid_param, active) VALUES (?,?,?,?,?,?,?)",
+      [c.slug, c.company_domain, c.network, c.campaign_key, c.template, c.subid_param, c.active]
+    );
+  }
+  return { ok: true };
+}
+async function deleteProfile(slug) {
+  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug || "").trim().toLowerCase()]);
+}
+var AFFILIATE_NETWORKS;
+var init_profiles = __esm({
+  "server/affiliate/profiles.ts"() {
+    init_db();
+    AFFILIATE_NETWORKS = ["cuelinks", "vcommission", "admitad", "optimise", "direct"];
+  }
+});
+
+// server/deals/acquisition.ts
+function usd(n) {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
+}
+function parseMyx(html) {
+  const start2 = /window\.__myx\s*=\s*\{/.exec(html);
+  if (!start2) return null;
+  const from = start2.index + start2[0].length - 1;
+  let depth = 0, inStr = false, esc = false, end = -1;
+  for (let i = from; i < html.length; i++) {
+    const ch = html[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) return null;
+  try {
+    return JSON.parse(html.slice(from, end + 1));
+  } catch {
+    return null;
+  }
+}
+function extractMyxDeals(root, limit = 24) {
+  const products = root?.searchData?.results?.products || [];
+  const out = [];
+  for (const p of products.slice(0, limit)) {
+    const name = strip(p?.productName);
+    const price = usd(p?.price);
+    const disc = strip(p?.discountDisplayLabel || "").replace(/[()]/g, "");
+    if (!name || !price || !/\d+\s*%/.test(disc)) continue;
+    const landing = String(p?.landingPageUrl || "").replace(/^\/+/, "");
+    if (!landing) continue;
+    const brand = strip(p?.brand);
+    out.push({
+      merchant_key: "myntra",
+      merchant_name: "Myntra",
+      kind: "sale",
+      title: clip(brand ? `${brand} ${name}` : name, 120),
+      description: `Live on Myntra's offers page at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.mrp) ?? price}).`,
+      code: null,
+      discount_text: disc,
+      min_order: null,
+      terms: "Discount as listed on myntra.com/offers while the sale runs.",
+      dest_url: `https://www.myntra.com/${landing}`,
+      valid_till: null,
+      sort_weight: 5,
+      dedupe_key: `myntra|${p?.productId || landing.slice(0, 80)}`,
+      image_url: p?.searchImage ? String(p.searchImage).replace(/^http:/, "https:") : null
+    });
+  }
+  return out;
+}
+async function acquireMyntraDeals() {
+  const r = await cffiFetch("https://www.myntra.com/offers", { timeoutMs: 25e3 });
+  if (r.status !== 200) throw new Error(`Myntra /offers HTTP ${r.status}`);
+  const root = parseMyx(r.body);
+  const deals = extractMyxDeals(root);
+  if (!deals.length) throw new Error("Myntra /offers carried no discounted products");
+  return deals;
+}
+async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
+  const key = "Vwdu3LWvHSOhAusUG9xfFw==";
+  const tokenOf = () => {
+    const cipher = (0, import_crypto23.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
+  };
+  const out = [];
+  for (const term of queries) {
+    const searchText = encodeURIComponent(`${term}:relevance:inStockFlag:true`);
+    const url = `https://searchbff.tatacliq.com/v2/products/mpl/search?searchText=${searchText}&originalSearchText=${encodeURIComponent(term)}&isTextSearch=true&isFilter=false&qc=false&page=0&isMDE=true&isPwa=true&pageSize=20&typeID=all&channel=mobile`;
+    const r = await cffiFetch(url, {
+      timeoutMs: 15e3,
+      headers: { Accept: "application/json", authorization: "Bearer ", "x-auth": tokenOf(), "X-ACCESS-TOKEN": tokenOf() }
+    });
+    if (r.status !== 200) throw new Error(`Tata CLiQ BFF HTTP ${r.status}`);
+    out.push(...extractTatacliqDeals(r.body, perQuery));
+    if (out.length >= perQuery * queries.length) break;
+  }
+  if (!out.length) throw new Error("Tata CLiQ BFF returned no discounted products");
+  return out;
+}
+function extractTatacliqDeals(body, cap = 32) {
+  const out = [];
+  let groups = [];
+  try {
+    groups = JSON.parse(body).response || [];
+  } catch {
+    return out;
+  }
+  for (const g of groups) {
+    const rows = g?.product_search_page?.search_result || [];
+    for (const p of rows) {
+      const disc = Number(p?.discountPercent) || 0;
+      const price = usd(p?.price?.sellingPrice?.doubleValue);
+      const raw = String(p?.webURL || "");
+      const url2 = raw.startsWith("https://www.tatacliq.com") ? raw : raw.startsWith("/") ? `https://www.tatacliq.com${raw}` : null;
+      if (disc < 40 || !price || !url2) continue;
+      const brand = strip(p?.brandname);
+      const title = strip(p?.productTitle || p?.productname);
+      out.push({
+        merchant_key: "tatacliq",
+        merchant_name: "Tata CLiQ",
+        kind: "sale",
+        title: clip(brand ? `${brand} ${title}` : title, 120),
+        description: `In stock on Tata CLiQ at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.price?.mrpPrice?.doubleValue) ?? price}).`,
+        code: null,
+        discount_text: `${disc}% OFF`,
+        min_order: null,
+        terms: "Price and stock as returned by tatacliq.com right now.",
+        dest_url: url2,
+        valid_till: null,
+        sort_weight: 4,
+        dedupe_key: `tatacliq|${p?.ussid || url2.slice(0, 120)}`,
+        image_url: p?.imageURL ? `https:${String(p.imageURL).replace(/^\w+:?/, "")}` : null
+      });
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
+async function amazonSessionFetch(url) {
+  const r1 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+  let body = r1.body;
+  let jar = r1.cookies;
+  for (let hop = 0; hop < 2; hop++) {
+    if (!(body && body.includes("bm-verify"))) break;
+    const m = body.match(/URL='([^']+)'/);
+    if (!m) break;
+    const v = m[1].startsWith("/") ? `https://www.amazon.in${m[1]}` : m[1];
+    await new Promise((res) => setTimeout(res, 1200));
+    const r2 = await cffiFetch(v, { cookies: jar, returnCookies: true, timeoutMs: 22e3 });
+    body = r2.body;
+    jar = r2.cookies;
+  }
+  return body;
+}
+function extractAmazonCardDeals(html) {
+  const out = [];
+  const idx = [...html.matchAll(/data-asin="([A-Z0-9]{10})"/g)].map((m) => m.index);
+  for (let c = 0; c < idx.length && out.length < 30; c++) {
+    const chunk = html.slice(idx[c], c + 1 < idx.length ? idx[c + 1] : html.length);
+    const coupon = COUPON_TXT.exec(chunk);
+    if (!coupon) continue;
+    const asin = /data-asin="([A-Z0-9]{10})"/.exec(chunk)[1];
+    const title = strip((/<span class="a-size-medium[^"]*"[^>]*>(.*?)<\/span>/.exec(chunk) || [])[1] || (/<h2[^>]*>(.*?)<\/h2>/.exec(chunk) || [])[1] || "").replace(/<[^>]+>/g, "");
+    if (!title) continue;
+    const whole = Number((/class="a-price-whole">([\d,]+)/.exec(chunk) || [])[1]?.replace(/,/g, ""));
+    const amount = Number(coupon[1] || coupon[2] || 0) || null;
+    const pct = coupon[3] ? Number(coupon[3]) : null;
+    out.push({
+      merchant_key: "amazon",
+      merchant_name: "Amazon",
+      kind: "coupon",
+      title: clip(title, 120),
+      description: amount ? `Amazon lists a \u20B9${amount} clip-on coupon on this product${Number.isFinite(whole) ? ` (current price \u20B9${whole.toLocaleString("en-IN")})` : ""}.` : `Amazon lists a ${pct}% clip-on coupon on this product.`,
+      code: null,
+      // Amazon coupons clip at the product page, they have no public code
+      discount_text: amount ? `Save \u20B9${amount} with coupon` : `${pct}% with coupon`,
+      min_order: null,
+      terms: "Clip the coupon on the product page; the discount applies at checkout.",
+      dest_url: `https://www.amazon.in/dp/${asin}`,
+      valid_till: null,
+      sort_weight: 8,
+      dedupe_key: `amazon-coupon|${asin}`,
+      image_url: null
+    });
+  }
+  return out;
+}
+function extractAmazonBankOffers(dpHtml, asin, title) {
+  const out = [];
+  const text = dpHtml.replace(/<script[\s\S]*?<\/script>/g, " ");
+  const re = /(?:Bank Offer|Instant (?:Discount|Cashback)|Get (?:up to )?(?:₹|Rs\.?)\s?\d[\s\S]{0,180}?offer|No Cost EMI[^<]{0,120})[\s\S]{0,260}/gi;
+  const seen = /* @__PURE__ */ new Set();
+  for (const m of text.matchAll(re)) {
+    const raw = strip(m[0].replace(/<[^>]+>/g, " ").replace(/\s*•\s*/g, " ")).slice(0, 220);
+    if (!raw || raw.length < 20) continue;
+    const t = clip(raw.split(/(?<=offer|EMI)\b/)[0] || raw, 200);
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push({
+      merchant_key: "amazon",
+      merchant_name: "Amazon",
+      kind: "bank_offer",
+      title: clip(t, 120),
+      description: `Listed on this Amazon product page${title ? ` (${clip(title, 60)})` : ""}.`,
+      code: null,
+      discount_text: null,
+      min_order: null,
+      terms: "Bank offer terms are shown on the product page at checkout.",
+      dest_url: `https://www.amazon.in/dp/${asin}`,
+      valid_till: null,
+      sort_weight: 7,
+      dedupe_key: `amazon-bank|${asin}|${t.slice(0, 100)}`,
+      image_url: null
+    });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+async function acquireAmazonDeals(queries = ["air fryer", "wireless earbuds", "smartwatch", "mixer grinder"]) {
+  const out = [];
+  let anySrp = false;
+  for (const term of queries) {
+    const url = `https://www.amazon.in/s?k=${encodeURIComponent(term)}`;
+    const body = await amazonSessionFetch(url);
+    if (!body || body.length < 5e4) continue;
+    anySrp = true;
+    const cardDeals = extractAmazonCardDeals(body);
+    out.push(...cardDeals);
+    const asin = (body.match(/data-asin="([A-Z0-9]{10})"/) || [])[1];
+    if (asin && !out.some((d) => d.dedupe_key.startsWith("amazon-bank"))) {
+      const dp = await amazonSessionFetch(`https://www.amazon.in/dp/${asin}`);
+      if (dp && dp.length > 5e4) {
+        const dpTitle = strip((/<span id="productTitle"[^>]*>([\s\S]*?)<\/span>/.exec(dp) || [])[1] || "");
+        out.push(...extractAmazonBankOffers(dp, asin, dpTitle));
+      }
+    }
+    if (out.length >= 40) break;
+  }
+  if (!anySrp) throw new Error("Amazon SRP did not load for any query (edge gate)");
+  return out;
+}
+function cleanDeal(d) {
+  return {
+    merchant_key: d.merchant_key,
+    merchant_name: d.merchant_name,
+    kind: d.kind,
+    title: clip(strip(d.title), 200),
+    description: clip(strip(d.description || ""), 600) || null,
+    code: null,
+    discount_text: clip(strip(d.discount_text || ""), 80) || null,
+    min_order: null,
+    terms: clip(strip(d.terms || ""), 600) || null,
+    dest_url: String(d.dest_url).slice(0, 1e3),
+    valid_till: null,
+    sort_weight: d.sort_weight ?? 0,
+    is_active: 1,
+    source: "auto",
+    dedupe_key: d.dedupe_key.slice(0, 180),
+    image_url: d.image_url || null
+  };
+}
+async function syncAutoDeals() {
+  const providers = [
+    { provider: "myntra", run: () => acquireMyntraDeals() },
+    { provider: "tatacliq", run: () => acquireTatacliqDeals() },
+    { provider: "amazon", run: () => acquireAmazonDeals() }
+  ];
+  const store2 = getStore();
+  const now = /* @__PURE__ */ new Date();
+  const outcomes = [];
+  for (const p of providers) {
+    try {
+      const deals = await p.run();
+      let saved = 0;
+      for (const d of deals) {
+        const c = cleanDeal(d);
+        const ex = await store2.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
+        if (ex.length) {
+          await store2.execute(
+            "UPDATE deals SET merchant_name=?, kind=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?",
+            [c.merchant_name, c.kind, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]
+          );
+        } else {
+          await store2.execute(
+            `INSERT INTO deals (merchant_key, merchant_name, kind, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [c.merchant_key, c.merchant_name, c.kind, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]
+          );
+        }
+        saved++;
+      }
+      outcomes.push({ provider: p.provider, ok: true, deals: saved });
+    } catch (e) {
+      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip(String(e?.message || e), 160) });
+      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip(String(e?.message || e), 120) });
+    }
+  }
+  try {
+    const rows = await store2.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
+    const cutoff = Date.now() - 3 * 864e5;
+    for (const r of rows) {
+      const seen = Date.parse(String(r.last_seen_at || "").replace(" ", "T"));
+      if (Number.isFinite(seen) && seen < cutoff) {
+        await store2.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
+      }
+    }
+  } catch {
+  }
+  log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
+  return outcomes;
+}
+var import_crypto23, strip, clip, COUPON_TXT;
+var init_acquisition = __esm({
+  "server/deals/acquisition.ts"() {
+    import_crypto23 = require("crypto");
+    init_curlCffiFetch();
+    init_logger();
+    init_db();
+    strip = (s) => String(s || "").replace(/\s+/g, " ").trim();
+    clip = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
+    COUPON_TXT = /(?:₹|Rs\.?\s?)\s?(\d{2,5})\s?coupon|Save (?:up to )?(?:₹|Rs\.?\s?)(\d{2,5}) with (?:coupon| promo)|(\d{1,2})% (?:with )?coupon/i;
   }
 });
 
@@ -14780,6 +15346,9 @@ var init_adminRoutes = __esm({
     init_affiliateNetwork();
     init_placements();
     init_appLinks();
+    init_deals();
+    init_profiles();
+    init_acquisition();
     init_notifications();
     init_logger();
     init_acceptanceRunner();
@@ -15019,6 +15588,65 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e?.message || "Could not remove notification" });
       }
     });
+    adminRouter.post("/deals/sync", async (_req, res) => {
+      try {
+        res.json({ success: true, outcomes: await syncAutoDeals() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Sync failed" });
+      }
+    });
+    adminRouter.get("/affiliate-profiles", async (_req, res) => {
+      try {
+        res.json({ success: true, networks: AFFILIATE_NETWORKS, profiles: await listProfiles() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load affiliate profiles" });
+      }
+    });
+    adminRouter.post("/affiliate-profiles", async (req, res) => {
+      try {
+        const r = await saveProfile(req.body || {});
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        audit(req, "affiliate_profile.save", String(req.body?.slug || ""));
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save affiliate profile" });
+      }
+    });
+    adminRouter.delete("/affiliate-profiles/:slug", async (req, res) => {
+      try {
+        await deleteProfile(req.params.slug);
+        audit(req, "affiliate_profile.delete", req.params.slug);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete affiliate profile" });
+      }
+    });
+    adminRouter.get("/deals", async (_req, res) => {
+      try {
+        res.json({ success: true, kinds: DEAL_KINDS, deals: await listAllDeals() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load deals" });
+      }
+    });
+    adminRouter.post("/deals", async (req, res) => {
+      try {
+        const r = await saveDeal(req.body || {});
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        audit(req, req.body?.id ? "deal.update" : "deal.create", String(r.id ?? ""));
+        res.json({ success: true, id: r.id });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save deal" });
+      }
+    });
+    adminRouter.delete("/deals/:id", async (req, res) => {
+      try {
+        await deleteDeal(Number(req.params.id));
+        audit(req, "deal.delete", req.params.id);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete deal" });
+      }
+    });
     adminRouter.delete("/app-links/:key", async (req, res) => {
       try {
         await deleteAppLink(req.params.key);
@@ -15170,6 +15798,28 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e?.message || "failed" });
       }
     });
+  }
+});
+
+// server/deals/bootstrap.ts
+var bootstrap_exports = {};
+__export(bootstrap_exports, {
+  bootstrapDealsSync: () => bootstrapDealsSync
+});
+function bootstrapDealsSync() {
+  const run = () => syncAutoDeals().catch((e) => log.warn("Deals", "auto sync crashed (isolated)", { error: String(e?.message || e).slice(0, 120) }));
+  setTimeout(() => {
+    void run();
+  }, 45e3).unref?.();
+  const t = setInterval(() => {
+    void run();
+  }, 6 * 60 * 60 * 1e3);
+  t.unref?.();
+}
+var init_bootstrap = __esm({
+  "server/deals/bootstrap.ts"() {
+    init_acquisition();
+    init_logger();
   }
 });
 
@@ -16099,11 +16749,13 @@ async function createApp() {
   const { settings: settings2 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
   const { apiRouter: apiRouter2, bootstrapBackend: bootstrapBackend2 } = await Promise.resolve().then(() => (init_routes(), routes_exports));
   const { adminRouter: adminRouter2 } = await Promise.resolve().then(() => (init_adminRoutes(), adminRoutes_exports));
+  const { bootstrapDealsSync: bootstrapDealsSync2 } = await Promise.resolve().then(() => (init_bootstrap(), bootstrap_exports));
   const { startWorkers: startWorkers2 } = await Promise.resolve().then(() => (init_refreshWorker(), refreshWorker_exports));
   const { affiliateRouter: affiliateRouter2, bootstrapAffiliateSync: bootstrapAffiliateSync2 } = await Promise.resolve().then(() => (init_api(), api_exports));
   const { log: log2 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
   app.use("/api", apiRouter2);
   app.use("/api/admin", adminRouter2);
+  bootstrapDealsSync2();
   app.use("/api/v1", affiliateRouter2);
   await bootstrapBackend2();
   if (settings2.env !== "test") {

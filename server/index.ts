@@ -18,6 +18,7 @@ export async function createApp(): Promise<express.Express> {
   const { settings } = await import('./common/settings');
   const { apiRouter, bootstrapBackend } = await import('./api/routes');
   const { adminRouter } = await import('./admin/adminRoutes');
+  const { bootstrapDealsSync } = await import('./deals/bootstrap');
   const { startWorkers } = await import('./workers/refreshWorker');
   const { affiliateRouter, bootstrapAffiliateSync } = await import('./affiliate/api');
   const { log } = await import('./common/logger');
@@ -25,6 +26,7 @@ export async function createApp(): Promise<express.Express> {
   // Core API
   app.use('/api', apiRouter);
   app.use('/api/admin', adminRouter);
+  bootstrapDealsSync();
   app.use('/api/v1', affiliateRouter); // unified affiliate offers aggregator
 
   // Validate + migrate durable storage, load source config, start L2 cache + workers
