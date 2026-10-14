@@ -21,6 +21,7 @@ import {
   registerReferral, submitFulfilmentDetails, validPointBalance,
 } from '../rewards/rewardsEngine';
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
+import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore } from '../common/db';
@@ -570,6 +571,37 @@ apiRouter.delete('/alerts/:id', authMiddleware, requireAuth, async (req, res) =>
   const user = (req as any).user;
   const ok = await deleteAlert(Number(user.id), Number(req.params.id));
   res.status(ok ? 200 : 404).json({ success: ok });
+});
+
+// ============ Spend Lens: which website did you spend how much on ============
+// Only user-confirmed purchases (typed in or confirmed from a redirect prefill).
+// Clicks are NEVER counted as spend — that would be fabricated data.
+apiRouter.get('/spend', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  res.json({ success: true, ...(await spendSummary(Number(user.id))) });
+});
+
+apiRouter.post('/spend', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const b = req.body || {};
+  const r = await addSpendEntry({
+    userId: Number(user.id),
+    merchant: String(b.merchant || ''),
+    amount: Number(b.amount),
+    itemTitle: b.itemTitle ? String(b.itemTitle) : null,
+    vertical: b.vertical ? String(b.vertical) : null,
+    entryDate: String(b.entryDate || ''),
+    source: b.source === 'redirect' ? 'redirect' : 'manual',
+  });
+  if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+  res.json({ success: true, id: r.id, ...(await spendSummary(Number(user.id))) });
+});
+
+apiRouter.delete('/spend/:id', authMiddleware, requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const ok = await deleteSpendEntry(Number(user.id), Number(req.params.id));
+  if (!ok) return res.status(404).json({ success: false });
+  res.json({ success: true, ...(await spendSummary(Number(user.id))) });
 });
 
 // ============ Notifications hub (auto price drops + admin broadcasts) ============

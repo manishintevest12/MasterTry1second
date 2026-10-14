@@ -20,6 +20,7 @@ import { ReviewModal } from './components/ReviewModal';
 import { PriceAlertModal } from './components/PriceAlertModal';
 import { ProductPageView } from './components/ProductPageView';
 import { PriceAlertsView } from './components/PriceAlertsView';
+import { SpendLensView } from './components/SpendLensView';
 import { BrowserExtensionModal } from './components/BrowserExtensionModal';
 import { NotificationsDrawer } from './components/NotificationsDrawer';
 import { ProfileModal } from './components/ProfileModal';
@@ -71,6 +72,7 @@ const MainContent: React.FC = () => {
         {activeNavTab === 'radar' && <RadarView />}
         {activeNavTab === 'insights' && <AiInsightsView />}
         {activeNavTab === 'tracker' && <PriceAlertsView />}
+        {activeNavTab === 'spendlens' && <SpendLensView />}
         {activeNavTab === 'product' && <ProductPageView />}
         {activeNavTab === 'compare' && <ComparisonFeed />}
         {activeNavTab === 'rewards' && <RewardsHub />}

@@ -6,6 +6,7 @@ import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import 'kit.dart';
+import '../screens/spend_lens_screen.dart';
 
 /// The website's RedirectionModal, app edition: confirms the direct price and
 /// shows the seller's real best offer / best coupon (from /api/deals/for-seller)
@@ -188,6 +189,31 @@ class _RedirectSheetState extends State<_RedirectSheet> {
                 ),
               ),
             ]),
+            const SizedBox(height: 8),
+            // Spend Lens prefill: a SUGGESTION the user confirms — never auto-saved.
+            if (widget.price != null && widget.price! > 0)
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  AppState.instance.navigator.currentState?.push(
+                    MaterialPageRoute(
+                      builder: (_) => SpendLensScreen(
+                        prefill: SpendPrefill(
+                          merchant: widget.sellerName,
+                          amount: widget.price ?? 0,
+                          itemTitle: widget.title,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  side: const BorderSide(color: T1SColors.red),
+                ),
+                icon: const Icon(Icons.account_balance_wallet_rounded, size: 15, color: T1SColors.red),
+                label: Text('Log purchase in Spend Lens', style: tx(context, 11, w: FontWeight.w800, color: T1SColors.red)),
+              ),
           ],
         ),
       ),

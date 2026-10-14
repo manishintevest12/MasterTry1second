@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   X,
   ArrowRight,
+  Wallet,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { buildAffiliateDeepLink } from '../utils/deepLinkHelper';
@@ -12,7 +13,7 @@ import { formatPrice, isRateVertical } from '../utils/formatPrice';
 import { DealCard, type PublicDeal } from './DealCard';
 
 export const RedirectionModal: React.FC = () => {
-  const { redirectionState, closeRedirection, userPoints, userLocation, affiliateIds } = useApp();
+  const { redirectionState, closeRedirection, userPoints, userLocation, affiliateIds, openSpendLens } = useApp();
   const [sellerDeals, setSellerDeals] = useState<PublicDeal[]>([]);
   const sellerName = redirectionState.quote?.sellerName || '';
   const open = redirectionState.isOpen;
@@ -141,6 +142,19 @@ export const RedirectionModal: React.FC = () => {
                 </strong>
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={() => {
+                openSpendLens({ merchant: quote.sellerName, amount: quote.price, itemTitle: item.title, vertical: item.vertical });
+                closeRedirection();
+              }}
+              className="w-full mb-2 py-2 px-4 bg-red-50 hover:bg-red-100 text-[#E7000B] text-[11px] font-bold rounded-xl border border-red-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Prefill this purchase in Spend Lens — you confirm the amount, nothing is auto-saved"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              Log this purchase in Spend Lens
+            </button>
 
             <div className="flex items-center gap-2">
               <button

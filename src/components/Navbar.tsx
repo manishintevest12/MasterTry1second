@@ -21,7 +21,9 @@ import {
   Train,
   Pill,
   Receipt,
-  CreditCard,} from 'lucide-react';
+  CreditCard,
+  Wallet,
+} from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId, MainNavTab } from '../types';
@@ -179,10 +181,14 @@ export const Navbar: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-100 grid grid-cols-3 gap-1.5">
+                <div className="mt-2 pt-2 border-t border-slate-100 grid grid-cols-4 gap-1.5">
                   <button onClick={() => { handleNavClick('tracker'); setMobileOpen(false); }} className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer">
                     <Heart className="w-4 h-4 text-rose-600 fill-rose-500" />
                     Tracker{trackedItemIds.length > 0 ? ` (${trackedItemIds.length})` : ''}
+                  </button>
+                  <button onClick={() => { handleNavClick('spendlens'); setMobileOpen(false); }} className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer">
+                    <Wallet className="w-4 h-4 text-[#E7000B]" />
+                    Spend Lens
                   </button>
                   <button onClick={() => { setIsNotificationsOpen(true); setMobileOpen(false); }} className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer">
                     <Bell className="w-4 h-4 text-slate-700" />
@@ -273,6 +279,21 @@ export const Navbar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Spend Lens Button */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('spendlens')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full border text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                activeNavTab === 'spendlens'
+                  ? 'bg-red-50 text-red-700 border-red-300 shadow-xs'
+                  : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+              }`}
+              title="Spend Lens — which website did you spend how much on"
+            >
+              <Wallet className="w-3.5 h-3.5 text-[#E7000B]" />
+              <span className="hidden sm:inline">Spend Lens</span>
+            </button>
 
             {/* My Price Tracker Hub Button */}
             <button

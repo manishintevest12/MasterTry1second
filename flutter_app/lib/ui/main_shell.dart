@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../core/verticals.dart';
 import 'screens/ai_insights_screen.dart';
 import 'screens/alerts_screen.dart';
+import 'screens/spend_lens_screen.dart';
 import 'screens/compare_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/notifications_screen.dart';
@@ -109,6 +110,7 @@ class _MainShellState extends State<MainShell> {
                       _state.openVertical(v);
                     },
                     onTracker: () => _push(const AlertsScreen()),
+                    onSpendLens: () => _push(const SpendLensScreen()),
                     onAlerts: () => _push(const NotificationsScreen()),
                     onProfile: () => _push(const ProfileScreen()),
                     onRadar: () => _push(const RadarScreen()),
@@ -209,6 +211,7 @@ class _MenuSheet extends StatelessWidget {
     required this.unread,
     required this.onVertical,
     required this.onTracker,
+    required this.onSpendLens,
     required this.onAlerts,
     required this.onProfile,
     required this.onRadar,
@@ -218,6 +221,7 @@ class _MenuSheet extends StatelessWidget {
   final int unread;
   final ValueChanged<String> onVertical;
   final VoidCallback onTracker;
+  final VoidCallback onSpendLens;
   final VoidCallback onAlerts;
   final VoidCallback onProfile;
   final VoidCallback onRadar;
@@ -267,6 +271,15 @@ class _MenuSheet extends StatelessWidget {
             Expanded(child: _MenuAction(Icons.favorite_rounded, 'Tracker', badge: trackedCount, color: T1SColors.rose500, onTap: onTracker)),
             const SizedBox(width: 6),
             Expanded(child: _MenuAction(Icons.notifications_rounded, 'Alerts', badge: unread, color: T1SColors.red, onTap: onAlerts)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: _MenuAction(
+                Icons.account_balance_wallet_rounded,
+                'Spend Lens',
+                color: T1SColors.red,
+                onTap: onSpendLens,
+              ),
+            ),
             const SizedBox(width: 6),
             Expanded(
               child: _MenuAction(

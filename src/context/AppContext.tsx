@@ -226,6 +226,9 @@ interface AppContextType {
   redirectionState: RedirectionState;
   startRedirection: (item: ComparisonItem, quote: SellerQuote) => void;
   closeRedirection: () => void;
+  pendingSpendEntry: { merchant: string; amount: number; itemTitle?: string; vertical?: string } | null;
+  openSpendLens: (prefill?: { merchant: string; amount: number; itemTitle?: string; vertical?: string } | null) => void;
+  clearSpendPrefill: () => void;
   reviewModalItem: ComparisonItem | null;
   openReviewModal: (item: ComparisonItem) => void;
   closeReviewModal: () => void;
@@ -1169,6 +1172,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Redirection flow: User clicks partner deal -> Handshake -> Direct Best Price Outbound
+  // ============ Spend Lens (personal spend tracker) ============
+  // A redirect prefill is a SUGGESTION the user confirms — never auto-spend.
+  const [pendingSpendEntry, setPendingSpendEntry] = useState<{ merchant: string; amount: number; itemTitle?: string; vertical?: string } | null>(null);
+  const openSpendLens = (prefill?: { merchant: string; amount: number; itemTitle?: string; vertical?: string } | null) => {
+    if (prefill) setPendingSpendEntry(prefill);
+    setActiveNavTab('spendlens');
+  };
+  const clearSpendPrefill = () => setPendingSpendEntry(null);
+
   const startRedirection = (item: ComparisonItem, quote: SellerQuote) => {
     // High-Ticket Verticals (Loans & Insurance): replace simple outbound redirect with native CPL Lead Capture & Multi-Bank Eligibility Match
     if (item.vertical === 'loans' || item.vertical === 'insurance') {
@@ -2298,6 +2310,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         redirectionState,
         startRedirection,
         closeRedirection,
+        pendingSpendEntry,
+        openSpendLens,
+        clearSpendPrefill,
         reviewModalItem,
         openReviewModal,
         closeReviewModal,

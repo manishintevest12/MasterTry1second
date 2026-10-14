@@ -454,6 +454,55 @@ class Deal {
   int get percent => int.tryParse(RegExp(r'(\d{1,2})\s*%').firstMatch(discountText ?? '')?.group(1) ?? '') ?? 0;
 }
 
+// -- Spend Lens: user-confirmed purchases only (never inferred from clicks) --
+
+class SpendEntryM {
+  const SpendEntryM({required this.id, required this.merchant, required this.amount, this.itemTitle, this.entryDate = '', this.source = 'manual'});
+  final int id;
+  final String merchant;
+  final double amount;
+  final String? itemTitle;
+  final String entryDate;
+  final String source;
+
+  factory SpendEntryM.fromJson(Map<String, dynamic> j) => SpendEntryM(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        merchant: (j['merchant'] ?? '').toString(),
+        amount: (j['amount'] as num?)?.toDouble() ?? 0,
+        itemTitle: j['itemTitle']?.toString(),
+        entryDate: (j['entryDate'] ?? '').toString().substring(0, (j['entryDate'] ?? '').toString().length < 10 ? (j['entryDate'] ?? '').toString().length : 10),
+        source: (j['source'] ?? 'manual').toString(),
+      );
+}
+
+class SpendSummary {
+  const SpendSummary({this.total = 0, this.count = 0, this.byMerchant = const [], this.byMonth = const []});
+  final double total;
+  final int count;
+  final List<Map<String, dynamic>> byMerchant; // {merchant, total, count}
+  final List<Map<String, dynamic>> byMonth;     // {month, total}
+
+  factory SpendSummary.fromJson(Map<String, dynamic>? j) => SpendSummary(
+        total: ((j?['total'] as num?)?.toDouble() ?? 0),
+        count: ((j?['entries'] as num?)?.toInt() ?? 0),
+        byMerchant: [for (final m in (j?['byMerchant'] as List? ?? const [])) if (m is Map<String, dynamic>) m],
+        byMonth: [for (final m in (j?['byMonth'] as List? ?? const [])) if (m is Map<String, dynamic>) m],
+      );
+}
+
+class SpendData {
+  const SpendData({required this.entries, required this.summary});
+  final List<SpendEntryM> entries;
+  final SpendSummary summary;
+
+  static Future<SpendData> fromResponseFuture(Future<Map<String, dynamic>> f) async => SpendData.fromResponse(await f);
+
+  static SpendData fromResponse(Map<String, dynamic> res) => SpendData(
+        entries: [for (final e in (res['entries'] as List? ?? const [])) if (e is Map<String, dynamic>) SpendEntryM.fromJson(e)],
+        summary: SpendSummary.fromJson(res['summary'] as Map<String, dynamic>?),
+      );
+}
+
 class PriceAlert {
   final int id;
   final String productTitle;
@@ -775,6 +824,22 @@ class Try1SecondApi {
   Future<void> deleteAlert(String token, int id) async {
     final res = await _client.delete(Uri.parse('$baseUrl/api/alerts/$id'), headers: _headers(token));
     if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('Could not delete alert');
+  }
+
+  Future<SpendData> spend(String token) async => SpendData.fromResponse(await _get('/api/spend', token: token));
+
+  Future<SpendData> addSpend(String token, {required String merchant, required double amount, String? itemTitle, required String entryDate, String source = 'manual'}) =>
+      SpendData.fromResponseFuture(_post('/api/spend', {
+        'merchant': merchant,
+        'amount': amount,
+        if (itemTitle != null && itemTitle.isNotEmpty) 'itemTitle': itemTitle,
+        'entryDate': entryDate,
+        'source': source,
+      }, token: token));
+
+  Future<SpendData> deleteSpend(String token, int id) async {
+    final res = await _client.delete(Uri.parse('$baseUrl/api/spend/$id'), headers: _headers(token));
+    return SpendData.fromResponse(_decode(res));
   }
 
   Future<NotificationFeed> notifications({String? token}) async {
