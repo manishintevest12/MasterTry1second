@@ -133,7 +133,7 @@ export const ComparisonFeed: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div id="t1s-results-top" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 scroll-mt-16">
       {/* Active AI Filter Indicator if present */}
       {smartFilterText && (
         <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-xl flex items-center justify-between text-xs text-orange-900">

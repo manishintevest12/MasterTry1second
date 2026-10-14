@@ -9,6 +9,7 @@ import {
   Sparkles,
   X,
   ChevronDown,
+  SlidersHorizontal,
   Bed,
   Bus,
   ShoppingBag,
@@ -58,6 +59,7 @@ export const SearchAndFilterHeader: React.FC = () => {
     isGpsLocating,
     triggerLiveLocationScrape,
     items,
+    isScrapingLive,
     pendingAssistantSearch,
     setPendingAssistantSearch,
   } = useApp();
@@ -230,8 +232,49 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   // Find info from active pincode
   const currentPinInfo = PINCODE_DATABASE[userLocation.pincode];
 
+  // MOBILE: search/filter panel is collapsible. Collapsed by default so results sit at the top
+  // of the screen; auto-collapses the moment a search starts, expands again on vertical change.
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  React.useEffect(() => { setMobileFiltersOpen(false); }, [vertical]);
+  const wasScrapingRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isScrapingLive && !wasScrapingRef.current && typeof window !== 'undefined' && window.innerWidth < 640) {
+      setMobileFiltersOpen(false);
+      // bring the results to the top of the screen
+      setTimeout(() => {
+        const el = document.getElementById('t1s-results-top');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
+    wasScrapingRef.current = isScrapingLive;
+  }, [isScrapingLive]);
+  const verticalLabel = (VERTICAL_META as any)[vertical]?.name || 'Search';
+
   return (
     <div className="border-b border-slate-200">
+      {/* MOBILE-ONLY toggle bar: collapse / expand all search + filter controls of this vertical */}
+      <button
+        type="button"
+        onClick={() => setMobileFiltersOpen((o) => !o)}
+        aria-expanded={mobileFiltersOpen}
+        className="sm:hidden w-full flex items-center justify-between gap-2 px-4 py-2.5 bg-white border-b border-slate-200 text-left cursor-pointer"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <SlidersHorizontal className="w-4 h-4 text-red-600 shrink-0" />
+          <span className="text-xs font-extrabold text-slate-900 truncate">
+            {verticalLabel} search & filters
+          </span>
+          {searchQuery ? (
+            <span className="text-[11px] text-slate-500 truncate max-w-[40vw]">· {searchQuery}</span>
+          ) : null}
+        </span>
+        <span className="flex items-center gap-1 text-[11px] font-bold text-red-600 shrink-0">
+          {mobileFiltersOpen ? 'Hide' : 'Edit'}
+          <ChevronDown className={`w-4 h-4 transition-transform ${mobileFiltersOpen ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      <div className={mobileFiltersOpen ? 'block' : 'hidden sm:block'}>
       {/* ========================================================
           1. FOOD DELIVERY SEARCH (EXACT SWIGGY/ZOMATO STYLE + GPS/PINCODE)
           ======================================================== */}
@@ -1503,6 +1546,8 @@ const handleSelectJourneyDate = (formattedDate: string) => {
             </button>
           )}
         </div>
+      </div>
+
       </div>
 
       {/* Reusable Location Picker Modal */}

@@ -137,12 +137,17 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center gap-2 sm:hidden" ref={mobileRef}>
             <button
               type="button"
-              onClick={() => setIsCompareMenuOpen(!isCompareMenuOpen)}
-              className="h-10 w-10 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full text-xs font-black shadow-sm transition-all flex items-center justify-center cursor-pointer"
-              title="Compare 10 Verticals"
-              aria-label="Compare 10 Verticals"
+              onClick={() => { setIsNotificationsOpen(!isNotificationsOpen); setMobileOpen(false); }}
+              className="relative h-10 w-10 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full shadow-sm transition-all flex items-center justify-center cursor-pointer"
+              title="Notifications"
+              aria-label="Notifications"
             >
-              <Clock className="w-4 h-4 text-white" />
+              <Bell className="w-4 h-4 text-white" />
+              {trackedItemIds.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-white text-red-600 text-[9px] font-black rounded-full border border-red-600 flex items-center justify-center leading-none">
+                  {trackedItemIds.length > 9 ? '9+' : trackedItemIds.length}
+                </span>
+              )}
             </button>
             <button
               type="button"
