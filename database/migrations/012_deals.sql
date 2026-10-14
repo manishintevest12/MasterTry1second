@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS deals (
   merchant_key  VARCHAR(60)  NOT NULL,          -- flipkart | amazon | myntra | ajio | tatacliq | meesho | bookmyshow | district | ticketnew | hdfc-bank ...
   merchant_name VARCHAR(120) NOT NULL,
   kind          VARCHAR(24)  NOT NULL,          -- bank_offer | coupon | gift_card | credit_card | loan | insurance | movie | cashback | sale
+  vertical      VARCHAR(40)  DEFAULT NULL,      -- ecommerce | flights | hotels | bus | cab | food | grocery | movies | loans | insurance | creditcards
   title         VARCHAR(200) NOT NULL,
   description   VARCHAR(600) DEFAULT NULL,
   code          VARCHAR(60)  DEFAULT NULL,      -- coupon code, shown + copy button
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS deals (
   updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_deal_merchant (merchant_key, is_active),
   INDEX idx_deal_kind (kind, is_active),
+  INDEX idx_deal_vertical (vertical, is_active),
   INDEX idx_deal_source (source, last_seen_at),
   INDEX idx_deal_dedupe (dedupe_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

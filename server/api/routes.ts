@@ -599,21 +599,28 @@ apiRouter.get('/ads', async (req, res) => {
 });
 
 // ============ Deals (public) ============
-// GET /api/deals?merchant=flipkart&kind=coupon  -> live, unexpired deals (affiliate-free pointers)
+// GET /api/deals?merchant=flipkart&kind=coupon&vertical=ecommerce&hasImage=1  -> live, unexpired deals (affiliate-free pointers) + counts
 apiRouter.get('/deals', async (req, res) => {
   try {
-    const { listPublicDeals } = await import('../marketing/deals');
-    const deals = await listPublicDeals({ merchant: req.query.merchant as string | undefined, kind: req.query.kind as string | undefined, limit: Number(req.query.limit) || 100 });
-    res.json({ success: true, deals });
-  } catch { res.json({ success: true, deals: [] }); }
+    const { getDealsWithCounts } = await import('../marketing/deals');
+    const { deals, counts } = await getDealsWithCounts({
+      merchant: req.query.merchant as string | undefined,
+      kind: req.query.kind as string | undefined,
+      vertical: req.query.vertical as string | undefined,
+      hasImage: req.query.hasImage as string | undefined,
+      limit: Number(req.query.limit) || 100,
+    });
+    res.json({ success: true, deals, counts });
+  } catch { res.json({ success: true, deals: [], counts: {} }); }
 });
 
 // GET /api/deals/for-seller?seller=Flipkart -> the seller's best offers + coupons for the redirect page
 apiRouter.get('/deals/for-seller', async (req, res) => {
   try {
-    const { dealsForSeller } = await import('../marketing/deals');
-    res.json({ success: true, deals: await dealsForSeller(String(req.query.seller || ''), Number(req.query.limit) || 6) });
-  } catch { res.json({ success: true, deals: [] }); }
+    const { forSellerWithBest } = await import('../marketing/deals');
+    const result = await forSellerWithBest(String(req.query.seller || ''), Number(req.query.limit) || 6);
+    res.json({ success: true, deals: result.deals, best: result.best });
+  } catch { res.json({ success: true, deals: [], best: { offer: null, coupon: null } }); }
 });
 
 apiRouter.get('/app-links', async (_req, res) => {
