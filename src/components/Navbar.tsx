@@ -2,6 +2,8 @@ import React, { useRef, useEffect } from 'react';
 import {
   Clock,
   ChevronDown,
+  Menu,
+  X,
   Bell,
   Sparkles,
   Plane,
@@ -43,12 +45,17 @@ export const Navbar: React.FC = () => {
   } = useApp();
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const mobileRef = useRef<HTMLDivElement>(null);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
 
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setIsCompareMenuOpen(false);
+      }
+      if (mobileRef.current && !mobileRef.current.contains(e.target as Node)) {
+        setMobileOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -105,7 +112,7 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs">
+    <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-18">
           {/* ZONE 1: Try1Second Brand Logo (Pixel-accurate to screenshot) */}
@@ -114,7 +121,8 @@ export const Navbar: React.FC = () => {
             onClick={() => handleNavClick('home')}
             className="flex items-center text-left group cursor-pointer focus:outline-hidden"
           >
-            <Try1SecondLogo size="md" />
+            <span className="sm:hidden"><Try1SecondLogo size="sm" /></span>
+            <span className="hidden sm:inline-flex"><Try1SecondLogo size="md" /></span>
           </button>
 
           {/* ZONE 2: Middle Meta Stats / Engine Status (Quiet) */}
@@ -125,8 +133,72 @@ export const Navbar: React.FC = () => {
             <span className="text-slate-500 font-mono">14.2M+ Scanner Radar</span>
           </div>
 
-          {/* ZONE 3: Compare 10 Verticals, Alerts, Profile Avatar */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* ZONE 3 (mobile): compact Compare + hamburger */}
+          <div className="flex items-center gap-2 sm:hidden" ref={mobileRef}>
+            <button
+              type="button"
+              onClick={() => setIsCompareMenuOpen(!isCompareMenuOpen)}
+              className="h-10 w-10 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-full text-xs font-black shadow-sm transition-all flex items-center justify-center cursor-pointer"
+              title="Compare 10 Verticals"
+              aria-label="Compare 10 Verticals"
+            >
+              <Clock className="w-4 h-4 text-white" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileOpen((o) => !o)}
+              className="h-10 w-10 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center cursor-pointer"
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
+            {mobileOpen && (
+              <div className="absolute top-18 left-3 right-3 bg-white rounded-2xl border border-slate-200 shadow-xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="grid grid-cols-2 gap-1.5 max-h-[55vh] overflow-y-auto">
+                  {Object.entries(VERTICAL_META).map(([vKey, meta]) => (
+                    <button
+                      key={`m-${vKey}`}
+                      onClick={() => { handleSelectVertical(vKey as VerticalId); setMobileOpen(false); }}
+                      className={`flex items-center gap-2 p-2 rounded-xl text-left transition-colors cursor-pointer text-xs ${
+                        vertical === vKey && activeNavTab === 'compare'
+                          ? 'bg-red-50 text-red-700 font-bold border border-red-200'
+                          : 'hover:bg-slate-50 text-slate-700 font-medium'
+                      }`}
+                    >
+                      <div className="shrink-0">{getVerticalIcon(vKey)}</div>
+                      <span className="truncate">{meta.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-100 grid grid-cols-3 gap-1.5">
+                  <button onClick={() => { handleNavClick('tracker'); setMobileOpen(false); }} className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer">
+                    <Heart className="w-4 h-4 text-rose-600 fill-rose-500" />
+                    Tracker{trackedItemIds.length > 0 ? ` (${trackedItemIds.length})` : ''}
+                  </button>
+                  <button onClick={() => { setIsNotificationsOpen(true); setMobileOpen(false); }} className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer">
+                    <Bell className="w-4 h-4 text-slate-700" />
+                    Alerts
+                  </button>
+                  <button onClick={() => { setIsProfileOpen(true); setMobileOpen(false); }} className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-slate-50 text-[11px] font-bold text-slate-700 cursor-pointer">
+                    <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-slate-200 overflow-hidden flex items-center justify-center text-white text-[10px] font-bold">
+                      <span className="text-amber-400 font-mono">1S</span>
+                    </div>
+                    Profile
+                  </button>
+                </div>
+                <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <span className="text-slate-500 font-medium">{userPoints} pts</span>
+                  <button onClick={() => { handleNavClick('radar'); setMobileOpen(false); }} className="text-red-600 font-bold hover:underline cursor-pointer">
+                    Open Radar →
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ZONE 3 (>=sm): Compare 10 Verticals, Alerts, Profile Avatar */}
+          <div className="hidden sm:flex items-center gap-2.5 sm:gap-3">
             {/* Compare 10 Verticals Red Pill Button (Exact to screenshot) */}
             <div className="relative" ref={menuRef}>
               <button

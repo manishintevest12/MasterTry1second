@@ -175,9 +175,9 @@ export const ProductPageView: React.FC = () => {
 
       {data && data.found && (
         <>
-          <div className="grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,0.95fr)] gap-5 items-start">
+          <div className="grid grid-cols-1 min-w-0 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,0.95fr)] gap-5 items-start">
             {/* ---------- gallery ---------- */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-3">
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 min-w-0">
               <div className="aspect-square rounded-xl bg-slate-50 flex items-center justify-center overflow-hidden">
                 {images[activeImg] ? <img src={images[activeImg]} alt={title} className="w-full h-full object-contain" /> : <span className="text-xs text-slate-400">No photo available</span>}
               </div>
@@ -193,7 +193,7 @@ export const ProductPageView: React.FC = () => {
             </div>
 
             {/* ---------- price + compare ---------- */}
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="bg-white rounded-2xl border border-slate-200 p-4">
                 {cheapest && (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-slate-700 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1">
@@ -264,7 +264,7 @@ export const ProductPageView: React.FC = () => {
             </div>
 
             {/* ---------- deal scanner + alert ---------- */}
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="grid grid-cols-2 text-center text-xs font-black border-b border-slate-200">
                   <span className="py-2.5 text-red-600 border-b-2 border-red-600">Deal Scanner</span>
