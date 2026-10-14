@@ -144,6 +144,14 @@ export function searchableTitle(t: string): string {
   return (head + cap).trim() || t.slice(0, 80);
 }
 
+
+/** A "title" that is only the merchant/domain name is a bot wall (e.g. Amazon's interstitial <title>Amazon.in</title>), not a product. */
+export function isMerchantNameTitle(title: string | null, domain: string, merchant: string): boolean {
+  if (!title) return false;
+  const plain = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return plain(title) === plain(domain) || plain(title) === plain(merchant);
+}
+
 /** Pure HTML parser (exported for tests): JSON-LD Product > og:title > <title>. */
 export function parseProductHtml(html: string): Pick<LinkProduct, 'title' | 'titleSource' | 'pagePrice' | 'image'> {
   const $ = cheerio.load(html);
@@ -192,6 +200,26 @@ export function parseProductHtml(html: string): Pick<LinkProduct, 'title' | 'tit
   return { title, titleSource, pagePrice, image };
 }
 
+
+/** Amazon fronts repeated browserless hits with an Imperva bm-verify interstitial whose
+ * <title> is just "Amazon.in". Follow the meta-refresh verification URL with the same
+ * cookie jar (same trick as the ecommerce worker) to load the real product page. */
+async function amazonBounceFetch(url: string): Promise<string | null> {
+  const r1: any = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 18_000, returnCookies: true });
+  let body = r1?.body;
+  let jar = r1?.cookies;
+  for (let hop = 0; hop < 2; hop++) {
+    if (!(body && body.includes('bm-verify'))) break;
+    const m = String(body).match(/URL='([^']+)'/);
+    if (!m) break;
+    const v = m[1].startsWith('/') ? new URL(m[1], url).href : m[1];
+    await new Promise((res) => setTimeout(res, 1200));
+    const r2: any = await cffiFetch(v, { impersonate: 'chrome', cookies: jar, returnCookies: true, timeoutMs: 22_000 });
+    body = r2?.body; jar = r2?.cookies;
+  }
+  return body && body.includes('bm-verify') ? null : (body || null);
+}
+
 /** Resolve a pasted link to a product. Never throws; reports how much it could honestly learn. */
 export async function resolveProductFromLink(rawUrl: string): Promise<LinkProduct> {
   const safe = isSafePublicUrl(rawUrl);
@@ -205,19 +233,36 @@ export async function resolveProductFromLink(rawUrl: string): Promise<LinkProduc
 
   let parsed: ReturnType<typeof parseProductHtml> = { title: null, titleSource: 'none', pagePrice: null, image: null };
   let fetchStatus: LinkProduct['fetchStatus'] = 'failed';
+  const isAmazon = /(^|\.)amazon\.[a-z.]+$/i.test(u.hostname);
   try {
-    const res = await cffiFetch(u.href, {
-      impersonate: 'chrome',
-      timeoutMs: 12_000,
-      headers: { 'Accept-Language': 'en-IN,en;q=0.9', Accept: 'text/html,application/xhtml+xml' },
-    });
-    if (res.status >= 200 && res.status < 300 && res.body) {
-      parsed = parseProductHtml(res.body.slice(0, 3_000_000));
-      fetchStatus = 'ok';
+    if (isAmazon) {
+      const body = await amazonBounceFetch(u.href);
+      if (body) {
+        parsed = parseProductHtml(body.slice(0, 3_000_000));
+        fetchStatus = 'ok';
+      } else {
+        fetchStatus = 'blocked';
+      }
     } else {
-      fetchStatus = res.status === 403 || res.status === 429 || res.status === 503 ? 'blocked' : 'failed';
+      const res = await cffiFetch(u.href, {
+        impersonate: 'chrome',
+        timeoutMs: 12_000,
+        headers: { 'Accept-Language': 'en-IN,en;q=0.9', Accept: 'text/html,application/xhtml+xml' },
+      });
+      if (res.status >= 200 && res.status < 300 && res.body) {
+        parsed = parseProductHtml(res.body.slice(0, 3_000_000));
+        fetchStatus = 'ok';
+      } else {
+        fetchStatus = res.status === 403 || res.status === 429 || res.status === 503 ? 'blocked' : 'failed';
+      }
     }
   } catch { fetchStatus = 'failed'; }
+
+  // A "title" that is only the merchant/domain name is a bot wall, not a product.
+  if (isMerchantNameTitle(parsed.title, domain, merchant)) {
+    parsed = { title: null, titleSource: 'none', pagePrice: null, image: null };
+    if (fetchStatus === 'ok') fetchStatus = 'blocked';
+  }
 
   // Page title wins; when the site is bot-gated the product words in the URL are still the user's own input.
   if (parsed.title) return { ...parsed, title: parsed.title, merchant, domain, fetchStatus };

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isSafePublicUrl, extractUrl, titleFromSlug, cleanTitle, parseProductHtml, merchantFor, stripComparisonBoilerplate } from '../server/lens/productLink';
+import { isSafePublicUrl, extractUrl, titleFromSlug, cleanTitle, parseProductHtml, merchantFor, stripComparisonBoilerplate, isMerchantNameTitle } from '../server/lens/productLink';
 import { interpretAssistantQuestion, parseSpokenDate } from '../server/lens/assistantIntent';
 
 test('lens: private/local/odd URLs are refused (SSRF guard)', () => {
@@ -141,4 +141,12 @@ test('same-product guard: tier variants (Pro/Max/Plus/Mini) are different produc
   assert.equal(isSameProduct('apple iphone 17 pro 256 gb', 'Apple iPhone 17 (Black, 256 GB)'), false);
   assert.equal(isSameProduct('apple iphone 17 black 256 gb', 'Apple iPhone 17 (Sage, 256 GB)'), true); // colour is a variant, not a tier
   assert.equal(isSameProduct('macbook air m3', 'MacBook Pro 14 M3'), false);
+});
+
+// A page whose only "title" is the merchant name (Amazon's bot-wall <title>) must NOT count as a product.
+test('merchant-name title is rejected as a bot wall', () => {
+  assert.ok(isMerchantNameTitle('Amazon.in', 'amazon.in', 'Amazon'));
+  assert.ok(isMerchantNameTitle('Flipkart.com', 'flipkart.com', 'Flipkart'));
+  assert.ok(!isMerchantNameTitle('Philips Airfryer HD9252/90', 'amazon.in', 'Amazon'));
+  assert.ok(!isMerchantNameTitle(null, 'amazon.in', 'Amazon'));
 });
