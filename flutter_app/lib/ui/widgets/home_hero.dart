@@ -30,7 +30,7 @@ class _HomeHeroState extends State<HomeHero> {
     final t = _lensCtrl.text.trim();
     if (t.isEmpty || _busy) return;
     setState(() => _busy = true);
-    _state.openVertical('ecommerce', search: PendingSearch('ecommerce', t, productPage: true));
+    _state.openProduct(PendingSearch('ecommerce', t, productPage: true));
     setState(() => _busy = false);
   }
 
@@ -141,7 +141,7 @@ class _HomeHeroState extends State<HomeHero> {
                         decoration: InputDecoration(
                           isCollapsed: true,
                           border: InputBorder.none,
-                          hintText: 'Paste any product link (Amazon, Flipkart, Myntra...) to find it cheapest',
+                          hintText: 'Paste any product link',
                           hintStyle: tx(context, 12, color: T1SColors.slate400),
                           contentPadding: const EdgeInsets.symmetric(vertical: 12),
                         ),
@@ -154,9 +154,12 @@ class _HomeHeroState extends State<HomeHero> {
                       ),
                     const SizedBox(width: 6),
                     GestureDetector(
-                      onLongPress: () async {
+                      onTap: () async {
                         final d = await Clipboard.getData('text/plain');
-                        if (d?.text != null) setState(() => _lensCtrl.text = d!.text!.trim());
+                        final t = d?.text?.trim() ?? '';
+                        if (t.isEmpty) return;
+                        setState(() => _lensCtrl.text = t);
+                        if (RegExp(r'^https?://\S+$').hasMatch(t)) _findCheapest();
                       },
                       child: const Icon(Icons.content_paste_rounded, size: 16, color: T1SColors.slate400),
                       ),
