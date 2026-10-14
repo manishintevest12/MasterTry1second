@@ -3668,6 +3668,18 @@ var init_openflights = __esm({
 });
 
 // server/workers/parsers/ixigoFlights.ts
+function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
+  const iataOf = (city, code) => code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null;
+  const slug = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
+  const fromTok = iataOf(from, fromCode) || slug(from);
+  const toTok = iataOf(to, toCode) || slug(to);
+  const alts = [];
+  const altIata = iataOf(from, fromCode);
+  if (altIata && altIata !== fromTok) alts.push(altIata);
+  if (altIata) alts.push(slug(from));
+  if (fromTok.includes("_")) alts.push(fromTok.replace(/_/g, "-"));
+  return { fromTok, toTok, alts };
+}
 function parseIxigoFlights(nextData) {
   const entries = nextData?.props?.pageProps?.cheapFlightsData;
   if (!Array.isArray(entries)) return [];
@@ -4535,10 +4547,20 @@ var init_flights = __esm({
             const rt = routeFromQuery(raw);
             if (!rt) return [];
             const dep = ctx.query?.travelDates?.depart && /\d{4}-\d{2}-\d{2}/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const url = `https://www.ixigo.com/search/flight/${encodeURIComponent(rt.from.toLowerCase())}/${encodeURIComponent(rt.to.toLowerCase())}/${dep}/1/0`;
-            const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
+            const { fromTok, toTok, alts } = ixigoRouteTokens(rt.from, rt.to, rt.fromCode, rt.toCode, IATA);
+            const url = `https://www.ixigo.com/search/flight/${fromTok}/${toTok}/${dep}/1/0`;
+            let res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
             if (res.status === 403 || res.status === 429) {
               throw new AcquisitionError(res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Ixigo blocked: ${res.status}`, res.status);
+            }
+            if (res.status === 404) {
+              for (const altFrom of alts) {
+                const r2 = await cffiFetch(`https://www.ixigo.com/search/flight/${altFrom}/${toTok}/${dep}/1/0`, { impersonate: "chrome", timeoutMs: 3e4 });
+                if (r2.status === 200) {
+                  res = r2;
+                  break;
+                }
+              }
             }
             if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Ixigo HTTP ${res.status}`, res.status);
             const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);

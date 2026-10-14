@@ -9,7 +9,7 @@
  */
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { loadOpenFlights, parseRoute } from '../parsers/openflights';
-import { parseIxigoFlights, parseIxigoOffers } from '../parsers/ixigoFlights';
+import { parseIxigoFlights, parseIxigoOffers, ixigoRouteTokens } from '../parsers/ixigoFlights';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
@@ -170,10 +170,19 @@ export const flightsWorker: VerticalWorker = {
         const dep = ctx.query?.travelDates?.depart && /\d{4}-\d{2}-\d{2}/.test(ctx.query.travelDates.depart)
           ? ctx.query.travelDates.depart
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-        const url = `https://www.ixigo.com/search/flight/${encodeURIComponent(rt.from.toLowerCase())}/${encodeURIComponent(rt.to.toLowerCase())}/${dep}/1/0`;
-        const res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
+        // Ixigo route slugs: IATA-first; %20 in city names 404s (regression, 14 Oct 2026).
+        const { fromTok, toTok, alts } = ixigoRouteTokens(rt.from, rt.to, rt.fromCode, rt.toCode, IATA);
+        const url = `https://www.ixigo.com/search/flight/${fromTok}/${toTok}/${dep}/1/0`;
+        let res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
         if (res.status === 403 || res.status === 429) {
           throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Ixigo blocked: ${res.status}`, res.status);
+        }
+        // Retry alternate origin slugs before giving up (underscore / hyphen / IATA).
+        if (res.status === 404) {
+          for (const altFrom of alts) {
+            const r2 = await cffiFetch(`https://www.ixigo.com/search/flight/${altFrom}/${toTok}/${dep}/1/0`, { impersonate: 'chrome', timeoutMs: 30_000 });
+            if (r2.status === 200) { res = r2; break; }
+          }
         }
         if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Ixigo HTTP ${res.status}`, res.status);
         const m = res.body.match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);

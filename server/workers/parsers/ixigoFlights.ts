@@ -23,6 +23,29 @@ import { newRawItem } from '../../sources/contract';
 
 export const IXIGO_WEB = 'https://www.ixigo.com';
 
+/**
+ * Ixigo route slug tokens: IATA codes always resolve; city-name slugs must be
+ * underscore-joined ("new delhi" as %20 or space 404s — verified 14 Oct 2026).
+ * Fallback order: IATA -> underscored city -> hyphenated city.
+ */
+export function ixigoRouteTokens(
+  from: string, to: string,
+  fromCode?: string, toCode?: string,
+  iata: Record<string, string> = {},
+): { fromTok: string; toTok: string; alts: string[] } {
+  const iataOf = (city: string, code?: string) =>
+    (code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null);
+  const slug = (city: string) => city.toLowerCase().trim().replace(/\s+/g, '_');
+  const fromTok = iataOf(from, fromCode) || slug(from);
+  const toTok = iataOf(to, toCode) || slug(to);
+  const alts: string[] = [];
+  const altIata = iataOf(from, fromCode);
+  if (altIata && altIata !== fromTok) alts.push(altIata); // underscore city used, IATA retry
+  if (altIata) alts.push(slug(from));
+  if (fromTok.includes('_')) alts.push(fromTok.replace(/_/g, '-'));
+  return { fromTok, toTok, alts };
+}
+
 export interface IxigoFlight {
   airline: string;
   airlineCode: string | null;
