@@ -6,9 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 /// FB2C53 → E11D48 → 9F1239, gold ring #EAB308, Plus Jakarta Sans.
 abstract final class T1SColors {
   // Brand
-  static const red = Color(0xFFE11D48); // red-600
-  static const redLight = Color(0xFFFB2C53);
-  static const redDark = Color(0xFF9F1239);
+  static const red = Color(0xFFE7000B); // Tailwind red-600
+  static const redLight = Color(0xFFFB2C36);
+  static const redDark = Color(0xFFC10007);
   static const gold = Color(0xFFEAB308);
   static const goldLight = Color(0xFFFDE047);
 

@@ -26,7 +26,7 @@
 .t1s-logo-icon img { transform-origin: 50% 70%; }
 .t1s-logo-ring {
   position: absolute; inset: 8% 8% 8% 8%; border-radius: 9999px;
-  border: 2px solid rgba(200, 30, 61, 0.55); opacity: 0; pointer-events: none;
+  border: 2px solid rgba(231,0,11,.55); opacity: 0; pointer-events: none;
 }
 .t1s-logo-anim .t1s-logo-icon img { animation: t1s-tap 3.6s ease-in-out infinite; }
 .t1s-logo-anim .t1s-logo-ring { animation: t1s-ripple 3.6s ease-out infinite; }
