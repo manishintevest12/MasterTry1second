@@ -29,7 +29,7 @@
   border-bottom: 1px solid #f1f5f9;
 }
 
-.t1s-logo svg { display: block; height: 30px; width: auto; }
+.t1s-logo { display: flex; align-items: center; }
 .t1s-head-actions { display: flex; gap: 6px; }
 
 .t1s-btn {
@@ -116,3 +116,16 @@
 @media (max-width: 640px) {
   .t1s-root { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
 }
+
+/* Animated Try1Second logo lockup */
+.t1s-lockup { display: inline-flex; align-items: center; height: 30px; }
+.t1s-lockup img { height: 30px; width: auto; max-width: none; display: block; }
+.t1s-lockup .t1s-ic { position: relative; display: inline-flex; height: 30px; }
+.t1s-lockup .t1s-ic img { transform-origin: 50% 70%; animation: t1s-tap 3.6s ease-in-out infinite; }
+.t1s-lockup .t1s-ring { position: absolute; inset: 8%; border-radius: 50%; border: 2px solid rgba(200,30,61,.55); opacity: 0; animation: t1s-ripple 3.6s ease-out infinite; }
+.t1s-lockup .t1s-wd { margin-left: -2px; animation: t1s-wordin .6s cubic-bezier(.2,.8,.2,1) both; }
+.t1s-lockup:hover .t1s-ic img { animation: t1s-tap .6s ease-in-out 1; }
+@keyframes t1s-tap { 0%,70%,100%{transform:translateY(0) scale(1) rotate(0)} 78%{transform:translateY(2px) scale(.93) rotate(-4deg)} 88%{transform:translateY(-1px) scale(1.06) rotate(2deg)} }
+@keyframes t1s-ripple { 0%,74%{transform:scale(.6);opacity:0} 80%{opacity:.9} 100%{transform:scale(1.7);opacity:0} }
+@keyframes t1s-wordin { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+@media (prefers-reduced-motion: reduce) { .t1s-lockup img, .t1s-lockup .t1s-ring { animation: none !important; } }

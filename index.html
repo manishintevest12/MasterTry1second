@@ -15,18 +15,25 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#f84a00" />
+    <link rel="preload" as="image" href="/logo-icon.png" />
+    <link rel="preload" as="image" href="/logo-wordmark.png" />
+    <meta name="theme-color" content="#C81E3D" />
     <style>
-      #t1s-loader{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:#fff7f2;transition:opacity .35s ease,visibility .35s ease}
+      #t1s-loader{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;background:#fff;transition:opacity .35s ease,visibility .35s ease}
       #t1s-loader.t1s-hide{opacity:0;visibility:hidden;pointer-events:none}
-      #t1s-loader .t1s-logo{width:84px;height:84px;border-radius:22px;animation:t1s-pulse 1.2s ease-in-out infinite;box-shadow:0 10px 30px rgba(248,74,0,.25)}
-      #t1s-loader .t1s-name{font:800 22px/1 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;letter-spacing:-.02em}
-      #t1s-loader .t1s-name b{color:#f84a00}
-      #t1s-loader .t1s-bar{width:150px;height:4px;border-radius:99px;background:#fde0d2;overflow:hidden}
-      #t1s-loader .t1s-bar i{display:block;height:100%;width:40%;border-radius:99px;background:#f84a00;animation:t1s-slide 1s ease-in-out infinite}
-      @keyframes t1s-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+      #t1s-loader .t1s-lockup{display:flex;align-items:center;height:76px;max-width:88vw}
+      #t1s-loader .t1s-lockup .t1s-ic{position:relative;display:inline-flex;height:76px}
+      #t1s-loader .t1s-lockup img{height:76px;width:auto;max-width:none;display:block}
+      #t1s-loader .t1s-lockup .t1s-ic img{transform-origin:50% 70%;animation:t1s-ltap 1.2s ease-in-out infinite}
+      #t1s-loader .t1s-lockup .t1s-ring{position:absolute;inset:8%;border-radius:50%;border:2px solid rgba(200,30,61,.55);opacity:0;animation:t1s-lripple 1.2s ease-out infinite}
+      #t1s-loader .t1s-lockup .t1s-wd{margin-left:-2px;animation:t1s-lword .6s cubic-bezier(.2,.8,.2,1) both}
+      #t1s-loader .t1s-bar{width:160px;height:4px;border-radius:99px;background:#f1e3e6;overflow:hidden}
+      #t1s-loader .t1s-bar i{display:block;height:100%;width:40%;border-radius:99px;background:linear-gradient(90deg,#9f1239,#e11d48);animation:t1s-slide 1s ease-in-out infinite}
+      @keyframes t1s-ltap{0%,45%,100%{transform:translateY(0) scale(1) rotate(0)}58%{transform:translateY(3px) scale(.92) rotate(-5deg)}75%{transform:translateY(-2px) scale(1.07) rotate(3deg)}}
+      @keyframes t1s-lripple{0%,50%{transform:scale(.6);opacity:0}60%{opacity:.9}100%{transform:scale(1.8);opacity:0}}
+      @keyframes t1s-lword{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
       @keyframes t1s-slide{0%{transform:translateX(-110%)}100%{transform:translateX(380%)}}
-      @media (prefers-reduced-motion:reduce){#t1s-loader .t1s-logo,#t1s-loader .t1s-bar i{animation:none}}
+      @media (prefers-reduced-motion:reduce){#t1s-loader .t1s-lockup img,#t1s-loader .t1s-ring,#t1s-loader .t1s-wd,#t1s-loader .t1s-bar i{animation:none}}
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,8 +41,10 @@
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-red-600 selection:text-white min-h-screen">
     <div id="t1s-loader" role="status" aria-live="polite" aria-label="Loading Try1Second">
-      <img class="t1s-logo" src="/favicon-192.png" alt="" width="84" height="84" />
-      <div class="t1s-name">Try<b>1</b>Second</div>
+      <div class="t1s-lockup">
+        <span class="t1s-ic"><img src="/logo-icon.png" alt="" /><span class="t1s-ring"></span></span>
+        <img class="t1s-wd" src="/logo-wordmark.png" alt="Try1Second" />
+      </div>
       <div class="t1s-bar"><i></i></div>
     </div>
     <div id="root"></div>

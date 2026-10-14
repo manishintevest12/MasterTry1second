@@ -22,18 +22,10 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const logoSvg = `
-    <svg viewBox="0 0 380 96" width="128" height="34" fill="none" aria-label="Try1Second">
-      <defs>
-        <linearGradient id="t1sR" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#FB2C53"/><stop offset="45%" stop-color="#E11D48"/><stop offset="100%" stop-color="#9F1239"/>
-        </linearGradient>
-      </defs>
-      <rect x="4" y="8" width="80" height="80" rx="20" fill="url(#t1sR)"/>
-      <circle cx="44" cy="48" r="26" fill="none" stroke="#EAB308" stroke-width="4"/>
-      <text x="44" y="60" text-anchor="middle" font-family="Verdana,sans-serif" font-size="30" font-weight="700" fill="#fff">1s</text>
-      <text x="98" y="46" font-family="Verdana,sans-serif" font-size="30" font-weight="700" fill="#0f172a">Try<tspan fill="#E11D48">1</tspan>Second</text>
-      <text x="99" y="74" font-family="Verdana,sans-serif" font-size="13" fill="#64748b">One second is all it takes</text>
-    </svg>`;
+    <span class="t1s-lockup" role="img" aria-label="Try1Second">
+      <span class="t1s-ic"><img src="${chrome.runtime.getURL('images/logo-icon.png')}" alt="" /><span class="t1s-ring"></span></span>
+      <img class="t1s-wd" src="${chrome.runtime.getURL('images/logo-wordmark.png')}" alt="" />
+    </span>`;
 
   // ---------- main flow ------------------------------------------------
 

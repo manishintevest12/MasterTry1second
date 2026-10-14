@@ -83,3 +83,16 @@ body {
 .t1s-foot { padding: 10px 14px 12px; border-top: 1px solid #e2e8f0; text-align: center; }
 .t1s-foot a { font-size: 11.5px; font-weight: 800; color: #E11D48; text-decoration: none; }
 .t1s-foot a:hover { text-decoration: underline; }
+
+/* Animated Try1Second logo lockup */
+.t1s-lockup { display: inline-flex; align-items: center; height: 36px; }
+.t1s-lockup img { height: 36px; width: auto; max-width: none; display: block; }
+.t1s-lockup .t1s-ic { position: relative; display: inline-flex; height: 36px; }
+.t1s-lockup .t1s-ic img { transform-origin: 50% 70%; animation: t1s-tap 3.6s ease-in-out infinite; }
+.t1s-lockup .t1s-ring { position: absolute; inset: 8%; border-radius: 50%; border: 2px solid rgba(200,30,61,.55); opacity: 0; animation: t1s-ripple 3.6s ease-out infinite; }
+.t1s-lockup .t1s-wd { margin-left: -2px; animation: t1s-wordin .6s cubic-bezier(.2,.8,.2,1) both; }
+.t1s-lockup:hover .t1s-ic img { animation: t1s-tap .6s ease-in-out 1; }
+@keyframes t1s-tap { 0%,70%,100%{transform:translateY(0) scale(1) rotate(0)} 78%{transform:translateY(2px) scale(.93) rotate(-4deg)} 88%{transform:translateY(-1px) scale(1.06) rotate(2deg)} }
+@keyframes t1s-ripple { 0%,74%{transform:scale(.6);opacity:0} 80%{opacity:.9} 100%{transform:scale(1.7);opacity:0} }
+@keyframes t1s-wordin { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:none} }
+@media (prefers-reduced-motion: reduce) { .t1s-lockup img, .t1s-lockup .t1s-ring { animation: none !important; } }

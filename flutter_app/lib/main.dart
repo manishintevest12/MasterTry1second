@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/storage.dart';
 import 'core/theme.dart';
 import 'ui/main_shell.dart';
+import 'ui/splash_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +49,7 @@ class _Try1SecondAppState extends State<Try1SecondApp> {
       theme: t1sLightTheme(),
       darkTheme: t1sDarkTheme(),
       themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
-      home: const MainShell(),
+      home: const SplashGate(child: MainShell()),
     );
   }
 }

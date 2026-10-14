@@ -21,3 +21,34 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* ===== Try1Second animated logo (header, footer, modals) ===== */
+.t1s-logo-icon img { transform-origin: 50% 70%; }
+.t1s-logo-ring {
+  position: absolute; inset: 8% 8% 8% 8%; border-radius: 9999px;
+  border: 2px solid rgba(200, 30, 61, 0.55); opacity: 0; pointer-events: none;
+}
+.t1s-logo-anim .t1s-logo-icon img { animation: t1s-tap 3.6s ease-in-out infinite; }
+.t1s-logo-anim .t1s-logo-ring { animation: t1s-ripple 3.6s ease-out infinite; }
+.t1s-logo-anim .t1s-logo-word { animation: t1s-word-in .7s cubic-bezier(.2,.8,.2,1) both; }
+.t1s-logo-anim:hover .t1s-logo-icon img { animation: t1s-tap .6s ease-in-out 1; }
+.t1s-logo-anim:hover .t1s-logo-ring { animation: t1s-ripple .6s ease-out 1; }
+@keyframes t1s-tap {
+  0%, 70%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+  78% { transform: translateY(2px) scale(.93) rotate(-4deg); }
+  88% { transform: translateY(-1px) scale(1.06) rotate(2deg); }
+}
+@keyframes t1s-ripple {
+  0%, 74% { transform: scale(.6); opacity: 0; }
+  80% { opacity: .9; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@keyframes t1s-word-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .t1s-logo-anim .t1s-logo-icon img,
+  .t1s-logo-anim .t1s-logo-ring,
+  .t1s-logo-anim .t1s-logo-word { animation: none !important; }
+}

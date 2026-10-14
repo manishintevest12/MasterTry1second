@@ -1,12 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "Try1Second — Cross-Site Price History & Alerts",
+  "name": "Try1Second \u2014 Cross-Site Price History & Alerts",
   "short_name": "Try1Second",
   "version": "1.0.0",
-  "description": "Live cross-site price comparison, real price history graphs and price-drop alerts — powered by the independent Try1Second metasearch engine. Never shows invented prices.",
-  "permissions": ["storage", "alarms", "notifications", "activeTab"],
-  "host_permissions": ["https://www.try1second.com/*", "https://try1second.com/*"],
-  "background": { "service_worker": "background/service-worker.js" },
+  "description": "Live cross-site price comparison, real price history graphs and price-drop alerts \u2014 powered by the independent Try1Second metasearch engine. Never shows invented prices.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.try1second.com/*",
+    "https://try1second.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "Try1Second",
@@ -28,8 +38,14 @@
         "https://www.tatacliq.com/*",
         "https://www.meesho.com/*"
       ],
-      "js": ["lib/api.js", "lib/sites.js", "content/content.js"],
-      "css": ["content/content.css"],
+      "js": [
+        "lib/api.js",
+        "lib/sites.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -38,5 +54,22 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "images/logo-icon.png",
+        "images/logo-wordmark.png",
+        "images/logo-full.png"
+      ],
+      "matches": [
+        "https://www.amazon.in/*",
+        "https://www.flipkart.com/*",
+        "https://www.myntra.com/*",
+        "https://www.ajio.com/*",
+        "https://www.tatacliq.com/*",
+        "https://www.meesho.com/*"
+      ]
+    }
+  ]
 }
