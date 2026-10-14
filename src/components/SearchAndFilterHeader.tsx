@@ -66,6 +66,20 @@ export const SearchAndFilterHeader: React.FC = () => {
 
   // MOVIES: live now-playing titles from the loaded movie results (real data,
   // not a hardcoded film list) power the movie-name autocomplete.
+  // CREDIT CARDS: live issuer names from the loaded card results power the
+  // bank-name autocomplete (real issuers only, never a fabricated bank list).
+  const ccBankPresets = React.useMemo(() => {
+    const banks = Array.from(
+      new Set(
+        items
+          .filter((it: any) => it.vertical === 'creditcards')
+          .map((it: any) => String(it.attributes?.bank || '').trim())
+          .filter(Boolean),
+      ),
+    );
+    return banks.slice(0, 16);
+  }, [items]);
+
   const movieTitlePresets = React.useMemo(
     () => Array.from(new Set(items.filter((it: any) => it.vertical === 'movie' && it.title).map((it: any) => it.title as string))).slice(0, 16),
     [items],
@@ -1288,6 +1302,15 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
+                  onClick={() => triggerLiveLocationScrape(searchQuery)}
+                  className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                  title="Search movies & showtimes"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Search</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     setDatePickerContext('movie');
                     setIsDatePickerOpen(true);
@@ -1516,7 +1539,42 @@ const handleSelectJourneyDate = (formattedDate: string) => {
           ======================================================== */}
       {vertical === 'creditcards' && (
         <div className="bg-gradient-to-r from-slate-900 to-rose-950 py-4 px-4 sm:px-6 lg:px-8 text-white shadow-inner">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 text-xs">
+          <div className="max-w-7xl mx-auto space-y-3">
+            {/* Bank-name search bar: presets are the real issuers present in the loaded card results. */}
+            <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
+              <div className="flex-1 bg-white rounded-xl px-3 py-1.5 flex items-center gap-1 shadow-md">
+                <VoiceSearchButton
+                  onTranscript={(text) => {
+                    setSearchQuery(text);
+                    triggerLiveLocationScrape(text);
+                  }}
+                  accent="red"
+                />
+                <AutocompleteInput
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  onSelect={(val) => {
+                    setSearchQuery(val);
+                    triggerLiveLocationScrape(val);
+                  }}
+                  presetList={ccBankPresets.length > 0 ? ccBankPresets : AUTOCOMPLETE_CATEGORIES.creditcards}
+                  placeholder="Search cards by bank name (e.g. HDFC, Axis, SBI, ICICI, Kotak)..."
+                  className="w-full"
+                  inputClassName="text-xs font-medium text-slate-900 placeholder:text-slate-400"
+                  icon={<Search className="w-4 h-4 text-rose-500" />}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => triggerLiveLocationScrape(searchQuery)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors shrink-0"
+                title="Search credit cards"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Search</span>
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-bold text-rose-300">Quick picks:</span>
             {AUTOCOMPLETE_CATEGORIES.creditcards.map((t) => (
               <button
@@ -1528,6 +1586,7 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                 {t}
               </button>
             ))}
+            </div>
           </div>
         </div>
       )}
