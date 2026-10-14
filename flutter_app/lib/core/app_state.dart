@@ -57,6 +57,7 @@ class AppState extends ChangeNotifier {
     AuthService.instance.addListener(_onAuth);
     await AuthService.instance.restore(api);
     unawaited(refreshBadges());
+    // Warm-up runs in the background; the splash watches [warmProgress].
     unawaited(prefetchDefaults());
     notifyListeners();
   }
@@ -133,11 +134,26 @@ class AppState extends ChangeNotifier {
 
   /// Splash prefetch: warm every vertical's default search (plus the rewards
   /// deals feed) in the background so first taps open instantly with data.
+  /// 0..1 progress of the splash warm-up (verticals + deals feed finished).
+  final ValueNotifier<double> warmProgress = ValueNotifier<double>(0);
+
   Future<void> prefetchDefaults() async {
-    for (final v in kVerticals) {
-      unawaited(live(v.id, defaultQueryFor(v.id, city)).catchError((_) => const LiveResponse([], [], [], [], '', 0)));
+    final total = kVerticals.length + 1;
+    var done = 0;
+    void tick() {
+      done++;
+      warmProgress.value = done / total;
     }
-    unawaited(deals().catchError((_) => <Deal>[]));
+
+    final jobs = <Future<void>>[
+      for (final v in kVerticals)
+        live(v.id, defaultQueryFor(v.id, city))
+            .then<void>((_) {})
+            .catchError((_) {})
+            .whenComplete(tick),
+      deals().then<void>((_) {}).catchError((_) {}).whenComplete(tick),
+    ];
+    await Future.wait(jobs);
   }
 
   Future<List<Deal>> deals({String? kind}) async {

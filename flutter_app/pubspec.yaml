@@ -5,7 +5,7 @@ description: >-
   in India. Every price comes from the real Try1Second engine; the app
   never invents data.
 publish_to: "none"
-version: 1.6.2+10
+version: 1.7.0+11
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -41,5 +41,5 @@ flutter_launcher_icons:
   ios: true
   image_path: "assets/images/app-icon-1024.png"
   remove_alpha_ios: true
-  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_background: "assets/images/adaptive-bg.png"
   adaptive_icon_foreground: "assets/images/adaptive-fg.png"

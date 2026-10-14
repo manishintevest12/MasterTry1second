@@ -641,6 +641,17 @@ class Try1SecondApi {
         .toList();
   }
 
+  /// Real coupon codes returned by partner networks (GET /api/v1/offers). Never invented.
+  Future<List<Map<String, dynamic>>> liveCoupons({int limit = 8}) async {
+    final res = await _get('/api/v1/offers?limit=60');
+    final list = (res['offers'] as List? ?? const [])
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .where((o) => '${o['coupon_code'] ?? ''}'.trim().isNotEmpty)
+        .toList();
+    return list.take(limit).toList();
+  }
+
   /// Safe, click-recorded, affiliate-applied redirect via /api/go.
   Future<String> go(String url, String? offerId) async {
     final res = await _get(
