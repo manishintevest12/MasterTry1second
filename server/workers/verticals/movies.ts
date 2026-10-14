@@ -5,7 +5,6 @@
  * booking platforms block plain HTTP and we never invent them.
  */
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
-import { wikidataFetch, recentIndianFilms, parseRecentFilms, searchFilmEntity } from '../parsers/wikidataMovies';
 import { AcquisitionError } from '../../common/httpClient';
 import { getOverride, dynamicScannerEngine } from '../../acquisition/selfHeal';
 import { cffiFetch } from '../../common/curlCffiFetch';
@@ -17,7 +16,6 @@ import { gwCitySlug, gwCityMovieAggregates, gwCritique, gwMatch, extractTrailerU
 import { imdbRatingFor } from '../parsers/imdbRatings';
 import { createHash } from 'node:crypto';
 
-let recentCache: { at: number; rows: any } | null = null;
 
 /** BookMyShow now-showing discovery (mandatory source #1 for movies).
  * Akamai fingerprints TLS, so the request rides the curl_cffi bridge (still browserless);
@@ -278,36 +276,6 @@ export const moviesWorker: VerticalWorker = {
           } catch { /* trailer/page deep-dive is best-effort; the offer stays honest without it */ }
         }
         return offers;
-      },
-    },
-    {
-      sourceId: 'w_movies_wikidata',
-      name: 'Movies worker: Wikidata film releases (India)',
-      priority: 10,
-      maxPerMinute: 8,
-      timeoutMs: 30_000,
-      run: async (ctx) => {
-        const entity = String(ctx.query.entityName || '').trim();
-        const effCity = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
-        const cityToks = (normCity(effCity)).split(' ').filter(Boolean);
-        const movieTerm = entity ? extractMovieQuery(entity, cityToks) : '';
-        if (movieTerm) {
-          // Strict token boundary: only keep hits whose label actually contains the query
-          // tokens; an honest empty beats an irrelevant substitute (owner mandate).
-          const hits = await searchFilmEntity(movieTerm, ctx.source);
-          const strict = hits.filter((h: any) => matchesQuery(String(h.attributes?.match || h.title), movieTerm));
-          return strict;
-        }
-        // SPARQL can take ~8-20s; cache the releases window for 30 minutes.
-        if (!recentCache || Date.now() - recentCache.at > 30 * 60_000) {
-          const json = await wikidataFetch('https://query.wikidata.org/sparql', {
-            method: 'POST',
-            body: `query=${encodeURIComponent(recentIndianFilms(45))}`,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          });
-          recentCache = { at: Date.now(), rows: json };
-        }
-        return parseRecentFilms(recentCache.rows, ctx.source, new Date().toISOString().slice(0, 10));
       },
     },
   ],

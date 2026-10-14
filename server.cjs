@@ -6708,79 +6708,6 @@ var init_grocery = __esm({
   }
 });
 
-// server/workers/parsers/wikidataMovies.ts
-async function wikidataFetch(url, init) {
-  const r = await fetch(url, { ...init, headers: { "User-Agent": WD_UA, Accept: "application/sparql-results+json, application/json", ...init?.headers } });
-  if (!r.ok) throw new Error(`Wikidata HTTP ${r.status}`);
-  return r.json();
-}
-function recentIndianFilms(days) {
-  const to = /* @__PURE__ */ new Date();
-  const from = new Date(Date.now() - days * 864e5);
-  const f = from.toISOString().slice(0, 10);
-  const t = to.toISOString().slice(0, 10);
-  return `SELECT ?filmLabel ?date WHERE { ?film wdt:P31 wd:Q11424; wdt:P495 wd:Q668; wdt:P577 ?date. FILTER(?date >= "${f}"^^xsd:dateTime && ?date <= "${t}"^^xsd:dateTime) SERVICE wikibase:label { bd:serviceParam wikibase:language "en,hi". } } LIMIT 20`;
-}
-function parseRecentFilms(json, source, today) {
-  const rows = json?.results?.bindings || [];
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const b of rows) {
-    const title = b.filmLabel?.value;
-    const date = b.date?.value?.slice(0, 10);
-    if (!title || seen.has(title)) continue;
-    seen.add(title);
-    out.push(newRawItem(source, {
-      title: title.slice(0, 200),
-      seller: "Wikidata (CC0)",
-      sellerUrl: "https://www.wikidata.org/wiki/Q668",
-      currency: "INR",
-      travel: date ? { date } : void 0,
-      attributes: {
-        release_date: date || "unknown",
-        data_note: "Recently released Indian film per Wikidata; showtimes & ticket prices need a booking platform (none accessible to public HTTP today)"
-      },
-      evidence: {
-        sourceUrl: "https://query.wikidata.org/sparql",
-        sourceReference: title,
-        extractedFields: ["title", ...date ? ["release_date"] : []]
-      }
-    }));
-  }
-  return out.slice(0, 30);
-}
-async function searchFilmEntity(name, source) {
-  const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(name)}&language=en&format=json&limit=5&type=item`;
-  const json = await wikidataFetch(url);
-  const hits = (json?.search || []).filter((h) => /film|movie|motion picture|cinema/i.test(h.description || ""));
-  const out = [];
-  for (const h of hits.slice(0, 5)) {
-    out.push(newRawItem(source, {
-      title: `${h.label}${h.description ? ` \u2014 ${h.description}` : ""}`.slice(0, 220),
-      seller: "Wikidata (CC0)",
-      sellerUrl: String(h.concepturi || ""),
-      currency: "INR",
-      attributes: {
-        match: h.label,
-        data_note: "Movie facts from Wikidata; showtimes & ticket prices need a booking platform"
-      },
-      evidence: {
-        sourceUrl: "https://www.wikidata.org",
-        sourceReference: h.id,
-        extractedFields: ["title", "description"]
-      }
-    }));
-  }
-  return out;
-}
-var WD_UA;
-var init_wikidataMovies = __esm({
-  "server/workers/parsers/wikidataMovies.ts"() {
-    init_contract();
-    WD_UA = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-  }
-});
-
 // server/acquisition/selfHeal.ts
 function getHealSpec(sourceId) {
   return SPECS.find((s) => s.sourceId === sourceId);
@@ -7695,11 +7622,10 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
   }
 }
-var import_node_crypto2, recentCache, bmsLastPrice, moviesWorker;
+var import_node_crypto2, bmsLastPrice, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
-    init_wikidataMovies();
     init_httpClient();
     init_selfHeal();
     init_curlCffiFetch();
@@ -7710,7 +7636,6 @@ var init_movies = __esm({
     init_districtGw();
     init_imdbRatings();
     import_node_crypto2 = require("node:crypto");
-    recentCache = null;
     bmsLastPrice = /* @__PURE__ */ new Map();
     moviesWorker = {
       vertical: "movies",
@@ -7898,33 +7823,6 @@ var init_movies = __esm({
               }
             }
             return offers;
-          }
-        },
-        {
-          sourceId: "w_movies_wikidata",
-          name: "Movies worker: Wikidata film releases (India)",
-          priority: 10,
-          maxPerMinute: 8,
-          timeoutMs: 3e4,
-          run: async (ctx) => {
-            const entity = String(ctx.query.entityName || "").trim();
-            const effCity = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
-            const cityToks = normCity(effCity).split(" ").filter(Boolean);
-            const movieTerm = entity ? extractMovieQuery(entity, cityToks) : "";
-            if (movieTerm) {
-              const hits = await searchFilmEntity(movieTerm, ctx.source);
-              const strict = hits.filter((h) => matchesQuery(String(h.attributes?.match || h.title), movieTerm));
-              return strict;
-            }
-            if (!recentCache || Date.now() - recentCache.at > 30 * 6e4) {
-              const json = await wikidataFetch("https://query.wikidata.org/sparql", {
-                method: "POST",
-                body: `query=${encodeURIComponent(recentIndianFilms(45))}`,
-                headers: { "Content-Type": "application/x-www-form-urlencoded" }
-              });
-              recentCache = { at: Date.now(), rows: json };
-            }
-            return parseRecentFilms(recentCache.rows, ctx.source, (/* @__PURE__ */ new Date()).toISOString().slice(0, 10));
           }
         }
       ]
@@ -16127,6 +16025,20 @@ var init_acceptanceRegistry = __esm({
         { capability: "book search", url: "https://openlibrary.org/search.json?q=atomic%20habits&limit=5", parser: "openlibrary" }
       ] }
     ];
+  }
+});
+
+// server/workers/parsers/wikidataMovies.ts
+function recentIndianFilms(days) {
+  const to = /* @__PURE__ */ new Date();
+  const from = new Date(Date.now() - days * 864e5);
+  const f = from.toISOString().slice(0, 10);
+  const t = to.toISOString().slice(0, 10);
+  return `SELECT ?filmLabel ?date WHERE { ?film wdt:P31 wd:Q11424; wdt:P495 wd:Q668; wdt:P577 ?date. FILTER(?date >= "${f}"^^xsd:dateTime && ?date <= "${t}"^^xsd:dateTime) SERVICE wikibase:label { bd:serviceParam wikibase:language "en,hi". } } LIMIT 20`;
+}
+var init_wikidataMovies = __esm({
+  "server/workers/parsers/wikidataMovies.ts"() {
+    init_contract();
   }
 });
 
