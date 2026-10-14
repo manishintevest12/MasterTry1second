@@ -1,4 +1,4 @@
-import { brandLogoUrl } from '../utils/brandLogo';
+import { brandLogoUrl, initials } from '../utils/brandLogo';
 import React, { useState } from 'react';
 import {
   Heart,
@@ -125,6 +125,10 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   // Loans & insurance carry no product photo: show the provider's real logo tile
   // (same idea as the flight rows' carrier logos) instead of a placeholder image.
   const isImageVertical = !['loans', 'insurance'].includes(item.vertical);
+  // Loans / insurance: a RATE (% p.a.), never rupees, and the logo is the LENDER's, not the listing site's.
+  const isRateVertical = !isImageVertical;
+  const lenderName = String(item.title || '').replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|used car|property|loan|loans|insurance|health|term|life|motor|travel)\b/gi, ' ').replace(/\s+/g, ' ').trim() || item.provider;
+  const lenderLogo = item.imageUrl && !/bankbazaar|paisabazaar|policybazaar/i.test(item.imageUrl) ? item.imageUrl : undefined;
   const logoStyle = getLogoStyle(item);
 
   const handleShare = (e: React.MouseEvent) => {
@@ -381,11 +385,20 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
               {/* LOGO SECTION */}
               <div className="flex flex-col items-center justify-center shrink-0">
                 <div
-                  className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex flex-col items-center justify-center font-black text-center shadow-2xs border border-slate-200/80 relative overflow-hidden transition-transform ${
-                    logoStyle.bg
-                  } ${logoStyle.color}`}
+                  className={`${isRateVertical ? 'w-20 h-20 sm:w-24 sm:h-24 bg-white text-slate-800' : `w-16 h-16 sm:w-20 sm:h-20 ${logoStyle.bg} ${logoStyle.color}`} rounded-2xl flex flex-col items-center justify-center font-black text-center shadow-2xs border border-slate-200/80 relative overflow-hidden transition-transform`}
                 >
-                  {brandLogoUrl(item) && logoImgOk ? (
+                  {isRateVertical && lenderLogo && logoImgOk ? (
+                    <img
+                      src={lenderLogo}
+                      alt={lenderName}
+                      className="w-[88%] h-[70%] object-contain"
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      onError={() => setLogoImgOk(false)}
+                    />
+                  ) : isRateVertical ? (
+                    <span className="text-xl sm:text-2xl font-black tracking-tight leading-none text-slate-700">{initials(lenderName)}</span>
+                  ) : brandLogoUrl(item) && logoImgOk ? (
                     <img
                       src={brandLogoUrl(item)}
                       alt={item.provider}
@@ -398,9 +411,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     {item.logoText || item.providerLogo || item.provider.substring(0, 3).toUpperCase()}
                   </span>
                   )}
-                  <span className="text-[9px] uppercase tracking-wider opacity-85 mt-1 font-semibold truncate max-w-[65px] px-1">
-                    {item.provider}
-                  </span>
+                  {!isRateVertical && (
+                    <span className="text-[9px] uppercase tracking-wider opacity-85 mt-1 font-semibold truncate max-w-[65px] px-1">
+                      {item.provider}
+                    </span>
+                  )}
                 </div>
                 <span className="text-[10px] font-bold text-slate-600 mt-1 px-1.5 py-0.5 rounded bg-slate-100 text-center max-w-[85px] truncate">
                   {item.brandTag || logoStyle.tag}
@@ -456,22 +471,22 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   </span>
                 ) : (
                   <span className="text-2xl font-extrabold text-slate-900 font-mono tracking-tight tabular-nums">
-                    ₹{item.primaryPrice.toLocaleString('en-IN')}
+                    {isRateVertical ? `${item.primaryPrice}%` : `₹${item.primaryPrice.toLocaleString('en-IN')}`}
                   </span>
                 )}
-                {item.originalPrice > item.primaryPrice && (
+                {!isRateVertical && item.originalPrice > item.primaryPrice && (
                   <span className="text-xs text-slate-400 line-through tabular-nums font-mono">
                     ₹{item.originalPrice.toLocaleString('en-IN')}
                   </span>
                 )}
               </div>
               <span className="text-[11px] text-slate-500 font-medium block md:text-right">
-                {item.unit || 'inclusive of taxes'}
+                {isRateVertical ? (item.vertical === 'loans' ? 'interest p.a. (starting)' : 'indicative rate') : (item.unit || 'inclusive of taxes')}
               </span>
             </div>
 
             {/* Savings indicator */}
-            {item.originalPrice > item.primaryPrice && (
+            {!isRateVertical && item.originalPrice > item.primaryPrice && (
               <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-sm">
                 Save ₹{(item.originalPrice - item.primaryPrice).toLocaleString('en-IN')}
               </span>
@@ -623,11 +638,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
 
                           <td className="py-3 px-3">
                             <div className="font-mono font-bold text-slate-900 text-sm tabular-nums">
-                              ₹{quote.price.toLocaleString('en-IN')}
+                              {isRateVertical ? `${quote.price}%` : `₹${quote.price.toLocaleString('en-IN')}`}
                             </div>
                             {diff > 0 ? (
                               <span className="text-[10px] text-slate-400">
-                                +₹{diff.toLocaleString('en-IN')}
+                                +{isRateVertical ? `${Math.round(diff * 100) / 100}%` : `₹${diff.toLocaleString('en-IN')}`}
                               </span>
                             ) : (
                               <span className="text-[10px] text-emerald-600 font-semibold">

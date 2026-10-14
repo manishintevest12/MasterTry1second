@@ -42,8 +42,10 @@ export const DealCard: React.FC<{ deal: PublicDeal; compact?: boolean; onUsed?: 
           <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-black uppercase shrink-0">{KIND_LABEL[deal.kind] || deal.kind}</span>
         </div>
         {deal.imageUrl && (
-          <div className="mt-1.5 mb-1.5 rounded-lg overflow-hidden bg-slate-50 border border-slate-100">
-            <img src={deal.imageUrl} alt={deal.title} loading="lazy" className="w-full h-28 object-contain mix-blend-multiply" />
+          <div className="mt-1.5 mb-1.5 rounded-lg overflow-hidden bg-white border border-slate-100">
+            {/* Product photo from the store itself, filling the tile (portrait shots were letterboxed tiny before). */}
+            <img src={deal.imageUrl} alt={deal.title} loading="lazy"
+              className={`w-full ${compact ? 'h-24' : 'aspect-[4/5] sm:aspect-[4/3]'} object-cover mix-blend-normal`} />
           </div>
         )}
         <h4 className={`font-bold text-slate-900 leading-snug ${compact ? 'text-xs' : 'text-sm'}`}>{deal.title}</h4>

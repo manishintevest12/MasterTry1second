@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, ExternalLink, Star, ShieldCheck, MapPin } from 'lucide-react';
 import { ComparisonItem } from '../types';
+import { formatPrice } from '../utils/formatPrice';
 
 interface ImagePreviewModalProps {
   item: ComparisonItem | null;
@@ -90,7 +91,7 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-2xl font-black text-slate-900 font-mono">
-                  ₹{item.primaryPrice.toLocaleString('en-IN')}
+                  {formatPrice(item.vertical, item.primaryPrice)}
                 </span>
                 {item.originalPrice > item.primaryPrice && (
                   <span className="text-xs text-slate-400 line-through font-mono">
@@ -136,7 +137,7 @@ export const ImagePreviewModal: React.FC<ImagePreviewModalProps> = ({
                       )}
                     </div>
                     <span className="font-bold font-mono text-slate-900">
-                      ₹{sq.price.toLocaleString('en-IN')}
+                      {formatPrice(item.vertical, sq.price)}
                     </span>
                   </div>
                 ))}

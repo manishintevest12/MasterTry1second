@@ -205,14 +205,21 @@ export function extractAmazonCardDeals(html: string): AcquiredDeal[] {
 
 export function extractAmazonBankOffers(dpHtml: string, asin: string, title: string): AcquiredDeal[] {
   const out: AcquiredDeal[] = [];
-  const text = dpHtml.replace(/<script[\s\S]*?<\/script>/g, ' ');
-  const re = /(?:Bank Offer|Instant (?:Discount|Cashback)|Get (?:up to )?(?:₹|Rs\.?)\s?\d[\s\S]{0,180}?offer|No Cost EMI[^<]{0,120})[\s\S]{0,260}/gi;
+  // Match on TAG-STRIPPED text: the earlier version matched the raw HTML and leftover tag
+  // fragments ("<span class=") leaked into stored titles. Text-only matching cannot leak markup.
+  const text = dpHtml
+    .replace(/<script[\s\S]*?<\/script>/g, ' ')
+    .replace(/<style[\s\S]*?<\/style>/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z]+;|&#\d+;/g, ' ');
+  const re = /(?:Bank Offer|Instant (?:Discount|Cashback)|Get (?:up to )?(?:₹|Rs\.?)\s?\d[\s\S]{0,180}?offer|No Cost EMI[^.]{0,120})[\s\S]{0,260}/gi;
   const seen = new Set<string>();
   for (const m of text.matchAll(re)) {
-    const raw = strip(m[0].replace(/<[^>]+>/g, ' ').replace(/\s*•\s*/g, ' ')).slice(0, 220);
+    const raw = strip(m[0].replace(/\s*•\s*/g, ' ')).slice(0, 220);
     if (!raw || raw.length < 20) continue;
-    // normalise the sentence end at the first period after some content
-    const t = clip(raw.split(/(?<=offer|EMI)\b/)[0] || raw, 200);
+    // An offer title must carry a real figure (₹ / Rs / %) — a bare "Bank Offer" label is not a deal.
+    if (!/[₹]|Rs\.?|\d\s*%/.test(raw)) continue;
+    const t = clip(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, ' '), 120);
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({
@@ -279,12 +286,17 @@ export async function syncAutoDeals(): Promise<ProviderOutcome[]> {
   const store = getStore();
   const now = new Date();
   const outcomes: ProviderOutcome[] = [];
+  // Self-heal: drop rows whose title leaked HTML markup from older extractor versions.
+  try {
+    await store.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
+  } catch { /* table/column not present in dev file-store: nothing to purge */ }
   for (const p of providers) {
     try {
       const deals = await p.run();
       let saved = 0;
       for (const d of deals) {
         const c = cleanDeal(d);
+        if (!c.title || /<|class=|&#/.test(c.title)) continue;   // never store markup in a title
         const ex = await store.query<any>('SELECT id FROM deals WHERE dedupe_key = ?', [c.dedupe_key]);
         if (ex.length) {
           await store.execute(

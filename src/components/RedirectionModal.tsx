@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { buildAffiliateDeepLink } from '../utils/deepLinkHelper';
+import { formatPrice, isRateVertical } from '../utils/formatPrice';
 import { DealCard, type PublicDeal } from './DealCard';
 
 export const RedirectionModal: React.FC = () => {
@@ -118,7 +119,9 @@ export const RedirectionModal: React.FC = () => {
               Deep-Link Ready!
             </h3>
             <p className="text-xs text-slate-600 mb-4 max-w-xs mx-auto leading-relaxed">
-              Your deal for <strong>{item.title}</strong> at <strong>₹{quote.price.toLocaleString('en-IN')}</strong> is locked with zero extra fees.
+              {isRateVertical(item.vertical)
+                ? <>Opening <strong>{item.title}</strong> on the lender's page, starting at <strong>{formatPrice(item.vertical, quote.price)} p.a.</strong> (indicative; the final rate is set by the lender).</>
+                : <>Your deal for <strong>{item.title}</strong> at <strong>{formatPrice(item.vertical, quote.price)}</strong> is locked with zero extra fees.</>}
             </p>
 
             {sellerDeals.length > 0 ? (

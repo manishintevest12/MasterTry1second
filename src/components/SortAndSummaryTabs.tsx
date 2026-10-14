@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, Zap, Award, MapPin, RotateCw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { formatPrice } from '../utils/formatPrice';
 
 export const SortAndSummaryTabs: React.FC = () => {
   const {
@@ -45,7 +46,7 @@ export const SortAndSummaryTabs: React.FC = () => {
             </span>
           </div>
           <span className="text-xs text-slate-500 font-mono tabular-nums mt-1 font-semibold">
-            ₹{cheapestItem?.primaryPrice.toLocaleString('en-IN') || '—'}
+            {cheapestItem ? formatPrice(cheapestItem.vertical, cheapestItem.primaryPrice) : '—'}
           </span>
         </button>
 
@@ -69,7 +70,7 @@ export const SortAndSummaryTabs: React.FC = () => {
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
           </div>
           <span className="text-xs text-slate-500 font-mono tabular-nums mt-1 font-semibold">
-            ₹{cheapestItem?.primaryPrice.toLocaleString('en-IN') || '—'} · Top Pick
+            {cheapestItem ? formatPrice(cheapestItem.vertical, cheapestItem.primaryPrice) : '—'} · Top Pick
           </span>
         </button>
 

@@ -83,11 +83,11 @@ export const CreditCardCard: React.FC<Props> = ({ group, selectedForCompare, onT
       <div className="p-4 sm:p-5">
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Left: card art + score ring */}
-          <div className="flex sm:flex-col items-center sm:items-start gap-4 sm:w-44 shrink-0">
+          <div className="w-full sm:w-44 shrink-0 flex flex-col items-center sm:items-start gap-4">
             {item.imageUrl ? (
-              <img src={item.imageUrl} alt={item.title} loading="lazy" className="w-36 h-24 sm:w-40 sm:h-[106px] object-contain rounded-xl border border-slate-200 bg-slate-50 p-1.5" />
+              <img src={item.imageUrl} alt={item.title} loading="lazy" className="w-full h-40 sm:w-40 sm:h-[106px] object-contain rounded-xl border border-slate-200 bg-white p-1.5" />
             ) : (
-              <div className="w-36 h-24 sm:w-40 sm:h-[106px] rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 text-xs">Card art unavailable</div>
+              <div className="w-full h-40 sm:w-40 sm:h-[106px] rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 text-xs">Card art unavailable</div>
             )}
             <div className="flex items-center gap-3">
               <div className="relative w-14 h-14 shrink-0">

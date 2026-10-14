@@ -51,6 +51,14 @@ export const OffersHub: React.FC = () => {
   }, []);
 
   const merchants = Array.from(new Map(deals.map((d) => [d.merchantKey, d.merchantName])).entries());
+  // Store tiles (reference design): one tile per store — its biggest live discount, deal count
+  // and a real product photo from the store's own deals. Nothing is invented; a tile exists
+  // only when the store actually returned deals.
+  const storeTiles = merchants.map(([key, name]) => {
+    const ms = deals.filter((d) => d.merchantKey === key);
+    const pct = ms.reduce((m, d) => Math.max(m, parseInt(String(d.discountText || '').match(/(\d{1,2})\s*%/)?.[1] || '0', 10)), 0);
+    return { key, name, count: ms.length, pct, image: ms.find((d) => d.imageUrl)?.imageUrl || null, top: ms[0] };
+  }).filter((t) => t.count > 0).sort((a, b) => b.pct - a.pct || b.count - a.count);
   const shown = deals.filter((d) => (kind === 'all' || d.kind === kind) && (merchant === 'all' || d.merchantKey === merchant));
   const kindCount = (k: string) => (k === 'all' ? deals.length : deals.filter((d) => d.kind === k).length);
 
@@ -114,6 +122,34 @@ export const OffersHub: React.FC = () => {
           <h3 className="text-lg font-bold text-slate-900">Deals, Coupons &amp; Offers</h3>
           <p className="text-xs text-slate-500">Working coupon codes and bank, card, gift-card, loan, insurance and movie offers from Flipkart, Amazon, Myntra, Ajio, BookMyShow, District and more. Copy the code and shop.</p>
         </div>
+
+        {/* Store tiles: biggest live discount per store, real product photo from its deals */}
+        {storeTiles.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {storeTiles.map((t) => (
+              <button key={t.key} type="button"
+                onClick={() => { setKind('all'); setMerchant(t.key); }}
+                className={`group text-left rounded-2xl border overflow-hidden cursor-pointer transition-all hover:shadow-md ${merchant === t.key && kind === 'all' ? 'border-red-400 ring-2 ring-red-100' : 'border-slate-200 hover:border-slate-300'} bg-white`}>
+                <div className="relative w-full aspect-[4/3] bg-slate-50 overflow-hidden">
+                  {t.image ? (
+                    <img src={t.image} alt={t.name} loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-300"><Tag className="w-8 h-8" /></div>
+                  )}
+                  {t.pct > 0 && (
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black shadow-sm">UP TO {t.pct}% OFF</span>
+                  )}
+                </div>
+                <div className="p-2.5">
+                  <p className="text-xs font-extrabold text-slate-900 truncate">{t.name}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">{t.count} live deal{t.count > 1 ? 's' : ''}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {TYPE_TABS.filter((t) => t.id === 'all' || kindCount(t.id) > 0).map((t) => (
