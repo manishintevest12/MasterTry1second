@@ -777,6 +777,24 @@ apiRouter.post('/auth/login', async (req, res) => {
   res.json({ success: true, token: r.token, user: r.user });
 });
 
+// Find-or-create a passwordless (Google) user and open a session. Shared by web + mobile Google sign-in.
+async function signInGoogleUser(claims: { email: string; uid: string; displayName?: string }) {
+  const store = getStore();
+  let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  if (rows.length === 0) {
+    await store.execute('INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)', [
+      claims.email, claims.displayName || null, 'user', claims.uid,
+    ]);
+    rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  }
+  const row = rows[0];
+  const token = crypto.randomBytes(32).toString('hex');
+  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
+    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
+  ]);
+  return { token, row };
+}
+
 // ============ Firebase Google sign-in (main-site users) ============
 apiRouter.post('/auth/firebase', async (req, res) => {
   if (!settings.firebaseProjectId) {
@@ -806,20 +824,13 @@ apiRouter.post('/auth/firebase', async (req, res) => {
   }
   const claims = result.claims;
 
-  const store = getStore();
-  let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
-  if (rows.length === 0) {
-    await store.execute('INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)', [
-      claims.email, claims.displayName || null, 'user', claims.uid,
-    ]);
-    rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  try {
+    const { token, row } = await signInGoogleUser(claims);
+    res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined } });
+  } catch (err) {
+    log.error('FirebaseAuth', `Account provisioning failed: ${(err as Error).message}`);
+    res.status(500).json({ success: false, error: 'Google sign-in verified, but creating your account failed on the server. Please try again shortly.', reason: 'account_provisioning_failed' });
   }
-  const row = rows[0];
-  const token = crypto.randomBytes(32).toString('hex');
-  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
-    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
-  ]);
-  res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined } });
 });
 
 // Who am I? — restores a session after page reload
@@ -833,20 +844,13 @@ apiRouter.post('/auth/google-mobile', async (req, res) => {
   const claims = await verifyGoogleIdToken(idToken);
   if (!claims) return res.status(401).json({ success: false, error: 'Google sign-in could not be verified' });
 
-  const store = getStore();
-  let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
-  if (rows.length === 0) {
-    await store.execute('INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)', [
-      claims.email, claims.displayName || null, 'user', claims.uid,
-    ]);
-    rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  try {
+    const { token, row } = await signInGoogleUser(claims);
+    res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined, picture: claims.picture } });
+  } catch (err) {
+    log.error('GoogleAuth', `Account provisioning failed: ${(err as Error).message}`);
+    res.status(500).json({ success: false, error: 'Google sign-in verified, but creating your account failed on the server. Please try again shortly.', reason: 'account_provisioning_failed' });
   }
-  const row = rows[0];
-  const token = crypto.randomBytes(32).toString('hex');
-  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
-    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
-  ]);
-  res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined, picture: claims.picture } });
 });
 
 apiRouter.get('/auth/me', authMiddleware, requireAuth, async (req, res) => {

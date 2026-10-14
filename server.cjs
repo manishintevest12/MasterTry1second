@@ -14652,6 +14652,27 @@ function offerToComparisonItem(o) {
     }
   };
 }
+async function signInGoogleUser(claims) {
+  const store2 = getStore();
+  let rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+  if (rows.length === 0) {
+    await store2.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
+      claims.email,
+      claims.displayName || null,
+      "user",
+      claims.uid
+    ]);
+    rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+  }
+  const row = rows[0];
+  const token = import_crypto25.default.randomBytes(32).toString("hex");
+  await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+    token,
+    Number(row.id),
+    new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
+  ]);
+  return { token, row };
+}
 async function bootstrapBackend() {
   try {
     const migrations = await runMigrations();
@@ -15272,25 +15293,13 @@ var init_routes = __esm({
         return res.status(status).json({ success: false, error, reason });
       }
       const claims = result.claims;
-      const store2 = getStore();
-      let rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
-      if (rows.length === 0) {
-        await store2.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
-          claims.email,
-          claims.displayName || null,
-          "user",
-          claims.uid
-        ]);
-        rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+      try {
+        const { token, row } = await signInGoogleUser(claims);
+        res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0 } });
+      } catch (err) {
+        log.error("FirebaseAuth", `Account provisioning failed: ${err.message}`);
+        res.status(500).json({ success: false, error: "Google sign-in verified, but creating your account failed on the server. Please try again shortly.", reason: "account_provisioning_failed" });
       }
-      const row = rows[0];
-      const token = import_crypto25.default.randomBytes(32).toString("hex");
-      await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
-        token,
-        Number(row.id),
-        new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
-      ]);
-      res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0 } });
     });
     apiRouter.post("/auth/google-mobile", async (req, res) => {
       if (!settings.googleOauthClientIds.length) {
@@ -15300,25 +15309,13 @@ var init_routes = __esm({
       if (!idToken) return res.status(400).json({ success: false, error: "Missing Google ID token" });
       const claims = await verifyGoogleIdToken(idToken);
       if (!claims) return res.status(401).json({ success: false, error: "Google sign-in could not be verified" });
-      const store2 = getStore();
-      let rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
-      if (rows.length === 0) {
-        await store2.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
-          claims.email,
-          claims.displayName || null,
-          "user",
-          claims.uid
-        ]);
-        rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+      try {
+        const { token, row } = await signInGoogleUser(claims);
+        res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0, picture: claims.picture } });
+      } catch (err) {
+        log.error("GoogleAuth", `Account provisioning failed: ${err.message}`);
+        res.status(500).json({ success: false, error: "Google sign-in verified, but creating your account failed on the server. Please try again shortly.", reason: "account_provisioning_failed" });
       }
-      const row = rows[0];
-      const token = import_crypto25.default.randomBytes(32).toString("hex");
-      await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
-        token,
-        Number(row.id),
-        new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
-      ]);
-      res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0, picture: claims.picture } });
     });
     apiRouter.get("/auth/me", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
