@@ -11,6 +11,7 @@ import { parseSwiggyDishes } from '../parsers/swiggy';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseDominosMenu, dominosItems } from '../parsers/dominos';
 import { pizzaHutItems } from '../parsers/pizzaHut';
+import { toingShellGroups, toingShellCursor, toingMenuDishes, toingItem, toingFingerprint } from '../parsers/toing';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 /** Zomato city slugs for major Indian cities (others are tried as lowercase city names). */
@@ -189,6 +190,85 @@ export const foodWorker: VerticalWorker = {
           throw new AcquisitionError('EMPTY_RESPONSE', `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) — dish prices stay unavailable to browserless HTTP`);
         }
         return items;
+      },
+    },
+    {
+      // Toing (Swiggy's budget food app) — reverse-engineered app-only platform.
+      // disc.swiggy.com shell feed + dynamicmenu serve REAL Toing dish prices (paise)
+      // without auth. No web ordering exists -> offers are labelled app-only per policy.
+      sourceId: 'w_food_toing',
+      name: 'Food worker: Toing dish prices (Swiggy disc shell feed)',
+      priority: 8,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
+        if (!term) return [];
+        const cityKey = String(ctx.query.location?.city || '').toLowerCase().trim();
+        const c = CITY_COORDS[cityKey] || CITY_COORDS['new delhi'];
+        const city = ctx.query.location?.city || 'New Delhi';
+        const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${c[0]}&lng=${c[1]}`;
+        const H = { 'Accept': 'application/json', 'Content-Type': 'application/json' };
+        const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+        // Page 1 + up to 2 cursor pages of the Toing shell feed.
+        const groups = new Map<string, { rest: any; dishes: any[]; fp: string }>();
+        let body = '{}';
+        let pages = 0;
+        let firstJson = '';
+        for (let i = 0; i < 3; i++) {
+          const r = await cffiFetch(shellUrl, { impersonate: 'chrome', method: 'POST', body, timeoutMs: 22_000, headers: H });
+          if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Toing shell HTTP ${r.status}`, r.status);
+          if (!firstJson) firstJson = r.body;
+          const g = toingShellGroups(r.body);
+          if (!g.ok) throw new AcquisitionError('EMPTY_RESPONSE', 'Toing shell response carried no success block');
+          for (const rest of g.restaurants) {
+            if (!groups.has(rest.id)) groups.set(rest.id, { rest, dishes: g.dishesByRestaurant.get(rest.id) || [], fp: toingFingerprint(r.body) });
+          }
+          pages++;
+          const cur = toingShellCursor(r.body);
+          if (!cur.pageOffset || !cur.widgetOffset) break;
+          body = JSON.stringify({ pageOffset: cur.pageOffset, widgetOffset: cur.widgetOffset });
+          if (g.restaurants.length >= 25) break; // plenty of coverage already
+        }
+        if (!groups.size) throw new AcquisitionError('EMPTY_RESPONSE', `Toing shell feed carried no restaurant dish groups (pages=${pages})`);
+        // Featured dishes matching the query first (real Toing prices straight from the feed).
+        const items: RawSourceItem[] = [];
+        const seenDish = new Set<string>();
+        const matchDish = (d: any) => {
+          if (!qTokens.length) return true;
+          const hay = `${d.name || ''} ${(d.description || '')}`.toLowerCase();
+          return qTokens.every((w) => hay.includes(w));
+        };
+        for (const { rest, dishes, fp } of groups.values()) {
+          for (const d of dishes) {
+            const key = `${rest.id}:${d.id || d.name}`;
+            if (seenDish.has(key) || !matchDish(d)) continue;
+            seenDish.add(key);
+            items.push(toingItem(ctx.source, shellUrl, rest, d, city, fp, 'Featured Toing dish price from the app home feed (disc.swiggy.com shell)'));
+          }
+        }
+        // Deep dive: pull the full Toing menu for up to 6 restaurants to widen dish coverage.
+        if (items.length < 12) {
+          const restSlice = Array.from(groups.values()).slice(0, 6);
+          for (const { rest, fp } of restSlice) {
+            if (items.length >= 24) break;
+            try {
+              const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 22_000, headers: H });
+              if (m.status !== 200) continue;
+              const dishes = toingMenuDishes(m.body);
+              for (const d of dishes) {
+                const key = `${rest.id}:${d.id || d.name}`;
+                if (seenDish.has(key) || !matchDish(d)) continue;
+                seenDish.add(key);
+                items.push(toingItem(ctx.source, shellUrl, rest, d, city, toingFingerprint(m.body), 'Toing dish price from the restaurant menu (disc.swiggy.com dynamicmenu)'));
+                if (items.length >= 24) break;
+              }
+            } catch { /* per-restaurant failures never kill the whole source */ }
+          }
+        }
+        if (!items.length) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Toing feed listed ${groups.size} restaurants (pages=${pages}) but none matched "${term}"`);
+        }
+        return items.slice(0, 40);
       },
     },
   ],

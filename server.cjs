@@ -5156,6 +5156,132 @@ var init_pizzaHut = __esm({
   }
 });
 
+// server/workers/parsers/toing.ts
+function toingShellGroups(json) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return { restaurants: [], dishesByRestaurant: /* @__PURE__ */ new Map(), ok: false };
+  }
+  const restaurants = [];
+  const dishesByRestaurant = /* @__PURE__ */ new Map();
+  const cards = d?.success?.cards || [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of cards) {
+    const g = c?.card?.card?.dishGroup;
+    const info = g?.restaurant?.info;
+    if (!info?.name || !info?.id) continue;
+    if (seen.has(String(info.id))) continue;
+    seen.add(String(info.id));
+    const rest = {
+      id: String(info.id),
+      name: String(info.name),
+      areaName: info.areaName ? String(info.areaName) : void 0,
+      cuisines: Array.isArray(info.cuisines) ? info.cuisines.map(String) : void 0,
+      avgRating: info.avgRating ?? void 0,
+      costForTwo: info.costForTwo ? String(info.costForTwo) : void 0,
+      eta: info.sla?.slaString ? String(info.sla.slaString) : void 0,
+      cloudinaryImageId: info.cloudinaryImageId ? String(info.cloudinaryImageId) : void 0
+    };
+    restaurants.push(rest);
+    const dishes = [];
+    for (const dw of Array.isArray(g?.dishes) ? g.dishes : []) {
+      const di = dw?.info;
+      if (di?.name && typeof di.price === "number" && di.price > 0) dishes.push(di);
+    }
+    dishesByRestaurant.set(rest.id, dishes);
+  }
+  return { restaurants, dishesByRestaurant, ok: !!d?.success };
+}
+function toingShellCursor(json) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  const po = d?.success?.pageOffset;
+  if (!po?.nextOffset) return {};
+  return { pageOffset: String(po.nextOffset), widgetOffset: po.widgetOffset };
+}
+function toingMenuDishes(json) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const cards = d?.success?.cards || [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of cards) {
+    const cat = c?.card?.card;
+    if (!cat || !String(cat["@type"] || "").endsWith("ItemCategory")) continue;
+    for (const ic of Array.isArray(cat.itemCards) ? cat.itemCards : []) {
+      const di = ic?.card?.card?.info ?? ic?.card?.info ?? ic?.info;
+      if (di?.name && typeof di.price === "number" && di.price > 0) {
+        const key = String(di.id || di.name);
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(di);
+        }
+      }
+    }
+  }
+  return out;
+}
+function toingItem(source, sourceUrl, rest, di, city, fingerprint, priceBasis) {
+  const img = di.imageId ? `${TOING_IMG}${String(di.imageId)}` : rest.cloudinaryImageId ? `${TOING_IMG}${rest.cloudinaryImageId}` : "";
+  const rating = di.ratings?.aggregatedRating?.rating;
+  const ratingCount = di.ratings?.aggregatedRating?.ratingCountV2;
+  const inStock = di.inStock === 1 || di.inStock === true;
+  return newRawItem(source, {
+    title: String(di.name).slice(0, 200),
+    price: Math.round(di.price) / 100,
+    currency: "INR",
+    seller: "Toing",
+    // Toing has no web ordering; toingit.com is the official landing. The offer is
+    // explicitly app-only per owner deeplink policy.
+    sellerUrl: "https://www.toingit.com/",
+    availability: inStock ? "in_stock" : "out_of_stock",
+    location: { city },
+    attributes: {
+      restaurant: String(rest.name).slice(0, 120),
+      ...rest.areaName ? { area: String(rest.areaName).slice(0, 80) } : {},
+      ...img ? { image_url: img } : {},
+      ...di.description ? { dish_description: String(di.description).replace(/\s+/g, " ").trim().slice(0, 220) } : {},
+      ...rating ? { rating: String(rating) } : rest.avgRating ? { rating: String(rest.avgRating) } : {},
+      ...ratingCount ? { rating_count: String(ratingCount) } : {},
+      ...Array.isArray(rest.cuisines) && rest.cuisines.length ? { cuisines: rest.cuisines.slice(0, 4).join(", ") } : {},
+      ...rest.eta ? { eta: String(rest.eta).toLowerCase() } : {},
+      ...rest.costForTwo ? { cost_for_two: String(rest.costForTwo) } : {},
+      ...di.isVeg === 1 ? { veg: "veg" } : {},
+      ...di.isBestseller ? { bestseller: "yes" } : {},
+      platform: "Toing",
+      availability_note: "available only on app \u2014 Toing is an app-only platform; order via the Toing app",
+      price_basis: priceBasis
+    },
+    evidence: {
+      sourceUrl,
+      sourceReference: `${rest.id}:${di.id || di.name}`,
+      rawFingerprint: fingerprint,
+      extractedFields: ["title", "price", ...img ? ["image"] : [], ...rating ? ["rating"] : [], "availability"]
+    }
+  });
+}
+function toingFingerprint(json) {
+  return (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+}
+var import_crypto9, TOING_IMG;
+var init_toing = __esm({
+  "server/workers/parsers/toing.ts"() {
+    import_crypto9 = require("crypto");
+    init_contract();
+    TOING_IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
+  }
+});
+
 // server/workers/verticals/food.ts
 function citySlug(city, raw) {
   if (city) {
@@ -5180,6 +5306,7 @@ var init_food = __esm({
     init_httpClient();
     init_dominos();
     init_pizzaHut();
+    init_toing();
     init_curlCffiFetch();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
@@ -5368,6 +5495,83 @@ var init_food = __esm({
               throw new AcquisitionError("EMPTY_RESPONSE", `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) \u2014 dish prices stay unavailable to browserless HTTP`);
             }
             return items;
+          }
+        },
+        {
+          // Toing (Swiggy's budget food app) — reverse-engineered app-only platform.
+          // disc.swiggy.com shell feed + dynamicmenu serve REAL Toing dish prices (paise)
+          // without auth. No web ordering exists -> offers are labelled app-only per policy.
+          sourceId: "w_food_toing",
+          name: "Food worker: Toing dish prices (Swiggy disc shell feed)",
+          priority: 8,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
+            if (!term) return [];
+            const cityKey = String(ctx.query.location?.city || "").toLowerCase().trim();
+            const c = CITY_COORDS[cityKey] || CITY_COORDS["new delhi"];
+            const city = ctx.query.location?.city || "New Delhi";
+            const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${c[0]}&lng=${c[1]}`;
+            const H = { "Accept": "application/json", "Content-Type": "application/json" };
+            const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+            const groups = /* @__PURE__ */ new Map();
+            let body = "{}";
+            let pages = 0;
+            let firstJson = "";
+            for (let i = 0; i < 3; i++) {
+              const r = await cffiFetch(shellUrl, { impersonate: "chrome", method: "POST", body, timeoutMs: 22e3, headers: H });
+              if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Toing shell HTTP ${r.status}`, r.status);
+              if (!firstJson) firstJson = r.body;
+              const g = toingShellGroups(r.body);
+              if (!g.ok) throw new AcquisitionError("EMPTY_RESPONSE", "Toing shell response carried no success block");
+              for (const rest of g.restaurants) {
+                if (!groups.has(rest.id)) groups.set(rest.id, { rest, dishes: g.dishesByRestaurant.get(rest.id) || [], fp: toingFingerprint(r.body) });
+              }
+              pages++;
+              const cur = toingShellCursor(r.body);
+              if (!cur.pageOffset || !cur.widgetOffset) break;
+              body = JSON.stringify({ pageOffset: cur.pageOffset, widgetOffset: cur.widgetOffset });
+              if (g.restaurants.length >= 25) break;
+            }
+            if (!groups.size) throw new AcquisitionError("EMPTY_RESPONSE", `Toing shell feed carried no restaurant dish groups (pages=${pages})`);
+            const items = [];
+            const seenDish = /* @__PURE__ */ new Set();
+            const matchDish = (d) => {
+              if (!qTokens.length) return true;
+              const hay = `${d.name || ""} ${d.description || ""}`.toLowerCase();
+              return qTokens.every((w) => hay.includes(w));
+            };
+            for (const { rest, dishes, fp } of groups.values()) {
+              for (const d of dishes) {
+                const key = `${rest.id}:${d.id || d.name}`;
+                if (seenDish.has(key) || !matchDish(d)) continue;
+                seenDish.add(key);
+                items.push(toingItem(ctx.source, shellUrl, rest, d, city, fp, "Featured Toing dish price from the app home feed (disc.swiggy.com shell)"));
+              }
+            }
+            if (items.length < 12) {
+              const restSlice = Array.from(groups.values()).slice(0, 6);
+              for (const { rest, fp } of restSlice) {
+                if (items.length >= 24) break;
+                try {
+                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 22e3, headers: H });
+                  if (m.status !== 200) continue;
+                  const dishes = toingMenuDishes(m.body);
+                  for (const d of dishes) {
+                    const key = `${rest.id}:${d.id || d.name}`;
+                    if (seenDish.has(key) || !matchDish(d)) continue;
+                    seenDish.add(key);
+                    items.push(toingItem(ctx.source, shellUrl, rest, d, city, toingFingerprint(m.body), "Toing dish price from the restaurant menu (disc.swiggy.com dynamicmenu)"));
+                    if (items.length >= 24) break;
+                  }
+                } catch {
+                }
+              }
+            }
+            if (!items.length) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Toing feed listed ${groups.size} restaurants (pages=${pages}) but none matched "${term}"`);
+            }
+            return items.slice(0, 40);
           }
         }
       ]
@@ -5878,7 +6082,7 @@ var init_cab = __esm({
 // server/workers/parsers/bankbazaarInsurance.ts
 function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   const $ = cheerio4.load(html);
-  const fingerprint = (0, import_crypto9.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto10.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -5925,10 +6129,10 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   });
   return out.slice(0, 30);
 }
-var import_crypto9, cheerio4;
+var import_crypto10, cheerio4;
 var init_bankbazaarInsurance = __esm({
   "server/workers/parsers/bankbazaarInsurance.ts"() {
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     cheerio4 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -7746,7 +7950,7 @@ function parseAbhiBusServices(json, source, route) {
   }
   const services = Array.isArray(d?.services) ? d.services : [];
   if (!services.length) return [];
-  const fingerprint = (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto11.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route.fromName)}/${route.fromId}/${encodeURIComponent(route.toName)}/${route.toId}/${route.jdate}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -7790,10 +7994,10 @@ function parseAbhiBusServices(json, source, route) {
   }
   return out.slice(0, 40);
 }
-var import_crypto10;
+var import_crypto11;
 var init_abhibus = __esm({
   "server/workers/parsers/abhibus.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     init_contract();
   }
 });
@@ -7884,7 +8088,7 @@ function parseRedBusSearch(json, source, route) {
   }
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
-  const fingerprint = (0, import_crypto11.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto12.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
   const searchUrl = `https://www.redbus.in/bus-tickets/${slug(route.fromName)}-to-${slug(route.toName)}.aspx`;
   const out = [];
@@ -7936,10 +8140,10 @@ function parseRedBusSearch(json, source, route) {
   }
   return out;
 }
-var import_crypto11;
+var import_crypto12;
 var init_redbusSearch = __esm({
   "server/workers/parsers/redbusSearch.ts"() {
-    import_crypto11 = require("crypto");
+    import_crypto12 = require("crypto");
     init_contract();
   }
 });
@@ -8434,15 +8638,15 @@ function cardToRawItem(c, source, bankSlug, fingerprintSeed) {
     evidence: {
       sourceUrl: c.cardUrl,
       sourceReference: `${bankSlug}:${c.name}`,
-      rawFingerprint: (0, import_crypto12.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
+      rawFingerprint: (0, import_crypto13.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
       extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : [], ...c.rewardRate ? ["reward_rate"] : [], ...c.apr ? ["apr"] : []]
     }
   });
 }
-var import_crypto12, NA, clean, BANK_NAMES;
+var import_crypto13, NA, clean, BANK_NAMES;
 var init_cardInsider = __esm({
   "server/workers/parsers/cardInsider.ts"() {
-    import_crypto12 = require("crypto");
+    import_crypto13 = require("crypto");
     init_contract();
     NA = /^(n\/?a|not applicable|nil|none|-+)$/i;
     clean = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -8521,15 +8725,15 @@ function pbToRawItem(c, source, bankSlug, seed) {
     evidence: {
       sourceUrl: c.url,
       sourceReference: `${bankSlug}:${c.name}`,
-      rawFingerprint: (0, import_crypto13.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
+      rawFingerprint: (0, import_crypto14.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
       extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : []]
     }
   });
 }
-var import_crypto13, clean2;
+var import_crypto14, clean2;
 var init_paisabazaarCards = __esm({
   "server/workers/parsers/paisabazaarCards.ts"() {
-    import_crypto13 = require("crypto");
+    import_crypto14 = require("crypto");
     init_contract();
     init_cardInsider();
     clean2 = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -9040,11 +9244,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto14, HttpAcquisitionAdapter;
+var cheerio5, import_crypto15, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto14 = require("crypto");
+    import_crypto15 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -9091,7 +9295,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto14.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto15.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -9140,10 +9344,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto15, StructuredDataAdapter;
+var import_crypto16, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto15 = require("crypto");
+    import_crypto16 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -9173,7 +9377,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto15.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -9230,10 +9434,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto16, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto17, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto16 = require("crypto");
+    import_crypto17 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -9281,7 +9485,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -9305,7 +9509,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -9472,7 +9676,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -10126,13 +10330,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto17.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto18.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto17;
+var import_crypto18;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto17 = require("crypto");
+    import_crypto18 = require("crypto");
   }
 });
 
@@ -10932,7 +11136,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto18.default.randomUUID();
+  const clickId = import_crypto19.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -10958,10 +11162,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto18, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto19, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto18 = __toESM(require("crypto"), 1);
+    import_crypto19 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -11484,16 +11688,16 @@ var init_productGrouping = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto19.default.randomBytes(16).toString("hex");
-  const hash = import_crypto19.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto20.default.randomBytes(16).toString("hex");
+  const hash = import_crypto20.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto19.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto19.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto20.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto20.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -11516,7 +11720,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto19.default.randomBytes(32).toString("hex");
+  const token = import_crypto20.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -11556,10 +11760,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto19, SESSION_TTL_SEC;
+var import_crypto20, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto19 = __toESM(require("crypto"), 1);
+    import_crypto20 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -11601,16 +11805,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto20.default.randomBytes(8).toString("hex");
-  const hash = import_crypto20.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto21.default.randomBytes(8).toString("hex");
+  const hash = import_crypto21.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto20.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto21.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto20.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto21.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -11643,7 +11847,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
-  const code = String(import_crypto20.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto21.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -11700,10 +11904,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean3}`);
   return { ok: true, email: clean3 };
 }
-var import_crypto20, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto21, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto20 = __toESM(require("crypto"), 1);
+    import_crypto21 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -11746,8 +11950,8 @@ async function verifyFirebaseIdToken(idToken) {
     const certs = await getCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto21.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto21.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto22.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto22.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
     if (!signatureOk) return null;
@@ -11791,8 +11995,8 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const certs = certsOverride || await getGoogleCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto21.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto21.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto22.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto22.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
     return {
@@ -11807,10 +12011,10 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto21, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
+var import_crypto22, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto21 = __toESM(require("crypto"), 1);
+    import_crypto22 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -11885,7 +12089,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto22.default.randomUUID();
+  const key = idempotencyKey || import_crypto23.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -12000,10 +12204,10 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto22, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+var import_crypto23, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto22 = __toESM(require("crypto"), 1);
+    import_crypto23 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -12022,7 +12226,7 @@ __export(deeplink_exports, {
   safeDomain: () => safeDomain2
 });
 function secret() {
-  return process.env.AFFILIATE_SECRET || import_crypto23.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto24.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -12032,15 +12236,15 @@ function unb64url(s) {
 }
 function createMaskingPointer(destination, opts = {}) {
   const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
-  const sig = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto24.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 function resolveMaskingPointer(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
-  const expect = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  if (sig.length !== expect.length || !import_crypto23.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  const expect = import_crypto24.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto24.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -12097,7 +12301,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
-  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto23.default.randomBytes(6).toString("hex"));
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto24.default.randomBytes(6).toString("hex"));
   return out.replace(/\{[a-z0-9_]+\}/gi, "");
 }
 function parseJsonObj(v) {
@@ -12110,7 +12314,7 @@ function parseJsonObj(v) {
   }
 }
 async function recordPointerClick(dest, offerId, network) {
-  const clickId = import_crypto23.default.randomUUID();
+  const clickId = import_crypto24.default.randomUUID();
   try {
     const store2 = getStore();
     await store2.execute(
@@ -12123,10 +12327,10 @@ async function recordPointerClick(dest, offerId, network) {
   }
   return clickId;
 }
-var import_crypto23, AFFILIATE_TTL_SEC;
+var import_crypto24, AFFILIATE_TTL_SEC;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
-    import_crypto23 = __toESM(require("crypto"), 1);
+    import_crypto24 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -14165,7 +14369,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto24, apiRouter;
+var import_express, import_crypto25, apiRouter;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -14177,7 +14381,7 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto24 = __toESM(require("crypto"), 1);
+    import_crypto25 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_deeplink();
@@ -14687,7 +14891,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto24.default.randomBytes(32).toString("hex");
+      const token = import_crypto25.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -14715,7 +14919,7 @@ var init_routes = __esm({
         rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       }
       const row = rows[0];
-      const token = import_crypto24.default.randomBytes(32).toString("hex");
+      const token = import_crypto25.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(row.id),
@@ -14741,7 +14945,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto24.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto25.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -14749,7 +14953,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto24.default.randomBytes(32).toString("hex");
+      const token = import_crypto25.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -14963,7 +15167,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto25.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto26.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -15193,10 +15397,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto25, strip, clip, COUPON_TXT;
+var import_crypto26, strip, clip, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto25 = require("crypto");
+    import_crypto26 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();

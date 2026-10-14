@@ -73,6 +73,8 @@ var init_settings = __esm({
       resendApiKey: process.env.RESEND_API_KEY || "",
       /** Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side. */
       firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "",
+      /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
+      googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "").split(",").map((e) => e.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
       cuelinks: {
         apiKey: process.env.CUELINKS_API_KEY || "",
@@ -178,7 +180,7 @@ function getStore() {
   if (store) return store;
   if (settings.mysqlUrl) {
     try {
-      const pool = import_promise.default.createPool({
+      const pool2 = import_promise.default.createPool({
         uri: settings.mysqlUrl,
         waitForConnections: true,
         connectionLimit: 10,
@@ -189,7 +191,7 @@ function getStore() {
         timezone: "Z"
         // KVM4 sizing: small pool, bounded queue
       });
-      store = new MysqlStore(pool);
+      store = new MysqlStore(pool2);
       log.info("DataStore", "MySQL/MariaDB pool initialized (durable source of truth)");
     } catch (err) {
       log.error("DataStore", "MySQL pool init failed, using file fallback", { error: err.message });
@@ -290,9 +292,9 @@ var init_db = __esm({
     init_settings();
     init_logger();
     MysqlStore = class _MysqlStore {
-      constructor(pool) {
+      constructor(pool2) {
         this.kind = "mysql";
-        this.pool = pool;
+        this.pool = pool2;
       }
       static {
         /**
@@ -478,6 +480,7 @@ var init_db = __esm({
               if (/^now\(\)$/i.test(expr)) row[col] = (/* @__PURE__ */ new Date()).toISOString();
               else if (/^null$/i.test(expr)) row[col] = null;
               else if (expr === "?") row[col] = params[paramIdx >= 0 ? paramIdx : 0];
+              else if (/^-?\d+(\.\d+)?$/.test(expr)) row[col] = Number(expr);
               else if (/^`?(\w+)`?\s*[-+]\s*(\d+)$/i.test(expr)) {
                 const am = expr.match(/^`?(\w+)`?\s*([-+])\s*(\d+)$/i);
                 const cur = Number(row[am[1]] || 0);
@@ -1008,7 +1011,7 @@ var init_devFixtures = __esm({
 function looksLikeChallenge(body) {
   const head = body.slice(0, 6e3);
   const shell = body.length < 12e4;
-  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
+  const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|bm-verify|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
   return markers.test(head) && !/application\/ld\+json/i.test(head) || shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
@@ -1236,6 +1239,7 @@ function parseFlipkart(html, source, searchUrl) {
     const avg = u.rating?.average;
     const rawImg = String(u.media?.images?.[0]?.url || u.imageUrl || "");
     const imageUrl = rawImg ? rawImg.replace(/^http:/, "https:").replace("{@width}", "400").replace("{@height}", "400").replace("{@quality}", "70") : "";
+    const fkImgs = (Array.isArray(u.media?.images) ? u.media.images : []).map((im) => String(im?.url || "")).filter(Boolean).map((x) => x.replace(/^http:/, "https:").replace("{@width}", "400").replace("{@height}", "400").replace("{@quality}", "70")).filter((x) => /^https:\/\/rukmini/.test(x)).slice(0, 6);
     out.push(newRawItem(source, {
       title: title.slice(0, 220),
       price: selling,
@@ -1243,7 +1247,7 @@ function parseFlipkart(html, source, searchUrl) {
       listPrice: mrp && mrp > selling ? mrp : void 0,
       brand: u.titles?.superTitle || void 0,
       identifiers: { vendorProductId: id },
-      attributes: { ...avg ? { rating: String(avg) } : {}, ...u.rating?.count ? { rating_count: String(u.rating.count) } : {}, .../^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {} },
+      attributes: { ...avg ? { rating: String(avg) } : {}, ...u.rating?.count ? { rating_count: String(u.rating.count) } : {}, .../^https:\/\/rukmini/.test(imageUrl) ? { image_url: imageUrl } : {}, ...fkImgs.length > 1 ? { image_urls: fkImgs.join("|") } : {} },
       seller: "Flipkart",
       sellerUrl: u.baseUrl ? `https://www.flipkart.com${String(u.baseUrl).split("&")[0]}` : void 0,
       availability,
@@ -1331,6 +1335,7 @@ function parseMyntra(html, source, pageUrl) {
     const landing = String(p.landingPageUrl || "");
     const url = landing ? `https://www.myntra.com/${landing.replace(/^\/+/, "")}` : "https://www.myntra.com";
     const img = p.searchImage ? String(p.searchImage).replace(/^http:/, "https:") : void 0;
+    const imgs = [...new Set((Array.isArray(p.images) ? p.images : []).map((i) => String(i?.src || "").replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u)))].slice(0, 6);
     items.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: p.brand ? String(p.brand).slice(0, 120) : void 0,
@@ -1347,6 +1352,7 @@ function parseMyntra(html, source, pageUrl) {
         rating_count: p.ratingCount ? String(p.ratingCount) : "",
         discount: p.discountDisplayLabel ? String(p.discountDisplayLabel).replace(/[()]/g, "") : "",
         image: img || "",
+        ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
         data_note: `Product as listed on Myntra search, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
       },
       identifiers: p.productId ? { sku: String(p.productId) } : void 0,
@@ -1368,6 +1374,18 @@ function pickImage(p) {
   const media = p.images?.[0]?.media;
   const url = media?.[0]?.mediumImageUrl || media?.[0]?.imageUrl;
   return url ? String(url).replace(/^http:/, "https:") : void 0;
+}
+function pickImages(p) {
+  const out = [];
+  const add = (u) => {
+    if (u) {
+      const x = String(u).replace(/^http:/, "https:");
+      if (!out.includes(x)) out.push(x);
+    }
+  };
+  add(p.fnlColorVariantData?.outfitPictureURL);
+  for (const g of p.images || []) for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
+  return out.slice(0, 6);
 }
 function parseAjio(rawBody, source, pageUrl) {
   let root;
@@ -1400,6 +1418,7 @@ function parseAjio(rawBody, source, pageUrl) {
         brand: brand || "",
         discount: p.discountPercent ? `${p.discountPercent}%` : "",
         image: img || "",
+        ...pickImages(p).length > 1 ? { image_urls: pickImages(p).join("|") } : {},
         data_note: `Product as listed on Ajio search API, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
       },
       identifiers: p.code ? { sku: String(p.code) } : void 0,
@@ -1493,27 +1512,64 @@ var init_ecommerce = __esm({
       tasks: [
         {
           sourceId: "w_ecom_amazon_in",
+          // Amazon.in now fronts repeated browserless hits with an Imperva "bm-verify"
+          // interstitial: HTTP 200 + <meta refresh URL='...?bm-verify=TOKEN'>. Following
+          // that URL once with the SAME cookie session returns the real results page,
+          // so we run the acquisition as a cffi session handshake instead of a plain GET.
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const term = q(ctx);
             if (!term) return [];
             const url = `https://www.amazon.in/s?k=${encodeURIComponent(term)}`;
-            let items = [];
-            let lastBody = "";
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              const r = await ctx.fetch(url);
-              if (r.status === 200) {
-                lastBody = r.body;
-                items = parseAmazonIn(r.body, ctx.source, url);
-                if (items.length) break;
-              } else if (attempt === 1 && r.status >= 500) {
-                await new Promise((res) => setTimeout(res, 1500));
-                continue;
-              } else {
-                throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "FORBIDDEN", `Amazon.in HTTP ${r.status}`, r.status);
+            let body = "";
+            let status = 0;
+            const r1 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+            body = r1.body;
+            status = r1.status;
+            if (status === 200 && body.includes("bm-verify")) {
+              const m = body.match(/URL='([^']+)'/);
+              if (m) {
+                const vUrl = m[1].startsWith("/") ? "https://www.amazon.in" + m[1] : m[1];
+                await new Promise((res) => setTimeout(res, 1200));
+                const r2 = await cffiFetch(vUrl, { cookies: r1.cookies, returnCookies: true, timeoutMs: 22e3 });
+                body = r2.body;
+                status = r2.status;
+                if (status === 200 && body.includes("bm-verify")) {
+                  const m2 = body.match(/URL='([^']+)'/);
+                  if (m2) {
+                    await new Promise((res) => setTimeout(res, 1200));
+                    const v2 = m2[1].startsWith("/") ? "https://www.amazon.in" + m2[1] : m2[1];
+                    const r3 = await cffiFetch(v2, { cookies: r2.cookies, timeoutMs: 22e3 });
+                    body = r3.body;
+                    status = r3.status;
+                  }
+                }
               }
             }
-            if (!items.length && looksLikeChallenge(lastBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a challenge page");
-            return items;
+            if (status === 503) {
+              await new Promise((res) => setTimeout(res, 2500));
+              const r4 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+              body = r4.body;
+              status = r4.status;
+              if (status === 200 && body.includes("bm-verify")) {
+                const m3 = body.match(/URL='([^']+)'/);
+                if (m3) {
+                  await new Promise((res) => setTimeout(res, 1200));
+                  const v3 = m3[1].startsWith("/") ? "https://www.amazon.in" + m3[1] : m3[1];
+                  const r5 = await cffiFetch(v3, { cookies: r4.cookies, timeoutMs: 22e3 });
+                  body = r5.body;
+                  status = r5.status;
+                }
+              }
+            }
+            if (status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in HTTP 403 (edge denied)", 403);
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Amazon.in HTTP ${status}`, status);
+            const items = parseAmazonIn(body, ctx.source, url);
+            if (items.length) return items;
+            if (body.includes("bm-verify") || looksLikeChallenge(body)) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a bm-verify challenge that did not clear");
+            }
+            throw new AcquisitionError("EMPTY_RESPONSE", `Amazon.in carried no parseable products (body ${body.length} bytes)`);
           }
         },
         {
@@ -2021,6 +2077,7 @@ function parseCleartripHotels(nextData) {
       seen.add(key);
       const imgRaw = d?.imageSlider?.data?.images?.[0]?.data?.url;
       const imageUrl = typeof imgRaw === "string" && imgRaw.startsWith("http") ? imgRaw : typeof imgRaw === "string" && imgRaw ? CLEARTRIP_IMAGE_CDN + imgRaw.replace(/^\/+/, "") : null;
+      const allImgs = (Array.isArray(d?.imageSlider?.data?.images) ? d.imageSlider.data.images : []).map((im) => im?.data?.url).filter((u) => typeof u === "string" && u).map((u) => u.startsWith("http") ? u : CLEARTRIP_IMAGE_CDN + u.replace(/^\/+/, "")).slice(0, 8);
       const rel = card?.action?.payload?.url;
       const deeplink = typeof rel === "string" && rel.startsWith("/") ? CLEARTRIP_WEB + rel : typeof rel === "string" && rel.startsWith("http") ? rel : `${CLEARTRIP_WEB}/hotels/`;
       out.push({
@@ -2034,6 +2091,7 @@ function parseCleartripHotels(nextData) {
         locality: d?.locality ? String(d.locality) : null,
         city: d?.city ? String(d.city) : null,
         imageUrl,
+        imageUrls: allImgs,
         deeplink,
         freeCancellation: Boolean(d?.freeCancellation?.available),
         freeBreakfast: Boolean(d?.freeBreakfast?.available)
@@ -2047,6 +2105,7 @@ function parseCleartripOffers(hotels, source) {
   for (const h of hotels.slice(0, 30)) {
     const attrs = {
       image_url: h.imageUrl,
+      ...h.imageUrls && h.imageUrls.length > 1 ? { image_urls: h.imageUrls.join("|") } : {},
       rating: h.rating,
       stars: h.stars,
       locality: h.locality,
@@ -2129,6 +2188,7 @@ function parseAirbnbStays(results) {
       rating: ratingMatch ? ratingMatch[1] : null,
       reviews: ratingMatch && ratingMatch[2] ? parseInt(ratingMatch[2], 10) : null,
       imageUrl: r.contextualPictures?.[0]?.picture || null,
+      imageUrls: (Array.isArray(r.contextualPictures) ? r.contextualPictures : []).map((x) => x?.picture).filter((u) => typeof u === "string" && u.startsWith("http")).slice(0, 8),
       lat: coord?.latitude ?? null,
       lon: coord?.longitude ?? null
     });
@@ -2146,6 +2206,7 @@ function parseAirbnbOffers(stays, source, city) {
     if (!s.pricePerNight) continue;
     const attrs = {
       image_url: s.imageUrl,
+      ...s.imageUrls && s.imageUrls.length > 1 ? { image_urls: s.imageUrls.join("|") } : {},
       rating: s.rating,
       review_count: s.reviews,
       room_type: s.roomType,
@@ -2181,6 +2242,14 @@ var init_airbnbHotels = __esm({
 });
 
 // server/workers/parsers/ixigoHotels.ts
+function pickImages2(h) {
+  const out = [];
+  for (const e of Array.isArray(h.imageInfoList) ? h.imageInfoList : []) {
+    const u = e?.imageUrl || e?.url || e?.thumbUrl || e?.mainImage || e?.image || e?.dynamicImageUrl || e?.cdnUrl;
+    if (typeof u === "string" && u && !out.includes(u)) out.push(u.replace(/^http:/, "https:"));
+  }
+  return out.slice(0, 8);
+}
 function pickImage2(h) {
   const list = h.imageInfoList;
   if (Array.isArray(list)) {
@@ -2213,12 +2282,13 @@ function parseIxigoHotels(html, source, pageUrl, city) {
   if (!Array.isArray(results)) return [];
   const items = [];
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  for (const h of results.slice(0, 20)) {
+  for (const h of results.slice(0, 60)) {
     const name = String(h.name || "").trim();
     const fare = Number(h.fareDetail?.displayedBaseFare);
     if (!name || !Number.isFinite(fare) || fare <= 0) continue;
     const site = siteFor(name, h.city || city);
     const img = pickImage2(h);
+    const imgs = pickImages2(h);
     items.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand: name.slice(0, 200),
@@ -2237,6 +2307,7 @@ function parseIxigoHotels(html, source, pageUrl, city) {
         user_rating_category: String(h.userRatingCategory || ""),
         top_offerings: Array.isArray(h.topOfferings) ? h.topOfferings.slice(0, 5).join(", ") : "",
         image: img || "",
+        ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
         price_basis: "per night, base fare as published by Ixigo",
         chain_site: site.chain ? "brand official website" : "web search for official site",
         data_note: `Price observed on Ixigo (metasearch) on ${today}; booking is via the hotel's own channels, never via Ixigo`
@@ -2320,6 +2391,308 @@ var init_cityAlias = __esm({
   }
 });
 
+// server/workers/parsers/agodaHotels.ts
+function agodaCitySlugs(city) {
+  const out = [];
+  for (const v of cityVariants(city)) {
+    const slug = `${slugOf(v)}-in`;
+    if (!out.includes(slug)) out.push(slug);
+  }
+  return out.slice(0, 6);
+}
+function extractAgodaCityId(html) {
+  const m = html.match(/search\?city=(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function extractAgodaPageConfig(html) {
+  const m = html.match(/agoda\.pageConfig\s*=\s*(\{[\s\S]*?\})\s*<\/script>/);
+  if (!m) return null;
+  try {
+    const seg = m[1].slice(0, 4e3);
+    const cor2 = seg.match(/correlationId\s*:\s*["']([^"']+)["']/);
+    const ana2 = seg.match(/analyticsSessionId\s*:\s*["']([^"']+)["']/);
+    if (cor2 && ana2) return { correlationId: cor2[1], analyticsSessionId: ana2[1] };
+  } catch {
+  }
+  const cor = html.match(/"correlationId"\s*:\s*"([^"]+)"/);
+  const ana = html.match(/"analyticsSessionId"\s*:\s*"([^"]+)"/);
+  if (cor && ana) return { correlationId: cor[1], analyticsSessionId: ana[1] };
+  return null;
+}
+function agodaGateHeaders(cfg, epochMs) {
+  const gate = Buffer.from(`${epochMs}||/graphql/search`).toString("base64");
+  return {
+    "Content-Type": "application/json",
+    Accept: "application/json, text/plain, */*",
+    Origin: AGODA_WEB,
+    "AG-LANGUAGE-LOCALE": "en-us",
+    "AG-CID": "-1",
+    "AG-PAGE-TYPE-ID": "103",
+    "AG-RETRY-ATTEMPT": "0",
+    "AG-REQUEST-ATTEMPT": "1",
+    "Access-Control-Max-Age": "7200",
+    "x-gate-meta": gate,
+    ...cfg.correlationId ? { "AG-CORRELATION-ID": cfg.correlationId } : {},
+    ...cfg.analyticsSessionId ? { "AG-ANALYTICS-SESSION-ID": cfg.analyticsSessionId } : {}
+  };
+}
+function buildAgodaCitySearchVars(cityId, checkin, checkout, pageNumber = 1) {
+  const inMs = Date.parse(`${checkin}T00:00:00Z`);
+  const outMs = Date.parse(`${checkout}T00:00:00Z`);
+  const los = Number.isFinite(outMs) && outMs > inMs ? Math.max(1, Math.round((outMs - inMs) / 864e5)) : 1;
+  const ci = `${checkin}T00:00:00.000Z`;
+  const co = new Date(inMs + los * 864e5).toISOString().slice(0, 10) + "T00:00:00.000Z";
+  const now = nowIso();
+  const searchId = crypto.randomUUID();
+  return {
+    CitySearchRequest: {
+      cityId,
+      searchRequest: {
+        searchCriteria: {
+          bookingDate: now,
+          checkInDate: ci,
+          los,
+          rooms: 1,
+          adults: 2,
+          children: 0,
+          childAges: [],
+          currency: "INR",
+          sorting: { sortField: "Ranking", sortOrder: "Desc" },
+          requiredBasis: "PRPN",
+          requiredPrice: "Exclusive",
+          isUserLoggedIn: false,
+          travellerType: "AllGuests",
+          ratePlans: [],
+          suggestionLimit: 0,
+          synchronous: false,
+          isRoomSuggestionRequested: false
+        },
+        searchContext: {
+          locale: "en-us",
+          cid: -1,
+          origin: "US",
+          platform: 1,
+          deviceTypeId: 1,
+          storefrontId: 3,
+          pageTypeId: 103,
+          endpointSearchType: "CitySearch",
+          searchId,
+          userId: "",
+          memberId: 0,
+          experiments: { forceByVariant: null, forceByExperiment: [{ id: "JGCW-204", variant: "B" }] },
+          isRetry: false,
+          showCMS: false,
+          whiteLabelKey: "",
+          ipAddress: null
+        },
+        page: { pageSize: 30, pageNumber }
+      }
+    },
+    ContentSummaryRequest: {
+      context: {
+        rawUserId: "",
+        memberId: 0,
+        userOrigin: "US",
+        locale: "en-us",
+        apo: false,
+        searchCriteria: { cityId },
+        platform: { id: 1 },
+        storefrontId: 3,
+        cid: "-1",
+        occupancy: { numberOfAdults: 2, numberOfChildren: 0, checkIn: ci },
+        deviceTypeId: 1,
+        whiteLabelKey: "",
+        correlationId: "",
+        forceExperimentsByIdNew: [{ key: "JGCW-204", value: "B" }]
+      },
+      summary: { highlightedFeaturesOrderPriority: null, includeHotelCharacter: false },
+      reviews: {
+        commentary: null,
+        demographics: { providerIds: null, filter: { defaultProviderOnly: true } },
+        summaries: { providerIds: null, apo: true, limit: 1 },
+        cumulative: { providerIds: null },
+        filters: null
+      },
+      images: { page: null, maxWidth: 0, maxHeight: 0, imageSizes: null, indexOffset: null },
+      rooms: {
+        images: null,
+        featureLimit: 0,
+        filterCriteria: null,
+        includeMissing: false,
+        includeSoldOut: false,
+        includeDmcRoomId: false,
+        soldOutRoomCriteria: null,
+        showRoomSize: true,
+        showRoomFacilities: true,
+        showRoomName: false
+      },
+      nonHotelAccommodation: true,
+      engagement: true,
+      highlights: { maxNumberOfItems: 0, images: { imageSizes: [{ key: "full", size: { width: 0, height: 0 } }] } },
+      personalizedInformation: true,
+      localInformation: { images: null },
+      features: null,
+      rateCategories: null,
+      contentRateCategories: null,
+      synopsis: true
+    },
+    PricingSummaryRequest: {
+      cheapestOnly: true,
+      isSSR: true,
+      context: {
+        isAllowBookOnRequest: false,
+        abTests: [9021, 9023, 9024, 9025, 9027, 9029].map((testId) => ({ testId, abUser: "B" })),
+        clientInfo: {
+          cid: -1,
+          languageId: 1,
+          languageUse: 1,
+          origin: "US",
+          platform: 1,
+          searchId: crypto.randomUUID(),
+          storefront: 3,
+          userId: "",
+          ipAddress: null
+        },
+        experiment: [{ name: "JGCW-204", variant: "B" }],
+        sessionInfo: { isLogin: false, memberId: 0, sessionId: 1 }
+      },
+      pricing: {
+        bookingDate: now,
+        checkIn: ci,
+        checkout: co,
+        currency: "INR",
+        details: { cheapestPriceOnly: false, itemBreakdown: false, priceBreakdown: false },
+        filters: { cheapestRoomFilters: null, filterAPO: false, ratePlans: [1], secretDealOnly: false, suppliers: [] },
+        features: {
+          calculateRareRoomBadge: false,
+          crossOutRate: false,
+          isAPSPeek: false,
+          isAllOcc: false,
+          isApsEnabled: false,
+          isIncludeUsdAndLocalCurrency: false,
+          isMSE: true,
+          isRPM2Included: true,
+          maxSuggestions: 0,
+          isEnableSupplierFinancialInfo: false,
+          isLoggingAuctionData: false,
+          newRateModel: false,
+          overrideOccupancy: false,
+          filterCheapestRoomEscapesPackage: false,
+          priusId: 0,
+          synchronous: false,
+          enableRichContentOffer: false,
+          showCouponAmountInUserCurrency: false,
+          disableEscapesPackage: false,
+          enablePushDayUseRates: false,
+          enableDayUseCor: false,
+          ignoreRoomsCountForNha: false,
+          enableSuggestPriceExclusiveWithFees: false
+        },
+        includedPriceInfo: false,
+        occupancy: { adults: 2, children: 0, rooms: 1, childAges: [] },
+        requiredBasis: "PRPN",
+        requiredPrice: "Exclusive",
+        ratePlans: [],
+        sorting: { sortField: "Ranking", sortOrder: "Desc" }
+      },
+      suggestedPrice: "Exclusive"
+    }
+  };
+}
+function extractAgodaProperties(gql) {
+  const props = gql?.data?.citySearch?.properties;
+  return Array.isArray(props) ? props : [];
+}
+function parseAgodaHotels(props) {
+  const first = (v) => Array.isArray(v) && v.length ? v[0] : void 0;
+  const out = [];
+  for (const p of props) {
+    if (!p || typeof p !== "object") continue;
+    const info = p.content?.informationSummary || {};
+    const name = String(info.displayName || "").trim();
+    const propertyId = String(p.propertyId || "").trim();
+    if (!name || !/^\d+$/.test(propertyId)) continue;
+    const rev = p.content?.reviews?.cumulative;
+    let score = null;
+    let reviews = null;
+    if (rev && typeof rev === "object") {
+      score = typeof rev.score === "number" ? rev.score : null;
+      reviews = typeof rev.reviewCount === "number" ? rev.reviewCount : null;
+    }
+    const offer = first(p.pricing?.offers);
+    const roomOffer = first(offer?.roomOffers);
+    const pricing = first(roomOffer?.room?.pricing) || {};
+    const perNight = pricing?.price?.perNight || {};
+    const exclusive = perNight?.exclusive?.display;
+    const inclusive = perNight?.inclusive?.display;
+    const pricePerNight = typeof exclusive === "number" ? exclusive : typeof inclusive === "number" ? inclusive : null;
+    const priceInclusive = typeof inclusive === "number" ? inclusive : null;
+    const imgEntry = first(first(p.content?.images?.hotelImages)?.urls);
+    const rawImg = typeof imgEntry?.value === "string" ? imgEntry.value : null;
+    const imageUrl = rawImg ? rawImg.startsWith("//") ? `https:${rawImg}` : rawImg : null;
+    out.push({
+      propertyId,
+      name,
+      accommodationType: info.accommodationType != null ? String(info.accommodationType) : null,
+      cityName: info.address?.city?.name ? String(info.address.city.name) : null,
+      score,
+      reviews,
+      pricePerNight,
+      priceInclusive,
+      currency: String(pricing.currency || "INR"),
+      imageUrl,
+      lat: typeof info.geoInfo?.latitude === "number" ? info.geoInfo.latitude : null,
+      lon: typeof info.geoInfo?.longitude === "number" ? info.geoInfo.longitude : null,
+      available: p.pricing?.isAvailable === true
+    });
+  }
+  return out;
+}
+function parseAgodaOffers(hotels, source, city, meta) {
+  const out = [];
+  const srpUrl = `${AGODA_WEB}/search?city=${meta.cityId}&checkIn=${meta.checkin}&los=${meta.los}`;
+  for (const h of hotels.slice(0, 80)) {
+    if (!h.pricePerNight) continue;
+    const attrs = {
+      image_url: h.imageUrl,
+      rating: h.score != null ? String(h.score / 10) : null,
+      // Agoda scores are /10 → /5 scale
+      review_count: h.reviews,
+      city: h.cityName || city,
+      latitude: h.lat,
+      longitude: h.lon,
+      property_id: h.propertyId,
+      price_basis: h.priceInclusive != null ? `per night on Agoda (tax-exclusive \u20B9${Math.round(h.pricePerNight)}; inclusive \u20B9${Math.round(h.priceInclusive)})` : "per night on Agoda (tax-exclusive)",
+      data_note: "Live per-night rates observed on Agoda search"
+    };
+    out.push(newRawItem(source, {
+      title: h.name,
+      seller: "Agoda",
+      sellerUrl: srpUrl,
+      // redirect only to the site that owns the price
+      currency: h.currency,
+      price: Math.round(h.pricePerNight),
+      attributes: attrs,
+      evidence: {
+        sourceUrl: srpUrl,
+        sourceReference: h.propertyId,
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+var AGODA_WEB, nowIso, AGODA_CITY_SEARCH_QUERY;
+var init_agodaHotels = __esm({
+  "server/workers/parsers/agodaHotels.ts"() {
+    init_contract();
+    init_cityAlias();
+    AGODA_WEB = "https://www.agoda.com";
+    nowIso = () => (/* @__PURE__ */ new Date()).toISOString().replace(/\.\d{3}Z$/, ".000Z");
+    AGODA_CITY_SEARCH_QUERY = "query citySearch($CitySearchRequest: CitySearchRequest!, $ContentSummaryRequest: ContentSummaryRequest!, $PricingSummaryRequest: PricingRequestParameters) { citySearch(CitySearchRequest: $CitySearchRequest) { properties(ContentSummaryRequest: $ContentSummaryRequest, PricingSummaryRequest: $PricingSummaryRequest) { propertyId content { informationSummary { displayName accommodationType address { city { name } } geoInfo { latitude longitude } rating } images { hotelImages { id urls { key value } } } reviews { cumulative { reviewCount score } } } pricing { isAvailable offers { roomOffers { room { pricing { currency price { perNight { exclusive { display originalPrice } inclusive { display originalPrice } } } } } } } } } } }";
+  }
+});
+
 // server/workers/verticals/hotels.ts
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
@@ -2338,7 +2711,7 @@ function stayDates(q3) {
   const end = ret && /\d{4}-\d{2}-\d{2}/.test(ret) ? new Date(ret) : new Date(base.getTime() + 864e5);
   return { checkin: fmt(base), checkout: fmt(end) };
 }
-var hotelsWorker;
+var agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -2351,6 +2724,8 @@ var init_hotels = __esm({
     init_curlCffiFetch();
     init_httpClient();
     init_cityAlias();
+    init_agodaHotels();
+    agodaCityIdCache = /* @__PURE__ */ new Map();
     hotelsWorker = {
       vertical: "hotels",
       tasks: [
@@ -2506,13 +2881,15 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
             const UA = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              const r = await ctx.fetch(url, { headers: UA, timeoutMs: 15e3 });
+            let cookies = void 0;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
+              cookies = r.cookies || cookies;
               if (r.status !== 200 && r.status !== 202) throw new AcquisitionError("FORBIDDEN", `Booking.com HTTP ${r.status}`, r.status);
               const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
               if (items.length) return items;
-              if (looksLikeChallenge(r.body) && attempt === 1) {
-                await new Promise((res) => setTimeout(res, 1500));
+              if (looksLikeChallenge(r.body) && attempt < 3) {
+                await new Promise((res) => setTimeout(res, 2500 * attempt));
                 continue;
               }
               throw new AcquisitionError("ACCESS_CHALLENGE", "Booking.com presented a challenge page (no parseable property cards)");
@@ -2590,12 +2967,102 @@ var init_hotels = __esm({
         },
         // ---- Owner-mandated hotel sources: attempted live on every search, honestly reported ----
         {
+          // Agoda LIVE (13 Oct 2026): the SSR shell resolves cityId via SEO city pages,
+          // then the token-gated GraphQL /graphql/search endpoint (gate: x-gate-meta
+          // base64 epoch + AG-* headers from pageConfig) returns 30 hotels with real
+          // INR per-night rates. Verified Goa + Bali. Details: parsers/agodaHotels.ts.
           sourceId: "w_hotels_agoda",
-          name: "Hotels worker: Agoda (probe)",
-          priority: 19,
-          run: async () => {
-            await cffiFetch("https://www.agoda.com/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Agoda serves an SSR shell; hotel prices load via token-gated XHRs that are not available unauthenticated to browserless HTTP.");
+          name: "Hotels worker: Agoda GraphQL live rates",
+          priority: 6,
+          maxPerMinute: 4,
+          timeoutMs: 9e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            let cityId = agodaCityIdCache.get(city.toLowerCase());
+            if (!cityId) {
+              for (const slug of agodaCitySlugs(city)) {
+                const r = await cffiFetch(`https://www.agoda.com/city/${slug}.html`, {
+                  impersonate: "chrome",
+                  timeoutMs: 2e4,
+                  headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
+                });
+                if (r.status !== 200) continue;
+                const id = extractAgodaCityId(r.body);
+                if (id) {
+                  cityId = id;
+                  agodaCityIdCache.set(city.toLowerCase(), id);
+                  break;
+                }
+              }
+            }
+            if (!cityId) throw new AcquisitionError("EMPTY_RESPONSE", `Agoda has no city page for "${city}"`);
+            const los0 = Math.max(1, Math.round((Date.parse(`${checkout}T00:00:00Z`) - Date.parse(`${checkin}T00:00:00Z`)) / 864e5));
+            const shell = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
+              impersonate: "chrome",
+              timeoutMs: 25e3,
+              headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
+            });
+            if (shell.status === 403 || shell.status === 429) {
+              throw new AcquisitionError(shell.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda blocked: ${shell.status}`, shell.status);
+            }
+            if (shell.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda HTTP ${shell.status}`, shell.status);
+            const cfg = extractAgodaPageConfig(shell.body);
+            if (!cfg) throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda SRP carried no pageConfig");
+            const gqlHeaders = () => ({
+              ...agodaGateHeaders(cfg, Date.now()),
+              Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
+              "AG-REQUEST-ID": crypto.randomUUID()
+            });
+            const hotels = [];
+            const seenIds = /* @__PURE__ */ new Set();
+            for (let page = 1; page <= 3; page++) {
+              const gqlRes = await cffiFetch("https://www.agoda.com/graphql/search", {
+                method: "POST",
+                impersonate: "chrome",
+                timeoutMs: 6e4,
+                headers: gqlHeaders(),
+                body: JSON.stringify({
+                  query: AGODA_CITY_SEARCH_QUERY,
+                  variables: buildAgodaCitySearchVars(cityId, checkin, checkout, page),
+                  operationName: "citySearch"
+                })
+              });
+              if (gqlRes.status === 403 || gqlRes.status === 429) {
+                if (page > 1) break;
+                throw new AcquisitionError(gqlRes.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+              }
+              if (gqlRes.status !== 200) {
+                if (page > 1) break;
+                throw new AcquisitionError("SERVER_ERROR", `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status);
+              }
+              let gql;
+              try {
+                gql = JSON.parse(gqlRes.body);
+              } catch {
+                if (page > 1) break;
+                throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda GraphQL response not valid JSON");
+              }
+              if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
+                if (page > 1) break;
+                throw new AcquisitionError("MALFORMED_RESPONSE", `Agoda GraphQL errors: ${String(gql.errors[0]?.message || "").slice(0, 160)}`);
+              }
+              const pageHotels = parseAgodaHotels(extractAgodaProperties(gql));
+              let fresh = 0;
+              for (const h of pageHotels) {
+                const k = String(h.propertyId ?? h.id ?? h.name);
+                if (!seenIds.has(k)) {
+                  seenIds.add(k);
+                  hotels.push(h);
+                  fresh++;
+                }
+              }
+              if (fresh === 0) break;
+            }
+            const priced = hotels.filter((h) => h.pricePerNight);
+            if (priced.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Agoda GraphQL returned no priced hotels");
+            return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });
           }
         },
         {
@@ -2936,6 +3403,122 @@ var init_emtFareCalendar = __esm({
   }
 });
 
+// server/workers/parsers/emtAirbus.ts
+function emtEncrypt(plain) {
+  const c = (0, import_crypto6.createCipheriv)("aes-128-cbc", Buffer.from(ENC_KEY, "utf8"), Buffer.from(ENC_KEY, "utf8"));
+  return Buffer.concat([c.update(Buffer.from(plain, "utf8")), c.final()]).toString("base64");
+}
+function parseEmtAirbus(jsonText) {
+  const d = JSON.parse(jsonText);
+  const groups = Array.isArray(d?.j) ? d.j : [];
+  const out = [];
+  for (const g of groups) {
+    for (const f of g?.s || []) {
+      const segKey = String(f?.segMatchingKey || "");
+      const legs = segKey.split("^").map((s) => s.trim());
+      const parsed = legs.map((leg) => {
+        const m = leg.match(SEG_RE);
+        if (m) return { dep: m[1], arr: m[2], ac: m[3], fn: m[4], full: true };
+        const n = leg.match(LEG_NO_ROUTE_RE);
+        if (n) return { dep: "", arr: "", ac: n[1], fn: n[2], full: false };
+        return null;
+      }).filter(Boolean);
+      if (parsed.length === 0 || !parsed.some((p) => p.full)) continue;
+      const fullLegs = parsed.filter((p) => p.full);
+      const depTime = fullLegs[0].dep;
+      const arrTime = fullLegs[fullLegs.length - 1].arr;
+      const airlineCode = parsed[0].ac;
+      const flightNo2 = parsed.map((p) => p.fn).join("-");
+      const fares = Array.isArray(f?.lstFr) ? f.lstFr : [];
+      let fare = 0;
+      let fareName = null;
+      for (const fr of fares) {
+        const tf = Number(fr?.TF) || 0;
+        if (tf > 0 && (fare === 0 || tf < fare)) {
+          fare = tf;
+          fareName = fr?.FN || null;
+        }
+      }
+      if (!fare || !depTime || !arrTime) continue;
+      const sd = String(f?.SD || "");
+      const stops = fullLegs.length === 1 ? "Non-stop" : `${fullLegs.length - 1} stop${fullLegs.length > 2 ? "s" : ""}`;
+      const [dh, dm] = depTime.split(":").map(Number);
+      const [ah, amm] = arrTime.split(":").map(Number);
+      let durMin = ah * 60 + amm - (dh * 60 + dm);
+      if (durMin < 0) durMin += 24 * 60;
+      out.push({
+        segKey,
+        airlineCode,
+        flightNo: flightNo2,
+        depTime,
+        arrTime,
+        fare,
+        fareName,
+        seats: String(f?.SeatAv ?? ""),
+        stops,
+        durationMin: durMin
+      });
+    }
+  }
+  return out;
+}
+function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, cap = 40) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-India%7C${toCode}-${encodeURIComponent(route.to)}-India%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
+  const seen = /* @__PURE__ */ new Set();
+  const items = [];
+  for (const f of flights.sort((a, b) => a.fare - b.fare)) {
+    const al = EMT_AIRLINES[f.airlineCode];
+    if (!al) continue;
+    const key = `${al.name}|${f.flightNo}|${f.depTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (items.length >= cap) break;
+    items.push(newRawItem(source, {
+      title: `${al.name} ${f.airlineCode}${f.flightNo} \xB7 ${routeLabel}`,
+      brand: al.name,
+      price: f.fare,
+      currency: "INR",
+      seller: al.name,
+      sellerUrl: al.url,
+      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
+      attributes: {
+        route: routeLabel,
+        travel_date: dateIso,
+        departure: f.depTime,
+        arrival: f.arrTime,
+        duration: hhmm(f.durationMin),
+        stops: f.stops,
+        seats: f.seats ? `${f.seats} seats left` : "",
+        fare_basis: f.fareName ? `${f.fareName} fare` : "",
+        price_basis: `live ${f.fareName || "airline"} fare observed on EaseMyTrip's flight search on ${today} (acquisition source, not seller)`,
+        data_note: `Fare acquired via EaseMyTrip flight search API on ${today}; booking is on ${al.name}'s own website. Fare may change at checkout.`,
+        deep_link_ref: emtListing
+      },
+      identifiers: { sku: `emt-airbus-${f.airlineCode}-${f.flightNo}-${dateIso}` },
+      evidence: {
+        sourceUrl: AIRBUS_URL,
+        extractedFields: ["segMatchingKey", "lstFr[].TF (INR)", "SeatAv", "SD (stops)"]
+      }
+    }));
+  }
+  return items;
+}
+var import_crypto6, ENC_KEY, AIRBUS_URL, SEG_RE, LEG_NO_ROUTE_RE, hhmm;
+var init_emtAirbus = __esm({
+  "server/workers/parsers/emtAirbus.ts"() {
+    import_crypto6 = require("crypto");
+    init_contract();
+    init_emtFareCalendar();
+    ENC_KEY = "hylW@zmEQdG@4Idr";
+    AIRBUS_URL = "https://flightservice-node.easemytrip.com/AirAvail_Lights/AirBus_New";
+    SEG_RE = /^[A-Z]{3}[A-Z]{3}[A-Za-z]{3}-\d{2}[A-Za-z]{3}\d{4}(\d{2}:\d{2})(\d{2}:\d{2})\s*([A-Z0-9]{2})\s*(\d+)$/;
+    LEG_NO_ROUTE_RE = /^\s*([A-Z0-9]{2})\s*(\d+)$/;
+    hhmm = (mins) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
+  }
+});
+
 // server/workers/parsers/indigoFlights.ts
 function pick(o, keys) {
   for (const k of keys) if (o[k] !== void 0 && o[k] !== null && o[k] !== "") return o[k];
@@ -3087,7 +3670,100 @@ function indigoItems(flights, source, fromCity, toCity, fromCode, toCode, depart
   }
   return items;
 }
-var FLIGHT_NO, num, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS;
+async function indigoWebFareCalendar(cffiFetch2, fromCode, toCode, depIso) {
+  const base = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Origin: "https://www.goindigo.in",
+    Referer: "https://www.goindigo.in/",
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  };
+  const rTok = await cffiFetch2(WEB_TOKEN_URL, {
+    impersonate: "chrome",
+    timeoutMs: 12e3,
+    method: "POST",
+    body: JSON.stringify({ strToken: "", subscriptionKey: WEB_BOOKING_KEY }),
+    headers: { ...base, User_key: WEB_SESSION_KEY }
+  });
+  if (rTok.status !== 200) return [];
+  let tok;
+  const walk = (o) => {
+    if (o && typeof o === "object") {
+      for (const k of Object.keys(o)) {
+        if (k === "token" && typeof o[k] === "string" && o[k].split(".").length === 3) return o[k];
+        const r2 = walk(o[k]);
+        if (r2) return r2;
+      }
+    }
+    return void 0;
+  };
+  try {
+    let raw = JSON.parse(rTok.body);
+    if (typeof raw === "string") raw = JSON.parse(raw);
+    tok = walk(raw);
+  } catch {
+    return [];
+  }
+  if (!tok) return [];
+  const endIso = new Date((/* @__PURE__ */ new Date(`${depIso}T00:00:00Z`)).getTime() + 62 * 864e5).toISOString().slice(0, 10);
+  const body = JSON.stringify({
+    startDate: `${depIso}T00:00:00`,
+    endDate: `${endIso}T00:00:00`,
+    origin: fromCode,
+    destination: toCode,
+    currencyCode: "INR",
+    promoCode: "",
+    lowestIn: "M"
+  });
+  const r = await cffiFetch2(WEB_FARECAL_URL, {
+    impersonate: "chrome",
+    timeoutMs: 15e3,
+    method: "POST",
+    body,
+    headers: { ...base, User_key: WEB_BOOKING_KEY, Authorization: `Bearer ${tok}` }
+  });
+  if (r.status !== 200) return [];
+  try {
+    const d = JSON.parse(r.body);
+    const low = d?.data?.lowFares;
+    if (!Array.isArray(low)) return [];
+    return low.filter((e) => e?.date && Number(e?.price) > 0).map((e) => ({
+      date: String(e.date).slice(0, 10),
+      price: Math.round(Number(e.price)),
+      category: String(e.category || "")
+    }));
+  } catch {
+    return [];
+  }
+}
+function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const exact = fares.find((f) => f.date === depIso);
+  if (!exact || exact.price <= 0) return [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const route = `${fromCity} to ${toCity}`.toLowerCase();
+  const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${depIso}&pax=A1`;
+  return [newRawItem(source, {
+    title: `IndiGo ${fromCode} to ${toCode} on ${depIso} from \u20B9${exact.price}`,
+    brand: "IndiGo",
+    price: exact.price,
+    currency: "INR",
+    seller: "IndiGo",
+    sellerUrl: deeplink,
+    travel: { route, seatType: "Economy", date: depIso },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      travel_date: depIso,
+      fare_class: exact.category ? `${exact.category}-category fare` : "",
+      price_basis: `cheapest economy fare returned by IndiGo's own fare-calendar API on ${today} for this route and date`
+    },
+    identifiers: { sku: `indigo-farecal-${fromCode}-${toCode}-${depIso}` },
+    evidence: {
+      sourceUrl: WEB_FARECAL_URL,
+      extractedFields: ["data.lowFares[].price (INR)", "date", "category"]
+    }
+  })];
+}
+var FLIGHT_NO, num, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
@@ -3107,6 +3783,74 @@ var init_indigoFlights = __esm({
     ARR_KEYS = ["arrivalTime", "arrTime", "arrivalDateTime", "sta", "scheduledArrival", "toTime"];
     DUR_KEYS = ["duration", "travelTime", "journeyDuration", "flightDuration", "totalDuration"];
     FLIGHT_DETAIL_KEYS = ["flightDetail", "flightInfo", "flightDetails", "segment", "leg"];
+    WEB_SESSION_KEY = "654a6a3cc4998e498e5c0c8ead072915";
+    WEB_BOOKING_KEY = "15faf8ddf1e8354e90e54fa098e8b1a8";
+    WEB_TOKEN_URL = "https://api-prod-session-skyplus6e.goindigo.in/v2/token/create";
+    WEB_FARECAL_URL = "https://api-prod-booking-skyplus6e.goindigo.in/v1/getfarecalendar";
+  }
+});
+
+// server/workers/parsers/akasaFlights.ts
+function akasaFareCalendarUrl(fromCode, toCode, depIso) {
+  const start = `${depIso}T00:00:00%2B05:30`;
+  return `${AKASA_API_BASE}/availability/v2/search?origin=${fromCode}&destination=${toCode}&startDate=${start}&numberOfPassengers=1&channel=WEB&currencyCode=INR`;
+}
+function parseAkasaFareCalendar(xml) {
+  const out = [];
+  const blocks = xml.match(/<data>[\s\S]*?<\/data>/g) || [];
+  for (const b of blocks) {
+    const date = b.match(/<date>([^<]+)<\/date>/)?.[1]?.slice(0, 10) || null;
+    const price = Number(b.match(/<price>([^<]+)<\/price>/)?.[1] || 0);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    out.push({
+      date,
+      price,
+      isLowest: /<isLowest>true<\/isLowest>/.test(b),
+      noFlights: /<noFlights>true<\/noFlights>/.test(b),
+      soldOut: /<soldOut>true<\/soldOut>/.test(b)
+    });
+  }
+  return out;
+}
+function akasaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const bookable = fares.filter((f) => f.price > 0 && !f.noFlights && !f.soldOut);
+  const exact = bookable.find((f) => f.date === depIso);
+  const upcoming = [...bookable].sort((a, b) => a.price - b.price);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const deeplink = `${AKASA_WEB}/booking`;
+  return [newRawItem(source, {
+    title: `Akasa Air ${routeLabel} ${isExact ? `on ${chosen.date}` : `(cheapest upcoming, ${chosen.date})`} from \u20B9${Math.round(chosen.price)}`,
+    brand: "Akasa Air",
+    price: Math.round(chosen.price),
+    currency: "INR",
+    seller: "Akasa Air",
+    sellerUrl: deeplink,
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.date },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.date,
+      fare_class: "lowest economy fare (taxes included) from Akasa Air's own fare calendar",
+      price_basis: `lowest Akasa Air fare returned by Akasa's own booking API on ${today} for this route${isExact ? " and date" : " within the next 60 days"}`,
+      data_note: `Fare acquired from Akasa Air's official low-fare calendar on ${today}; booking is on Akasa Air's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `akasa-${fromCode}-${toCode}-${chosen.date}` },
+    evidence: {
+      sourceUrl: akasaFareCalendarUrl(fromCode, toCode, depIso),
+      extractedFields: ["data[].date", "data[].price (INR)", "isLowest", "noFlights", "soldOut"]
+    }
+  })];
+}
+var AKASA_API_BASE, AKASA_WEB;
+var init_akasaFlights = __esm({
+  "server/workers/parsers/akasaFlights.ts"() {
+    init_contract();
+    AKASA_API_BASE = "https://prod-bl.qp.akasaair.com/api/ibe";
+    AKASA_WEB = "https://www.akasaair.com";
   }
 });
 
@@ -3117,9 +3861,9 @@ function routeFromQuery(raw) {
   const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const codeOf = (s) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
-  const clean = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
-  const from = clean(m[1]);
-  const to = clean(m[2]);
+  const clean3 = (s) => s.replace(/\([^)]*\)/g, " ").replace(/\b(flight|flights|ticket|tickets|air|fly|from|cheapest|cheap|direct|return|one-way|oneway|round trip|airport)\b/gi, " ").replace(/\b(on|for|tomorrow|today|tonight|night|morning|evening|at)\b.*$/i, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b.*$/i, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b.*$/, " ").replace(/,.*$/, "").replace(/\s+/g, " ").trim();
+  const from = clean3(m[1]);
+  const to = clean3(m[2]);
   if (!from || !to) return null;
   return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
@@ -3131,7 +3875,9 @@ var init_flights = __esm({
     init_ixigoFlights();
     init_httpClient();
     init_emtFareCalendar();
+    init_emtAirbus();
     init_indigoFlights();
+    init_akasaFlights();
     init_curlCffiFetch();
     IATA = {
       delhi: "DEL",
@@ -3201,25 +3947,124 @@ var init_flights = __esm({
       vertical: "flights",
       tasks: [
         {
-          // EaseMyTrip fare calendar (metasearch acquisition): real cheapest per-day
-          // fare + operating airline. Seller = the AIRLINE; deeplink = airline's own site.
+          // EaseMyTrip AirBus_New flight search (reverse-engineered from EMT's public
+          // Angular bundles): token flow GIT->GUT, then one POST returns EVERY flight
+          // on the route/date with real INR fares. Seller = the operating AIRLINE,
+          // deeplink = the airline's own website (metasearch policy). The old fare
+          // calendar stays as fallback when the search API is unavailable.
           sourceId: "w_flights_emt",
+          name: "Flights worker: per-flight live fares via EMT search API (seller = airline website)",
           priority: 14,
+          maxPerMinute: 2,
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery(raw);
             if (!rt) return [];
-            ;
             const code = (s) => IATA[s.toLowerCase().trim()] || null;
             const from = rt.fromCode || code(rt.from);
             const to = rt.toCode || code(rt.to);
             if (!from || !to) return [];
-            const dIso = ctx.query?.travelDates?.depart;
-            const base = dIso && /^\d{4}-\d{2}-\d{2}$/.test(dIso) ? /* @__PURE__ */ new Date(`${dIso}T00:00:00`) : new Date(Date.now() + 7 * 864e5);
-            const dd = String(base.getDate()).padStart(2, "0");
-            const mm = String(base.getMonth() + 1).padStart(2, "0");
-            const yy = base.getFullYear();
-            const wantDate = `${dd}/${mm}/${yy}`;
+            const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const wantDate = dIso.split("-").reverse().join("/");
+            let stk = "";
+            try {
+              const rGit = await cffiFetch("https://gi.easemytrip.com/etm/api/etoken/GIT", {
+                impersonate: "chrome",
+                timeoutMs: 1e4,
+                method: "POST",
+                body: "{}",
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  Accept: "application/json",
+                  Origin: "https://www.easemytrip.com",
+                  Referer: "https://www.easemytrip.com/flight-search/listing",
+                  ATK: "c0ruxuOD/XqyNXB3kRAqvRUliyqhyFOOUwgDTCP1tLx09TRNEbblvRQLgfPz2ivf"
+                }
+              });
+              const git = JSON.parse(rGit.body || "{}");
+              if (!git.ITK || !git.b) throw new Error("GIT token missing");
+              const autk = emtEncrypt(`EMT|EMTWvggk6zYLVynBA56C3aNn4HLREMHV9bEP9Q|${git.b}|${git.ITK}`);
+              const rGut = await cffiFetch("https://gi.easemytrip.com/etm/api/etoken/GUT", {
+                impersonate: "chrome",
+                timeoutMs: 1e4,
+                method: "POST",
+                body: JSON.stringify({ UserName: "EMT", ITK: emtEncrypt(git.ITK), IP: emtEncrypt(git.b) }),
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  Accept: "application/json",
+                  Origin: "https://www.easemytrip.com",
+                  Referer: "https://www.easemytrip.com/flight-search/listing",
+                  autk
+                }
+              });
+              const gut = JSON.parse(rGut.body || "{}");
+              if (!gut.STK) throw new Error("GUT STK missing");
+              stk = gut.STK;
+            } catch (e) {
+              stk = "";
+            }
+            if (stk) {
+              const traceId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+              const body2 = JSON.stringify({
+                org: from,
+                dept: to,
+                deptDT: dIso,
+                arrDT: "",
+                adt: 1,
+                chd: 0,
+                inf: 0,
+                isDomestic: true,
+                isOneway: true,
+                airline: "Any",
+                Cabin: 3,
+                currCode: "INR",
+                appType: 1,
+                isSingleView: false,
+                ResType: 2,
+                userid: "",
+                IsDoubelSeat: false,
+                IsArmedForce: false,
+                IsFareFamily: false,
+                IsNBA: false,
+                CouponCode: "",
+                AgentCode: "",
+                IsWLAPP: false,
+                serviceid: "EMTSERVICE",
+                serviceDepatment: "",
+                IpAddress: "",
+                LoginKey: "",
+                UUID: "",
+                TKN: stk,
+                TraceId: traceId,
+                queryname: traceId
+              });
+              const r2 = await cffiFetch("https://flightservice-node.easemytrip.com/AirAvail_Lights/AirBus_New", {
+                impersonate: "chrome",
+                timeoutMs: 3e4,
+                method: "POST",
+                body: body2,
+                headers: {
+                  "Content-Type": "application/json; charset=utf-8",
+                  Accept: "application/json",
+                  Origin: "https://www.easemytrip.com",
+                  Referer: "https://www.easemytrip.com/flight-search/listing"
+                }
+              });
+              if (r2.status === 403 || r2.status === 429) {
+                throw new AcquisitionError(r2.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `EMT search API blocked: HTTP ${r2.status}`, r2.status);
+              }
+              if (r2.status === 200) {
+                let flights = [];
+                try {
+                  flights = parseEmtAirbus(r2.body);
+                } catch {
+                  flights = [];
+                }
+                const items2 = emtAirbusItems(flights, ctx.source, { from: rt.from, to: rt.to }, from, to, dIso);
+                if (items2.length) return items2;
+              }
+            }
             const body = JSON.stringify({ CalKey_: `${from}_${to}_rdate__${wantDate}_` });
             const r = await cffiFetch("https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth", {
               impersonate: "chrome",
@@ -3230,9 +4075,9 @@ var init_flights = __esm({
             });
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `EMT fare calendar HTTP ${r.status}`);
             const fares = parseEmtFareCalendar(r.body, wantDate);
-            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT fare calendar returned no per-day fares for this route");
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT returned no fares for this route (search API and calendar both empty)");
             const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate);
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT fare calendar had no fare with a known Indian carrier for this route");
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "EMT had no fare with a known Indian carrier for this route");
             return items;
           }
         },
@@ -3359,21 +4204,77 @@ var init_flights = __esm({
               throw new AcquisitionError("SERVER_ERROR", `IndiGo API unreachable: ${String(e?.message || e)}`);
             }
             if (r.status === 403 || r.status === 429) {
+              try {
+                const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
+                const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
+                if (calItems.length) return calItems;
+              } catch {
+              }
               throw new AcquisitionError(
                 r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
-                `IndiGo API edge blocked this server's IP (Akamai ${r.status}); the endpoint itself needs only the app's static user_key.`,
+                `IndiGo mobile search API edge-blocked (Akamai ${r.status}) and web fare calendar returned no fare for this route/date.`,
                 r.status
               );
             }
             if (r.status === 400 || r.status === 404 || r.status >= 500) {
               throw new AcquisitionError("SERVER_ERROR", `IndiGo API HTTP ${r.status}: ${(r.body || "").slice(0, 180)}`, r.status);
             }
-            const flights = parseIndigoSearch(r.body);
-            if (flights.length === 0) {
-              const snippet = (r.body || "").replace(/\s+/g, " ").slice(0, 220);
-              throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
+            const flights = r.status === 200 ? parseIndigoSearch(r.body) : [];
+            if (flights.length > 0) return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
+            try {
+              const dayFares = await indigoWebFareCalendar(cffiFetch, from, to, dep);
+              const calItems = indigoDayFareItems(dayFares, ctx.source, rt.from, rt.to, from, to, dep);
+              if (calItems.length) return calItems;
+            } catch {
             }
-            return indigoItems(flights, ctx.source, rt.from, rt.to, from, to, dep);
+            const snippet = (r.body || "").replace(/\s+/g, " ").slice(0, 220);
+            throw new AcquisitionError("EMPTY_RESPONSE", `IndiGo API no priced 6E flights for ${from}-${to} ${dep} (HTTP ${r.status}) body: ${snippet}`);
+          }
+        },
+        {
+          // Akasa Air official low-fare calendar (their own booking API, browserless):
+          // GET /api/ibe/availability/v2/search returns a 61-day XML calendar of the
+          // lowest Akasa fare per date for the route. Akasa is the operating airline,
+          // so seller = Akasa Air and the deeplink goes to Akasa's booking flow.
+          // The per-flight availability/search POST needs a generateToken call that
+          // is edge-blocked (nginx 403) from datacenter IPs — calendar only.
+          sourceId: "w_flights_akasa",
+          name: "Flights worker: Akasa Air live fares (official IBE fare calendar)",
+          priority: 7,
+          maxPerMinute: 2,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
+            const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            let r;
+            try {
+              r = await cffiFetch(akasaFareCalendarUrl(from, to, dep), {
+                impersonate: "chrome",
+                timeoutMs: 22e3,
+                headers: { Origin: "https://www.akasaair.com", Referer: "https://www.akasaair.com/booking" }
+              });
+            } catch (e) {
+              throw new AcquisitionError("SERVER_ERROR", `Akasa Air API unreachable: ${String(e?.message || e)}`);
+            }
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(
+                r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
+                `Akasa Air fare-calendar API edge-blocked (HTTP ${r.status}).`,
+                r.status
+              );
+            }
+            if (r.status === 400 || r.status >= 500) {
+              throw new AcquisitionError("SERVER_ERROR", `Akasa Air API HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 180)}`, r.status);
+            }
+            const fares = r.status === 200 ? parseAkasaFareCalendar(r.body) : [];
+            const items = akasaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
+            if (items.length) return items;
+            throw new AcquisitionError("EMPTY_RESPONSE", `Akasa Air has no bookable fare on the calendar for ${from}-${to} (dep ${dep}).`);
           }
         },
         {
@@ -3449,7 +4350,7 @@ var init_flights = __esm({
 
 // server/workers/parsers/zomato.ts
 function parseZomatoRestaurants(html, source, searchUrl, platform) {
-  const fingerprint = (0, import_crypto6.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto7.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -3498,7 +4399,7 @@ function parseZomatoRestaurants(html, source, searchUrl, platform) {
   return out.slice(0, 40);
 }
 function walkMenuJson(node, out, depth = 0) {
-  if (!node || depth > 12) return;
+  if (!node || depth > 22) return;
   if (Array.isArray(node)) {
     for (const n of node) walkMenuJson(n, out, depth + 1);
     return;
@@ -3508,6 +4409,21 @@ function walkMenuJson(node, out, depth = 0) {
   if ((t === "MenuItem" || t === "MenuSection") && node.name && node.offers) {
     const p = Number(node.offers.price ?? node.offers.lowPrice ?? NaN);
     if (Number.isFinite(p) && p > 0) out.push({ name: String(node.name).slice(0, 160), price: Math.round(p), description: node.description ? String(node.description).slice(0, 200) : void 0 });
+  }
+  if (!t && typeof node.name === "string" && (node.display_price !== void 0 || node.default_price !== void 0 || node.min_price !== void 0) && node.id) {
+    const p = Number(node.price) > 0 ? Number(node.price) : Number(node.display_price ?? node.default_price ?? node.min_price);
+    const nm = node.name.trim();
+    if (Number.isFinite(p) && p >= 10 && p <= 12e3 && nm.length >= 3 && nm.length <= 160) {
+      const img = String(node.item_image_url || "").replace(/^http:/, "https:");
+      out.push({
+        name: nm.slice(0, 160),
+        price: Math.round(p),
+        description: node.desc ? String(node.desc).slice(0, 200) : void 0,
+        image: /^https:\/\//.test(img) ? img.split("?")[0] : void 0,
+        veg: typeof node.is_veg === "boolean" ? node.is_veg : void 0
+      });
+    }
+    return;
   }
   if (!t && node.name && (node.price !== void 0 || node.item_price !== void 0 || node.price_incl !== void 0)) {
     const p = Number(node.price ?? node.item_price ?? node.price_incl ?? NaN);
@@ -3522,12 +4438,17 @@ function parseZomatoMenuPage(html) {
   const hints = { jsonLdBlocks: 0, hasMenu: 0, preloadedState: 0, priceHits: 0 };
   const dishes = [];
   const seen = /* @__PURE__ */ new Set();
+  const byKey = /* @__PURE__ */ new Map();
   const add = (d) => {
-    const k = `${d.name}|${d.price}`;
-    if (!seen.has(k)) {
-      seen.add(k);
+    const k = `${d.name.toLowerCase()}|${d.price}`;
+    const prev = byKey.get(k);
+    if (!prev) {
+      byKey.set(k, d);
       dishes.push(d);
+      return;
     }
+    if (!prev.image && d.image) prev.image = d.image;
+    if (!prev.description && d.description) prev.description = d.description;
   };
   hints.priceHits = (html.match(/"(?:price|item_price|price_incl)"\s*:/g) || []).length;
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -3542,7 +4463,18 @@ function parseZomatoMenuPage(html) {
     } catch {
     }
   }
-  if (dishes.length) return { dishes: dishes.slice(0, 30), hints };
+  const wrapped = /window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\("((?:[^"\\]|\\.)*)"\)/.exec(html);
+  if (wrapped) {
+    hints.preloadedState += 1;
+    try {
+      const tmp = [];
+      walkMenuJson(JSON.parse(JSON.parse('"' + wrapped[1] + '"')), tmp);
+      tmp.forEach(add);
+    } catch (e) {
+      if (process.env.ZOMATO_DEBUG) console.error("zomato state parse", e.message);
+    }
+    if (dishes.length) return { dishes, hints };
+  }
   const pre = /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/i.exec(html) || /__NEXT_DATA__[^>]*>(\{[\s\S]*?\})<\/script>/i.exec(html);
   if (pre) {
     hints.preloadedState += 1;
@@ -3553,12 +4485,12 @@ function parseZomatoMenuPage(html) {
     } catch {
     }
   }
-  return { dishes: dishes.slice(0, 30), hints };
+  return { dishes: dishes.slice(0, 400), hints };
 }
-var import_crypto6;
+var import_crypto7;
 var init_zomato = __esm({
   "server/workers/parsers/zomato.ts"() {
-    import_crypto6 = require("crypto");
+    import_crypto7 = require("crypto");
     init_contract();
   }
 });
@@ -3571,7 +4503,7 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   } catch {
     return [];
   }
-  const fingerprint = (0, import_crypto7.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto8.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const cards = [];
   const stack = [d?.data];
   while (stack.length) {
@@ -3629,10 +4561,10 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   }
   return out.slice(0, 60);
 }
-var import_crypto7, IMG;
+var import_crypto8, IMG;
 var init_swiggy = __esm({
   "server/workers/parsers/swiggy.ts"() {
-    import_crypto7 = require("crypto");
+    import_crypto8 = require("crypto");
     init_contract();
     IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
   }
@@ -3788,6 +4720,132 @@ var init_pizzaHut = __esm({
   }
 });
 
+// server/workers/parsers/toing.ts
+function toingShellGroups(json) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return { restaurants: [], dishesByRestaurant: /* @__PURE__ */ new Map(), ok: false };
+  }
+  const restaurants = [];
+  const dishesByRestaurant = /* @__PURE__ */ new Map();
+  const cards = d?.success?.cards || [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of cards) {
+    const g = c?.card?.card?.dishGroup;
+    const info = g?.restaurant?.info;
+    if (!info?.name || !info?.id) continue;
+    if (seen.has(String(info.id))) continue;
+    seen.add(String(info.id));
+    const rest = {
+      id: String(info.id),
+      name: String(info.name),
+      areaName: info.areaName ? String(info.areaName) : void 0,
+      cuisines: Array.isArray(info.cuisines) ? info.cuisines.map(String) : void 0,
+      avgRating: info.avgRating ?? void 0,
+      costForTwo: info.costForTwo ? String(info.costForTwo) : void 0,
+      eta: info.sla?.slaString ? String(info.sla.slaString) : void 0,
+      cloudinaryImageId: info.cloudinaryImageId ? String(info.cloudinaryImageId) : void 0
+    };
+    restaurants.push(rest);
+    const dishes = [];
+    for (const dw of Array.isArray(g?.dishes) ? g.dishes : []) {
+      const di = dw?.info;
+      if (di?.name && typeof di.price === "number" && di.price > 0) dishes.push(di);
+    }
+    dishesByRestaurant.set(rest.id, dishes);
+  }
+  return { restaurants, dishesByRestaurant, ok: !!d?.success };
+}
+function toingShellCursor(json) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  const po = d?.success?.pageOffset;
+  if (!po?.nextOffset) return {};
+  return { pageOffset: String(po.nextOffset), widgetOffset: po.widgetOffset };
+}
+function toingMenuDishes(json) {
+  let d;
+  try {
+    d = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const cards = d?.success?.cards || [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const c of cards) {
+    const cat = c?.card?.card;
+    if (!cat || !String(cat["@type"] || "").endsWith("ItemCategory")) continue;
+    for (const ic of Array.isArray(cat.itemCards) ? cat.itemCards : []) {
+      const di = ic?.card?.card?.info ?? ic?.card?.info ?? ic?.info;
+      if (di?.name && typeof di.price === "number" && di.price > 0) {
+        const key = String(di.id || di.name);
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(di);
+        }
+      }
+    }
+  }
+  return out;
+}
+function toingItem(source, sourceUrl, rest, di, city, fingerprint, priceBasis) {
+  const img = di.imageId ? `${TOING_IMG}${String(di.imageId)}` : rest.cloudinaryImageId ? `${TOING_IMG}${rest.cloudinaryImageId}` : "";
+  const rating = di.ratings?.aggregatedRating?.rating;
+  const ratingCount = di.ratings?.aggregatedRating?.ratingCountV2;
+  const inStock = di.inStock === 1 || di.inStock === true;
+  return newRawItem(source, {
+    title: String(di.name).slice(0, 200),
+    price: Math.round(di.price) / 100,
+    currency: "INR",
+    seller: "Toing",
+    // Toing has no web ordering; toingit.com is the official landing. The offer is
+    // explicitly app-only per owner deeplink policy.
+    sellerUrl: "https://www.toingit.com/",
+    availability: inStock ? "in_stock" : "out_of_stock",
+    location: { city },
+    attributes: {
+      restaurant: String(rest.name).slice(0, 120),
+      ...rest.areaName ? { area: String(rest.areaName).slice(0, 80) } : {},
+      ...img ? { image_url: img } : {},
+      ...di.description ? { dish_description: String(di.description).replace(/\s+/g, " ").trim().slice(0, 220) } : {},
+      ...rating ? { rating: String(rating) } : rest.avgRating ? { rating: String(rest.avgRating) } : {},
+      ...ratingCount ? { rating_count: String(ratingCount) } : {},
+      ...Array.isArray(rest.cuisines) && rest.cuisines.length ? { cuisines: rest.cuisines.slice(0, 4).join(", ") } : {},
+      ...rest.eta ? { eta: String(rest.eta).toLowerCase() } : {},
+      ...rest.costForTwo ? { cost_for_two: String(rest.costForTwo) } : {},
+      ...di.isVeg === 1 ? { veg: "veg" } : {},
+      ...di.isBestseller ? { bestseller: "yes" } : {},
+      platform: "Toing",
+      availability_note: "available only on app \u2014 Toing is an app-only platform; order via the Toing app",
+      price_basis: priceBasis
+    },
+    evidence: {
+      sourceUrl,
+      sourceReference: `${rest.id}:${di.id || di.name}`,
+      rawFingerprint: fingerprint,
+      extractedFields: ["title", "price", ...img ? ["image"] : [], ...rating ? ["rating"] : [], "availability"]
+    }
+  });
+}
+function toingFingerprint(json) {
+  return (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+}
+var import_crypto9, TOING_IMG;
+var init_toing = __esm({
+  "server/workers/parsers/toing.ts"() {
+    import_crypto9 = require("crypto");
+    init_contract();
+    TOING_IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
+  }
+});
+
 // server/workers/verticals/food.ts
 function citySlug(city, raw) {
   if (city) {
@@ -3812,6 +4870,7 @@ var init_food = __esm({
     init_httpClient();
     init_dominos();
     init_pizzaHut();
+    init_toing();
     init_curlCffiFetch();
     ZOMATO_SLUGS = {
       "new delhi": "ncr",
@@ -3955,7 +5014,9 @@ var init_food = __esm({
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Zomato HTTP ${r.status}`, r.status);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
             if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Zomato presented a challenge page");
-            const restUrls = items.slice(0, 2).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u));
+            const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
+            const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
+            const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
             const dishItems = [];
             const hintAgg = {};
             for (const ru of restUrls) {
@@ -3963,19 +5024,26 @@ var init_food = __esm({
               if (rr.status !== 200) continue;
               const { dishes, hints } = parseZomatoMenuPage(rr.body);
               for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
-              const restName = String(items.find((it) => it.sellerUrl === ru)?.title || ru.split("/").pop() || "restaurant");
-              for (const d of dishes) {
+              const baseUrl = ru.replace(/\/order$/, "");
+              const found = items.find((it) => {
+                const su = String(it.sellerUrl || "");
+                return su.replace(/\/(?:info|order)?\/?$/, "") === baseUrl;
+              });
+              const restName = String(found?.title || baseUrl.split("/").filter(Boolean).pop()?.replace(/-/g, " ") || "restaurant");
+              const wanted = qTokens.length ? dishes.filter((d) => qTokens.every((w) => (d.name + " " + (d.description || "")).toLowerCase().includes(w))) : dishes;
+              for (const d of wanted.slice(0, 8)) {
                 dishItems.push(newRawItem(ctx.source, {
-                  title: `${d.name} (${restName})`,
+                  title: d.name,
                   brand: "Zomato",
                   price: d.price,
                   currency: "INR",
                   seller: "Zomato",
-                  sellerUrl: ru,
+                  sellerUrl: baseUrl + "/order",
                   location: { city: ctx.query.location?.city || "" },
                   attributes: {
                     dish: d.name.slice(0, 160),
                     restaurant: restName.slice(0, 160),
+                    ...d.image ? { image_url: d.image } : {},
                     platform: "Zomato",
                     ...d.description ? { description: d.description } : {},
                     price_basis: "Menu price served in Zomato restaurant page embedded JSON",
@@ -3984,13 +5052,90 @@ var init_food = __esm({
                   evidence: { sourceUrl: ru, sourceReference: d.name, extractedFields: ["dish", "price"] }
                 }));
               }
-              if (dishItems.length >= 20) break;
+              if (dishItems.length >= 24) break;
             }
             if (dishItems.length) return dishItems;
             if (restUrls.length && !hintAgg.priceHits) {
               throw new AcquisitionError("EMPTY_RESPONSE", `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) \u2014 dish prices stay unavailable to browserless HTTP`);
             }
             return items;
+          }
+        },
+        {
+          // Toing (Swiggy's budget food app) — reverse-engineered app-only platform.
+          // disc.swiggy.com shell feed + dynamicmenu serve REAL Toing dish prices (paise)
+          // without auth. No web ordering exists -> offers are labelled app-only per policy.
+          sourceId: "w_food_toing",
+          name: "Food worker: Toing dish prices (Swiggy disc shell feed)",
+          priority: 8,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || "");
+            const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
+            if (!term) return [];
+            const cityKey = String(ctx.query.location?.city || "").toLowerCase().trim();
+            const c = CITY_COORDS[cityKey] || CITY_COORDS["new delhi"];
+            const city = ctx.query.location?.city || "New Delhi";
+            const shellUrl = `https://disc.swiggy.com/api/v1/json/shell/toing-app?lat=${c[0]}&lng=${c[1]}`;
+            const H = { "Accept": "application/json", "Content-Type": "application/json" };
+            const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+            const groups = /* @__PURE__ */ new Map();
+            let body = "{}";
+            let pages = 0;
+            let firstJson = "";
+            for (let i = 0; i < 3; i++) {
+              const r = await cffiFetch(shellUrl, { impersonate: "chrome", method: "POST", body, timeoutMs: 22e3, headers: H });
+              if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Toing shell HTTP ${r.status}`, r.status);
+              if (!firstJson) firstJson = r.body;
+              const g = toingShellGroups(r.body);
+              if (!g.ok) throw new AcquisitionError("EMPTY_RESPONSE", "Toing shell response carried no success block");
+              for (const rest of g.restaurants) {
+                if (!groups.has(rest.id)) groups.set(rest.id, { rest, dishes: g.dishesByRestaurant.get(rest.id) || [], fp: toingFingerprint(r.body) });
+              }
+              pages++;
+              const cur = toingShellCursor(r.body);
+              if (!cur.pageOffset || !cur.widgetOffset) break;
+              body = JSON.stringify({ pageOffset: cur.pageOffset, widgetOffset: cur.widgetOffset });
+              if (g.restaurants.length >= 25) break;
+            }
+            if (!groups.size) throw new AcquisitionError("EMPTY_RESPONSE", `Toing shell feed carried no restaurant dish groups (pages=${pages})`);
+            const items = [];
+            const seenDish = /* @__PURE__ */ new Set();
+            const matchDish = (d) => {
+              if (!qTokens.length) return true;
+              const hay = `${d.name || ""} ${d.description || ""}`.toLowerCase();
+              return qTokens.every((w) => hay.includes(w));
+            };
+            for (const { rest, dishes, fp } of groups.values()) {
+              for (const d of dishes) {
+                const key = `${rest.id}:${d.id || d.name}`;
+                if (seenDish.has(key) || !matchDish(d)) continue;
+                seenDish.add(key);
+                items.push(toingItem(ctx.source, shellUrl, rest, d, city, fp, "Featured Toing dish price from the app home feed (disc.swiggy.com shell)"));
+              }
+            }
+            if (items.length < 12) {
+              const restSlice = Array.from(groups.values()).slice(0, 6);
+              for (const { rest, fp } of restSlice) {
+                if (items.length >= 24) break;
+                try {
+                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 22e3, headers: H });
+                  if (m.status !== 200) continue;
+                  const dishes = toingMenuDishes(m.body);
+                  for (const d of dishes) {
+                    const key = `${rest.id}:${d.id || d.name}`;
+                    if (seenDish.has(key) || !matchDish(d)) continue;
+                    seenDish.add(key);
+                    items.push(toingItem(ctx.source, shellUrl, rest, d, city, toingFingerprint(m.body), "Toing dish price from the restaurant menu (disc.swiggy.com dynamicmenu)"));
+                    if (items.length >= 24) break;
+                  }
+                } catch {
+                }
+              }
+            }
+            if (!items.length) {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Toing feed listed ${groups.size} restaurants (pages=${pages}) but none matched "${term}"`);
+            }
+            return items.slice(0, 40);
           }
         }
       ]
@@ -4134,8 +5279,8 @@ function parseBharatTaxiCabs(html, source, pageUrl, from, to) {
     for (const row of rows) {
       const cells = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g) ?? [];
       if (cells.length < 2) continue;
-      const clean = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
-      parsed.push({ car: clean(cells[0] ?? ""), price: clean(cells[1] ?? "") });
+      const clean3 = (s) => s.replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+      parsed.push({ car: clean3(cells[0] ?? ""), price: clean3(cells[1] ?? "") });
     }
     const isFlat = parsed.length > 0 && parsed.every((p) => /^[₹rs\.]*\s?[\d,]{3,6}$/i.test(p.price)) && parsed.every((p) => !/km/i.test(p.price));
     if (isFlat) {
@@ -4501,7 +5646,7 @@ var init_cab = __esm({
 // server/workers/parsers/bankbazaarInsurance.ts
 function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   const $ = cheerio4.load(html);
-  const fingerprint = (0, import_crypto8.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto10.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -4548,10 +5693,10 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   });
   return out.slice(0, 30);
 }
-var import_crypto8, cheerio4;
+var import_crypto10, cheerio4;
 var init_bankbazaarInsurance = __esm({
   "server/workers/parsers/bankbazaarInsurance.ts"() {
-    import_crypto8 = require("crypto");
+    import_crypto10 = require("crypto");
     cheerio4 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -5441,14 +6586,14 @@ async function cityFromMovieQuery(raw, fallback, fetchJson) {
   return fallback;
 }
 function extractMovieQuery(entity, cityTokens) {
-  const clean = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
-  return clean.join(" ");
+  const clean3 = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
+  return clean3.join(" ");
 }
 function matchesQuery(title, query) {
-  const toks = normCity(query).split(" ").filter((t) => t.length > 1 && !["in", "near", "movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing"].includes(t));
-  if (!toks.length) return true;
+  const toks2 = normCity(query).split(" ").filter((t) => t.length > 1 && !["in", "near", "movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing"].includes(t));
+  if (!toks2.length) return true;
   const hay = normCity(title);
-  return toks.every((t) => hay.includes(t));
+  return toks2.every((t) => hay.includes(t));
 }
 function bmsDiscoverUrl(region, healedBase) {
   const base = healedBase && /^https:\/\/in\.bookmyshow\.com\//.test(healedBase) ? healedBase.replace(/\/$/, "") : DISCOVER_BASE;
@@ -5617,10 +6762,10 @@ function parseCinepolisPage(body) {
     return { nowPlaying: [], comingSoon: [] };
   }
   const pp = d?.props?.pageProps || {};
-  const clean = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
+  const clean3 = (arr) => Array.isArray(arr) ? arr.filter((mv) => mv && typeof mv.Title === "string" && mv.Title.length > 0) : [];
   const np = pp.nowPlayingMoviesData;
-  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean(Object.values(np)) : clean(np);
-  return { nowPlaying, comingSoon: clean(pp.comingSoonMoviesData) };
+  const nowPlaying = np && typeof np === "object" && !Array.isArray(np) ? clean3(Object.values(np)) : clean3(np);
+  return { nowPlaying, comingSoon: clean3(pp.comingSoonMoviesData) };
 }
 function cinepolisDisplayTitle(title) {
   return title.replace(/\s*\((?:[A-Z]{2,8}(?:\s+WI\s+[A-Z]{2,8})?(?:\s+\([^)]*\))?(?:\s+\(\d+D\))?)?\)\s*$/i, "").trim() || title;
@@ -5757,13 +6902,360 @@ var init_district = __esm({
   }
 });
 
+// server/workers/parsers/districtGw.ts
+function gwCitySlug(city) {
+  return (city || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function gwGuestToken() {
+  const rnd = (n, alphabet) => Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  const digits18 = String(Math.floor(Math.random() * 1e18)).padStart(18, "0");
+  return `${Date.now()}_${digits18}_${rnd(10, "0123456789abcdefghijklmnopqrstuvwxyz")}`;
+}
+function gwHeaders(host) {
+  return {
+    Accept: "application/json",
+    Referer: `${GW_HOSTS[host]}/movies`,
+    "api_source": "district",
+    "x-app-type": "ed_web",
+    "x-guest-token": gwGuestToken()
+  };
+}
+async function gwJson(host, path5, timeoutMs = 12e3) {
+  try {
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path5}`, { headers: gwHeaders(host), timeoutMs });
+    if (res.status !== 200) return null;
+    return JSON.parse(res.body);
+  } catch {
+    return null;
+  }
+}
+async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
+  if (!citySlug2) return [];
+  const d = await gwJson(host, `/gw/consumer/movies/v3/cinemas?city=${encodeURIComponent(citySlug2)}`, timeoutMs);
+  const cinemas = d?.data?.cinemas || d?.cinemas || [];
+  const out = [];
+  for (const c of cinemas) {
+    const id = Number(c?.id);
+    const name = String(c?.name || "").trim();
+    if (Number.isInteger(id) && name) out.push({ id, name });
+  }
+  return out;
+}
+async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
+  const byTitle = /* @__PURE__ */ new Map();
+  const norm2 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
+  for (const cinema of cinemas.slice(0, maxCinemas)) {
+    const d = await gwJson(host, `/gw/consumer/movies/v3/cinema?meta=1&reqData=1&cinemaId=${cinema.id}`, timeoutMs);
+    if (!d) continue;
+    const meta = d?.meta || {};
+    const moviesMeta = meta.movies || [];
+    const grouped = meta.groupedMovies || [];
+    const titleByMid = /* @__PURE__ */ new Map();
+    for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
+    const contentByTitle = /* @__PURE__ */ new Map();
+    for (const g of grouped) {
+      const lbl = norm2(String(g?.label || ""));
+      if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
+    }
+    const posterByMid = /* @__PURE__ */ new Map();
+    for (const mv of moviesMeta) posterByMid.set(String(mv?.id || ""), String(mv?.appImgPath || "") || "");
+    const sessions = d?.pageData?.sessions || d?.pageData?.showtimes || [];
+    for (const ss of sessions) {
+      const mid = String(ss?.mid || "");
+      const title = titleByMid.get(mid) || "";
+      if (!title) continue;
+      const key = norm2(title);
+      if (!key) continue;
+      const areas = [];
+      for (const a of ss?.areas || []) {
+        const price = Number(a?.price);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        areas.push({ label: String(a?.label || ""), price, avail: Number(a?.sAvail) || 0 });
+      }
+      if (!areas.length) continue;
+      let agg = byTitle.get(key);
+      if (!agg) {
+        agg = {
+          mids: /* @__PURE__ */ new Set(),
+          title,
+          minPrice: Infinity,
+          maxPrice: 0,
+          showCount: 0,
+          theatres: [],
+          contentId: null,
+          posterUrl: null,
+          censor: null,
+          durationMin: null,
+          genres: null
+        };
+        byTitle.set(key, agg);
+      }
+      agg.mids.add(mid);
+      agg.showCount += 1;
+      if (!agg.theatres.includes(cinema.name)) agg.theatres.push(cinema.name);
+      const contentId = contentByTitle.get(key);
+      if (contentId && !agg.contentId) agg.contentId = contentId;
+      const mvMeta = moviesMeta.find((mv) => String(mv?.id) === mid);
+      if (mvMeta) {
+        agg.posterUrl = agg.posterUrl || (String(mvMeta?.appImgPath || "") || null);
+        agg.censor = agg.censor || (mvMeta?.censor ? String(mvMeta.censor) : null);
+        agg.durationMin = agg.durationMin || (Number(mvMeta?.duration) || null);
+        agg.genres = agg.genres || (Array.isArray(mvMeta?.grn) ? mvMeta.grn.join(", ") : null);
+      }
+      for (const a of areas) {
+        agg.minPrice = Math.min(agg.minPrice, a.price);
+        agg.maxPrice = Math.max(agg.maxPrice, a.price);
+      }
+    }
+  }
+  return byTitle;
+}
+async function gwCritique(host, contentId, timeoutMs = 12e3) {
+  if (!Number.isInteger(contentId) || contentId <= 0) return null;
+  const d = await gwJson(host, `/gw/consumer/movies/v1/content/critique?content_id=${contentId}`, timeoutMs);
+  if (!d) return null;
+  const out = { reviews: [], ratings: [] };
+  for (const r of d?.reviews || []) {
+    const text = String(r?.text || "").trim();
+    if (!text) continue;
+    out.reviews.push({
+      text: text.slice(0, 600),
+      reviewer: r?.reviewer ? String(r.reviewer) : null,
+      source: r?.dwh_source?.name ? String(r.dwh_source.name) : null
+    });
+  }
+  for (const rr of d?.ratings || []) {
+    const value = String(rr?.value || "").trim();
+    if (!value) continue;
+    out.ratings.push({
+      value,
+      ratedBy: rr?.rated_by ? String(rr.rated_by) : rr?.dwh_source?.name ? String(rr.dwh_source.name) : "Critics",
+      base: Number(rr?.dwh_source?.rating_base) || null
+    });
+  }
+  return out.reviews.length || out.ratings.length ? out : null;
+}
+function extractTrailerUrl(body) {
+  const re = /https:\/\/www\.youtube\.com\/(?:embed\/|watch\?v=|live\/)([\w-]{6,20})/g;
+  let m;
+  const skip = /trailer-page|\/channel|\/embed\/videoseries/i;
+  while ((m = re.exec(body)) !== null) {
+    const win = body.slice(Math.max(0, m.index - 80), m.index + 120);
+    if (skip.test(win)) continue;
+    if (/trailer|promo|teaser/i.test(win)) return `https://www.youtube.com/watch?v=${m[1]}`;
+  }
+  return null;
+}
+var GW_HOSTS;
+var init_districtGw = __esm({
+  "server/workers/parsers/districtGw.ts"() {
+    init_curlCffiFetch();
+    GW_HOSTS = {
+      district: "https://www.district.in",
+      ticketnew: "https://www.ticketnew.com"
+    };
+  }
+});
+
+// server/workers/parsers/imdbRatings.ts
+async function fetchWithTimeout(url, ms, init = {}) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+async function ensureDataset() {
+  try {
+    const stale = !(0, import_node_fs3.existsSync)(RATINGS_FILE) || Date.now() - (0, import_node_fs3.statSync)(RATINGS_FILE).mtimeMs > RATINGS_TTL_MS;
+    if (!stale) return true;
+    const res = await fetchWithTimeout(RATINGS_URL, 6e4);
+    if (!res.ok || !res.body) return (0, import_node_fs3.existsSync)(RATINGS_FILE);
+    await (0, import_promises.pipeline)(res.body, (0, import_node_fs3.createWriteStream)(RATINGS_FILE));
+    tconstIndex = null;
+    return true;
+  } catch {
+    return (0, import_node_fs3.existsSync)(RATINGS_FILE);
+  }
+}
+function datasetPromise() {
+  datasetReady ??= ensureDataset().finally(() => {
+    setTimeout(() => {
+      datasetReady = null;
+    }, 6e4).unref?.();
+  });
+  return datasetReady;
+}
+async function lookupTconst(tt) {
+  if (ratingCache.has(tt)) return ratingCache.get(tt);
+  if (!await datasetPromise()) {
+    ratingCache.set(tt, null);
+    return null;
+  }
+  const wanted = /* @__PURE__ */ new Set([tt]);
+  for (const k of ratingCache.keys()) if (k) wanted.add(k);
+  return new Promise((resolve) => {
+    let found = null;
+    const rl = import_node_readline.default.createInterface({ input: (0, import_node_fs3.createReadStream)(RATINGS_FILE).pipe((0, import_node_zlib.createGunzip)()) });
+    rl.on("line", (line) => {
+      const tab = line.indexOf("	");
+      if (tab <= 0) return;
+      const id = line.slice(0, tab);
+      if (!wanted.has(id)) return;
+      const rest = line.slice(tab + 1).split("	");
+      const rating = Number(rest[0]);
+      const votes = Number(rest[1]);
+      if (Number.isFinite(rating) && rating > 0) {
+        ratingCache.set(id, { rating, votes: Number.isFinite(votes) ? votes : 0, at: Date.now() });
+        if (id === tt) found = ratingCache.get(tt);
+      }
+    });
+    rl.on("close", () => {
+      if (!ratingCache.has(tt)) ratingCache.set(tt, null);
+      resolve(found);
+    });
+    rl.on("error", () => {
+      ratingCache.set(tt, null);
+      resolve(null);
+    });
+  });
+}
+async function imdbTconst(title) {
+  const key = normTitle(title);
+  if (!key) return null;
+  const hit = titleCache.get(key);
+  if (hit !== void 0) {
+    if (hit === null) return null;
+    return Date.now() - hit.at < CACHE_TTL_MS ? hit.tt : null;
+  }
+  try {
+    const s = await fetchWithTimeout(
+      `https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&uselang=en&type=item&limit=5&search=${encodeURIComponent(title)}`,
+      1e4
+    );
+    if (!s.ok) {
+      titleCache.set(key, null);
+      return null;
+    }
+    const sj = await s.json();
+    const candidates = sj?.search || [];
+    const filmish = candidates.filter((c) => /film|movie|motion picture/i.test(String(c?.description || "")));
+    const pick2 = (filmish[0] || candidates[0])?.id;
+    if (!pick2) {
+      titleCache.set(key, null);
+      return null;
+    }
+    const e = await fetchWithTimeout(
+      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids=${encodeURIComponent(pick2)}&props=claims`,
+      1e4
+    );
+    if (!e.ok) {
+      titleCache.set(key, null);
+      return null;
+    }
+    const ej = await e.json();
+    const claims = ej?.entities?.[pick2]?.claims || {};
+    const p345 = claims?.P345?.[0]?.mainsnak?.datavalue?.value;
+    const tt = typeof p345 === "string" && /^tt\d+$/.test(p345) ? p345 : null;
+    titleCache.set(key, tt ? { tt, at: Date.now() } : null);
+    return tt;
+  } catch {
+    titleCache.set(key, null);
+    return null;
+  }
+}
+async function imdbRatingFor(title) {
+  try {
+    const tt = await imdbTconst(title);
+    if (!tt) return null;
+    const row = await lookupTconst(tt);
+    if (!row || Date.now() - row.at > CACHE_TTL_MS) {
+      if (row) return { tt, rating: row.rating, votes: row.votes };
+    }
+    if (!row) return null;
+    return { tt, rating: row.rating, votes: row.votes };
+  } catch {
+    return null;
+  }
+}
+var import_node_zlib, import_node_fs3, import_node_os, import_node_path3, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
+var init_imdbRatings = __esm({
+  "server/workers/parsers/imdbRatings.ts"() {
+    import_node_zlib = require("node:zlib");
+    import_node_fs3 = require("node:fs");
+    import_node_os = require("node:os");
+    import_node_path3 = require("node:path");
+    import_promises = require("node:stream/promises");
+    import_node_readline = __toESM(require("node:readline"), 1);
+    RATINGS_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz";
+    RATINGS_FILE = (0, import_node_path3.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
+    RATINGS_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
+    CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+    ratingCache = /* @__PURE__ */ new Map();
+    titleCache = /* @__PURE__ */ new Map();
+    tconstIndex = null;
+    datasetReady = null;
+    normTitle = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  }
+});
+
 // server/workers/verticals/movies.ts
 async function fetchJsonNode(url) {
   const r = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(2e4) });
   if (!r.ok) throw new AcquisitionError("SERVER_ERROR", `regions fetch ${r.status}`);
   return r.json();
 }
-var import_node_crypto2, recentCache, moviesWorker;
+function matchAgg(aggs, title) {
+  if (!aggs || aggs.size === 0) return null;
+  const toks2 = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
+  let best = null;
+  let bestScore = 0;
+  for (const agg of aggs.values()) {
+    const hay = agg.title.toLowerCase();
+    const score = toks2.filter((x) => hay.includes(x)).length;
+    if (score === toks2.length && score > bestScore) {
+      best = agg;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+async function enrichWithGw(o, aggs, gwHost, forSite) {
+  const agg = matchAgg(aggs, String(o.title || ""));
+  if (agg) {
+    o.price = agg.minPrice;
+    o.attributes = o.attributes || {};
+    o.attributes["price_band"] = agg.minPrice < agg.maxPrice ? `\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}` : `\u20B9${agg.minPrice}`;
+    o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
+    o.attributes["theatre_count"] = agg.theatres.length;
+    o.attributes["shows_today"] = agg.showCount;
+    o.attributes["data_note"] = forSite ? `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${gwHost === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.` : `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
+    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
+    const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
+    if (crit) {
+      if (crit.ratings.length) {
+        o.attributes["critic_rating"] = crit.ratings.map((r) => `${r.value} (${r.ratedBy})`).slice(0, 3).join(" | ");
+        o.evidence.extractedFields = [...o.evidence.extractedFields || [], "critic_rating"];
+      }
+      if (crit.reviews.length) {
+        const r0 = crit.reviews[0];
+        o.attributes["critic_review"] = `${r0.source ? `[${r0.source}] ` : ""}${r0.text}`;
+        o.evidence.extractedFields = [...o.evidence.extractedFields || [], "critic_review"];
+      }
+    }
+  }
+  const imdb = await imdbRatingFor(String(o.title || "")).catch(() => null);
+  if (imdb) {
+    o.attributes = o.attributes || {};
+    o.attributes["imdb_rating"] = `${imdb.rating.toFixed(1)} (${imdb.votes.toLocaleString("en-IN")} votes)`;
+    o.attributes["imdb_id"] = imdb.tt;
+    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
+  }
+}
+var import_node_crypto2, recentCache, bmsLastPrice, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -5775,8 +7267,11 @@ var init_movies = __esm({
     init_ticketnew();
     init_cinepolis();
     init_district();
+    init_districtGw();
+    init_imdbRatings();
     import_node_crypto2 = require("node:crypto");
     recentCache = null;
+    bmsLastPrice = /* @__PURE__ */ new Map();
     moviesWorker = {
       vertical: "movies",
       tasks: [
@@ -5785,22 +7280,22 @@ var init_movies = __esm({
           name: "Movies worker: BookMyShow now-showing discovery (posters + deeplinks, city-aware)",
           priority: 1,
           maxPerMinute: 6,
-          timeoutMs: 3e4,
+          timeoutMs: 6e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "").trim();
             const entity = String(ctx.query.entityName || "").trim();
             const typedCity = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode);
             const region = await resolveBmsRegion(typedCity, fetchJsonNode);
             const healedBase = await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
-              const host = await getOverride("w_movies_bookmyshow", "api_host");
-              return pth && host ? `${host}${pth}/v1/discover` : null;
+              const host2 = await getOverride("w_movies_bookmyshow", "api_host");
+              return pth && host2 ? `${host2}${pth}/v1/discover` : null;
             }).catch(() => null);
             let res = await cffiFetch(bmsDiscoverUrl(region, healedBase), { headers: bmsDiscoverHeaders(region), timeoutMs: 25e3 });
             if ((res.status === 404 || res.status === 410) && !healedBase) {
               const rep = await dynamicScannerEngine.heal("w_movies_bookmyshow").catch(() => null);
               const fresh = rep?.healed ? await getOverride("w_movies_bookmyshow", "explore_api_path").then(async (pth) => {
-                const host = await getOverride("w_movies_bookmyshow", "api_host");
-                return pth && host ? `${host}${pth}/v1/discover` : null;
+                const host2 = await getOverride("w_movies_bookmyshow", "api_host");
+                return pth && host2 ? `${host2}${pth}/v1/discover` : null;
               }).catch(() => null) : null;
               if (fresh) res = await cffiFetch(bmsDiscoverUrl(region, fresh), { headers: bmsDiscoverHeaders(region), timeoutMs: 25e3 });
             }
@@ -5812,7 +7307,45 @@ var init_movies = __esm({
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : "";
             const fingerprint = (0, import_node_crypto2.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
-            return parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+            const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+            const gwCity = gwCitySlug(typedCity || region.regionName || "");
+            const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+            let aggs = null;
+            let host = "district";
+            if (gwCity) {
+              aggs = await withTimeout(gwCityMovieAggregates("district", gwCity, 8).catch(() => null), 25e3);
+              if (!aggs || aggs.size === 0) {
+                host = "ticketnew";
+                aggs = await withTimeout(gwCityMovieAggregates("ticketnew", gwCity, 6).catch(() => null), 15e3);
+              }
+            }
+            const keyOf = (o) => `${normCity(region.regionName)}|${String(o.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
+            for (const o of cards.slice(0, 14)) {
+              try {
+                const agg = matchAgg(aggs, String(o.title || ""));
+                if (agg) {
+                  o.price = agg.minPrice;
+                  o.attributes = o.attributes || {};
+                  o.attributes["price_band"] = agg.minPrice < agg.maxPrice ? `\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}` : `\u20B9${agg.minPrice}`;
+                  o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
+                  o.attributes["theatre_count"] = String(agg.theatres.length);
+                  o.attributes["shows_today"] = String(agg.showCount);
+                  o.attributes["data_note"] = `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${host === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on BookMyShow is shown at seat selection.`;
+                  o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
+                  bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes["price_band"], note: o.attributes["data_note"] });
+                } else {
+                  const last = bmsLastPrice.get(keyOf(o));
+                  if (last && Date.now() - last.at < 24 * 36e5) {
+                    o.price = last.price;
+                    o.attributes = o.attributes || {};
+                    o.attributes["price_band"] = last.band || "";
+                    o.attributes["data_note"] = `${last.note || "Seat price observed earlier"} (last observed ${Math.round((Date.now() - last.at) / 6e4)} min ago)`;
+                  }
+                }
+              } catch {
+              }
+            }
+            return cards;
           }
         },
         {
@@ -5820,7 +7353,7 @@ var init_movies = __esm({
           name: "Movies worker: TicketNew now-showing (Next.js __NEXT_DATA__, city-aware)",
           priority: 8,
           maxPerMinute: 6,
-          timeoutMs: 3e4,
+          timeoutMs: 45e3,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
@@ -5843,7 +7376,10 @@ var init_movies = __esm({
                   lastErr = new Error("no movies parsed");
                   continue;
                 }
-                return parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+                const offers = parseTicketNewMovies(movies, ctx.source, key, queryTerm);
+                const aggs = await gwCityMovieAggregates("ticketnew", key, 8).catch(() => null);
+                for (const o of offers.slice(0, 5)) await enrichWithGw(o, aggs, "ticketnew");
+                return offers;
               } catch (e) {
                 lastErr = e;
                 if (e instanceof AcquisitionError && (e.failureClass === "FORBIDDEN" || e.failureClass === "RATE_LIMITED")) throw e;
@@ -5880,7 +7416,7 @@ var init_movies = __esm({
           name: "Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)",
           priority: 8,
           maxPerMinute: 6,
-          timeoutMs: 3e4,
+          timeoutMs: 55e3,
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
@@ -5893,19 +7429,31 @@ var init_movies = __esm({
             const movies = parseDistrictMovies(res.body);
             if (movies.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "District page carried no parseable JSON-LD movies");
             const offers = parseDistrictOffers(movies, ctx.source, queryTerm);
-            for (const o of offers.slice(0, 3)) {
+            const gwCity = gwCitySlug(city);
+            const aggs = gwCity ? await gwCityMovieAggregates("district", gwCity, 10).catch(() => null) : null;
+            for (const o of offers.slice(0, 5)) {
+              await enrichWithGw(o, aggs, "district");
               const url = String(o.sellerUrl || "");
               if (!/^https:\/\/www\.district\.in\/movies\//.test(url)) continue;
               try {
                 const page = await cffiFetch(url, { timeoutMs: 2e4 });
                 if (page.status !== 200) continue;
-                const band = districtPriceBands(page.body);
-                if (!band) continue;
-                o.price = band.from;
-                o.attributes = o.attributes || {};
-                o.attributes["price_band"] = `\u20B9${band.from}\u2013\u20B9${band.to}`;
-                o.attributes["data_note"] = `Ticket prices from District's session price bands (\u20B9${band.from}\u2013\u20B9${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
-                o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_band_from", "price_band_to"];
+                const trailer = extractTrailerUrl(page.body);
+                if (trailer) {
+                  o.attributes = o.attributes || {};
+                  o.attributes["trailer_url"] = trailer;
+                  o.evidence.extractedFields = [...o.evidence.extractedFields || [], "trailer_url"];
+                }
+                if (o.price == null) {
+                  const band = districtPriceBands(page.body);
+                  if (band) {
+                    o.price = band.from;
+                    o.attributes = o.attributes || {};
+                    o.attributes["price_band"] = `\u20B9${band.from}\u2013\u20B9${band.to}`;
+                    o.attributes["data_note"] = `Ticket prices from District's session price bands (\u20B9${band.from}\u2013\u20B9${band.to} across shows today); exact seat fare appears in the seat-selection flow`;
+                    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_band_from", "price_band_to"];
+                  }
+                }
               } catch {
               }
             }
@@ -5966,7 +7514,7 @@ function parseAbhiBusServices(json, source, route) {
   }
   const services = Array.isArray(d?.services) ? d.services : [];
   if (!services.length) return [];
-  const fingerprint = (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto11.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route.fromName)}/${route.fromId}/${encodeURIComponent(route.toName)}/${route.toId}/${route.jdate}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -6010,10 +7558,10 @@ function parseAbhiBusServices(json, source, route) {
   }
   return out.slice(0, 40);
 }
-var import_crypto9;
+var import_crypto11;
 var init_abhibus = __esm({
   "server/workers/parsers/abhibus.ts"() {
-    import_crypto9 = require("crypto");
+    import_crypto11 = require("crypto");
     init_contract();
   }
 });
@@ -6090,9 +7638,9 @@ function resolveRedBusCity(docs, city) {
   }
   const lower = String(city || "").toLowerCase();
   const cities = flat.filter((d) => String(d?.locationType || "").toUpperCase() === "CITY" && Number(d?.ID) > 0);
-  const pool = cities.length ? cities : flat.filter((d) => Number(d?.ID) > 0);
-  const exact = pool.find((d) => String(d?.Name || "").toLowerCase() === lower);
-  const chosen = exact || pool[0];
+  const pool2 = cities.length ? cities : flat.filter((d) => Number(d?.ID) > 0);
+  const exact = pool2.find((d) => String(d?.Name || "").toLowerCase() === lower);
+  const chosen = exact || pool2[0];
   return chosen ? { id: Number(chosen.ID), name: String(chosen.Name || city) } : null;
 }
 function parseRedBusSearch(json, source, route) {
@@ -6104,7 +7652,7 @@ function parseRedBusSearch(json, source, route) {
   }
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
-  const fingerprint = (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto12.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
   const searchUrl = `https://www.redbus.in/bus-tickets/${slug(route.fromName)}-to-${slug(route.toName)}.aspx`;
   const out = [];
@@ -6156,10 +7704,10 @@ function parseRedBusSearch(json, source, route) {
   }
   return out;
 }
-var import_crypto10;
+var import_crypto12;
 var init_redbusSearch = __esm({
   "server/workers/parsers/redbusSearch.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto12 = require("crypto");
     init_contract();
   }
 });
@@ -6279,16 +7827,23 @@ var init_bus = __esm({
           name: "Bus worker: redBus live services (real fares, timings, seats)",
           priority: 2,
           maxPerMinute: 24,
+          // City resolution + per-bus searchResults + (only if needed) route-page fallback:
+          // three sequential round-trips legitimately need more than the 18s default budget.
+          timeoutMs: 45e3,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
             const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
             const pageUrl = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
+            const steps = [];
+            const t0 = Date.now();
             let resolved = {};
             try {
               const getJson = async (url) => {
-                const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
+                const s = Date.now();
+                const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 8e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
+                steps.push(`suggest=${r2.latencyMs ?? Date.now() - s}ms/${r2.status}`);
                 if (r2.status !== 200) throw new AcquisitionError("SERVER_ERROR", `redBus suggestion HTTP ${r2.status}`, r2.status);
                 try {
                   return JSON.parse(r2.body);
@@ -6302,34 +7857,47 @@ var init_bus = __esm({
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
             } catch (e) {
-              if (e instanceof AcquisitionError && (e.failureClass === "SERVER_ERROR" || e.failureClass === "MALFORMED_RESPONSE")) {
-              } else {
-                throw e;
-              }
+              if (e instanceof AcquisitionError && e.failureClass === "TIMEOUT") steps.push(`suggest=TIMEOUT(${steps.join(" ") || "none"})`);
             }
             const depart = String(ctx.query.travelDates?.depart || "");
             const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
             if (resolved.from && resolved.to) {
               const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
               const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
-              const r2 = await ctx.fetch(u, {
-                method: "POST",
-                expectJson: true,
-                maxBytes: 6e6,
-                timeoutMs: 25e3,
-                headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
-                body: "{}"
-              });
+              const sr = Date.now();
+              let r2;
+              try {
+                r2 = await ctx.fetch(u, {
+                  method: "POST",
+                  expectJson: true,
+                  maxBytes: 6e6,
+                  timeoutMs: 2e4,
+                  headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
+                  body: "{}"
+                });
+              } catch (e) {
+                steps.push(`searchResults=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
+                r2 = { status: 0, body: "" };
+              }
+              steps.push(`searchResults=${r2.latencyMs ?? Date.now() - sr}ms/${r2.status}`);
               if (r2.status === 200) {
                 const items2 = parseRedBusSearch(r2.body, ctx.source, route);
                 if (items2.length) return items2;
+                return [];
               }
             }
-            const r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 3e4 });
+            const rp = Date.now();
+            let r;
+            try {
+              r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
+            } catch (e) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", `redBus domain unresponsive from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
+            }
+            steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
             if (r.status === 404) return [];
-            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status}`, r.status);
+            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status} [${steps.join(" ")}]`, r.status);
             const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "redBus route page carried no parseable dataInfo fare");
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `redBus route page carried no parseable dataInfo fare [${steps.join(" ")}]`);
             return items;
           }
         },
@@ -6484,6 +8052,484 @@ var init_bus = __esm({
   }
 });
 
+// server/workers/parsers/cardInsider.ts
+function feeToInr(fee) {
+  if (!fee) return void 0;
+  if (/lifetime\s*free|life\s*time\s*free|^nil$|^free$|no (joining|annual|renewal) fee/i.test(fee)) return 0;
+  const m = /(?:₹|rs\.?\s?)\s*([\d,]+(?:\.\d+)?)/i.exec(fee);
+  if (m) return Number(m[1].replace(/,/g, ""));
+  return void 0;
+}
+function linesOf(html) {
+  const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>/gi, " ");
+  return body.replace(/<[^>]+>/g, "\n").split("\n").map(clean).filter(Boolean);
+}
+function valueAfter(lines, label, from = 0, to = lines.length) {
+  const i = lines.findIndex((l, k) => k >= from && k < to && l.toLowerCase() === label.toLowerCase());
+  if (i < 0 || i + 1 >= lines.length) return void 0;
+  const v = lines[i + 1];
+  if (!v || NA.test(v)) return void 0;
+  return v;
+}
+function detectNetwork(text) {
+  if (/rupay/i.test(text)) return "RuPay";
+  if (/diners/i.test(text)) return "Diners Club";
+  if (/american express|\bamex\b/i.test(text)) return "American Express";
+  if (/mastercard|master card/i.test(text)) return "Mastercard";
+  if (/\bvisa\b/i.test(text)) return "Visa";
+  return void 0;
+}
+function parseApr(interest) {
+  if (!interest) return {};
+  const ann = /(\d{1,2}(?:\.\d+)?)\s*%\s*(?:p\.?a\.?|annually|per annum|annual)/i.exec(interest) || /\((\d{1,2}(?:\.\d+)?)\s*%\s*annual/i.exec(interest);
+  if (ann) return { apr: `${ann[1]}%`, aprMax: Number(ann[1]) };
+  const mo = /(\d{1,2}(?:\.\d+)?)\s*%\s*(?:per\s*month|p\.?m\.?|monthly)/i.exec(interest);
+  if (mo) {
+    const a = Math.round(Number(mo[1]) * 12 * 10) / 10;
+    return { apr: `${a}%`, aprMax: a };
+  }
+  return {};
+}
+function rewardRange(rate) {
+  if (!rate) return void 0;
+  const nums = [...rate.matchAll(/(\d{1,2}(?:\.\d+)?)\s*%/g)].map((m) => Number(m[1])).filter((n) => n > 0 && n <= 30);
+  if (!nums.length) return void 0;
+  const lo = Math.min(...nums), hi = Math.max(...nums);
+  return lo === hi ? `${hi}%` : `${lo}\u2013${hi}%`;
+}
+function parseCardInsiderCard(html, cardUrl) {
+  const lines = linesOf(html);
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+  let name = h1 ? clean(h1[1].replace(/<[^>]+>/g, " ")) : "";
+  name = name.replace(/\s*[-–—|:]\s*(review|apply).*$/i, "").replace(/\s+review.*$/i, "").trim();
+  if (!name || !/card/i.test(name)) return null;
+  const feesFrom = Math.max(0, lines.findIndex((l) => /^fees and$/i.test(l)));
+  const joining = valueAfter(lines, "Joining Fee", feesFrom) || valueAfter(lines, "Joining Fee");
+  const renewal = valueAfter(lines, "Renewal Fee", feesFrom) || valueAfter(lines, "Renewal Fee") || valueAfter(lines, "Annual Fee");
+  if (!joining && !renewal) return null;
+  const rewardsFrom = Math.max(0, lines.findIndex((l) => /^rewards and$/i.test(l)));
+  const rewardsTo = feesFrom > rewardsFrom ? feesFrom : lines.length;
+  const rewardRate = valueAfter(lines, "Rewards Rate", rewardsFrom, rewardsTo) || valueAfter(lines, "Reward Rate", rewardsFrom, rewardsTo);
+  const interest = valueAfter(lines, "Interest Rates", feesFrom) || valueAfter(lines, "Interest Rate", feesFrom);
+  const { apr, aprMax } = parseApr(interest);
+  const ratingM = /(\d(?:\.\d)?)\s*\/\s*5/.exec(lines.slice(0, 80).join(" "));
+  const img = [...html.matchAll(/https:\/\/cardinsider\.com\/wp-content\/uploads\/[^"'\s)]+?\.(?:webp|png|jpg|jpeg)/gi)].map((m) => m[0]).filter((u) => !/-\d{2,4}x\d{2,4}\./.test(u))[0];
+  const bankSlug = /cardinsider\.com\/([a-z0-9-]+)\//i.exec(cardUrl)?.[1] || "";
+  return {
+    name,
+    bank: BANK_NAMES[bankSlug] || bankSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    network: detectNetwork(name) || detectNetwork(valueAfter(lines, "Card Network") || ""),
+    joiningFee: joining,
+    joiningFeeInr: feeToInr(joining),
+    annualFee: renewal,
+    annualFeeInr: feeToInr(renewal),
+    rewardRate,
+    welcomeBenefit: valueAfter(lines, "Welcome Benefits", rewardsFrom, rewardsTo) || valueAfter(lines, "Welcome Benefits"),
+    domesticLounge: valueAfter(lines, "Domestic Lounge", rewardsFrom, rewardsTo),
+    intlLounge: valueAfter(lines, "International Lounge", rewardsFrom, rewardsTo),
+    forexMarkup: valueAfter(lines, "Forex Markup", feesFrom) || valueAfter(lines, "Forex Markup"),
+    apr,
+    aprMax,
+    fuelWaiver: valueAfter(lines, "Fuel Surcharge Waiver", feesFrom),
+    bestFor: valueAfter(lines, "Best Suitable For"),
+    rating: ratingM ? Number(ratingM[1]) : void 0,
+    imageUrl: img,
+    cardUrl
+  };
+}
+function parseIssuerIndex(html, bankSlug) {
+  const re = new RegExp(`https://cardinsider\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi");
+  const out = /* @__PURE__ */ new Set();
+  for (const m of html.matchAll(re)) {
+    const slug = m[1];
+    if (!/credit-card$/.test(slug)) continue;
+    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug)) continue;
+    out.add(m[0]);
+  }
+  return [...out];
+}
+function bankCardUrl(bankSlug, cardName) {
+  const q3 = encodeURIComponent(cardName);
+  const BASE2 = {
+    "hdfc-bank": "https://www.hdfc.bank.in/credit-cards",
+    "sbi-card": "https://www.sbicard.com/en/personal/credit-cards.page",
+    "axis-bank": "https://www.axis.bank.in/cards/credit-card",
+    "icici-bank": "https://www.icici.bank.in/personal-banking/cards/credit-card",
+    "idfc-first-bank": "https://www.idfcfirst.bank.in/credit-card",
+    "kotak-mahindra-bank": "https://www.kotak.com/en/personal-banking/cards/credit-cards.html",
+    "indusind-bank": "https://www.indusind.bank.in/in/en/personal/cards/credit-card.html",
+    "au-bank": "https://www.aubank.in/personal-banking/credit-cards",
+    "yes-bank": "https://www.yesbank.in/personal-banking/yes-individual/cards/credit-cards",
+    "bank-of-baroda": "https://www.bobcard.co.in/credit-cards",
+    "american-express": "https://www.americanexpress.com/in/credit-cards/",
+    "standard-chartered": "https://www.sc.com/in/credit-cards/",
+    "rbl-bank": "https://www.rblbank.com/product/cards/credit-cards",
+    "hsbc": "https://www.hsbc.co.in/credit-cards/"
+  };
+  return BASE2[bankSlug] || `https://cardinsider.com/${bankSlug}/`;
+}
+function cardToRawItem(c, source, bankSlug, fingerprintSeed) {
+  const attrs = {
+    bank: c.bank,
+    ...c.network ? { network: c.network } : {},
+    ...c.joiningFee ? { joining_fee: c.joiningFee } : {},
+    ...c.joiningFeeInr !== void 0 ? { joining_fee_inr: String(c.joiningFeeInr) } : {},
+    ...c.annualFee ? { annual_fee: c.annualFee } : {},
+    ...c.annualFeeInr !== void 0 ? { annual_fee_inr: String(c.annualFeeInr) } : {},
+    ...c.rewardRate ? { reward_rate_text: c.rewardRate.slice(0, 220) } : {},
+    ...rewardRange(c.rewardRate) ? { reward_rate: rewardRange(c.rewardRate) } : {},
+    ...c.welcomeBenefit ? { welcome_benefit: c.welcomeBenefit.slice(0, 160) } : {},
+    ...c.domesticLounge ? { domestic_lounge: c.domesticLounge.slice(0, 160) } : {},
+    ...c.intlLounge ? { international_lounge: c.intlLounge.slice(0, 160) } : {},
+    ...c.forexMarkup ? { forex_markup: c.forexMarkup } : {},
+    ...c.apr ? { apr: c.apr } : {},
+    ...c.fuelWaiver ? { fuel_waiver: c.fuelWaiver.slice(0, 200) } : {},
+    ...c.bestFor ? { best_for: c.bestFor } : {},
+    ...c.rating !== void 0 ? { rating: String(c.rating) } : {},
+    ...c.imageUrl ? { image_url: c.imageUrl } : {},
+    card_page: c.cardUrl,
+    price_basis: "annual (renewal) fee published for the card; rewards and APR as stated by the issuer",
+    data_note: `Fees, rewards and APR as published (via CardInsider review of the issuer's terms), observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; final eligibility and charges are decided by the bank on application`
+  };
+  return newRawItem(source, {
+    title: c.name.slice(0, 200),
+    seller: c.bank,
+    sellerUrl: bankCardUrl(bankSlug, c.name),
+    currency: "INR",
+    price: c.annualFeeInr,
+    // comparable metric: yearly fee (0 = lifetime free). undefined when the page does not state it
+    attributes: attrs,
+    evidence: {
+      sourceUrl: c.cardUrl,
+      sourceReference: `${bankSlug}:${c.name}`,
+      rawFingerprint: (0, import_crypto13.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
+      extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : [], ...c.rewardRate ? ["reward_rate"] : [], ...c.apr ? ["apr"] : []]
+    }
+  });
+}
+var import_crypto13, NA, clean, BANK_NAMES;
+var init_cardInsider = __esm({
+  "server/workers/parsers/cardInsider.ts"() {
+    import_crypto13 = require("crypto");
+    init_contract();
+    NA = /^(n\/?a|not applicable|nil|none|-+)$/i;
+    clean = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+    BANK_NAMES = {
+      "hdfc-bank": "HDFC Bank",
+      "axis-bank": "Axis Bank",
+      "sbi-card": "SBI Card",
+      "icici-bank": "ICICI Bank",
+      "kotak-mahindra-bank": "Kotak Mahindra Bank",
+      "idfc-first-bank": "IDFC FIRST Bank",
+      "au-bank": "AU Small Finance Bank",
+      "indusind-bank": "IndusInd Bank",
+      "yes-bank": "YES Bank",
+      "bank-of-baroda": "Bank of Baroda",
+      "american-express": "American Express",
+      "standard-chartered": "Standard Chartered",
+      "hsbc": "HSBC",
+      "rbl-bank": "RBL Bank",
+      "federal-bank": "Federal Bank",
+      "indian-bank": "Indian Bank",
+      "pnb": "Punjab National Bank",
+      "bobcard": "BOBCARD",
+      "onecard": "OneCard"
+    };
+  }
+});
+
+// server/workers/parsers/paisabazaarCards.ts
+function parsePaisabazaarCard(html, url) {
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+  const name = h1 ? clean2(h1[1].replace(/<[^>]+>/g, " ")) : "";
+  if (!name || !/credit card/i.test(name)) return null;
+  const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>/gi, " ");
+  const L = body.replace(/<[^>]+>/g, "\n").split("\n").map(clean2).filter(Boolean);
+  const feesAt = L.findIndex((l) => /^fees\s*&\s*charges$/i.test(l));
+  const val = (label) => {
+    const i = L.findIndex((l, k) => k >= Math.max(0, feesAt - 6) && l.toLowerCase() === label.toLowerCase());
+    return i >= 0 ? L[i + 1] : void 0;
+  };
+  const joining = val("Joining Fee");
+  const annual = val("Annual Fee");
+  if (!joining && !annual) return null;
+  const bankSlug = /paisabazaar\.com\/([a-z0-9-]+)\//i.exec(url)?.[1] || "";
+  const imgs = [...html.matchAll(/https:\/\/www\.paisabazaar\.com\/wp-content\/uploads\/[^"'\s)]+\.(?:webp|png|jpg|jpeg)/gi)].map((m) => m[0]);
+  const slugWords = name.toLowerCase().split(/\W+/).filter((w) => w.length > 3 && w !== "credit" && w !== "card");
+  const img = imgs.find((u) => slugWords.some((w) => u.toLowerCase().includes(w)));
+  return { name, bank: BANK_NAMES[bankSlug] || bankSlug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), joiningFee: joining, annualFee: annual, annualFeeInr: feeToInr(annual), imageUrl: img, network: detectNetwork(name), url };
+}
+function parsePaisabazaarIndex(html, bankSlug) {
+  const out = /* @__PURE__ */ new Set();
+  for (const m of html.matchAll(new RegExp(`https://www\\.paisabazaar\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi"))) {
+    const s = m[1];
+    if (!/credit-card$/.test(s) || /^(credit-card|best|how|check|.*fees-charges|.*offers|.*-vs-.*|.*bill-payment.*|.*limit.*|.*login.*|.*customer-care.*|.*eligibility.*)$/.test(s)) continue;
+    out.add(m[0]);
+  }
+  return [...out];
+}
+function pbToRawItem(c, source, bankSlug, seed) {
+  return newRawItem(source, {
+    title: c.name.slice(0, 200),
+    seller: c.bank,
+    sellerUrl: bankCardUrl(bankSlug, c.name),
+    currency: "INR",
+    price: c.annualFeeInr,
+    attributes: {
+      bank: c.bank,
+      ...c.network ? { network: c.network } : {},
+      ...c.joiningFee ? { joining_fee: c.joiningFee } : {},
+      ...c.annualFee ? { annual_fee: c.annualFee } : {},
+      ...c.annualFeeInr !== void 0 ? { annual_fee_inr: String(c.annualFeeInr) } : {},
+      ...c.imageUrl ? { image_url: c.imageUrl } : {},
+      card_page: c.url,
+      price_basis: "annual (renewal) fee published for the card",
+      data_note: `Fees as published on Paisabazaar's card page, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; the bank decides final charges on application`
+    },
+    evidence: {
+      sourceUrl: c.url,
+      sourceReference: `${bankSlug}:${c.name}`,
+      rawFingerprint: (0, import_crypto14.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
+      extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : []]
+    }
+  });
+}
+var import_crypto14, clean2;
+var init_paisabazaarCards = __esm({
+  "server/workers/parsers/paisabazaarCards.ts"() {
+    import_crypto14 = require("crypto");
+    init_contract();
+    init_cardInsider();
+    clean2 = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  }
+});
+
+// server/workers/parsers/bankCardLinks.ts
+async function bankCardIndex(bankSlug) {
+  const hub = HUBS[bankSlug];
+  if (!hub) return [];
+  const hit = CACHE.get(bankSlug);
+  if (hit && Date.now() - hit.at < TTL) return hit.links;
+  try {
+    const seen = /* @__PURE__ */ new Map();
+    const bodies = [];
+    const r = await cffiFetch(hub.url, { impersonate: "chrome", timeoutMs: 2e4 });
+    if (r.status === 200) bodies.push({ body: r.body, sitemap: false });
+    if (hub.sitemap) {
+      const sm = await cffiFetch(hub.sitemap, { impersonate: "chrome", timeoutMs: 2e4 });
+      if (sm.status === 200) bodies.push({ body: sm.body, sitemap: true });
+    }
+    if (!bodies.length) return hit?.links || [];
+    const hrefs = [];
+    for (const b of bodies) {
+      const re = b.sitemap ? /<loc>([^<]+)<\/loc>/g : /href="([^"#?]+)"/g;
+      for (const m of b.body.matchAll(re)) hrefs.push(m[1]);
+    }
+    for (const raw of hrefs) {
+      let h = raw;
+      if (h.startsWith(hub.base)) h = h.slice(hub.base.length);
+      if (!h.startsWith("/") || !hub.pathRe.test(h)) continue;
+      const slug = h.split("/").pop().replace(/\.page$/, "");
+      if (NOISE.test(slug)) continue;
+      seen.set(hub.base + h, slug);
+    }
+    const links = [...seen].map(([url, slug]) => ({ url, slug }));
+    CACHE.set(bankSlug, { at: Date.now(), links });
+    return links;
+  } catch {
+    return hit?.links || [];
+  }
+}
+async function resolveBankCardUrl(bankSlug, cardName) {
+  const idx = await bankCardIndex(bankSlug);
+  if (!idx.length) return null;
+  const want = toks(cardName).filter((t) => !GENERIC.has(t));
+  if (!want.length) return null;
+  let best = null;
+  for (const l of idx) {
+    const st = new Set(toks(l.slug.replace(/-/g, " ")));
+    const hit = want.filter((t) => st.has(t) || [...st].some((x) => x.startsWith(t) && t.length > 3)).length;
+    if (hit < want.length) continue;
+    const extra = [...st].filter((t) => !GENERIC.has(t) && !want.includes(t)).length;
+    if (!best || extra < best.extra) best = { url: l.url, score: hit, extra };
+  }
+  return best ? best.url : null;
+}
+var HUBS, NOISE, CACHE, TTL, GENERIC, toks;
+var init_bankCardLinks = __esm({
+  "server/workers/parsers/bankCardLinks.ts"() {
+    init_curlCffiFetch();
+    HUBS = {
+      "hdfc-bank": { url: "https://www.hdfc.bank.in/credit-cards", base: "https://www.hdfc.bank.in", pathRe: /^\/credit-cards\/[a-z0-9-]+$/ },
+      "axis-bank": { url: "https://www.axis.bank.in/cards/credit-card", base: "https://www.axis.bank.in", pathRe: /^\/cards\/credit-card\/[a-z0-9-]+$/ },
+      "icici-bank": { url: "https://www.icici.bank.in/personal-banking/cards/credit-card", base: "https://www.icici.bank.in", pathRe: /^\/personal-banking\/cards\/credit-card\/[a-z0-9-]+$/ },
+      "idfc-first-bank": { url: "https://www.idfcfirst.bank.in/credit-card", base: "https://www.idfcfirst.bank.in", pathRe: /^\/credit-card\/[a-z0-9-]+$/, sitemap: "https://www.idfcfirst.bank.in/sitemap.xml" },
+      // SBI Card's hub is client-rendered; its public sitemap lists every card page.
+      "sbi-card": { url: "https://www.sbicard.com/en/personal/credit-cards.html", base: "https://www.sbicard.com", pathRe: /^\/en\/personal\/credit-cards\/[a-z0-9-]+\.html$/, sitemap: "https://www.sbicard.com/sitemap.xml" }
+    };
+    NOISE = /blog|calculator|emi|pin|bill|offers?$|apply-now|statement|faq|debit|kisan|business|nri|corporate|upgrade|limit|status|balance|against|add-on|secured|compare|documents|rewards$|benefits|services|programme|do-not-call|commercial|track|lounge-access|lifetime-free|metal|micro|wow|manage|login|register/i;
+    CACHE = /* @__PURE__ */ new Map();
+    TTL = 6 * 36e5;
+    GENERIC = /* @__PURE__ */ new Set(["credit", "card", "cards", "bank", "hdfc", "axis", "icici", "sbi", "idfc", "first", "the", "and", "visa", "mastercard", "rupay", "world", "signature", "platinum", "lifetime", "free"]);
+    toks = (s) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 1);
+  }
+});
+
+// server/workers/verticals/creditcards.ts
+function queryPlan(raw) {
+  const q3 = raw || "";
+  const banks = BANK_ALIASES.filter((b) => b.re.test(q3)).map((b) => b.slug);
+  const tokens = q3.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 2 && !STOP.has(t) && !BANK_ALIASES.some((b) => b.re.test(t)));
+  return { banks, tokens, intents: INTENTS.filter((i) => i.re.test(q3)) };
+}
+function banksFor(plan, universe, map = (s) => s) {
+  const wanted = plan.banks.map((b) => universe.find((u) => map(u) === b) || b).filter((b) => universe.includes(b));
+  return wanted.length ? wanted : universe.slice(0, 6);
+}
+async function pool(items, size, fn) {
+  const out = [];
+  for (let i = 0; i < items.length; i += size) out.push(...await Promise.all(items.slice(i, i + size).map(fn)));
+  return out;
+}
+async function ciTask(ctx) {
+  const plan = queryPlan(`${ctx.query.rawQuery || ""} ${ctx.query.entityName || ""}`);
+  const banks = banksFor(plan, CI_BANKS);
+  const indexes = await pool(banks, 4, async (b) => {
+    const r = await cffiFetch(`https://cardinsider.com/${b}/`, { impersonate: "chrome", timeoutMs: 15e3 });
+    return { b, status: r.status, links: r.status === 200 ? parseIssuerIndex(r.body, b) : [] };
+  });
+  if (indexes.every((i) => i.status !== 200)) throw new AcquisitionError("SERVER_ERROR", `CardInsider issuer pages HTTP ${indexes.map((i) => i.status).join("/")}`);
+  let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
+  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split("/").filter(Boolean).pop().replace(/-/g, " "), plan.tokens));
+  targets = targets.slice(0, plan.intents.length ? 90 : MAX_CARDS + 10);
+  if (!targets.length) throw new AcquisitionError("EMPTY_RESPONSE", "CardInsider lists no card matching this search");
+  const pages = await pool(targets, 8, async (t) => {
+    try {
+      const r = await cffiFetch(t.u, { impersonate: "chrome", timeoutMs: 15e3 });
+      return { t, r };
+    } catch {
+      return { t, r: null };
+    }
+  });
+  const out = [];
+  for (const { t, r } of pages) {
+    if (!r || r.status !== 200) continue;
+    const c = parseCardInsiderCard(r.body, t.u);
+    if (!c) continue;
+    if (plan.intents.length) {
+      const hay = `${c.name} ${c.bestFor || ""} ${c.rewardRate || ""} ${c.domesticLounge || ""} ${c.intlLounge || ""} ${c.joiningFee || ""} ${c.annualFee || ""} ${c.fuelWaiver || ""}`;
+      if (!plan.intents.every((i) => i.test(hay))) continue;
+    }
+    const item = cardToRawItem(c, ctx.source, t.b, r.body);
+    const official = await resolveBankCardUrl(t.b, c.name);
+    if (official) {
+      item.sellerUrl = official;
+      item.attributes.official_page = official;
+    } else item.attributes.apply_note = "Card-specific bank page not found; link opens the bank's credit-card hub";
+    out.push(item);
+    if (out.length >= MAX_CARDS) break;
+  }
+  if (!out.length) throw new AcquisitionError("EMPTY_RESPONSE", "No CardInsider card page matched this search");
+  return out;
+}
+async function pbTask(ctx) {
+  const plan = queryPlan(`${ctx.query.rawQuery || ""} ${ctx.query.entityName || ""}`);
+  const banks = banksFor(plan, PB_BANKS, (s) => PB_TO_CI[s] || s);
+  const indexes = await pool(banks, 4, async (b) => {
+    const r = await cffiFetch(`https://www.paisabazaar.com/${b}/credit-card/`, { impersonate: "chrome", timeoutMs: 15e3 });
+    return { b, status: r.status, links: r.status === 200 ? parsePaisabazaarIndex(r.body, b) : [] };
+  });
+  let targets = indexes.flatMap((i) => i.links.map((u) => ({ b: i.b, u })));
+  if (!targets.length) throw new AcquisitionError(indexes.some((i) => i.status === 403) ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", `Paisabazaar issuer pages gave no card links (HTTP ${indexes.map((i) => i.status).join("/")})`);
+  if (plan.tokens.length) targets = targets.filter((t) => nameMatches(t.u.split("/").filter(Boolean).pop().replace(/-/g, " "), plan.tokens));
+  targets = targets.slice(0, plan.intents.length ? 60 : 30);
+  const pages = await pool(targets, 6, async (t) => {
+    try {
+      return { t, r: await cffiFetch(t.u, { impersonate: "chrome", timeoutMs: 15e3 }) };
+    } catch {
+      return { t, r: null };
+    }
+  });
+  const out = [];
+  for (const { t, r } of pages) {
+    if (!r || r.status !== 200) continue;
+    const c = parsePaisabazaarCard(r.body, t.u);
+    if (!c) continue;
+    if (plan.intents.length && !plan.intents.every((i) => i.test(`${c.name} ${c.joiningFee || ""} ${c.annualFee || ""}`))) continue;
+    const ciSlug = PB_TO_CI[t.b] || t.b;
+    const item = pbToRawItem(c, ctx.source, ciSlug, r.body);
+    const official = await resolveBankCardUrl(ciSlug, c.name);
+    if (official) {
+      item.sellerUrl = official;
+      item.attributes.official_page = official;
+    }
+    out.push(item);
+    if (out.length >= MAX_CARDS) break;
+  }
+  if (!out.length) throw new AcquisitionError("EMPTY_RESPONSE", "No Paisabazaar card page matched this search");
+  return out;
+}
+var CI_BANKS, PB_BANKS, PB_TO_CI, BANK_ALIASES, INTENTS, STOP, nameMatches, MAX_CARDS, creditCardsWorker;
+var init_creditcards = __esm({
+  "server/workers/verticals/creditcards.ts"() {
+    init_verticalWorker();
+    init_httpClient();
+    init_curlCffiFetch();
+    init_cardInsider();
+    init_paisabazaarCards();
+    init_bankCardLinks();
+    CI_BANKS = ["hdfc-bank", "sbi-card", "axis-bank", "icici-bank", "idfc-first-bank", "indusind-bank", "au-bank", "yes-bank", "rbl-bank", "american-express", "bank-of-baroda", "standard-chartered", "kotak-mahindra-bank"];
+    PB_BANKS = ["hdfc-bank", "axis-bank", "icici-bank", "sbi-card", "idfc-first-bank", "indusind-bank", "au-small-finance-bank", "yes-bank", "rbl-bank", "amex-bank", "bobcard", "kotak-mahindra-bank"];
+    PB_TO_CI = { "au-small-finance-bank": "au-bank", "amex-bank": "american-express", bobcard: "bank-of-baroda" };
+    BANK_ALIASES = [
+      { slug: "hdfc-bank", re: /\bhdfc\b/i },
+      { slug: "sbi-card", re: /\bsbi\b/i },
+      { slug: "axis-bank", re: /\baxis\b/i },
+      { slug: "icici-bank", re: /\bicici\b/i },
+      { slug: "idfc-first-bank", re: /\bidfc\b/i },
+      { slug: "indusind-bank", re: /indusind/i },
+      { slug: "au-bank", re: /\bau\b|au small/i },
+      { slug: "yes-bank", re: /\byes bank\b|\byes\b/i },
+      { slug: "rbl-bank", re: /\brbl\b/i },
+      { slug: "american-express", re: /amex|american express/i },
+      { slug: "bank-of-baroda", re: /\bbob\b|baroda|bobcard/i },
+      { slug: "standard-chartered", re: /standard chartered|\bsc\b/i },
+      { slug: "kotak-mahindra-bank", re: /kotak/i }
+    ];
+    INTENTS = [
+      { re: /travel|lounge|airport|miles/i, test: (t) => /lounge|miles|travel|air|vistara|indigo|atlas|flight/i.test(t) },
+      { re: /cash\s*back|cashback/i, test: (t) => /cashback/i.test(t) },
+      { re: /lifetime\s*free|\bltf\b|no annual fee|zero fee/i, test: (t) => /lifetime free/i.test(t) },
+      { re: /fuel|petrol|diesel/i, test: (t) => /fuel|petrol|indian oil|bpcl|hpcl/i.test(t) },
+      { re: /shopping|online|amazon|flipkart/i, test: (t) => /shopping|amazon|flipkart|myntra|online/i.test(t) },
+      { re: /dining|food|swiggy|zomato/i, test: (t) => /dining|swiggy|zomato|food/i.test(t) },
+      { re: /rupay|upi/i, test: (t) => /rupay/i.test(t) }
+    ];
+    STOP = /* @__PURE__ */ new Set(["credit", "card", "cards", "best", "top", "compare", "comparison", "india", "bank", "for", "with", "the", "and", "in", "a", "of", "to", "me", "my", "cc", "free", "lifetime", "travel", "cashback", "cash", "back", "fuel", "shopping", "online", "dining", "rupay", "lounge"]);
+    nameMatches = (name, tokens) => !tokens.length || tokens.every((t) => name.toLowerCase().includes(t));
+    MAX_CARDS = 40;
+    creditCardsWorker = {
+      vertical: "creditcards",
+      tasks: [
+        { sourceId: "w_creditcards_cardinsider", name: "Credit cards worker: CardInsider issuer index + card pages (SSR)", priority: 10, timeoutMs: 4e4, run: ciTask },
+        { sourceId: "w_creditcards_paisabazaar", name: "Credit cards worker: Paisabazaar issuer index + card pages (SSR)", priority: 11, timeoutMs: 4e4, run: pbTask },
+        {
+          sourceId: "w_creditcards_bankbazaar",
+          name: "Credit cards worker: BankBazaar (probe)",
+          priority: 20,
+          run: async () => {
+            const r = await cffiFetch("https://www.bankbazaar.com/credit-card.html", { impersonate: "chrome", timeoutMs: 15e3 });
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `BankBazaar HTTP ${r.status}`, r.status);
+            if (looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "BankBazaar presented a challenge page");
+            throw new AcquisitionError("EMPTY_RESPONSE", "BankBazaar credit-card hub is a client-rendered list: it publishes card names but no per-card fee or reward table to browserless HTTP.");
+          }
+        }
+      ]
+    };
+    registerVerticalWorker(creditCardsWorker);
+  }
+});
+
 // server/workers/verticals/index.ts
 var init_verticals = __esm({
   "server/workers/verticals/index.ts"() {
@@ -6497,6 +8543,7 @@ var init_verticals = __esm({
     init_grocery();
     init_movies();
     init_bus();
+    init_creditcards();
     init_verticalWorker();
   }
 });
@@ -6721,7 +8768,8 @@ var init_registry = __esm({
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
-  bootWarm: () => bootWarm
+  bootWarm: () => bootWarm,
+  keepWarmDefaults: () => keepWarmDefaults
 });
 module.exports = __toCommonJS(warm_exports);
 init_db();
@@ -6930,6 +8978,7 @@ var ALL_VERTICALS = [
   "insurance",
   "movies",
   "bus",
+  "creditcards",
   "coupons",
   "giftcards",
   "banking"
@@ -6946,11 +8995,12 @@ var VERTICAL_KEYWORDS = {
   cab: ["cab", "taxi", "uber", "ola", "rapido", "ride to", "auto", "drop to", "pick up", "pickup and drop"],
   loans: ["loan", "personal loan", "home loan", "car loan", "credit line", "borrow", "lender", "interest rate", "emi"],
   insurance: ["insurance", "policy", "premium", "term plan", "health cover", "bike insurance", "car insurance", "insurer"],
+  creditcards: ["credit card", "credit cards", "creditcard", "cc for", "best credit card", "lifetime free card", "travel card", "cashback card", "regalia", "millennia", "infinia", "amex", "rupay card", "annual fee card", "forex card"],
   movies: ["movie", "cinema", "pvr", "showtime", "show", "ticket for", "film", "concert", "event", "bookmyshow"],
   bus: ["bus", "buses", "volvo", "redbus", "sleeper bus", "bus ticket", "bus to"],
   coupons: ["coupon", "coupons", "promo code", "voucher", "discount code", "offer code", "cashback offer", "deal"],
   giftcards: ["gift card", "gift cards", "giftcard", "voucher card", "gift voucher"],
-  banking: ["credit card", "debit card", "card offer", "bank offer", "hdfc offer", "sbi offer", "axis offer", "icici offer", "no cost emi", "card discount"]
+  banking: ["credit card offer", "credit card offers", "credit card discount", "credit card emi", "debit card", "card offer", "bank offer", "hdfc offer", "sbi offer", "axis offer", "icici offer", "no cost emi", "card discount"]
 };
 var PINCODE_RE = /\b(\d{6})\b/;
 var MAJOR_CITIES = [
@@ -7067,7 +9117,7 @@ async function aiAssistedUnderstanding(query) {
     const { GoogleGenAI } = await import("@google/genai");
     const ai = new GoogleGenAI({ apiKey: settings.geminiApiKey });
     const prompt = `Classify this Indian shopping/travel search query. Return strict JSON only:
-{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
+{"vertical":"one of food|grocery|ecommerce|flights|hotels|cab|loans|insurance|movies|bus|creditcards|coupons|giftcards|banking","entity":"product/service name","city":"city if mentioned","pincode":"6-digit pincode if mentioned","dates":{"depart":"YYYY-MM-DD if mentioned"},"attributes":{"key":"value only for explicit configuration mentions"}}
 Rules: Do NOT include prices, stock, or availability. Do NOT guess unstated fields.
 Query: ${query.rawQuery}`;
     const res = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
@@ -7101,7 +9151,7 @@ init_logger();
 
 // server/sources/adapters/httpAcquisitionAdapter.ts
 var cheerio5 = __toESM(require("cheerio"), 1);
-var import_crypto11 = require("crypto");
+var import_crypto15 = require("crypto");
 init_httpClient();
 init_contract();
 function toNumber(v) {
@@ -7190,7 +9240,7 @@ var HttpAcquisitionAdapter = class {
           availability: o.availability,
           evidence: {
             sourceUrl: url,
-            rawFingerprint: (0, import_crypto11.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+            rawFingerprint: (0, import_crypto15.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
             extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
           }
         })
@@ -7216,7 +9266,7 @@ var HttpAcquisitionAdapter = class {
 };
 
 // server/sources/adapters/structuredDataAdapter.ts
-var import_crypto12 = require("crypto");
+var import_crypto16 = require("crypto");
 init_httpClient();
 init_contract();
 function validateOpenLibrary(json) {
@@ -7267,7 +9317,7 @@ var StructuredDataAdapter = class {
         maxConcurrency: source.rateLimit.maxConcurrency
       });
       if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-      const fingerprint = (0, import_crypto12.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+      const fingerprint = (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
       if (source.config.schema === "openlibrary_search") {
         const docs = validateOpenLibrary(JSON.parse(res.body));
         const rawItems = docs.slice(0, 20).map(
@@ -7322,7 +9372,7 @@ var StructuredDataAdapter = class {
 };
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto13 = require("crypto");
+var import_crypto17 = require("crypto");
 init_httpClient();
 init_settings();
 init_logger();
@@ -7370,7 +9420,7 @@ var AffiliateFeedAdapter = class {
             expiresAt: c.validity_end || c.expires_at,
             evidence: {
               sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
-              rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+              rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
               extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
             }
           })
@@ -7394,7 +9444,7 @@ var AffiliateFeedAdapter = class {
           expiresAt: o.expires_at || o.valid_to,
           evidence: {
             sourceUrl: o.url || o.deeplink,
-            rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+            rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
             extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
           }
         })
@@ -7561,7 +9611,7 @@ var SearchProviderAdapter = class {
           availability: "unknown",
           evidence: {
             sourceUrl: p.link || p.url,
-            rawFingerprint: (0, import_crypto13.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+            rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
             extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
           }
         })
@@ -7843,6 +9893,12 @@ function normalizeAttributes(attrs) {
       }
     }
   }
+  if (out["image_urls"]) {
+    const list = out["image_urls"].split("|").map((u) => u.trim().replace(/^\/\//, "https://").replace(/^http:\/\//i, "https://")).filter((u) => /^https:\/\//i.test(u));
+    const uniq = [...new Set(list)].slice(0, 8);
+    if (uniq.length) out["image_urls"] = uniq.join("|");
+    else delete out["image_urls"];
+  }
   return out;
 }
 function normalizeCurrency(cur) {
@@ -7997,7 +10053,7 @@ var VERTICAL_RULES = {
     { name: "price", present: (o) => o.prices.mandatoryTotal !== void 0 },
     { name: "currency", present: (o) => isSupportedCurrency(o.prices.currency) },
     { name: "seller", present: (o) => Boolean(o.seller) },
-    { name: "identity", present: (o) => Boolean(o.identifiers.gtin || o.identifiers.sku || o.brand || o.attributes["model"]) },
+    { name: "identity", present: (o) => Boolean(o.identifiers.gtin || o.identifiers.sku || o.identifiers.asin || o.identifiers.vendorProductId || o.identifiers.vendor_product_id || o.brand || o.attributes["model"]) },
     { name: "stock", present: (o) => o.availability !== "unknown", blocking: false },
     { name: "delivery_fee", present: (o) => o.prices.fees.deliveryFee !== void 0, blocking: false }
   ],
@@ -8055,6 +10111,12 @@ var VERTICAL_RULES = {
     { name: "plan", present: (o) => Boolean(o.title) },
     { name: "premium", present: (o) => o.prices.mandatoryTotal !== void 0, blocking: false },
     { name: "indicative_flag", present: (o) => o.attributes["quote_type"] === "indicative" || o.attributes["quote_type"] === "quoted", blocking: false }
+  ],
+  creditcards: [
+    { name: "card", present: (o) => Boolean(o.title) },
+    { name: "issuer", present: (o) => Boolean(o.vendor) },
+    { name: "annual_fee", present: (o) => o.prices.mandatoryTotal !== void 0 || Boolean(o.attributes["annual_fee"]), blocking: false },
+    { name: "published_flag", present: (o) => o.attributes["quote_type"] === "published_terms" || o.attributes["rate_type"] === "published", blocking: false }
   ],
   movies: [
     { name: "event", present: (o) => Boolean(o.title) },
@@ -8130,7 +10192,7 @@ function validateOffer(offer, query) {
 }
 
 // server/pipeline/freshness.ts
-var import_crypto14 = require("crypto");
+var import_crypto18 = require("crypto");
 function computeFreshness(offer, clock, policy, isLiveAcquisition, validated) {
   const now = Date.now();
   const fetched = new Date(clock.fetchedAt).getTime();
@@ -8157,7 +10219,7 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto14.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto18.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
 
@@ -8411,7 +10473,7 @@ function rankOffers(offers, opts = {}) {
     }
   }
   let ordered = [...byEntity.values()].flat();
-  const SERVICE_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "flights", "hotels", "bus", "cab", "movies"]);
+  const SERVICE_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "flights", "hotels", "bus", "cab", "movies"]);
   const verticalSet = new Set(ordered.map((x) => x.o.vertical));
   if (verticalSet.size === 1 && SERVICE_VERTICALS.has([...verticalSet][0])) {
     const tier = (x) => isComparable(x.o.freshnessStatus) ? 0 : 1;
@@ -8438,7 +10500,8 @@ var NON_COMPARISON_VERTICALS = [
   "cab",
   "insurance",
   "loans",
-  "movies"
+  "movies",
+  "creditcards"
 ];
 function filterByQueryEntity(offers, query) {
   if (!query.entityName) return offers;
@@ -8601,6 +10664,14 @@ var InsuranceEngine = class extends VerticalEngine {
     })) });
   }
 };
+var CreditCardEngine = class extends VerticalEngine {
+  constructor() {
+    super({ vertical: "creditcards", displayName: "Credit Cards", postProcess: (offers) => offers.map((o) => ({
+      ...o,
+      attributes: { ...o.attributes, rate_type: o.attributes["rate_type"] || "published", quote_type: "published_terms" }
+    })) });
+  }
+};
 var MovieEventEngine = class extends VerticalEngine {
   constructor() {
     super({ vertical: "movies", displayName: "Movies & Events" });
@@ -8645,6 +10716,7 @@ var ENGINES = {
   cab: new CabEngine(),
   loans: new LoanEngine(),
   insurance: new InsuranceEngine(),
+  creditcards: new CreditCardEngine(),
   movies: new MovieEventEngine(),
   bus: new BusEngine(),
   food: new FoodDeliveryEngine(),
@@ -9068,6 +11140,8 @@ var SEED_QUERIES = [
   { query: "Indore", vertical: "hotels", city: "Indore" },
   { query: "personal loan", vertical: "loans" },
   { query: "health insurance", vertical: "insurance" },
+  { query: "hdfc credit card", vertical: "creditcards" },
+  { query: "best credit card", vertical: "creditcards" },
   { query: "iphone", vertical: "ecommerce" },
   { query: "pizza", vertical: "food", city: "Indore" },
   { query: "delhi to jaipur", vertical: "bus" },
@@ -9100,12 +11174,25 @@ async function bootWarm() {
        GROUP BY raw_query, v, pincode, city
        ORDER BY COUNT(*) DESC LIMIT 6`
     ).catch(() => []);
-    const targets = rows.length > 0 ? rows : SEED_QUERIES.slice(0, 6);
-    log.info("Cron", `Boot-warm starting (${targets.length} queries, background)`);
+    const seen = /* @__PURE__ */ new Set();
+    const targets = [];
+    const push = (r) => {
+      const key = `${String(r.raw_query || r.query || "")}|${String(r.v || r.vertical || "")}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        targets.push(r);
+      }
+    };
+    (rows.length > 0 ? rows : []).forEach(push);
+    SEED_QUERIES.forEach(push);
+    log.info("Cron", `Boot-warm starting (${targets.length} queries: all vertical defaults + top searches, background)`);
     void warmRows(targets, "BootWarm");
   } catch (e) {
     log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
   }
+}
+async function keepWarmDefaults() {
+  await warmRows(SEED_QUERIES, "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
   const store2 = getStore();
@@ -9156,5 +11243,6 @@ if (invokedAsScript) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  bootWarm
+  bootWarm,
+  keepWarmDefaults
 });

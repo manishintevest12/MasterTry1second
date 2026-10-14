@@ -57,6 +57,15 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
 - **Domino's** [dominos.ts] — dominos.co.in/menu full national menu SSR
   (html.unescape + productMasterUID regex).
 - **Pizza Hut** [pizzaHut.ts] — /menu/pizzas __NEXT_DATA__ itemsByKind.
+- **Toing** [toing.ts] — Swiggy's budget food app (in.swiggy.android.toing), reverse-
+  engineered from APK v4.119.0. Same disc.swiggy.com backend, no auth:
+  POST /api/v1/json/shell/toing-app?lat&lng body {} (home feed; cursor pagination via
+  body {pageOffset: success.pageOffset.nextOffset, widgetOffset: ...widgetOffset});
+  POST /api/v2/dynamicmenu/{restaurantId}?lat&lng body {} (full menu). Prices in PAISE
+  (÷100). Requires Accept+Content-Type application/json (else 415). App-only platform:
+  offers labelled 'available only on app', sellerUrl -> toingit.com landing.
+  NOTE: global dish-search REST not found; query filtering is client-side over the
+  shell feed featured dishes + per-restaurant dynamicmenu deep-dive.
 
 ## Grocery
 - **Instamart** [swiggy.ts grocery] — instamart.swiggy.com home/v2 +
