@@ -13,7 +13,7 @@ import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
 import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
-import { verifyFirebaseIdToken } from '../auth/firebaseAuth';
+import { verifyFirebaseIdToken, verifyGoogleIdToken } from '../auth/firebaseAuth';
 import crypto from 'crypto';
 
 import {
@@ -390,6 +390,31 @@ apiRouter.get('/ads', async (req, res) => {
   }
 });
 
+apiRouter.get('/app-links', async (_req, res) => {
+  // Public: admin-configured download links (Chrome extension / Android / iOS). Unset -> null.
+  try {
+    const { getPublicAppLinks } = await import('../marketing/appLinks');
+    res.json({ success: true, links: await getPublicAppLinks() });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load app links' });
+  }
+});
+
+apiRouter.get('/quick-apps', async (_req, res) => {
+  // Public: curated partner-app catalogue shown in "Quick Apps". Customer-safe fields only:
+  // payout rates / amounts are internal commercial data and are never exposed.
+  try {
+    const { INITIAL_QUICK_APP_PARTNERS } = await import('../../src/data/quickAppsData');
+    const apps = INITIAL_QUICK_APP_PARTNERS.filter((p) => p.status === 'active').map((p) => ({
+      id: p.id, name: p.name, iconUrl: p.iconUrl, category: p.category, description: p.description,
+      webUrl: p.webUrl, rating: p.rating, downloadsOrUsers: p.downloadsOrUsers || null, badge: p.badge || null,
+    }));
+    res.json({ success: true, apps });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load quick apps' });
+  }
+});
+
 apiRouter.get('/provenance', async (_req, res) => {
   try {
     const rows = await getStore().query<any>(
@@ -466,6 +491,32 @@ apiRouter.post('/auth/firebase', async (req, res) => {
 });
 
 // Who am I? — restores a session after page reload
+// ============ Google sign-in for the mobile app (Google ID token, no Firebase SDK) ============
+apiRouter.post('/auth/google-mobile', async (req, res) => {
+  if (!settings.googleOauthClientIds.length) {
+    return res.status(503).json({ success: false, error: 'Mobile Google sign-in is not configured (set GOOGLE_OAUTH_CLIENT_IDS)' });
+  }
+  const idToken = String(req.body?.idToken || '');
+  if (!idToken) return res.status(400).json({ success: false, error: 'Missing Google ID token' });
+  const claims = await verifyGoogleIdToken(idToken);
+  if (!claims) return res.status(401).json({ success: false, error: 'Google sign-in could not be verified' });
+
+  const store = getStore();
+  let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  if (rows.length === 0) {
+    await store.execute('INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)', [
+      claims.email, claims.displayName || null, 'user', claims.uid,
+    ]);
+    rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);
+  }
+  const row = rows[0];
+  const token = crypto.randomBytes(32).toString('hex');
+  await store.execute('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [
+    token, Number(row.id), new Date(Date.now() + SESSION_TTL_SEC * 1000).toISOString().slice(0, 19).replace('T', ' '),
+  ]);
+  res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined, picture: claims.picture } });
+});
+
 apiRouter.get('/auth/me', authMiddleware, requireAuth, async (req, res) => {
   const user = (req as any).user;
   res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, displayName: user.displayName || undefined } });

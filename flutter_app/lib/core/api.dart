@@ -152,6 +152,136 @@ class Verdict {
 // API client (pure Dart, uses package:http)
 // ---------------------------------------------------------------------------
 
+
+// ---------------------------------------------------------------------------
+// Download links (admin-configured), Quick Apps, auth + rewards models.
+
+class AppLink {
+  final String url;
+  final String? version;
+  const AppLink(this.url, this.version);
+}
+
+class AppLinks {
+  final AppLink? chromeExtension;
+  final AppLink? androidApp;
+  final AppLink? iosApp;
+  const AppLinks({this.chromeExtension, this.androidApp, this.iosApp});
+
+  static AppLink? _one(dynamic v) {
+    if (v is! Map) return null;
+    final url = '${v['url'] ?? ''}'.trim();
+    if (!url.startsWith('https://')) return null; // never surface a non-https link
+    final ver = v['version'];
+    return AppLink(url, ver == null || '$ver'.isEmpty ? null : '$ver');
+  }
+
+  static AppLinks fromJson(Map<String, dynamic> j) {
+    final l = j['links'];
+    if (l is! Map) return const AppLinks();
+    return AppLinks(
+      chromeExtension: _one(l['chrome_extension']),
+      androidApp: _one(l['android_app']),
+      iosApp: _one(l['ios_app']),
+    );
+  }
+}
+
+class QuickApp {
+  final String id;
+  final String name;
+  final String iconUrl;
+  final String category;
+  final String description;
+  final String webUrl;
+  final double rating;
+  final String? users;
+  final String? badge;
+  const QuickApp({
+    required this.id,
+    required this.name,
+    required this.iconUrl,
+    required this.category,
+    required this.description,
+    required this.webUrl,
+    required this.rating,
+    this.users,
+    this.badge,
+  });
+
+  static QuickApp fromJson(Map<String, dynamic> j) => QuickApp(
+        id: '${j['id'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        iconUrl: '${j['iconUrl'] ?? ''}',
+        category: '${j['category'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        webUrl: '${j['webUrl'] ?? ''}',
+        rating: Offer._num(j['rating']),
+        users: j['downloadsOrUsers'] == null ? null : '${j['downloadsOrUsers']}',
+        badge: j['badge'] == null ? null : '${j['badge']}',
+      );
+}
+
+class AuthUser {
+  final int id;
+  final String email;
+  final String role;
+  final String? displayName;
+  final String? picture;
+  const AuthUser({required this.id, required this.email, required this.role, this.displayName, this.picture});
+
+  String get name => (displayName != null && displayName!.trim().isNotEmpty) ? displayName!.trim() : email.split('@').first;
+  String get initials {
+    final parts = name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '1S';
+    return (parts.length == 1 ? parts.first.substring(0, parts.first.length.clamp(1, 2)) : '${parts.first[0]}${parts.last[0]}').toUpperCase();
+  }
+
+  static AuthUser fromJson(Map<String, dynamic> j) => AuthUser(
+        id: (j['id'] is num) ? (j['id'] as num).toInt() : int.tryParse('${j['id']}') ?? 0,
+        email: '${j['email'] ?? ''}',
+        role: '${j['role'] ?? 'user'}',
+        displayName: j['displayName'] == null ? null : '${j['displayName']}',
+        picture: j['picture'] == null ? null : '${j['picture']}',
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'email': email, 'role': role, 'displayName': displayName, 'picture': picture};
+}
+
+class AuthSession {
+  final String token;
+  final AuthUser user;
+  const AuthSession(this.token, this.user);
+}
+
+class RewardsSummary {
+  final int validPoints;
+  final int availableSpins;
+  final int pointsPerSpin;
+  const RewardsSummary(this.validPoints, this.availableSpins, this.pointsPerSpin);
+
+  static RewardsSummary fromJson(Map<String, dynamic> j) => RewardsSummary(
+        Offer._num(j['validPoints']).toInt(),
+        Offer._num(j['availableEligibilities']).toInt(),
+        Offer._num(j['pointsPerSpinEligibility']).toInt() == 0 ? 100 : Offer._num(j['pointsPerSpinEligibility']).toInt(),
+      );
+}
+
+class SpinPrize {
+  final String name;
+  final String? description;
+  const SpinPrize(this.name, this.description);
+}
+
+class ScanResult {
+  final String title;
+  final String vertical;
+  final String provider;
+  final double price;
+  final String? url;
+  const ScanResult({required this.title, required this.vertical, required this.provider, required this.price, this.url});
+}
+
 class Try1SecondApi {
   Try1SecondApi({String? baseUrl})
       : baseUrl = (baseUrl == null || baseUrl.trim().isEmpty)
@@ -200,6 +330,63 @@ class Try1SecondApi {
     return '${res['redirectUrl']}';
   }
 
+
+  // -- public content --------------------------------------------------------
+
+  Future<AppLinks> appLinks() async => AppLinks.fromJson(await _get('/api/app-links'));
+
+  Future<List<QuickApp>> quickApps() async {
+    final res = await _get('/api/quick-apps');
+    return ((res['apps'] as List?) ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(QuickApp.fromJson)
+        .where((a) => a.name.isNotEmpty)
+        .toList();
+  }
+
+  /// AI Insights URL scanner: paste a product link, get the live-scraped price (or an honest failure).
+  Future<ScanResult> scanUrl(String url) async {
+    final res = await _post('/api/scan/url', {'url': url.trim()});
+    final item = res['item'];
+    if (item is! Map<String, dynamic>) throw Exception('Could not read that page');
+    return ScanResult(
+      title: '${item['title'] ?? ''}',
+      vertical: '${item['vertical'] ?? ''}',
+      provider: '${item['provider'] ?? ''}',
+      price: Offer._num(item['primaryPrice']),
+      url: url.trim(),
+    );
+  }
+
+  // -- auth + rewards --------------------------------------------------------
+
+  /// Exchanges a Google ID token (from native Google Sign-In) for a Try1Second session.
+  Future<AuthSession> loginWithGoogle(String idToken) async {
+    final res = await _post('/api/auth/google-mobile', {'idToken': idToken});
+    if (res['success'] != true || res['token'] == null || res['user'] is! Map<String, dynamic>) {
+      throw Exception('Google sign-in failed');
+    }
+    return AuthSession('${res['token']}', AuthUser.fromJson(res['user'] as Map<String, dynamic>));
+  }
+
+  Future<AuthUser> me(String token) async {
+    final res = await _get('/api/auth/me', token: token);
+    final u = res['user'];
+    if (u is! Map<String, dynamic>) throw Exception('Session expired');
+    return AuthUser.fromJson(u);
+  }
+
+  Future<RewardsSummary> rewards(String token) async => RewardsSummary.fromJson(await _get('/api/rewards/me', token: token));
+
+  Future<SpinPrize> spin(String token) async {
+    final res = await _post('/api/rewards/spin', {'idempotencyKey': 'app-${DateTime.now().microsecondsSinceEpoch}'}, token: token);
+    final p = res['prize'];
+    if (p is Map) {
+      return SpinPrize('${p['name'] ?? p['title'] ?? 'Prize'}', p['description'] == null ? null : '${p['description']}');
+    }
+    return const SpinPrize('Better luck next time', null);
+  }
+
   Uri searchUrl(String query) => Uri.parse(
         '$baseUrl/?q=${Uri.encodeQueryComponent(query)}',
       );
@@ -210,17 +397,20 @@ class Try1SecondApi {
 
   final http.Client _client;
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+  Map<String, String> _headers(String? token) =>
+      token == null ? _jsonHeaders : {..._jsonHeaders, 'Authorization': 'Bearer $token'};
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {
     final res = await _client.post(
       Uri.parse('$baseUrl$path'),
-      headers: _jsonHeaders,
+      headers: _headers(token),
       body: jsonEncode(body),
     );
     return _decode(res);
   }
 
-  Future<Map<String, dynamic>> _get(String path) async {
-    final res = await _client.get(Uri.parse('$baseUrl$path'));
+  Future<Map<String, dynamic>> _get(String path, {String? token}) async {
+    final res = await _client.get(Uri.parse('$baseUrl$path'), headers: _headers(token));
     return _decode(res);
   }
 

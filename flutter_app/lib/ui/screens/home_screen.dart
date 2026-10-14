@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../core/auth.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
 import 'results_screen.dart';
+import 'profile_screen.dart';
 
 /// Home: brand header, search bar, vertical grid, recents.
 /// Fully responsive: 2-col grid on phones, 3-4 columns on wide screens.
@@ -66,8 +68,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const T1SLogo(size: 44),
                     const Spacer(),
-                    if (dark)
-                      const Icon(Icons.dark_mode_outlined, size: 20, color: T1SColors.slate400),
+                    _ProfileAvatar(
+                      onTap: () => Navigator.of(context)
+                          .push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -172,6 +176,48 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       }),
+    );
+  }
+}
+
+/// Small avatar chip in the Home header: initials when signed in, "1S" when not.
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final user = AuthService.instance.user;
+    return Material(
+      color: dark ? T1SColors.slate900 : Colors.white,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: dark ? const Color(0xFF334155) : T1SColors.slate200),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 26, height: 26,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(gradient: T1SColors.badgeGradient, shape: BoxShape.circle),
+                child: Text(
+                  user?.initials ?? '1S',
+                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.person_outline, size: 16, color: dark ? T1SColors.slate400 : T1SColors.slate500),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

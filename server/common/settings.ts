@@ -52,6 +52,8 @@ export const settings = {
 
   /** Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side. */
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
+  /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
+  googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || '').split(',').map((e) => e.trim()).filter(Boolean),
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
   cuelinks: {

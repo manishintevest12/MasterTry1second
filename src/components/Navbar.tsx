@@ -40,7 +40,6 @@ export const Navbar: React.FC = () => {
     setIsNotificationsOpen,
     isProfileOpen,
     setIsProfileOpen,
-    openExtensionModal,
   } = useApp();
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -194,20 +193,6 @@ export const Navbar: React.FC = () => {
                 </div>
               )}
             </div>
-
-            {/* Browser Extension Button */}
-            <button
-              type="button"
-              onClick={openExtensionModal}
-              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs hover:border-red-300"
-              title="Launch Try1Second Chrome/Edge Extension & Auto Coupon Tester"
-            >
-              <Zap className="w-3.5 h-3.5 text-red-600 fill-red-500" />
-              <span>Extension</span>
-              <span className="text-[9px] bg-red-100 text-red-700 font-extrabold px-1.5 py-0.2 rounded-full uppercase">
-                V3
-              </span>
-            </button>
 
             {/* My Price Tracker Hub Button */}
             <button

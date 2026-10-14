@@ -201,4 +201,89 @@ void main() {
       expect(() => api.search('q'), throwsException);
     });
   });
+
+  // ---- App links: only admin-configured https links are surfaced ----
+group('AppLinks', () {
+  test('non-https or malformed links are never shown', () {
+    final l = AppLinks.fromJson({'links': {
+      'chrome_extension': {'url': 'javascript:alert(1)', 'version': 'v1'},
+      'android_app': {'url': 'http://insecure.example/a'},
+      'ios_app': {'url': 'https://apps.apple.com/app/id1', 'version': ''},
+    }});
+    expect(l.chromeExtension, isNull);
+    expect(l.androidApp, isNull);
+    expect(l.iosApp, isNotNull);
+    expect(l.iosApp!.version, isNull); // empty version stays null
+  });
+
+  test('missing links payload yields all-null links (honest empty state)', () {
+    final l = AppLinks.fromJson({});
+    expect(l.chromeExtension, isNull);
+    expect(l.androidApp, isNull);
+    expect(l.iosApp, isNull);
+  });
+
+  test('valid link keeps url and version', () {
+    final l = AppLinks.fromJson({'links': {
+      'android_app': {'url': 'https://play.google.com/store/apps/details?id=com.try1second', 'version': 'v1.1.1'},
+    }});
+    expect(l.androidApp!.url, startsWith('https://play.google.com'));
+    expect(l.androidApp!.version, 'v1.1.1');
+  });
+});
+
+// ---- Auth user display helpers ----
+group('AuthUser', () {
+  test('initials from full name, single name and email fallback', () {
+    expect(AuthUser.fromJson({'id': 1, 'email': 'a@example.com', 'role': 'user', 'displayName': 'Petro Staff'}).initials, 'PS');
+    expect(AuthUser.fromJson({'id': 2, 'email': 'a@example.com', 'role': 'user', 'displayName': 'Petro'}).initials, 'PE');
+    expect(AuthUser.fromJson({'id': 3, 'email': 'owner@example.com', 'role': 'user'}).initials, 'owner'.substring(0, 2).toUpperCase());
+    expect(AuthUser.fromJson({'id': 4, 'email': 'x@y.z', 'role': 'user'}).name, 'x');
+  });
+
+  test('displayName wins over email local-part for name', () {
+    final u = AuthUser.fromJson({'id': 5, 'email': 'zzz@example.com', 'role': 'user', 'displayName': 'Try1 User'});
+    expect(u.name, 'Try1 User');
+  });
+});
+
+// ---- Rewards summary mapping (backend /api/rewards/me) ----
+group('RewardsSummary', () {
+  test('maps validPoints, eligibility and spin cost', () {
+    final r = RewardsSummary.fromJson({
+      'validPoints': 240, 'availableEligibilities': 2, 'pointsPerSpinEligibility': 100,
+    });
+    expect(r.validPoints, 240);
+    expect(r.availableSpins, 2);
+    expect(r.pointsPerSpin, 100);
+  });
+
+  test('missing spin cost falls back to 100 and absent fields to zero', () {
+    final r = RewardsSummary.fromJson({});
+    expect(r.validPoints, 0);
+    expect(r.availableSpins, 0);
+    expect(r.pointsPerSpin, 100);
+  });
+});
+
+// ---- Quick apps parsing (customer-safe fields only) ----
+group('QuickApp', () {
+  test('parses name, rating and optional fields', () {
+    final a = QuickApp.fromJson({
+      'id': 'qapp-x', 'name': 'Swiggy', 'iconUrl': 'https://example.com/i.png',
+      'category': 'Food', 'description': 'Delivery', 'webUrl': 'https://swiggy.com',
+      'rating': 4.6, 'downloadsOrUsers': '100M+ Downloads', 'badge': 'Trending',
+    });
+    expect(a.name, 'Swiggy');
+    expect(a.rating, 4.6);
+    expect(a.users, '100M+ Downloads');
+    expect(a.badge, 'Trending');
+  });
+
+  test('empty-name apps are filtered by the caller contract', () {
+    final a = QuickApp.fromJson({'id': 'q', 'name': '', 'webUrl': '', 'rating': 0});
+    expect(a.name, '');
+  });
+});
+
 }

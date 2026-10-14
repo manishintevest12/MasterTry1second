@@ -16,6 +16,7 @@ import { cacheStats } from '../common/cache';
 import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
 import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
+import { listAppLinks, upsertAppLink, deleteAppLink } from '../marketing/appLinks';
 import { log } from '../common/logger';
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
 
@@ -217,6 +218,33 @@ adminRouter.post('/ad-slots', async (req, res) => {
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not save ad slot' });
+  }
+});
+
+// --- App download links (Chrome extension / Android / iOS) ---
+adminRouter.get('/app-links', async (_req, res) => {
+  try { res.json({ success: true, links: await listAppLinks(true) }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load app links' }); }
+});
+
+adminRouter.post('/app-links', async (req, res) => {
+  try {
+    const result = await upsertAppLink(req.body || {});
+    if (!result.ok) return res.status(400).json({ success: false, error: result.error });
+    audit(req, 'app_link.upsert', req.body?.link_key, { url: req.body?.url, version: req.body?.version });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save app link' });
+  }
+});
+
+adminRouter.delete('/app-links/:key', async (req, res) => {
+  try {
+    await deleteAppLink(req.params.key);
+    audit(req, 'app_link.delete', req.params.key);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not delete app link' });
   }
 });
 

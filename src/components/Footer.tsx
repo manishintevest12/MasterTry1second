@@ -11,14 +11,20 @@ import {
   Handshake,
   ExternalLink,
   ArrowUp,
+  Chrome,
+  Smartphone,
+  Apple,
+  Download,
 } from 'lucide-react';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId, InfoModalTab } from '../types';
 import { useApp } from '../context/AppContext';
 import { Try1SecondLogo } from './Try1SecondLogo';
+import { useAppLinks } from '../utils/useAppLinks';
 
 export const Footer: React.FC = () => {
-  const { setVertical, setActiveNavTab, openInfoModal, openPartnerModal } = useApp();
+  const { setVertical, setActiveNavTab, openInfoModal, openPartnerModal, openExtensionModal } = useApp();
+  const { links } = useAppLinks();
 
   const handleVerticalClick = (vKey: string) => {
     setVertical(vKey as VerticalId);
@@ -71,6 +77,67 @@ export const Footer: React.FC = () => {
                 Earn 1 Point per merchant redirection. Collect 100 Points to spin the prize wheel for free vouchers & cashback.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Download: Chrome extension + Android + iOS (links come from Admin -> Extension & App Links) */}
+        <div id="download-apps" className="py-8 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-100 text-red-600 flex items-center justify-center shrink-0">
+              <Download className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 text-sm">Take Try1Second with you</h4>
+              <p className="text-slate-500 mt-1 text-xs leading-relaxed max-w-md">
+                Compare prices while you shop with the browser extension, or track deals on the go with the mobile apps.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {([
+              { key: 'chrome_extension', label: 'Chrome Extension', sub: 'Add to Chrome', icon: <Chrome className="w-4 h-4" /> },
+              { key: 'android_app', label: 'Android App', sub: 'Get it on Android', icon: <Smartphone className="w-4 h-4" /> },
+              { key: 'ios_app', label: 'iOS App', sub: 'Get it on iPhone', icon: <Apple className="w-4 h-4" /> },
+            ] as const).map((b) => {
+              const link = links[b.key];
+              const inner = (
+                <>
+                  <span className="shrink-0">{b.icon}</span>
+                  <span className="text-left leading-tight">
+                    <span className="block text-[10px] font-semibold opacity-70">{link ? b.sub : 'Coming soon'}</span>
+                    <span className="block text-xs font-extrabold">{b.label}</span>
+                  </span>
+                  {link?.version && <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-white/20">{link.version}</span>}
+                </>
+              );
+              return link ? (
+                <a
+                  key={b.key}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-red-600 text-white transition-colors cursor-pointer"
+                >
+                  {inner}
+                </a>
+              ) : (
+                <span
+                  key={b.key}
+                  aria-disabled="true"
+                  className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                >
+                  {inner}
+                </span>
+              );
+            })}
+            <button
+              type="button"
+              onClick={openExtensionModal}
+              className="text-[11px] font-bold text-slate-500 hover:text-red-600 underline underline-offset-2 cursor-pointer px-1"
+            >
+              How the extension works
+            </button>
           </div>
         </div>
 

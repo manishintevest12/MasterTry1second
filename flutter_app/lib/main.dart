@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'core/auth.dart';
 import 'core/storage.dart';
 import 'core/theme.dart';
 import 'ui/main_shell.dart';
@@ -27,6 +28,8 @@ class _Try1SecondAppState extends State<Try1SecondApp> {
     _store.darkMode().then((v) {
       if (mounted) setState(() => _dark = v);
     });
+    // Restore a saved Google session while the splash is still covering the UI.
+    _store.api().then((api) => AuthService.instance.restore(api));
     // React instantly when dark mode is toggled on the Settings screen.
     _store.darkModeNotifier.addListener(_onDarkChanged);
   }
