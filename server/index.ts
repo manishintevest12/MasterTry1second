@@ -48,8 +48,18 @@ export async function createApp(): Promise<express.Express> {
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');
   if (fs.existsSync(dist)) {
-    app.use(express.static(dist));
-    app.get('*', (_req: Request, res: Response) => res.sendFile(path.join(dist, 'index.html')));
+    app.use(express.static(dist, {
+      // index.html names the current hashed bundle, so it must never be cached;
+      // hashed /assets/* files are immutable and safe to cache for a year.
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store, must-revalidate');
+        else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      },
+    }));
+    app.get('*', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-store, must-revalidate');
+      res.sendFile(path.join(dist, 'index.html'));
+    });
   } else if (settings.isProduction) {
     log.warn('Bootstrap', 'dist/ not found — build the frontend with `npm run build` before serving');
   }

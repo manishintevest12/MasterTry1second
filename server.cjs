@@ -17945,8 +17945,18 @@ async function createApp() {
   }
   const dist = import_path4.default.resolve(__dirname2, "dist");
   if (import_fs3.default.existsSync(dist)) {
-    app.use(import_express4.default.static(dist));
-    app.get("*", (_req, res) => res.sendFile(import_path4.default.join(dist, "index.html")));
+    app.use(import_express4.default.static(dist, {
+      // index.html names the current hashed bundle, so it must never be cached;
+      // hashed /assets/* files are immutable and safe to cache for a year.
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store, must-revalidate");
+        else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    }));
+    app.get("*", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store, must-revalidate");
+      res.sendFile(import_path4.default.join(dist, "index.html"));
+    });
   } else if (settings2.isProduction) {
     log2.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
   }
@@ -17958,8 +17968,18 @@ async function start() {
   const app = await createApp();
   const dist = import_path5.default.resolve(process.cwd(), "dist");
   if (import_fs4.default.existsSync(dist)) {
-    app.use(import_express5.default.static(dist));
-    app.get("*", (_req, res) => res.sendFile(import_path5.default.join(dist, "index.html")));
+    app.use(import_express5.default.static(dist, {
+      // index.html must never be cached (it names the current hashed bundle);
+      // hashed /assets/* files are immutable and safe to cache for a year.
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store, must-revalidate");
+        else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    }));
+    app.get("*", (_req, res) => {
+      res.setHeader("Cache-Control", "no-store, must-revalidate");
+      res.sendFile(import_path5.default.join(dist, "index.html"));
+    });
   }
   const PORT = Number(process.env.PORT || 3e3);
   app.listen(PORT, () => console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`));
