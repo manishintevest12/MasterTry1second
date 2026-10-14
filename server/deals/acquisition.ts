@@ -16,6 +16,7 @@ import { cffiFetch } from '../common/curlCffiFetch';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
 import type { DealInput } from '../marketing/deals';
+import { MERCHANT_VERTICAL } from '../marketing/deals';
 
 export interface AcquiredDeal extends DealInput {
   dedupe_key: string;
@@ -266,14 +267,37 @@ export async function acquireAmazonDeals(queries: string[] = ['air fryer', 'wire
 // ---------- sync into the deals table ----------
 
 function cleanDeal(d: AcquiredDeal) {
+  // Merchant logo as a stable image fallback so no live deal renders imageless.
+  const merchantDomain: Record<string, string> = {
+    amazon: 'amazon.in', flipkart: 'flipkart.com', myntra: 'myntra.com', ajio: 'ajio.com',
+    tatacliq: 'tatacliq.com', meesho: 'meesho.com', croma: 'croma.com', nykaa: 'nykaa.com',
+    redbus: 'redbus.in', abhibus: 'abhibus.com', zingbus: 'zingbus.com', dominos: 'dominos.co.in',
+    pizzahut: 'pizzahut.co.in', swiggy: 'swiggy.com', zomato: 'zomato.com', eatsure: 'eatsure.com',
+    blinkit: 'blinkit.com', zepto: 'zepto.com', instamart: 'swiggy.com', bigbasket: 'bigbasket.com',
+    bookmyshow: 'in.bookmyshow.com', district: 'district.zomato.com', paytm: 'paytm.com',
+    makemytrip: 'makemytrip.com', goibibo: 'goibibo.com', easemytrip: 'easemytrip.com',
+    ixigo: 'ixigo.com', yatra: 'yatra.com', cleartrip: 'cleartrip.com', goindigo: 'goindigo.in',
+    akasaair: 'akasaair.com', booking: 'booking.com', agoda: 'agoda.com', airbnb: 'airbnb.com',
+    ola: 'olacabs.com', uber: 'uber.com', rapido: 'rapido.bike', savaari: 'savaari.com',
+    paisabazaar: 'paisabazaar.com', bankbazaar: 'bankbazaar.com', policybazaar: 'policybazaar.com',
+    moneyview: 'moneyview.in', kreditbee: 'kreditbee.in', navi: 'navi.com',
+    acko: 'acko.com', digit: 'digit.in', insurancedekho: 'insurancedekho.com', ditto: 'dittoinsurance.com',
+    coverfox: 'coverfox.com', sbi: 'sbicard.com', hdfc: 'hdfcbank.com', axis: 'axisbank.com',
+    icici: 'icicibank.com', cardinsider: 'cardinsider.com',
+  };
+  const fallbackImg = merchantDomain[d.merchant_key]
+    ? `https://www.google.com/s2/favicons?domain=${merchantDomain[d.merchant_key]}&sz=128`
+    : null;
   return {
     merchant_key: d.merchant_key, merchant_name: d.merchant_name, kind: d.kind,
+    vertical: (d as any).vertical || MERCHANT_VERTICAL[d.merchant_key] || null,
     title: clip(strip(d.title), 200), description: clip(strip(d.description || ''), 600) || null,
-    code: null, discount_text: clip(strip(d.discount_text || ''), 80) || null,
+    code: clip(strip((d as any).code || ''), 60) || null,
+    discount_text: clip(strip(d.discount_text || ''), 80) || null,
     min_order: null, terms: clip(strip(d.terms || ''), 600) || null,
-    dest_url: String(d.dest_url).slice(0, 1000), valid_till: null,
+    dest_url: String(d.dest_url).slice(0, 1000), valid_till: (d as any).valid_till || null,
     sort_weight: d.sort_weight ?? 0, is_active: 1, source: 'auto',
-    dedupe_key: d.dedupe_key.slice(0, 180), image_url: d.image_url || null,
+    dedupe_key: d.dedupe_key.slice(0, 180), image_url: d.image_url || fallbackImg,
   };
 }
 
@@ -300,13 +324,13 @@ export async function syncAutoDeals(): Promise<ProviderOutcome[]> {
         const ex = await store.query<any>('SELECT id FROM deals WHERE dedupe_key = ?', [c.dedupe_key]);
         if (ex.length) {
           await store.execute(
-            'UPDATE deals SET merchant_name=?, kind=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?',
-            [c.merchant_name, c.kind, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]);
+            'UPDATE deals SET merchant_name=?, kind=?, vertical=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?',
+            [c.merchant_name, c.kind, c.vertical, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]);
         } else {
           await store.execute(
-            `INSERT INTO deals (merchant_key, merchant_name, kind, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [c.merchant_key, c.merchant_name, c.kind, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]);
+            `INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]);
         }
         saved++;
       }
