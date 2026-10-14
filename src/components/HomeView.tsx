@@ -20,7 +20,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId } from '../types';
-import { PriceLensAndAssistant } from './PriceLensAndAssistant';
+import { PriceLens, PriceLensAndAssistant } from './PriceLensAndAssistant';
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -121,12 +121,15 @@ export const HomeView: React.FC = () => {
               <span>India's Unified Multi-Vertical Metasearch Engine</span>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] mb-8">
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.1] mb-6">
               One Second Is All It Takes to{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-rose-500 to-amber-400">
                 Find the Lowest Price
               </span>
             </h1>
+
+            {/* PRICE LENS: between the headline and the two launch buttons */}
+            <PriceLens />
 
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -151,7 +154,7 @@ export const HomeView: React.FC = () => {
         </div>
       </section>
 
-      {/* PRICE LENS (paste any product link) + AI ASSISTANT (text/voice) */}
+      {/* AI ASSISTANT (text/voice) */}
       <PriceLensAndAssistant />
 
       {/* QUICK APPS SECTION - COMPANY LOGOS ONLY */}

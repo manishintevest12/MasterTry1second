@@ -35,9 +35,8 @@ interface LensResponse {
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
-export const PriceLensAndAssistant: React.FC = () => {
-  const { setVertical, setActiveNavTab, setPendingAssistantSearch, addToast } = useApp();
-
+/** Price Lens: sits inside the hero, between the headline and the two launch buttons. */
+export const PriceLens: React.FC = () => {
   // ---- Price Lens ----
   const [link, setLink] = useState('');
   const [lensBusy, setLensBusy] = useState(false);
@@ -60,40 +59,10 @@ export const PriceLensAndAssistant: React.FC = () => {
     }
   };
 
-  // ---- AI assistant ----
-  const [ask, setAsk] = useState('');
-  const [askBusy, setAskBusy] = useState(false);
-  const [chat, setChat] = useState<{ from: 'me' | 'ai'; text: string }[]>([]);
-
-  const runAsk = async (text?: string) => {
-    const q = (text ?? ask).trim();
-    if (!q) return;
-    setAsk('');
-    setChat((c) => [...c.slice(-3), { from: 'me', text: q }]);
-    setAskBusy(true);
-    try {
-      const res = await fetch('/api/assist/intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: q }) });
-      const data = await res.json();
-      setChat((c) => [...c.slice(-3), { from: 'ai', text: data.reply || 'Sorry, I could not understand that.' }]);
-      if (data.understood && data.vertical) {
-        // Clear the old vertical's rows first, then hand the question to that vertical's own search form.
-        setPendingAssistantSearch({ vertical: data.vertical, query: data.query, date: data.date });
-        setVertical(data.vertical as VerticalId);
-        setActiveNavTab('compare');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    } catch {
-      setChat((c) => [...c.slice(-3), { from: 'ai', text: 'I could not reach the server. Please try again.' }]);
-      addToast('alert', 'Assistant unavailable', 'Check your connection and try again.');
-    } finally {
-      setAskBusy(false);
-    }
-  };
-
   const cheapest = lens?.cheapest;
 
   return (
-    <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20 space-y-4">
+    <div className="w-full max-w-3xl mb-6 text-slate-900">
       {/* ============ PRICE LENS ============ */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-900/5 p-3 sm:p-4">
         <form
@@ -219,6 +188,44 @@ export const PriceLensAndAssistant: React.FC = () => {
         )}
       </div>
 
+    </div>
+  );
+};
+
+/** Ask Try1Second AI (text + voice): stays in its own card below the hero. */
+export const PriceLensAndAssistant: React.FC = () => {
+  const { setVertical, setActiveNavTab, setPendingAssistantSearch, addToast } = useApp();
+  const [ask, setAsk] = useState('');
+  const [askBusy, setAskBusy] = useState(false);
+  const [chat, setChat] = useState<{ from: 'me' | 'ai'; text: string }[]>([]);
+
+  const runAsk = async (text?: string) => {
+    const q = (text ?? ask).trim();
+    if (!q) return;
+    setAsk('');
+    setChat((c) => [...c.slice(-3), { from: 'me', text: q }]);
+    setAskBusy(true);
+    try {
+      const res = await fetch('/api/assist/intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: q }) });
+      const data = await res.json();
+      setChat((c) => [...c.slice(-3), { from: 'ai', text: data.reply || 'Sorry, I could not understand that.' }]);
+      if (data.understood && data.vertical) {
+        // Clear the old vertical's rows first, then hand the question to that vertical's own search form.
+        setPendingAssistantSearch({ vertical: data.vertical, query: data.query, date: data.date });
+        setVertical(data.vertical as VerticalId);
+        setActiveNavTab('compare');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch {
+      setChat((c) => [...c.slice(-3), { from: 'ai', text: 'I could not reach the server. Please try again.' }]);
+      addToast('alert', 'Assistant unavailable', 'Check your connection and try again.');
+    } finally {
+      setAskBusy(false);
+    }
+  };
+
+  return (
+    <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20 space-y-4">
       {/* ============ AI ASSISTANT (text + voice) ============ */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-900/5 p-3 sm:p-4">
         <div className="flex items-center gap-2 mb-2.5 px-1">
