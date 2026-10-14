@@ -8,6 +8,7 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { photonGeocode, parseOverpassHotels, overpassHotelQuery } from '../parsers/osmTravel';
 import { parseBookingHotels } from '../parsers/booking';
 import { parseExpediaGroup, EXPEDIA_GRAPHQL_QUERY } from '../parsers/expediaGroup';
+import { usdToInrRate } from '../../common/fxRates';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
@@ -84,7 +85,8 @@ async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', 
   });
   if (r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `${site} GraphQL edge returned a bot challenge (HTTP 429)`, 429);
   if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `${site} GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
-  const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout);
+  const fx = await usdToInrRate(); // live USD->INR; null => keep USD as listed (never a guessed rate)
+  const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout, fx);
   if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }

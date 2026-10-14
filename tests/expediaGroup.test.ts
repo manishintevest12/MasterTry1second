@@ -45,3 +45,22 @@ test('expedia group: price formatter handles symbols and commas', () => {
   assert.deepEqual(parsePriceFormatted('₹12,345'), { value: 12345, currency: 'INR' });
   assert.equal(parsePriceFormatted('n/a').value, 0);
 });
+
+test('expedia group: live USD->INR conversion with honest provenance note', () => {
+  const fx = { rate: 95.32, source: 'open.er-api.com' };
+  const items = parseExpediaGroup(fixture, src, 'expedia.com', '2026-10-21', '2026-10-22', fx);
+  const o: any = items[0];
+  assert.equal(o.currency, 'INR');
+  assert.ok(o.price > 0 && o.price > 1000, 'USD price must be scaled up to INR');
+  const note = String(o.attributes.data_note);
+  assert.ok(note.includes('listed on expedia.com'), 'note names the listing site');
+  assert.ok(note.includes('USD/INR 95.32'), 'note carries the exact live rate');
+  assert.ok(note.includes('open.er-api.com'), 'note names the rate source');
+  const usd = parseExpediaGroup(fixture, src, 'expedia.com', '2026-10-21', '2026-10-22');
+  assert.equal((usd[0] as any).currency, 'USD', 'without a rate the price stays USD as listed');
+});
+
+test('expedia group: fx failure keeps USD, never a guessed conversion', () => {
+  const items = parseExpediaGroup(fixture, src, 'expedia.com', '2026-10-21', '2026-10-22', null);
+  assert.equal((items[0] as any).currency, 'USD');
+});

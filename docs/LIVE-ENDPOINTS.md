@@ -61,6 +61,12 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   deeplink incl. dates). Introspection disabled; fields mapped via live validation errors
   + SSR __PLUGIN_STATE__. 50 priced cards per query per site; prices display USD.
   Policy: one site for metadata, others price-only.
+  INR display: .com storefronts list USD even under context.currency INR (siteId 1/19
+  overrides), so the worker fetches a LIVE USD/INR rate (server/common/fxRates.ts,
+  open.er-api.com -> exchangerate-api fallback, 60-min cache, sanity band 20-200)
+  and the parser converts, stamping the exact listed USD price, live rate and rate
+  source into data_note. FX sources all fail => offer stays USD as listed (never a
+  guessed rate).
 
 ## Food
 - **Swiggy** [swiggy.ts] — search API, 6MB per-request memory override.

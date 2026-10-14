@@ -2559,7 +2559,7 @@ function parsePriceFormatted(f) {
   const cur = m[1] === "\u20B9" ? "INR" : m[1] === "\u20AC" ? "EUR" : m[1] === "\xA3" ? "GBP" : "USD";
   return { value: Number.isFinite(n) && n > 0 ? n : 0, currency: cur };
 }
-function parseExpediaGroup(body, source, site, checkin, checkout) {
+function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
   let d;
   try {
     d = JSON.parse(body);
@@ -2582,16 +2582,23 @@ function parseExpediaGroup(body, source, site, checkin, checkout) {
     const rel = String(L?.cardLink?.resource?.relativePath || "");
     const url = rel ? `${origin}${rel.startsWith("/") ? rel : `/${rel}`}` : origin;
     const sellerUrl = `${url}${url.includes("?") ? "&" : "?"}chkin=${checkin}&chkout=${checkout}`;
+    let finalPrice = price, finalCurrency = currency;
+    let note = `Nightly rate observed on ${site} live listing API, ${today}`;
+    if (fx && currency === "USD" && price > 0) {
+      finalPrice = Math.round(price * fx.rate);
+      finalCurrency = "INR";
+      note = `$${price} nightly listed on ${site}, converted to INR at live USD/INR ${fx.rate.toFixed(2)} (${fx.source}), ${today}`;
+    }
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      price,
-      currency,
+      price: finalPrice,
+      currency: finalCurrency,
       seller: site === "hotels.com" ? "Hotels.com" : "Expedia",
       sellerUrl,
       attributes: {
         image: img,
         ...img ? { image_url: img } : {},
-        data_note: `Nightly rate observed on ${site} live listing API, ${today}`
+        data_note: note
       },
       identifiers: L?.id ? { vendorProductId: String(L.id) } : void 0,
       evidence: { sourceUrl: sellerUrl, extractedFields: ["title", "price", "image", "url"] }
@@ -2618,6 +2625,42 @@ var init_expediaGroup = __esm({
     }
   }
 }`;
+  }
+});
+
+// server/common/fxRates.ts
+async function fetchRateFrom(source) {
+  try {
+    const r = await cffiFetch(source, { timeoutMs: 12e3, headers: { Accept: "application/json" } });
+    if (r.status !== 200) return null;
+    const d = JSON.parse(r.body);
+    const inr = Number(d?.rates?.INR);
+    return Number.isFinite(inr) && inr > 20 && inr < 200 ? inr : null;
+  } catch {
+    return null;
+  }
+}
+async function usdToInrRate() {
+  if (cache2 && Date.now() - cache2.fetchedAt < TTL_MS) return { rate: cache2.rate, source: cache2.source };
+  const sources2 = [
+    "https://open.er-api.com/v6/latest/USD",
+    "https://api.exchangerate-api.com/v4/latest/USD"
+  ];
+  for (const src2 of sources2) {
+    const rate = await fetchRateFrom(src2);
+    if (rate) {
+      cache2 = { rate, source: new URL(src2).host, fetchedAt: Date.now() };
+      return { rate, source: cache2.source };
+    }
+  }
+  return null;
+}
+var cache2, TTL_MS;
+var init_fxRates = __esm({
+  "server/common/fxRates.ts"() {
+    init_curlCffiFetch();
+    cache2 = null;
+    TTL_MS = 60 * 60 * 1e3;
   }
 });
 
@@ -3373,7 +3416,8 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   });
   if (r.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", `${site} GraphQL edge returned a bot challenge (HTTP 429)`, 429);
   if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${site} GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
-  const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout);
+  const fx = await usdToInrRate();
+  const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout, fx);
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
@@ -3384,6 +3428,7 @@ var init_hotels = __esm({
     init_osmTravel();
     init_booking();
     init_expediaGroup();
+    init_fxRates();
     init_wikidataHotels();
     init_cleartripHotels();
     init_airbnbHotels();
@@ -3804,7 +3849,7 @@ function splitCsv(line) {
   return out.map((s) => s.trim());
 }
 async function loadOpenFlights(fetchFn) {
-  if (cache2 && Date.now() - cache2.at < 24 * 36e5) return cache2;
+  if (cache3 && Date.now() - cache3.at < 24 * 36e5) return cache3;
   const [apRaw, alRaw, rtRaw] = await Promise.all([
     fetchFn(`${BASE}/airports.dat`),
     fetchFn(`${BASE}/airlines.dat`),
@@ -3822,7 +3867,7 @@ async function loadOpenFlights(fetchFn) {
     const f = l.split(",");
     return { airlineIata: f[0], srcIata: f[2], dstIata: f[4], stops: Number(f[7]) };
   }).filter((r) => r.srcIata && r.dstIata && r.srcIata !== "\\N" && r.dstIata !== "\\N");
-  cache2 = { at: Date.now(), airports, airlines, routes };
+  cache3 = { at: Date.now(), airports, airlines, routes };
   return { airports, airlines, routes };
 }
 function matchAirports(airports, input) {
@@ -3891,12 +3936,12 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
   }
   return out.slice(0, 20);
 }
-var BASE, cache2, CITY_ALIASES, AIRLINE_SITES;
+var BASE, cache3, CITY_ALIASES, AIRLINE_SITES;
 var init_openflights = __esm({
   "server/workers/parsers/openflights.ts"() {
     init_contract();
     BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
-    cache2 = null;
+    cache3 = null;
     CITY_ALIASES = {
       "new delhi": "delhi",
       "bengaluru": "bangalore",
@@ -10530,13 +10575,13 @@ var init_freshness = __esm({
 
 // server/pipeline/lenderLogo.ts
 function load7() {
-  if (cache3) return cache3;
+  if (cache4) return cache4;
   try {
-    cache3 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+    cache4 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
   } catch {
-    cache3 = {};
+    cache4 = {};
   }
-  return cache3;
+  return cache4;
 }
 function persist2() {
   if (saveTimer2) return;
@@ -10544,7 +10589,7 @@ function persist2() {
     saveTimer2 = null;
     try {
       import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
-      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache3 || {}));
+      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache4 || {}));
     } catch {
     }
   }, 1500);
@@ -10595,7 +10640,7 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs4, import_node_path4, UA, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache3, inflight2, saveTimer2, LENDER_ALIAS;
+var import_node_fs4, import_node_path4, UA, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache4, inflight2, saveTimer2, LENDER_ALIAS;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
     import_node_fs4 = __toESM(require("node:fs"), 1);
@@ -10604,7 +10649,7 @@ var init_lenderLogo = __esm({
     CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
-    cache3 = null;
+    cache4 = null;
     inflight2 = /* @__PURE__ */ new Map();
     saveTimer2 = null;
     LENDER_ALIAS = {

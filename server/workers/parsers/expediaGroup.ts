@@ -51,7 +51,15 @@ export interface ExpediaCard {
 }
 
 /** Walk the GraphQL JSON into a flat card list (validated: name + real price only). */
-export function parseExpediaGroup(body: string, source: SourceConfig, site: string, checkin: string, checkout: string): RawSourceItem[] {
+export interface FxRate { rate: number; source: string }
+
+/**
+ * Parse with optional honest USD->INR conversion: the .com storefronts list USD
+ * even under context.currency INR, so the WORKER passes a live FX rate and we
+ * report the converted INR price with the exact listed price, rate and rate
+ * source in data_note. No rate passed (or source failed) => keep USD as listed.
+ */
+export function parseExpediaGroup(body: string, source: SourceConfig, site: string, checkin: string, checkout: string, fx?: FxRate | null): RawSourceItem[] {
   let d: any;
   try { d = JSON.parse(body); } catch { return []; }
   const listings = (((d?.data?.propertySearch)?.propertySearchListings) || []) as any[];
@@ -70,16 +78,23 @@ export function parseExpediaGroup(body: string, source: SourceConfig, site: stri
     const rel = String(L?.cardLink?.resource?.relativePath || '');
     const url = rel ? `${origin}${rel.startsWith('/') ? rel : `/${rel}`}` : origin;
     const sellerUrl = `${url}${url.includes('?') ? '&' : '?'}chkin=${checkin}&chkout=${checkout}`;
+    let finalPrice = price, finalCurrency = currency;
+    let note = `Nightly rate observed on ${site} live listing API, ${today}`;
+    if (fx && currency === 'USD' && price > 0) {
+      finalPrice = Math.round(price * fx.rate);
+      finalCurrency = 'INR';
+      note = `$${price} nightly listed on ${site}, converted to INR at live USD/INR ${fx.rate.toFixed(2)} (${fx.source}), ${today}`;
+    }
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
-      price,
-      currency,
+      price: finalPrice,
+      currency: finalCurrency,
       seller: site === 'hotels.com' ? 'Hotels.com' : 'Expedia',
       sellerUrl,
       attributes: {
         image: img,
         ...(img ? { image_url: img } : {}),
-        data_note: `Nightly rate observed on ${site} live listing API, ${today}`,
+        data_note: note,
       },
       identifiers: L?.id ? { vendorProductId: String(L.id) } : undefined,
       evidence: { sourceUrl: sellerUrl, extractedFields: ['title', 'price', 'image', 'url'] },
