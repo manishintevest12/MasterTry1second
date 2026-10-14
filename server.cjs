@@ -1979,8 +1979,24 @@ var init_ecommerce = __esm({
                 }
               }
             }
+            if (status === 503) {
+              await new Promise((res) => setTimeout(res, 2500));
+              const r4 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+              body = r4.body;
+              status = r4.status;
+              if (status === 200 && body.includes("bm-verify")) {
+                const m3 = body.match(/URL='([^']+)'/);
+                if (m3) {
+                  await new Promise((res) => setTimeout(res, 1200));
+                  const v3 = m3[1].startsWith("/") ? "https://www.amazon.in" + m3[1] : m3[1];
+                  const r5 = await cffiFetch(v3, { cookies: r4.cookies, timeoutMs: 22e3 });
+                  body = r5.body;
+                  status = r5.status;
+                }
+              }
+            }
             if (status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in HTTP 403 (edge denied)", 403);
-            if (status !== 200) throw new AcquisitionError("FORBIDDEN", `Amazon.in HTTP ${status}`, status);
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Amazon.in HTTP ${status}`, status);
             const items = parseAmazonIn(body, ctx.source, url);
             if (items.length) return items;
             if (body.includes("bm-verify") || looksLikeChallenge(body)) {
