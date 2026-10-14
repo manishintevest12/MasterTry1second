@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isSafePublicUrl, extractUrl, titleFromSlug, cleanTitle, parseProductHtml, merchantFor, stripComparisonBoilerplate, isMerchantNameTitle } from '../server/lens/productLink';
+import { isSafePublicUrl, extractUrl, titleFromSlug, cleanTitle, parseProductHtml, merchantFor, stripComparisonBoilerplate, isMerchantNameTitle, isErrorPageTitle, isStorefrontTitle } from '../server/lens/productLink';
 import { interpretAssistantQuestion, parseSpokenDate } from '../server/lens/assistantIntent';
 
 test('lens: private/local/odd URLs are refused (SSRF guard)', () => {
@@ -149,4 +149,20 @@ test('merchant-name title is rejected as a bot wall', () => {
   assert.ok(isMerchantNameTitle('Flipkart.com', 'flipkart.com', 'Flipkart'));
   assert.ok(!isMerchantNameTitle('Philips Airfryer HD9252/90', 'amazon.in', 'Amazon'));
   assert.ok(!isMerchantNameTitle(null, 'amazon.in', 'Amazon'));
+});
+
+test('error-page titles are treated as bot walls', () => {
+  assert.equal(isErrorPageTitle('503 - Service Unavailable Error'), true);
+  assert.equal(isErrorPageTitle('Error 403 (Forbidden)'), true);
+  assert.equal(isErrorPageTitle('Just a moment...'), true);
+  assert.equal(isErrorPageTitle('Access Denied'), true);
+  assert.equal(isErrorPageTitle('429'), true);
+  assert.equal(isErrorPageTitle('boAt Airdopes 141 Bluetooth Earbuds'), false);
+  assert.equal(isErrorPageTitle('iPhone 15 128GB'), false);
+});
+
+test('storefront/homepage titles are not products', () => {
+  assert.equal(isStorefrontTitle('Online Fashion & Lifestyle Shopping for Women, Men & Kids in India'), true);
+  assert.equal(isStorefrontTitle('Groceries, Fruits, Vegetables & More Online Shopping Site'), true);
+  assert.equal(isStorefrontTitle('Sony WH-1000XM5 Wireless Noise Cancelling Headphones'), false);
 });

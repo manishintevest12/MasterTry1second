@@ -152,6 +152,21 @@ export function isMerchantNameTitle(title: string | null, domain: string, mercha
   return plain(title) === plain(domain) || plain(title) === plain(merchant);
 }
 
+/** A "title" that is the merchant's storefront/homepage ("Online Fashion & Lifestyle Shopping...", "Groceries, Fruits...") is not a product. */
+const STOREFRONT_RE = /\b(online (shopping|store|fashion|grocery|shopping site)|shopping (online|for )|official (site|website|store)|home ?page|buy .* online at)\b/i;
+export function isStorefrontTitle(title: string | null): boolean {
+  if (!title) return false;
+  return STOREFRONT_RE.test(title.trim());
+}
+
+/** A "title" that is an error/interstitial page (503, Access Denied, Just a moment, ...) is a bot wall, not a product. */
+const ERROR_TITLE_RE =
+  /(^|\b)(service unavailable|temporarily unavailable|access denied|forbidden|page not found|just a moment|unusual traffic|robot check|are you a human|human verification|error\s*(40[034]|50[023])?|40[034]|50[023]|429)(\b|$)/i;
+export function isErrorPageTitle(title: string | null): boolean {
+  if (!title) return false;
+  return ERROR_TITLE_RE.test(title.trim()) || /^\d{3}(\s*[-:]?\s*\w+)?$/.test(title.trim());
+}
+
 /** Pure HTML parser (exported for tests): JSON-LD Product > og:title > <title>. */
 export function parseProductHtml(html: string): Pick<LinkProduct, 'title' | 'titleSource' | 'pagePrice' | 'image'> {
   const $ = cheerio.load(html);
@@ -257,6 +272,12 @@ export async function resolveProductFromLink(rawUrl: string): Promise<LinkProduc
       }
     }
   } catch { fetchStatus = 'failed'; }
+
+  // A "title" that is an error page (503 / Access Denied / Just a moment) is a bot wall too.
+  if (isErrorPageTitle(parsed.title)) {
+    parsed = { title: null, titleSource: 'none', pagePrice: null, image: null };
+    if (fetchStatus === 'ok') fetchStatus = 'blocked';
+  }
 
   // A "title" that is only the merchant/domain name is a bot wall, not a product.
   if (isMerchantNameTitle(parsed.title, domain, merchant)) {

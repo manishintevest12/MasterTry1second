@@ -44,6 +44,7 @@ class AppState extends ChangeNotifier {
   /// Last live result per vertical, so tabs reopen instantly (website keeps `items`).
   final Map<String, LiveResponse> cache = {};
   final Map<String, String> cacheQuery = {};
+  final Map<String, Future<LiveResponse>> _inFlight = {};
   final Map<String, List<Deal>> _dealsByKind = {};
   List<Deal>? allDeals;
 
@@ -56,6 +57,7 @@ class AppState extends ChangeNotifier {
     AuthService.instance.addListener(_onAuth);
     await AuthService.instance.restore(api);
     unawaited(refreshBadges());
+    unawaited(prefetchDefaults());
     notifyListeners();
   }
 
@@ -115,11 +117,27 @@ class AppState extends ChangeNotifier {
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
     final cacheKey = '$key|$q|${depart ?? ''}';
     if (!force && cache[key] != null && cacheQuery[key] == cacheKey) return cache[key]!;
-    final res = await api.live(key, q, city: city, pincode: pincode, depart: depart, returnDate: returnDate);
-    cache[key] = res;
-    cacheQuery[key] = cacheKey;
-    notifyListeners();
-    return res;
+    final flying = _inFlight[cacheKey];
+    if (flying != null) return flying;
+    final f = api
+        .live(key, q, city: city, pincode: pincode, depart: depart, returnDate: returnDate)
+        .then((res) {
+      cache[key] = res;
+      cacheQuery[key] = cacheKey;
+      notifyListeners();
+      return res;
+    }).whenComplete(() => _inFlight.remove(cacheKey));
+    _inFlight[cacheKey] = f;
+    return f;
+  }
+
+  /// Splash prefetch: warm every vertical's default search (plus the rewards
+  /// deals feed) in the background so first taps open instantly with data.
+  Future<void> prefetchDefaults() async {
+    for (final v in kVerticals) {
+      unawaited(live(v.id, defaultQueryFor(v.id, city)).catchError((_) => const LiveResponse([], [], [], [], '', 0)));
+    }
+    unawaited(deals().catchError((_) => <Deal>[]));
   }
 
   Future<List<Deal>> deals({String? kind}) async {

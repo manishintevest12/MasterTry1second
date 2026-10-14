@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { ComparisonItem, SellerQuote, VerticalId } from '../types';
 import { getCatalogueState, recordProvenance } from './catalogueStore';
+import { isErrorPageTitle, isStorefrontTitle } from '../../server/lens/productLink';
 
 const USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -14,6 +15,8 @@ function getRandomUserAgent(): string {
 
 export interface LiveScanResult {
   success: boolean;
+  found: boolean;
+  fetchNote?: string;
   sourceUrl: string;
   sourceDomain: string;
   title: string;
@@ -108,6 +111,10 @@ export async function scrapeLiveUrl(targetUrl: string): Promise<LiveScanResult> 
 
     // Clean title from site suffixes like " | Amazon.in" or " - Buy Online on Blinkit"
     title = title.replace(/\s*([|–—\-])\s*(Amazon\.in|Flipkart|Blinkit|Zepto|Myntra|Tata CLiQ|Swiggy|Zomato|MakeMyTrip).*$/i, '').trim();
+    // An error/interstitial "title" (503, Access Denied, Just a moment, 404...) is a bot wall, never a product.
+    if (isErrorPageTitle(title)) title = '';
+    // A storefront/homepage "title" is the site template, never a product.
+    if (isStorefrontTitle(title)) title = '';
 
     // 2. Extract Product Image
     const imageUrl =
@@ -169,20 +176,13 @@ export async function scrapeLiveUrl(targetUrl: string): Promise<LiveScanResult> 
       }
     }
 
-    // Default safe baseline if site returned captcha/blocked
-    if (!price || price < 5) {
-      price = 999;
-    }
-    originalPrice = Math.round(price * 1.15);
-
-    if (!title) {
-      title = `Item from ${domain.toUpperCase()}`;
-    }
+    // HONEST DATA POLICY: no fabricated baseline price, no invented competitor
+    // quotes. A page without a readable product title is reported as not found.
+    if (!price || price < 5) price = 0;
+    originalPrice = 0;
 
     const latency = Date.now() - startTime;
-
-    // Generate competitor parity quotes
-    const competitors = generateCompetitorQuotesForProduct(title, price, domain, vertical);
+    const found = Boolean(title);
 
     const provenanceRecord = {
       sourceType: 'live_http' as const,
@@ -205,6 +205,8 @@ export async function scrapeLiveUrl(targetUrl: string): Promise<LiveScanResult> 
 
     return {
       success: true,
+      found,
+      fetchNote: found ? undefined : 'The page did not expose a readable product title (bot wall, error or storefront page).',
       sourceUrl: targetUrl,
       sourceDomain: domain,
       title,
@@ -212,8 +214,8 @@ export async function scrapeLiveUrl(targetUrl: string): Promise<LiveScanResult> 
       vertical,
       extractedPrice: price,
       originalPrice,
-      imageUrl: imageUrl || getFallbackImage(vertical),
-      sellerQuotes: competitors,
+      imageUrl: imageUrl || undefined,
+      sellerQuotes: [],
       latencyMs: latency,
       httpStatus: statusCode,
       provenance: provenanceRecord,
@@ -223,21 +225,23 @@ export async function scrapeLiveUrl(targetUrl: string): Promise<LiveScanResult> 
     // Resilient fallback with provenance
     return {
       success: true,
+      found: false,
+      fetchNote: `Could not read that page (${err && err.message ? err.message : 'fetch failed'}). Nothing is simulated here.`,
       sourceUrl: targetUrl,
       sourceDomain: domain,
-      title: `Item on ${domain.toUpperCase()}`,
-      category: 'Verified Marketplace Item',
+      title: '',
+      category: '',
       vertical,
-      extractedPrice: 849,
-      originalPrice: 999,
-      imageUrl: getFallbackImage(vertical),
-      sellerQuotes: generateCompetitorQuotesForProduct(`Item on ${domain}`, 849, domain, vertical),
+      extractedPrice: 0,
+      originalPrice: 0,
+      imageUrl: undefined,
+      sellerQuotes: [],
       latencyMs: latency,
-      httpStatus: 200,
+      httpStatus: 0,
       provenance: {
         sourceType: 'live_http',
         fetchedAt: new Date().toISOString(),
-        statusCode: 200,
+        statusCode: 0,
         rawDomain: domain,
         latencyMs: latency,
       },
@@ -329,214 +333,6 @@ export async function querySearchApi(query: string, vertical: VerticalId): Promi
   }
 }
 
-function generateCompetitorQuotesForProduct(title: string, basePrice: number, currentDomain: string, vertical: VerticalId): SellerQuote[] {
-  const encTitle = encodeURIComponent(title);
-
-  if (vertical === 'grocery') {
-    return [
-      {
-        id: `sq-bkt-${Date.now()}`,
-        sellerName: 'Blinkit',
-        price: basePrice,
-        currency: '₹',
-        url: `https://blinkit.com/s/?q=${encTitle}`,
-        badge: '⚡ Lowest Fare',
-        deliveryOrEta: '8 mins · Dark Store #102',
-        isLowest: true,
-        isLiveScraped: true,
-        sourceDomain: 'blinkit.com',
-        couponCode: 'TRY1GROC',
-        cashbackText: '₹15 Instant Cashback',
-      },
-      {
-        id: `sq-zpt-${Date.now()}`,
-        sellerName: 'Zepto',
-        price: basePrice + 3,
-        currency: '₹',
-        url: `https://www.zeptonow.com/search?query=${encTitle}`,
-        deliveryOrEta: '10 mins · Zepto Pod',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'zeptonow.com',
-      },
-      {
-        id: `sq-insta-${Date.now()}`,
-        sellerName: 'Swiggy Instamart',
-        price: basePrice + 5,
-        currency: '₹',
-        url: `https://www.swiggy.com/instamart/search?query=${encTitle}`,
-        deliveryOrEta: '12 mins · Instamart Hub',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'swiggy.com',
-      },
-    ];
-  }
-
-  if (vertical === 'food') {
-    return [
-      {
-        id: `sq-swg-${Date.now()}`,
-        sellerName: 'Swiggy',
-        price: basePrice,
-        currency: '₹',
-        url: `https://www.swiggy.com/search?query=${encTitle}`,
-        badge: '⚡ Best Food Deal',
-        deliveryOrEta: '26 mins · Free Delivery via One',
-        isLowest: true,
-        isLiveScraped: true,
-        sourceDomain: 'swiggy.com',
-        couponCode: 'SWIGGYIT',
-      },
-      {
-        id: `sq-zom-${Date.now()}`,
-        sellerName: 'Zomato',
-        price: basePrice + 18,
-        currency: '₹',
-        url: `https://www.zomato.com/search?q=${encTitle}`,
-        deliveryOrEta: '28 mins · Gold Discount',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'zomato.com',
-      },
-      {
-        id: `sq-mgp-${Date.now()}`,
-        sellerName: 'Magicpin',
-        price: Math.max(10, basePrice - 15),
-        currency: '₹',
-        url: `https://magicpin.in/search?q=${encTitle}`,
-        badge: 'MagicPoints Applied',
-        deliveryOrEta: '32 mins · Magic Order',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'magicpin.in',
-      },
-    ];
-  }
-
-  if (vertical === 'trains') {
-    return [
-      {
-        id: `sq-irctc-${Date.now()}`,
-        sellerName: 'IRCTC Official',
-        price: basePrice,
-        currency: '₹',
-        url: `https://www.irctc.co.in/nget/train-search?q=${encTitle}`,
-        badge: '⚡ Zero Gateway Markup',
-        deliveryOrEta: 'Instant PNR Confirmed',
-        isLowest: true,
-        isLiveScraped: true,
-        sourceDomain: 'irctc.co.in',
-      },
-      {
-        id: `sq-confirmtkt-${Date.now()}`,
-        sellerName: 'ConfirmTkt',
-        price: basePrice + 20,
-        currency: '₹',
-        url: `https://www.confirmtkt.com/rts/#/train/${encTitle}`,
-        deliveryOrEta: '95% Confirmation Prediction',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'confirmtkt.com',
-      },
-      {
-        id: `sq-ixigo-${Date.now()}`,
-        sellerName: 'ixigo Trains',
-        price: basePrice + 15,
-        currency: '₹',
-        url: `https://www.ixigo.com/trains/${encTitle}`,
-        deliveryOrEta: 'Zero Cancellation Guarantee',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'ixigo.com',
-      },
-    ];
-  }
-
-  if (vertical === 'pharmacy') {
-    return [
-      {
-        id: `sq-1mg-${Date.now()}`,
-        sellerName: 'Tata 1mg',
-        price: basePrice,
-        currency: '₹',
-        url: `https://www.1mg.com/search/all?name=${encTitle}`,
-        badge: '⚡ Lowest Med Price',
-        deliveryOrEta: 'Same-Day Cold Chain Delivery',
-        isLowest: true,
-        isLiveScraped: true,
-        sourceDomain: '1mg.com',
-        couponCode: 'CARE20',
-      },
-      {
-        id: `sq-apollo-${Date.now()}`,
-        sellerName: 'Apollo 24|7',
-        price: basePrice + 12,
-        currency: '₹',
-        url: `https://www.apollo247.com/search-medicines/${encTitle}`,
-        deliveryOrEta: '2-Hour Emergency Delivery',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'apollo247.com',
-      },
-      {
-        id: `sq-pharmeasy-${Date.now()}`,
-        sellerName: 'PharmEasy',
-        price: basePrice + 8,
-        currency: '₹',
-        url: `https://pharmeasy.in/search/all?name=${encTitle}`,
-        deliveryOrEta: 'Next-Day Delivery',
-        isLowest: false,
-        isLiveScraped: true,
-        sourceDomain: 'pharmeasy.in',
-      },
-    ];
-  }
-
-  // Default: E-Commerce
-  const isAmazon = currentDomain.includes('amazon');
-  const isFlipkart = currentDomain.includes('flipkart');
-
-  return [
-    {
-      id: `sq-amz-${Date.now()}`,
-      sellerName: 'Amazon.in',
-      price: isAmazon ? basePrice : Math.round(basePrice * 0.98),
-      currency: '₹',
-      url: `https://www.amazon.in/s?k=${encTitle}&tag=try1sec-21`,
-      badge: !isAmazon ? '⚡ Lowest Verified Price' : 'Scanned Surface',
-      deliveryOrEta: 'Tomorrow by 11 AM (Prime Delivery)',
-      isLowest: !isAmazon,
-      isLiveScraped: true,
-      sourceDomain: 'amazon.in',
-      couponCode: 'AMZTRY1',
-      cashbackText: '₹150 Prime Cashback',
-    },
-    {
-      id: `sq-fk-${Date.now()}`,
-      sellerName: 'Flipkart',
-      price: isFlipkart ? basePrice : Math.round(basePrice * 1.02),
-      currency: '₹',
-      url: `https://www.flipkart.com/search?q=${encTitle}&affid=try1sec`,
-      deliveryOrEta: '2-Day Assured Delivery',
-      isLowest: false,
-      isLiveScraped: true,
-      sourceDomain: 'flipkart.com',
-      cashbackText: '5% Flipkart Axis Cashback',
-    },
-    {
-      id: `sq-crm-${Date.now()}`,
-      sellerName: 'Croma',
-      price: Math.round(basePrice * 1.05),
-      currency: '₹',
-      url: `https://www.croma.com/searchB?q=${encTitle}`,
-      deliveryOrEta: 'Same-Day Store Pickup or Home Delivery',
-      isLowest: false,
-      isLiveScraped: true,
-      sourceDomain: 'croma.com',
-    },
-  ];
-}
 
 function determineCategory(title: string, vertical: VerticalId): string {
   const t = title.toLowerCase();

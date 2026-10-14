@@ -351,20 +351,69 @@ apiRouter.post('/scan/url', async (req, res) => {
   const url = String(req.body.url || '').trim();
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ success: false, error: 'A valid http(s) URL is required.' });
   const scan = await scrapeLiveUrl(url);
+  // HONEST DATA POLICY: a page without a readable product title (bot wall, error
+  // page, storefront template) is reported as not found — never a fabricated item.
+  if (!scan.found || !scan.title) {
+    return res.json({ success: true, found: false, message: scan.fetchNote || 'Could not read a product from that page. Nothing is simulated here.' });
+  }
+  // Competitor quotes come from the REAL live orchestrator, never invented.
+  const scanQuery = searchableTitle(scan.title);
+  const search = await runSearch({
+    query: scanQuery,
+    vertical: scan.vertical === 'movie' ? 'movies' : (scan.vertical || 'ecommerce'),
+    city: req.body?.city,
+    pincode: req.body?.pincode,
+  } as SearchInput);
+  const priced = (search.results as any[])
+    .map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 }))
+    .filter((x) => x.price > 0);
+  const relevant = scan.vertical === 'ecommerce' || !scan.vertical
+    ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || '')))
+    : priced;
+  const cheapestFirst = relevant.sort((a, b) => a.price - b.price).slice(0, 8);
+  const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+  const sellerQuotes: any[] = cheapestFirst.map((x, i) => ({
+    id: `sq-${x.o.id || i}`,
+    sellerName: String(x.o.seller || x.o.vendor || hostOf(String(x.o.sellerUrl || '')) || 'Verified source'),
+    price: x.price,
+    currency: '₹',
+    url: String(x.o.sellerUrl || '') ? createMaskingPointer(String(x.o.sellerUrl), { offerId: String(x.o.id || '') }) : '',
+    isLowest: i === 0,
+    isLiveScraped: true,
+    sourceDomain: hostOf(String(x.o.sellerUrl || '')),
+    deliveryOrEta: x.o.attributes?.eta ? `Delivers in ${x.o.attributes.eta}` : undefined,
+  }));
+  // The scanned page itself is a real quote only when it published a real price.
+  if (scan.extractedPrice > 0) {
+    sellerQuotes.unshift({
+      id: `sq-page-${Date.now()}`,
+      sellerName: scan.sourceDomain,
+      price: scan.extractedPrice,
+      currency: '₹',
+      url,
+      isLowest: false,
+      isLiveScraped: true,
+      sourceDomain: scan.sourceDomain,
+    });
+  }
+  const primaryPrice = scan.extractedPrice > 0 ? scan.extractedPrice : (cheapestFirst[0]?.price ?? 0);
+  if (!sellerQuotes.length) {
+    return res.json({ success: true, found: false, message: 'The page was read, but no live competitor prices were found for that product right now. Nothing is simulated here.' });
+  }
   const catalogueItem = {
     id: `scan-${Date.now()}`,
     vertical: scan.vertical,
     title: scan.title,
     category: scan.category,
     provider: scan.sourceDomain,
-    primaryPrice: scan.extractedPrice,
-    sellerQuotes: scan.sellerQuotes,
+    primaryPrice,
+    sellerQuotes,
     isLiveScraped: true,
     scrapedTimestamp: new Date().toISOString(),
     scrapedLatencyMs: scan.latencyMs,
   };
   saveItemToCatalogue(catalogueItem as any);
-  res.json({ success: true, item: catalogueItem, rawScan: scan });
+  res.json({ success: true, found: true, item: catalogueItem, rawScan: scan });
 });
 
 // ============ Price Lens: paste any product link -> cheapest across sites ============
