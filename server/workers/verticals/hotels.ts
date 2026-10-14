@@ -7,6 +7,7 @@
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { photonGeocode, parseOverpassHotels, overpassHotelQuery } from '../parsers/osmTravel';
 import { parseBookingHotels } from '../parsers/booking';
+import { parseExpediaGroup, EXPEDIA_GRAPHQL_QUERY } from '../parsers/expediaGroup';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
@@ -44,6 +45,48 @@ function stayDates(q: any): { checkin: string; checkout: string } {
   const base = dep && /\d{4}-\d{2}-\d{2}/.test(dep) ? new Date(dep) : new Date(Date.now() + 7 * 86400_000);
   const end = ret && /\d{4}-\d{2}-\d{2}/.test(ret) ? new Date(ret) : new Date(base.getTime() + 86400_000);
   return { checkin: fmt(base), checkout: fmt(end) };
+}
+
+/** Expedia Group shared acquisition: SRP prime (Akamai cookies + DUAID) then LodgingCard GraphQL. */
+async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', impersonate: string, city: string, checkin: string, checkout: string): Promise<any[]> {
+  const origin = `https://www.${site}`;
+  const srpUrl = `${origin}/Hotel-Search?destination=${encodeURIComponent(`${city}, India`)}&d1=${checkin}&d2=${checkout}&rooms=1`;
+  let cookies: Record<string, string> | undefined;
+  const primed = await cffiFetch(srpUrl, { impersonate, timeoutMs: 30_000, returnCookies: true, cookies, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } });
+  cookies = primed.cookies || cookies;
+  if (primed.status === 429 || (primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4000)))) {
+    throw new AcquisitionError('ACCESS_CHALLENGE', `${site} SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
+  }
+  if (primed.status !== 200) throw new AcquisitionError('SERVER_ERROR', `${site} SRP HTTP ${primed.status}`, primed.status);
+  const duaid = (primed.body.match(/"duaid":"([0-9a-f-]{36})"/) || [])[1] || cookies?.DUAID || '';
+  const y1 = +checkin.slice(0, 4), m1 = +checkin.slice(5, 7), d1 = +checkin.slice(8, 10);
+  const y2 = +checkout.slice(0, 4), m2 = +checkout.slice(5, 7), d2 = +checkout.slice(8, 10);
+  const siteId = site === 'hotels.com' ? 19 : 1;
+  const payload = JSON.stringify({
+    operationName: 'LodgingPropertySearch',
+    query: EXPEDIA_GRAPHQL_QUERY,
+    variables: {
+      context: { currency: 'USD', device: { type: 'DESKTOP' }, eapid: 0, identity: { authState: 'ANONYMOUS', duaid }, locale: 'en_US', privacyTrackingState: 'CAN_TRACK', siteId, tpid: siteId },
+      criteria: { primary: {
+        dateRange: { checkInDate: { year: y1, month: m1, day: d1 }, checkOutDate: { year: y2, month: m2, day: d2 } },
+        destination: { regionName: `${city}, India` },
+        rooms: [{ adults: 2 }],
+      } },
+    },
+  });
+  const r = await cffiFetch(`${origin}/graphql`, {
+    method: 'POST', impersonate, timeoutMs: 45_000, cookies, body: payload,
+    headers: {
+      'Content-Type': 'application/json', Accept: '*/*', Origin: origin, Referer: srpUrl,
+      'client-info': `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === 'hotels.com' ? 'us-west-2' : 'us-east-1'}`,
+      'x-page-id': 'page.Hotel-Search,H,20',
+    },
+  });
+  if (r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `${site} GraphQL edge returned a bot challenge (HTTP 429)`, 429);
+  if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `${site} GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+  const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout);
+  if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `${site} GraphQL returned no priced LodgingCards for "${city}"`);
+  return items;
 }
 
 export const hotelsWorker: VerticalWorker = {
@@ -204,6 +247,44 @@ export const hotelsWorker: VerticalWorker = {
           throw new AcquisitionError('ACCESS_CHALLENGE', 'Booking.com presented a challenge page (no parseable property cards)');
         }
         throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com returned no property cards');
+      },
+    },
+    {
+      // Expedia Group "shopping-pwa" (Expedia.com + Hotels.com share one LodgingCard
+      // GraphQL). Akamai accepts safari-TLS from datacenter IPs (chrome JA3 = 429
+      // "Bot or Not?"). Recipe reverse-engineered 14 Oct 2026, sandbox-verified 50
+      // priced cards per query; details in parsers/expediaGroup.ts.
+      sourceId: 'w_hotels_expedia',
+      name: 'Hotels worker: Expedia.com live rates (LodgingCard GraphQL)',
+      priority: 11,
+      maxPerMinute: 2,
+      timeoutMs: 60_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        return expediaGroupSearch(ctx, 'expedia.com', 'safari', city, checkin, checkout);
+      },
+    },
+    {
+      sourceId: 'w_hotels_hotelscom',
+      name: 'Hotels worker: Hotels.com live rates (LodgingCard GraphQL)',
+      priority: 11,
+      maxPerMinute: 2,
+      timeoutMs: 60_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        let items: Awaited<ReturnType<typeof expediaGroupSearch>>;
+        try {
+          items = await expediaGroupSearch(ctx, 'hotels.com', 'safari17_0', city, checkin, checkout);
+        } catch (e: any) {
+          // Akamai rate-samples the SRP edge; the mobile-Android JA3 is a second key.
+          if (String(e?.failureClass) !== 'ACCESS_CHALLENGE' && String(e?.failureClass) !== 'RATE_LIMITED') throw e;
+          items = await expediaGroupSearch(ctx, 'hotels.com', 'chrome_android', city, checkin, checkout);
+        }
+        return items;
       },
     },
     {

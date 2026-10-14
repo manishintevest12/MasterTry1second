@@ -2551,6 +2551,76 @@ var init_booking = __esm({
   }
 });
 
+// server/workers/parsers/expediaGroup.ts
+function parsePriceFormatted(f) {
+  const m = String(f || "").replace(/\s/g, "").match(/(₹|\$|€|£)?([\d,]+(?:\.\d+)?)/);
+  if (!m) return { value: 0, currency: "USD" };
+  const n = Number(m[2].replace(/,/g, ""));
+  const cur = m[1] === "\u20B9" ? "INR" : m[1] === "\u20AC" ? "EUR" : m[1] === "\xA3" ? "GBP" : "USD";
+  return { value: Number.isFinite(n) && n > 0 ? n : 0, currency: cur };
+}
+function parseExpediaGroup(body, source, site, checkin, checkout) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const listings = d?.data?.propertySearch?.propertySearchListings || [];
+  const origin = `https://www.${site}`;
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  for (const L of listings.slice(0, 60)) {
+    if (L?.__typename !== "LodgingCard") continue;
+    const name = String(L?.headingSection?.heading || "").trim();
+    if (!name || seen.has(name)) continue;
+    const { value: price, currency } = parsePriceFormatted(String(L?.priceSection?.priceSummary?.options?.[0]?.displayPrice?.formatted || ""));
+    if (!price) continue;
+    seen.add(name);
+    const img = String(L?.mediaSection?.gallery?.media?.[0]?.media?.url || "").replace(/^http:/, "https:");
+    const rel = String(L?.cardLink?.resource?.relativePath || "");
+    const url = rel ? `${origin}${rel.startsWith("/") ? rel : `/${rel}`}` : origin;
+    const sellerUrl = `${url}${url.includes("?") ? "&" : "?"}chkin=${checkin}&chkout=${checkout}`;
+    out.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      price,
+      currency,
+      seller: site === "hotels.com" ? "Hotels.com" : "Expedia",
+      sellerUrl,
+      attributes: {
+        image: img,
+        ...img ? { image_url: img } : {},
+        data_note: `Nightly rate observed on ${site} live listing API, ${today}`
+      },
+      identifiers: L?.id ? { vendorProductId: String(L.id) } : void 0,
+      evidence: { sourceUrl: sellerUrl, extractedFields: ["title", "price", "image", "url"] }
+    }));
+  }
+  return out;
+}
+var EXPEDIA_GRAPHQL_QUERY;
+var init_expediaGroup = __esm({
+  "server/workers/parsers/expediaGroup.ts"() {
+    init_contract();
+    EXPEDIA_GRAPHQL_QUERY = `query LodgingPropertySearch($context: ContextInput!, $criteria: PropertySearchCriteriaInput) {
+  propertySearch(context: $context, criteria: $criteria) {
+    __typename
+    propertySearchListings {
+      __typename
+      ... on LodgingCard {
+        id
+        headingSection { heading }
+        priceSection { priceSummary { options { displayPrice { formatted } } } }
+        mediaSection { gallery { media { media { ... on Image { url } } } } }
+        cardLink { resource { ... on HttpURI { relativePath } } }
+      }
+    }
+  }
+}`;
+  }
+});
+
 // server/workers/parsers/wikidataHotels.ts
 function wikidataHotelQuery(city) {
   const safe = city.replace(/["\\\n\r]/g, "").slice(0, 60);
@@ -3260,12 +3330,60 @@ function stayDates(q3) {
   const end = ret && /\d{4}-\d{2}-\d{2}/.test(ret) ? new Date(ret) : new Date(base.getTime() + 864e5);
   return { checkin: fmt(base), checkout: fmt(end) };
 }
+async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkout) {
+  const origin = `https://www.${site}`;
+  const srpUrl = `${origin}/Hotel-Search?destination=${encodeURIComponent(`${city}, India`)}&d1=${checkin}&d2=${checkout}&rooms=1`;
+  let cookies;
+  const primed = await cffiFetch(srpUrl, { impersonate, timeoutMs: 3e4, returnCookies: true, cookies, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } });
+  cookies = primed.cookies || cookies;
+  if (primed.status === 429 || primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4e3))) {
+    throw new AcquisitionError("ACCESS_CHALLENGE", `${site} SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
+  }
+  if (primed.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${site} SRP HTTP ${primed.status}`, primed.status);
+  const duaid = (primed.body.match(/"duaid":"([0-9a-f-]{36})"/) || [])[1] || cookies?.DUAID || "";
+  const y1 = +checkin.slice(0, 4), m1 = +checkin.slice(5, 7), d1 = +checkin.slice(8, 10);
+  const y2 = +checkout.slice(0, 4), m2 = +checkout.slice(5, 7), d2 = +checkout.slice(8, 10);
+  const siteId = site === "hotels.com" ? 19 : 1;
+  const payload = JSON.stringify({
+    operationName: "LodgingPropertySearch",
+    query: EXPEDIA_GRAPHQL_QUERY,
+    variables: {
+      context: { currency: "USD", device: { type: "DESKTOP" }, eapid: 0, identity: { authState: "ANONYMOUS", duaid }, locale: "en_US", privacyTrackingState: "CAN_TRACK", siteId, tpid: siteId },
+      criteria: { primary: {
+        dateRange: { checkInDate: { year: y1, month: m1, day: d1 }, checkOutDate: { year: y2, month: m2, day: d2 } },
+        destination: { regionName: `${city}, India` },
+        rooms: [{ adults: 2 }]
+      } }
+    }
+  });
+  const r = await cffiFetch(`${origin}/graphql`, {
+    method: "POST",
+    impersonate,
+    timeoutMs: 45e3,
+    cookies,
+    body: payload,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      Origin: origin,
+      Referer: srpUrl,
+      "client-info": `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === "hotels.com" ? "us-west-2" : "us-east-1"}`,
+      "x-page-id": "page.Hotel-Search,H,20"
+    }
+  });
+  if (r.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", `${site} GraphQL edge returned a bot challenge (HTTP 429)`, 429);
+  if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${site} GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+  const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout);
+  if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
+  return items;
+}
 var agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
     init_osmTravel();
     init_booking();
+    init_expediaGroup();
     init_wikidataHotels();
     init_cleartripHotels();
     init_airbnbHotels();
@@ -3444,6 +3562,43 @@ var init_hotels = __esm({
               throw new AcquisitionError("ACCESS_CHALLENGE", "Booking.com presented a challenge page (no parseable property cards)");
             }
             throw new AcquisitionError("EMPTY_RESPONSE", "Booking.com returned no property cards");
+          }
+        },
+        {
+          // Expedia Group "shopping-pwa" (Expedia.com + Hotels.com share one LodgingCard
+          // GraphQL). Akamai accepts safari-TLS from datacenter IPs (chrome JA3 = 429
+          // "Bot or Not?"). Recipe reverse-engineered 14 Oct 2026, sandbox-verified 50
+          // priced cards per query; details in parsers/expediaGroup.ts.
+          sourceId: "w_hotels_expedia",
+          name: "Hotels worker: Expedia.com live rates (LodgingCard GraphQL)",
+          priority: 11,
+          maxPerMinute: 2,
+          timeoutMs: 6e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            return expediaGroupSearch(ctx, "expedia.com", "safari", city, checkin, checkout);
+          }
+        },
+        {
+          sourceId: "w_hotels_hotelscom",
+          name: "Hotels worker: Hotels.com live rates (LodgingCard GraphQL)",
+          priority: 11,
+          maxPerMinute: 2,
+          timeoutMs: 6e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            let items;
+            try {
+              items = await expediaGroupSearch(ctx, "hotels.com", "safari17_0", city, checkin, checkout);
+            } catch (e) {
+              if (String(e?.failureClass) !== "ACCESS_CHALLENGE" && String(e?.failureClass) !== "RATE_LIMITED") throw e;
+              items = await expediaGroupSearch(ctx, "hotels.com", "chrome_android", city, checkin, checkout);
+            }
+            return items;
           }
         },
         {

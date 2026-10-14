@@ -1,0 +1,707 @@
+{
+ "data": {
+  "propertySearch": {
+   "__typename": "PropertySearchResponse",
+   "propertySearchListings": [
+    {
+     "__typename": "LodgingCard",
+     "id": "20923",
+     "headingSection": {
+      "heading": "Tower Genova Airport Hotel & Conference Center",
+      "productRating": null,
+      "featuredMessages": [],
+      "featuredElements": null,
+      "messages": [
+       {
+        "__typename": "EGDSStylizedText",
+        "text": "Sestri Ponente",
+        "theme": null,
+        "weight": null,
+        "size": null,
+        "decorative": null,
+        "accessibility": null
+       }
+      ],
+      "amenities": [],
+      "missingFilters": null,
+      "standardBadges": null,
+      "locationInfo": [],
+      "tnlFields": [
+       {
+        "key": "AMENITIES_ML_RANKING_V1",
+        "value": "[{\"icon\":{\"description\":\"Bar and lounge\",\"id\":\"local_bar\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__local_bar\"},\"stylizedText\":{\"text\":\"Bar and lounge\"}},{\"icon\":{\"description\":\"International cuisine restaurant\",\"id\":\"local_dining\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__local_dining\"},\"stylizedText\":{\"text\":\"International cuisine restaurant\"}},{\"icon\":{\"description\":\"Breakfast for a fee\",\"id\":\"free_breakfast\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__free_breakfast\"},\"stylizedText\":{\"text\":\"Breakfast for a fee\"}}]",
+        "__typename": "GraphQLPair"
+       }
+      ],
+      "mark": null,
+      "__typename": "LodgingCardHeadingSection"
+     },
+     "priceSection": {
+      "priceSummary": {
+       "options": [
+        {
+         "displayPrice": {
+          "formatted": "$136",
+          "__typename": "Money"
+         }
+        }
+       ]
+      }
+     },
+     "mediaSection": {
+      "gallery": {
+       "accessibilityHeadingText": "Photo gallery for Tower Genova Airport Hotel & Conference Center",
+       "navClickAnalytics": {
+        "eventType": "CLICK",
+        "linkName": "Change image in listing carousel",
+        "referrerId": "HOT.SR.MainCarousel",
+        "uisPrimeMessages": [
+         {
+          "schemaName": "searchMetaGlobal",
+          "messageContent": "{\"searchId\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"}",
+          "__typename": "EGUisMicroMessage"
+         }
+        ],
+        "__typename": "ClientSideAnalytics"
+       },
+       "intersectionAnalytics": null,
+       "media": [
+        {
+         "id": "298355",
+         "media": {
+          "description": "A hotel with a modern glass facade, outdoor seating with umbrellas, and a well-maintained lawn.",
+          "url": "https://images.trvl-media.com/lodging/1000000/30000/21000/20923/8dd10979.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.20923.8dd10979-9b91-4906-9d56-8888ede572d1",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "8dd10979-9b91-4906-9d56-8888ede572d1|BQKcAJJqGsbpJnM4GD45we",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "693714",
+         "media": {
+          "description": "A spacious atrium with a high ceiling and skylight, featuring a central round table with food and drinks, surrounded by seating areas.",
+          "url": "https://images.trvl-media.com/lodging/1000000/30000/21000/20923/bb3474f2.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.20923.bb3474f2-19ed-4517-a0db-302c0dc1aae1",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "bb3474f2-19ed-4517-a0db-302c0dc1aae1|BQKcAJJqGsbpJnM4GD45we",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "261622",
+         "media": {
+          "description": "A bar area with a counter, bar stools, and a carpeted floor.",
+          "url": "https://images.trvl-media.com/lodging/1000000/30000/21000/20923/f608e449.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.20923.f608e449-6a21-4738-a028-a6045d71e0b9",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "f608e449-6a21-4738-a028-a6045d71e0b9|BQKcAJJqGsbpJnM4GD45we",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "370891",
+         "media": {
+          "description": "An outdoor patio area with tables and chairs under large umbrellas, surrounded by potted plants.",
+          "url": "https://images.trvl-media.com/lodging/1000000/30000/21000/20923/6024182e.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.20923.6024182e-dcbb-4619-a32f-e6653bf34250",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "6024182e-dcbb-4619-a32f-e6653bf34250|BQKcAJJqGsbpJnM4GD45we",
+         "__typename": "LodgingMediaItem"
+        }
+       ],
+       "nextButtonText": "Show next image for Tower Genova Airport Hotel & Conference Center",
+       "previousButtonText": "Show previous image for Tower Genova Airport Hotel & Conference Center",
+       "carouselScrimType": null,
+       "__typename": "LodgingGalleryCarousel"
+      },
+      "saveTripItem": {
+       "initialChecked": false,
+       "itemId": "20923",
+       "source": "SEARCH_RESULTS",
+       "viewType": null,
+       "attributes": {
+        "checkInDate": {
+         "day": 28,
+         "month": 10,
+         "year": 2026,
+         "__typename": "Date"
+        },
+        "checkoutDate": {
+         "day": 29,
+         "month": 10,
+         "year": 2026,
+         "__typename": "Date"
+        },
+        "regionId": "4280135",
+        "roomConfiguration": [
+         {
+          "numberOfAdults": 2,
+          "childAges": [],
+          "__typename": "PropertyRoom"
+         }
+        ],
+        "__typename": "TripsSaveStayAttributes"
+       },
+       "save": {
+        "accessibility": "Sign in to save Tower Genova Airport Hotel & Conference Center to a trip",
+        "analytics": null,
+        "analyticsPayload": "{\"metadata\":{\"packer_version\":\"1.0.1\"},\"events\":{\"property_favourite.applied\":{\"v1\":{\"event_data\":{\"event\":{\"event_name\":\"property_favourite.applied\",\"event_type\":\"Interaction\",\"event_version\":\"1.0.0\",\"event_category\":\"search_property_card\"},\"search_request\":{\"search_id\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"},\"product_list\":[{\"amenities_shown\":[\"bar\",\"restaurant\",\"breakfast\"],\"package_bool\":false,\"search_pinned_bool\":false,\"search_product_position\":1,\"search_sponsored_bool\":false,\"product_id\":\"20923\",\"product_use_dates\":{\"start_date\":\"2026-10-28\",\"end_date\":\"2026-10-29\"},\"product_line\":\"Lodging\"}]}}}}}",
+        "adaptexSuccessCampaignIds": null,
+        "label": null,
+        "tooltip": null,
+        "__typename": "TripsSaveItemProperties"
+       },
+       "remove": {
+        "accessibility": "Remove Tower Genova Airport Hotel & Conference Center from a trip",
+        "analytics": null,
+        "analyticsPayload": "{\"metadata\":{\"packer_version\":\"1.0.1\"},\"events\":{\"property_favourite.removed\":{\"v1\":{\"event_data\":{\"event\":{\"event_name\":\"property_favourite.removed\",\"event_type\":\"Interaction\",\"event_version\":\"1.0.0\",\"event_category\":\"search_property_card\"},\"search_request\":{\"search_id\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"},\"product_list\":[{\"amenities_shown\":[\"bar\",\"restaurant\",\"breakfast\"],\"package_bool\":false,\"search_pinned_bool\":false,\"search_product_position\":1,\"search_sponsored_bool\":false,\"product_id\":\"20923\",\"product_use_dates\":{\"start_date\":\"2026-10-28\",\"end_date\":\"2026-10-29\"},\"product_line\":\"Lodging\"}]}}}}}",
+        "adaptexSuccessCampaignIds": null,
+        "label": null,
+        "tooltip": null,
+        "__typename": "TripsSaveItemProperties"
+       },
+       "coachmark": null,
+       "tripId": null,
+       "additionalAttributes": null,
+       "__typename": "TripsSaveItem"
+      },
+      "badges": {
+       "primaryBadge": null,
+       "secondaryBadge": null,
+       "tertiaryBadge": {
+        "egdsElementId": "offer_badge",
+        "text": "$28 off",
+        "theme": "deal-generic",
+        "graphic": null,
+        "size": null,
+        "impressionAnalytics": null,
+        "__typename": "EGDSStandardBadge"
+       },
+       "__typename": "LodgingBadgesGroup"
+      },
+      "buttons": null,
+      "experimentalVideo": null,
+      "__typename": "LodgingCardMediaSection"
+     },
+     "cardLink": {
+      "__typename": "UILinkAction",
+      "accessibility": "More information about Tower Genova Airport Hotel & Conference Center, opens in a new tab",
+      "resource": {
+       "__typename": "HttpURI",
+       "relativePath": "/Genoa-Hotels-Tower-Genova-Airport-Hotel-Conference-Center.h20923.Hotel-Information?chkin=2026-10-28&chkout=2026-10-29&x_pwa=1&rfrr=HSR&pwa_ts=1792002209528&referrerUrl=aHR0cHM6Ly93d3cuZXhwZWRpYS5jb20vSG90ZWwtU2VhcmNo&useRewards=false&rm1=a2&regionId=4280135&destination=Genoa%2C+Italy+%28GOA-Cristoforo+Colombo%29&destType=MARKET&neighborhoodId=6142988&latLong=44.4149%2C8.850498&sort=RECOMMENDED&top_dp=136&top_cur=USD&userIntent=&selectedRoomType=200611311&selectedRatePlan=238042948&categorySearch=any_option&searchId=b930a050-aecc-4ee8-b3ba-a5b0867b0d11",
+       "value": "https://www.expedia.com/Genoa-Hotels-Tower-Genova-Airport-Hotel-Conference-Center.h20923.Hotel-Information?chkin=2026-10-28&chkout=2026-10-29&x_pwa=1&rfrr=HSR&pwa_ts=1792002209528&referrerUrl=aHR0cHM6Ly93d3cuZXhwZWRpYS5jb20vSG90ZWwtU2VhcmNo&useRewards=false&rm1=a2&regionId=4280135&destination=Genoa%2C+Italy+%28GOA-Cristoforo+Colombo%29&destType=MARKET&neighborhoodId=6142988&latLong=44.4149%2C8.850498&sort=RECOMMENDED&top_dp=136&top_cur=USD&userIntent=&selectedRoomType=200611311&selectedRatePlan=238042948&categorySearch=any_option&searchId=b930a050-aecc-4ee8-b3ba-a5b0867b0d11"
+      },
+      "analytics": {
+       "linkName": "View selected property",
+       "referrerId": "HOT.SR:HotelModule:1",
+       "uisPrimeMessages": [
+        {
+         "messageContent": "{\"numOfProducts\":1,\"hotelProducts\":[{\"deal\":{},\"productId\":20923,\"productType\":\"HOTELS\",\"sponsored\":false,\"pinned\":{\"pinnedResult\":false},\"adCopy\":false,\"sortPosition\":1,\"earnEligible\":false,\"freeCancellation\":false,\"badges\":[\"Public_Promo\"],\"displayedAmenities\":[{\"code\":0,\"name\":\"bar\"},{\"code\":0,\"name\":\"restaurant\"},{\"code\":0,\"name\":\"breakfast\"}],\"guestRatingSource\":\"INTERNAL\",\"date\":{\"startDate\":\"2026-10-28\",\"endDate\":\"2026-10-29\"},\"matchType\":\"EXACT\"}]}",
+         "schemaName": "allHotelProducts",
+         "__typename": "EGUisMicroMessage"
+        },
+        {
+         "messageContent": "{\"searchId\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"}",
+         "schemaName": "searchMetaGlobal",
+         "__typename": "EGUisMicroMessage"
+        }
+       ],
+       "urls": [],
+       "__typename": "ClientSideAnalytics"
+      },
+      "useRelativePath": true,
+      "target": "EXTERNAL"
+     }
+    },
+    {
+     "__typename": "LodgingCard",
+     "id": "2575",
+     "headingSection": {
+      "heading": "Bristol Palace Hotel",
+      "productRating": null,
+      "featuredMessages": [],
+      "featuredElements": null,
+      "messages": [
+       {
+        "__typename": "EGDSStylizedText",
+        "text": "San Vincenzo",
+        "theme": null,
+        "weight": null,
+        "size": null,
+        "decorative": null,
+        "accessibility": null
+       }
+      ],
+      "amenities": [],
+      "missingFilters": null,
+      "standardBadges": null,
+      "locationInfo": [],
+      "tnlFields": [
+       {
+        "key": "AMENITIES_ML_RANKING_V1",
+        "value": "[{\"icon\":{\"description\":\"Italian restaurant\",\"id\":\"local_dining\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__local_dining\"},\"stylizedText\":{\"text\":\"Italian restaurant\"}},{\"icon\":{\"description\":\"Bar and lounge\",\"id\":\"local_bar\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__local_bar\"},\"stylizedText\":{\"text\":\"Bar and lounge\"}},{\"icon\":{\"description\":\"Breakfast for a fee\",\"id\":\"free_breakfast\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__free_breakfast\"},\"stylizedText\":{\"text\":\"Breakfast for a fee\"}}]",
+        "__typename": "GraphQLPair"
+       }
+      ],
+      "mark": null,
+      "__typename": "LodgingCardHeadingSection"
+     },
+     "priceSection": {
+      "priceSummary": {
+       "options": [
+        {
+         "displayPrice": {
+          "formatted": "$374",
+          "__typename": "Money"
+         }
+        }
+       ]
+      }
+     },
+     "mediaSection": {
+      "gallery": {
+       "accessibilityHeadingText": "Photo gallery for Bristol Palace Hotel",
+       "navClickAnalytics": {
+        "eventType": "CLICK",
+        "linkName": "Change image in listing carousel",
+        "referrerId": "HOT.SR.MainCarousel",
+        "uisPrimeMessages": [
+         {
+          "schemaName": "searchMetaGlobal",
+          "messageContent": "{\"searchId\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"}",
+          "__typename": "EGUisMicroMessage"
+         }
+        ],
+        "__typename": "ClientSideAnalytics"
+       },
+       "intersectionAnalytics": null,
+       "media": [
+        {
+         "id": "823274",
+         "media": {
+          "description": "A historic hotel with ornate architecture, multiple stories, and a prominent entrance.",
+          "url": "https://a.travel-assets.com/media/meso_cm/PAPI/Images/lodging/1000000/10000/2600/2575/0e49ce36_b.jpg",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.2575.70d6bf1e-beeb-49ef-8b81-48dc2efc3d76",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "70d6bf1e-beeb-49ef-8b81-48dc2efc3d76|RbxRjxaQvE8HVuCnqXmAYp",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "765967",
+         "media": {
+          "description": "A grand, ornate staircase with red carpet and intricate white railings, leading to a luxurious interior.",
+          "url": "https://images.trvl-media.com/lodging/1000000/10000/2600/2575/e26f97c8.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.2575.e26f97c8-73f3-4816-8af5-aad395f16923",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "e26f97c8-73f3-4816-8af5-aad395f16923|RbxRjxaQvE8HVuCnqXmAYp",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "160992",
+         "media": {
+          "description": "A hallway with a marble floor, a glass display case with decorative items, and a sign reading \"LA SUPERBA\".",
+          "url": "https://images.trvl-media.com/lodging/1000000/10000/2600/2575/35eeda0e.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.2575.35eeda0e-0640-4b0f-bdd7-d11ab09cc20e",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "35eeda0e-0640-4b0f-bdd7-d11ab09cc20e|RbxRjxaQvE8HVuCnqXmAYp",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "363968",
+         "media": {
+          "description": "An outdoor dining area with tables and chairs, large windows, and a yellow canopy.",
+          "url": "https://images.trvl-media.com/lodging/1000000/10000/2600/2575/c3c9a58c.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.2575.c3c9a58c-16ce-47d8-87f9-dc76d8a33f0a",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "c3c9a58c-16ce-47d8-87f9-dc76d8a33f0a|RbxRjxaQvE8HVuCnqXmAYp",
+         "__typename": "LodgingMediaItem"
+        }
+       ],
+       "nextButtonText": "Show next image for Bristol Palace Hotel",
+       "previousButtonText": "Show previous image for Bristol Palace Hotel",
+       "carouselScrimType": null,
+       "__typename": "LodgingGalleryCarousel"
+      },
+      "saveTripItem": {
+       "initialChecked": false,
+       "itemId": "2575",
+       "source": "SEARCH_RESULTS",
+       "viewType": null,
+       "attributes": {
+        "checkInDate": {
+         "day": 28,
+         "month": 10,
+         "year": 2026,
+         "__typename": "Date"
+        },
+        "checkoutDate": {
+         "day": 29,
+         "month": 10,
+         "year": 2026,
+         "__typename": "Date"
+        },
+        "regionId": "4280135",
+        "roomConfiguration": [
+         {
+          "numberOfAdults": 2,
+          "childAges": [],
+          "__typename": "PropertyRoom"
+         }
+        ],
+        "__typename": "TripsSaveStayAttributes"
+       },
+       "save": {
+        "accessibility": "Sign in to save Bristol Palace Hotel to a trip",
+        "analytics": null,
+        "analyticsPayload": "{\"metadata\":{\"packer_version\":\"1.0.1\"},\"events\":{\"property_favourite.applied\":{\"v1\":{\"event_data\":{\"event\":{\"event_name\":\"property_favourite.applied\",\"event_type\":\"Interaction\",\"event_version\":\"1.0.0\",\"event_category\":\"search_property_card\"},\"search_request\":{\"search_id\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"},\"product_list\":[{\"amenities_shown\":[\"restaurant\",\"bar\",\"breakfast\"],\"package_bool\":false,\"search_pinned_bool\":false,\"search_product_position\":2,\"search_sponsored_bool\":true,\"product_id\":\"2575\",\"product_use_dates\":{\"start_date\":\"2026-10-28\",\"end_date\":\"2026-10-29\"},\"product_line\":\"Lodging\"}]}}}}}",
+        "adaptexSuccessCampaignIds": null,
+        "label": null,
+        "tooltip": null,
+        "__typename": "TripsSaveItemProperties"
+       },
+       "remove": {
+        "accessibility": "Remove Bristol Palace Hotel from a trip",
+        "analytics": null,
+        "analyticsPayload": "{\"metadata\":{\"packer_version\":\"1.0.1\"},\"events\":{\"property_favourite.removed\":{\"v1\":{\"event_data\":{\"event\":{\"event_name\":\"property_favourite.removed\",\"event_type\":\"Interaction\",\"event_version\":\"1.0.0\",\"event_category\":\"search_property_card\"},\"search_request\":{\"search_id\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"},\"product_list\":[{\"amenities_shown\":[\"restaurant\",\"bar\",\"breakfast\"],\"package_bool\":false,\"search_pinned_bool\":false,\"search_product_position\":2,\"search_sponsored_bool\":true,\"product_id\":\"2575\",\"product_use_dates\":{\"start_date\":\"2026-10-28\",\"end_date\":\"2026-10-29\"},\"product_line\":\"Lodging\"}]}}}}}",
+        "adaptexSuccessCampaignIds": null,
+        "label": null,
+        "tooltip": null,
+        "__typename": "TripsSaveItemProperties"
+       },
+       "coachmark": null,
+       "tripId": null,
+       "additionalAttributes": null,
+       "__typename": "TripsSaveItem"
+      },
+      "badges": {
+       "primaryBadge": null,
+       "secondaryBadge": {
+        "egdsElementId": "media_badge",
+        "text": "Ad",
+        "theme": "sponsored",
+        "graphic": null,
+        "size": "small",
+        "impressionAnalytics": null,
+        "__typename": "EGDSStandardBadge"
+       },
+       "tertiaryBadge": null,
+       "__typename": "LodgingBadgesGroup"
+      },
+      "buttons": null,
+      "experimentalVideo": null,
+      "__typename": "LodgingCardMediaSection"
+     },
+     "cardLink": {
+      "__typename": "UILinkAction",
+      "accessibility": "Opens Bristol Palace Hotel in new tab",
+      "resource": {
+       "__typename": "HttpURI",
+       "relativePath": "/Genoa-Hotels-Bristol-Palace-Hotel.h2575.Hotel-Information?chkin=2026-10-28&chkout=2026-10-29&x_pwa=1&rfrr=HSR&pwa_ts=1792002209529&referrerUrl=aHR0cHM6Ly93d3cuZXhwZWRpYS5jb20vSG90ZWwtU2VhcmNo&useRewards=false&rm1=a2&regionId=4280135&destination=Genoa%2C+Italy+%28GOA-Cristoforo+Colombo%29&destType=MARKET&neighborhoodId=553248635976394639&latLong=44.4149%2C8.850498&sort=RECOMMENDED&top_dp=374&top_cur=USD&userIntent=&selectedRoomType=79224&selectedRatePlan=409997437&sponsoredListing=true&categorySearch=any_option&searchId=b930a050-aecc-4ee8-b3ba-a5b0867b0d11",
+       "value": "https://www.expedia.com/Genoa-Hotels-Bristol-Palace-Hotel.h2575.Hotel-Information?chkin=2026-10-28&chkout=2026-10-29&x_pwa=1&rfrr=HSR&pwa_ts=1792002209529&referrerUrl=aHR0cHM6Ly93d3cuZXhwZWRpYS5jb20vSG90ZWwtU2VhcmNo&useRewards=false&rm1=a2&regionId=4280135&destination=Genoa%2C+Italy+%28GOA-Cristoforo+Colombo%29&destType=MARKET&neighborhoodId=553248635976394639&latLong=44.4149%2C8.850498&sort=RECOMMENDED&top_dp=374&top_cur=USD&userIntent=&selectedRoomType=79224&selectedRatePlan=409997437&sponsoredListing=true&categorySearch=any_option&searchId=b930a050-aecc-4ee8-b3ba-a5b0867b0d11"
+      },
+      "analytics": {
+       "linkName": "View selected property",
+       "referrerId": "HOT.SR:TravelAd.Clicked:2",
+       "uisPrimeMessages": [
+        {
+         "messageContent": "{\"numOfProducts\":1,\"hotelProducts\":[{\"deal\":{},\"productId\":2575,\"productType\":\"HOTELS\",\"sponsored\":true,\"pinned\":{\"pinnedResult\":false},\"adCopy\":true,\"sortPosition\":2,\"earnEligible\":false,\"freeCancellation\":false,\"displayedAmenities\":[{\"code\":0,\"name\":\"restaurant\"},{\"code\":0,\"name\":\"bar\"},{\"code\":0,\"name\":\"breakfast\"}],\"guestRatingSource\":\"INTERNAL\",\"date\":{\"startDate\":\"2026-10-28\",\"endDate\":\"2026-10-29\"},\"matchType\":\"EXACT\"}]}",
+         "schemaName": "allHotelProducts",
+         "__typename": "EGUisMicroMessage"
+        },
+        {
+         "messageContent": "{\"searchId\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"}",
+         "schemaName": "searchMetaGlobal",
+         "__typename": "EGUisMicroMessage"
+        }
+       ],
+       "urls": [
+        "https://www.expedia.com/sponsoredcontent/v1/Cl?position=2&testVersionOverride=Buttercup,39483.0.0,50028.0.0,50813.0.0,51642.169494.0,51690.201908.0,52131.187852.1,54709.0.0,59134.237400.0,71217.308083.0,50988.158353.0,54072.0.0,57292.0.0&data=AAAAAQAAAAEAAAAQuG5ON4eil_EQgKUcSJngjsd27um8-F9s2-XbMa9LtzUMnFh0AxQ14YasClr2B-38PKL8NqwHx18nyR3LtTi68z4XClR2xo5_J7GNRbEeQ0r6nss-Zo9vTz9tWuWcXOG3gvztYrqJxiTalgmFXnEs_BBzWf6k2jEV_CZsIWjvWrcvbWPzTSZPcZXsAUT21T7pymoF9Y4CZ4lrXGLItfuaR4o24h-yDiL253hDF8WsWzFxMYjRzCxh912DtCbc8ZvVGkArpIU0ct9ISwFHZzEJEoMIuBSzYNHiDXV0DV4ZGCmajoGchfHhWONAQxKgTxjE0L9lFUAGwFTKSSbgXqVvqJ6ZOaEfvYNpH4eEfcU8z5fxBqfGzjUAMiFkGyrRc6TXvJ3C0h7RMXfkFbgXqbJMZOE4GQsPe92esCte2hotaqxv3anvDNGbxGwhXVaOzv14KC7xhQsA4GIUxJbn1lt5G-vuOEUfmoWr4JYU_g5FKWTozTDAiaFtDVwDhfWet4OfaNXy6BYyl0ShebZQpnaf1JyoIlsWfK1MzRH55nxgmHCdzPizONst6VWroRs0L17FjSGbVHzclozoyprYaQXzMXiEJ-utHCtsIMhCl80IKcFpbL9VmxAMXZljhCefcIHaaBT-7G8herrMu8PLQGt1QesOEzvL2ynK34dREkJXnKH9Rxop2HxyQTPY-7hIGjyqYteN4h9PhhZxwrEaOuvO5vUQjPRLHsgEay4DkWCsss-YfA49MeWnGyD_-pDY5KENl6NYhoCHLvfksfNfaa7e4TNDR4Cb4ox86uG-nsIr6VuWQYi30oDaGum3TyFWXIwVrEwV1QtXCbKPXHTZM8L5kURMBfMQpTYA-oqWWxCivba5M1OtGOH3WO-SLT29fwd7Tp4JMO-sY8KGwPF_ZvG2NFthL2VO805MId7uTQJ_ECpMuWuybLFT3yWKVhecomcjpOC957XB4ERe_iQ20XcoJnLKcHPfcTnBGpRgtxWLE6PMpo1RG1jlt54OaG6i-EAuwBhfqKIxiqickBtkW62RxhE7uPPx-6pVLmBjIcAMcd-lk5Zh2Ii3eOXIoJ0NUS3WomyeybCE8eTO4GlrAdMHGKHV2r-tq3ts203csjYcPV9DRqqFHfnXHXL1fX9uPbfRJfIylygvcL9XjD1uU5e5UkePS4eTepJzUJEtsPP3Cdy1C_KfF7miyxIA4Noxh7Nhcf9ztLIej05dNqpdeCiLZH82ZPYAwFFH98kxoA67suqvyNUTNxh-8QvzzrPESu-db8Dx5ESiFeqdI4tN72BPoJYZcj8Za15g5B6PS0JXHbZeBC58kZwdTWIUGruX26YPoPAec_d3eZ9vrPUkKqYjd2Lr4BhRci-Ov6YirnbCwCDLW9IFoTEwGknbeCwccHc2Nu3E7SXvmhIi5zZW1kzKrI6T4Q190ZekGkvI09ohhA8I8qLuImcrlCv73WjdnrDi"
+       ],
+       "__typename": "ClientSideAnalytics"
+      },
+      "useRelativePath": true,
+      "target": "EXTERNAL"
+     }
+    },
+    {
+     "__typename": "LodgingCard",
+     "id": "3406557",
+     "headingSection": {
+      "heading": "MarinaPlace Resort & Spa",
+      "productRating": null,
+      "featuredMessages": [],
+      "featuredElements": null,
+      "messages": [
+       {
+        "__typename": "EGDSStylizedText",
+        "text": "Sestri Ponente",
+        "theme": null,
+        "weight": null,
+        "size": null,
+        "decorative": null,
+        "accessibility": null
+       }
+      ],
+      "amenities": [],
+      "missingFilters": null,
+      "standardBadges": null,
+      "locationInfo": [],
+      "tnlFields": [
+       {
+        "key": "AMENITIES_ML_RANKING_V1",
+        "value": "[{\"icon\":{\"description\":\"Rooftop terrace\",\"id\":\"patio\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__patio\"},\"stylizedText\":{\"text\":\"Rooftop terrace\"}},{\"icon\":{\"description\":\"Room service\",\"id\":\"room_service\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__room_service\"},\"stylizedText\":{\"text\":\"Room service\"}},{\"icon\":{\"description\":\"Breakfast for a fee\",\"id\":\"free_breakfast\",\"size\":\"SMALL\",\"title\":\"\",\"token\":\"icon__free_breakfast\"},\"stylizedText\":{\"text\":\"Breakfast for a fee\"}}]",
+        "__typename": "GraphQLPair"
+       }
+      ],
+      "mark": null,
+      "__typename": "LodgingCardHeadingSection"
+     },
+     "priceSection": {
+      "priceSummary": {
+       "options": [
+        {
+         "displayPrice": {
+          "formatted": "$210",
+          "__typename": "Money"
+         }
+        }
+       ]
+      }
+     },
+     "mediaSection": {
+      "gallery": {
+       "accessibilityHeadingText": "Photo gallery for MarinaPlace Resort & Spa",
+       "navClickAnalytics": {
+        "eventType": "CLICK",
+        "linkName": "Change image in listing carousel",
+        "referrerId": "HOT.SR.MainCarousel",
+        "uisPrimeMessages": [
+         {
+          "schemaName": "searchMetaGlobal",
+          "messageContent": "{\"searchId\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"}",
+          "__typename": "EGUisMicroMessage"
+         }
+        ],
+        "__typename": "ClientSideAnalytics"
+       },
+       "intersectionAnalytics": null,
+       "media": [
+        {
+         "id": "485928",
+         "media": {
+          "description": "A building with outdoor seating and potted plants.",
+          "url": "https://images.trvl-media.com/lodging/4000000/3410000/3406600/3406557/c65d4872.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.3406557.c65d4872-fcc6-4a90-b5bc-21b0da43111a",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "c65d4872-fcc6-4a90-b5bc-21b0da43111a|ckk77jk3gfRkkPZJEwoji8",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "704710",
+         "media": {
+          "description": "A marina with several yachts docked in front of a building with multiple balconies and large windows.",
+          "url": "https://images.trvl-media.com/lodging/4000000/3410000/3406600/3406557/07d8e20a.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.3406557.07d8e20a-8a85-4be0-a466-ecd807741bc5",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "07d8e20a-8a85-4be0-a466-ecd807741bc5|ckk77jk3gfRkkPZJEwoji8",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "711141",
+         "media": {
+          "description": "A marina with boats docked in front of a brightly lit building with multiple balconies and large windows.",
+          "url": "https://images.trvl-media.com/lodging/4000000/3410000/3406600/3406557/15b703b7.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.3406557.15b703b7-9ad3-4c3c-ae56-acb7d246e5e4",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "15b703b7-9ad3-4c3c-ae56-acb7d246e5e4|ckk77jk3gfRkkPZJEwoji8",
+         "__typename": "LodgingMediaItem"
+        },
+        {
+         "id": "315377",
+         "media": {
+          "description": "A table with pastries and a glass of orange juice, overlooking a marina with boats and a clear sky.",
+          "url": "https://images.trvl-media.com/lodging/4000000/3410000/3406600/3406557/3193a619.jpg?impolicy=fcrop&w=456&h=286",
+          "thumbnailClickAnalytics": {
+           "referrerId": "HOT.SR:PHOTOS.3406557.3193a619-78f2-4190-bb86-5018148f8e30",
+           "linkName": "Image clicked on HSR image gallery",
+           "__typename": "ClientSideAnalytics"
+          },
+          "__typename": "Image"
+         },
+         "mediaFit": "cover",
+         "trackingId": "3193a619-78f2-4190-bb86-5018148f8e30|ckk77jk3gfRkkPZJEwoji8",
+         "__typename": "LodgingMediaItem"
+        }
+       ],
+       "nextButtonText": "Show next image for MarinaPlace Resort & Spa",
+       "previousButtonText": "Show previous image for MarinaPlace Resort & Spa",
+       "carouselScrimType": null,
+       "__typename": "LodgingGalleryCarousel"
+      },
+      "saveTripItem": {
+       "initialChecked": false,
+       "itemId": "3406557",
+       "source": "SEARCH_RESULTS",
+       "viewType": null,
+       "attributes": {
+        "checkInDate": {
+         "day": 28,
+         "month": 10,
+         "year": 2026,
+         "__typename": "Date"
+        },
+        "checkoutDate": {
+         "day": 29,
+         "month": 10,
+         "year": 2026,
+         "__typename": "Date"
+        },
+        "regionId": "4280135",
+        "roomConfiguration": [
+         {
+          "numberOfAdults": 2,
+          "childAges": [],
+          "__typename": "PropertyRoom"
+         }
+        ],
+        "__typename": "TripsSaveStayAttributes"
+       },
+       "save": {
+        "accessibility": "Sign in to save MarinaPlace Resort & Spa to a trip",
+        "analytics": null,
+        "analyticsPayload": "{\"metadata\":{\"packer_version\":\"1.0.1\"},\"events\":{\"property_favourite.applied\":{\"v1\":{\"event_data\":{\"event\":{\"event_name\":\"property_favourite.applied\",\"event_type\":\"Interaction\",\"event_version\":\"1.0.0\",\"event_category\":\"search_property_card\"},\"search_request\":{\"search_id\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"},\"product_list\":[{\"amenities_shown\":[\"outdoor-space\",\"room-service\",\"breakfast\"],\"package_bool\":false,\"search_pinned_bool\":false,\"search_product_position\":3,\"search_sponsored_bool\":false,\"product_id\":\"3406557\",\"product_use_dates\":{\"start_date\":\"2026-10-28\",\"end_date\":\"2026-10-29\"},\"product_line\":\"Lodging\"}]}}}}}",
+        "adaptexSuccessCampaignIds": null,
+        "label": null,
+        "tooltip": null,
+        "__typename": "TripsSaveItemProperties"
+       },
+       "remove": {
+        "accessibility": "Remove MarinaPlace Resort & Spa from a trip",
+        "analytics": null,
+        "analyticsPayload": "{\"metadata\":{\"packer_version\":\"1.0.1\"},\"events\":{\"property_favourite.removed\":{\"v1\":{\"event_data\":{\"event\":{\"event_name\":\"property_favourite.removed\",\"event_type\":\"Interaction\",\"event_version\":\"1.0.0\",\"event_category\":\"search_property_card\"},\"search_request\":{\"search_id\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"},\"product_list\":[{\"amenities_shown\":[\"outdoor-space\",\"room-service\",\"breakfast\"],\"package_bool\":false,\"search_pinned_bool\":false,\"search_product_position\":3,\"search_sponsored_bool\":false,\"product_id\":\"3406557\",\"product_use_dates\":{\"start_date\":\"2026-10-28\",\"end_date\":\"2026-10-29\"},\"product_line\":\"Lodging\"}]}}}}}",
+        "adaptexSuccessCampaignIds": null,
+        "label": null,
+        "tooltip": null,
+        "__typename": "TripsSaveItemProperties"
+       },
+       "coachmark": null,
+       "tripId": null,
+       "additionalAttributes": null,
+       "__typename": "TripsSaveItem"
+      },
+      "badges": {
+       "primaryBadge": null,
+       "secondaryBadge": null,
+       "tertiaryBadge": {
+        "egdsElementId": "offer_badge",
+        "text": "$22 off",
+        "theme": "deal-generic",
+        "graphic": null,
+        "size": null,
+        "impressionAnalytics": null,
+        "__typename": "EGDSStandardBadge"
+       },
+       "__typename": "LodgingBadgesGroup"
+      },
+      "buttons": null,
+      "experimentalVideo": null,
+      "__typename": "LodgingCardMediaSection"
+     },
+     "cardLink": {
+      "__typename": "UILinkAction",
+      "accessibility": "More information about MarinaPlace Resort & Spa, opens in a new tab",
+      "resource": {
+       "__typename": "HttpURI",
+       "relativePath": "/Genoa-Hotels-MarinaPlace-Resort-Spa.h3406557.Hotel-Information?chkin=2026-10-28&chkout=2026-10-29&x_pwa=1&rfrr=HSR&pwa_ts=1792002209531&referrerUrl=aHR0cHM6Ly93d3cuZXhwZWRpYS5jb20vSG90ZWwtU2VhcmNo&useRewards=false&rm1=a2&regionId=4280135&destination=Genoa%2C+Italy+%28GOA-Cristoforo+Colombo%29&destType=MARKET&neighborhoodId=6142988&latLong=44.4149%2C8.850498&sort=RECOMMENDED&top_dp=210&top_cur=USD&userIntent=&selectedRoomType=200625941&selectedRatePlan=203030483&categorySearch=any_option&searchId=b930a050-aecc-4ee8-b3ba-a5b0867b0d11",
+       "value": "https://www.expedia.com/Genoa-Hotels-MarinaPlace-Resort-Spa.h3406557.Hotel-Information?chkin=2026-10-28&chkout=2026-10-29&x_pwa=1&rfrr=HSR&pwa_ts=1792002209531&referrerUrl=aHR0cHM6Ly93d3cuZXhwZWRpYS5jb20vSG90ZWwtU2VhcmNo&useRewards=false&rm1=a2&regionId=4280135&destination=Genoa%2C+Italy+%28GOA-Cristoforo+Colombo%29&destType=MARKET&neighborhoodId=6142988&latLong=44.4149%2C8.850498&sort=RECOMMENDED&top_dp=210&top_cur=USD&userIntent=&selectedRoomType=200625941&selectedRatePlan=203030483&categorySearch=any_option&searchId=b930a050-aecc-4ee8-b3ba-a5b0867b0d11"
+      },
+      "analytics": {
+       "linkName": "View selected property",
+       "referrerId": "HOT.SR:HotelModule:3",
+       "uisPrimeMessages": [
+        {
+         "messageContent": "{\"numOfProducts\":1,\"hotelProducts\":[{\"deal\":{},\"productId\":3406557,\"productType\":\"HOTELS\",\"sponsored\":false,\"pinned\":{\"pinnedResult\":false},\"adCopy\":false,\"sortPosition\":3,\"earnEligible\":false,\"freeCancellation\":false,\"badges\":[\"Public_Promo\"],\"displayedAmenities\":[{\"code\":0,\"name\":\"outdoor-space\"},{\"code\":0,\"name\":\"room-service\"},{\"code\":0,\"name\":\"breakfast\"}],\"guestRatingSource\":\"INTERNAL\",\"date\":{\"startDate\":\"2026-10-28\",\"endDate\":\"2026-10-29\"},\"matchType\":\"EXACT\"}]}",
+         "schemaName": "allHotelProducts",
+         "__typename": "EGUisMicroMessage"
+        },
+        {
+         "messageContent": "{\"searchId\":\"b930a050-aecc-4ee8-b3ba-a5b0867b0d11\"}",
+         "schemaName": "searchMetaGlobal",
+         "__typename": "EGUisMicroMessage"
+        }
+       ],
+       "urls": [],
+       "__typename": "ClientSideAnalytics"
+      },
+      "useRelativePath": true,
+      "target": "EXTERNAL"
+     }
+    }
+   ]
+  }
+ }
+}
