@@ -15,7 +15,7 @@ import { useApp } from '../context/AppContext';
 interface Offer {
   id: string; title: string; seller: string; price: number; listPrice: number;
   image: string | null; images: string[]; availability: string; rating: number | null; reviews: number | null;
-  canonicalEntityId: number | string | null; goUrl: string;
+  canonicalEntityId: number | string | null; goUrl: string; variantCount?: number;
 }
 interface Deal {
   hasHistory: boolean; points: number; current: number; allTimeLow: number | null; allTimeHigh: number | null;
@@ -245,7 +245,7 @@ export const ProductPageView: React.FC = () => {
                             </span>
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-bold text-slate-900 truncate">{o.seller}</p>
-                              <p className="text-[11px] text-slate-400 truncate">{o.availability === 'out_of_stock' ? 'Out of stock' : o.title}</p>
+                              <p className="text-[11px] text-slate-400 truncate">{o.availability === 'out_of_stock' ? 'Out of stock' : o.title}{(o.variantCount || 0) > 1 ? ` · ${o.variantCount} variants` : ''}</p>
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-black text-slate-900">{inr(o.price)}</p>

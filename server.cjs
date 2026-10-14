@@ -1933,6 +1933,92 @@ var init_tatacliq = __esm({
   }
 });
 
+// server/workers/parsers/relianceDigital.ts
+function extractRelianceState(html) {
+  const i = html.indexOf("window.__INITIAL_STATE__");
+  if (i < 0) return null;
+  const eq = html.indexOf("=", i);
+  if (eq < 0) return null;
+  const s = html.slice(eq + 1).trimStart();
+  if (s[0] !== "{") return null;
+  let depth = 0, inStr = false, esc = false, end = -1;
+  for (let k = 0; k < s.length; k++) {
+    const ch = s[k];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        end = k + 1;
+        break;
+      }
+    }
+  }
+  if (end < 0) return null;
+  try {
+    return JSON.parse(s.slice(0, end));
+  } catch {
+    return null;
+  }
+}
+function parseRelianceDigital(html, source, pageUrl) {
+  const state = extractRelianceState(html);
+  const list = state?.productListingPage?.productlists?.items;
+  if (!Array.isArray(list)) return [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const it of list.slice(0, 40)) {
+    const name = String(it?.name || "").trim();
+    const price = Number(it?.price?.effective?.min);
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    if (it?.sellable === false) continue;
+    const slug = String(it?.slug || "").trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    const marked = Number(it?.price?.marked?.min);
+    const mrp = Number.isFinite(marked) && marked > price ? marked : void 0;
+    const brand = it?.brand?.name ? String(it.brand.name) : void 0;
+    const medias = (Array.isArray(it?.medias) ? it.medias : []).filter((m) => m?.type !== "video" && typeof m?.url === "string").map((m) => String(m.url).replace(/^http:/, "https:"));
+    const ean = Array.isArray(it?.attributes?.identifier?.ean) ? String(it.attributes.identifier.ean[0] || "") : "";
+    const sku = Array.isArray(it?.attributes?.identifier?.sku_code) ? String(it.attributes.identifier.sku_code[0] || "") : "";
+    const rating = Number(it?.rating);
+    const url = `${RELIANCE_WEB}/product/${slug}`;
+    out.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      brand,
+      model: sku || void 0,
+      price,
+      listPrice: mrp,
+      currency: "INR",
+      seller: "Reliance Digital",
+      sellerUrl: url,
+      attributes: {
+        brand: brand || "",
+        discount: mrp ? `${Math.round((mrp - price) / mrp * 100)}%` : "",
+        image: medias[0] || "",
+        ...medias.length > 1 ? { image_urls: medias.slice(0, 6).join("|") } : {},
+        ...Number.isFinite(rating) && rating > 0 ? { rating: String(rating) } : {},
+        data_note: `Price as listed on reliancedigital.in search, observed ${today}`
+      },
+      identifiers: ean || sku ? { ...ean ? { gtin: ean } : {}, ...sku ? { sku } : {} } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "image", "url"] }
+    }));
+  }
+  return out;
+}
+var RELIANCE_WEB;
+var init_relianceDigital = __esm({
+  "server/workers/parsers/relianceDigital.ts"() {
+    init_contract();
+    RELIANCE_WEB = "https://www.reliancedigital.in";
+  }
+});
+
 // server/workers/verticals/ecommerce.ts
 var import_node_crypto, q, ecommerceWorker;
 var init_ecommerce = __esm({
@@ -1943,6 +2029,7 @@ var init_ecommerce = __esm({
     init_myntra();
     init_ajio();
     init_tatacliq();
+    init_relianceDigital();
     import_node_crypto = require("node:crypto");
     init_httpClient();
     init_curlCffiFetch();
@@ -2051,6 +2138,28 @@ var init_ecommerce = __esm({
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Ajio HTTP ${r.status}`, r.status);
             const items = parseAjio(r.body, ctx.source, url);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Ajio API returned no parseable products");
+            return items;
+          }
+        },
+        {
+          // Reliance Digital: Fynd/Jio-platform SSR storefront; window.__INITIAL_STATE__
+          // carries productListingPage.productlists.items[] with real INR prices + images.
+          sourceId: "w_ecom_reliance_digital",
+          name: "Ecom worker: Reliance Digital (SSR __INITIAL_STATE__)",
+          priority: 14,
+          maxPerMinute: 8,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = `https://www.reliancedigital.in/products?q=${encodeURIComponent(term)}`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3 });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Reliance Digital blocked: ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Reliance Digital HTTP ${r.status}`, r.status);
+            const items = parseRelianceDigital(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Reliance Digital had no priced products for this query");
             return items;
           }
         },
@@ -14944,7 +15053,15 @@ var init_routes = __esm({
           goUrl: o.sellerUrl ? createMaskingPointer(o.sellerUrl, { offerId: String(o.id || "") }) : ""
         };
       };
-      const offers = same.slice(0, 30).map(toRow);
+      const sellerKey = (o) => String(o.seller || o.vendor || "").toLowerCase().trim();
+      const bySeller = /* @__PURE__ */ new Map();
+      for (const x of same) {
+        const k = sellerKey(x.o) || String(x.o.id);
+        const hit = bySeller.get(k);
+        if (!hit) bySeller.set(k, { row: x, count: 1 });
+        else hit.count += 1;
+      }
+      const offers = [...bySeller.values()].sort((a, b) => a.row.price - b.row.price).slice(0, 30).map(({ row, count }) => ({ ...toRow(row), variantCount: count }));
       const cheapest = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
       const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""))).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 10);

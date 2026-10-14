@@ -511,7 +511,20 @@ apiRouter.post('/product-page', async (req, res) => {
       goUrl: o.sellerUrl ? createMaskingPointer(o.sellerUrl, { offerId: String(o.id || '') }) : '',
     };
   };
-  const offers = same.slice(0, 30).map(toRow);
+  // One row per SELLER (their cheapest listing of this product). Colour/variant duplicates from the
+  // same seller collapse into `variantCount` so the list shows Amazon / Reliance / Flipkart / Myntra side by side.
+  const sellerKey = (o: any) => String(o.seller || o.vendor || '').toLowerCase().trim();
+  const bySeller = new Map<string, { row: any; count: number }>();
+  for (const x of same) {
+    const k = sellerKey(x.o) || String(x.o.id);
+    const hit = bySeller.get(k);
+    if (!hit) bySeller.set(k, { row: x, count: 1 });
+    else hit.count += 1; // `same` is price-ascending, so the first row per seller is its cheapest
+  }
+  const offers = [...bySeller.values()]
+    .sort((a, b) => a.row.price - b.row.price)
+    .slice(0, 30)
+    .map(({ row, count }) => ({ ...toRow(row), variantCount: count }));
   const cheapest = offers[0] || null;
 
   // Related: other priced ecommerce results that are NOT this product (de-duplicated by title).

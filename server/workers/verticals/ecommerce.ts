@@ -9,6 +9,7 @@ import { parseFlipkart } from '../parsers/flipkart';
 import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
 import { parseTataCliq } from '../parsers/tatacliq';
+import { parseRelianceDigital } from '../parsers/relianceDigital';
 import { createCipheriv } from 'node:crypto';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
@@ -116,6 +117,28 @@ export const ecommerceWorker: VerticalWorker = {
         if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Ajio HTTP ${r.status}`, r.status);
         const items = parseAjio(r.body, ctx.source, url);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Ajio API returned no parseable products');
+        return items;
+      },
+    },
+    {
+      // Reliance Digital: Fynd/Jio-platform SSR storefront; window.__INITIAL_STATE__
+      // carries productListingPage.productlists.items[] with real INR prices + images.
+      sourceId: 'w_ecom_reliance_digital',
+      name: 'Ecom worker: Reliance Digital (SSR __INITIAL_STATE__)',
+      priority: 14,
+      maxPerMinute: 8,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url = `https://www.reliancedigital.in/products?q=${encodeURIComponent(term)}`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Reliance Digital blocked: ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Reliance Digital HTTP ${r.status}`, r.status);
+        const items = parseRelianceDigital(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Reliance Digital had no priced products for this query');
         return items;
       },
     },
