@@ -48,6 +48,18 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
 - **Cleartrip** [cleartripHotels.ts], **Airbnb** [airbnbHotels.ts] (SSR),
   **Booking.com** [booking.ts] (works with cffi primary transport),
   **Ixigo** [ixigoHotels.ts] — __NEXT_DATA__ on /hotels/hotels-in-<city>.
+- **Expedia.com + Hotels.com** [expediaGroup.ts] (NEW 14 Oct 2026): same Expedia Group
+  "shopping-pwa" LodgingCard GraphQL. Recipe: GET /Hotel-Search?destination=<city>,%20India
+  (Akamai Bot Manager blocks chrome TLS from datacenter IPs with 429 "Bot or Not?"; accepts
+  safari on expedia.com, safari17_0 / chrome_android fallback on hotels.com - primes
+  _abck/bm cookies + DUAID), then POST /graphql operationName LodgingPropertySearch with
+  client-info shopping-pwa,<hash>,us-east-1|us-west-2, x-page-id page.Hotel-Search,H,20;
+  variables context{currency USD, siteId/tpid 1 (expedia) or 19 (hotels.com)} + criteria
+  destination{regionName "<city>, India"}. Response propertySearchListings[] on LodgingCard:
+  headingSection.heading, priceSection.priceSummary.options[0].displayPrice.formatted,
+  mediaSection.gallery.media[0].media(Image).url, cardLink.resource.relativePath (rich
+  deeplink incl. dates). Introspection disabled; fields mapped via live validation errors
+  + SSR __PLUGIN_STATE__. 50 priced cards per query per site; prices display USD.
   Policy: one site for metadata, others price-only.
 
 ## Food
