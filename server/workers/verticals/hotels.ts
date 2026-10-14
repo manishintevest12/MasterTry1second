@@ -189,14 +189,18 @@ export const hotelsWorker: VerticalWorker = {
         const { checkin, checkout } = stayDates(ctx.query);
         const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
         const UA = { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
-        // Booking.com's edge occasionally answers a plain-HTTP crawl with a 202
-        // interstitial (rate-based sampling). One short retry, then honest ACCESS_CHALLENGE.
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          const r = await ctx.fetch(url, { headers: UA, timeoutMs: 15_000 });
+        // Booking.com's AWS-WAF edge answers repeated cookie-less hits with a 202
+        // interstitial (rate sampling) but serves a normal session the first time. Run the
+        // acquisition as ONE cffi cookie session with spaced retries (cookies carried over),
+        // then an honest ACCESS_CHALLENGE if the edge still refuses.
+        let cookies: any = undefined;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const r: any = await cffiFetch(url, { timeoutMs: 20_000, cookies, returnCookies: true, headers: { 'Accept-Language': 'en-IN,en;q=0.9' } });
+          cookies = r.cookies || cookies;
           if (r.status !== 200 && r.status !== 202) throw new AcquisitionError('FORBIDDEN', `Booking.com HTTP ${r.status}`, r.status);
           const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
           if (items.length) return items;
-          if (looksLikeChallenge(r.body) && attempt === 1) { await new Promise((res) => setTimeout(res, 1500)); continue; }
+          if (looksLikeChallenge(r.body) && attempt < 3) { await new Promise((res) => setTimeout(res, 2500 * attempt)); continue; }
           throw new AcquisitionError('ACCESS_CHALLENGE', 'Booking.com presented a challenge page (no parseable property cards)');
         }
         throw new AcquisitionError('EMPTY_RESPONSE', 'Booking.com returned no property cards');
@@ -303,33 +307,46 @@ export const hotelsWorker: VerticalWorker = {
         const cfg = extractAgodaPageConfig(shell.body);
         if (!cfg) throw new AcquisitionError('MALFORMED_RESPONSE', 'Agoda SRP carried no pageConfig');
 
-        // 3. gated GraphQL citySearch.
-        const gqlRes = await cffiFetch('https://www.agoda.com/graphql/search', {
-          method: 'POST',
-          impersonate: 'chrome',
-          timeoutMs: 60_000,
-          headers: {
-            ...agodaGateHeaders(cfg, Date.now()),
-            Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
-            'AG-REQUEST-ID': crypto.randomUUID(),
-          },
-          body: JSON.stringify({
-            query: AGODA_CITY_SEARCH_QUERY,
-            variables: buildAgodaCitySearchVars(cityId, checkin, checkout),
-            operationName: 'citySearch',
-          }),
+        // 3. gated GraphQL citySearch — up to 3 pages (~90 properties) so big cities overlap
+        //    with the other hotel sites (same property on 2+ sites = one card, many prices).
+        const gqlHeaders = () => ({
+          ...agodaGateHeaders(cfg, Date.now()),
+          Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
+          'AG-REQUEST-ID': crypto.randomUUID(),
         });
-        if (gqlRes.status === 403 || gqlRes.status === 429) {
-          throw new AcquisitionError(gqlRes.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+        const hotels: ReturnType<typeof parseAgodaHotels> = [];
+        const seenIds = new Set<string>();
+        for (let page = 1; page <= 3; page++) {
+          const gqlRes = await cffiFetch('https://www.agoda.com/graphql/search', {
+            method: 'POST',
+            impersonate: 'chrome',
+            timeoutMs: 60_000,
+            headers: gqlHeaders(),
+            body: JSON.stringify({
+              query: AGODA_CITY_SEARCH_QUERY,
+              variables: buildAgodaCitySearchVars(cityId, checkin, checkout, page),
+              operationName: 'citySearch',
+            }),
+          });
+          if (gqlRes.status === 403 || gqlRes.status === 429) {
+            if (page > 1) break; // keep what page 1 gave us
+            throw new AcquisitionError(gqlRes.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+          }
+          if (gqlRes.status !== 200) { if (page > 1) break; throw new AcquisitionError('SERVER_ERROR', `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status); }
+          let gql: any;
+          try { gql = JSON.parse(gqlRes.body); } catch { if (page > 1) break; throw new AcquisitionError('MALFORMED_RESPONSE', 'Agoda GraphQL response not valid JSON'); }
+          if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
+            if (page > 1) break;
+            throw new AcquisitionError('MALFORMED_RESPONSE', `Agoda GraphQL errors: ${String(gql.errors[0]?.message || '').slice(0, 160)}`);
+          }
+          const pageHotels = parseAgodaHotels(extractAgodaProperties(gql));
+          let fresh = 0;
+          for (const h of pageHotels) {
+            const k = String((h as any).propertyId ?? (h as any).id ?? h.name);
+            if (!seenIds.has(k)) { seenIds.add(k); hotels.push(h); fresh++; }
+          }
+          if (fresh === 0) break;
         }
-        if (gqlRes.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status);
-        let gql: any;
-        try { gql = JSON.parse(gqlRes.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Agoda GraphQL response not valid JSON'); }
-        if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
-          throw new AcquisitionError('MALFORMED_RESPONSE', `Agoda GraphQL errors: ${String(gql.errors[0]?.message || '').slice(0, 160)}`);
-        }
-        const props = extractAgodaProperties(gql);
-        const hotels = parseAgodaHotels(props);
         const priced = hotels.filter((h) => h.pricePerNight);
         if (priced.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Agoda GraphQL returned no priced hotels');
         return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });

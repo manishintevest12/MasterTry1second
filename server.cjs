@@ -2715,7 +2715,7 @@ function parseIxigoHotels(html, source, pageUrl, city) {
   if (!Array.isArray(results)) return [];
   const items = [];
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  for (const h of results.slice(0, 20)) {
+  for (const h of results.slice(0, 60)) {
     const name = String(h.name || "").trim();
     const fare = Number(h.fareDetail?.displayedBaseFare);
     if (!name || !Number.isFinite(fare) || fare <= 0) continue;
@@ -2869,7 +2869,7 @@ function agodaGateHeaders(cfg, epochMs) {
     ...cfg.analyticsSessionId ? { "AG-ANALYTICS-SESSION-ID": cfg.analyticsSessionId } : {}
   };
 }
-function buildAgodaCitySearchVars(cityId, checkin, checkout) {
+function buildAgodaCitySearchVars(cityId, checkin, checkout, pageNumber = 1) {
   const inMs = Date.parse(`${checkin}T00:00:00Z`);
   const outMs = Date.parse(`${checkout}T00:00:00Z`);
   const los = Number.isFinite(outMs) && outMs > inMs ? Math.max(1, Math.round((outMs - inMs) / 864e5)) : 1;
@@ -2918,7 +2918,7 @@ function buildAgodaCitySearchVars(cityId, checkin, checkout) {
           whiteLabelKey: "",
           ipAddress: null
         },
-        page: { pageSize: 30, pageNumber: 1 }
+        page: { pageSize: 30, pageNumber }
       }
     },
     ContentSummaryRequest: {
@@ -3084,7 +3084,7 @@ function parseAgodaHotels(props) {
 function parseAgodaOffers(hotels, source, city, meta) {
   const out = [];
   const srpUrl = `${AGODA_WEB}/search?city=${meta.cityId}&checkIn=${meta.checkin}&los=${meta.los}`;
-  for (const h of hotels.slice(0, 25)) {
+  for (const h of hotels.slice(0, 80)) {
     if (!h.pricePerNight) continue;
     const attrs = {
       image_url: h.imageUrl,
@@ -3314,13 +3314,15 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
             const UA2 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              const r = await ctx.fetch(url, { headers: UA2, timeoutMs: 15e3 });
+            let cookies = void 0;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
+              cookies = r.cookies || cookies;
               if (r.status !== 200 && r.status !== 202) throw new AcquisitionError("FORBIDDEN", `Booking.com HTTP ${r.status}`, r.status);
               const items = parseBookingHotels(r.body, ctx.source, url, checkin, checkout);
               if (items.length) return items;
-              if (looksLikeChallenge(r.body) && attempt === 1) {
-                await new Promise((res) => setTimeout(res, 1500));
+              if (looksLikeChallenge(r.body) && attempt < 3) {
+                await new Promise((res) => setTimeout(res, 2500 * attempt));
                 continue;
               }
               throw new AcquisitionError("ACCESS_CHALLENGE", "Booking.com presented a challenge page (no parseable property cards)");
@@ -3441,36 +3443,56 @@ var init_hotels = __esm({
             if (shell.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda HTTP ${shell.status}`, shell.status);
             const cfg = extractAgodaPageConfig(shell.body);
             if (!cfg) throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda SRP carried no pageConfig");
-            const gqlRes = await cffiFetch("https://www.agoda.com/graphql/search", {
-              method: "POST",
-              impersonate: "chrome",
-              timeoutMs: 6e4,
-              headers: {
-                ...agodaGateHeaders(cfg, Date.now()),
-                Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
-                "AG-REQUEST-ID": crypto.randomUUID()
-              },
-              body: JSON.stringify({
-                query: AGODA_CITY_SEARCH_QUERY,
-                variables: buildAgodaCitySearchVars(cityId, checkin, checkout),
-                operationName: "citySearch"
-              })
+            const gqlHeaders = () => ({
+              ...agodaGateHeaders(cfg, Date.now()),
+              Referer: `https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`,
+              "AG-REQUEST-ID": crypto.randomUUID()
             });
-            if (gqlRes.status === 403 || gqlRes.status === 429) {
-              throw new AcquisitionError(gqlRes.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+            const hotels = [];
+            const seenIds = /* @__PURE__ */ new Set();
+            for (let page = 1; page <= 3; page++) {
+              const gqlRes = await cffiFetch("https://www.agoda.com/graphql/search", {
+                method: "POST",
+                impersonate: "chrome",
+                timeoutMs: 6e4,
+                headers: gqlHeaders(),
+                body: JSON.stringify({
+                  query: AGODA_CITY_SEARCH_QUERY,
+                  variables: buildAgodaCitySearchVars(cityId, checkin, checkout, page),
+                  operationName: "citySearch"
+                })
+              });
+              if (gqlRes.status === 403 || gqlRes.status === 429) {
+                if (page > 1) break;
+                throw new AcquisitionError(gqlRes.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda gate rejected: ${gqlRes.status}`, gqlRes.status);
+              }
+              if (gqlRes.status !== 200) {
+                if (page > 1) break;
+                throw new AcquisitionError("SERVER_ERROR", `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status);
+              }
+              let gql;
+              try {
+                gql = JSON.parse(gqlRes.body);
+              } catch {
+                if (page > 1) break;
+                throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda GraphQL response not valid JSON");
+              }
+              if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
+                if (page > 1) break;
+                throw new AcquisitionError("MALFORMED_RESPONSE", `Agoda GraphQL errors: ${String(gql.errors[0]?.message || "").slice(0, 160)}`);
+              }
+              const pageHotels = parseAgodaHotels(extractAgodaProperties(gql));
+              let fresh = 0;
+              for (const h of pageHotels) {
+                const k = String(h.propertyId ?? h.id ?? h.name);
+                if (!seenIds.has(k)) {
+                  seenIds.add(k);
+                  hotels.push(h);
+                  fresh++;
+                }
+              }
+              if (fresh === 0) break;
             }
-            if (gqlRes.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda GraphQL HTTP ${gqlRes.status}`, gqlRes.status);
-            let gql;
-            try {
-              gql = JSON.parse(gqlRes.body);
-            } catch {
-              throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda GraphQL response not valid JSON");
-            }
-            if (gql?.errors?.length && !gql?.data?.citySearch?.properties?.length) {
-              throw new AcquisitionError("MALFORMED_RESPONSE", `Agoda GraphQL errors: ${String(gql.errors[0]?.message || "").slice(0, 160)}`);
-            }
-            const props = extractAgodaProperties(gql);
-            const hotels = parseAgodaHotels(props);
             const priced = hotels.filter((h) => h.pricePerNight);
             if (priced.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Agoda GraphQL returned no priced hotels");
             return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });
@@ -12436,6 +12458,161 @@ var init_dealScore = __esm({
   }
 });
 
+// server/notifications/notifications.ts
+function validateNotification(i) {
+  const title = String(i.title || "").trim();
+  const body = String(i.body || "").trim();
+  if (title.length < 3 || title.length > 200) return { ok: false, error: "Title must be 3-200 characters." };
+  if (body.length < 3 || body.length > 1e3) return { ok: false, error: "Message must be 3-1000 characters." };
+  if (!["price_drop", "admin"].includes(String(i.kind))) return { ok: false, error: "Unknown notification type." };
+  const cta = String(i.ctaUrl || "").trim();
+  if (cta && !/^https:\/\//i.test(cta)) return { ok: false, error: "Link must start with https://" };
+  return { ok: true };
+}
+async function createNotification(i) {
+  const v = validateNotification(i);
+  if (!v.ok) return v;
+  const store2 = getStore();
+  const res = await store2.execute(
+    `INSERT INTO notifications (user_id, kind, title, body, image, cta_url, search_query, product_title, price_now, price_prev, target_price, seller, is_active, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      i.userId ?? null,
+      String(i.kind),
+      String(i.title).trim().slice(0, 200),
+      String(i.body).trim().slice(0, 1e3),
+      httpsOnly(i.image),
+      httpsOnly(i.ctaUrl),
+      (i.searchQuery || "").slice(0, 300) || null,
+      (i.productTitle || "").slice(0, 300) || null,
+      i.priceNow != null ? Math.round(i.priceNow) : null,
+      i.pricePrev != null ? Math.round(i.pricePrev) : null,
+      i.targetPrice != null ? Math.round(i.targetPrice) : null,
+      (i.seller || "").slice(0, 120) || null,
+      i.isActive === false ? 0 : 1,
+      (i.createdBy || "system").slice(0, 190)
+    ]
+  );
+  const rows = await store2.query("SELECT id FROM notifications");
+  const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
+  log.info("Notifications", `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : " (broadcast)"}`);
+  return { ok: true, id };
+}
+function priceDropCopy(a, price, seller) {
+  const inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const pct = Math.round((1 - price / Number(a.target_price)) * 100);
+  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr(price)}`;
+  const body = pct > 0 ? `Your tracked product just hit ${inr(price)} on ${seller} \u2014 ${pct}% below your ${inr(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr(price)} on ${seller}, matching your ${inr(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
+  return { title, body };
+}
+async function recordPriceDropNotification(alert, live) {
+  try {
+    const copy = priceDropCopy(alert, live.price, live.seller);
+    await createNotification({
+      userId: Number(alert.user_id),
+      kind: "price_drop",
+      title: copy.title,
+      body: copy.body,
+      image: alert.image || null,
+      ctaUrl: live.url.startsWith("https://") ? live.url : null,
+      searchQuery: alert.search_query,
+      productTitle: alert.product_title,
+      priceNow: live.price,
+      targetPrice: Number(alert.target_price),
+      seller: live.seller,
+      createdBy: "alert-worker"
+    });
+  } catch (e) {
+    log.warn("Notifications", `Could not persist drop notification for alert ${alert.id}`, { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+async function listAllNotifications(limit = 100) {
+  return getStore().query("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
+}
+async function deactivateNotification(id) {
+  const store2 = getStore();
+  const rows = await store2.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
+  if (!rows.length) return false;
+  await store2.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  return true;
+}
+async function userNotifications(userId, limit = 50) {
+  const store2 = getStore();
+  const rows = await store2.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const reads = new Set(
+    (await store2.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+  );
+  const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId)).sort((a, b) => Number(b.id) - Number(a.id)).slice(0, limit).map((r) => ({
+    id: Number(r.id),
+    kind: r.kind,
+    title: r.title,
+    body: r.body,
+    image: r.image || null,
+    ctaUrl: r.cta_url || null,
+    searchQuery: r.search_query || null,
+    productTitle: r.product_title || null,
+    priceNow: r.price_now != null ? Number(r.price_now) : null,
+    targetPrice: r.target_price != null ? Number(r.target_price) : null,
+    seller: r.seller || null,
+    createdAt: r.created_at || null,
+    read: reads.has(Number(r.id))
+  }));
+  return { items: visible, unread: visible.filter((n) => !n.read).length };
+}
+async function broadcastNotifications(limit = 50) {
+  const rows = await getStore().query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  return rows.filter((r) => r.user_id == null).sort((a, b) => Number(b.id) - Number(a.id)).slice(0, limit).map((r) => ({
+    id: Number(r.id),
+    kind: r.kind,
+    title: r.title,
+    body: r.body,
+    image: r.image || null,
+    ctaUrl: r.cta_url || null,
+    searchQuery: r.search_query || null,
+    productTitle: r.product_title || null,
+    priceNow: r.price_now != null ? Number(r.price_now) : null,
+    targetPrice: r.target_price != null ? Number(r.target_price) : null,
+    seller: r.seller || null,
+    createdAt: r.created_at || null,
+    read: false
+  }));
+}
+async function markRead(userId, notificationId) {
+  const store2 = getStore();
+  const exists = await store2.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
+  if (exists.length) return;
+  await store2.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
+}
+async function markAllRead(userId) {
+  const store2 = getStore();
+  const rows = await store2.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId));
+  const reads = new Set(
+    (await store2.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+  );
+  let n = 0;
+  for (const r of visible) {
+    if (!reads.has(Number(r.id))) {
+      await store2.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
+      n++;
+    }
+  }
+  return n;
+}
+var httpsOnly;
+var init_notifications = __esm({
+  "server/notifications/notifications.ts"() {
+    init_db();
+    init_logger();
+    httpsOnly = (raw) => {
+      const s = String(raw || "").trim();
+      if (!s) return null;
+      if (!/^https:\/\//i.test(s)) return null;
+      return s.slice(0, 1e3);
+    };
+  }
+});
+
 // server/lens/priceAlerts.ts
 var priceAlerts_exports = {};
 __export(priceAlerts_exports, {
@@ -12530,14 +12707,12 @@ async function checkAlertsOnce(findLivePrice, baseUrl) {
         [live?.price ?? null, (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]
       );
       if (live && shouldNotify(a, live.price)) {
+        await recordPriceDropNotification(a, live);
         const m = alertEmail(a, live.price, live.seller, live.url.startsWith("http") ? live.url : baseUrl + live.url);
         const sent = await sendEmail(String(a.email), m.subject, m.html);
-        if (sent.ok) {
-          await store2.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
-          notified++;
-        } else {
-          log.warn("PriceAlerts", `Email not sent for alert ${a.id}: ${sent.error}`);
-        }
+        if (!sent.ok) log.warn("PriceAlerts", `E-mail not sent for alert ${a.id}: ${sent.error} (in-app notification still created)`);
+        await store2.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
+        notified++;
       }
     } catch (e) {
       log.debug("PriceAlerts", `check failed for ${a.id}`, { error: String(e?.message || e).slice(0, 100) });
@@ -12551,6 +12726,7 @@ var init_priceAlerts = __esm({
     init_db();
     init_mailer();
     init_logger();
+    init_notifications();
     isActive = (r) => r.is_active === void 0 || r.is_active === null || Number(r.is_active) === 1 || r.is_active === true;
   }
 });
@@ -13325,6 +13501,7 @@ var init_routes = __esm({
     init_sameProduct();
     init_dealScore();
     init_priceAlerts();
+    init_notifications();
     init_catalogueStore();
     init_logger();
     init_curlCffiFetch();
@@ -13654,6 +13831,33 @@ var init_routes = __esm({
       const user = req.user;
       const ok = await deleteAlert(Number(user.id), Number(req.params.id));
       res.status(ok ? 200 : 404).json({ success: ok });
+    });
+    apiRouter.get("/notifications", authMiddleware, async (req, res) => {
+      try {
+        const user = req.user;
+        if (user) {
+          const { items, unread } = await userNotifications(Number(user.id));
+          return res.json({ success: true, signedIn: true, items, unread });
+        }
+        res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load notifications" });
+      }
+    });
+    apiRouter.post("/notifications/read", authMiddleware, requireAuth, async (req, res) => {
+      try {
+        const user = req.user;
+        const id = Number(req.body?.id);
+        if (Number.isFinite(id) && id > 0) {
+          await markRead(Number(user.id), id);
+        } else {
+          await markAllRead(Number(user.id));
+        }
+        const { items, unread } = await userNotifications(Number(user.id));
+        res.json({ success: true, items, unread });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not mark read" });
+      }
     });
     apiRouter.post("/assist/intent", (req, res) => {
       const text = String(req.body?.text || "").slice(0, 300);
@@ -14576,6 +14780,7 @@ var init_adminRoutes = __esm({
     init_affiliateNetwork();
     init_placements();
     init_appLinks();
+    init_notifications();
     init_logger();
     init_acceptanceRunner();
     adminRouter = (0, import_express2.Router)();
@@ -14772,6 +14977,46 @@ var init_adminRoutes = __esm({
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not save app link" });
+      }
+    });
+    adminRouter.get("/notifications", async (_req, res) => {
+      try {
+        res.json({ success: true, notifications: await listAllNotifications() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load notifications" });
+      }
+    });
+    adminRouter.post("/notifications", async (req, res) => {
+      try {
+        const b = req.body || {};
+        const input = {
+          userId: b.userId ? Number(b.userId) : null,
+          kind: "admin",
+          title: String(b.title || ""),
+          body: String(b.body || ""),
+          image: b.image ? String(b.image) : null,
+          ctaUrl: b.ctaUrl ? String(b.ctaUrl) : null,
+          isActive: b.isActive !== false,
+          createdBy: req.user?.email || "admin"
+        };
+        const v = validateNotification(input);
+        if (!v.ok) return res.status(400).json({ success: false, error: v.error });
+        const r = await createNotification(input);
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        audit(req, "notification.create", String(r.id), { title: input.title, broadcast: !input.userId });
+        res.json({ success: true, id: r.id });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not push notification" });
+      }
+    });
+    adminRouter.delete("/notifications/:id", async (req, res) => {
+      try {
+        const ok = await deactivateNotification(Number(req.params.id));
+        if (!ok) return res.status(404).json({ success: false, error: "Notification not found" });
+        audit(req, "notification.delete", req.params.id);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not remove notification" });
       }
     });
     adminRouter.delete("/app-links/:key", async (req, res) => {

@@ -17,6 +17,7 @@ import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
 import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
 import { listAppLinks, upsertAppLink, deleteAppLink } from '../marketing/appLinks';
+import { listAllNotifications, createNotification, deactivateNotification, validateNotification } from '../notifications/notifications';
 import { log } from '../common/logger';
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
 
@@ -235,6 +236,47 @@ adminRouter.post('/app-links', async (req, res) => {
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not save app link' });
+  }
+});
+
+adminRouter.get('/notifications', async (_req, res) => {
+  try { res.json({ success: true, notifications: await listAllNotifications() }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load notifications' }); }
+});
+
+// Admin push: broadcast (userId omitted) or targeted (userId given). https-only links.
+adminRouter.post('/notifications', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const input = {
+      userId: b.userId ? Number(b.userId) : null,
+      kind: 'admin' as const,
+      title: String(b.title || ''),
+      body: String(b.body || ''),
+      image: b.image ? String(b.image) : null,
+      ctaUrl: b.ctaUrl ? String(b.ctaUrl) : null,
+      isActive: b.isActive !== false,
+      createdBy: (req as any).user?.email || 'admin',
+    };
+    const v = validateNotification(input);
+    if (!v.ok) return res.status(400).json({ success: false, error: v.error });
+    const r = await createNotification(input);
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    audit(req, 'notification.create', String(r.id), { title: input.title, broadcast: !input.userId });
+    res.json({ success: true, id: r.id });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not push notification' });
+  }
+});
+
+adminRouter.delete('/notifications/:id', async (req, res) => {
+  try {
+    const ok = await deactivateNotification(Number(req.params.id));
+    if (!ok) return res.status(404).json({ success: false, error: 'Notification not found' });
+    audit(req, 'notification.delete', req.params.id);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not remove notification' });
   }
 });
 

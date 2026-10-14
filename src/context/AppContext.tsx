@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import confetti from 'canvas-confetti';
 import { firebaseConfigured, signInWithGoogleAndGetToken } from '../utils/firebaseAuth';
 
@@ -169,6 +169,22 @@ export interface SourcesReport {
   servedFrom?: string;
 }
 
+export interface NotificationItem {
+  id: number;
+  kind: 'price_drop' | 'admin';
+  title: string;
+  body: string;
+  image: string | null;
+  ctaUrl: string | null;
+  searchQuery: string | null;
+  productTitle: string | null;
+  priceNow: number | null;
+  targetPrice: number | null;
+  seller: string | null;
+  createdAt: string | null;
+  read: boolean;
+}
+
 interface AppContextType {
   vertical: VerticalId;
   setVertical: (v: VerticalId) => void;
@@ -184,6 +200,11 @@ interface AppContextType {
   setIsCompareMenuOpen: (open: boolean) => void;
   isNotificationsOpen: boolean;
   setIsNotificationsOpen: (open: boolean) => void;
+  notifications: NotificationItem[];
+  unreadNotificationCount: number;
+  isFetchingNotifications: boolean;
+  refreshNotifications: () => Promise<void>;
+  markNotificationsRead: (id?: number) => Promise<void>;
   isProfileOpen: boolean;
   setIsProfileOpen: (open: boolean) => void;
   items: ComparisonItem[];
@@ -2133,6 +2154,65 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAuthUser(null);
   };
 
+  // ============ Notifications hub (auto price drops + admin pushes) ============
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [isFetchingNotifications, setIsFetchingNotifications] = useState(false);
+
+  const refreshNotifications = useCallback(async () => {
+    // Anonymous visitors also get admin broadcasts; read state needs a session.
+    const token = localStorage.getItem('try1_session');
+    try {
+      setIsFetchingNotifications(true);
+      const res = await fetch('/api/notifications', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const data = await res.json();
+      if (data?.success) {
+        setNotifications((data.items || []).map((n: any) => ({ ...n, read: Boolean(n.read) })));
+        if (data.signedIn) setUnreadNotificationCount(Number(data.unread || 0));
+      }
+    } catch { /* offline: keep the last known list */ } finally {
+      setIsFetchingNotifications(false);
+    }
+  }, []);
+
+  const markNotificationsRead = useCallback(async (id?: number) => {
+    // Anonymous: remember reads locally so the badge clears even without an account.
+    if (!authUser) {
+      const localReads: number[] = JSON.parse(localStorage.getItem('t1s_notif_reads') || '[]');
+      const next = id ? [...new Set([...localReads, id])] : notifications.map((n) => n.id);
+      localStorage.setItem('t1s_notif_reads', JSON.stringify(next));
+      setUnreadNotificationCount(0);
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      return;
+    }
+    const token = localStorage.getItem('try1_session');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(id ? { id } : {}),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setNotifications((data.items || []).map((n: any) => ({ ...n, read: Boolean(n.read) })));
+        setUnreadNotificationCount(Number(data.unread || 0));
+      }
+    } catch { /* best-effort */ }
+  }, [authUser, notifications]);
+
+  // Load on mount, whenever the drawer opens, and after auth changes
+  useEffect(() => { void refreshNotifications(); }, [refreshNotifications]);
+  useEffect(() => { if (isNotificationsOpen) void refreshNotifications(); }, [isNotificationsOpen, refreshNotifications]);
+  useEffect(() => { void refreshNotifications(); }, [authUser, refreshNotifications]);
+  // Anonymous unread from localStorage (admin broadcasts)
+  useEffect(() => {
+    if (!authUser) {
+      const localReads: number[] = JSON.parse(localStorage.getItem('t1s_notif_reads') || '[]');
+      setUnreadNotificationCount(notifications.filter((n) => !localReads.includes(n.id)).length);
+    }
+  }, [notifications, authUser]);
+
   // Restore an existing session on load
   useEffect(() => {
     const saved = localStorage.getItem('try1_user');
@@ -2209,6 +2289,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         referralCode,
         referredFriends,
         referFriend,
+        notifications,
+        unreadNotificationCount,
+        isFetchingNotifications,
+        refreshNotifications,
+        markNotificationsRead,
         toasts,
         addToast,
         dismissToast,

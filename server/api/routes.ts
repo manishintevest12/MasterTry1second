@@ -33,6 +33,7 @@ import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { isSameProduct } from '../lens/sameProduct';
 import { analyseDeal } from '../lens/dealScore';
 import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
+import { userNotifications, broadcastNotifications, markRead, markAllRead } from '../notifications/notifications';
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
 import { pythonDiagnostics } from '../common/curlCffiFetch';
@@ -512,6 +513,38 @@ apiRouter.delete('/alerts/:id', authMiddleware, requireAuth, async (req, res) =>
   const user = (req as any).user;
   const ok = await deleteAlert(Number(user.id), Number(req.params.id));
   res.status(ok ? 200 : 404).json({ success: ok });
+});
+
+// ============ Notifications hub (auto price drops + admin broadcasts) ============
+// Anonymous visitors see admin broadcasts; signed-in users additionally get their
+// own auto price-drop notifications with per-user read state.
+apiRouter.get('/notifications', authMiddleware, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    if (user) {
+      const { items, unread } = await userNotifications(Number(user.id));
+      return res.json({ success: true, signedIn: true, items, unread });
+    }
+    res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load notifications' });
+  }
+});
+
+apiRouter.post('/notifications/read', authMiddleware, requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const id = Number(req.body?.id);
+    if (Number.isFinite(id) && id > 0) {
+      await markRead(Number(user.id), id);
+    } else {
+      await markAllRead(Number(user.id));
+    }
+    const { items, unread } = await userNotifications(Number(user.id));
+    res.json({ success: true, items, unread });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not mark read' });
+  }
 });
 
 // ============ Home AI assistant: question (typed or spoken) -> vertical + query ============

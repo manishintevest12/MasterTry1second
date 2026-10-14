@@ -95,7 +95,7 @@ export function parseIxigoHotels(html: string, source: SourceConfig, pageUrl: st
   if (!Array.isArray(results)) return [];
   const items: RawSourceItem[] = [];
   const today = new Date().toISOString().slice(0, 10);
-  for (const h of results.slice(0, 20)) {
+  for (const h of results.slice(0, 60)) {
     const name = String(h.name || '').trim();
     const fare = Number(h.fareDetail?.displayedBaseFare);
     if (!name || !Number.isFinite(fare) || fare <= 0) continue;

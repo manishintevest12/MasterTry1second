@@ -7,6 +7,7 @@
 import { getStore } from '../common/db';
 import { sendEmail } from '../auth/mailer';
 import { log } from '../common/logger';
+import { recordPriceDropNotification } from '../notifications/notifications';
 
 export interface PriceAlertInput {
   userId: number;
@@ -108,14 +109,14 @@ export async function checkAlertsOnce(
       await store.execute('UPDATE price_alerts SET last_price=?, last_checked_at=? WHERE id=?',
         [live?.price ?? null, new Date().toISOString().slice(0, 19).replace('T', ' '), Number(a.id)]);
       if (live && shouldNotify(a, live.price)) {
+        // The in-app notification is the primary delivery channel (always honest, never
+        // depends on Resend being up); the e-mail is the best-effort bonus.
+        await recordPriceDropNotification(a, live);
         const m = alertEmail(a, live.price, live.seller, live.url.startsWith('http') ? live.url : baseUrl + live.url);
         const sent = await sendEmail(String(a.email), m.subject, m.html);
-        if (sent.ok) {
-          await store.execute('UPDATE price_alerts SET notified_at=? WHERE id=?', [new Date().toISOString().slice(0, 19).replace('T', ' '), Number(a.id)]);
-          notified++;
-        } else {
-          log.warn('PriceAlerts', `Email not sent for alert ${a.id}: ${sent.error}`);
-        }
+        if (!sent.ok) log.warn('PriceAlerts', `E-mail not sent for alert ${a.id}: ${sent.error} (in-app notification still created)`);
+        await store.execute('UPDATE price_alerts SET notified_at=? WHERE id=?', [new Date().toISOString().slice(0, 19).replace('T', ' '), Number(a.id)]);
+        notified++;
       }
     } catch (e: any) {
       log.debug('PriceAlerts', `check failed for ${a.id}`, { error: String(e?.message || e).slice(0, 100) });

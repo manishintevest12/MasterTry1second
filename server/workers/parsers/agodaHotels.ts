@@ -119,7 +119,7 @@ export const AGODA_CITY_SEARCH_QUERY =
   'query citySearch($CitySearchRequest: CitySearchRequest!, $ContentSummaryRequest: ContentSummaryRequest!, $PricingSummaryRequest: PricingRequestParameters) { citySearch(CitySearchRequest: $CitySearchRequest) { properties(ContentSummaryRequest: $ContentSummaryRequest, PricingSummaryRequest: $PricingSummaryRequest) { propertyId content { informationSummary { displayName accommodationType address { city { name } } geoInfo { latitude longitude } rating } images { hotelImages { id urls { key value } } } reviews { cumulative { reviewCount score } } } pricing { isAvailable offers { roomOffers { room { pricing { currency price { perNight { exclusive { display originalPrice } inclusive { display originalPrice } } } } } } } } } } }';
 
 /** Variables document rebuilt from webpack module 379728 (see file header). */
-export function buildAgodaCitySearchVars(cityId: number, checkin: string, checkout: string): Record<string, any> {
+export function buildAgodaCitySearchVars(cityId: number, checkin: string, checkout: string, pageNumber = 1): Record<string, any> {
   const inMs = Date.parse(`${checkin}T00:00:00Z`);
   const outMs = Date.parse(`${checkout}T00:00:00Z`);
   const los = Number.isFinite(outMs) && outMs > inMs ? Math.max(1, Math.round((outMs - inMs) / 86_400_000)) : 1;
@@ -144,7 +144,7 @@ export function buildAgodaCitySearchVars(cityId: number, checkin: string, checko
           experiments: { forceByVariant: null, forceByExperiment: [{ id: 'JGCW-204', variant: 'B' }] },
           isRetry: false, showCMS: false, whiteLabelKey: '', ipAddress: null,
         },
-        page: { pageSize: 30, pageNumber: 1 },
+        page: { pageSize: 30, pageNumber },
       },
     },
     ContentSummaryRequest: {
@@ -274,7 +274,7 @@ export function parseAgodaOffers(
 ): RawSourceItem[] {
   const out: RawSourceItem[] = [];
   const srpUrl = `${AGODA_WEB}/search?city=${meta.cityId}&checkIn=${meta.checkin}&los=${meta.los}`;
-  for (const h of hotels.slice(0, 25)) {
+  for (const h of hotels.slice(0, 80)) {
     if (!h.pricePerNight) continue; // never publish a price we did not see
     const attrs: Record<string, any> = {
       image_url: h.imageUrl,

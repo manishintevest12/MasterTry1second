@@ -31,7 +31,7 @@ export interface HotelGroup {
   best: HotelOfferRow;
 }
 
-const STOP = /\b(hotel|hotels|the|by|a|an|and|resort|resorts|inn|stay|stays|rooms?|boutique|suites?|residency|palace|near|in|at|of|best|luxury|premium|collection|o|oyo)\b/g;
+const STOP = /\b(hotel|hotels|the|by|a|an|and|resort|resorts|inn|stay|stays|rooms?|boutique|suites?|residency|palace|near|in|at|of|best|luxury|premium|collection|o|oyo|international)\b/g;
 export function hotelKey(name: string, city = ''): string {
   const c = city.toLowerCase();
   let t = name.toLowerCase().replace(/&/g, ' ');
@@ -94,7 +94,36 @@ export function groupHotels(items: ComparisonItem[]): HotelGroup[] {
     for (const extra of it.images || []) if (extra && !g.gallery.includes(extra)) g.gallery.push(extra);
     for (const a of amen) if (!g.amenities.includes(a)) g.amenities.push(a);
   }
-  const out = [...groups.values()];
+  // Second pass: merge groups whose distinctive tokens are a subset of the other's (same city only).
+  // "lalit" ⊂ "lalit grand"; needs >=1 token of 4+ chars so generic words never glue hotels together.
+  const merged: HotelGroup[] = [];
+  const tokensOf = (g: HotelGroup) => new Set(g.key.split('|')[0].split(' ').filter(Boolean));
+  for (const g of [...groups.values()]) {
+    const tg = tokensOf(g);
+    const host = merged.find((m) => {
+      if ((m.city || '').toLowerCase() !== (g.city || '').toLowerCase()) return false;
+      const tm = tokensOf(m);
+      if (!tm.size || !tg.size) return false;
+      const [small, big] = tm.size <= tg.size ? [tm, tg] : [tg, tm];
+      if (![...small].every((t) => big.has(t))) return false;
+      if (![...small].some((t) => t.length >= 4)) return false;
+      // A bare single-token brand ("trident") must not absorb a specific branch ("trident nariman point"):
+      // the extra tokens of the bigger side must not name a different locality, so require the larger side to add <=1 token.
+      if (big.size - small.size > 1) return false;
+      // Different sites only: two rows from the SAME site are different listings, never merged.
+      const sitesM = new Set(m.rows.map((r) => r.site));
+      return g.rows.every((r) => !sitesM.has(r.site));
+    });
+    if (!host) { merged.push(g); continue; }
+    host.rows.push(...g.rows);
+    if (!host.image && g.image) host.image = g.image;
+    if (!host.stars && g.stars) host.stars = g.stars;
+    if (!host.rating10 && g.rating10) { host.rating10 = g.rating10; host.ratingCount = g.ratingCount; host.ratingLabel = g.ratingLabel; }
+    if (!host.locality) host.locality = g.locality;
+    for (const im of g.gallery) if (!host.gallery.includes(im)) host.gallery.push(im);
+    for (const a of g.amenities) if (!host.amenities.includes(a)) host.amenities.push(a);
+  }
+  const out = merged;
   for (const g of out) {
     g.rows.sort((a, b) => a.price - b.price);
     g.best = g.rows[0];

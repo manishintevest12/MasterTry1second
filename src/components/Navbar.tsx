@@ -36,6 +36,7 @@ export const Navbar: React.FC = () => {
     userPoints,
     spinsAvailable,
     trackedItemIds,
+    unreadNotificationCount,
     isCompareMenuOpen,
     setIsCompareMenuOpen,
     isNotificationsOpen,
@@ -143,9 +144,9 @@ export const Navbar: React.FC = () => {
               aria-label="Notifications"
             >
               <Bell className="w-4 h-4 text-white" />
-              {trackedItemIds.length > 0 && (
+              {unreadNotificationCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 bg-white text-red-600 text-[9px] font-black rounded-full border border-red-600 flex items-center justify-center leading-none">
-                  {trackedItemIds.length > 9 ? '9+' : trackedItemIds.length}
+                  {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
                 </span>
               )}
             </button>
@@ -303,8 +304,10 @@ export const Navbar: React.FC = () => {
                 <span className="text-[9px] font-bold text-slate-500 leading-none mt-0.5">
                   Alerts
                 </span>
-                {trackedItemIds.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-white" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-600 text-white text-[9px] font-black rounded-full border-2 border-white flex items-center justify-center leading-none">
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </span>
                 )}
               </button>
             </div>
