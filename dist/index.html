@@ -19,21 +19,62 @@
     <link rel="preload" as="image" href="/logo-wordmark.png" />
     <link rel="preload" as="image" href="/logo-tagline.png" />
     <meta name="theme-color" content="#E7000B" />
-    <style>#t1s-loader{z-index:99999;background:#fff;flex-direction:column;justify-content:center;align-items:center;gap:26px;transition:opacity .35s,visibility .35s;display:flex;position:fixed;inset:0}#t1s-loader.t1s-hide{opacity:0;visibility:hidden;pointer-events:none}#t1s-loader .t1s-lockup{align-items:center;gap:10px;max-width:88vw;display:flex}#t1s-loader .t1s-ic{height:84px;display:inline-flex;position:relative}#t1s-loader .t1s-ic img{transform-origin:50% 62%;width:auto;max-width:none;height:84px;animation:1.2s cubic-bezier(.3,.7,.3,1) infinite t1s-ltick;display:block}#t1s-loader .t1s-ring{opacity:0;border:2px solid #fbbf24bf;border-radius:50%;animation:1.2s ease-out infinite t1s-lring;position:absolute;inset:14% 14% 10%}#t1s-loader .t1s-sweep{opacity:0;background:conic-gradient(#fff0 0deg 270deg,#ffecaaf2 350deg,#fff0 360deg);border-radius:50%;animation:1.2s linear infinite t1s-lsweep;position:absolute;inset:14% 14% 10%;-webkit-mask:radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 calc(100% - 2px))}#t1s-loader .t1s-wcol{flex-direction:column;align-items:flex-start;gap:6px;display:flex}#t1s-loader .t1s-wd{width:auto;max-width:none;height:40px;animation:.7s cubic-bezier(.2,.8,.2,1) both t1s-lword;display:block}#t1s-loader .t1s-tg{width:auto;max-width:none;height:10px;animation:.9s cubic-bezier(.2,.8,.2,1) .25s both t1s-lword;display:block}#t1s-loader .t1s-bar{background:#f1e3e6;border-radius:99px;width:160px;height:4px;overflow:hidden}#t1s-loader .t1s-bar i{background:linear-gradient(90deg,#c10007,#e7000b);border-radius:99px;width:40%;height:100%;animation:1s ease-in-out infinite t1s-slide;display:block}@keyframes t1s-ltick{0%,55%,to{transform:translateY(0)scale(1)rotate(0)}66%{transform:translateY(3px)scale(.93)rotate(-4deg)}80%{transform:translateY(-2px)scale(1.06)rotate(2deg)}}@keyframes t1s-lring{0%,58%{opacity:0;transform:scale(.7)}66%{opacity:.9}to{opacity:0;transform:scale(1.6)}}@keyframes t1s-lsweep{0%{opacity:0;transform:rotate(0)}6%{opacity:1}52%{opacity:1}56%,to{opacity:0;transform:rotate(360deg)}}@keyframes t1s-lword{0%{opacity:0;clip-path:inset(0 100% 0 0);transform:translate(-12px)}to{opacity:1;clip-path:inset(0);transform:none}}@keyframes t1s-slide{0%{transform:translate(-110%)}to{transform:translate(380%)}}@media (prefers-reduced-motion:reduce){#t1s-loader .t1s-ic img,#t1s-loader .t1s-ring,#t1s-loader .t1s-sweep,#t1s-loader .t1s-wd,#t1s-loader .t1s-tg,#t1s-loader .t1s-bar i{animation:none}}</style>
+    <style>#t1s-loader{z-index:99999;background:#fff;flex-direction:column;justify-content:center;align-items:center;gap:26px;transition:opacity .35s,visibility .35s;display:flex;position:fixed;inset:0}#t1s-loader.t1s-hide{opacity:0;visibility:hidden;pointer-events:none}#t1s-loader .t1s-lockup{align-items:center;gap:10px;max-width:88vw;display:flex}#t1s-loader .t1s-ic{height:84px;display:inline-flex;position:relative}#t1s-loader .t1s-ic img{transform-origin:50% 62%;width:auto;max-width:none;height:84px;animation:1.2s cubic-bezier(.3,.7,.3,1) infinite t1s-ltick;display:block}#t1s-loader .t1s-ring{opacity:0;border:2px solid #fbbf24bf;border-radius:50%;animation:1.2s ease-out infinite t1s-lring;position:absolute;inset:14% 14% 10%}#t1s-loader .t1s-sweep{opacity:0;background:conic-gradient(#fff0 0deg 270deg,#ffecaaf2 350deg,#fff0 360deg);border-radius:50%;animation:1.2s linear infinite t1s-lsweep;position:absolute;inset:14% 14% 10%;-webkit-mask:radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,#0000 calc(100% - 3px),#000 calc(100% - 2px))}#t1s-loader .t1s-wcol{flex-direction:column;align-items:flex-start;gap:6px;display:flex}#t1s-loader .t1s-wd{width:auto;max-width:none;height:40px;animation:.7s cubic-bezier(.2,.8,.2,1) both t1s-lword;display:block}#t1s-loader .t1s-tg{width:auto;max-width:none;height:10px;animation:.9s cubic-bezier(.2,.8,.2,1) .25s both t1s-lword;display:block}#t1s-loader .t1s-bar{background:#f1e3e6;border-radius:99px;width:160px;height:4px;overflow:hidden}#t1s-loader .t1s-bar i{background:linear-gradient(90deg,#c10007,#e7000b);border-radius:99px;width:40%;height:100%;animation:1s ease-in-out infinite t1s-slide;display:block}@keyframes t1s-ltick{0%,55%,to{transform:translateY(0)scale(1)rotate(0)}66%{transform:translateY(3px)scale(.93)rotate(-4deg)}80%{transform:translateY(-2px)scale(1.06)rotate(2deg)}}@keyframes t1s-lring{0%,58%{opacity:0;transform:scale(.7)}66%{opacity:.9}to{opacity:0;transform:scale(1.6)}}@keyframes t1s-lsweep{0%{opacity:0;transform:rotate(0)}6%{opacity:1}52%{opacity:1}56%,to{opacity:0;transform:rotate(360deg)}}@keyframes t1s-lword{0%{opacity:0;clip-path:inset(0 100% 0 0);transform:translate(-12px)}to{opacity:1;clip-path:inset(0);transform:none}}@keyframes t1s-slide{0%{transform:translate(-110%)}to{transform:translate(380%)}}@media (prefers-reduced-motion:reduce){#t1s-loader .t1s-ic img,#t1s-loader .t1s-ring,#t1s-loader .t1s-sweep,#t1s-loader .t1s-wd,#t1s-loader .t1s-tg,#t1s-loader .t1s-bar i{animation:none}}#t1s-loader .t1s-orbit{pointer-events:none;position:absolute;inset:0;overflow:hidden}#t1s-loader .t1s-m{opacity:0;background:#fff;border:1px solid #0d071414;border-radius:50%;justify-content:center;align-items:center;width:44px;height:44px;animation:6s ease-in-out infinite t1s-float;display:flex;position:absolute;box-shadow:0 6px 18px #0d07141a}#t1s-loader .t1s-m img{border-radius:6px;width:24px;height:24px}@keyframes t1s-float{0%{opacity:0;transform:translateY(14px)scale(.86)rotate(-6deg)}18%{opacity:.92}82%{opacity:.92}to{opacity:0;transform:translateY(-16px)scale(1.04)rotate(5deg)}}#t1s-loader .t1s-line{height:18px;overflow:hidden}#t1s-loader .t1s-line span{letter-spacing:.02em;color:#8a8f98;opacity:0;font-size:12.5px;font-weight:600;transition:opacity .45s,transform .45s;display:block;transform:translateY(12px)}#t1s-loader .t1s-line span.t1s-on{opacity:1;transform:none}@media (prefers-reduced-motion:reduce){#t1s-loader .t1s-m{opacity:.85;animation:none}#t1s-loader .t1s-line span{transition:none}}</style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-DjiO0n-q.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-ClND8kyf.css">
+    <script type="module" crossorigin src="/assets/index-BIDUnu29.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-li_0GvzO.css">
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-red-600 selection:text-white min-h-screen">
     <div id="t1s-loader" role="status" aria-live="polite" aria-label="Loading Try1Second">
+      <div class="t1s-orbit" aria-hidden="true"></div>
       <div class="t1s-lockup">
         <span class="t1s-ic"><img src="/logo-icon.png" alt="" /><span class="t1s-ring"></span><span class="t1s-sweep"></span></span>
         <span class="t1s-wcol"><img class="t1s-wd" src="/logo-wordmark.png" alt="Try1Second" /><img class="t1s-tg" src="/logo-tagline.png" alt="1 Second Is All It Takes" /></span>
       </div>
       <div class="t1s-bar"><i></i></div>
+      <div class="t1s-line" aria-hidden="true"><span id="t1s-line-txt" class="t1s-on">Comparing 100+ sources</span></div>
     </div>
+    <script>
+      // Floating merchant tiles, same drift/fade as the app splash screen.
+      (function () {
+        var hosts = ['amazon.in','flipkart.com','myntra.com','makemytrip.com','goibibo.com','booking.com','redbus.in','zomato.com','swiggy.com','bookmyshow.com','goindigo.in','uber.com'];
+        var orbit = document.querySelector('#t1s-loader .t1s-orbit');
+        var cx = 0.5, cy = 0.42, rx = 0.34, ry = 0.24;
+        hosts.forEach(function (h, i) {
+          var a = (i / hosts.length) * 2 * Math.PI - Math.PI / 2;
+          var t = document.createElement('span');
+          t.className = 't1s-m';
+          t.style.left = 'calc(' + (cx + rx * Math.cos(a)).toFixed(4) + ' * (100% - 44px))';
+          t.style.top = 'calc(' + (cy + ry * Math.sin(a)).toFixed(4) + ' * (100% - 44px))';
+          t.style.animationDelay = (i * 0.45).toFixed(2) + 's';
+          t.style.animationDuration = (5.4 + (i % 4) * 0.7).toFixed(1) + 's';
+          var img = document.createElement('img');
+          img.src = 'https://www.google.com/s2/favicons?domain=' + h + '&sz=64';
+          img.alt = '';
+          img.loading = 'lazy';
+          t.appendChild(img);
+          orbit.appendChild(t);
+        });
+      })();
+      // Rotating status lines, mirroring the app splash.
+      (function () {
+        var lines = ['Comparing 100+ sources', 'Verifying live prices', 'Never pay more'];
+        var el = document.getElementById('t1s-line-txt');
+        if (!el) return;
+        var i = 0;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        setInterval(function () {
+          el.classList.remove('t1s-on');
+          setTimeout(function () {
+            i = (i + 1) % lines.length;
+            el.textContent = lines[i];
+            el.classList.add('t1s-on');
+          }, 460);
+        }, 1700);
+      })();
+    </script>
     <div id="root"></div>
   </body>
 </html>
