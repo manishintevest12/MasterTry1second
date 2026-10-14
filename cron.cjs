@@ -2880,7 +2880,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA2 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -6920,9 +6920,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path5, timeoutMs = 12e3) {
+async function gwJson(host, path6, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path5}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path6}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -7840,7 +7840,7 @@ var init_bus = __esm({
             const t0 = Date.now();
             let resolved = {};
             try {
-              const getJson = async (url) => {
+              const getJson2 = async (url) => {
                 const s = Date.now();
                 const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 8e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
                 steps.push(`suggest=${r2.latencyMs ?? Date.now() - s}ms/${r2.status}`);
@@ -7852,8 +7852,8 @@ var init_bus = __esm({
                 }
               };
               const [fromDocs, toDocs] = await Promise.all([
-                getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
-                getJson(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
+                getJson2(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
+                getJson2(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
             } catch (e) {
@@ -7947,7 +7947,7 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const getJson = async (url) => {
+            const getJson2 = async (url) => {
               const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json" } });
               if (r2.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus HTTP ${r2.status} on ${url.split("?")[0]}`, r2.status);
               try {
@@ -7957,8 +7957,8 @@ var init_bus = __esm({
               }
             };
             const [from, to] = await Promise.all([
-              resolveAbhiBusCity(getJson, rt.from),
-              resolveAbhiBusCity(getJson, rt.to)
+              resolveAbhiBusCity(getJson2, rt.from),
+              resolveAbhiBusCity(getJson2, rt.to)
             ]);
             if (!from || !to) throw new AcquisitionError("NOT_FOUND", `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
             const depart = String(ctx.query.travelDates?.depart || "");
@@ -10223,6 +10223,104 @@ function buildEvidence(offer, raw) {
   };
 }
 
+// server/pipeline/lenderLogo.ts
+var import_node_fs4 = __toESM(require("node:fs"), 1);
+var import_node_path4 = __toESM(require("node:path"), 1);
+var UA = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+var CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos.json");
+var MISS_TTL_MS = 7 * 864e5;
+var FETCH_TIMEOUT_MS = 4e3;
+var cache3 = null;
+var inflight2 = /* @__PURE__ */ new Map();
+function load7() {
+  if (cache3) return cache3;
+  try {
+    cache3 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+  } catch {
+    cache3 = {};
+  }
+  return cache3;
+}
+var saveTimer2 = null;
+function persist2() {
+  if (saveTimer2) return;
+  saveTimer2 = setTimeout(() => {
+    saveTimer2 = null;
+    try {
+      import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
+      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache3 || {}));
+    } catch {
+    }
+  }, 1500);
+}
+function lenderNameFrom(raw) {
+  return String(raw || "").replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|bike|used car|property|credit card|loan|loans|insurance|health|term|life|motor|travel|plan|policy|emi|interest rates?|rates?)\b/gi, " ").replace(/[|:–—-].*$/, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+}
+async function getJson(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: ctl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+var LENDER_ALIAS = {
+  sbi: "State Bank of India",
+  pnb: "Punjab National Bank",
+  bob: "Bank of Baroda",
+  hdfc: "HDFC Bank",
+  hdfcl: "HDFC Bank",
+  icici: "ICICI Bank",
+  idbi: "IDBI Bank",
+  idfc: "IDFC First Bank",
+  "idfc first": "IDFC First Bank",
+  hdbfs: "HDB Financial Services",
+  "hdb financial": "HDB Financial Services",
+  kotak: "Kotak Mahindra Bank",
+  iob: "Indian Overseas Bank",
+  ubi: "Union Bank of India",
+  lic: "Life Insurance Corporation",
+  canara: "Canara Bank",
+  union: "Union Bank of India",
+  axis: "Axis Bank",
+  "yes bank": "Yes Bank"
+};
+async function lookup(nameRaw) {
+  const name = LENDER_ALIAS[nameRaw.toLowerCase()] || nameRaw;
+  const s = await getJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
+  const ids = (s?.search || []).map((x) => x.id).filter(Boolean);
+  if (!ids.length) return null;
+  const e = await getJson(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${ids.join("|")}`);
+  for (const id of ids) {
+    const ent = e?.entities?.[id];
+    const desc = String(ent?.descriptions?.en?.value || "").toLowerCase();
+    if (desc && !/(bank|insur|financ|lender|nbfc|credit|loan|capital|assurance|fintech|company|corporation|holding)/.test(desc)) continue;
+    const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
+    if (file) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(file).replace(/ /g, "_"))}?width=256`;
+  }
+  return null;
+}
+function resolveLenderLogo(rawName) {
+  const name = lenderNameFrom(rawName);
+  if (name.length < 3) return Promise.resolve(null);
+  const key = name.toLowerCase();
+  const c = load7();
+  const hit = c[key];
+  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS)) return Promise.resolve(hit.url);
+  const running = inflight2.get(key);
+  if (running) return running;
+  const p = lookup(name).catch(() => null).then((url) => {
+    c[key] = { url, at: Date.now() };
+    persist2();
+    return url;
+  }).finally(() => inflight2.delete(key));
+  inflight2.set(key, p);
+  return p;
+}
+
 // server/pipeline/brandImage.ts
 var AIRLINE_IATA = {
   "indigo": "6E",
@@ -10294,6 +10392,80 @@ var BRAND_DOMAIN = [
   [/icici/i, "icicibank.com"],
   [/axis/i, "axisbank.com"]
 ];
+var LENDER_DOMAIN = [
+  [/axis/i, "axisbank.com"],
+  [/union bank/i, "unionbankofindia.co.in"],
+  [/idfc/i, "idfcfirstbank.com"],
+  [/\bsbi\b|state bank/i, "sbi.co.in"],
+  [/\bpnb\b|punjab national/i, "pnbindia.in"],
+  [/indusind/i, "indusind.com"],
+  [/hdfc ergo/i, "hdfcergo.com"],
+  [/hdfc/i, "hdfcbank.com"],
+  [/icici lombard/i, "icicilombard.com"],
+  [/icici pru|icici prudential/i, "iciciprulife.com"],
+  [/icici/i, "icicibank.com"],
+  [/kotak/i, "kotak.com"],
+  [/yes bank/i, "yesbank.in"],
+  [/bank of baroda|\bbob\b/i, "bankofbaroda.in"],
+  [/canara/i, "canarabank.com"],
+  [/bank of india/i, "bankofindia.co.in"],
+  [/bank of maharashtra/i, "bankofmaharashtra.in"],
+  [/central bank/i, "centralbankofindia.co.in"],
+  [/indian bank/i, "indianbank.in"],
+  [/indian overseas|\biob\b/i, "iob.in"],
+  [/uco bank/i, "ucobank.com"],
+  [/punjab (&|and) sind/i, "psbindia.com"],
+  [/federal bank/i, "federalbank.co.in"],
+  [/rbl/i, "rblbank.com"],
+  [/au small|au bank/i, "aubank.in"],
+  [/bandhan/i, "bandhanbank.com"],
+  [/idbi/i, "idbibank.in"],
+  [/south indian/i, "southindianbank.com"],
+  [/karnataka bank/i, "karnatakabank.com"],
+  [/city union/i, "cityunionbank.com"],
+  [/standard chartered/i, "sc.com"],
+  [/hsbc/i, "hsbc.co.in"],
+  [/citi/i, "citibank.co.in"],
+  [/american express|amex/i, "americanexpress.com"],
+  [/dbs/i, "dbs.com"],
+  [/tata capital/i, "tatacapital.com"],
+  [/tata aig/i, "tataaig.com"],
+  [/bajaj (finserv|finance)/i, "bajajfinserv.in"],
+  [/bajaj allianz/i, "bajajallianz.com"],
+  [/hero fincorp/i, "herofincorp.com"],
+  [/fullerton|sumitomo/i, "smfgindia.com"],
+  [/piramal/i, "piramalfinance.com"],
+  [/aditya birla/i, "adityabirlacapital.com"],
+  [/poonawalla/i, "poonawallafincorp.com"],
+  [/lendingkart/i, "lendingkart.com"],
+  [/navi/i, "navi.com"],
+  [/kreditbee/i, "kreditbee.in"],
+  [/money ?view/i, "moneyview.in"],
+  [/cashe/i, "getcashe.com"],
+  [/fibe|earlysalary/i, "myfibe.com"],
+  [/mpokket/i, "mpokket.in"],
+  [/stashfin/i, "stashfin.com"],
+  [/lic\b|life insurance corp/i, "licindia.in"],
+  [/star health/i, "starhealth.in"],
+  [/care health/i, "careinsurance.com"],
+  [/niva|max bupa/i, "nivabupa.com"],
+  [/new india/i, "newindia.co.in"],
+  [/national insurance/i, "nationalinsurance.nic.co.in"],
+  [/oriental/i, "orientalinsurance.org.in"],
+  [/united india/i, "uiic.co.in"],
+  [/royal sundaram/i, "royalsundaram.in"],
+  [/reliance general/i, "reliancegeneral.co.in"],
+  [/sbi general/i, "sbigeneral.in"],
+  [/sbi life/i, "sbilife.co.in"],
+  [/future generali|generali/i, "generalicentral.com"],
+  [/chola/i, "cholainsurance.com"],
+  [/iffco/i, "iffcotokio.co.in"],
+  [/acko/i, "acko.com"],
+  [/digit/i, "godigit.com"],
+  [/manipal/i, "manipalcigna.com"],
+  [/aditya birla health/i, "adityabirlacapital.com"]
+];
+var LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "banking"]);
 var DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
 function hostOf(u) {
   try {
@@ -10308,6 +10480,11 @@ function brandImageFor(o) {
     const code = String(attrs.airline_code || "").toUpperCase();
     const iata = /^[A-Z0-9]{2}$/.test(code) ? code : AIRLINE_IATA[String(attrs.airline || o.seller || "").toLowerCase().trim()];
     if (iata) return `https://www.gstatic.com/flights/airline_logos/70px/${iata}.png`;
+  }
+  if (LENDER_VERTICALS.has(String(o.vertical))) {
+    const lenderLabel = `${o.title || ""} ${attrs.bank || ""} ${attrs.provider || ""} ${attrs.insurer || ""} ${attrs.lender || ""}`;
+    const ld = LENDER_DOMAIN.find(([re]) => re.test(lenderLabel))?.[1];
+    if (ld) return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(ld)}&sz=128`;
   }
   const label = `${o.seller || ""} ${o.vendor || ""}`;
   let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
@@ -10325,6 +10502,29 @@ function withBrandImages(offers) {
     if (img) {
       a.image_url = img;
       a.image_is_brand_logo = "true";
+    }
+  }
+  return offers;
+}
+var LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards"]);
+async function withLenderLogos(offers) {
+  const targets = offers.filter((o) => {
+    if (!LENDER_VERTICAL_IDS.has(String(o.vertical))) return false;
+    const a = o.attributes || {};
+    return !a.image_url || a.image_is_brand_logo === "true";
+  });
+  const names = Array.from(new Set(targets.map((o) => String(o.attributes?.bank || o.title || ""))));
+  const logos = /* @__PURE__ */ new Map();
+  await Promise.all(names.map(async (n) => {
+    logos.set(n, await resolveLenderLogo(n));
+  }));
+  for (const o of targets) {
+    const a = o.attributes || (o.attributes = {});
+    const logo = logos.get(String(o.attributes?.bank || o.title || ""));
+    if (logo) {
+      a.image_url = logo;
+      a.image_is_brand_logo = "true";
+      a.image_is_lender_logo = "true";
     }
   }
   return offers;
@@ -11031,7 +11231,7 @@ async function runLivePipeline(input, parsedIn) {
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
-  const ranked = rankOffers(withBrandImages(combined), { userPincode: input.pincode, userCity: input.city });
+  const ranked = rankOffers(await withLenderLogos(withBrandImages(combined)), { userPincode: input.pincode, userCity: input.city });
   if (ranked.length === 0) {
     state.servedFrom = "unavailable";
     state.honestNotice = enabledSources.length === 0 ? "No data sources are enabled and verified for this vertical yet. Real results appear once a source is configured and passes validation \u2014 we never show invented prices." : "All configured sources were attempted but returned no verified offers for this query. Partial or cached data appears only when it passes freshness rules.";
