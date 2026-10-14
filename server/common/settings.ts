@@ -50,8 +50,12 @@ export const settings = {
   /** Transactional email (Resend) for admin OTP login. */
   resendApiKey: process.env.RESEND_API_KEY || '',
 
-  /** Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side. */
-  firebaseProjectId: process.env.FIREBASE_PROJECT_ID || '',
+  /**
+   * Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side.
+   * Fallback to the public project ID so a missing env var can never silently
+   * break verification; env always takes precedence.
+   */
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID || 'try1second-66273',
   /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
   googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || '').split(',').map((e) => e.trim()).filter(Boolean),
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',

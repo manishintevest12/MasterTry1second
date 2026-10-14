@@ -13,7 +13,7 @@ import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
 import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
-import { verifyFirebaseIdToken, verifyGoogleIdToken } from '../auth/firebaseAuth';
+import { verifyFirebaseIdTokenDetailed, verifyGoogleIdToken } from '../auth/firebaseAuth';
 import crypto from 'crypto';
 
 import {
@@ -785,8 +785,26 @@ apiRouter.post('/auth/firebase', async (req, res) => {
   const idToken = String(req.body?.idToken || '');
   if (!idToken) return res.status(400).json({ success: false, error: 'Missing Google ID token' });
 
-  const claims = await verifyFirebaseIdToken(idToken);
-  if (!claims) return res.status(401).json({ success: false, error: 'Google sign-in could not be verified' });
+  const result = await verifyFirebaseIdTokenDetailed(idToken);
+  if (!result.claims) {
+    const { reason, detail } = result;
+    log.warn('FirebaseAuth', `Google sign-in rejected (${reason}${detail ? `: ${detail}` : ''})`);
+    const messages: Record<string, [number, string]> = {
+      server_not_configured: [503, 'Google sign-in is not configured on the server (FIREBASE_PROJECT_ID)'],
+      audience_mismatch: [401, 'Google sign-in rejected: the token belongs to a different Firebase project than the server expects. Check FIREBASE_PROJECT_ID.'],
+      issuer_mismatch: [401, 'Google sign-in rejected: token issuer is not Firebase for this project.'],
+      expired: [401, 'Google session expired. Please sign in again.'],
+      clock_skew: [500, 'Server clock is out of sync with Google. Please retry in a minute.'],
+      certs_unreachable: [502, 'Could not download Google verification certificates from the server. Please retry.'],
+      unknown_signing_key: [401, 'Google signing key not recognized (certificates may have rotated). Please retry.'],
+      bad_signature: [401, 'Google token signature failed verification.'],
+      malformed: [400, 'Google sign-in token was malformed.'],
+      bad_claims: [401, 'Google sign-in token is missing required claims.'],
+    };
+    const [status, error] = messages[reason] ?? [401, 'Google sign-in could not be verified'];
+    return res.status(status).json({ success: false, error, reason });
+  }
+  const claims = result.claims;
 
   const store = getStore();
   let rows = await store.query<any>('SELECT id, email, display_name, role FROM users WHERE email = ?', [claims.email]);

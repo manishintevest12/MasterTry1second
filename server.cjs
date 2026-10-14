@@ -84,8 +84,12 @@ var init_settings = __esm({
       },
       /** Transactional email (Resend) for admin OTP login. */
       resendApiKey: process.env.RESEND_API_KEY || "",
-      /** Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side. */
-      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "",
+      /**
+       * Firebase Authentication (Google sign-in for the main site). Project ID only — keys live client-side.
+       * Fallback to the public project ID so a missing env var can never silently
+       * break verification; env always takes precedence.
+       */
+      firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "try1second-66273",
       /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
       googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "").split(",").map((e) => e.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
@@ -12126,6 +12130,9 @@ var init_otpService = __esm({
 });
 
 // server/auth/firebaseAuth.ts
+function base64UrlDecode(seg) {
+  return Buffer.from(seg.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+}
 async function getCertificates() {
   if (certCache && Date.now() - certCache.fetchedAt < CERT_TTL_MS) return certCache.certs;
   const res = await fetch(CERT_URL);
@@ -12134,43 +12141,47 @@ async function getCertificates() {
   certCache = { certs, fetchedAt: Date.now() };
   return certs;
 }
-function base64UrlDecode(seg) {
-  return Buffer.from(seg.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-}
-async function verifyFirebaseIdToken(idToken) {
-  const projectId = settings.firebaseProjectId;
-  if (!projectId) return null;
+async function verifyFirebaseIdTokenDetailed(idToken, opts = {}) {
+  const projectId = opts.projectId ?? settings.firebaseProjectId;
+  if (!projectId) return { reason: "server_not_configured" };
+  const now = opts.now ?? Math.floor(Date.now() / 1e3);
   try {
-    const parts = idToken.split(".");
-    if (parts.length !== 3) return null;
+    const parts = String(idToken || "").split(".");
+    if (parts.length !== 3) return { reason: "malformed" };
     const header = JSON.parse(base64UrlDecode(parts[0]).toString("utf8"));
     const payload = JSON.parse(base64UrlDecode(parts[1]).toString("utf8"));
-    if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
-    if (payload.aud !== projectId) return null;
-    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
-    const now = Math.floor(Date.now() / 1e3);
-    if (typeof payload.exp !== "number" || payload.exp <= now) return null;
-    if (typeof payload.iat !== "number" || payload.iat > now + 60) return null;
-    if (typeof payload.sub !== "string" || !payload.sub || payload.sub.length > 128) return null;
-    if (typeof payload.email !== "string" || !payload.email) return null;
-    const certs = await getCertificates();
+    if (header.alg !== "RS256" || typeof header.kid !== "string") return { reason: "malformed" };
+    if (payload.aud !== projectId) return { reason: "audience_mismatch", detail: `aud=${payload.aud}` };
+    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return { reason: "issuer_mismatch", detail: `iss=${payload.iss}` };
+    if (typeof payload.exp !== "number" || payload.exp <= now) return { reason: "expired" };
+    if (typeof payload.iat !== "number" || payload.iat > now + 300) return { reason: "clock_skew", detail: `iat ahead by ${payload.iat - now}s` };
+    if (typeof payload.sub !== "string" || !payload.sub || payload.sub.length > 128) return { reason: "bad_claims" };
+    if (typeof payload.email !== "string" || !payload.email) return { reason: "bad_claims" };
+    let certs;
+    try {
+      certs = opts.certsOverride ?? await getCertificates();
+    } catch (err) {
+      log.warn("FirebaseAuth", `Google certs unreachable: ${err.message}`);
+      return { reason: "certs_unreachable", detail: err.message };
+    }
     const certPem = certs[header.kid];
-    if (!certPem) return null;
+    if (!certPem) return { reason: "unknown_signing_key", detail: `kid=${header.kid}` };
     const publicKey = new import_crypto22.default.X509Certificate(certPem).publicKey;
     const verifier = import_crypto22.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
-    const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
-    if (!signatureOk) return null;
+    if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return { reason: "bad_signature" };
     return {
-      uid: payload.sub,
-      email: String(payload.email).toLowerCase(),
-      emailVerified: payload.email_verified === true || payload.email_verified === "true",
-      displayName: typeof payload.name === "string" ? payload.name : void 0,
-      picture: typeof payload.picture === "string" ? payload.picture : void 0
+      claims: {
+        uid: payload.sub,
+        email: String(payload.email).toLowerCase(),
+        emailVerified: payload.email_verified === true || payload.email_verified === "true",
+        displayName: typeof payload.name === "string" ? payload.name : void 0,
+        picture: typeof payload.picture === "string" ? payload.picture : void 0
+      }
     };
   } catch (err) {
     log.warn("FirebaseAuth", `ID token verification failed: ${err.message}`);
-    return null;
+    return { reason: "malformed", detail: err.message };
   }
 }
 async function getGoogleCertificates() {
@@ -15241,8 +15252,26 @@ var init_routes = __esm({
       }
       const idToken = String(req.body?.idToken || "");
       if (!idToken) return res.status(400).json({ success: false, error: "Missing Google ID token" });
-      const claims = await verifyFirebaseIdToken(idToken);
-      if (!claims) return res.status(401).json({ success: false, error: "Google sign-in could not be verified" });
+      const result = await verifyFirebaseIdTokenDetailed(idToken);
+      if (!result.claims) {
+        const { reason, detail } = result;
+        log.warn("FirebaseAuth", `Google sign-in rejected (${reason}${detail ? `: ${detail}` : ""})`);
+        const messages = {
+          server_not_configured: [503, "Google sign-in is not configured on the server (FIREBASE_PROJECT_ID)"],
+          audience_mismatch: [401, "Google sign-in rejected: the token belongs to a different Firebase project than the server expects. Check FIREBASE_PROJECT_ID."],
+          issuer_mismatch: [401, "Google sign-in rejected: token issuer is not Firebase for this project."],
+          expired: [401, "Google session expired. Please sign in again."],
+          clock_skew: [500, "Server clock is out of sync with Google. Please retry in a minute."],
+          certs_unreachable: [502, "Could not download Google verification certificates from the server. Please retry."],
+          unknown_signing_key: [401, "Google signing key not recognized (certificates may have rotated). Please retry."],
+          bad_signature: [401, "Google token signature failed verification."],
+          malformed: [400, "Google sign-in token was malformed."],
+          bad_claims: [401, "Google sign-in token is missing required claims."]
+        };
+        const [status, error] = messages[reason] ?? [401, "Google sign-in could not be verified"];
+        return res.status(status).json({ success: false, error, reason });
+      }
+      const claims = result.claims;
       const store2 = getStore();
       let rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
       if (rows.length === 0) {

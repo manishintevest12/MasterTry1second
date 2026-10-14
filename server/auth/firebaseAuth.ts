@@ -12,6 +12,10 @@ const CERT_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@
 let certCache: { certs: Record<string, string>; fetchedAt: number } | null = null;
 const CERT_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+function base64UrlDecode(seg: string): Buffer {
+  return Buffer.from(seg.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+
 async function getCertificates(): Promise<Record<string, string>> {
   if (certCache && Date.now() - certCache.fetchedAt < CERT_TTL_MS) return certCache.certs;
   const res = await fetch(CERT_URL);
@@ -29,58 +33,86 @@ export interface FirebaseUserClaims {
   picture?: string;
 }
 
-function base64UrlDecode(seg: string): Buffer {
-  return Buffer.from(seg.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-}
+/** Honest, non-sensitive reason a Firebase ID token was rejected. */
+export type FirebaseVerifyFailure =
+  | 'server_not_configured'
+  | 'malformed'
+  | 'audience_mismatch'
+  | 'issuer_mismatch'
+  | 'expired'
+  | 'clock_skew'
+  | 'bad_claims'
+  | 'certs_unreachable'
+  | 'unknown_signing_key'
+  | 'bad_signature';
+
+export type FirebaseVerifyResult =
+  | { claims: FirebaseUserClaims; reason?: undefined; detail?: undefined }
+  | { claims?: undefined; reason: FirebaseVerifyFailure; detail?: string };
 
 /**
- * Verify a Firebase ID token cryptographically:
+ * Verify a Firebase ID token cryptographically and report WHY it failed:
  * - RS256 signature against Google's rotating x509 certificates (matched by `kid`)
- * - `aud` must equal FIREBASE_PROJECT_ID, `iss` must be https://securetoken.google.com/<projectId>
- * - `exp`/`iat` must be sane; `sub` (uid) must be non-empty (<= 128 chars)
- * Returns null on any failure — callers report an honest error and never trust unverified claims.
+ * - `aud` must equal the Firebase project ID, `iss` must be https://securetoken.google.com/<projectId>
+ * - `exp`/`iat` must be sane (300s skew tolerance for shared-hosting clocks); `sub` (uid) non-empty (<= 128 chars)
+ * Never trust unverified claims; every rejection carries an honest reason for logs + the client.
  */
-export async function verifyFirebaseIdToken(idToken: string): Promise<FirebaseUserClaims | null> {
-  const projectId = settings.firebaseProjectId;
-  if (!projectId) return null;
+export async function verifyFirebaseIdTokenDetailed(
+  idToken: string,
+  opts: { certsOverride?: Record<string, string>; now?: number; projectId?: string } = {},
+): Promise<FirebaseVerifyResult> {
+  const projectId = opts.projectId ?? settings.firebaseProjectId;
+  if (!projectId) return { reason: 'server_not_configured' };
+  const now = opts.now ?? Math.floor(Date.now() / 1000);
   try {
-    const parts = idToken.split('.');
-    if (parts.length !== 3) return null;
+    const parts = String(idToken || '').split('.');
+    if (parts.length !== 3) return { reason: 'malformed' };
     const header = JSON.parse(base64UrlDecode(parts[0]).toString('utf8'));
     const payload = JSON.parse(base64UrlDecode(parts[1]).toString('utf8'));
 
-    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
-    if (payload.aud !== projectId) return null;
-    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
-    const now = Math.floor(Date.now() / 1000);
-    if (typeof payload.exp !== 'number' || payload.exp <= now) return null;
-    if (typeof payload.iat !== 'number' || payload.iat > now + 60) return null;
-    if (typeof payload.sub !== 'string' || !payload.sub || payload.sub.length > 128) return null;
-    if (typeof payload.email !== 'string' || !payload.email) return null;
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string') return { reason: 'malformed' };
+    if (payload.aud !== projectId) return { reason: 'audience_mismatch', detail: `aud=${payload.aud}` };
+    if (payload.iss !== `https://securetoken.google.com/${projectId}`) return { reason: 'issuer_mismatch', detail: `iss=${payload.iss}` };
+    if (typeof payload.exp !== 'number' || payload.exp <= now) return { reason: 'expired' };
+    if (typeof payload.iat !== 'number' || payload.iat > now + 300) return { reason: 'clock_skew', detail: `iat ahead by ${payload.iat - now}s` };
+    if (typeof payload.sub !== 'string' || !payload.sub || payload.sub.length > 128) return { reason: 'bad_claims' };
+    if (typeof payload.email !== 'string' || !payload.email) return { reason: 'bad_claims' };
 
-    const certs = await getCertificates();
+    let certs: Record<string, string>;
+    try {
+      certs = opts.certsOverride ?? (await getCertificates());
+    } catch (err) {
+      log.warn('FirebaseAuth', `Google certs unreachable: ${(err as Error).message}`);
+      return { reason: 'certs_unreachable', detail: (err as Error).message };
+    }
     const certPem = certs[header.kid];
-    if (!certPem) return null;
+    if (!certPem) return { reason: 'unknown_signing_key', detail: `kid=${header.kid}` };
 
     const publicKey = new crypto.X509Certificate(certPem).publicKey;
     const verifier = crypto.createVerify('RSA-SHA256');
     verifier.update(`${parts[0]}.${parts[1]}`);
-    const signatureOk = verifier.verify(publicKey, base64UrlDecode(parts[2]));
-    if (!signatureOk) return null;
+    if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return { reason: 'bad_signature' };
 
     return {
-      uid: payload.sub,
-      email: String(payload.email).toLowerCase(),
-      emailVerified: payload.email_verified === true || payload.email_verified === 'true',
-      displayName: typeof payload.name === 'string' ? payload.name : undefined,
-      picture: typeof payload.picture === 'string' ? payload.picture : undefined,
+      claims: {
+        uid: payload.sub,
+        email: String(payload.email).toLowerCase(),
+        emailVerified: payload.email_verified === true || payload.email_verified === 'true',
+        displayName: typeof payload.name === 'string' ? payload.name : undefined,
+        picture: typeof payload.picture === 'string' ? payload.picture : undefined,
+      },
     };
   } catch (err) {
     log.warn('FirebaseAuth', `ID token verification failed: ${(err as Error).message}`);
-    return null;
+    return { reason: 'malformed', detail: (err as Error).message };
   }
 }
 
+/** Back-compat wrapper: claims or null. */
+export async function verifyFirebaseIdToken(idToken: string): Promise<FirebaseUserClaims | null> {
+  const r = await verifyFirebaseIdTokenDetailed(idToken);
+  return r.claims ?? null;
+}
 
 const GOOGLE_CERT_URL = 'https://www.googleapis.com/oauth2/v1/certs';
 let googleCertCache: { certs: Record<string, string>; fetchedAt: number } | null = null;
