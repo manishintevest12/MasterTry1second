@@ -65,3 +65,16 @@ const { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_
   process.exit(fail ? 1 : 0);
 })();
 
+
+// ---- v1.4.0 additions: merchant-key mapping for the Auto Coupon tester ----
+const sitesCode = fs.readFileSync('chrome-extension/lib/sites.js', 'utf8') +
+  '\n;globalThis.__t1sSites = { merchantKeyFor };';
+try { vm.runInThisContext(sitesCode); } catch (e) { /* needs no DOM at load time */ }
+const { merchantKeyFor } = globalThis.__t1sSites || {};
+
+t('merchantKeyFor: Amazon India -> amazon', merchantKeyFor('Amazon India') === 'amazon');
+t('merchantKeyFor: Flipkart -> flipkart', merchantKeyFor('Flipkart') === 'flipkart');
+t('merchantKeyFor: Tata CLiQ -> tatacliq', merchantKeyFor('Tata CLiQ') === 'tatacliq');
+t('merchantKeyFor: Swiggy Instamart -> swiggy', merchantKeyFor('Swiggy Instamart') === 'swiggy');
+t('merchantKeyFor: Domino\'s India -> dominos', merchantKeyFor("Domino's India") === 'dominos');
+t('merchantKeyFor: unknown site slugs cleanly', merchantKeyFor('Book My Show') === 'bookmyshow');

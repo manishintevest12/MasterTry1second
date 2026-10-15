@@ -138,3 +138,24 @@
 @keyframes t1s-twinkle { 0%,12%,30%,100%{opacity:0;transform:scale(.4)} 18%{opacity:1;transform:scale(1) rotate(45deg)} 24%{opacity:.5;transform:scale(.7)} 76%{opacity:0} 82%{opacity:1;transform:scale(1.1) rotate(45deg)} 88%{opacity:0} }
 @keyframes t1s-wordin { from{opacity:0;transform:translateX(-8px);clip-path:inset(0 100% 0 0)} to{opacity:1;transform:none;clip-path:inset(0 0 0 0)} }
 @media (prefers-reduced-motion: reduce) { .t1s-lockup img, .t1s-lockup .t1s-ring, .t1s-lockup .t1s-sweep, .t1s-lockup .t1s-spark { animation: none !important; } }
+
+/* ---------- floating bar (owner design reference) ---------- */
+.t1s-bar{position:fixed;bottom:20px;right:20px;z-index:2147483000;background:#ffffff;border:2px solid #ef4444;border-radius:24px;box-shadow:0 10px 40px rgba(0,0,0,.25);padding:12px 16px;display:flex;align-items:center;gap:10px;font-family:"Plus Jakarta Sans",system-ui,sans-serif;max-width:min(92vw,560px);flex-wrap:wrap}
+.t1s-bar-badge{background:#ef4444;color:#fff;font-weight:900;padding:4px 8px;border-radius:12px;font-size:11px;letter-spacing:.02em}
+.t1s-bar-atl{font-weight:700;font-size:13px;color:#0f172a}
+.t1s-bar-atl b{font-size:14px}
+.t1s-bar-muted{color:#64748b}
+.t1s-bar-coupon{background:#0f172a;color:#fff;border:none;border-radius:12px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:12px}
+.t1s-bar-coupon:hover{background:#1e293b}
+.t1s-bar-toggle{background:#fff;color:#0f172a;border:1.5px solid #e2e8f0;border-radius:12px;padding:5px 10px;cursor:pointer;font-weight:700;font-size:13px}
+.t1s-bar-toggle:hover{border-color:#ef4444;color:#ef4444}
+.t1s-bar-coupons{flex-basis:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
+.t1s-coupon-head{font-size:11px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:.04em}
+.t1s-coupon-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px}
+.t1s-coupon-txt{flex:1;min-width:0}
+.t1s-coupon-title{font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t1s-coupon-sub{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t1s-coupon-code{background:#fff;border:1.5px dashed #ef4444;color:#ef4444;font-weight:900;font-size:12px;border-radius:8px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+.t1s-coupon-code.t1s-copied{background:#16a34a;border-color:#16a34a;color:#fff}
+.t1s-coupon-empty{font-size:12px;color:#64748b}
+@media (max-width:560px){.t1s-bar{left:12px;right:12px;bottom:12px;justify-content:center}}

@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Try1Second \u2014 Cross-Site Price History & Alerts",
+  "name": "Try1Second Price Tracker & Auto Coupon",
   "short_name": "Try1Second",
-  "version": "1.3.0",
-  "description": "Live cross-site price comparison, real price history graphs and price-drop alerts \u2014 powered by the independent Try1Second metasearch engine. Never shows invented prices.",
+  "version": "1.4.0",
+  "description": "365-day price history, cross-site best price, price-drop alerts and 1-click Auto Coupon Tester — on every major store: Amazon, Flipkart, Myntra, Ajio, Tata CLiQ, Blinkit, BigBasket, Swiggy, Zomato, BookMyShow, redBus and more.",
   "permissions": [
     "storage",
     "alarms",
@@ -30,13 +30,27 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.amazon.in/dp/*",
-        "https://www.amazon.in/*/dp/*",
+        "https://www.amazon.in/*",
         "https://www.flipkart.com/*",
         "https://www.myntra.com/*",
         "https://www.ajio.com/*",
         "https://www.tatacliq.com/*",
-        "https://www.meesho.com/*"
+        "https://www.meesho.com/*",
+        "https://www.blinkit.com/*",
+        "https://www.bigbasket.com/*",
+        "https://www.zeptonow.com/*",
+        "https://www.jiomart.com/*",
+        "https://www.swiggy.com/*",
+        "https://www.zomato.com/*",
+        "https://www.dominos.co.in/*",
+        "https://in.bookmyshow.com/*",
+        "https://www.makemytrip.com/*",
+        "https://www.goibibo.com/*",
+        "https://www.easemytrip.com/*",
+        "https://www.yatra.com/*",
+        "https://www.cleartrip.com/*",
+        "https://www.redbus.in/*",
+        "https://www.abhibus.com/*"
       ],
       "js": [
         "lib/api.js",

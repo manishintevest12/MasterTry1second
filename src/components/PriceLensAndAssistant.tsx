@@ -62,8 +62,8 @@ export const PriceLens: React.FC = () => {
               const t = e.clipboardData.getData('text').trim();
               if (/^https?:\/\/\S+$/i.test(t)) { e.preventDefault(); setLink(t); go(t); }
             }}
-            placeholder="Paste any product link (Amazon, Flipkart, Myntra...) to find it cheapest"
-            aria-label="Paste a product link"
+            placeholder="Paste a product link (Amazon, Flipkart, Myntra...) OR type a product name — both work"
+            aria-label="Paste a product link or type a product name"
             className="flex-1 min-w-0 bg-transparent outline-hidden text-sm text-slate-900 placeholder:text-slate-400 py-1"
           />
           {link && (

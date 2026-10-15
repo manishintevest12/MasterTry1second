@@ -76,6 +76,13 @@ async function apiHistory(entityId, limit = HISTORY_LIMIT) {
   return data.points; // [{price, capturedAt}]
 }
 
+/** GET /api/deals?merchant=<key> — live coupons/offers for this merchant (admin + acquired). */
+async function apiDeals(merchantKey) {
+  const data = await t1sFetch(`/api/deals?merchant=${encodeURIComponent(merchantKey)}&limit=20`);
+  if (!data || !Array.isArray(data.deals)) throw new Error('Malformed deals response');
+  return data.deals.filter((d) => d && (d.code || d.discount_text || d.title));
+}
+
 /** GET /api/go — server-side safe redirect resolver (records click, applies affiliate). */
 async function apiGo(url, offerId) {
   const data = await t1sFetch(`/api/go?url=${encodeURIComponent(url)}${offerId ? `&offerId=${encodeURIComponent(offerId)}` : ''}`);

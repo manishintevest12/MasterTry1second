@@ -1,14 +1,22 @@
 /**
- * Try1Second extension — content script.
- * Injects a Try1Second-styled comparison + price-history panel on supported
- * e-commerce product pages. Every price comes from the real Try1Second
- * backend; "unavailable" is shown whenever data can't be verified.
+ * Try1Second extension — content script (v1.4.0, all verticals).
+ *
+ * On every supported merchant page (e-commerce, grocery, food, movies, travel)
+ * this injects:
+ *   1. a floating bar (bottom-right, per the owner's design reference):
+ *        [TRY1SECOND badge] [ATL / Best price] [Auto-Test Coupons] [panel toggle]
+ *   2. the full Try1Second panel (cross-site comparison, real price history,
+ *      track button) for pages where a product/entity can be detected.
+ *
+ * No-fabrication rule: every number comes from the real Try1Second backend.
+ * When nothing is verified, the bar honestly shows "—" and says so.
  */
 'use strict';
 
 (function () {
   const PANEL_ID = 't1s-panel';
-  let state = { collapsed: false, tracking: false };
+  const BAR_ID = 't1s-floating-bar';
+  let state = { collapsed: false, tracking: false, couponsOpen: false };
 
   // ---------- helpers --------------------------------------------------
 
@@ -27,26 +35,162 @@
       <img class="t1s-wd" src="${chrome.runtime.getURL('images/logo-wordmark.png')}" alt="" />
     </span>`;
 
+  const PRODUCT_VERTICALS = new Set(['ecommerce', 'grocery']);
+  const SEARCH_VERTICALS = new Set(['ecommerce', 'grocery', 'food', 'movies', 'bus']);
+
+  // ---------- floating bar (owner design reference) --------------------
+
+  function buildBar() {
+    const bar = el('div');
+    bar.id = BAR_ID;
+    bar.className = 't1s-bar';
+    bar.innerHTML = `
+      <span class="t1s-bar-badge">TRY1SECOND</span>
+      <span class="t1s-bar-atl" title="All-time low verified by Try1Second (real recorded prices only)">ATL: <b>…</b></span>
+      <button type="button" class="t1s-bar-coupon">Auto-Test Coupons</button>
+      <button type="button" class="t1s-bar-toggle" title="Open the Try1Second panel">&#9432;</button>
+      <div class="t1s-bar-coupons" hidden></div>`;
+    document.documentElement.appendChild(bar);
+    return bar;
+  }
+
+  function setBarPrice(bar, text, muted) {
+    const node = bar.querySelector('.t1s-bar-atl');
+    node.innerHTML = `ATL: <b>${esc(text)}</b>`;
+    node.classList.toggle('t1s-bar-muted', !!muted);
+  }
+
+  /** Auto-Test Coupons: pulls this merchant's LIVE coupons from the backend and
+   *  lists them with one-tap copy. Codes come from Try1Second's acquired/admin
+   *  deal registry — nothing is invented; no live coupon = honest empty state. */
+  async function renderCoupons(bar, product) {
+    const box = bar.querySelector('.t1s-bar-coupons');
+    state.couponsOpen = !state.couponsOpen;
+    box.hidden = !state.couponsOpen;
+    if (!state.couponsOpen) return;
+    box.innerHTML = `<div class="t1s-status"><span class="t1s-spinner"></span>Fetching live coupons…</div>`;
+    let deals = [];
+    try {
+      deals = await apiDeals(merchantKeyFor(product.site));
+      if (!deals.length) deals = await apiDeals(merchantKeyFor(product.site).split('-')[0]);
+    } catch { deals = []; }
+    if (!deals.length) {
+      box.innerHTML = `<div class="t1s-coupon-empty">No live coupons for ${esc(product.site)} on Try1Second right now. Never shows made-up codes.</div>`;
+      return;
+    }
+    box.innerHTML = '<div class="t1s-coupon-head">Live coupons for this site — tap to copy</div>';
+    for (const d of deals.slice(0, 8)) {
+      const row = el('div', 't1s-coupon-row');
+      const isCoupon = d.kind === 'coupon' && d.code;
+      row.innerHTML = `
+        <div class="t1s-coupon-txt">
+          <div class="t1s-coupon-title">${esc(d.title || d.discount_text || '')}</div>
+          <div class="t1s-coupon-sub">${esc(d.discount_text || d.description || '')}${d.terms ? ` · ${esc(d.terms)}` : ''}</div>
+        </div>
+        ${isCoupon
+          ? `<button type="button" class="t1s-coupon-code" title="Copy code">${esc(d.code)}</button>`
+          : `<a class="t1s-btn t1s-btn-open" target="_blank" rel="noopener">Open</a>`}`;
+      if (isCoupon) {
+        const btn = row.querySelector('.t1s-coupon-code');
+        btn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(d.code);
+            btn.classList.add('t1s-copied');
+            const old = btn.textContent;
+            btn.textContent = 'Copied ✓';
+            setTimeout(() => { btn.textContent = old; btn.classList.remove('t1s-copied'); }, 1600);
+          } catch { btn.textContent = d.code; }
+        });
+      } else {
+        const a = row.querySelector('a');
+        a.href = d.dest_url || '#';
+        if (!d.dest_url) a.style.display = 'none';
+      }
+      box.appendChild(row);
+    }
+  }
+
   // ---------- main flow ------------------------------------------------
 
   async function main() {
     const product = detectProduct();
-    if (!product || !product.title) return;
+    if (!product || !product.site) return;
+    const vertical = product.vertical || 'ecommerce';
 
     const { t1sCity = '', t1sPincode = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode']);
 
+    // The floating bar appears on EVERY supported page, even when the page has
+    // no detectable product entity (search pages, listings): it offers a hop to
+    // the metasearch rather than invented numbers.
+    const bar = buildBar();
+    bar.querySelector('.t1s-bar-coupon').addEventListener('click', () => renderCoupons(bar, product));
+
+    if (product.routeOnly) {
+      // Travel / bus route pages: no per-product entity — offer the route search.
+      setBarPrice(bar, '—', true);
+      bar.querySelector('.t1s-bar-toggle').addEventListener('click', async () => {
+        window.open(await try1secondSearchUrl(product.routeQuery || product.site), '_blank', 'noopener');
+      });
+      bar.querySelector('.t1s-bar-coupon').style.display = 'none';
+      bar.title = 'Search this on Try1Second for the cheapest verified price';
+      return;
+    }
+    if (!product.title) return;
+
     const panel = buildPanel(product);
     document.documentElement.appendChild(panel);
-    renderStatus(panel, 'Searching across sites…');
+    panel.style.display = 'none';
+    let panelOpen = false;
+    bar.querySelector('.t1s-bar-toggle').addEventListener('click', () => {
+      panelOpen = !panelOpen;
+      panel.style.display = panelOpen ? '' : 'none';
+      if (panelOpen && !panel.dataset.rendered) { panel.dataset.rendered = '1'; renderPanelFlow(panel, product, { t1sCity, t1sPincode }); }
+    });
+    renderPanelFlow(panel, product, { t1sCity, t1sPincode, background: true });
 
+    if (!SEARCH_VERTICALS.has(vertical)) return;
+
+    // Populate the bar with the verified best price / all-time low.
     try {
-      const [searchRes] = await Promise.all([apiSearch(product.title, { city: t1sCity, pincode: t1sPincode })]);
+      const searchRes = await apiSearch(product.title, { vertical, city: t1sCity, pincode: t1sPincode });
+      const match = pickMatchingResult(searchRes.results, product.title, product.identifiers?.asin || null);
+      let atl = null;
+      if (match?.canonicalEntityId) {
+        try { atl = (await apiHistory(match.canonicalEntityId)).map((p) => p.price).filter((n) => n > 0); } catch { atl = null; }
+      }
+      if (atl && atl.length) {
+        setBarPrice(bar, inr(Math.min(...atl)));
+        bar.querySelector('.t1s-bar-atl').title = `All-time low across ${atl.length} recorded real prices`;
+      } else if (match) {
+        const best = cheapestOf(searchRes.results.filter((r) => String(r.canonicalEntityId || '') === String(match.canonicalEntityId || '')));
+        if (priceOf(best) > 0) {
+          setBarPrice(bar, inr(priceOf(best)));
+          bar.querySelector('.t1s-bar-atl').title = 'Best verified price right now (no history recorded yet)';
+        } else setBarPrice(bar, '—', true);
+      } else {
+        setBarPrice(bar, '—', true);
+        bar.querySelector('.t1s-bar-atl').title = 'No verified offer recorded for this page yet';
+      }
+    } catch {
+      setBarPrice(bar, '—', true);
+    }
+  }
+
+  async function renderPanelFlow(panel, product, { t1sCity, t1sPincode, background = false }) {
+    renderStatus(panel, 'Searching across sites…');
+    const vertical = product.vertical || 'ecommerce';
+    try {
+      const searchRes = await apiSearch(product.title, { vertical, city: t1sCity, pincode: t1sPincode });
       const match = pickMatchingResult(searchRes.results, product.title, null);
       if (!match) {
-        renderUnavailable(panel, 'Try1Second has no verified offers for this product yet. Not showing unverified prices.');
+        renderUnavailable(panel, 'Try1Second has no verified offers for this yet. Not showing unverified prices.');
         return;
       }
-      await renderMatch(panel, product, searchRes, match);
+      if (PRODUCT_VERTICALS.has(vertical)) {
+        await renderMatch(panel, product, searchRes, match);
+      } else {
+        await renderCompactMatch(panel, product, searchRes, match);
+      }
     } catch (err) {
       renderUnavailable(panel, `Try1Second is unreachable right now (${esc(err.message || 'network error')}). Prices were not changed.`);
     }
@@ -86,6 +230,44 @@
 
   function renderUnavailable(panel, msg) {
     bodyOf(panel).innerHTML = `<div class="t1s-status t1s-muted">${esc(msg)}</div>`;
+  }
+
+  // Compact panel for non-product verticals (food restaurant, movie, bus route):
+  // top verified offers + a hop to the metasearch. No history charts (these
+  // entities have no per-item price history on the backend).
+  async function renderCompactMatch(panel, product, searchRes, match) {
+    const body = bodyOf(panel);
+    body.innerHTML = '';
+    const offers = (searchRes.results || []).filter((r) => priceOf(r) > 0).slice(0, 5);
+    if (!offers.length) {
+      renderUnavailable(panel, 'No verified offers for this yet.');
+      return;
+    }
+    body.appendChild(el('div', 't1s-bestrow', `
+      <div class="t1s-bp"><span class="t1s-bpl">Best verified price</span><span class="t1s-bpv">${inr(priceOf(offers[0]))}</span>
+      <span class="t1s-bps">${esc(offers[0].seller || offers[0].vendor || '')}</span></div>`));
+    const list = el('div', 't1s-offers');
+    for (const o of offers) {
+      const row = el('div', 't1s-offer');
+      row.innerHTML = `
+        <span class="t1s-offer-site">${esc((o.title || '').slice(0, 44))}</span>
+        <span class="t1s-offer-price">${inr(priceOf(o))}</span>
+        <a class="t1s-btn t1s-btn-open" target="_blank" rel="noopener">Open</a>`;
+      const a = row.querySelector('a');
+      a.href = '#';
+      a.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (o.sellerUrl) { try { window.open(await apiGo(o.sellerUrl, o.id), '_blank', 'noopener'); } catch { a.textContent = 'Link expired'; } }
+        else window.open(await try1secondSearchUrl(product.title), '_blank', 'noopener');
+      });
+      list.appendChild(row);
+    }
+    body.appendChild(list);
+    const openRow = el('div', 't1s-openweb');
+    openRow.innerHTML = `<a class="t1s-link" target="_blank" rel="noopener">Compare more on Try1Second →</a>`;
+    openRow.querySelector('a').href = await try1secondSearchUrl(product.title);
+    body.appendChild(openRow);
+    panel.querySelector('.t1s-btn-track').style.display = 'none';
   }
 
   // ---------- matched render --------------------------------------------
