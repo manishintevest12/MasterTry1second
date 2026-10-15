@@ -9,6 +9,14 @@ import { log } from '../common/logger';
 
 const CIRCUIT_THRESHOLD = 3; // consecutive failures before opening circuit
 const CIRCUIT_COOLDOWN_MS = 60_000;
+// ACCESS_CHALLENGE (Akamai "Bot or Not?" sampling, WAF 403/429) is IP-reputation
+// based: it only clears after the source sees QUIET time (observed 30-60 min on
+// expedia.com). A flat 60s cooldown + warm-cycle retries every few minutes keeps
+// re-triggering the sample, so the source never recovers (this is why Expedia/
+// Hotels.com offers were missing on production). Challenges now back off
+// exponentially: 1min -> 5min -> 25min -> 60min (cap), resetting on the first success.
+const CHALLENGE_COOLDOWN_STEPS_MS = [60_000, 5 * 60_000, 25 * 60_000, 60 * 60_000];
+const challengeOpenings = new Map<string, number>();
 
 const health = new Map<string, SourceHealth>();
 
@@ -57,6 +65,7 @@ export function recordAttempt(sourceId: string, latencyMs: number): void {
 }
 
 export function recordSuccess(sourceId: string, latencyMs: number): void {
+  challengeOpenings.delete(sourceId); // a single success ends the challenge backoff ladder
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
   h.totalSuccesses += 1;
@@ -88,10 +97,20 @@ export function recordFailure(sourceId: string, failureClass: FailureClass, erro
   h.lastFailureAt = new Date().toISOString();
   h.lastFailureClass = failureClass;
   h.lastFailureMessage = String(error || '').slice(0, 300) || null;
+  const wasOpen = h.state === 'CIRCUIT_OPEN';
   h.state = h.consecutiveFailures >= CIRCUIT_THRESHOLD ? 'CIRCUIT_OPEN' : 'DEGRADED';
-  if (h.state === 'CIRCUIT_OPEN') {
-    h.circuitOpenUntil = new Date(Date.now() + CIRCUIT_COOLDOWN_MS).toISOString();
-    log.warn('Health', `Circuit OPEN for ${sourceId} after ${h.consecutiveFailures} failures (${failureClass})`);
+  if (h.state === 'CIRCUIT_OPEN' && !wasOpen) {
+    // Fresh opening only: extra failures while already open never extend or
+    // shorten the existing cooldown window.
+    let cooldownMs = CIRCUIT_COOLDOWN_MS;
+    if (failureClass === 'ACCESS_CHALLENGE') {
+      // Step the ladder once per circuit OPENING (not per failure).
+      const n = (challengeOpenings.get(sourceId) ?? 0) + 1;
+      challengeOpenings.set(sourceId, n);
+      cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[Math.min(n - 1, CHALLENGE_COOLDOWN_STEPS_MS.length - 1)];
+    }
+    h.circuitOpenUntil = new Date(Date.now() + cooldownMs).toISOString();
+    log.warn('Health', `Circuit OPEN for ${sourceId} after ${h.consecutiveFailures} failures (${failureClass}), cooldown ${Math.round(cooldownMs / 60_000)}min`);
   }
   health.set(sourceId, h);
   void persist(h);
