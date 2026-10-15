@@ -14,7 +14,10 @@ interface AjioProduct {
   wasPriceData?: { value?: number };
   discountPercent?: number;
   fnlColorVariantData?: { brandName?: string; outfitPictureURL?: string };
-  images?: Array<{ altText?: string; media?: Array<{ imageUrl?: string; mediumImageUrl?: string }> }>;
+  /** 2026 API shape: flat {altText, format, imageType, url} entries. */
+  images?: Array<{ altText?: string; url?: string; media?: Array<{ imageUrl?: string; mediumImageUrl?: string }> }>;
+  /** 2026 API shape: model shots, each {model, images: [{format, url}]}. */
+  extraImages?: Array<{ model?: string; images?: Array<{ format?: string; url?: string }> }>;
 }
 
 function pickImage(p: AjioProduct): string | undefined {
@@ -29,8 +32,14 @@ function pickImages(p: AjioProduct): string[] {
   const out: string[] = [];
   const add = (u?: string) => { if (u) { const x = String(u).replace(/^http:/, 'https:'); if (!out.includes(x)) out.push(x); } };
   add(p.fnlColorVariantData?.outfitPictureURL);
-  for (const g of p.images || []) for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
-  return out.slice(0, 6);
+  // 2026 flat shape: images[].url ; legacy shape: images[].media[]
+  for (const g of p.images || []) {
+    add(g.url);
+    for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
+  }
+  // 2026 model shots: extraImages[].images[].url
+  for (const x of p.extraImages || []) for (const m of x.images || []) add(m.url);
+  return out.slice(0, 8);
 }
 
 export function parseAjio(rawBody: string, source: SourceConfig, pageUrl: string): RawSourceItem[] {

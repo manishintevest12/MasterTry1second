@@ -20,6 +20,7 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
+  Scale,
 } from 'lucide-react';
 import { ComparisonItem, SellerQuote } from '../types';
 import { useApp } from '../context/AppContext';
@@ -103,6 +104,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
     startRedirection,
     openReviewModal,
     openPriceAlertModal,
+    openProductPage,
     userLocation,
   } = useApp();
 
@@ -511,6 +513,19 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 {item.vertical === 'loans' || item.vertical === 'insurance' ? 'Pre-Approved' : 'Best Price'}
               </span>
             </button>
+
+            {/* Compare: full in-site product page (gallery + all-store price table) */}
+            {item.vertical === 'ecommerce' && (
+              <button
+                type="button"
+                onClick={() => openProductPage({ query: item.title })}
+                title="Compare this product across every store on one page"
+                className="py-2.5 px-4 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs rounded-lg border border-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Scale className="w-4 h-4" />
+                Compare
+              </button>
+            )}
 
             {/* Expand details arrow */}
             <button

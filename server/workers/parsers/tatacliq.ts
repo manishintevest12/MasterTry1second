@@ -24,6 +24,8 @@ interface CliqProduct {
   brandname?: string;
   webURL?: string;
   imageURL?: string;
+  /** Multiple gallery photos of the SAME product (BFF exposes them on search). */
+  productImages?: string[];
   inStockFlag?: boolean;
   discountPercent?: number;
   averageRating?: number;
@@ -58,6 +60,11 @@ export function parseTataCliq(rawBody: string, source: SourceConfig, pageUrl: st
       let img: string | undefined;
       const rawImg = String(p.imageURL || '');
       if (rawImg) img = rawImg.startsWith('http') ? rawImg : `https:${rawImg}`;
+      // Gallery: the BFF exposes every photo of the product on search already.
+      const gallery = (p.productImages || [])
+        .map((u) => (String(u).startsWith('http') ? String(u) : `https:${String(u)}`))
+        .filter((u) => /^https:\/\//.test(u));
+      const galleryUrls = gallery.filter((u) => u !== img);
       items.push(newRawItem(source, {
         title: (brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name).slice(0, 200),
         brand,
@@ -71,6 +78,7 @@ export function parseTataCliq(rawBody: string, source: SourceConfig, pageUrl: st
           brand: brand || '',
           discount: p.discountPercent ? `${p.discountPercent}%` : '',
           image: img || '',
+          ...(galleryUrls.length ? { image_urls: [img, ...galleryUrls].filter(Boolean).slice(0, 8).join('|') } : {}),
           in_stock: p.inStockFlag === false ? 'false' : 'true',
           ...(p.averageRating ? { rating: String(p.averageRating) } : {}),
           ...(p.totalNoOfReviews ? { review_count: String(p.totalNoOfReviews) } : {}),
