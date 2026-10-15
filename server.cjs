@@ -119,7 +119,7 @@ var init_settings = __esm({
         websiteId: process.env.ADMITAD_WEBSITE_ID || "",
         defaultCampaignId: process.env.ADMITAD_DEFAULT_CAMPAIGN_ID || "",
         baseUrl: process.env.ADMITAD_BASE_URL || "https://api.admitad.com",
-        scope: process.env.ADMITAD_SCOPE || "advcampaigns_for_website coupons_for_website",
+        scope: process.env.ADMITAD_SCOPE || "advcampaigns advcampaigns_for_website coupons_for_website websites",
         enabled: Boolean(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET)
       },
       vcommission: {
@@ -21870,8 +21870,9 @@ var init_admitad = __esm({
         const maxPages = opts.pages ?? 5;
         const offers = [];
         const warnings = [];
+        const path10 = settings.admitad.websiteId ? `/coupons/website/${encodeURIComponent(settings.admitad.websiteId)}/` : "/coupons/";
         for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-          const j = await this.apiGet("/coupons/", { limit: Math.min(100, maxOffers - offers.length), offset: page * 100, region: "IN" });
+          const j = await this.apiGet(path10, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
           const results = j?.results || [];
           if (results.length === 0) break;
           for (const c of results) {

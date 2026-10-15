@@ -86,7 +86,7 @@ export const settings = {
     websiteId: process.env.ADMITAD_WEBSITE_ID || '',
     defaultCampaignId: process.env.ADMITAD_DEFAULT_CAMPAIGN_ID || '',
     baseUrl: process.env.ADMITAD_BASE_URL || 'https://api.admitad.com',
-    scope: process.env.ADMITAD_SCOPE || 'advcampaigns_for_website coupons_for_website',
+    scope: process.env.ADMITAD_SCOPE || 'advcampaigns advcampaigns_for_website coupons_for_website websites',
     enabled: Boolean(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET),
   },
   vcommission: {

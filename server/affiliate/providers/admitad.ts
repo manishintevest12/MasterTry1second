@@ -74,8 +74,13 @@ export class AdmitadProvider extends BaseAffiliateProvider {
     const maxPages = opts.pages ?? 5;
     const offers: UnifiedAffiliateOffer[] = [];
     const warnings: string[] = [];
+    // Website-scoped coupons (coupons_for_website scope) are the only ones our
+    // credential can read; the network-wide /coupons/ needs a broader scope (403).
+    const path = settings.admitad.websiteId
+      ? `/coupons/website/${encodeURIComponent(settings.admitad.websiteId)}/`
+      : '/coupons/';
     for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-      const j = await this.apiGet('/coupons/', { limit: Math.min(100, maxOffers - offers.length), offset: page * 100, region: 'IN' });
+      const j = await this.apiGet(path, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
       const results: any[] = j?.results || [];
       if (results.length === 0) break;
       for (const c of results) {
