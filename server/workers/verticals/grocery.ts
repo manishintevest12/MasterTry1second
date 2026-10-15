@@ -77,7 +77,7 @@ function collectImProducts(node: any, out: ImProduct[], depth = 0): void {
   for (const v of Object.values(node)) collectImProducts(v, out, depth + 1);
 }
 
-/** Extract (layoutId, endpoint) pairs from home deeplinks. */
+/** Extract (layoutId, endpoint) pairs from home deeplinks + raw layoutId JSON fields. */
 function extractImLayouts(body: string): Array<{ id: string; endpoint: string }> {
   const seen = new Set<string>();
   const out: Array<{ id: string; endpoint: string }> = [];
@@ -87,6 +87,13 @@ function extractImLayouts(body: string): Array<{ id: string; endpoint: string }>
     if (seen.has(id)) continue;
     seen.add(id);
     out.push({ id, endpoint: m[1].includes('listing') ? 'campaign/listing/v2' : 'layout/v2' });
+  }
+  // Extra grids referenced only as raw layoutId JSON fields (category grids inside
+  // campaign/layout responses); layout/v2 is a cheap 200/404 probe for them.
+  for (const m of body.matchAll(/layoutId[\\":\s]+(\d{4,8})/g)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push({ id: m[1], endpoint: 'layout/v2' });
   }
   return out;
 }
@@ -295,6 +302,12 @@ export const groceryWorker: VerticalWorker = {
 
         const products: ImProduct[] = [];
         const sources: string[] = [homeUrl];
+        // The home page embeds product cards (ItemCollectionCard) directly; collect them too.
+        try {
+          collectImProducts(JSON.parse(home.body), products);
+        } catch {
+          /* home body not JSON-parseable; grids below still carry products */
+        }
 
         // Collect product grids: Top Deals campaign + home banner layouts (cap requests).
         const layouts = extractImLayouts(home.body).slice(0, 18);
