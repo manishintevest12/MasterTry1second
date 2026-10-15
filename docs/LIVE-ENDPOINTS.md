@@ -112,14 +112,37 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   no milk in curated deal grids, so rare terms honestly return EMPTY_RESPONSE.
 - **Blinkit** [blinkit.ts] — POST /v1/layout/search?q= (app_client=consumer_web
   + lat/lon). Chrome→safari17_0→chrome110 fingerprint retry ladder. 15 Oct:
-  Cloudflare now 403s BOTH sandbox and Hostinger prod IPs on all 3 fingerprints
-  (worked 13 Oct from sandbox) — IP-range block, APK recon in progress.
+  Cloudflare 403s BOTH sandbox and Hostinger prod IPs on all 3 fingerprints
+  (worked 13 Oct from sandbox) — IP-range block. Recon 15 Oct: **api.blinkit.com
+  is an OPEN Kong gateway** (no Cloudflare, "no Route matched" JSON) but app
+  routes unknown — com.blinkit.app APK not on any browserless mirror (Aptoide
+  lacks it; APKPure/APKMirror/apkfab CF-gated; Uptodown listing removed). Host-
+  header spoof (Host: blinkit.com) reaches the site vhost but gets the same CF
+  challenge. Full recon: recon-blinkit.md. Recovery options: APK from a real
+  device, or retest the web recipe after IP quiet time, or QuickCommerce API.
 - **BigBasket** [bigbasket.ts] — 3-step cookie handshake (homepage →
   serviceable → _bb_addressinfo/_bb_pin_code/_bb_lat_long → listing-svc/v2).
-  15 Oct: now failing ACCESS_CHALLENGE from sandbox (worked 13 Oct) —
-  handshake retest in progress.
+  15 Oct: RECIPE CONFIRMED, NO DRIFT — ps-page chunk (bbassets.com, ungated)
+  shows the app calls exactly /listing-svc/v2/products?type=ps&slug=<q> (slug
+  = query, not q=). Sandbox IP re-sampled by Akamai after recon bursts
+  (~15 req/10min → 403); the worker's low-volume 3-request handshake self-
+  heals via the ACCESS_CHALLENGE backoff ladder. DRIFT-REPAIR TRICK: read
+  www.bbassets.com/monsters-inc/static/_next/static/chunks/... any time (even
+  while the site 403s) — chunk 2263-*.js holds getListingQuery. Full recon:
+  recon-bigbasket.md.
 - **QuickCommerce API** [grocery.ts] — api.quickcommerceapi.com/v1/search
   (needs QUICKCOMMERCE_API_KEY in hPanel; /v1/health-status public).
+- **Zepto** — BLOCKED for search (user-search.zepto.co.in/api/v3/search +
+  lms get_page = CloudFront WAF 429; zeptonow.com all-HTML 202 challenge) but
+  15 Oct recon found 3 UNGATED api-gateway routes (Kong, no IP block):
+  (1) serviceability-service/api/v1/serviceability?lat&lng&regionId (200 —
+  needs the correct regionId, 1-42 all false for Delhi/Mumbai/Gurgaon/B'lore;
+  no region-list route), (2) product-assortment-service/api/v2/store-products-
+  by-store-subcategory-id (400 wants StoreId UUID — need a serviceable store
+  first), (3) recipe-service/api/v1/recipe/search-products (needs recipeId).
+  151-route map extracted from the APK Hermes bundle (recon-zepto.md);
+  anonymous-device-token host undiscovered. Path to prices: crack regionId →
+  stores[].uuid → subcategory UUIDs.
 
 ## E-commerce
 - **Amazon.in** [amazonIn.ts], **Flipkart** [flipkart.ts], **Ajio** [ajio.ts],
