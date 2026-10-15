@@ -104,12 +104,20 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   shell feed featured dishes + per-restaurant dynamicmenu deep-dive.
 
 ## Grocery
-- **Instamart** [swiggy.ts grocery] — instamart.swiggy.com home/v2 +
+- **Instamart** [grocery.ts w_grocery_instamart] — instamart.swiggy.com home/v2 +
   campaign/listing/v2 + layout/v2 (no auth). Products nest at JSON depth 13.
+  15 Oct: worker now also collects the ~100 product cards embedded in home/v2
+  itself + layout/v2 for raw layoutId JSON fields (90→150 products). Search/v2,
+  search/v3 and collection/listing/v2+3 stay 202 edge-gated (retested 15 Oct) —
+  no milk in curated deal grids, so rare terms honestly return EMPTY_RESPONSE.
 - **Blinkit** [blinkit.ts] — POST /v1/layout/search?q= (app_client=consumer_web
-  + lat/lon). Chrome→safari17_0→chrome110 fingerprint retry ladder.
+  + lat/lon). Chrome→safari17_0→chrome110 fingerprint retry ladder. 15 Oct:
+  Cloudflare now 403s BOTH sandbox and Hostinger prod IPs on all 3 fingerprints
+  (worked 13 Oct from sandbox) — IP-range block, APK recon in progress.
 - **BigBasket** [bigbasket.ts] — 3-step cookie handshake (homepage →
   serviceable → _bb_addressinfo/_bb_pin_code/_bb_lat_long → listing-svc/v2).
+  15 Oct: now failing ACCESS_CHALLENGE from sandbox (worked 13 Oct) —
+  handshake retest in progress.
 - **QuickCommerce API** [grocery.ts] — api.quickcommerceapi.com/v1/search
   (needs QUICKCOMMERCE_API_KEY in hPanel; /v1/health-status public).
 
