@@ -27,6 +27,9 @@ export class AdmitadProvider extends BaseAffiliateProvider {
   readonly id = 'admitad' as const;
   readonly label = 'Admitad';
   private token: AdmitadToken | null = null;
+  /** Website (ad space) id discovered via GET /websites/ when the env var is
+   *  absent — cached so discovery runs at most once per process. */
+  private discoveredWebsiteId: string | null = null;
 
   isConfigured(): boolean {
     return Boolean(settings.admitad.clientId && settings.admitad.clientSecret);
@@ -76,8 +79,26 @@ export class AdmitadProvider extends BaseAffiliateProvider {
     const warnings: string[] = [];
     // Website-scoped coupons (coupons_for_website scope) are the only ones our
     // credential can read; the network-wide /coupons/ needs a broader scope (403).
-    const path = settings.admitad.websiteId
-      ? `/coupons/website/${encodeURIComponent(settings.admitad.websiteId)}/`
+    // ADMITAD_WEBSITE_ID may be unset on the host (prod 15 Oct: token OK but
+    // /coupons/ 403) — discover the publisher's own ad space via GET /websites/
+    // (scope 'websites' is granted with the default credential) and cache it.
+    let websiteId = settings.admitad.websiteId || this.discoveredWebsiteId;
+    if (!websiteId) {
+      try {
+        const wj = await this.apiGet('/websites/', { limit: 10 });
+        const site = (wj?.results || []).find((s: any) => String(s?.status).toLowerCase() === 'active')
+          || wj?.results?.[0];
+        if (site?.id) {
+          this.discoveredWebsiteId = String(site.id);
+          websiteId = this.discoveredWebsiteId;
+          log.info('Affiliate', `Admitad website auto-discovered (id ${websiteId}, "${site.name}") — set ADMITAD_WEBSITE_ID to pin it`);
+        }
+      } catch (e: any) {
+        warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
+      }
+    }
+    const path = websiteId
+      ? `/coupons/website/${encodeURIComponent(websiteId)}/`
       : '/coupons/';
     for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
       const j = await this.apiGet(path, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
