@@ -69,9 +69,13 @@ export const settings = {
 
   cuelinks: {
     apiKey: process.env.CUELINKS_API_KEY || '',
+    publisherId: process.env.CUELINKS_PUBLISHER_ID || '278473', // owner account, Oct 2026
     campaignId: process.env.CUELINKS_CAMPAIGN_ID || '',
     subId: process.env.CUELINKS_SUB_ID || '',
-    enabled: Boolean(process.env.CUELINKS_API_KEY),
+    apiBase: process.env.CUELINKS_API_BASE || 'https://developers.cuelinks.com/pub_api/v3',
+    // linkkit deeplinks need only publisherId + campaign cid; the Monetization
+    // API (offers/campaigns/convert) needs the dashboard API key on top.
+    enabled: Boolean(process.env.CUELINKS_API_KEY || process.env.CUELINKS_PUBLISHER_ID),
   },
   admitad: {
     clientId: process.env.ADMITAD_CLIENT_ID || '',

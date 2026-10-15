@@ -93,11 +93,22 @@ var init_settings = __esm({
       /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
       googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "").split(",").map((e) => e.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
+      // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
+      // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
+      // API access (PA-API needs separate Associates approval with qualifying sales).
+      amazonAssociates: {
+        tag: (process.env.AMAZON_ASSOCIATES_TAG || "try1second-21").trim()
+      },
       cuelinks: {
         apiKey: process.env.CUELINKS_API_KEY || "",
+        publisherId: process.env.CUELINKS_PUBLISHER_ID || "278473",
+        // owner account, Oct 2026
         campaignId: process.env.CUELINKS_CAMPAIGN_ID || "",
         subId: process.env.CUELINKS_SUB_ID || "",
-        enabled: Boolean(process.env.CUELINKS_API_KEY)
+        apiBase: process.env.CUELINKS_API_BASE || "https://developers.cuelinks.com/pub_api/v3",
+        // linkkit deeplinks need only publisherId + campaign cid; the Monetization
+        // API (offers/campaigns/convert) needs the dashboard API key on top.
+        enabled: Boolean(process.env.CUELINKS_API_KEY || process.env.CUELINKS_PUBLISHER_ID)
       },
       admitad: {
         clientId: process.env.ADMITAD_CLIENT_ID || "",
@@ -981,6 +992,7 @@ function recordAttempt(sourceId, latencyMs) {
   health.set(sourceId, h);
 }
 function recordSuccess(sourceId, latencyMs) {
+  challengeOpenings.delete(sourceId);
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
   h.totalSuccesses += 1;
@@ -1007,10 +1019,17 @@ function recordFailure(sourceId, failureClass, error) {
   h.lastFailureAt = (/* @__PURE__ */ new Date()).toISOString();
   h.lastFailureClass = failureClass;
   h.lastFailureMessage = String(error || "").slice(0, 300) || null;
+  const wasOpen = h.state === "CIRCUIT_OPEN";
   h.state = h.consecutiveFailures >= CIRCUIT_THRESHOLD ? "CIRCUIT_OPEN" : "DEGRADED";
-  if (h.state === "CIRCUIT_OPEN") {
-    h.circuitOpenUntil = new Date(Date.now() + CIRCUIT_COOLDOWN_MS).toISOString();
-    log.warn("Health", `Circuit OPEN for ${sourceId} after ${h.consecutiveFailures} failures (${failureClass})`);
+  if (h.state === "CIRCUIT_OPEN" && !wasOpen) {
+    let cooldownMs = CIRCUIT_COOLDOWN_MS;
+    if (failureClass === "ACCESS_CHALLENGE") {
+      const n = (challengeOpenings.get(sourceId) ?? 0) + 1;
+      challengeOpenings.set(sourceId, n);
+      cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[Math.min(n - 1, CHALLENGE_COOLDOWN_STEPS_MS.length - 1)];
+    }
+    h.circuitOpenUntil = new Date(Date.now() + cooldownMs).toISOString();
+    log.warn("Health", `Circuit OPEN for ${sourceId} after ${h.consecutiveFailures} failures (${failureClass}), cooldown ${Math.round(cooldownMs / 6e4)}min`);
   }
   health.set(sourceId, h);
   void persist(h);
@@ -1034,12 +1053,14 @@ async function persist(h) {
     log.debug("Health", "Persist failed (file store / no table)", { error: String(e).slice(0, 120) });
   }
 }
-var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, health;
+var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, challengeOpenings, health;
 var init_health = __esm({
   "server/sources/health.ts"() {
     init_logger();
     CIRCUIT_THRESHOLD = 3;
     CIRCUIT_COOLDOWN_MS = 6e4;
+    CHALLENGE_COOLDOWN_STEPS_MS = [6e4, 5 * 6e4, 25 * 6e4, 60 * 6e4];
+    challengeOpenings = /* @__PURE__ */ new Map();
     health = /* @__PURE__ */ new Map();
   }
 });
@@ -1824,8 +1845,12 @@ function pickImages(p) {
     }
   };
   add(p.fnlColorVariantData?.outfitPictureURL);
-  for (const g of p.images || []) for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
-  return out.slice(0, 6);
+  for (const g of p.images || []) {
+    add(g.url);
+    for (const m of g.media || []) add(m.mediumImageUrl || m.imageUrl);
+  }
+  for (const x of p.extraImages || []) for (const m of x.images || []) add(m.url);
+  return out.slice(0, 8);
 }
 function parseAjio(rawBody, source, pageUrl) {
   let root;
@@ -1901,6 +1926,8 @@ function parseTataCliq(rawBody, source, pageUrl) {
       let img;
       const rawImg = String(p.imageURL || "");
       if (rawImg) img = rawImg.startsWith("http") ? rawImg : `https:${rawImg}`;
+      const gallery = (p.productImages || []).map((u) => String(u).startsWith("http") ? String(u) : `https:${String(u)}`).filter((u) => /^https:\/\//.test(u));
+      const galleryUrls = gallery.filter((u) => u !== img);
       items.push(newRawItem(source, {
         title: (brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name).slice(0, 200),
         brand,
@@ -1914,6 +1941,7 @@ function parseTataCliq(rawBody, source, pageUrl) {
           brand: brand || "",
           discount: p.discountPercent ? `${p.discountPercent}%` : "",
           image: img || "",
+          ...galleryUrls.length ? { image_urls: [img, ...galleryUrls].filter(Boolean).slice(0, 8).join("|") } : {},
           in_stock: p.inStockFlag === false ? "false" : "true",
           ...p.averageRating ? { rating: String(p.averageRating) } : {},
           ...p.totalNoOfReviews ? { review_count: String(p.totalNoOfReviews) } : {},
@@ -4082,7 +4110,7 @@ function parseIxigoOffers(flights, source, from, to, date) {
       }
     }));
   }
-  return out.slice(0, 40);
+  return out.slice(0, 60);
 }
 var IXIGO_WEB;
 var init_ixigoFlights = __esm({
@@ -4223,7 +4251,7 @@ function parseEmtAirbus(jsonText) {
   }
   return out;
 }
-function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, cap = 40) {
+function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, cap = 60) {
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const routeLabel = `${route.from} \u2192 ${route.to}`;
   const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-India%7C${toCode}-${encodeURIComponent(route.to)}-India%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
@@ -4615,6 +4643,3938 @@ var init_akasaFlights = __esm({
   }
 });
 
+// server/workers/parsers/expediaFlightsQuery.ts
+var EXPEDIA_FLIGHTS_QUERY;
+var init_expediaFlightsQuery = __esm({
+  "server/workers/parsers/expediaFlightsQuery.ts"() {
+    EXPEDIA_FLIGHTS_QUERY = `query FlightsSearchResultsLoadedQuery($context: ContextInput!, $flightsSearchContext: FlightsSearchContextInput, $journeyCriteria: [FlightsJourneyCriteriaInput!]!, $travelerDetails: [FlightsTravelerDetailsInput!], $searchFilterValuesList: [FlightsSearchFilterValuesInput!], $sortOption: FlightsSortOptionTypeInput, $queryState: FlightsQueryState, $searchPreferences: FlightsSearchPreferencesInput, $searchPagination: PaginationInput, $flightsSearchComponentCriteria: FlightsSearchComponentCriteriaInput, $shoppingContext: ShoppingContextInput, $faresSeparationType: FlightsFaresSeparationType, $rewardsOption: RewardsOption, $fareCalendarPrice: String, $flightsDisplayComponentValues: FlightsDisplayComponentValuesInput, $virtualAgentContext: VirtualAgentContextInput, $progressiveRenderingInput: FlightsProgressiveRenderingInput, $insuranceCriteria: InsuranceCriteriaInput) { flightsSearch(context: $context, flightsSearchContext: $flightsSearchContext, journeyCriteria: $journeyCriteria, travelerDetails: $travelerDetails, searchFilterValuesList: $searchFilterValuesList, sortOption: $sortOption, queryState: $queryState, searchPreferences: $searchPreferences, searchPagination: $searchPagination, flightsSearchComponentCriteria: $flightsSearchComponentCriteria, shoppingContext: $shoppingContext, faresSeparationType: $faresSeparationType, rewardsOption: $rewardsOption, fareCalendarPrice: $fareCalendarPrice, flightsDisplayComponentValues: $flightsDisplayComponentValues, virtualAgentContext: $virtualAgentContext, progressiveRenderingInput: $progressiveRenderingInput, insuranceCriteria: $insuranceCriteria) { flightsSheets { ...FlightsSheetTypeFragment } dialogs { ...FlightsDialogPresentationFragment } listingResult { ...FlightsLoadedListingResultFragment } clientMetadata { ...FlightsPWAMetadataFragment } noListingMessaging { ...FlightsErrorMessagingPresentationFragment } ...FlightsSearchLegacyFieldsFragment } }
+
+fragment FlightsSheetTypeFragment on FlightsSheetType {
+    id
+    initialState
+    displayAnalytics {
+      ...ClientSideAnalyticsFragment
+    }
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    egcsCloseAnalytics
+    title {
+      ...EGDSHeadingFragment
+    }
+    sheet {
+      ...EGDSSheetFragment
+    }
+    content {
+      ...FlightsSheetInfoContentFragment
+      ...FlightsSheetActionContentFragment
+      ...FlightsSheetMessageContentFragment
+      ...FlightsAncillaryRecommendationsContentFragment
+      ...FlightsSheetRadioContentFragment
+    }
+  }
+
+fragment FlightsDialogPresentationFragment on FlightsDialogPresentation {
+    actions {
+      ...FlightsActionFragment
+    }
+    animation
+    displayedAnalytics {
+      ...FlightsAnalyticsFragment
+    }
+    header
+    message
+    title
+    ... on FlightsDialogStaleSession {
+      timeoutInSeconds
+    }
+    ...FlightsForcedChoiceCrossSellDialogFragment
+  }
+
+fragment FlightsLoadedListingResultFragment on FlightsLoadedListingResult {
+    toasts {
+      ...EGDSToastFragment
+    }
+    changeForAnyReasonWarningBanner {
+      ...FlightsBannerPlacardsFragment
+    }
+    listings {
+      ...FlightsStandardOfferFragment
+      ...FlightsCreditsAvailableListingFragment
+      ...FlightsCrossSellMessageFragment
+      ...FlightsCrossSellOfferFragment
+      ...FlightsListingMessagingCardFragment
+      ...FlightsSponsoredContentAdListingFragment
+      ...FlightsHeaderListingFragment
+      ...FlightsBargainFareOfferFragment
+      ...FlightsCarryOverFiltersCardFragment
+      ...FlightsInsurtechPrimingCardListingFragment
+      ...FlightsFuzzyFilterCardFragment
+      ... on FlightsQuickFiltersContainerListing {
+        _noop
+      }
+      ...FlightsManagedBannerListingFragment
+    }
+    flightsListingsAnalytics {
+      pinnedListingDisplayedAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      bestSortDisplayedAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      fareUpsellPercentageAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      nonstopSectionDisplayedAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      urgencyMessageAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      moreListingsDisplayedAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      onViewedAnalyticsList {
+        ...FlightsAnalyticsFragment
+      }
+      sponsoredUpsellAvailableAnalytics {
+        ...ClientSideAnalyticsFragment
+      }
+      fareCalendarAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+    }
+    flightsListingsEGCSAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    moreListingsAvailable
+    listingsAction {
+      ...FlightsActionFragment
+    }
+    appliedSortingAccessibility
+    appliedFilterAccessibility
+    showMoreListingLoadedAccessibilityMessage
+    pinnedListingUnavailableMessage
+    flightsLoadedListingsStatus
+    progressiveRenderingListingsStatus
+  }
+
+fragment FlightsPWAMetadataFragment on FlightsPWAMetadata {
+    evaluatedExperiments {
+      bucket
+      id
+    }
+    pageNameAnalytics {
+      ...FlightsAnalyticsFragment
+    }
+    pageName
+    responseMetrics {
+      name
+      value
+    }
+    responseTags
+  }
+
+fragment FlightsErrorMessagingPresentationFragment on FlightsErrorMessagingPresentation {
+    icon {
+      ...IconFragments
+    }
+    message
+    title
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    ...FlightsActionableErrorMessagingFragment
+    ...FlightsNoFlightsFoundWithFilterMessagingFragment
+    ...FlightsNoFlightsFoundMessagingFragment
+    ...FlightsSmartNoFlightsFoundMessagingFragment
+  }
+
+fragment FlightsSearchLegacyFieldsFragment on FlightsSearchResponse {
+    sortAndFilterResult {
+      __typename
+    }
+    rewardsPricingInfo {
+      title {
+        __typename
+        longMessage
+        shortMessage
+      }
+      options {
+        ... on FlightsRewardsOption {
+          label
+          identifier
+          selected
+          accessibility {
+            ... on FlightsAccessibilityMessage {
+              usage
+              onCompletion
+            }
+          }
+        }
+      }
+      rewardsBanner {
+        ...FlightsCollapsiblePlacard
+      }
+      subText {
+        completeText
+        delimeter
+        items {
+          __typename
+          styles
+          text
+          ... on FlightsPhraseLinkNode {
+            accessibility
+            analytics {
+              ...FlightsAnalyticsFragment
+            }
+            icon
+            link
+          }
+          ... on FlightsPhraseDialogNode {
+            dialog {
+              __typename
+              title
+              message
+              animation
+              actions {
+                ...FlightsActionFragment
+              }
+              displayedAnalytics {
+                ...FlightsAnalyticsFragment
+              }
+            }
+            actionableIcon {
+              ... on Icon {
+                id
+                description
+                token
+              }
+            }
+          }
+        }
+      }
+      loyaltyBanners {
+        ...FlightsIconPlacard
+        ...FlightsImagePlacard
+        ...FlightsCollapsiblePlacard
+      }
+    }
+    pointsToggle {
+      checked
+      checkedAccessibilityLabel
+      checkedAnalytics {
+        ...ClientSideAnalytics
+      }
+      checkedDescription
+      checkedLabel
+      enabled
+      uncheckedAccessibilityLabel
+      uncheckedAnalytics {
+        ...ClientSideAnalytics
+      }
+      uncheckedDescription
+      uncheckedLabel
+      ... on FlightsSwitchToggle {
+        impressionAnalytics
+        checkedInteractionAnalytics
+        uncheckedInteractionAnalytics
+      }
+    }
+    pageTitle {
+      date {
+        longMessage
+        shortMessage
+      }
+      disclaimerSubTitle {
+        ...FlightsPhraseFragment
+        size
+      }
+      title {
+        longMessage
+        shortMessage
+      }
+    }
+    allBanners {
+      ...FlightsIconPlacard
+    }
+    cheapestListingInfo {
+      price
+      analytics {
+        ...FlightsAnalyticsFragment
+      }
+      nffAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      deviationAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+    }
+    gaiaId
+    stepIndicator {
+      errorAnalytics {
+        ...FlightsAnalyticsFragment
+      }
+      journeyContinuationId
+    }
+    shoppingContext {
+      multiItem {
+        id
+        packageType
+      }
+    }
+    listingsHeaderPlacards {
+      ...FlightsMessagingCardPlacardsFragment
+    }
+  }
+
+fragment ClientSideAnalyticsFragment on ClientSideAnalytics {
+    linkName
+    referrerId
+  }
+
+fragment FlightsClickStreamAnalyticsFragment on FlightsClickStreamAnalytics {
+  event {
+    ...EGAnalyticsTrackingFragment
+  }
+  payload
+}
+
+fragment EGDSHeadingFragment on EGDSHeading {
+  __typename
+  text
+  headingType
+}
+
+fragment EGDSSheetFragment on EGDSSheet {
+  closeAccessibility
+  closeAnalytics {
+    ...ClientSideAnalytics
+  }
+  closeText
+  sheetTypes {
+    ...EGDSSheetTypePerViewSizeFragment
+  }
+}
+
+fragment FlightsSheetInfoContentFragment on FlightsSheetInfoContent {
+  heading {
+    ...EGDSHeadingFragment
+  }
+  message {
+    ...EGDSParagraphFragment
+  }
+}
+
+fragment FlightsSheetActionContentFragment on FlightsSheetActionContent {
+  graphic {
+    ...UIGraphicFragment
+  }
+  heading {
+    ...EGDSHeadingFragment
+  }
+  message {
+    ...EGDSParagraphFragment
+  }
+  primaryButton {
+    ...FlightsExperienceActionButtonFragment
+  }
+}
+
+fragment FlightsSheetMessageContentFragment on FlightsSheetMessageContent {
+    flightPills {
+      ...FlightsPillFragment
+    }
+    content {
+      ...FlightsMessageContentSuccessFragment
+      ...FlightsMessageContentFailureFragment
+    }
+  }
+
+fragment FlightsAncillaryRecommendationsContentFragment on FlightsAncillaryRecommendationsContent {
+    subHeading
+    contentList {
+      ...EGDSTextIconListFragment
+    }
+    ancillaryPriceAndInfoSection {
+      recommendedItems {
+        ...EGDSSpannableTextFragment
+      }
+      totalPrice {
+        primaryText {
+          ...EGDSSpannableTextFragment
+        }
+        secondaryText {
+          ...EGDSSpannableTextFragment
+        }
+        accessibilityInfo
+      }
+    }
+    actionButtons: footer {
+      ...FlightsExperienceActionButtonFragment
+    }
+  }
+
+fragment FlightsSheetRadioContentFragment on FlightsSheetRadioContent {
+    radioGroup {
+      ...FlightsBaggageRadioButtonGroupFragment
+    }
+  }
+
+fragment FlightsActionFragment on FlightsAction {
+    analyticsList {
+      linkName
+      referrerId
+    }
+    displayType
+    relativeURI {
+      relativePath
+    }
+    displayAnalytics {
+      linkName
+      referrerId
+    }
+    clientSideAnalyticsList {
+      ...ClientSideAnalyticsFragment
+    }
+    egcsOnClickAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    onClickAnalytics
+    type
+    enable
+    disabledAccessibilityHint
+    ...FlightActionContentFragment
+  }
+
+fragment FlightsAnalyticsFragment on FlightsAnalytics {
+  __typename
+  linkName
+  referrerId
+}
+
+fragment FlightsForcedChoiceCrossSellDialogFragment on FlightsForcedChoiceCrossSellDialog {
+    annotation {
+      completeText
+      accessibility
+      items {
+        styles
+        text
+        ...FlightsPhraseLinkNodeFragment
+      }
+    }
+    checkInDate {
+      ...FlightsSearchFormDateFieldFragment
+    }
+    checkOutDate {
+      ...FlightsSearchFormDateFieldFragment
+    }
+    displayBlockedAnalytics {
+      ...FlightsAnalyticsFragment
+    }
+    displayCounter
+    hotelDatesTitle
+    messageBody {
+      ...EGDSTextFragment
+    }
+    recommendedHotels {
+      ...FlightsForcedChoiceCrossSellLodgingCardFragment
+    }
+    recommendedCars {
+      card {
+        ...EGDSImageLinkCardFragment
+      }
+    }
+    themeProvider {
+      lightMode {
+        themeProviderColor
+      }
+    }
+  }
+
+fragment EGDSToastFragment on EGDSToast {
+    text
+    actionText
+    action {
+      ...ActionFragment
+    }
+  }
+
+fragment FlightsBannerPlacardsFragment on FlightsBannerPlacard {
+    banner {
+      actions {
+        ...ActionFragment
+      }
+      icon {
+        ...IconFragments
+      }
+      egdsElementId
+      fullWidth
+      heading
+      message
+      theme
+    }
+    onViewedAnalyticsList {
+      ...ClientSideAnalyticsFragment
+    }
+    onViewedEgcsAnalytics
+  }
+
+fragment FlightsStandardOfferFragment on FlightsStandardOffer {
+    pinnedOfferMessage
+    badgesList {
+      ...EGDSBadgeFragment
+    }
+    flightsShoppingOfferContent {
+      ...FlightsShoppingOfferContentFragment
+    }
+    journeys {
+      adjustedStayDatesMessage {
+        ...AdjustedStayDatesMessageFragment
+      }
+      positiveHighlightsMessage
+      urgencyMessage
+      urgencyAccessibilityMessage
+      detailsAndFares {
+        ...FlightsDetailsAndFaresPresentationFragment
+      }
+      trigger {
+        ...FlightsExperienceDialogTriggerFragment
+      }
+      triggerList {
+        ...FlightsExperienceDialogTriggerFragment
+      }
+      dialogSheet {
+        ...FlightsDialogSheetFragment
+      }
+      triggerDelimiter {
+        ...EGDSStylizedTextFragment
+      }
+    }
+    selectOfferAction {
+      type
+    }
+    pricingInformation {
+      partnerLoyaltyEarnMessage {
+        ...FlightsMarkAndLabelFragment
+      }
+    }
+    secondaryBadges {
+      ...EGDSBadgeFragment
+    }
+    priceDisplay {
+      ...FlightsPriceDisplayFragment
+    }
+    farePriceDisplayButtons {
+      ...FlightsFarePriceDisplayButtonFragment
+    }
+    sponsoredAirline {
+      ...FlightsOfferSponsoredAirlineFragment
+    }
+    sponsoredUpsell {
+      ...FlightsOfferSponsoredUpsellFragment
+    }
+    stepIndicatorJcid
+    offerInfoLink {
+      ...OfferInfoLinkFragment
+    }
+    flightsOfferAnalytics {
+      onViewedAnalyticsList {
+        ...FlightsPhraseAnalyticsFragment
+      }
+    }
+    onClickAnalyticsList {
+      ...FlightsPhraseAnalyticsFragment
+    }
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    egcsClickAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+  }
+
+fragment FlightsCreditsAvailableListingFragment on FlightsCreditsAvailableListing {
+    toastNotification {
+      ...EGDSToastFragment
+    }
+    messagingCardPlacard {
+      ...FlightsMessagingCardPlacardsFragment
+      button {
+        ...FlightsActionButtonFragment
+      }
+    }
+  }
+
+fragment FlightsCrossSellMessageFragment on FlightsCrossSellMessage {
+    multiItemFlightCrossSellPrimer {
+      ...MultiItemFlightCrossSellPrimerFragment
+    }
+  }
+
+fragment FlightsCrossSellOfferFragment on FlightsCrossSellOffer {
+    multiItemFlightCrossSellOfferPrimer {
+      multiItemSearchContext {
+        ...MultiItemSearchContextFragment
+      }
+      multiItemPackageableProduct {
+        ...MultiItemPackageableProductFragment
+      }
+      brandedDealFallBack {
+        ...MultiItemFlightCrossSellPrimerFragment
+      }
+      multiItemPricedPackageableProducts {
+        ...MultiItemPricedPackageableProductFragment
+      }
+      price {
+        base {
+          amount
+        }
+        taxesAndFees {
+          amount
+        }
+      }
+    }
+  }
+
+fragment FlightsListingMessagingCardFragment on FlightsListingMessagingCard {
+    messagingCard {
+      ...FlightsMessagingCardPlacardsFragment
+    }
+  }
+
+fragment FlightsSponsoredContentAdListingFragment on FlightsSponsoredContentAdListing {
+    sponsoredContentPlacement {
+      ...SponsoredContentPlacementFragment
+    }
+  }
+
+fragment FlightsHeaderListingFragment on FlightsHeaderListing {
+    headingSize
+    heading
+    subHeading
+    contents {
+      ...EGDSSpannableTextFragment
+    }
+    items {
+      ...EGDSSpannableTextFragment
+      ...FlightsHeaderWithInlineDialogTriggerFragment
+      ... on FlightsHeaderLoadingLineItem {
+        loadingStatus
+        loadingText: text {
+          ...EGDSSpannableTextFragment
+        }
+      }
+    }
+  }
+
+fragment FlightsBargainFareOfferFragment on FlightsBargainFareOffer {
+    accessibilityHeading
+    accessibilityMessage
+    priceDisplay {
+      ...FlightsPriceDisplayFragment
+    }
+    description {
+      completeText
+    }
+    graphic {
+      ...UIGraphicFragment
+    }
+    header {
+      completeText
+    }
+    journeyContinuationId
+    journeys {
+      detailsAndFares {
+        ...FlightsDetailsAndFaresPresentationFragment
+      }
+    }
+    selectOfferAction {
+      type
+    }
+    onClickAnalyticsList {
+      linkName
+      referrerId
+    }
+    stepIndicatorJcid
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    egcsClickAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+  }
+
+fragment FlightsCarryOverFiltersCardFragment on FlightsCarryOverFiltersCard {
+    actionElement {
+      ...FlightsActionLinkFragment
+    }
+    displayAnalytics {
+      ...ClientSideAnalyticsFragment
+    }
+    icon {
+      ...IconFragments
+    }
+    message
+  }
+
+fragment FlightsInsurtechPrimingCardListingFragment on InsurtechPrimingCardListing {
+    insurtechSearchCriteria {
+      ...InsurtechSearchCriteriaFragment
+    }
+    placement {
+      placementContext {
+        lob
+        packageType
+        path
+        placement
+      }
+    }
+  }
+
+fragment FlightsFuzzyFilterCardFragment on FlightsFuzzyFilterCard {
+    image {
+      ...UIGraphicFragment
+    }
+    heading
+    fuzzyFilterMessage: message
+    clearFiltersAction {
+      ...FlightsActionFragment
+    }
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    selectedFilterPills {
+      ...AppliedFilterFragment
+    }
+  }
+
+fragment FlightsManagedBannerListingFragment on FlightsManagedBannerListing {
+    _noop
+  }
+
+fragment IconFragments on Icon {
+    description
+    id
+    size
+    theme
+    title
+    withBackground
+    spotLight
+  }
+
+fragment FlightsActionableErrorMessagingFragment on FlightsActionableErrorMessaging {
+    action {
+      ...FlightsActionFragment
+    }
+    errorRecoveryButtons {
+      ...FlightsActionFragment
+    }
+    subMessage
+  }
+
+fragment FlightsNoFlightsFoundWithFilterMessagingFragment on FlightsNoFlightsFoundWithFilterMessaging {
+    clearFiltersAction {
+      ...FlightsActionFragment
+    }
+  }
+
+fragment FlightsNoFlightsFoundMessagingFragment on FlightsNoFlightsFoundMessaging {
+    FlightsNoFlightsFoundMessagingAction: action {
+      ...FlightsExperienceActionButtonFragment
+    }
+  }
+
+fragment FlightsSmartNoFlightsFoundMessagingFragment on FlightsSmartNoFlightsFoundMessaging {
+    alternateAirportOptions {
+      ...AlternateAirportOptionsFragment
+    }
+    alternateDateOptions {
+      ...AlternateDateOptionsFragment
+    }
+    editSearchButton {
+      ...FlightsActionFragment
+    }
+    flightsDisplayComponentCountingValue {
+      displayCount
+      flightsDisplayComponent
+    }
+  }
+
+fragment FlightsCollapsiblePlacard on FlightsCollapsiblePlacard {
+  __typename
+  heading
+  message
+  backgroundTheme
+  graphic {
+    ...UIGraphicFragment
+  }
+  messageWithMoreInfo {
+    ...FlightsPointsMoreInfoLink
+  }
+  actions {
+    ...FlightAction
+  }
+  onViewedAnalytics {
+    ...FlightsAnalytics
+  }
+  onViewedAnalyticsList {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment FlightsIconPlacard on FlightsIconPlacard {
+  __typename
+  heading
+  message
+  icon {
+    description
+    id
+    size
+    withBackground
+  }
+  actions {
+    ...FlightAction
+  }
+  displayType
+  backgroundTheme
+}
+
+fragment FlightsImagePlacard on FlightsImagePlacard {
+  __typename
+  heading
+  message
+  image {
+    description
+    url
+  }
+  actions {
+    ...FlightAction
+  }
+  displayType
+  backgroundTheme
+}
+
+fragment ClientSideAnalytics on ClientSideAnalytics {
+  linkName
+  referrerId
+  uisPrimeMessages {
+    messageContent
+    schemaName
+  }
+}
+
+fragment FlightsPhraseFragment on FlightsPhrase {
+    accessibility
+    completeText
+    items {
+      ...FlightsPhrasePartFragment
+    }
+  }
+
+fragment FlightsMessagingCardPlacardsFragment on FlightsMessagingCardPlacard {
+    actionElement {
+      ...FlightsActionLinkFragment
+    }
+    backgroundTheme
+    messagingCard {
+      primary
+      secondaries
+      graphic {
+        ...UIGraphicFragment
+      }
+      egdsElementId
+    }
+    flightsMessagingCard {
+      header {
+        ...EGDSSpannableTextFragment
+      }
+      contents {
+        ...EGDSSpannableTextFragment
+      }
+      graphic {
+        ...UIGraphicFragment
+      }
+    }
+    actionPosition
+    onViewedAnalyticsList {
+      ...ClientSideAnalyticsFragment
+    }
+    onViewedEgcsAnalytics
+  }
+
+fragment EGAnalyticsTrackingFragment on EGClickstreamEvent {
+  eventCategory
+  eventName
+  eventType
+  eventVersion
+  actionLocation
+}
+
+fragment EGDSSheetTypePerViewSizeFragment on EGDSSheetTypePerViewSize {
+  sheetType
+  viewSize
+}
+
+fragment EGDSParagraphFragment on EGDSParagraph {
+  __typename
+  text
+  style
+}
+
+fragment UIGraphicFragment on UIGraphic {
+  ...IconSearch
+  ...MarkFragments
+  ...EgdsGraphicIllustrationFragmentSearch
+}
+
+fragment FlightsExperienceActionButtonFragment on FlightsExperienceActionButton {
+  __typename
+  accessibility
+  clientAction {
+    __typename
+    accessibility
+    analyticsList {
+      ...ClientSideAnalytics
+    }
+    ...FlightsSelectionAction
+  }
+  primary
+}
+
+fragment FlightsPillFragment on FlightsPill {
+    actionAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    displayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    pill {
+      ...EGDSPillFragment
+    }
+  }
+
+fragment FlightsMessageContentSuccessFragment on FlightsMessageContentSuccess {
+    contentId
+    additionalInformation {
+      ...FlightsContentBlockFragment
+    }
+    egcsAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    infoCards {
+      ...EGDSStandardMessagingCardFragment
+    }
+    messageCardContent {
+      ...FlightsMessageCardContentFragment
+    }
+  }
+
+fragment FlightsMessageContentFailureFragment on FlightsMessageContentFailure {
+    contentId
+    errors {
+      ...FlightErrorMessagingPresentationFragment
+    }
+    egcsAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+  }
+
+fragment EGDSTextIconListFragment on EGDSTextIconList {
+    listItems {
+      text
+      icon {
+        ...IconFragments
+      }
+    }
+    textListSize: size
+  }
+
+fragment EGDSSpannableTextFragment on EGDSSpannableText {
+  __typename
+  text
+  contents {
+    __typename
+    ... on EGDSHeading {
+      text
+      headingType
+    }
+    ... on EGDSParagraph {
+      ...EGDSParagraphFragment
+    }
+    ... on EGDSIconText {
+      text
+      icon {
+        id
+        size
+        theme
+      }
+    }
+    ... on EGDSStandardLink {
+      text
+      size
+      standardLinkIcon: icon {
+        ...IconFragment
+      }
+      iconPosition
+      action {
+        __typename
+        accessibility
+        target
+        resource {
+          __typename
+          value
+        }
+        analytics {
+          __typename
+          linkName
+          referrerId
+        }
+      }
+    }
+    ... on EGDSPlainText {
+      text
+    }
+    ... on EGDSStylizedText {
+      decorative
+      text
+      theme
+      weight
+      stylizedSize: size
+    }
+  }
+  inlineContent {
+    __typename
+    ... on EGDSHeading {
+      text
+      headingType
+    }
+    ... on EGDSGraphicText {
+      ...EGDSGraphicTextFragment
+    }
+    ... on EGDSInlineLink {
+      ...EGDSInlineLinkFragment
+    }
+    ... on EGDSStandardLink {
+      text
+      size
+      standardLinkIcon: icon {
+        ...IconFragment
+      }
+      iconPosition
+      action {
+        __typename
+        accessibility
+        target
+        resource {
+          __typename
+          value
+        }
+        analytics {
+          __typename
+          linkName
+          referrerId
+        }
+      }
+    }
+    ... on EGDSPlainText {
+      text
+    }
+    ... on EGDSStylizedText {
+      decorative
+      text
+      theme
+      weight
+      stylizedSize: size
+    }
+  }
+}
+
+fragment FlightsBaggageRadioButtonGroupFragment on FlightsBaggageRadioButtonGroup {
+    baggageRadioButtons {
+      ...FlightsBaggageRadioButtonFragment
+    }
+    errorMessage
+    groupName
+    label
+    selected
+    options {
+      ...EGDSBasicRadioButtonFragment
+    }
+  }
+
+fragment FlightActionContentFragment on FlightsAction {
+    flightsActionContentA11yMessage: accessibilityMessage
+    displayAction
+  }
+
+fragment FlightsPhraseLinkNodeFragment on FlightsPhraseLinkNode {
+    accessibility
+    analytics {
+      ...FlightsPhraseAnalyticsFragment
+    }
+    displayAnalytics {
+      ...FlightsPhraseAnalyticsFragment
+    }
+    scrollAnalytics {
+      ...FlightsPhraseAnalyticsFragment
+    }
+    icon
+    link
+    styles
+    text
+  }
+
+fragment FlightsSearchFormDateFieldFragment on FlightsSearchFormDateField {
+    analytics {
+      ...FlightsAnalyticsFragment
+    }
+    currentError
+    date {
+      day
+      month
+      year
+      formatted(format: "d MMM uuuu")
+      isoFormat
+    }
+    dateFormat
+    daysBookableInAdvance
+    label
+    placeholder
+    possibleErrors {
+      analytics {
+        ...FlightsAnalyticsFragment
+      }
+      message
+      type
+    }
+    maxStayDurationAllowed
+    possibleErrorsHeader {
+      icon {
+        id
+        description
+      }
+      label {
+        completeText
+        items {
+          styles
+          text
+        }
+      }
+    }
+    doneAction
+  }
+
+fragment EGDSTextFragment on EGDSText {
+    __typename
+    ...EGDSHeadingFragment
+    ...EGDSGraphicTextFragment
+    ...EGDSSpannableTextFragment
+    ...EGDSPlainTextFragment
+    ...EGDSStylizedTextFragment
+    ...EGDSIconTextFragment
+    ...EGDSParagraphFragment
+    ...EGDSStandardLinkFragment
+    ...EGDSInlineLinkFragment
+    ...EGDSTextStandardListItemFragment
+  }
+
+fragment FlightsForcedChoiceCrossSellLodgingCardFragment on FlightsForcedChoiceCrossSellLodgingCard {
+    id
+    header {
+      heading
+      messages {
+        ... on EGDSPlainText {
+          text
+          accessibility
+        }
+      }
+      amenities {
+        ...EGDSGraphicTextFragment
+      }
+    }
+    media {
+      accessibilityHeadingText
+      nextButtonText
+      previousButtonText
+      media {
+        ... on FlightMediaItem {
+          media {
+            ... on Image {
+              url
+              description
+            }
+          }
+        }
+      }
+    }
+    summarySections {
+      guestRatingSection {
+        badge {
+          text
+          accessibility
+          badgeTheme: theme
+          badgeSize: size
+        }
+        phrases {
+          accessibilityLabel
+          phraseParts {
+            ...EGDSStylizedTextFragment
+          }
+        }
+      }
+      amenities {
+        ...EGDSGraphicTextFragment
+      }
+    }
+    impressionAnalytics {
+      linkName
+      referrerId
+      event
+    }
+    cardLink {
+      resource {
+        __typename
+        value
+      }
+      analytics {
+        linkName
+        referrerId
+      }
+    }
+  }
+
+fragment EGDSImageLinkCardFragment on EGDSImageLinkCard {
+    link {
+      image {
+        aspectRatio
+        description
+        url
+      }
+      action {
+        ...UILinkActionFragment
+      }
+    }
+  }
+
+fragment ActionFragment on UILinkAction {
+    accessibility
+    analytics {
+      linkName
+      referrerId
+    }
+    resource {
+      value
+      ... on HttpURI {
+        relativePath
+      }
+    }
+    target
+    useRelativePath
+  }
+
+fragment EGDSBadgeFragment on EGDSBadge {
+  __typename
+  accessibility
+  text
+  theme
+  size
+}
+
+fragment FlightsShoppingOfferContentFragment on FlightsShoppingOfferContent {
+    graphic {
+      ...UIGraphicFragment
+    }
+    primarySection {
+      ...FlightsShoppingPrimarySectionFragment
+    }
+    secondarySection {
+      ...FlightsShoppingSecondarySectionFragment
+    }
+    tertiarySection {
+      ...FlightShoppingCardTertiarySectionFragment
+    }
+    additionalMessageList {
+      ...FlightsOfferAdditionalMessageFragment
+    }
+    additionalMessages {
+      ...EGDSGraphicTextFragment
+    }
+  }
+
+fragment AdjustedStayDatesMessageFragment on FlightsIconPhrases {
+    icon {
+      ...IconFragments
+    }
+    text {
+      ...FlightsPhraseFragment
+    }
+  }
+
+fragment FlightsDetailsAndFaresPresentationFragment on FlightsDetailsAndFaresPresentation {
+  __typename
+  content {
+    ...FlightsDetailsAndFaresContentFragment
+  }
+  flightsFaresWrapper {
+    ...FlightsDialogSheetFragment
+  }
+  footer {
+    ...FlightsDetailsAndFaresFooterFragment
+  }
+  trigger {
+    ...FlightsDialogTriggerFragment
+  }
+  sideSheetInformationText {
+    ...TextWrapperFragment
+  }
+  airlineTabs {
+    ...EGDSBasicTabsFragment
+  }
+}
+
+fragment FlightsExperienceDialogTriggerFragment on FlightsExperienceDialogTrigger {
+    dialogAction
+    dialogId
+    dynamicDialogId
+    trigger {
+      ...FlightsExperienceActionLinkFragment
+      ...FlightsDialogTriggerTypeFragment
+    }
+  }
+
+fragment FlightsDialogSheetFragment on FlightsDialogSheet {
+  __typename
+  dialog {
+    ...FaresDialogsFragment
+  }
+  dialogId
+  dynamicDialogId
+  sheet {
+    ...FlightsSideSheetFragment
+  }
+  sheetInfo {
+    ...FlightsSheetFragment
+  }
+}
+
+fragment EGDSStylizedTextFragment on EGDSStylizedText {
+  decorative
+  accessibility
+  stylizedSize: size
+  text
+  theme
+  weight
+}
+
+fragment FlightsMarkAndLabelFragment on FlightsMarkAndLabel {
+    accessibility
+    label
+    subLabel
+    mark {
+      id
+      description
+    }
+    stylisedText {
+      ...EGDSSpannableTextFragment
+    }
+  }
+
+fragment FlightsPriceDisplayFragment on FlightsPriceDisplay {
+  rows {
+    elements {
+      ... on FlightsPriceMessageItem {
+        price {
+          ...EGDSStylizedTextFragment
+        }
+        disclaimer {
+          ... on FlightsPricingDisclaimer {
+            actionDialog {
+              ... on EGDSActionDialog {
+                footer {
+                  buttons {
+                    ...EGDSButtonFragment
+                    ...UITertiaryButtonSearchFragment
+                  }
+                }
+              }
+            }
+            triggerAnalytics {
+              ... on FlightsClickStreamAnalytics {
+                event {
+                  ... on EGClickstreamEvent {
+                    eventCategory
+                    eventName
+                    eventType
+                    eventVersion
+                    actionLocation
+                  }
+                }
+                payload
+              }
+            }
+            content
+            accessibilityDialogTrigger
+            dialogId
+            graphicAlignment
+            __typename
+          }
+        }
+        __typename
+      }
+      ... on FlightsEnrichedMessageItem {
+        value {
+          ...EGDSStylizedTextFragment
+        }
+        leadingGraphic {
+          ...UIGraphicFragment
+        }
+        __typename
+      }
+    }
+  }
+  alignment
+  __typename
+}
+
+fragment FlightsFarePriceDisplayButtonFragment on FlightsFarePriceDisplayButton {
+    action {
+      accessibility
+      analyticsList {
+        ...ClientSideAnalyticsFragment
+      }
+      egcsAnalytics {
+        ...FlightsClickStreamAnalyticsFragment
+      }
+      dialogAction
+      dialogTriggerDialogId: dialogId
+      dynamicDialogId
+    }
+    amenityStatusList {
+      primaryIcon {
+        ...IconFragment
+      }
+      availabilityStatus
+      secondaryAlignment
+    }
+    fareName
+    fareSelectedText
+    priceDisplay {
+      ...FlightsPriceDisplayFragment
+    }
+    accessibilityText
+    amenityStatusListAccessibility
+  }
+
+fragment FlightsOfferSponsoredAirlineFragment on FlightsOfferSponsoredAirline {
+    airlineName
+    airlineImage {
+      url
+    }
+    sponsoredHeader
+    sponsoredText
+    sponsoredBeacons {
+      renderBeacons
+      clickBeacons
+      viewBeacons
+    }
+    adTransparencyTrigger {
+      adTransparencyId
+      adTransparencyButton {
+        ...AdTransparencyButtonFragment
+      }
+      adTransparencyOverlaySkeleton {
+        title
+        error {
+          description
+          icon {
+            id
+            size
+          }
+          button {
+            primary
+          }
+          allowedRetryAttempts
+          exceededAttemptsMessage
+        }
+      }
+    }
+  }
+
+fragment FlightsOfferSponsoredUpsellFragment on FlightsOfferSponsoredUpsell {
+    __typename
+    adBadge {
+      ...EGDSBadgeFragment
+      ... on AdTransparencyTrigger {
+        adTransparencyId
+        adTransparencyButton {
+          __typename
+          ... on AdTransparencyButton {
+            primary
+            accessibility
+            disabled
+            size
+            icon {
+              description
+              id
+              title
+            }
+            analyticsPayload
+          }
+        }
+        adTransparencyOverlaySkeleton {
+          ...TransparencyOverlaySkeletonFragment
+        }
+      }
+    }
+    expando {
+      ...EGDSExpandoFragment
+    }
+    details {
+      ...FlightsSponsoredUpsellDetails
+    }
+    sponsoredUpsellAction {
+      ...FlightsActionButtonFragment
+      ...FlightsDialogTriggerFragment
+    }
+    onViewedAnalytics {
+      ...ClientSideAnalyticsFragment
+    }
+    beacons {
+      ...SponsoredTrackingBeaconsFragement
+    }
+  }
+
+fragment OfferInfoLinkFragment on FlightsInfoLink {
+    actionLink {
+      primary
+      clientAction {
+        analyticsList {
+          ...ClientSideAnalyticsFragment
+        }
+      }
+    }
+    sheet {
+      ...FlightsSheetTypeFragment
+    }
+  }
+
+fragment FlightsPhraseAnalyticsFragment on FlightsAnalytics {
+    linkName
+    referrerId
+  }
+
+fragment FlightsActionButtonFragment on FlightsActionButton {
+  __typename
+  accessibility
+  clientAction {
+    ...FlightsDialogTriggerActionFIS
+  }
+  disabled
+  egdsElementId
+  icon {
+    ...IconInformationLoaded
+  }
+  primary
+  style
+  action {
+    __typename
+    accessibility
+    analytics {
+      ...ClientAnalytics
+    }
+  }
+}
+
+fragment MultiItemFlightCrossSellPrimerFragment on MultiItemFlightCrossSellPrimer {
+    flightCrossSellProductType
+    multiItemSearchContext {
+      ...MultiItemSearchContextFragment
+    }
+  }
+
+fragment MultiItemSearchContextFragment on MultiItemSearchContext {
+    flights {
+      primary {
+        journeyCriterias {
+          departureDate {
+            ...DateFragment
+          }
+          origin
+          destination
+        }
+        searchPreferences {
+          cabinClass
+          advancedFilters
+        }
+        tripType
+        travelers {
+          age
+          type
+        }
+      }
+      secondary {
+        booleans {
+          id
+          value
+        }
+      }
+    }
+  }
+
+fragment MultiItemPackageableProductFragment on MultiItemPackageableProduct {
+    flights {
+      offerToken
+      productTokens
+      travelers {
+        age
+        type
+      }
+    }
+  }
+
+fragment MultiItemPricedPackageableProductFragment on MultiItemPricedPackageableProduct {
+    flight {
+      offerToken
+      productTokens
+      travelers {
+        age
+        type
+      }
+    }
+    brandedDealPrice {
+      base {
+        amount
+      }
+      taxesAndFees {
+        amount
+      }
+    }
+    subjectToGovernmentApproval
+  }
+
+fragment SponsoredContentPlacementFragment on SponsoredContentPlacement {
+    productType
+    sponsoredContentContext {
+      sponsoredContentId
+      variant
+      pageName
+      targeting {
+        adults
+        dateEnd {
+          day
+          month
+          year
+        }
+        dateStart {
+          day
+          month
+          year
+        }
+        kids
+        locationResolver
+        destination
+        origin
+      }
+    }
+  }
+
+fragment FlightsHeaderWithInlineDialogTriggerFragment on FlightsHeaderWithInlineDialogTrigger {
+    items {
+      text {
+        ...EGDSSpannableTextFragment
+      }
+      trigger {
+        ...FlightsExperienceDialogTriggerFragment
+      }
+    }
+  }
+
+fragment FlightsActionLinkFragment on FlightsActionLink {
+  __typename
+  clientAction {
+    ...FlightsClientActionFragment
+  }
+  disabled
+  primary
+  icon {
+    ...IconSearch
+  }
+  analytics {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment InsurtechSearchCriteriaFragment on InsurtechSearchCriteria {
+    flightSearchCriteria {
+      primary {
+        journeyCriterias {
+          arrivalDate {
+            day
+            month
+            year
+          }
+          departureDate {
+            day
+            month
+            year
+          }
+          destination
+          origin
+        }
+        travelers {
+          age
+          type
+        }
+        tripType
+      }
+    }
+  }
+
+fragment AppliedFilterFragment on ShoppingSortAndFilterAppliedFilter {
+    pill {
+      ...FlightsEGDSRemovablePillFragment
+    }
+    nextSearchCriteria {
+      ...ShoppingSearchCriteriaFragment
+    }
+  }
+
+fragment AlternateAirportOptionsFragment on AlternateAirportOptions {
+    accessibilityTitle
+    airportOptions {
+      ...AirportOptionFragment
+    }
+    airportOptionAnalytics {
+      ...FlightsAnalyticsFragment
+    }
+    alternateOptionTitle
+  }
+
+fragment AlternateDateOptionsFragment on AlternateDateOptions {
+    accessibilityTitle
+    alternateOptionTitle
+    dateOptionAnalytics {
+      ...FlightsAnalyticsFragment
+    }
+    dateOptions {
+      ...DateOptionFragment
+    }
+  }
+
+fragment FlightsPointsMoreInfoLink on FlightsPointsMoreInfoLink {
+  __typename
+  content {
+    ...FlightsPointsInformationDialogContent
+  }
+  dialog {
+    ...FaresDialogsFragment
+  }
+  text
+}
+
+fragment FlightAction on FlightsAction {
+  __typename
+  accessibilityMessage
+  analytics {
+    ...FlightsAnalytics
+  }
+  analyticsList {
+    ...FlightsAnalytics
+  }
+  displayAnalytics {
+    ...FlightsAnalytics
+  }
+  displayAction
+  displayType
+  accessibilityActionMessage {
+    usage
+    onCompletion
+  }
+  icon {
+    ...IconSearch
+  }
+  journeySearchCriteria {
+    previousFlightSelections {
+      journeyIndex
+      offerIdentifier
+    }
+    journeyCriteria {
+      originAirportLocationType
+      destinationAirportLocationType
+      destination
+      departureDate {
+        day
+        month
+        year
+      }
+      origin
+    }
+    searchPreferences {
+      cabinClass
+    }
+  }
+  relativeURI {
+    relativePath
+    value
+  }
+  relativePackageableURI {
+    relativePath
+    value
+  }
+  stepIndicator {
+    ...FlightsStepIndicator
+  }
+  searchPagination {
+    ...Pagination
+  }
+  type
+}
+
+fragment FlightsAnalytics on FlightsAnalytics {
+  __typename
+  linkName
+  referrerId
+}
+
+fragment FlightsPhrasePartFragment on FlightsPhrasePart {
+  __typename
+  ... on FlightsPhraseTextNode {
+    ...FlightsPhraseTextNodeFragment
+  }
+}
+
+fragment IconSearch on Icon {
+  __typename
+  description
+  id
+  size
+  withBackground
+  theme
+  title
+  spotLight
+  token
+}
+
+fragment MarkFragments on Mark {
+  __typename
+  description
+  id
+  markSize: size
+  url {
+    ... on HttpURI {
+      __typename
+      relativePath
+      value
+    }
+  }
+}
+
+fragment EgdsGraphicIllustrationFragmentSearch on Illustration {
+  __typename
+  link: url
+  id
+  description
+  egdsElementId
+}
+
+fragment FlightsSelectionAction on FlightsSelectionAction {
+  value
+}
+
+fragment EGDSPillFragment on EGDSPill {
+    __typename
+    ...EGDSBasicPillFragment
+    ...EGDSBasicRemovablePillFragment
+  }
+
+fragment FlightsContentBlockFragment on FlightsContentBlock {
+    heading {
+      ...EGDSHeadingFragment
+    }
+    message {
+      ...EGDSParagraphFragment
+    }
+  }
+
+fragment EGDSStandardMessagingCardFragment on EGDSStandardMessagingCard {
+  dismiss {
+    ...EGDSDismissActionFragment
+  }
+  egdsElementId
+  graphic {
+    ...UIGraphicFragment
+  }
+  heading
+  links {
+    ...EGDSStandardLinkFragment
+  }
+  message
+  rightIcon {
+    ...IconSearch
+  }
+}
+
+fragment FlightsMessageCardContentFragment on FlightsMessageCardContent {
+    content {
+      ...FlightsCategorizedListItemFragment
+    }
+    egcsAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    header {
+      ...FlightsCategorizedListItemFragment
+    }
+  }
+
+fragment FlightErrorMessagingPresentationFragment on FlightsErrorMessagingPresentation {
+    __typename
+    ...FlightsCriticalErrorMessagingFragment
+    ...FlightsInfoMessagingPresentationFragment
+  }
+
+fragment IconFragment on Icon {
+  description
+  id
+  size
+  theme
+  title
+  withBackground
+  spotLight
+}
+
+fragment EGDSGraphicTextFragment on EGDSGraphicText {
+  textGraphic: graphic {
+    ...UIGraphicFragment
+  }
+  text
+  accessibility
+}
+
+fragment EGDSInlineLinkFragment on EGDSInlineLink {
+  __typename
+  action {
+    ...UILinkActionFragment
+  }
+  disabled
+  size
+  text
+}
+
+fragment FlightsBaggageRadioButtonFragment on FlightsBaggageRadioButton {
+    onClickAnalytics
+    egcsOnClickAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    label {
+      ...EGDSSpannableTextFragment
+    }
+    subLabel {
+      ...EGDSSpannableTextFragment
+    }
+    weightLabel {
+      ...EGDSSpannableTextFragment
+    }
+    weightSubLabel {
+      ...EGDSSpannableTextFragment
+    }
+    radioButton {
+      ...FlightSelectableBaggageFragment
+    }
+    baggageSelectionAccessibilityMessages {
+      ...FlightsBaggageSelectionAccessibilityMessagesFragment
+    }
+  }
+
+fragment EGDSBasicRadioButtonFragment on EGDSBasicRadioButton {
+    __typename
+    description
+    disabled
+    label
+    labelSuffix
+    value
+  }
+
+fragment EGDSPlainTextFragment on EGDSPlainText {
+  text
+}
+
+fragment EGDSIconTextFragment on EGDSIconText {
+  __typename
+  icon {
+    ...IconSearch
+  }
+  text
+}
+
+fragment EGDSStandardLinkFragment on EGDSStandardLink {
+  action {
+    ...UILinkActionFragment
+  }
+  disabled
+  standardLinkIcon: icon {
+    ...IconSearch
+  }
+  iconPosition
+  size
+  text
+}
+
+fragment EGDSTextStandardListItemFragment on EGDSTextStandardListItem {
+    text
+    nestedLevelOneList {
+      ...EGDSNestedLevelOneListFragment
+    }
+  }
+
+fragment UILinkActionFragment on UILinkAction {
+  accessibility
+  analytics {
+    ...ClientSideAnalytics
+  }
+  resource {
+    value
+  }
+  target
+  useRelativePath
+}
+
+fragment FlightsShoppingPrimarySectionFragment on FlightsShoppingPrimarySection {
+    ...EGDSMoreInfoTriggerComponentFragment
+  }
+
+fragment FlightsShoppingSecondarySectionFragment on FlightsShoppingSecondarySection {
+    ...FlightShoppingCardDurationTimelineFragment
+    ...EGDSTextSectionFragment
+  }
+
+fragment FlightShoppingCardTertiarySectionFragment on FlightsShoppingTertiarySection {
+    ...EGDSTextSectionFragment
+  }
+
+fragment FlightsOfferAdditionalMessageFragment on FlightsOfferAdditionalMessage {
+    ...EGDSSpannableTextFragment
+    ...EGDSGraphicTextFragment
+    ...EGDSPlainTextFragment
+  }
+
+fragment FlightsDetailsAndFaresContentFragment on FlightsDetailsAndFaresContent {
+  __typename
+  dialogId
+  dynamicDialogId
+  nestedDialogs {
+    ...FaresDialogsFragment
+  }
+  priceMatchPromiseNestedDialogs {
+    ...FaresDialogsFragment
+  }
+  sections {
+    __typename
+    ...FlightsJourneyHeaderFragment
+    ...FlightsJourneyDetailsInformationFragment
+    ...FlightsJourneyWithDetailsFragment
+    ...TextWrapperFragment
+    ...FlightsFaresInformationFragment
+    ...FlightsSustainabilityCardFragment
+    ...FlightsMessagingCardFragment
+  }
+  displayAnalytics {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment FlightsDetailsAndFaresFooterFragment on FlightsDetailsAndFaresFooter {
+  __typename
+  action {
+    ...FlightsActionButton
+  }
+  dialogId
+  dynamicDialogId
+  priceDisplay {
+    ...FlightsPriceDisplayFragment
+  }
+  priceLockup {
+    ...PriceLockupFragment
+  }
+}
+
+fragment FlightsDialogTriggerFragment on FlightsDialogTrigger {
+  __typename
+  dialogAction
+  dialogId
+  dynamicDialogId
+  trigger {
+    __typename
+    ...FlightsActionButton
+    ...FlightsActionLinkFragment
+    ...FlightsExperienceActionButtonFragment
+    ...FlightsExperienceActionLinkFragment
+  }
+}
+
+fragment TextWrapperFragment on TextWrapper {
+  textA11yMessage: accessibilityMessage
+  text {
+    ...EgdsTextFragment
+    ...EGDSSpannableTextFragment
+    __typename
+  }
+  __typename
+}
+
+fragment EGDSBasicTabsFragment on EGDSBasicTabs {
+  egdsElementId
+  selectedTabId
+  tabs {
+    ... on EGDSBasicTab {
+      ...EGDSBasicTabFragment
+    }
+  }
+  __typename
+}
+
+fragment FlightsExperienceActionLinkFragment on FlightsExperienceActionLink {
+  __typename
+  accessibility
+  clientAction {
+    ...FlightsClientActionFragment
+  }
+  disabled
+  primary
+  analytics {
+    ...ClientSideAnalytics
+  }
+  icon {
+    ...IconFragment
+  }
+}
+
+fragment FlightsDialogTriggerTypeFragment on FlightsDialogTriggerType {
+    ...FlightsExperienceActionButtonFragment
+  }
+
+fragment FaresDialogsFragment on FlightsDialog {
+  dialog {
+    __typename
+    ...EGDSDialogFragment
+  }
+  dialogContent: content {
+    __typename
+    ...EgdsElementFragment
+    ... on FlightsDialogTrigger {
+      ...FlightsDialogTriggerFragment
+    }
+  }
+  displayAnalytics {
+    ...ClientSideAnalytics
+  }
+  dialogId
+  dynamicDialogId
+  initialState
+}
+
+fragment FlightsSideSheetFragment on FlightsSideSheet {
+  content {
+    ...EgdsElementFragment
+  }
+  footer {
+    ...EgdsElementFragment
+  }
+  title
+  initialState
+  closeText
+  __typename
+}
+
+fragment FlightsSheetFragment on FlightsSheet {
+  ... on FlightsDetailSheet {
+    ...FlightsDetailSheetFragment
+  }
+}
+
+fragment EGDSButtonFragment on EGDSButton {
+  __typename
+  ...FlightsActionButton
+  ...FlightsDialogTriggerFragment
+}
+
+fragment UITertiaryButtonSearchFragment on UITertiaryButton {
+  accessibility
+  analytics {
+    ...ClientSideAnalytics
+  }
+  disabled
+  icon {
+    ...IconFragment
+  }
+  primary
+}
+
+fragment AdTransparencyButtonFragment on AdTransparencyButton {
+  primary
+  icon {
+    id
+  }
+}
+
+fragment TransparencyOverlaySkeletonFragment on TransparencyOverlaySkeleton {
+    title
+    error {
+      icon {
+        id
+        size
+      }
+      description
+      button {
+        primary
+      }
+      allowedRetryAttempts
+      exceededAttemptsMessage
+    }
+  }
+
+fragment EGDSExpandoFragment on EGDSExpando {
+  __typename
+  ... on EGDSExpandoPeek {
+    ...EGDSExpandoPeekFragment
+  }
+  ... on EGDSExpandoListItem {
+    ...EGDSExpandoListItemFragment
+  }
+  ... on EGDSExpandoLink {
+    ...EGDSExpandoLinkFragment
+  }
+}
+
+fragment FlightsSponsoredUpsellDetails on FlightsSponsoredFareInformation {
+  __typename
+  mediaSection {
+    badge {
+      ...EGDSBadgeFragment
+      size
+    }
+    featureImage {
+      url
+      description
+      thumbnailClickAnalytics {
+        ...ClientSideAnalytics
+      }
+    }
+  }
+  heading {
+    __typename
+    accessibility
+    text
+  }
+  description
+  highlights {
+    __typename
+    listItems {
+      __typename
+      text
+    }
+  }
+  priceDisplay {
+    ...FlightsPriceDisplayFragment
+  }
+  priceLockup {
+    ...PriceLockupFragment
+  }
+  sponsoredFareAnalyticsList {
+    ...ClientSideAnalytics
+  }
+  onClickAnalyticsList {
+    ...ClientSideAnalytics
+  }
+  showMoreExpando {
+    ...EGDSExpandoFragment
+    collapseAnalytics {
+      ...ClientSideAnalytics
+    }
+    expanded
+  }
+}
+
+fragment SponsoredTrackingBeaconsFragement on SponsoredTrackingBeacons {
+  renderBeacons
+  clickBeacons
+  viewBeacons
+  __typename
+}
+
+fragment FlightsDialogTriggerActionFIS on FlightsDialogTriggerAction {
+  __typename
+  dialog {
+    ...EGDSActionDialogFragment
+  }
+  analyticsList {
+    __typename
+    ...ClientAnalytics
+  }
+  dialogContents {
+    __typename
+    ... on EGDSHeading {
+      text
+    }
+    ... on EGDSParagraph {
+      text
+    }
+  }
+}
+
+fragment IconInformationLoaded on Icon {
+  __typename
+  description
+  id
+  size
+  withBackground
+  theme
+}
+
+fragment ClientAnalytics on ClientSideAnalytics {
+  __typename
+  linkName
+  referrerId
+  uisPrimeMessages {
+    messageContent
+    schemaName
+  }
+}
+
+fragment DateFragment on Date {
+  month
+  day
+  year
+}
+
+fragment FlightsClientActionFragment on FlightsClientAction {
+  accessibility
+  analyticsList {
+    ...ClientSideAnalytics
+  }
+  egcsAnalytics {
+    ...FlightsClickStreamAnalyticsFragment
+  }
+  ... on FlightsCreditSelectionAction {
+    originalBookingId
+  }
+  ...FlightsBoundNavigation
+  ...FlightsNavigateToDetails
+  ...FlightsResourceLinkAction
+  ...FlightsSelectionAction
+  ...MultiItemSelectPackage
+  ...MultiItemSelectProducts
+}
+
+fragment FlightsEGDSRemovablePillFragment on EGDSRemovablePill {
+    primary
+    accessibility
+    disabled
+    action {
+      accessibility
+      ... on UIFlightAction {
+        analyticsPayload
+      }
+    }
+  }
+
+fragment ShoppingSearchCriteriaFragment on ShoppingSearchCriteria {
+    selections {
+      id
+      value
+    }
+    booleans {
+      id
+      value
+    }
+    counts {
+      id
+      value
+    }
+    dates {
+      id
+      value {
+        day
+        month
+        year
+      }
+    }
+    ranges {
+      id
+      max
+      min
+    }
+  }
+
+fragment AirportOptionFragment on AirportOption {
+    accessibilityHeading
+    accessibilityMessage
+    destinationAirportDistance
+    destinationCityName
+    icon {
+      ...IconFragments
+    }
+    originAirportDistance
+    originCityName
+    selectAction {
+      ...SelectActionFragment
+    }
+  }
+
+fragment DateOptionFragment on DateOption {
+    accessibilityHeading
+    accessibilityMessage
+    numDaysDifference
+    selectAction {
+      ...SelectActionFragment
+    }
+    tripDates
+    tripOD
+  }
+
+fragment FlightsPointsInformationDialogContent on FlightsPointsInformationDialogContent {
+  __typename
+  title
+  body {
+    ...FlightsPointsInformationDialogContentBodyElements
+  }
+}
+
+fragment FlightsStepIndicator on FlightsStepIndicator {
+  errorAnalytics {
+    ...FlightsAnalytics
+  }
+  journeyContinuationId
+}
+
+fragment Pagination on Pagination {
+  __typename
+  size
+  startingIndex
+}
+
+fragment FlightsPhraseTextNodeFragment on FlightsPhraseTextNode {
+  styles
+  text
+}
+
+fragment EGDSBasicPillFragment on EGDSBasicPill {
+    accessibility
+    deselectAnalytics {
+      ...ClientSideAnalyticsFragment
+    }
+    disabled
+    icon {
+      ...UIGraphicFragment
+    }
+    name
+    primary
+    selectAnalytics {
+      ...ClientSideAnalyticsFragment
+    }
+    selected
+    value
+  }
+
+fragment EGDSBasicRemovablePillFragment on EGDSBasicRemovablePill {
+    accessibility
+    disabled
+    icon {
+      ...UIGraphicFragment
+    }
+    name
+    primary
+    remove {
+      ...UIGraphicFragment
+    }
+    removeAnalytics {
+      ...ClientSideAnalyticsFragment
+    }
+    selected
+    value
+  }
+
+fragment EGDSDismissActionFragment on EGDSDismissAction {
+  accessibility
+  analytics {
+    ...ClientSideAnalytics
+  }
+  label
+}
+
+fragment FlightsCategorizedListItemFragment on FlightsCategorizedListItem {
+  __typename
+  primary {
+    ...EGDSSpannableTextFragment
+  }
+  secondary
+  secondaryContent {
+    ...EGDSSpannableTextFragment
+  }
+  tertiary
+  tertiaryContent {
+    ...EGDSStylizedTextFragment
+  }
+  graphic {
+    ...UIGraphicFragment
+  }
+}
+
+fragment FlightsCriticalErrorMessagingFragment on FlightsCriticalErrorMessaging {
+    __typename
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    primaryAction {
+      ...FlightsExperienceActionButtonFragment
+    }
+    icon {
+      ...IconFragments
+    }
+    message
+    title
+  }
+
+fragment FlightsInfoMessagingPresentationFragment on FlightsInfoMessagingPresentation {
+    egcsDisplayAnalytics {
+      ...FlightsClickStreamAnalyticsFragment
+    }
+    icon {
+      ...IconFragments
+    }
+    message
+    title
+  }
+
+fragment FlightSelectableBaggageFragment on FlightSelectableBaggageAncillaryOption {
+    __typename
+    description
+    disabled
+    label
+    labelSuffix
+    value
+    optionType
+    selectableAncillaryToken
+    selected
+  }
+
+fragment FlightsBaggageSelectionAccessibilityMessagesFragment on FlightsBaggageSelectionAccessibilityMessages {
+    preSelectionAccessibilityMessage
+    preSelectionPerTravelerAccessibilityMessage
+    postSelectionAccessibilityMessage
+    postSelectionPerTravelerAccessibilityMessage
+  }
+
+fragment EGDSNestedLevelOneListFragment on EGDSNestedLevelOneList {
+    items {
+      ...EGDSNestedLevelOneListItemFragment
+    }
+  }
+
+fragment EGDSMoreInfoTriggerComponentFragment on EGDSMoreInfoTrigger {
+    icon {
+      ...IconFragments
+    }
+    text
+    triggerAction {
+      accessibility
+      analytics {
+        ...ClientSideAnalyticsFragment
+      }
+      sheet {
+        ...EGDSSheetFragment
+      }
+      text
+    }
+    analytics {
+      ...ClientSideAnalyticsFragment
+    }
+    accessibility
+  }
+
+fragment FlightShoppingCardDurationTimelineFragment on FlightShoppingCardDurationTimeline {
+  __typename
+  start {
+    ...FlightShoppingDurationTimelineSideSectionFragment
+  }
+  end {
+    ...FlightShoppingDurationTimelineSideSectionFragment
+  }
+  stops
+  theme
+  primaryMessage {
+    ... on EGDSStylizedText {
+      text
+      weight
+    }
+  }
+  secondaryMessage {
+    ...EGDSTextSectionFragment
+  }
+}
+
+fragment EGDSTextSectionFragment on EGDSTextSection {
+  __typename
+  contents {
+    __typename
+    ...EGDSStylizedAndSpannable
+  }
+  heading {
+    __typename
+    ...EGDSSectionHeadingFragment
+  }
+}
+
+fragment FlightsJourneyHeaderFragment on FlightsJourneyHeaderInformation {
+  __typename
+  content {
+    ...FlightsInformationTextFragment
+  }
+}
+
+fragment FlightsJourneyDetailsInformationFragment on FlightsJourneyDetailsInformation {
+  __typename
+  content {
+    ...FlightsJourneyDetailsFragment
+  }
+  expando {
+    ...EGDSExpandoFragment
+  }
+}
+
+fragment FlightsJourneyWithDetailsFragment on FlightsJourneyWithDetails {
+  __typename
+  details {
+    ...EgdsTextFragment
+  }
+  footnotes {
+    ...EgdsTextFragment
+  }
+  header
+  subheader
+}
+
+fragment FlightsFaresInformationFragment on FlightsFaresInformation {
+  __typename
+  accessibility
+  faresScrollDirection
+  carousel {
+    ...EGDSCarouselContainerFragment
+  }
+  faresCarousel {
+    ...EGDSCarouselFragment
+  }
+  heading
+  fares {
+    ...FareInformationCardFragment
+  }
+  subheading
+  scrollAnalytics {
+    ...ClientSideAnalytics
+  }
+  faresScrollAnalytics {
+    ...FlightsFaresScrollAnalytics
+  }
+  totalFareCount
+  faresLoadingAnalytics {
+    faresLoadErrorAnalytics {
+      ...ClientSideAnalytics
+    }
+    faresLoadingDisplayedAnalytics {
+      ...ClientSideAnalytics
+    }
+    faresLoadingTimeAnalytics {
+      ...ClientSideAnalytics
+    }
+    continueButtonOnClickAnalytics {
+      ...ClientSideAnalytics
+    }
+  }
+}
+
+fragment FlightsSustainabilityCardFragment on FlightsSustainabilityCard {
+  __typename
+  cardContent {
+    text {
+      ...FlightsPhrase
+    }
+    icon {
+      ...IconSearch
+    }
+  }
+}
+
+fragment FlightsMessagingCardFragment on FlightsMessagingCard {
+  cardContent {
+    ...EGDSStandardMessagingCardFragment
+  }
+  displayAnalytics {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment FlightsActionButton on FlightsActionButton {
+  __typename
+  accessibility
+  clientAction {
+    __typename
+    accessibility
+    analyticsList {
+      ...ClientSideAnalytics
+    }
+    ...FlightsBoundNavigation
+    ...FlightsCreditSelectorOpenAction
+    ...FlightsNavigateToDetails
+    ...FlightsResourceLinkAction
+    ...FlightsSelectionAction
+    ...MultiItemSelectPackage
+    ...MultiItemSelectProducts
+  }
+  disabled
+  egdsElementId
+  icon {
+    ...IconSearch
+  }
+  primary
+  style
+  buttonStyle: style
+  action {
+    __typename
+    accessibility
+    analytics {
+      ...ClientSideAnalytics
+    }
+  }
+}
+
+fragment PriceLockupFragment on EGDSPriceLockup {
+  accessibilityPrice
+  leadingCaption
+  lockupFormattedPoints
+  isPointsFirst
+  isStrikeThroughFirst
+  lockupPrice
+  priceSubtextFirst
+  priceSubtextBold
+  priceSubtextStandard
+  strikeThroughPrice
+}
+
+fragment EgdsTextFragment on EGDSText {
+  __typename
+  ... on EGDSGraphicText {
+    ...EGDSGraphicTextFragment
+  }
+  ... on EGDSHeading {
+    text
+    headingType
+  }
+  ... on EGDSParagraph {
+    ...EGDSParagraphFragment
+  }
+  ... on EGDSIconText {
+    text
+    icon {
+      id
+      size
+      theme
+    }
+  }
+  ... on EGDSStandardLink {
+    text
+    size
+    action {
+      __typename
+      accessibility
+      target
+      resource {
+        __typename
+        value
+      }
+      analytics {
+        __typename
+        linkName
+        referrerId
+      }
+    }
+  }
+  ... on EGDSPlainText {
+    text
+  }
+  ... on EGDSStylizedText {
+    decorative
+    text
+    accessibility
+    theme
+    weight
+    stylizedSize: size
+  }
+  ... on EGDSSpannableText {
+    ...EGDSSpannableTextFragment
+  }
+}
+
+fragment EGDSBasicTabFragment on EGDSBasicTab {
+  tabId
+  label
+  accessibility
+  clickAnalytics {
+    ...ClientSideAnalyticsFragment
+  }
+  __typename
+}
+
+fragment EGDSDialogFragment on EGDSDialog {
+  closeAnalytics {
+    ...ClientSideAnalytics
+  }
+  ...EGDSFullScreenDialogFragment
+  ... on EGDSActionDialog {
+    __typename
+    footer {
+      __typename
+      buttons {
+        ...EGDSButtonFragment
+      }
+    }
+  }
+}
+
+fragment EgdsElementFragment on EGDSElement {
+  __typename
+  ... on EGDSText {
+    ...EgdsTextFragment
+  }
+  ... on Illustration {
+    ...EgdsGraphicIllustrationFragmentSearch
+  }
+  ... on UIMessagingCard {
+    primary
+    secondaries
+    graphic {
+      __typename
+      ... on Illustration {
+        link: url
+      }
+      ...EgdsGraphicIllustrationFragmentSearch
+    }
+  }
+  ... on EGDSBulletedList {
+    listItems {
+      __typename
+      text
+    }
+  }
+  ... on EGDSUnorderedList {
+    listItems {
+      __typename
+      ... on EGDSTextStandardListItem {
+        text
+      }
+      ... on EGDSTextIconListItem {
+        text
+        icon {
+          ...IconFragment
+        }
+      }
+      ... on FlightsTextContainerListItem {
+        content {
+          ...EgdsTextFragment
+        }
+      }
+    }
+    textListSize: size
+  }
+}
+
+fragment FlightsDetailSheetFragment on FlightsDetailSheet {
+  title
+  closeAnalytics {
+    ...ClientSideAnalytics
+  }
+  content {
+    ...EgdsElementFragment
+  }
+  footer {
+    ...EgdsElementFragment
+  }
+  initialState
+  closeText
+  actions {
+    ...EGDSToolbarActionButtonFragment
+  }
+  sheetType
+  __typename
+}
+
+fragment EGDSExpandoPeekFragment on EGDSExpandoPeek {
+  __typename
+  expandedLabel
+  collapsedLabel
+  expandAnalytics {
+    ...ClientSideAnalytics
+  }
+  collapseAnalytics {
+    ...ClientSideAnalytics
+  }
+  threshold
+  minimalHeight
+}
+
+fragment EGDSExpandoListItemFragment on EGDSExpandoListItem {
+  __typename
+  collapseAnalytics {
+    ...ClientSideAnalytics
+  }
+  collapsedLabel
+  expandAnalytics {
+    ...ClientSideAnalytics
+  }
+  expandedLabel
+  expanded
+}
+
+fragment EGDSExpandoLinkFragment on EGDSExpandoLink {
+  __typename
+  collapseAnalytics {
+    ...ClientSideAnalytics
+  }
+  collapsedLabel
+  expandAnalytics {
+    ...ClientSideAnalytics
+  }
+  expanded
+  expandedLabel
+}
+
+fragment EGDSActionDialogFragment on EGDSActionDialog {
+  __typename
+  footer {
+    ...EGDSActionDialogFooter
+  }
+}
+
+fragment FlightsBoundNavigation on FlightsBoundNavigation {
+  jcid
+  mipt
+  misId: multiItemSessionId
+  pageId
+  stepIndicatorJcid
+}
+
+fragment FlightsNavigateToDetails on FlightsNavigateToDetails {
+  dialogId
+  nextPage {
+    ...HttpURI
+  }
+  packagesUrl {
+    ...HttpURI
+  }
+}
+
+fragment FlightsResourceLinkAction on FlightsResourceLinkAction {
+  __typename
+  accessibility
+  analyticsList {
+    ...ClientSideAnalytics
+  }
+  resource {
+    ...HttpURI
+  }
+}
+
+fragment MultiItemSelectPackage on MultiItemSelectPackage {
+  packageOfferId
+}
+
+fragment MultiItemSelectProducts on MultiItemSelectProducts {
+  flightsOfferNaturalKeys {
+    ...FlightsOfferNaturalKeysFragment
+  }
+  multiItemPriceToken
+  multiItemSessionId
+}
+
+fragment SelectActionFragment on FlightsAction {
+    ...FlightsActionFragment
+    journeySearchCriteria {
+      ...JourneySearchCriteriaFragment
+    }
+  }
+
+fragment FlightsPointsInformationDialogContentBodyElements on FlightsPointsInformationDialogContentBodyElements {
+  __typename
+  ...EGDSStylizedText
+  ...EGDSSpannableTextFragment
+  ...FlightsPointsEqualityPresentation
+}
+
+fragment EGDSNestedLevelOneListItemFragment on EGDSNestedLevelOneListItem {
+    text
+  }
+
+fragment FlightShoppingDurationTimelineSideSectionFragment on FlightShoppingDurationTimelineSideSection {
+  primary
+  differentDayArrival
+  secondary {
+    ...FlightsResponsiveMessage
+  }
+}
+
+fragment EGDSStylizedAndSpannable on EGDSText {
+  __typename
+  ... on EGDSStylizedText {
+    text
+    size
+    weight
+    theme
+  }
+  ... on EGDSSpannableText {
+    text
+    inlineContent {
+      __typename
+      ... on EGDSStylizedText {
+        accessibility
+        text
+        size
+        weight
+        theme
+      }
+    }
+  }
+}
+
+fragment EGDSSectionHeadingFragment on EGDSSectionHeading {
+  heading {
+    ...EGDSHeadingFragment
+  }
+  subheading
+  ... on FlightsOfferSectionHeading {
+    mark {
+      ...MarkFragments
+    }
+  }
+  ... on EGDSBasicSectionHeading {
+    graphic {
+      ...UIGraphicFragment
+    }
+  }
+}
+
+fragment FlightsInformationTextFragment on FlightsInformationText {
+  __typename
+  content {
+    ...FlightsInformationTextItemFragment
+  }
+}
+
+fragment FlightsJourneyDetailsFragment on FlightsJourneyDetails {
+  __typename
+  trigger {
+    ...FlightsExperienceDialogTrigger
+  }
+  dialog {
+    ...FaresDialogsFragment
+  }
+  journeySections {
+    ...JourneySectionFragment
+  }
+  journeyAmenities {
+    ...FlightsIconAndLabel
+  }
+  badge {
+    ...JourneyDetailsBadgeFragment
+  }
+}
+
+fragment EGDSCarouselContainerFragment on EGDSCarouselContainer {
+  __typename
+  accessibilityHeadingText
+  nextButtonText
+  previousButtonText
+}
+
+fragment EGDSCarouselFragment on EGDSCarousel {
+  nextButton {
+    ...EGDSButtonFragment
+  }
+  previousButton {
+    ...EGDSButtonFragment
+  }
+}
+
+fragment FareInformationCardFragment on FareInformationCard {
+  __typename
+  action {
+    ...FareActionFragment
+    clickAdaptExAnalytics {
+      ...FlightsAdaptExAnalyticsFragment
+    }
+  }
+  amenities {
+    ...FlightsCategorizedListFragment
+  }
+  fareDetails {
+    ...EgdsTextFragment
+  }
+  featuredHeader
+  heading {
+    ...FareHeadingFragmentSearch
+  }
+  fareMessage {
+    decorative
+    text
+    theme
+    weight
+    stylizedSize: size
+  }
+  priceMatchPromise {
+    ...FarePriceMatchPromisePresentationFragment
+  }
+  state
+  highlighted
+  fareCardIdentifier
+  scrollAnalytics {
+    ...ClientSideAnalytics
+  }
+  sponsoredContent {
+    __typename
+  }
+  isPopularFare
+  journeyContinuationId
+  displayAdaptExAnalytics {
+    ...FlightsAdaptExAnalyticsFragment
+  }
+}
+
+fragment FlightsFaresScrollAnalytics on FlightsFaresScrollAnalytics {
+  scrollUp {
+    ...ClientSideAnalytics
+  }
+  scrollDown {
+    ...ClientSideAnalytics
+  }
+  scrollDownButtonClick {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment FlightsPhrase on FlightsPhrase {
+  completeText
+  delimeter
+  theme
+  items {
+    __typename
+    text
+    styles
+    ... on FlightsPhraseLinkNode {
+      accessibility
+      analytics {
+        ...FlightsAnalytics
+      }
+      displayAnalytics {
+        ...FlightsAnalytics
+      }
+      scrollAnalytics {
+        ...FlightsAnalytics
+      }
+      link
+      icon
+    }
+    ... on FlightsPhraseDialogNode {
+      accessibility
+      analytics {
+        ...FlightsAnalytics
+      }
+      actionableIcon {
+        id
+        description
+      }
+      dialog {
+        __typename
+        title
+        message
+        animation
+        actions {
+          ...FlightAction
+        }
+        displayedAnalytics {
+          ...FlightsAnalytics
+        }
+      }
+    }
+  }
+}
+
+fragment FlightsCreditSelectorOpenAction on FlightsCreditSelectorOpenAction {
+  __typename
+  accessibility
+  analyticsList {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment EGDSFullScreenDialogFragment on EGDSFullScreenDialog {
+  ... on EGDSFullScreenDialog {
+    toolbar {
+      ...EGDSDialogToolbarFragment
+    }
+  }
+}
+
+fragment EGDSToolbarActionButtonFragment on EGDSToolbarActionButton {
+  ...EGDSOverlayButtonTypeFragment
+}
+
+fragment EGDSActionDialogFooter on EGDSDialogFooter {
+  __typename
+  buttons {
+    ...UITertiaryButtonFragment
+    ... on FlightsActionButton {
+      __typename
+      style
+      primary
+      clientAction {
+        analyticsList {
+          ...ClientAnalytics
+        }
+        ... on FlightsRemovePriceMatchPromiseAction {
+          journeyContinuationId
+        }
+      }
+    }
+  }
+}
+
+fragment HttpURI on HttpURI {
+  __typename
+  relativePath
+  value
+}
+
+fragment FlightsOfferNaturalKeysFragment on FlightsOfferNaturalKeys {
+  flightNaturalKey {
+    offerToken
+    productTokens
+    travelers {
+      age
+      type
+    }
+    journeyContinuationId
+  }
+  packagedProductsNaturalKeys {
+    __typename
+    ... on CarNaturalKey {
+      __typename
+      offerToken
+    }
+    ... on PropertyNaturalKey {
+      __typename
+      id
+      ratePlanId
+      roomTypeId
+      ratePlanType
+      inventoryType
+      checkOut {
+        ...DateFragment
+      }
+      checkIn {
+        ...DateFragment
+      }
+      rooms {
+        childAges
+        numberOfAdults
+      }
+      businessModelType
+    }
+  }
+}
+
+fragment JourneySearchCriteriaFragment on FlightsJourneySearchCriteria {
+    previousFlightSelections {
+      journeyIndex
+      offerIdentifier
+    }
+    journeyCriteria {
+      originAirportLocationType
+      destinationAirportLocationType
+      destination
+      departureDate {
+        day
+        month
+        year
+      }
+      origin
+    }
+    searchPreferences {
+      cabinClass
+    }
+  }
+
+fragment EGDSStylizedText on EGDSStylizedText {
+  __typename
+  text
+  theme
+  stylizedSize: size
+  accessibility
+  weight
+  decorative
+}
+
+fragment FlightsPointsEqualityPresentation on FlightsPointsEqualityPresentation {
+  __typename
+  delimiter {
+    ...EGDSStylizedText
+  }
+  primaryText {
+    ...EGDSStylizedText
+  }
+  secondarySubText {
+    ...EGDSStylizedText
+  }
+  secondaryText {
+    ...EGDSStylizedText
+  }
+  subText {
+    ...EGDSStylizedText
+  }
+}
+
+fragment FlightsResponsiveMessage on FlightsResponsiveMessage {
+  __typename
+  longMessage
+  shortMessage
+}
+
+fragment FlightsInformationTextItemFragment on FlightsInformationTextItem {
+  ...MarkWrapperFragment
+  ...TextWrapperFragment
+  ...IconWrapperFragment
+  ...SuperlativeTextFragment
+  ...BadgeWrapperFragment
+}
+
+fragment FlightsExperienceDialogTrigger on FlightsExperienceDialogTrigger {
+  dialogAction
+  dialogId
+  dynamicDialogId
+  trigger {
+    ...FlightsExperienceActionLinkFragment
+    ...FlightsExperienceActionButtonFragment
+  }
+}
+
+fragment JourneySectionFragment on JourneySection {
+  __typename
+  journeyConnectionInformation {
+    ... on AdditionalInformation {
+      ...AdditionalInformationFragment
+    }
+    ... on FlightsConnectionInformation {
+      ...FlightsConnectionInformationFragment
+    }
+  }
+  sectionLabel {
+    ...EgdsTextFragment
+  }
+  messageList {
+    ...EgdsTextFragment
+  }
+}
+
+fragment FlightsIconAndLabel on FlightsIconAndLabel {
+  __typename
+  icon {
+    ...IconSearch
+  }
+  label
+  subLabel
+  accessibility
+  value
+  theme
+  displayAnalytics {
+    ...FlightsAnalytics
+  }
+  subText {
+    ... on EGDSStylizedText {
+      decorative
+      text
+      theme
+      weight
+      size
+    }
+  }
+}
+
+fragment JourneyDetailsBadgeFragment on JourneyDetailsBadge {
+  badge {
+    ...EGDSBadgeFragment
+  }
+  link {
+    ...EGDSStandardLinkFragment
+  }
+  label {
+    ...EGDSPlainTextFragment
+  }
+}
+
+fragment FareActionFragment on FareAction {
+  __typename
+  action {
+    ...FlightsActionButton
+  }
+  states
+}
+
+fragment FlightsAdaptExAnalyticsFragment on FlightsAdaptExAnalytics {
+  campaignId
+  events {
+    banditDisplayed
+    eventProperties {
+      name
+      value
+    }
+    eventTarget
+    eventType
+    payloadId
+  }
+}
+
+fragment FlightsCategorizedListFragment on FlightsCategorizedList {
+  __typename
+  sections {
+    ...FlightsCategorizedListSectionFragment
+  }
+  expandableSection {
+    ...FlightsExpandableCategorizedListSectionFragment
+  }
+}
+
+fragment FareHeadingFragmentSearch on FareHeading {
+  __typename
+  badge {
+    ...EGDSBadgeFragment
+  }
+  farePricing {
+    ...FarePricingFragment
+  }
+}
+
+fragment FarePriceMatchPromisePresentationFragment on FarePriceMatchPromisePresentation {
+  __typename
+  cards {
+    ...FarePriceMatchPromiseSelectableCardFragment
+    ...FarePriceMatchPromiseRemovableCardFragment
+    ...FarePriceMatchPromiseStaticCardFragment
+  }
+  priceMatchPromiseState
+}
+
+fragment EGDSDialogToolbarFragment on EGDSDialogToolbar {
+  title
+  closeText
+}
+
+fragment EGDSOverlayButtonTypeFragment on EGDSOverlayButton {
+  accessibility
+  primary
+  disabled
+  egdsElementId
+  action {
+    ...UILinkActionFragment
+  }
+  analytics {
+    ...ClientSideAnalytics
+  }
+  icon {
+    ...IconFragment
+  }
+}
+
+fragment UITertiaryButtonFragment on UITertiaryButton {
+  __typename
+  disabled
+  primary
+  action {
+    ... on UIFlightAction {
+      __typename
+      analytics {
+        ...ClientAnalytics
+      }
+    }
+  }
+}
+
+fragment MarkWrapperFragment on MarkWrapper {
+  __typename
+  mark {
+    ...MarkFragments
+  }
+}
+
+fragment IconWrapperFragment on IconWrapper {
+  __typename
+  iconA11yMessage: accessibilityMessage
+  icons {
+    ...IconSearch
+  }
+}
+
+fragment SuperlativeTextFragment on SuperlativeText {
+  __typename
+  superlativeTextA11yMessage: accessibilityMessage
+  text {
+    ...EgdsTextFragment
+  }
+}
+
+fragment BadgeWrapperFragment on BadgeWrapper {
+  __typename
+  badge {
+    ...EGDSBadgeFragment
+  }
+}
+
+fragment AdditionalInformationFragment on AdditionalInformation {
+  __typename
+  durationAndStop
+  nextFlightOriginAirportInfo {
+    ...FlightsIconAndLabel
+  }
+  layoverInfo {
+    ...FlightsIconAndLabelFragment
+  }
+}
+
+fragment FlightsConnectionInformationFragment on FlightsConnectionInformation {
+  __typename
+  flightsConnection {
+    aircraftModel
+    airlineInfo
+    cabinClassAndBookingCode
+    detailList {
+      ...FlightsLabelAndValueFragment
+    }
+    connectionArrival {
+      ...CoordinateInformationSearch
+    }
+    connectionDeparture {
+      ...CoordinateInformationSearch
+    }
+    duration
+    durationAccessibilityMessage
+    journeyAmenities {
+      ...FlightsJourneyAmenities
+    }
+    airlineDetails {
+      ...FlightsMarkPhrasesFragment
+    }
+    badge {
+      ...JourneyDetailsBadgeFragment
+    }
+    flightInfoLinks {
+      ...FlightsLabelAndLinkFragment
+    }
+  }
+}
+
+fragment FlightsCategorizedListSectionFragment on FlightsCategorizedListSection {
+  __typename
+  flightsCategorizedListSectionA11yMessage: accessibilityMessage
+  footnote
+  heading
+  additionalInfo
+  items {
+    ...FlightsCategorizedListItemFragment
+  }
+}
+
+fragment FlightsExpandableCategorizedListSectionFragment on FlightsExpandableCategorizedListSection {
+  __typename
+  expando {
+    ...EGDSExpandoFragment
+  }
+  expandoContent {
+    ...FlightsCategorizedListSectionFragment
+  }
+}
+
+fragment FarePricingFragment on FarePricing {
+  __typename
+  priceDisplay {
+    ...FlightsPriceDisplayFragment
+  }
+  priceLockup {
+    ...PriceLockupFragment
+  }
+  states
+}
+
+fragment FarePriceMatchPromiseSelectableCardFragment on FarePriceMatchPromiseSelectableCard {
+  __typename
+  checkbox {
+    ...FlightsActionCheckboxFragment
+  }
+  headingSection {
+    ...PriceMatchPromiseCardHeadingFragment
+  }
+  infoTrigger {
+    ...FlightsDialogTriggerFragment
+  }
+  descriptionDetailsLinkTrigger {
+    ...FlightsDialogTriggerFragment
+  }
+  price
+  priceMatchPromiseState
+  description
+}
+
+fragment FarePriceMatchPromiseRemovableCardFragment on FarePriceMatchPromiseRemovableCard {
+  __typename
+  heading {
+    ...EGDSIconTextFragment
+  }
+  priceMatchPromiseState
+  removeAction {
+    ...FlightsActionLinkFragment
+  }
+  subHeading
+}
+
+fragment FarePriceMatchPromiseStaticCardFragment on FarePriceMatchPromiseStaticCard {
+  __typename
+  heading {
+    ...EGDSIconTextFragment
+  }
+  priceMatchPromiseState
+  subHeading
+}
+
+fragment FlightsIconAndLabelFragment on FlightsIconAndLabel {
+  __typename
+  icon {
+    ...IconFragment
+  }
+  label
+  subLabel
+  accessibility
+  value
+  theme
+  displayAnalyticsList {
+    ...ClientSideAnalytics
+  }
+  subText {
+    ... on EGDSStylizedText {
+      decorative
+      text
+      theme
+      weight
+      size
+    }
+  }
+}
+
+fragment FlightsLabelAndValueFragment on FlightsLabelAndValue {
+  __typename
+  label
+  value
+  accessibilityMessage
+}
+
+fragment CoordinateInformationSearch on CoordinateInformation {
+  icon {
+    ...IconSearch
+  }
+  flightDetailsWarningInfo {
+    ...FlightsIconAndLabel
+  }
+  subtitle
+  titleAndAccessibilityMessage {
+    flightsMessageAndAccessibilityA11yMessage: accessibilityMessage
+    text
+  }
+  terminal {
+    ...EgdsTextFragment
+  }
+  journeyDateTime {
+    ...EgdsTextFragment
+  }
+  isLayoverAirport
+}
+
+fragment FlightsJourneyAmenities on FlightsJourneyAmenities {
+  __typename
+  accessibilityMessage
+  title {
+    ...EGDSStylizedTextFragment
+  }
+  amenities {
+    ...FlightsIconAndLabel
+  }
+  analytics {
+    ...FlightsAnalytics
+  }
+}
+
+fragment FlightsMarkPhrasesFragment on FlightsMarkPhrases {
+  accessibility
+  mark {
+    ...MarkFragments
+  }
+  text {
+    accessibility
+    completeText
+    items {
+      ...FlightsPhrasePartFragment
+    }
+  }
+}
+
+fragment FlightsLabelAndLinkFragment on FlightsLabelAndLink {
+  label {
+    ...EGDSSpannableTextFragment
+  }
+  linkInfo {
+    ...FlightsExperienceActionLinkFragment
+  }
+}
+
+fragment FlightsActionCheckboxFragment on FlightsActionCheckbox {
+  label {
+    ...EgdsTextFragment
+  }
+  clientAction {
+    ...FlightsClickActionFragment
+    ...InsuranceSwitchToggleAction
+  }
+  checkedAccessibility
+  checkedAnalytics {
+    ...ClientSideAnalytics
+  }
+  uncheckedAccessibility
+  uncheckedAnalytics {
+    ...ClientSideAnalytics
+  }
+}
+
+fragment PriceMatchPromiseCardHeadingFragment on FarePriceMatchPromiseCardHeadingType {
+  __typename
+  ...EGDSBasicSectionHeadingFragment
+  ...EGDSGraphicTextFragment
+}
+
+fragment FlightsClickActionFragment on FlightsClickAction {
+  __typename
+  analyticsList {
+    __typename
+    ...ClientSideAnalytics
+  }
+  accessibility
+}
+
+fragment InsuranceSwitchToggleAction on InsuranceSwitchToggleAction {
+  insuranceCriteria {
+    freePmpCustomerPlacement
+    selectedProductId
+  }
+  jcidValue: jcid
+  checkedAccessibilityAnnouncement
+  uncheckedAccessibilityAnnouncement
+}
+
+fragment EGDSBasicSectionHeadingFragment on EGDSBasicSectionHeading {
+  __typename
+  heading {
+    __typename
+    ...EGDSHeadingFragment
+  }
+  graphic {
+    ...UIGraphicFragment
+  }
+}`;
+  }
+});
+
+// server/workers/parsers/expediaFlights.ts
+function listingPrice(L) {
+  for (const row of L?.priceDisplay?.rows || []) {
+    for (const el of row?.elements || []) {
+      if (el?.__typename === "FlightsPriceMessageItem") {
+        const m = String(el?.price?.text || "").replace(/\s/g, "").match(/(₹|\$|€|£)?([\d,]+(?:\.\d+)?)/);
+        if (m) {
+          const n = Number(m[2].replace(/,/g, ""));
+          if (Number.isFinite(n) && n > 0) return n;
+        }
+      }
+    }
+  }
+  return 0;
+}
+function listingTimeline(L) {
+  for (const s of L?.flightsShoppingOfferContent?.secondarySection || []) {
+    if (s?.__typename === "FlightShoppingCardDurationTimeline" || s?.start && s?.end) return s;
+  }
+  return null;
+}
+function listingAirlineName(L) {
+  for (const s of L?.flightsShoppingOfferContent?.secondarySection || []) {
+    if (s?.__typename !== "EGDSTextSection") continue;
+    for (const c of s?.contents || []) {
+      const t = String(c?.text || "").trim();
+      if (t && /\b(air|airlines?|indigo|vistara|airasia|akasa)\b/i.test(t) && !/→|-/.test(t)) return t;
+    }
+  }
+  return "";
+}
+function listingLogo(L) {
+  const g = L?.flightsShoppingOfferContent?.graphic;
+  const url = g?.url?.value || g?.url?.relativePath || "";
+  return String(url || "").replace(/^http:/, "https:");
+}
+function listingLegs(L) {
+  const legs = [];
+  const sections = (L?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
+  for (const sec of sections) {
+    if (sec?.__typename !== "FlightsJourneyDetailsInformation" && !sec?.content) continue;
+    for (const jd of sec?.content || []) {
+      if (!jd?.journeySections) continue;
+      for (const js of jd.journeySections) {
+        for (const jci of js?.journeyConnectionInformation || []) {
+          const fc = jci?.flightsConnection;
+          if (!fc) continue;
+          let flightNo2 = "";
+          for (const ph of fc?.airlineDetails?.text || []) {
+            for (const it of ph?.items || []) {
+              if (it?.__typename === "FlightsPhraseTextNode" && /^\s*[A-Z0-9]{2}\d{2,4}\s*$/.test(String(it?.text || ""))) {
+                flightNo2 = String(it.text).trim();
+                break;
+              }
+            }
+            if (flightNo2) break;
+          }
+          if (!flightNo2) {
+            const m = String(fc?.airlineInfo || "").match(/\b([A-Z0-9]{2})\s?(\d{2,4})\b/);
+            if (m) flightNo2 = `${m[1]}${m[2]}`;
+          }
+          const dt = (side) => String((side?.journeyDateTime || [])[0]?.text || "").trim();
+          legs.push({
+            flightNo: flightNo2,
+            dep: dt(fc?.connectionDeparture),
+            depAirport: String(fc?.connectionDeparture?.subtitle || "").trim(),
+            arr: dt(fc?.connectionArrival),
+            arrAirport: String(fc?.connectionArrival?.subtitle || "").trim(),
+            aircraft: String(fc?.aircraftModel || "").trim()
+          });
+        }
+      }
+    }
+  }
+  return legs;
+}
+function listingDuration(L) {
+  const tl = listingTimeline(L);
+  const pm = String(tl?.primaryMessage?.text || "").trim();
+  if (pm) return pm;
+  const sections = (L?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
+  for (const sec of sections) {
+    for (const jd of sec?.content || []) {
+      for (const js of jd?.journeySections || []) {
+        for (const jci of js?.journeyConnectionInformation || []) {
+          const d = String(jci?.flightsConnection?.duration || "").replace(/^Travel time:\s*/i, "").trim();
+          if (d) return d;
+        }
+      }
+    }
+  }
+  return "";
+}
+function parseStops(v) {
+  if (v == null) return "";
+  const n = Number(v);
+  if (Number.isFinite(n)) return n === 0 ? "non-stop" : `${n} stop${n > 1 ? "s" : ""}`;
+  return String(v);
+}
+function parseExpediaFlights(body, source, route, dateIso, srpUrl, fx, cap = 40) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const listings = d?.data?.flightsSearch?.listingResult?.listings || [];
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const L of listings) {
+    if (!L || !L.priceDisplay || !L.flightsShoppingOfferContent) continue;
+    const usd2 = listingPrice(L);
+    if (!usd2) continue;
+    const tl = listingTimeline(L);
+    const legs = listingLegs(L);
+    const dep = legs[0]?.dep || String(tl?.start?.primary || "").trim();
+    const arr = (legs[legs.length - 1] || {}).arr || String(tl?.end?.primary || "").trim();
+    if (!dep || !arr) continue;
+    const airline = listingAirlineName(L) || (legs[0]?.flightNo || "").slice(0, 2);
+    if (!airline) continue;
+    const flightNos = legs.map((l) => l.flightNo).filter(Boolean);
+    const flightNo2 = flightNos.join("/");
+    const stops = parseStops(tl?.stops);
+    const duration = listingDuration(L);
+    const depAirport = legs[0]?.depAirport || "";
+    const arrAirport = legs[legs.length - 1]?.arrAirport || "";
+    const aircraft = legs.map((l) => l.aircraft).filter(Boolean)[0] || "";
+    const key = `${airline}|${flightNo2}|${dep}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (out.length >= cap) break;
+    const { price, currency, dataNote } = fx && fx.rate > 0 ? {
+      price: Math.round(usd2 * fx.rate),
+      currency: "INR",
+      dataNote: `$${usd2} listed on expedia.com, converted to INR at live USD/INR ${fx.rate} (${fx.source}); live fare observed on Expedia flight search on ${today}. Fare may change at checkout.`
+    } : {
+      price: usd2,
+      currency: "USD",
+      dataNote: `Live fare observed on Expedia flight search on ${today}; listed in USD on expedia.com (FX rate unavailable, price unconverted). Fare may change at checkout.`
+    };
+    const logo = listingLogo(L);
+    out.push(newRawItem(source, {
+      title: `${airline}${flightNo2 ? ` ${flightNo2}` : ""} \xB7 ${routeLabel}`,
+      brand: airline,
+      price,
+      currency,
+      seller: "Expedia",
+      sellerUrl: srpUrl,
+      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
+      attributes: {
+        route: routeLabel,
+        travel_date: dateIso,
+        departure: dep,
+        arrival: arr,
+        ...depAirport && arrAirport ? { airports: `${depAirport} \u2192 ${arrAirport}` } : {},
+        ...duration ? { duration } : {},
+        ...stops ? { stops } : {},
+        ...aircraft ? { aircraft } : {},
+        ...logo ? { image_url: logo } : {},
+        price_basis: "live fare observed on expedia.com flight search",
+        data_note: dataNote,
+        deep_link_ref: srpUrl
+      },
+      identifiers: { sku: `expedia-${flightNo2 || dep}-${dateIso}`.replace(/\s+/g, "-").toLowerCase() },
+      evidence: {
+        sourceUrl: srpUrl,
+        extractedFields: ["listingResult.listings[].priceDisplay", "journeyConnectionInformation.flightsConnection", "FlightShoppingCardDurationTimeline"]
+      }
+    }));
+  }
+  return out;
+}
+var init_expediaFlights = __esm({
+  "server/workers/parsers/expediaFlights.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/verticals/flights.ts
 function routeFromQuery(raw) {
   const KNOWN_CODES = /* @__PURE__ */ new Set(["DEL", "BOM", "BLR", "HYD", "MAA", "CCU", "PNQ", "AMD", "JAI", "GOI", "LKO", "NAG", "IDR", "STV", "PAT", "BHO", "CJB", "COK", "GAU", "IXC", "DED", "ATQ", "VNS", "SXR", "TRV", "VTZ", "IXM", "UDR", "JDH", "IXR", "RPR", "BBI", "IMF", "IXL", "IXB", "IXU", "IXE", "BDQ", "RAJ", "IXJ", "IXD", "GOP", "JRG", "DIB", "TEZ", "KNU", "MYQ", "HBX", "IXG", "KLH", "ISK", "SAG", "TIR", "DXB", "SIN", "LHR", "JFK", "BKK", "KUL", "DOH", "AUH", "SHJ"]);
@@ -4628,6 +8588,59 @@ function routeFromQuery(raw) {
   if (!from || !to) return null;
   return { from, to, fromCode: codeOf(m[1]), toCode: codeOf(m[2]) };
 }
+async function expediaFlightsSearch(ctx, rt, dIso) {
+  const codeOf = (s) => IATA[s.toLowerCase().trim()] || null;
+  const from = rt.fromCode || codeOf(rt.from);
+  const to = rt.toCode || codeOf(rt.to);
+  if (!from || !to) return [];
+  const srpUrl = `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}&from=${encodeURIComponent(`${rt.from} (${from})`)}&to=${encodeURIComponent(`${rt.to} (${to})`)}&search-type=arsed&mode=search`;
+  let cookies;
+  const primed = await cffiFetch(srpUrl, {
+    impersonate: "safari",
+    timeoutMs: 3e4,
+    returnCookies: true,
+    cookies,
+    headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
+  });
+  cookies = primed.cookies || cookies;
+  if (primed.status === 429 || primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4e3))) {
+    throw new AcquisitionError("ACCESS_CHALLENGE", `expedia.com SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
+  }
+  if (primed.status !== 200) throw new AcquisitionError("SERVER_ERROR", `expedia.com SRP HTTP ${primed.status}`, primed.status);
+  const duaid = (primed.body.match(/"duaid":"([0-9a-f-]{36})"/) || [])[1] || cookies?.DUAID || "";
+  const y = +dIso.slice(0, 4), mo = +dIso.slice(5, 7), da = +dIso.slice(8, 10);
+  const payload = JSON.stringify({
+    operationName: "FlightsSearchResultsLoadedQuery",
+    query: EXPEDIA_FLIGHTS_QUERY,
+    variables: {
+      context: { currency: "USD", device: { type: "DESKTOP" }, eapid: 0, identity: { authState: "ANONYMOUS", duaid }, locale: "en_US", privacyTrackingState: "CAN_TRACK", siteId: 1, tpid: 1 },
+      journeyCriteria: [{ departureDate: { day: da, month: mo, year: y }, destination: to, origin: from }],
+      travelerDetails: [{ ages: null, count: 1, travelerType: "ADULT" }],
+      searchPagination: { startingIndex: 0, size: 50 }
+    }
+  });
+  const r = await cffiFetch("https://www.expedia.com/graphql", {
+    method: "POST",
+    impersonate: "safari",
+    timeoutMs: 45e3,
+    cookies,
+    body: payload,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      Origin: "https://www.expedia.com",
+      Referer: srpUrl,
+      "client-info": "flights-shopping-pwa,f658986df5e0a55d154dc12eef2e7d34978e8f73,us-west-2",
+      "x-page-id": "page.Flights-Search,F,20"
+    }
+  });
+  if (r.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", "expedia.com flights GraphQL edge returned a bot challenge (HTTP 429)", 429);
+  if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `expedia.com flights GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+  const fx = await usdToInrRate();
+  const items = parseExpediaFlights(r.body, ctx.source, { from: rt.from, to: rt.to, fromCode: from, toCode: to }, dIso, srpUrl, fx);
+  if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `expedia.com GraphQL returned no priced flight listings for ${from}-${to} on ${dIso}`);
+  return items;
+}
 var IATA, URL_AP, flightsWorker;
 var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
@@ -4639,6 +8652,9 @@ var init_flights = __esm({
     init_emtAirbus();
     init_indigoFlights();
     init_akasaFlights();
+    init_expediaFlightsQuery();
+    init_expediaFlights();
+    init_fxRates();
     init_curlCffiFetch();
     IATA = {
       delhi: "DEL",
@@ -4885,14 +8901,61 @@ var init_flights = __esm({
             return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep);
           }
         },
+        {
+          // Expedia flights (flights-shopping-pwa GraphQL): the SRP app POSTs
+          // FlightsSearchResultsLoadedQuery to /graphql — we replay the exact
+          // document the PWA ships (73KB, all fragments) after priming the SRP
+          // with safari TLS. Real per-flight USD fares converted honestly via
+          // live FX. Expedia is the price-owning OTA: seller = Expedia and the
+          // deeplink goes to expedia.com (owner deeplink policy), with a
+          // data_note crediting where the fare was observed.
+          sourceId: "w_flights_expedia",
+          name: "Flights worker: Expedia live fares (flights-shopping-pwa GraphQL)",
+          priority: 8,
+          maxPerMinute: 2,
+          timeoutMs: 5e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            return expediaFlightsSearch(ctx, rt, dIso);
+          }
+        },
         // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
         {
           sourceId: "w_flights_makemytrip",
           name: "Flights worker: MakeMyTrip flights (probe)",
           priority: 15,
           run: async () => {
-            await cffiFetch("https://www.makemytrip.com/flights/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "MakeMyTrip flight search serves an empty shell to browserless HTTP; fare lists load via Akamai-sensor-gated sessioned APIs (bot challenge on 302 to makemytrip.global).");
+            const dd = new Date(Date.now() + 7 * 864e5);
+            const dmy = `${String(dd.getUTCDate()).padStart(2, "0")}/${String(dd.getUTCMonth() + 1).padStart(2, "0")}/${dd.getUTCFullYear()}`;
+            const iso2 = dd.toISOString().slice(0, 10);
+            const r = await cffiFetch(
+              `https://www.makemytrip.com/flight/search?itinerary=IDR-DEL-${dmy}&tripType=O&pax=1-0-0&cabinClass=E`,
+              { impersonate: "chrome", timeoutMs: 12e3 }
+            );
+            if (r.status === 200 && (r.body || "").length > 5e4) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: AkamaiGHost stub).");
+            }
+            throw new AcquisitionError("EMPTY_RESPONSE", 'MakeMyTrip flight SRP serves a 6-byte "200-OK" application/json stub from AkamaiGHost to browserless datacenter HTTP; Googlebot UA gets HTTP/2 reset; the app API host flights-cb.makemytrip.com exposes only a GET pre-search-validation route (Go validator, no fares); SEO pages carry no live fares (recon 14 Oct 2026). Retest from production IP after deploy.');
+          }
+        },
+        {
+          sourceId: "w_flights_goibibo",
+          name: "Flights worker: Goibibo flights (probe)",
+          priority: 15,
+          run: async () => {
+            const dd = new Date(Date.now() + 7 * 864e5);
+            const iso2 = dd.toISOString().slice(0, 10);
+            const r = await cffiFetch(
+              `https://www.goibibo.com/flights/search/?source=Indore&destination=New%20Delhi&triptype=O&tripdate=${iso2}&adults=1`,
+              { impersonate: "chrome", timeoutMs: 12e3 }
+            );
+            if (r.status === 200 && (r.body || "").length > 5e4) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", "Goibibo SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: Akamai 504/reset).");
+            }
+            throw new AcquisitionError("EMPTY_RESPONSE", 'Goibibo flights is edge-gated to browserless datacenter HTTP: www.goibibo.com/flights/* gives HTTP/2 stream reset or 504 AkamaiGHost gateway timeouts; m.goibibo.com 503; flights.goibibo.com returns Akamai "Access Denied" 403 on all paths; api.goibibo.com 503 DNS failure (recon 14 Oct 2026). Retest from production IP after deploy.');
           }
         },
         {
@@ -11720,7 +15783,11 @@ async function runSearch(input) {
     return v;
   }
   const response = await runLivePipeline(input, parsed);
-  cachePut(cacheKey, response, ttlSec, staleSec);
+  if (response.results.length === 0) {
+    cachePut(cacheKey, response, 45, 45);
+  } else {
+    cachePut(cacheKey, response, ttlSec, staleSec);
+  }
   return response;
 }
 async function runLivePipeline(input, parsedIn) {
@@ -12753,8 +16820,10 @@ var init_spendLens = __esm({
 // server/affiliate/deeplink.ts
 var deeplink_exports = {};
 __export(deeplink_exports, {
+  amazonAssociatesUrl: () => amazonAssociatesUrl,
   buildSecureDeeplink: () => buildSecureDeeplink,
   createMaskingPointer: () => createMaskingPointer,
+  cuelinksMerchantUrl: () => cuelinksMerchantUrl,
   recordPointerClick: () => recordPointerClick,
   resolveMaskingPointer: () => resolveMaskingPointer,
   safeDomain: () => safeDomain2
@@ -12794,10 +16863,31 @@ function safeDomain2(url) {
     return "";
   }
 }
-function cuelinksTemplate() {
+function cuelinksMerchantUrl(dest) {
   const c = settings.cuelinks;
-  if (!c.apiKey || !c.campaignId) return null;
-  return `https://linksredirect.com/cuelink?type=nl&subid=${encodeURIComponent(c.subId || "try1second")}&campaign=${encodeURIComponent(c.campaignId)}&url={url}`;
+  if (!c.publisherId) return null;
+  let domain;
+  try {
+    domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+  const cid = CUELINKS_CAMPAIGNS[domain];
+  if (!cid) return null;
+  return `https://linksredirect.com/?cid=${cid}&subid=${encodeURIComponent(c.publisherId)}&source=${encodeURIComponent(c.subId || "try1second")}&url=${encodeURIComponent(dest)}`;
+}
+function amazonAssociatesUrl(dest) {
+  const tag = settings.amazonAssociates?.tag;
+  if (!tag) return null;
+  let u;
+  try {
+    u = new URL(dest);
+  } catch {
+    return null;
+  }
+  if (!AMAZON_DOMAINS.test(u.hostname.toLowerCase())) return null;
+  u.searchParams.set("tag", tag);
+  return u.toString();
 }
 async function buildSecureDeeplink(targetUrl, opts = {}) {
   const domain = safeDomain2(targetUrl);
@@ -12817,6 +16907,8 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     }
   } catch {
   }
+  const amz = amazonAssociatesUrl(targetUrl);
+  if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
   try {
     const rows = await store2.query(
       `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
@@ -12830,8 +16922,8 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     }
   } catch {
   }
-  const tpl = cuelinksTemplate();
-  if (tpl) return { trackingUrl: renderTemplate(tpl, targetUrl, {}, "subid"), network: "cuelinks", matchedProfile: "cuelinks_fallback" };
+  const cuelinks = cuelinksMerchantUrl(targetUrl);
+  if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
@@ -12861,7 +16953,7 @@ async function recordPointerClick(dest, offerId, network) {
   }
   return clickId;
 }
-var import_crypto24, AFFILIATE_TTL_SEC;
+var import_crypto24, AFFILIATE_TTL_SEC, CUELINKS_CAMPAIGNS, AMAZON_DOMAINS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     import_crypto24 = __toESM(require("crypto"), 1);
@@ -12869,6 +16961,13 @@ var init_deeplink = __esm({
     init_logger();
     init_db();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
+    CUELINKS_CAMPAIGNS = {
+      "makemytrip.com": 3801,
+      // MakeMyTrip (Hotels) India — all makemytrip.com pages
+      "goibibo.com": 3942
+      // Goibibo Hotels — all goibibo.com pages (incl. flights deeplinks)
+    };
+    AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
   }
 });
 
@@ -13003,6 +17102,17 @@ function searchableTitle(t) {
   const cap = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
   return (head + cap).trim() || t.slice(0, 80);
 }
+function recoverCapacityFromDescription(title, desc) {
+  const CAP = /\b\d+(?:\.\d+)?\s?(gb|tb)\b/i;
+  if (!title || !desc || CAP.test(title)) return null;
+  if (!CAP.test(desc)) return null;
+  const head = String(desc).split(/\s*[:|]\s*|\s+with\s+/i)[0].replace(/\s+/g, " ").trim();
+  if (!CAP.test(head) || head.length > 90) return null;
+  const titleWords = title.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const headWords = head.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!titleWords || !headWords.includes(titleWords)) return null;
+  return head;
+}
 function isMerchantNameTitle(title, domain, merchant) {
   if (!title) return false;
   const plain = (x) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -13011,6 +17121,9 @@ function isMerchantNameTitle(title, domain, merchant) {
 function isStorefrontTitle(title) {
   if (!title) return false;
   return STOREFRONT_RE.test(title.trim());
+}
+function isGenericTitle(title) {
+  return !!title && GENERIC_TITLE_RE.test(title.trim());
 }
 function isErrorPageTitle(title) {
   if (!title) return false;
@@ -13055,6 +17168,11 @@ function parseProductHtml(html) {
       title = cleanTitle(t);
       titleSource = "page-title";
     }
+  }
+  if (title) {
+    const desc = $('meta[name="description"]').attr("content") || $('meta[property="og:description"]').attr("content") || "";
+    const recovered = recoverCapacityFromDescription(title, desc);
+    if (recovered) title = cleanTitle(recovered);
   }
   if (!pagePrice) pagePrice = priceNum($('meta[property="product:price:amount"]').attr("content") || $('meta[property="og:price:amount"]').attr("content"));
   if (!image) {
@@ -13123,7 +17241,7 @@ async function resolveProductFromLink(rawUrl) {
     parsed = { title: null, titleSource: "none", pagePrice: null, image: null };
     if (fetchStatus === "ok") fetchStatus = "blocked";
   }
-  if (isMerchantNameTitle(parsed.title, domain, merchant)) {
+  if (isMerchantNameTitle(parsed.title, domain, merchant) || isGenericTitle(parsed.title)) {
     parsed = { title: null, titleSource: "none", pagePrice: null, image: null };
     if (fetchStatus === "ok") fetchStatus = "blocked";
   }
@@ -13131,7 +17249,7 @@ async function resolveProductFromLink(rawUrl) {
   if (slugTitle) return { title: slugTitle, titleSource: "url-slug", merchant, domain, pagePrice: null, image: null, fetchStatus };
   return { title: null, titleSource: "none", merchant, domain, pagePrice: null, image: null, fetchStatus };
 }
-var cheerio6, MERCHANTS, JUNK_SLUG, STOREFRONT_RE, ERROR_TITLE_RE;
+var cheerio6, MERCHANTS, JUNK_SLUG, STOREFRONT_RE, GENERIC_TITLE_RE, ERROR_TITLE_RE;
 var init_productLink = __esm({
   "server/lens/productLink.ts"() {
     cheerio6 = __toESM(require("cheerio"), 1);
@@ -13158,6 +17276,7 @@ var init_productLink = __esm({
     ];
     JUNK_SLUG = /^(dp|gp|p|product|products|item|itm|buy|pd|shop|s|ip|sku|b0[a-z0-9]{8}|[a-z]{0,3}\d[a-z0-9]{6,})$/i;
     STOREFRONT_RE = /\b(online (shopping|store|fashion|grocery|shopping site)|shopping (online|for )|official (site|website|store)|home ?page|buy .* online at)\b/i;
+    GENERIC_TITLE_RE = /^(products?|shop|store|search|search results|buy online|online store|best sellers?|deals?|all products?|cart|checkout|home)$/i;
     ERROR_TITLE_RE = /(^|\b)(service unavailable|temporarily unavailable|access denied|forbidden|page not found|just a moment|unusual traffic|robot check|are you a human|human verification|error\s*(40[034]|50[023])?|40[034]|50[023]|429)(\b|$)/i;
   }
 });
@@ -13450,6 +17569,7 @@ var init_assistantIntent = __esm({
 // server/lens/sameProduct.ts
 var sameProduct_exports = {};
 __export(sameProduct_exports, {
+  capacitiesOf: () => capacitiesOf,
   identityTokens: () => identityTokens,
   isAccessory: () => isAccessory,
   isSameProduct: () => isSameProduct
@@ -13464,9 +17584,23 @@ function isAccessory(title) {
 function identityTokens(title) {
   return Array.from(new Set(words(title).filter((w) => !STOP2.has(w) && !COLORS.has(w) && w.length > 1)));
 }
+function capacitiesOf(title) {
+  const caps = /* @__PURE__ */ new Set();
+  for (const m of String(title || "").matchAll(/\b(\d+(?:\.\d+)?)\s?(gb|tb)\b/gi)) {
+    const n = parseFloat(m[1]) * (/^tb$/i.test(m[2]) ? 1024 : 1);
+    if (n > 0) caps.add(String(n));
+  }
+  return caps;
+}
 function isSameProduct(pastedTitle, candidateTitle) {
   const wantsAccessory = isAccessory(pastedTitle);
   if (!wantsAccessory && isAccessory(candidateTitle)) return false;
+  const wantCaps = capacitiesOf(pastedTitle);
+  const haveCaps = capacitiesOf(candidateTitle);
+  if (wantCaps.size || haveCaps.size) {
+    if (!wantCaps.size || !haveCaps.size) return false;
+    for (const c of wantCaps) if (!haveCaps.has(c)) return false;
+  }
   const need = identityTokens(pastedTitle);
   if (need.length === 0) return false;
   const have = new Set(words(candidateTitle));
@@ -17894,32 +22028,107 @@ var init_cuelinks = __esm({
   "server/affiliate/providers/cuelinks.ts"() {
     init_settings();
     init_baseProvider();
-    CuelinksProvider = class extends BaseAffiliateProvider {
+    CuelinksProvider = class _CuelinksProvider extends BaseAffiliateProvider {
       constructor() {
         super(...arguments);
         this.id = "cuelinks";
         this.label = "Cuelinks";
+        this.campaignsCache = [];
+        this.cacheAt = 0;
+      }
+      static {
+        this.TTL_MS = 30 * 60 * 1e3;
       }
       isConfigured() {
-        return Boolean(settings.cuelinks?.enabled);
+        return Boolean(settings.cuelinks?.apiKey);
       }
+      /** Static token auth (v3): valid whenever the key is present. */
       tokenValid() {
-        return false;
+        return this.isConfigured() && Date.now() - this.cacheAt < _CuelinksProvider.TTL_MS;
       }
-      // TODO: cache Cuelinks JWT after /authenticate
       async authenticate() {
-        throw new Error("cuelinks: adapter pending publisher approval");
       }
-      async fetchOffers() {
-        return this.unconfigured();
+      async api(path10, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path10}`, {
+          ...init,
+          headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
+        });
+        if (!res.ok) throw new Error(`cuelinks: ${path10} HTTP ${res.status}`);
+        return res.json();
       }
+      /** Live coupons/deals across joined campaigns. Paginates a few pages; every
+       *  offer carries the publisher's own tracking_url (channel embedded). */
+      async fetchOffers(opts = {}) {
+        if (!this.isConfigured()) return this.unconfigured();
+        const maxPages = Math.min(Math.max(opts.pages ?? 3, 1), 10);
+        const offers = [];
+        const warnings = [];
+        try {
+          for (let page = 1; page <= maxPages; page++) {
+            const j = await this.api(`/offers?per_page=200&page=${page}`);
+            const rows = Array.isArray(j?.data) ? j.data : [];
+            for (const o of rows) offers.push(this.normalize(o));
+            if (!j?.meta?.next_page) break;
+          }
+          this.cacheAt = Date.now();
+        } catch (e) {
+          warnings.push(`cuelinks: offers fetch failed (${e?.message || "error"})`);
+        }
+        return { offers, count: offers.length, warnings };
+      }
+      normalize(o) {
+        const pct = Number.isFinite(Number(o?.percent_off)) ? Number(o.percent_off) : null;
+        return {
+          network_source: "cuelinks",
+          network_offer_id: String(o?.id ?? ""),
+          merchant_name: String(o?.campaign_name || "Cuelinks merchant").slice(0, 255),
+          merchant_logo: null,
+          title: String(o?.title || "").slice(0, 500),
+          description: o?.description ? String(o.description).replace(/<[^>]*>/g, "").slice(0, 2e3) : null,
+          coupon_code: o?.coupon_code ? String(o.coupon_code) : null,
+          discount_value: pct,
+          discount_type: pct != null ? "percentage" : "other",
+          affiliate_url: o?.tracking_url ? String(o.tracking_url) : null,
+          original_url: null,
+          categories: (Array.isArray(o?.categories) ? o.categories : []).map((c) => String(c?.name || "").toLowerCase()).filter(Boolean),
+          starts_at: o?.start_date ? new Date(String(o.start_date)) : null,
+          expires_at: o?.end_date ? new Date(String(o.end_date)) : null,
+          status: o?.status === "live" ? "active" : "paused",
+          commission: null,
+          commission_note: null,
+          raw: { offer_type: o?.offer_type || null, campaign_id: o?.campaign_id ?? null, terms: o?.terms ? String(o.terms).slice(0, 500) : null }
+        };
+      }
+      /** Campaign discovery: id, name, access_status, domains — feeds the deeplink
+       *  registry with per-merchant cids (incl. future MMT vertical campaigns). */
       async fetchCampaigns() {
-        return [];
+        if (!this.isConfigured()) return [];
+        const out = [];
+        for (let page = 1; page <= 3; page++) {
+          const j = await this.api(`/campaigns?per_page=200&page=${page}`);
+          const rows = Array.isArray(j?.data) ? j.data : [];
+          out.push(...rows);
+          if (!j?.meta?.next_page) break;
+        }
+        this.campaignsCache = out;
+        return out;
       }
+      /** Channel-attributed tracking link via the official convert endpoint.
+       *  Fallback (no key): the verified linkkit format with publisher subid. */
       async generateTrackingLink(targetUrl, subId) {
-        const u = new URL(targetUrl);
-        if (subId) u.searchParams.set("sub_id", subId);
-        return u.toString();
+        if (this.isConfigured()) {
+          const j = await this.api(`/links/convert`, { method: "POST", body: JSON.stringify({ url: targetUrl, ...subId ? { subid: subId } : {} }) });
+          const d = j?.data;
+          if (d?.tracking_url) {
+            if (d.affiliated === false) return targetUrl;
+            return String(d.tracking_url);
+          }
+        }
+        const c = settings.cuelinks;
+        if (c.publisherId) {
+          return `https://linksredirect.com/?cid=${encodeURIComponent(c.campaignId || "")}&subid=${encodeURIComponent(c.publisherId)}&url=${encodeURIComponent(targetUrl)}`;
+        }
+        return targetUrl;
       }
     };
   }

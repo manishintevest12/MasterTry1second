@@ -60,11 +60,33 @@ export function safeDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
 }
 
-/** Cuelinks canonical template (fixes the historical linksdesination typo). */
-function cuelinksTemplate(): string | null {
+/**
+ * Cuelinks merchant campaigns (public campaign IDs, verified live 15 Oct 2026:
+ * linksredirect.com/?cid=...&url=... 302s to the exact destination from any
+ * client). The campaign listing is browsable at cuelinks.com/campaigns?query=
+ * Extend this map as more merchants are joined in the Cuelinks dashboard.
+ * NOTE: MakeMyTrip and Goibibo each have a single campaign today (Hotels-
+ * named) — Cuelinks attributes by destination domain, so the cid covers that
+ * merchant's flights/hotels deeplinks too. Verified live 15 Oct 2026: cid 3801
+ * and 3942 both 302 to the exact destination. When the API key is set, the
+ * provider's campaign sync can discover newer per-vertical campaigns.
+ */
+const CUELINKS_CAMPAIGNS: Record<string, number> = {
+  'makemytrip.com': 3801, // MakeMyTrip (Hotels) India — all makemytrip.com pages
+  'goibibo.com': 3942,    // Goibibo Hotels — all goibibo.com pages (incl. flights deeplinks)
+};
+
+/** Build a working Cuelinks linkkit deeplink: verified format
+ *  https://linksredirect.com/?cid=<campaign>&subid=<publisher>&source=<site>&url=<encoded>
+ *  (the old type=nl&campaign= format 301'd to the Cuelinks homepage — dead). */
+export function cuelinksMerchantUrl(dest: string): string | null {
   const c = settings.cuelinks;
-  if (!c.apiKey || !c.campaignId) return null;
-  return `https://linksredirect.com/cuelink?type=nl&subid=${encodeURIComponent(c.subId || 'try1second')}&campaign=${encodeURIComponent(c.campaignId)}&url={url}`;
+  if (!c.publisherId) return null;
+  let domain: string;
+  try { domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; }
+  const cid = CUELINKS_CAMPAIGNS[domain];
+  if (!cid) return null;
+  return `https://linksredirect.com/?cid=${cid}&subid=${encodeURIComponent(c.publisherId)}&source=${encodeURIComponent(c.subId || 'try1second')}&url=${encodeURIComponent(dest)}`;
 }
 
 const AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
@@ -123,9 +145,10 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
       return { trackingUrl: url, network: String(r.network_id || 'direct'), matchedProfile: 'affiliate_links' };
     }
   } catch { /* fall through */ }
-  // 3. Configured Cuelinks fallback
-  const tpl = cuelinksTemplate();
-  if (tpl) return { trackingUrl: renderTemplate(tpl, targetUrl, {}, 'subid'), network: 'cuelinks', matchedProfile: 'cuelinks_fallback' };
+  // 3. Cuelinks known-merchant campaigns (publisher 278473): monetized linkkit
+  //    deeplink for every joined merchant — makemytrip.com today.
+  const cuelinks = cuelinksMerchantUrl(targetUrl);
+  if (cuelinks) return { trackingUrl: cuelinks, network: 'cuelinks', matchedProfile: 'cuelinks_fallback' };
   // 4. Direct — honest, no invented parameters
   return { trackingUrl: targetUrl, network: null, matchedProfile: 'direct' };
 }
