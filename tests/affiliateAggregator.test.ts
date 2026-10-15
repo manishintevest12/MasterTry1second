@@ -53,10 +53,20 @@ test('Admitad normalizer flags past-expiry offers as expired', () => {
 });
 
 test('unconfigured Admitad reports honestly instead of fabricating', async () => {
-  const p = new AdmitadProvider();
-  const res = await p.fetchOffers();
-  assert.equal(res.offers.length, 0);
-  assert.ok(res.warnings.length > 0);
+  // Env-independent: strip creds from the settings singleton for this test
+  // (production may legitimately have ADMITAD_* set in the environment).
+  const { settings } = await import('../server/common/settings');
+  const orig = { id: settings.admitad.clientId, secret: settings.admitad.clientSecret };
+  settings.admitad.clientId = ''; settings.admitad.clientSecret = '';
+  try {
+    const p = new AdmitadProvider();
+    const res = await p.fetchOffers();
+    assert.equal(res.offers.length, 0);
+    assert.ok(res.warnings.length > 0);
+  } finally {
+    settings.admitad.clientId = orig.id;
+    settings.admitad.clientSecret = orig.secret;
+  }
 });
 
 test('VCommission normalizer maps the live campaigns shape (data.campaigns fields)', async () => {
