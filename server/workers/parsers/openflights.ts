@@ -86,6 +86,21 @@ function airlineSiteFor(name: string): string | undefined {
   return undefined;
 }
 
+/** Canonical seller names for the Platforms & Sellers sidebar filter (15 Oct):
+ *  OpenFlights' airlines.dat uses legal-entity names ("IndiGo Airlines",
+ *  "Air India Limited") which showed up as confusing near-duplicates next to
+ *  the direct-source rows ("IndiGo", "Air India"). Normalize to the carrier's
+ *  common brand so the sidebar groups them with the priced offers. */
+const CANONICAL_AIRLINES: Array<[RegExp, string]> = [
+  [/indigo/i, 'IndiGo'], [/air india express/i, 'Air India Express'], [/^air india(?!.*express)/i, 'Air India'],
+  [/spicejet/i, 'SpiceJet'], [/akasa/i, 'Akasa Air'], [/emirates/i, 'Emirates'], [/vistara/i, 'Vistara'],
+  [/alliance air/i, 'Alliance Air'], [/star air/i, 'Star Air'], [/fly ?91/i, 'Fly91'],
+];
+export function canonicalAirlineName(name: string): string {
+  for (const [re, canon] of CANONICAL_AIRLINES) if (re.test(name)) return canon;
+  return name.replace(/\s*(airlines|air lines|limited|ltd|pvt\.? ?ltd|co\.|inc)\.?$/i, '').trim() || name;
+}
+
 export function parseRoute(airports: Airport[], airlines: Airline[], routes: Route[], source: SourceConfig, fromCity: string, toCity: string, date: string | undefined, sourceUrl: string): RawSourceItem[] {
   const fromAirports = matchAirports(airports, fromCity);
   const toAirports = matchAirports(airports, toCity);
@@ -94,7 +109,7 @@ export function parseRoute(airports: Airport[], airlines: Airline[], routes: Rou
   const dstIatas = new Set(toAirports.map((a) => a.iata));
   // OpenFlights' `active` flag lags reality: drop known-defunct carriers and cargo-only operators
   // so a passenger search never lists an airline that no longer sells tickets.
-  const DEFUNCT = /\b(jet airways|kingfisher|spicejet cargo|silkair|tiger airways|air deccan|jetlite|go ?first|goair|king ?fisher|virgin america|germanwings|monarch|thomas cook|air berlin|alitalia|malev|cargo|freight|express cargo|logistics|courier|dhl|fedex|ups)\b/i;
+  const DEFUNCT = /\b(jet airways|kingfisher|spicejet cargo|silkair|tiger airways|air deccan|jetlite|go ?first|go ?air|air sahara|sahara|king ?fisher|virgin america|germanwings|monarch|thomas cook|air berlin|alitalia|malev|cargo|freight|express cargo|logistics|courier|dhl|fedex|ups)\b/i;
   const airlineByIata = new Map(airlines.filter((a) => a.active && !DEFUNCT.test(a.name)).map((a) => [a.iata, a]));
   const matched = new Map<string, Route[]>();
   for (const r of routes) {
@@ -113,7 +128,7 @@ export function parseRoute(airports: Airport[], airlines: Airline[], routes: Rou
     const dstAp = toAirports.find((a) => a.iata === r0.dstIata)!;
     out.push(newRawItem(source, {
       title: `${airlineName}: ${srcAp.city} (${srcAp.iata}) → ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: airlineName.slice(0, 100),
+      seller: canonicalAirlineName(airlineName).slice(0, 100),
       sellerUrl: airlineSiteFor(airlineName) || sourceUrl,
       currency: 'INR',
       travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...(date ? { date } : {}), seatType: 'unknown' },
