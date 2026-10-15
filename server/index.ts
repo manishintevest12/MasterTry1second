@@ -6,6 +6,9 @@
 import path from 'path';
 import fs from 'fs';
 import express, { type Request, type Response } from 'express';
+// Gzip all text responses (JS/CSS/JSON/API) — the #1 PageSpeed item missing on
+// Hostinger: Apache does not compress proxied Node output, so Express must.
+import compression from 'compression';
 
 // Bundle-safe: resolve dist/ from the process working directory (the app root on Hostinger / KVM4).
 // Falls back to the source-relative path when running unbundled via tsx.
@@ -13,6 +16,7 @@ const __dirname = process.cwd();
 
 export async function createApp(): Promise<express.Express> {
   const app = express();
+  app.use(compression()); // gzip BEFORE routes so API JSON + static both compress
   app.use(express.json({ limit: '256kb' }));
 
   const { settings } = await import('./common/settings');
