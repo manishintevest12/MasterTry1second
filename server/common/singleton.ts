@@ -18,24 +18,47 @@ import { log } from './logger';
 
 const STALE_MS = 10 * 60_000;
 
-async function mysqlLock(name: string): Promise<boolean> {
-  const conn = await mysql.createConnection(settings.mysqlUrl);
+// Returns 'held' | 'other' | 'error' so the caller can distinguish
+// "someone else owns the lock" (defer quietly) from "MySQL unreachable"
+// (fall back to the file lock). Conflating the two is what let two app
+// instances both run background duties when MySQL hiccuped at boot.
+async function mysqlLock(name: string): Promise<'held' | 'other' | 'error'> {
+  let conn: mysql.Connection | null = null;
   try {
+    conn = await mysql.createConnection(settings.mysqlUrl);
     const [rows] = (await conn.query(
       'SELECT COALESCE(GET_LOCK(?, 0), 0) AS releasable', [`try1second_${name}`],
     )) as mysql.RowDataPacket[];
-    const ok = Number(rows?.[0]?.releasable) === 1;
-    if (!ok) {
+    if (Number(rows?.[0]?.releasable) !== 1) {
       await conn.end();
-      return false;
+      return 'other';
     }
     // Hold the connection open for the process lifetime: the lock lives as long
     // as this connection does, and dies with it (crash, restart, hPanel reload).
-    conn.on('error', () => undefined); // keep a dead holder from crashing the app
-    return true;
+    // BUT the server can silently drop an idle connection (wait_timeout) while
+    // we still believe we hold the lock — which releases the MySQL lock and lets
+    // a second instance win it, so BOTH run background work (seen in prod logs
+    // 15 Oct: two boots 1s apart, both running workers + boot-warm + keep-warm).
+    // Heartbeat: keepalive ping + periodic re-assert of IS_USED_LOCK; if the
+    // lock is gone we log CRITICAL (a second instance may have taken over).
+    const holder = conn;
+    holder.on('error', () => undefined); // keep a dead holder from crashing the app
+    const hb = setInterval(() => {
+      holder.ping().catch(() => undefined);
+      holder.query('SELECT IS_USED_LOCK(?) AS holderId', [`try1second_${name}`])
+        .then(([r]: any[]) => {
+          const mine = Number(r?.[0]?.holderId) !== 0 && holder.threadId != null && Number(r?.[0]?.holderId) === holder.threadId;
+          if (!mine) {
+            log.error('Singleton', `BACKGROUND LOCK LOST (try1second_${name}) — another app instance may now duplicate background work`, { pid: process.pid });
+          }
+        })
+        .catch(() => undefined);
+    }, 60_000);
+    hb.unref?.();
+    return 'held';
   } catch {
-    try { await conn.end(); } catch { /* ignore */ }
-    return false;
+    try { await conn?.end(); } catch { /* ignore */ }
+    return 'error';
   }
 }
 
@@ -62,10 +85,19 @@ function fileLock(name: string): boolean {
  * the singleton lock, false when another instance already owns it.
  */
 export async function acquireSingletonLock(name: string): Promise<boolean> {
-  try {
-    if (settings.mysqlUrl) return await mysqlLock(name);
-  } catch { /* fall through to the file lock */ }
-  return fileLock(name);
+  if (settings.mysqlUrl) {
+    const r = await mysqlLock(name);
+    if (r === 'held') {
+      log.info('Bootstrap', `Background singleton acquired via MySQL GET_LOCK (pid ${process.pid})`);
+      return true;
+    }
+    if (r === 'other') return false; // a live sibling owns it — defer, never fall back
+    // r === 'error': MySQL unreachable — the FILE lock is the safety net
+    log.warn('Bootstrap', `MySQL lock unavailable — falling back to file lock (pid ${process.pid})`);
+  }
+  const ok = fileLock(name);
+  if (ok) log.info('Bootstrap', `Background singleton acquired via file lock (pid ${process.pid})`);
+  return ok;
 }
 
 /** Convenience wrapper: run `fn` only when this instance wins the lock. */

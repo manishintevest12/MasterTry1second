@@ -358,15 +358,6 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
-      sourceId: 'w_flights_akasa',
-      name: 'Flights worker: Akasa Air (probe)',
-      priority: 18,
-      run: async () => {
-        await cffiFetch('https://www.akasaair.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Akasa Air web serves a challenge/403 to browserless HTTP; homepage carries only marketing voucher fares, no live route fares without a sessioned booking flow.');
-      },
-    },
-    {
       // IndiGo 6E official mobile flight-search API, reverse-engineered from the
       // Android app's Hermes bundle (browserless; static app user_key, no login):
       // POST api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search.

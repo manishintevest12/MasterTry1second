@@ -67,8 +67,11 @@ function seedSources(): SourceConfig[] {
       verticals: ['ecommerce', 'coupons', 'banking', 'giftcards'], priority: 20,
       config: { apiKey: settings.cuelinks.apiKey, campaignId: settings.cuelinks.campaignId, subId: settings.cuelinks.subId },
       requiresAuthorization: true,
-      // Credentials present → enabled; orchestrator records real outcomes (REQUEST_SUCCEEDED etc.)
-      enabled: Boolean(settings.cuelinks.apiKey),
+      // DISABLED 15 Oct: this registry feed source never had a feedUrl configured, so every
+      // attempt failed EXPIRED_CREDENTIALS and poisoned the affiliate_cuelinks circuit (prod
+      // logs 15 Oct) while the REAL offers sync (aggregator -> CuelinksProvider, 599 offers)
+      // runs fine separately and upserts into the affiliate store. Pure noise — off.
+      enabled: false,
     }),
     // ---- Affiliate feed (VCommission) ----
     src({
