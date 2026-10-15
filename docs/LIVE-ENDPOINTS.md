@@ -177,3 +177,8 @@ Live deal sources therefore remain the ecommerce set (Amazon, Myntra, TataCLiQ)
 with the favicon image fallback. Any further cross-vertical deals need a
 different acquisition path (sitemap coupons endpoints, mobile API reversing) —
 tracked as future work, no mock substitutes.
+
+## Flights worldwide + seller policy (15 Oct 2026)
+- **Global route resolution**: `server/common/airportLookup.ts` resolves ANY world city to IATA + country (static Indian map → OpenFlights airports.dat, 24h cache, preferred-hub ranking for multi-airport cities). All flight workers (EMT, Ixigo, IndiGo, Expedia, Akasa) resolve routes through it — "Dubai to London" now returns live fares. Akasa honestly skips non-Indian routes (domestic carrier).
+- **Seller policy (owner, 15 Oct)**: the seller shown on every flight offer is the TICKET-SELLING WEBSITE (EaseMyTrip, Ixigo, Expedia, Akasa Air, IndiGo), never the operating airline. Airline name stays in the title/brand. EMT listing deeplink carries per-country labels (airports.dat country, e.g. `srch=DXB-Dubai-United%20Arab%20Emirates|LHR-London-United%20Kingdom|...`).
+- **EMT_AIRLINES expanded** to ~70 carriers (all majors incl. EK, QR, EY, BA, LH, SQ, TK…); unknown IATA codes keep the raw code in the title — never invented names.

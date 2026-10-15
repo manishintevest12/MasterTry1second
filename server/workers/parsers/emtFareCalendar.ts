@@ -26,17 +26,37 @@ export interface EmtFare {
 }
 
 /** Indian carrier codes mapped to seller name + their OWN website (deeplink target). */
-export const EMT_AIRLINES: Record<string, { name: string; url: string }> = {
+export const EMT_AIRLINES: Record<string, { name: string; url?: string }> = {
+  // Indian carriers (deeplink site kept for reference; seller is EaseMyTrip now)
   '6E': { name: 'IndiGo', url: 'https://www.goindigo.in/' },
   QP: { name: 'Akasa Air', url: 'https://www.akasaair.com/' },
   AI: { name: 'Air India', url: 'https://www.airindia.com/' },
   IX: { name: 'Air India Express', url: 'https://www.airindiaexpress.com/' },
   SG: { name: 'SpiceJet', url: 'https://www.spicejet.com/' },
-  UK: { name: 'Vistara', url: 'https://www.airvistara.com/' },
-  G8: { name: 'Go First', url: 'https://www.flygofirst.com/' },
   '9I': { name: 'Alliance Air', url: 'https://www.allianceair.in/' },
-  I5: { name: 'AirAsia India', url: 'https://www.airasia.co.in/' },
-  QZ: { name: 'IndiGo', url: 'https://www.goindigo.in/' },
+  // Major international carriers observed live in EMT's engine (name-only: honest
+  // identification; ticket selling happens on EaseMyTrip, the seller).
+  EK: { name: 'Emirates' }, QR: { name: 'Qatar Airways' }, EY: { name: 'Etihad Airways' },
+  WY: { name: 'Oman Air' }, GF: { name: 'Gulf Air' }, SV: { name: 'Saudia' },
+  FZ: { name: 'flydubai' }, G9: { name: 'Air Arabia' }, XY: { name: 'Flynas' },
+  RJ: { name: 'Royal Jordanian' }, MS: { name: 'EgyptAir' }, AT: { name: 'Royal Air Maroc' },
+  ET: { name: 'Ethiopian Airlines' }, KQ: { name: 'Kenya Airways' }, SA: { name: 'South African Airways' },
+  TK: { name: 'Turkish Airlines' }, BA: { name: 'British Airways' }, LH: { name: 'Lufthansa' },
+  LX: { name: 'Swiss International Air Lines' }, OS: { name: 'Austrian Airlines' },
+  AF: { name: 'Air France' }, KL: { name: 'KLM Royal Dutch Airlines' }, AZ: { name: 'ITA Airways' },
+  IB: { name: 'Iberia' }, TP: { name: 'TAP Air Portugal' }, AY: { name: 'Finnair' },
+  SK: { name: 'SAS' }, BT: { name: 'airBaltic' }, LO: { name: 'LOT Polish Airlines' },
+  AC: { name: 'Air Canada' }, AA: { name: 'American Airlines' }, DL: { name: 'Delta Air Lines' },
+  UA: { name: 'United Airlines' }, SQ: { name: 'Singapore Airlines' }, TR: { name: 'Scoot' },
+  TG: { name: 'Thai Airways' }, PG: { name: 'Bangkok Airways' }, VN: { name: 'Vietnam Airlines' },
+  VJ: { name: 'VietJet Air' }, MH: { name: 'Malaysia Airlines' }, OD: { name: 'Batik Air Malaysia' },
+  AK: { name: 'AirAsia' }, GA: { name: 'Garuda Indonesia' }, CX: { name: 'Cathay Pacific' },
+  CA: { name: 'Air China' }, MU: { name: 'China Eastern Airlines' }, CZ: { name: 'China Southern Airlines' },
+  KE: { name: 'Korean Air' }, OZ: { name: 'Asiana Airlines' }, NH: { name: 'ANA' },
+  JL: { name: 'Japan Airlines' }, QF: { name: 'Qantas' }, NZ: { name: 'Air New Zealand' },
+  UL: { name: 'SriLankan Airlines' }, BG: { name: 'Biman Bangladesh Airlines' },
+  PK: { name: 'Pakistan International Airlines' }, KC: { name: 'Air Astana' },
+  JD: { name: 'Jordan Aviation' }, H1: { name: 'Hahn Air' }, UK: { name: 'Vistara (merged into Air India)' },
 };
 
 export function parseEmtFareCalendar(jsonText: string, wantDate: string): EmtFare[] {
@@ -64,6 +84,8 @@ export function emtFareItems(
   source: SourceConfig,
   route: { from: string; to: string },
   wantDate: string,   // "20/10/2026"
+  fromCode = '',      // IATA origin (for the EMT search deeplink)
+  toCode = '',        // IATA destination
 ): RawSourceItem[] {
   const today = new Date().toISOString().slice(0, 10);
   const airline = (code: string | null) => (code && EMT_AIRLINES[code]) ? EMT_AIRLINES[code] : null;
@@ -76,6 +98,7 @@ export function emtFareItems(
   const chosen = exact || upcoming[0];
   if (!chosen) return [];
   const al = airline(chosen.airlineCode)!;
+  const emtSearchUrl = `https://www.easemytrip.com/flight-search?searchParams=${encodeURIComponent(`${fromCode}-${route.from}|${toCode}-${route.to}|${chosen.date}`)}`;
   const isExact = exact ? chosen.date === exact.date : false;
   const routeLabel = `${route.from} → ${route.to}`;
   return [newRawItem(source, {
@@ -83,16 +106,16 @@ export function emtFareItems(
     brand: al.name,
     price: chosen.fare,
     currency: 'INR',
-    seller: al.name,
-    sellerUrl: al.url,
+    seller: 'EaseMyTrip',
+    sellerUrl: emtSearchUrl,
     travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
     attributes: {
       route: routeLabel,
       travel_date: chosen.date,
       fare: String(chosen.fare),
       airline_code: chosen.airlineCode || '',
-      price_basis: `cheapest fare observed on EaseMyTrip's live fare calendar on ${today} (acquisition source, not seller)`,
-      data_note: `Fare acquired via EaseMyTrip fare calendar on ${today}; booking is on ${al.name}'s own website. Price is the cheapest carrier fare for this route/date and may change at checkout.`,
+      price_basis: `cheapest ${al.name} fare observed on EaseMyTrip's live fare calendar on ${today} (EaseMyTrip is the selling website)`,
+      data_note: `Fare acquired via EaseMyTrip fare calendar on ${today}; the ticket is SOLD by EaseMyTrip (seller). Cheapest carrier fare for this route/date; may change at checkout.`,
       image: '',
     },
     identifiers: { sku: `emt-${chosen.airlineCode}-${route.from}-${route.to}-${chosen.date.replace(/\//g, '-')}` },

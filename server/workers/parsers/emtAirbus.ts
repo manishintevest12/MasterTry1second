@@ -118,27 +118,34 @@ export function emtAirbusItems(
   fromCode: string,
   toCode: string,
   dateIso: string,
+  fromCountry = 'India',
+  toCountry = 'India',
   cap = 60,
 ): RawSourceItem[] {
   const today = new Date().toISOString().slice(0, 10);
   const routeLabel = `${route.from} → ${route.to}`;
-  const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-India%7C${toCode}-${encodeURIComponent(route.to)}-India%7C${dateIso.split('-').reverse().join('/')}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
+  // EMT's own listing URL format: srch=CODE-City-Country|CODE-City-Country|dd/mm/yyyy.
+  // Country comes from the global airport resolver (static map says India).
+  const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-${encodeURIComponent(fromCountry || 'India')}%7C${toCode}-${encodeURIComponent(route.to)}-${encodeURIComponent(toCountry || 'India')}%7C${dateIso.split('-').reverse().join('/')}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
   const seen = new Set<string>();
   const items: RawSourceItem[] = [];
   for (const f of flights.sort((a, b) => a.fare - b.fare)) {
+    // Known carriers get their honest name; unknown codes keep the raw IATA code
+    // (never invented). Either way the SELLER is EaseMyTrip — the ticket-selling
+    // website (owner policy 15 Oct) — not the operating airline.
     const al = EMT_AIRLINES[f.airlineCode];
-    if (!al) continue; // only Indian carriers we can honestly name + deeplink
-    const key = `${al.name}|${f.flightNo}|${f.depTime}`;
+    const alName = al?.name || f.airlineCode;
+    const key = `${alName}|${f.flightNo}|${f.depTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
     if (items.length >= cap) break;
     items.push(newRawItem(source, {
-      title: `${al.name} ${f.airlineCode}${f.flightNo} · ${routeLabel}`,
-      brand: al.name,
+      title: `${alName} ${f.airlineCode}${f.flightNo} · ${routeLabel}`,
+      brand: alName,
       price: f.fare,
       currency: 'INR',
-      seller: al.name,
-      sellerUrl: al.url,
+      seller: 'EaseMyTrip',
+      sellerUrl: emtListing,
       travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
       attributes: {
         route: routeLabel,
@@ -149,8 +156,8 @@ export function emtAirbusItems(
         stops: f.stops,
         seats: f.seats ? `${f.seats} seats left` : '',
         fare_basis: f.fareName ? `${f.fareName} fare` : '',
-        price_basis: `live ${f.fareName || 'airline'} fare observed on EaseMyTrip's flight search on ${today} (acquisition source, not seller)`,
-        data_note: `Fare acquired via EaseMyTrip flight search API on ${today}; booking is on ${al.name}'s own website. Fare may change at checkout.`,
+        price_basis: `live ${f.fareName || alName} fare observed on EaseMyTrip's flight search on ${today} (EaseMyTrip is the selling website)`,
+        data_note: `Fare acquired via EaseMyTrip flight search API on ${today}; the ticket is SOLD by EaseMyTrip (seller), operating carrier ${alName}. Fare may change at checkout.`,
         deep_link_ref: emtListing,
       },
       identifiers: { sku: `emt-airbus-${f.airlineCode}-${f.flightNo}-${dateIso}` },

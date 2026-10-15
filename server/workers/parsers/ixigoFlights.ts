@@ -95,24 +95,11 @@ export function parseIxigoOffers(
   from: string,
   to: string,
   date: string,
+  listingUrl = `${IXIGO_WEB}/search/flight/`,  // Ixigo SRP for this exact route/date
 ): RawSourceItem[] {
-  // Seller = the airline's own website (never Ixigo). Deeplink = airline site.
-  const AIRLINE_SITES: Record<string, string> = {
-    'indigo': 'https://www.goindigo.in',
-    'air india': 'https://www.airindia.com',
-    'air-india express': 'https://www.airindiaexpress.com',
-    'air india express': 'https://www.airindiaexpress.com',
-    'akasa air': 'https://www.akasaair.com',
-    'spicejet': 'https://www.spicejet.com',
-    'vistara': 'https://www.airindia.com',
-  };
-  const siteFor = (airline: string): { seller: string; url: string } | null => {
-    const k = airline.toLowerCase().trim();
-    for (const [name, url] of Object.entries(AIRLINE_SITES)) {
-      if (k === name || k.replace(/[^a-z ]/g, '').includes(name)) return { seller: airline.trim(), url };
-    }
-    return null;
-  };
+  // Seller = Ixigo — the website SELLING the ticket (owner policy 15 Oct: the
+  // seller shown is the ticket-selling site, never the operating airline).
+  // Deeplink = Ixigo's own search-results page for this exact route+date.
   const out: RawSourceItem[] = [];
   const seen = new Set<string>();
   const bestFare = new Map<string, number>();
@@ -130,8 +117,6 @@ export function parseIxigoOffers(
     const key = `${f.airlineCode || f.airline}|${f.flightNumber}|${f.departureTime}`;
     if (!seen.has(key)) continue;
     seen.delete(key); // emit once
-    const site = siteFor(f.airline);
-    if (!site) continue; // unknown airline website -> do not publish a guess
     const attrs: Record<string, any> = {
       airline: f.airline,
       airline_code: f.airlineCode,
@@ -144,12 +129,12 @@ export function parseIxigoOffers(
       stops: f.stops,
       route: `${from} → ${to}`,
       price_basis: 'cheapest observed total one-way fare for 1 adult (economy)',
-      data_note: `Fare observed via Ixigo metasearch at ${new Date().toISOString().slice(0, 16)}Z; booking is on ${site.seller}\'s own website`,
+      data_note: `Fare observed via Ixigo at ${new Date().toISOString().slice(0, 16)}Z; the ticket is SOLD by Ixigo (seller), operating carrier ${f.airline}. Price may change at checkout.`,
     };
     out.push(newRawItem(source, {
       title: `${f.airline} ${f.flightNumber} · ${from} → ${to}`,
-      seller: site.seller,
-      sellerUrl: site.url, // deeplink ONLY to the airline website, never to Ixigo
+      seller: 'Ixigo',
+      sellerUrl: listingUrl, // deeplink to Ixigo's own SRP for this exact route/date
       currency: 'INR',
       price: bestFare.get(key)!,
       travel: { route: `${from} to ${to}`.toLowerCase(), date, seatType: 'economy' },

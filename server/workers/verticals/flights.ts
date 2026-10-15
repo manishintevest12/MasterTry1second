@@ -13,6 +13,7 @@ import { parseIxigoFlights, parseIxigoOffers, ixigoRouteTokens } from '../parser
 import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
+import { resolveAirport, IATA } from '../../common/airportLookup';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
@@ -20,30 +21,23 @@ import { parseExpediaFlights } from '../parsers/expediaFlights';
 import { usdToInrRate } from '../../common/fxRates';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
-/** City name → IATA code (major Indian + a few intl airports we actually serve). */
-const IATA: Record<string, string> = {
-          delhi: 'DEL', 'new delhi': 'DEL', mumbai: 'BOM', bombay: 'BOM', bangalore: 'BLR', bengaluru: 'BLR',
-          hyderabad: 'HYD', chennai: 'MAA', kolkata: 'CCU', pune: 'PNQ', ahmedabad: 'AMD', jaipur: 'JAI',
-          goa: 'GOI', panaji: 'GOI', lucknow: 'LKO', nagpur: 'NAG', indore: 'IDR', surat: 'STV',
-          patna: 'PAT', bhopal: 'BHO', coimbatore: 'CJB', kochi: 'COK', ernakulam: 'COK', guwahati: 'GAU',
-          chandigarh: 'IXC', dehradun: 'DED', amritsar: 'ATQ', varanasi: 'VNS', srinagar: 'SXR',
-          trivandrum: 'TRV', thiruvananthapuram: 'TRV', vizag: 'VTZ', visakhapatnam: 'VTZ', madurai: 'IXM',
-          udaipur: 'UDR', jodhpur: 'JDH', ranchi: 'IXR', raipur: 'RPR', bhubaneswar: 'BBI', imphal: 'IMF',
-          leh: 'IXL', bagdogra: 'IXB', aurangabad: 'IXU', mangalore: 'IXE',
-          vadodara: 'BDQ', rajkot: 'RAJ', jammu: 'IXJ', allahabad: 'IXD', prayagraj: 'IXD',
-          gorakhpur: 'GOP', jharsuguda: 'JRG', dibrugarh: 'DIB', tezpur: 'TEZ', kanpur: 'KNU',
-          mysore: 'MYQ', hubli: 'HBX', belgaum: 'IXG', kolhapur: 'KLH', nashik: 'ISK', shirdi: 'SAG',
-          tirupati: 'TIR',
-        };
 
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
 /** "Indore (IDR) to Delhi (DEL) on 20 oct", "patna to delhi flight", "DEL → BOM" -> clean city names (codes stripped). */
 function routeFromQuery(raw: string): { from: string; to: string; fromCode?: string; toCode?: string } | null {
   // Normalise bare trailing IATA codes ("indore idr to delhi del") into the "City (IDR)" form.
+  // A 3-letter token after a city word is a typed IATA code: UPPERCASE always
+  // counts ("dubai DXB to london LHR", any world airport); lowercase only when
+  // it is a KNOWN code ("indore idr to delhi del" — lowercase words are not
+  // trusted as codes because they can be ordinary words).
   const KNOWN_CODES = new Set(['DEL','BOM','BLR','HYD','MAA','CCU','PNQ','AMD','JAI','GOI','LKO','NAG','IDR','STV','PAT','BHO','CJB','COK','GAU','IXC','DED','ATQ','VNS','SXR','TRV','VTZ','IXM','UDR','JDH','IXR','RPR','BBI','IMF','IXL','IXB','IXU','IXE','BDQ','RAJ','IXJ','IXD','GOP','JRG','DIB','TEZ','KNU','MYQ','HBX','IXG','KLH','ISK','SAG','TIR','DXB','SIN','LHR','JFK','BKK','KUL','DOH','AUH','SHJ']);
-  raw = raw.replace(/\b([a-zA-Z][a-zA-Z.]{2,})\s+([A-Za-z]{3})\b(?!\s*\))/g, (full, city, code) =>
-    KNOWN_CODES.has(code.toUpperCase()) && !/^(to|from|and|the|via)$/i.test(city) ? `${city} (${code.toUpperCase()})` : full);
+  raw = raw.replace(/\b([a-zA-Z][a-zA-Z.]{2,})\s+([A-Za-z]{3})\b(?!\s*\))/g, (full, city, code) => {
+    if (/^(to|from|and|the|via)$/i.test(city)) return full;
+    const up = code.toUpperCase();
+    if (code === code.toUpperCase() || KNOWN_CODES.has(up)) return `${city} (${up})`;
+    return full;
+  });
   const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const codeOf = (s: string) => s.match(/\(([A-Za-z]{3})\)/)?.[1]?.toUpperCase();
@@ -67,9 +61,9 @@ function routeFromQuery(raw: string): { from: string; to: string; fromCode?: str
  *  Expedia is the price-owning OTA: seller = Expedia, deeplink = expedia.com.
  *  USD fares convert to INR via the live fxRates module (never a guessed rate). */
 async function expediaFlightsSearch(ctx: any, rt: { from: string; to: string; fromCode?: string; toCode?: string }, dIso: string): Promise<any[]> {
-  const codeOf = (s: string) => IATA[s.toLowerCase().trim()] || null;
-  const from = rt.fromCode || codeOf(rt.from); const to = rt.toCode || codeOf(rt.to);
-  if (!from || !to) return [];
+  const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()] || null;
+  const to = rt.toCode || IATA[rt.to.toLowerCase().trim()] || null;
+  if (!from || !to) return []; // unknown city — honest skip
   const srpUrl = `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}` +
     `&from=${encodeURIComponent(`${rt.from} (${from})`)}&to=${encodeURIComponent(`${rt.to} (${to})`)}&search-type=arsed&mode=search`;
   let cookies: Record<string, string> | undefined;
@@ -116,11 +110,13 @@ export const flightsWorker: VerticalWorker = {
     {
       // EaseMyTrip AirBus_New flight search (reverse-engineered from EMT's public
       // Angular bundles): token flow GIT->GUT, then one POST returns EVERY flight
-      // on the route/date with real INR fares. Seller = the operating AIRLINE,
-      // deeplink = the airline's own website (metasearch policy). The old fare
-      // calendar stays as fallback when the search API is unavailable.
+      // on the route/date with real INR fares. Works for ANY world route (EMT's
+      // engine sells foreign carriers too). Seller = EaseMyTrip — the website
+      // selling the ticket (owner policy 15 Oct: seller is the selling site,
+      // never the operating airline); deeplink = EMT's own search page. The old
+      // fare calendar stays as fallback when the search API is unavailable.
       sourceId: 'w_flights_emt',
-      name: 'Flights worker: per-flight live fares via EMT search API (seller = airline website)',
+      name: 'Flights worker: per-flight live fares via EMT search API (worldwide, seller = EaseMyTrip)',
       priority: 14,
       maxPerMinute: 2,
       timeoutMs: 40_000,
@@ -128,9 +124,10 @@ export const flightsWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);
         if (!rt) return [];
-        const code = (s: string) => IATA[s.toLowerCase().trim()] || null;
-        const from = rt.fromCode || code(rt.from); const to = rt.toCode || code(rt.to);
-        if (!from || !to) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return []; // unknown city — honest skip (worldwide resolver found nothing)
         const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
           ? ctx.query.travelDates.depart
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
@@ -190,7 +187,7 @@ export const flightsWorker: VerticalWorker = {
           if (r.status === 200) {
             let flights: ReturnType<typeof parseEmtAirbus> = [];
             try { flights = parseEmtAirbus(r.body); } catch { flights = []; }
-            const items = emtAirbusItems(flights, ctx.source, { from: rt.from, to: rt.to }, from, to, dIso);
+            const items = emtAirbusItems(flights, ctx.source, { from: rt.from, to: rt.to }, from, to, dIso, fromA.country, toA.country);
             if (items.length) return items;
           }
         }
@@ -203,7 +200,7 @@ export const flightsWorker: VerticalWorker = {
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `EMT fare calendar HTTP ${r.status}`);
         const fares = parseEmtFareCalendar(r.body, wantDate);
         if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT returned no fares for this route (search API and calendar both empty)');
-        const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate);
+        const items = emtFareItems(fares, ctx.source, { from: rt.from, to: rt.to }, wantDate, from, to);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'EMT had no fare with a known Indian carrier for this route');
         return items;
       },
@@ -211,9 +208,10 @@ export const flightsWorker: VerticalWorker = {
     {
       // Ixigo SSRs the flight search page: __NEXT_DATA__ ships up to 100
       // real flight entries for the date (airline, flight number, total
-      // fare, times, stops). City names are accepted directly.
+      // fare, times, stops). Any world city works (IATA tokens resolved
+      // globally). Seller = Ixigo, the ticket-selling website.
       sourceId: 'w_flights_ixigo',
-      name: 'Flights worker: real fares via Ixigo SSR (seller = airline website)',
+      name: 'Flights worker: real fares via Ixigo SSR (worldwide, seller = Ixigo)',
       priority: 1,
       maxPerMinute: 6,
       timeoutMs: 35_000,
@@ -225,7 +223,9 @@ export const flightsWorker: VerticalWorker = {
           ? ctx.query.travelDates.depart
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
         // Ixigo route slugs: IATA-first; %20 in city names 404s (regression, 14 Oct 2026).
-        const { fromTok, toTok, alts } = ixigoRouteTokens(rt.from, rt.to, rt.fromCode, rt.toCode, IATA);
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const { fromTok, toTok, alts } = ixigoRouteTokens(rt.from, rt.to, fromA.code || rt.fromCode, toA.code || rt.toCode, IATA);
         const url = `https://www.ixigo.com/search/flight/${fromTok}/${toTok}/${dep}/1/0`;
         let res = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
         if (res.status === 403 || res.status === 429) {
@@ -245,7 +245,7 @@ export const flightsWorker: VerticalWorker = {
         try { next = JSON.parse(m[1]); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Ixigo __NEXT_DATA__ not valid JSON'); }
         const flights = parseIxigoFlights(next);
         if (flights.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo SRP had no priced flights');
-        return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep);
+        return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep, url);
       },
     },
     {
@@ -268,7 +268,8 @@ export const flightsWorker: VerticalWorker = {
         const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
           ? ctx.query.travelDates.depart
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-        return expediaFlightsSearch(ctx, rt, dIso);
+        const rt2 = { ...rt, fromCode: (await resolveAirport(rt.from, rt.fromCode)).code || rt.fromCode, toCode: (await resolveAirport(rt.to, rt.toCode)).code || rt.toCode };
+        return expediaFlightsSearch(ctx, rt2, dIso);
       },
     },
     // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
@@ -349,8 +350,8 @@ export const flightsWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
         const rt = routeFromQuery(raw);
         if (!rt) return [];
-        const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
-        const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+        const from = (await resolveAirport(rt.from, rt.fromCode)).code;
+        const to = (await resolveAirport(rt.to, rt.toCode)).code;
         if (!from || !to) return []; // unknown city — honest skip (API needs IATA codes)
         const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
           ? ctx.query.travelDates.depart
@@ -429,9 +430,13 @@ export const flightsWorker: VerticalWorker = {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
         const rt = routeFromQuery(raw);
         if (!rt) return [];
-        const from = rt.fromCode || IATA[rt.from.toLowerCase().trim()];
-        const to = rt.toCode || IATA[rt.to.toLowerCase().trim()];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        // Akasa Air is a domestic Indian carrier: routes touching a non-Indian
+        // airport are honestly skipped (no such inventory exists to sell).
         if (!from || !to) return [];
+        if (!IATA[rt.from.toLowerCase().trim()] || !IATA[rt.to.toLowerCase().trim()]) return [];
         const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
           ? ctx.query.travelDates.depart
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
