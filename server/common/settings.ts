@@ -60,6 +60,13 @@ export const settings = {
   googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || '').split(',').map((e) => e.trim()).filter(Boolean),
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
+  // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
+  // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
+  // API access (PA-API needs separate Associates approval with qualifying sales).
+  amazonAssociates: {
+    tag: (process.env.AMAZON_ASSOCIATES_TAG || 'try1second-21').trim(),
+  },
+
   cuelinks: {
     apiKey: process.env.CUELINKS_API_KEY || '',
     campaignId: process.env.CUELINKS_CAMPAIGN_ID || '',

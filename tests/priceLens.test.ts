@@ -208,3 +208,21 @@ test('lens: generic shelf titles (Flipkart bot wall "Products") are not product 
   assert.equal(isGenericTitle('iPhone 17 Pro'), false);
   assert.equal(isGenericTitle(null), false);
 });
+
+import { amazonAssociatesUrl } from '../server/affiliate/deeplink.ts';
+test('affiliate: Amazon Associates tag injected on every amazon.* redirect (owner store try1second-21)', () => {
+  // The exact product URL keeps all params; only ?tag= is added/replaced.
+  assert.equal(
+    amazonAssociatesUrl('https://www.amazon.in/dp/B0FQFQF6D1?th=1'),
+    'https://www.amazon.in/dp/B0FQFQF6D1?th=1&tag=try1second-21',
+  );
+  // A foreign affiliate's tag is REPLACED by ours (attribution goes to our store).
+  assert.equal(
+    amazonAssociatesUrl('https://www.amazon.com/gp/product/X?tag=someoneelse-20'),
+    'https://www.amazon.com/gp/product/X?tag=try1second-21',
+  );
+  assert.ok(amazonAssociatesUrl('https://amzn.to/abc123')!.includes('tag=try1second-21'));
+  // Non-Amazon destinations are untouched (affiliation only applies to Amazon).
+  assert.equal(amazonAssociatesUrl('https://www.flipkart.com/item/1'), null);
+  assert.equal(amazonAssociatesUrl('https://notamazon.in/dp/B0X'), null);
+});

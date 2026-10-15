@@ -21,7 +21,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'cuelinks_fallback' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -67,6 +67,24 @@ function cuelinksTemplate(): string | null {
   return `https://linksredirect.com/cuelink?type=nl&subid=${encodeURIComponent(c.subId || 'try1second')}&campaign=${encodeURIComponent(c.campaignId)}&url={url}`;
 }
 
+const AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
+
+/**
+ * Amazon Associates attribution (owner's store tag): append ?tag=<ours> to the
+ * EXACT product URL the price came from. Replaces any foreign tag. Pure function
+ * over the URL — acquisition and destination are untouched, only attribution
+ * is added. Returns null for non-Amazon destinations or an empty tag setting.
+ */
+export function amazonAssociatesUrl(dest: string): string | null {
+  const tag = settings.amazonAssociates?.tag;
+  if (!tag) return null;
+  let u: URL;
+  try { u = new URL(dest); } catch { return null; }
+  if (!AMAZON_DOMAINS.test(u.hostname.toLowerCase())) return null;
+  u.searchParams.set('tag', tag); // last write wins: our store, never a foreign affiliate's
+  return u.toString();
+}
+
 /**
  * Resolve an affiliate profile and build the tracking URL for a target
  * product URL. Never invents IDs: an unconfigured company resolves to a
@@ -88,6 +106,12 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
       return { trackingUrl: url, network: String(r.network || 'direct'), matchedProfile: 'affiliate_configs' };
     }
   } catch { /* table absent — fall through */ }
+  // 1.5 Amazon Associates: our own store tag on the exact amazon.* product URL.
+  // Runs after admin affiliate_configs (explicit admin override still wins) and
+  // before network fallbacks: a direct amazon.in link must never route through
+  // Cuelinks when we have our own Associates store for it.
+  const amz = amazonAssociatesUrl(targetUrl);
+  if (amz) return { trackingUrl: amz, network: 'amazon-associates', matchedProfile: 'amazon_associates' };
   // 2. Per-domain templates captured by affiliate sync workers
   try {
     const rows = await store.query<any>(
