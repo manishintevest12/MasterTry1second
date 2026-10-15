@@ -71,10 +71,12 @@ export function safeDomain(url: string): string {
  * and 3942 both 302 to the exact destination. When the API key is set, the
  * provider's campaign sync can discover newer per-vertical campaigns.
  */
-const CUELINKS_CAMPAIGNS: Record<string, number> = {
-  'makemytrip.com': 3801, // MakeMyTrip (Hotels) India — all makemytrip.com pages
-  'goibibo.com': 3942,    // Goibibo Hotels — all goibibo.com pages (incl. flights deeplinks)
-};
+const CUELINKS_MERCHANTS = new Set(['makemytrip.com', 'goibibo.com']);
+// Campaign refs (public ids, for the dashboard): makemytrip.com = 3801
+// "MakeMyTrip (Hotels)" (access open, deeplink_allowed false — deep-path
+// commission not guaranteed but the hop lands on the exact page), goibibo.com =
+// 3942 "Goibibo Hotels" (open). Tracking uses OUR per-publisher cid 326794
+// (returned by the official /links/convert API), NOT the campaign id.
 
 /** Build a working Cuelinks linkkit deeplink: verified format
  *  https://linksredirect.com/?cid=<campaign>&subid=<publisher>&source=<site>&url=<encoded>
@@ -84,9 +86,9 @@ export function cuelinksMerchantUrl(dest: string): string | null {
   if (!c.publisherId) return null;
   let domain: string;
   try { domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, ''); } catch { return null; }
-  const cid = CUELINKS_CAMPAIGNS[domain];
-  if (!cid) return null;
-  return `https://linksredirect.com/?cid=${cid}&subid=${encodeURIComponent(c.publisherId)}&source=${encodeURIComponent(c.subId || 'try1second')}&url=${encodeURIComponent(dest)}`;
+  if (!CUELINKS_MERCHANTS.has(domain)) return null;
+  // Mirrors the API-generated tracking_url (source=api) + our subid (sub_ids_allowed=true)
+  return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
 
 const AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;

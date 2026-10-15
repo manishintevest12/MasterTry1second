@@ -103,6 +103,9 @@ var init_settings = __esm({
         apiKey: process.env.CUELINKS_API_KEY || "",
         publisherId: process.env.CUELINKS_PUBLISHER_ID || "278473",
         // owner account, Oct 2026
+        // Per-publisher tracking cid returned by the official /links/convert API
+        // (NOT the public campaign id): cid=326794 = our channel, verified live.
+        cid: process.env.CUELINKS_CID || "326794",
         campaignId: process.env.CUELINKS_CAMPAIGN_ID || "",
         subId: process.env.CUELINKS_SUB_ID || "",
         apiBase: process.env.CUELINKS_API_BASE || "https://developers.cuelinks.com/pub_api/v3",
@@ -16872,9 +16875,8 @@ function cuelinksMerchantUrl(dest) {
   } catch {
     return null;
   }
-  const cid = CUELINKS_CAMPAIGNS[domain];
-  if (!cid) return null;
-  return `https://linksredirect.com/?cid=${cid}&subid=${encodeURIComponent(c.publisherId)}&source=${encodeURIComponent(c.subId || "try1second")}&url=${encodeURIComponent(dest)}`;
+  if (!CUELINKS_MERCHANTS.has(domain)) return null;
+  return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
 }
 function amazonAssociatesUrl(dest) {
   const tag = settings.amazonAssociates?.tag;
@@ -16953,7 +16955,7 @@ async function recordPointerClick(dest, offerId, network) {
   }
   return clickId;
 }
-var import_crypto24, AFFILIATE_TTL_SEC, CUELINKS_CAMPAIGNS, AMAZON_DOMAINS;
+var import_crypto24, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     import_crypto24 = __toESM(require("crypto"), 1);
@@ -16961,12 +16963,7 @@ var init_deeplink = __esm({
     init_logger();
     init_db();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
-    CUELINKS_CAMPAIGNS = {
-      "makemytrip.com": 3801,
-      // MakeMyTrip (Hotels) India — all makemytrip.com pages
-      "goibibo.com": 3942
-      // Goibibo Hotels — all goibibo.com pages (incl. flights deeplinks)
-    };
+    CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com"]);
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
   }
 });
@@ -22125,8 +22122,8 @@ var init_cuelinks = __esm({
           }
         }
         const c = settings.cuelinks;
-        if (c.publisherId) {
-          return `https://linksredirect.com/?cid=${encodeURIComponent(c.campaignId || "")}&subid=${encodeURIComponent(c.publisherId)}&url=${encodeURIComponent(targetUrl)}`;
+        if (c.publisherId && c.cid) {
+          return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(targetUrl)}`;
         }
         return targetUrl;
       }

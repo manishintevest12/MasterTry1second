@@ -13,28 +13,28 @@ import { settings } from '../server/common/settings';
 const MMT_HOTEL = 'https://www.makemytrip.com/hotels/hotels-in-goa/';
 const MMT_FLIGHT = 'https://www.makemytrip.com/flight/search?itinerary=DEL-BOM-18/10/2026&tripType=O';
 
-test('MMT hotel deeplink routes through Cuelinks campaign 3801 with publisher subid', () => {
+test('MMT hotel deeplink routes through the per-publisher cid with subid attribution', () => {
   const link = cuelinksMerchantUrl(MMT_HOTEL);
   assert.ok(link, 'makemytrip.com is in the campaign registry');
   const u = new URL(link!);
   assert.equal(u.hostname, 'linksredirect.com');
-  assert.equal(u.searchParams.get('cid'), '3801');
+  assert.equal(u.searchParams.get('cid'), settings.cuelinks.cid); // per-publisher 326794
   assert.equal(u.searchParams.get('subid'), settings.cuelinks.publisherId);
   assert.ok(u.searchParams.get('url')!.includes('hotels-in-goa'));
 });
 
-test('MMT flight deeplinks ride the same campaign (attribution is by domain)', () => {
+test('MMT flight deeplinks ride the same publisher cid (attribution is by domain)', () => {
   const link = cuelinksMerchantUrl(MMT_FLIGHT);
   assert.ok(link);
-  assert.equal(new URL(link!).searchParams.get('cid'), '3801');
+  assert.equal(new URL(link!).searchParams.get('cid'), settings.cuelinks.cid);
   assert.ok(decodeURIComponent(new URL(link!).searchParams.get('url')!).includes('itinerary=DEL-BOM'));
 });
 
-test('Goibibo deeplinks route through Cuelinks campaign 3942 (owner request 15 Oct)', () => {
+test('Goibibo deeplinks route through the publisher cid (owner request 15 Oct)', () => {
   const link = cuelinksMerchantUrl('https://www.goibibo.com/hotels/hotels-in-goa/');
   assert.ok(link);
   const u = new URL(link!);
-  assert.equal(u.searchParams.get('cid'), '3942');
+  assert.equal(u.searchParams.get('cid'), settings.cuelinks.cid);
   assert.equal(u.searchParams.get('subid'), settings.cuelinks.publisherId);
 });
 

@@ -90,6 +90,9 @@ var init_settings = __esm({
         apiKey: process.env.CUELINKS_API_KEY || "",
         publisherId: process.env.CUELINKS_PUBLISHER_ID || "278473",
         // owner account, Oct 2026
+        // Per-publisher tracking cid returned by the official /links/convert API
+        // (NOT the public campaign id): cid=326794 = our channel, verified live.
+        cid: process.env.CUELINKS_CID || "326794",
         campaignId: process.env.CUELINKS_CAMPAIGN_ID || "",
         subId: process.env.CUELINKS_SUB_ID || "",
         apiBase: process.env.CUELINKS_API_BASE || "https://developers.cuelinks.com/pub_api/v3",

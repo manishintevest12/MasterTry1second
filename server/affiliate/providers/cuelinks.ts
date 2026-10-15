@@ -115,8 +115,8 @@ export class CuelinksProvider extends BaseAffiliateProvider {
       }
     }
     const c = settings.cuelinks;
-    if (c.publisherId) {
-      return `https://linksredirect.com/?cid=${encodeURIComponent(c.campaignId || '')}&subid=${encodeURIComponent(c.publisherId)}&url=${encodeURIComponent(targetUrl)}`;
+    if (c.publisherId && c.cid) {
+      return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(targetUrl)}`;
     }
     return targetUrl;
   }
