@@ -1,1 +1,0 @@
-import{n as e,t}from"./firebase-BMKxhiS7.js";import{s as n}from"./index-CL9LfNTy.js";var r=null;function i(){r||e().then(e=>{e&&(r=t(n()))}).catch(()=>{})}export{i as initAnalytics};

@@ -10,24 +10,10 @@
  */
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 
-const FIREBASE_WEB_FALLBACK = {
-  apiKey: 'AIzaSyBrq8rPJjSyqeYwGo3sa4fdMuz8o1ykR0U',
-  authDomain: 'try1second-66273.firebaseapp.com',
-  projectId: 'try1second-66273',
-  appId: '1:49438102645:web:3e5d2c82f7be014e06543',
-  messagingSenderId: '49438102645',
-  measurementId: 'G-RV9M2SNQEF',
-} as const;
-
-const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY as string | undefined;
-const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined;
-const envAppId = import.meta.env.VITE_FIREBASE_APP_ID as string | undefined;
-
-export const firebaseWebConfigured = Boolean(
-  (envApiKey || FIREBASE_WEB_FALLBACK.apiKey) &&
-  (envProjectId || FIREBASE_WEB_FALLBACK.projectId) &&
-  (envAppId || FIREBASE_WEB_FALLBACK.appId),
-);
+// Config/availability logic moved to firebaseConfig.ts (no firebase imports)
+// so the eager landing graph can check availability without the SDK chunk.
+export { firebaseWebConfigured, firebaseConfigured } from './firebaseConfig';
+import { FIREBASE_WEB_FALLBACK, envApiKey, envProjectId, envAppId } from './firebaseConfig';
 
 let app: FirebaseApp | null = null;
 

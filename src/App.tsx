@@ -8,32 +8,32 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
 import { SearchAndFilterHeader } from './components/SearchAndFilterHeader';
-import { ComparisonFeed } from './components/ComparisonFeed';
+const ComparisonFeed = lazy(() => import('./components/ComparisonFeed').then((m) => ({ default: m.ComparisonFeed })));
 import { HomeView } from './components/HomeView';
 const RadarView = lazy(() => import('./components/RadarView').then((m) => ({ default: m.RadarView })));
 const QuickAppsView = lazy(() => import('./components/QuickAppsView').then((m) => ({ default: m.QuickAppsView })));
 const AiInsightsView = lazy(() => import('./components/AiInsightsView').then((m) => ({ default: m.AiInsightsView })));
 const RewardsHub = lazy(() => import('./components/RewardsHub').then((m) => ({ default: m.RewardsHub })));
 import { FixedBottomBar } from './components/FixedBottomBar';
-import { RedirectionModal } from './components/RedirectionModal';
-import { ReviewModal } from './components/ReviewModal';
-import { PriceAlertModal } from './components/PriceAlertModal';
+const RedirectionModal = lazy(() => import('./components/RedirectionModal').then((m) => ({ default: m.RedirectionModal })));
+const ReviewModal = lazy(() => import('./components/ReviewModal').then((m) => ({ default: m.ReviewModal })));
+const PriceAlertModal = lazy(() => import('./components/PriceAlertModal').then((m) => ({ default: m.PriceAlertModal })));
 const ProductPageView = lazy(() => import('./components/ProductPageView').then((m) => ({ default: m.ProductPageView })));
 const PriceAlertsView = lazy(() => import('./components/PriceAlertsView').then((m) => ({ default: m.PriceAlertsView })));
 const SpendLensView = lazy(() => import('./components/SpendLensView').then((m) => ({ default: m.SpendLensView })));
-import { BrowserExtensionModal } from './components/BrowserExtensionModal';
-import { NotificationsDrawer } from './components/NotificationsDrawer';
-import { ProfileModal } from './components/ProfileModal';
+const BrowserExtensionModal = lazy(() => import('./components/BrowserExtensionModal').then((m) => ({ default: m.BrowserExtensionModal })));
+const NotificationsDrawer = lazy(() => import('./components/NotificationsDrawer').then((m) => ({ default: m.NotificationsDrawer })));
+const ProfileModal = lazy(() => import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal })));
 import { ToastContainer } from './components/ToastContainer';
-import { Footer } from './components/Footer';
-import { AffiliatePartnersSection } from './components/AffiliatePartnersSection';
-import { InfoAndLegalModal } from './components/InfoAndLegalModal';
-import { PartnerInquiryModal } from './components/PartnerInquiryModal';
+const Footer = lazy(() => import('./components/Footer').then((m) => ({ default: m.Footer })));
+const AffiliatePartnersSection = lazy(() => import('./components/AffiliatePartnersSection').then((m) => ({ default: m.AffiliatePartnersSection })));
+const InfoAndLegalModal = lazy(() => import('./components/InfoAndLegalModal').then((m) => ({ default: m.InfoAndLegalModal })));
+const PartnerInquiryModal = lazy(() => import('./components/PartnerInquiryModal').then((m) => ({ default: m.PartnerInquiryModal })));
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const AdminLoginView = lazy(() => import('./components/admin/AdminLoginView').then((m) => ({ default: m.AdminLoginView })));
 const MerchantPortal = lazy(() => import('./components/merchant/MerchantPortal').then((m) => ({ default: m.MerchantPortal })));
 const MerchantLoginView = lazy(() => import('./components/merchant/MerchantLoginView').then((m) => ({ default: m.MerchantLoginView })));
-import { CplLeadCaptureModal } from './components/CplLeadCaptureModal';
+const CplLeadCaptureModal = lazy(() => import('./components/CplLeadCaptureModal').then((m) => ({ default: m.CplLeadCaptureModal })));
 
 const MainContent: React.FC = () => {
   const {
@@ -82,7 +82,8 @@ const MainContent: React.FC = () => {
         </Suspense>
       </div>
 
-      {/* Modals & Drawers */}
+      {/* Modals & Drawers — lazy: nothing here renders on landing (TBT fix) */}
+      <Suspense fallback={null}>
       <RedirectionModal />
       <CplLeadCaptureModal />
       <ReviewModal />
@@ -93,6 +94,7 @@ const MainContent: React.FC = () => {
       <ToastContainer />
       <InfoAndLegalModal />
       <PartnerInquiryModal />
+      </Suspense>
 
       {/* Direct & Affiliate Metasearch Partners Section (Above Footer) */}
       {!isFullDashboard && <AffiliatePartnersSection />}

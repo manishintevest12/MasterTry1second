@@ -199,6 +199,8 @@ export const HomeView: React.FC = () => {
                 <img
                   src={partner.iconUrl}
                   alt={partner.name}
+                  width={52}
+                  height={52}
                   className="w-full h-full object-cover rounded-[14px]"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
@@ -244,6 +246,9 @@ export const HomeView: React.FC = () => {
                   <img
                     src={coverImg}
                     alt={meta.name}
+                    width={600}
+                    height={112}
+                    loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src =

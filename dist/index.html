@@ -25,19 +25,18 @@
     <!-- Non-blocking font load (PageSpeed render-blocking fix): swap media on
          onload; fallback keeps text visible with system fonts until ready. -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
-    <script type="module" crossorigin src="/assets/index-CL9LfNTy.js"></script>
+    <script type="module" crossorigin src="/assets/index-GzOa3TIt.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-CbXtAM7H.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-CD7C122w.js">
     <link rel="modulepreload" crossorigin href="/assets/react-CPLznYIg.js">
-    <link rel="modulepreload" crossorigin href="/assets/firebase-BMKxhiS7.js">
     <link rel="stylesheet" crossorigin href="/assets/index-BU25rGCz.css">
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-red-600 selection:text-white min-h-screen">
     <div id="t1s-loader" role="status" aria-live="polite" aria-label="Loading Try1Second">
       <div class="t1s-orbit" aria-hidden="true"></div>
       <div class="t1s-lockup">
-        <span class="t1s-ic"><img src="/logo-icon.png" alt="" /><span class="t1s-ring"></span><span class="t1s-sweep"></span></span>
-        <span class="t1s-wcol"><img class="t1s-wd" src="/logo-wordmark.png" alt="Try1Second" /><img class="t1s-tg" src="/logo-tagline.png" alt="1 Second Is All It Takes" /></span>
+        <span class="t1s-ic"><img src="/logo-icon.png" alt="" width="84" height="82" /><span class="t1s-ring"></span><span class="t1s-sweep"></span></span>
+        <span class="t1s-wcol"><img class="t1s-wd" src="/logo-wordmark.png" alt="Try1Second" width="316" height="60" /><img class="t1s-tg" src="/logo-tagline.png" alt="1 Second Is All It Takes" width="533" height="26" /></span>
       </div>
       <div class="t1s-bar"><i></i></div>
       <div class="t1s-line" aria-hidden="true"><span id="t1s-line-txt" class="t1s-on">Comparing 100+ sources</span></div>
@@ -61,6 +60,7 @@
           t.style.animationDuration = (5.4 + (i % 4) * 0.7).toFixed(1) + 's';
           var img = document.createElement('img');
           img.src = 'https://www.google.com/s2/favicons?domain=' + h + '&sz=64';
+          img.width = 24; img.height = 24;
           img.alt = '';
           img.loading = 'lazy';
           t.appendChild(img);

@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
-import confetti from 'canvas-confetti';
-import { firebaseConfigured, signInWithGoogleAndGetToken } from '../utils/firebaseAuth';
+// canvas-confetti (~30KB): only needed when the Spin & Earn wheel actually wins.
+// Dynamic import keeps it out of the landing-page critical path (TBT fix).
+const fireConfetti = (opts: Record<string, unknown>) => { void import('canvas-confetti').then((m) => m.default(opts)); };
+import { firebaseConfigured } from '../utils/firebaseConfig';
+// Google sign-in is rare + interactive: fetch the Firebase auth SDK only on click.
+const signInWithGoogleAndGetToken = async (): Promise<string | null> => {
+  const { signInWithGoogleAndGetToken: fn } = await import('../utils/firebaseAuth');
+  return fn();
+};
 
 
 /** Map a persisted catalogue row (real acquisition) to the feed item shape.
@@ -1126,7 +1133,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       );
       if (prev < 100 && updated >= 100) {
         try {
-          confetti({
+          fireConfetti({
             particleCount: 70,
             spread: 60,
             origin: { y: 0.2 },
@@ -1383,7 +1390,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSpinWinners((prev) => [newWinnerLog, ...prev]);
 
         try {
-          confetti({
+          fireConfetti({
             particleCount: 120,
             spread: 80,
             origin: { y: 0.6 },
