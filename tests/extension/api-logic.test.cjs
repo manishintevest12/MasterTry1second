@@ -61,11 +61,6 @@ const { pickMatchingResult, groupByEntity, cheapestOf, priceOf, inr, IS_CONTENT_
   t('product name is not a link', looksLikeLink('boAt Airdopes 141') === false);
   t('empty is not a link', looksLikeLink('') === false);
 
-  console.log(`pass ${pass} / fail ${fail}`);
-  process.exit(fail ? 1 : 0);
-})();
-
-
 // ---- v1.4.0 additions: merchant-key mapping for the Auto Coupon tester ----
 const sitesCode = fs.readFileSync('chrome-extension/lib/sites.js', 'utf8') +
   '\n;globalThis.__t1sSites = { merchantKeyFor };';
@@ -78,3 +73,25 @@ t('merchantKeyFor: Tata CLiQ -> tatacliq', merchantKeyFor('Tata CLiQ') === 'tata
 t('merchantKeyFor: Swiggy Instamart -> swiggy', merchantKeyFor('Swiggy Instamart') === 'swiggy');
 t('merchantKeyFor: Domino\'s India -> dominos', merchantKeyFor("Domino's India") === 'dominos');
 t('merchantKeyFor: unknown site slugs cleanly', merchantKeyFor('Book My Show') === 'bookmyshow');
+
+// ---- v1.4.1 additions: popup auto-grab URL classification ----
+const popupCode = fs.readFileSync('chrome-extension/popup/popup.js', 'utf8');
+const classifyMatch = popupCode.match(/function classifyMerchantUrl[\s\S]*?\n\}/);
+t('popup.js defines classifyMerchantUrl for auto-grab routing', !!classifyMatch);
+if (classifyMatch) {
+  vm.runInThisContext(classifyMatch[0] + ';globalThis.__classify = classifyMerchantUrl;');
+  const classify = globalThis.__classify;
+  t('flipkart search URL -> search "iphone"', classify('https://www.flipkart.com/search?q=iphone&otracker=search').query === 'iphone');
+  t('amazon /s?k= -> search', classify('https://www.amazon.in/s?k=iphone+15').query === 'iphone 15');
+  t('amazon /dp/ -> product page', classify('https://www.amazon.in/dp/B0FQFQF6D1').kind === 'product');
+  t('flipkart /p/ -> product page', classify('https://www.flipkart.com/x/p/itm1').kind === 'product');
+  t('ajio /s/?query= -> search', classify('https://www.ajio.com/s/?query=nike+shoes').query === 'nike shoes');
+  t('tatacliq searchText packs relevance suffix', classify('https://www.tatacliq.com/search/?searchText=nike:relevance:inStockFlag:true').query === 'nike');
+  t('non-merchant host -> none (no auto-run)', classify('https://www.google.com/search?q=x').kind === 'none');
+  t('content script answers t1s-get-product (source present)', /t1s-get-product/.test(fs.readFileSync('chrome-extension/content/content.js', 'utf8')));
+  t('popup auto-grabs on open (autoGrab present)', /async function autoGrab/.test(popupCode));
+}
+
+    console.log(`pass ${pass} / fail ${fail}`);
+  process.exit(fail ? 1 : 0);
+})();

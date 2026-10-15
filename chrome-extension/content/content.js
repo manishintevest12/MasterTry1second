@@ -433,5 +433,15 @@
     return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   }
 
+  // The popup asks the page's content script what it detected (auto-grab:
+  // the panel already knows the product/vertical, so the popup never has to
+  // guess from the URL alone).
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 't1s-get-product') {
+      try { sendResponse({ product: detectProduct() || null }); } catch { sendResponse({ product: null }); }
+    }
+    return false;
+  });
+
   main();
 })();

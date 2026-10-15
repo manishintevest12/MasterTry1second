@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Try1Second Price Tracker & Auto Coupon",
   "short_name": "Try1Second",
-  "version": "1.4.0",
-  "description": "365-day price history, cross-site best price, price-drop alerts and 1-click Auto Coupon Tester — on every major store: Amazon, Flipkart, Myntra, Ajio, Tata CLiQ, Blinkit, BigBasket, Swiggy, Zomato, BookMyShow, redBus and more.",
+  "version": "1.4.1",
+  "description": "Auto-grabs the page you are on, compares prices across sites, 365-day price history, price-drop alerts and 1-click Auto Coupon Tester for every major store.",
   "permissions": [
     "storage",
     "alarms",

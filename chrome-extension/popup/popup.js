@@ -61,20 +61,93 @@ async function doLens(input) {
   }
 }
 
-async function doSearch() {
+async function doSearch(vertical) {
   const q = $('#q').value.trim();
-  const box = $('#results');
   if (!q) return;
-  if (looksLikeLink(q)) return doLens(q);
-  box.innerHTML = spinnerRow('Searching across sites…');
+  if (!vertical && looksLikeLink(q)) return pageFlow(q);
+  return doVerticalSearch(q, vertical || 'ecommerce');
+}
+// ---------- smart page routing (auto-grab) ----------
+/** What kind of merchant page is this URL? */
+function classifyMerchantUrl(raw) {
+  let u;
+  try { u = new URL(raw); } catch { return { kind: 'none' }; }
+  const host = u.hostname.replace(/^www\./, '');
+  const q = (name) => (u.searchParams.get(name) || '').trim();
+  // product pages
+  const productHosts = /(^|\.)(amazon\.(in|com)|flipkart\.com|myntra\.com|ajio\.com|tatacliq\.com|meesho\.com|blinkit\.com|bigbasket\.com|zeptonow\.com|jiomart\.com)$/;
+  if (!productHosts.test(host)) return { kind: 'none' };
+  const path = u.pathname;
+  const isAmazonProduct = /\/dp\//.test(path) || /\/gp\/product\//.test(path);
+  const isFlipkartProduct = /\/p\//.test(path);
+  if (isAmazonProduct || isFlipkartProduct) return { kind: 'product' };
+  // search / listing pages: the user's own query is in the URL
+  // (flipkart ?q=, amazon ?k=, ajio ?query=, tatacliq ?searchText=term:relevance:...)
+  const isSearchPath = /^\/(search|s|gp\/search)(\/|$)/.test(path);
+  let term = q('q') || q('k') || q('query') || q('originalSearchText') || '';
+  if (!term) {
+    const st = q('searchText'); // tatacliq packs 'term:relevance:inStockFlag:true'
+    if (st) term = st.split(':')[0];
+  }
+  term = term.replace(/\+/g, ' ').replace(/[-_]+/g, ' ').trim();
+  if ((isSearchPath || term) && term) return { kind: 'search', query: term };
+  // any other page on a merchant host: the content script may still know more
+  return { kind: 'unknown' };
+}
+
+const SEARCH_PRODUCT_VERTICALS = new Set(['ecommerce', 'grocery', 'food', 'movies', 'bus']);
+
+/** Route an auto-grabbed / pasted URL: content-script product > product page > search page. */
+async function pageFlow(url, { auto = false } = {}) {
+  const box = $('#results');
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  // 1) Ask the page's content script what it detected (title + vertical).
+  if (tab && tab.id) {
+    try {
+      const reply = await chrome.tabs.sendMessage(tab.id, { type: 't1s-get-product' });
+      const product = reply && reply.product;
+      if (product && product.title && !product.routeOnly && SEARCH_PRODUCT_VERTICALS.has(product.vertical || 'ecommerce')) {
+        $('#q').value = url;
+        return doVerticalSearch(product.title, product.vertical || 'ecommerce');
+      }
+    } catch { /* no content script on this page */ }
+  }
+
+  const kind = classifyMerchantUrl(url);
+  if (kind.kind === 'product') {
+    $('#q').value = url;
+    return doLens(url);
+  }
+  if (kind.kind === 'search' && kind.query) {
+    $('#q').value = kind.query;
+    return doVerticalSearch(kind.query, 'ecommerce');
+  }
+  if (/^https?:\/\//i.test(url)) {
+    // product link on any other host (Myntra /buy, Croma, Nykaa...): the lens
+    // resolves it honestly from the page's own JSON-LD / og / title / slug.
+    $('#q').value = url;
+    return doLens(url);
+  }
+  if (auto) {
+    box.innerHTML = '<div class="t1s-status t1s-muted">Open a product or search page on a supported store (Amazon, Flipkart, Myntra, Ajio, Tata CLiQ, Meesho, Blinkit, BigBasket…) and Try1Second compares it automatically.</div>';
+  } else {
+    box.innerHTML = '<div class="t1s-status t1s-muted">That page has no readable product or search query. Paste a product link or type a product name.</div>';
+  }
+}
+
+/** Grouped vertical results list (the "vertical view" the popup shows for searches). */
+async function doVerticalSearch(query, vertical) {
+  const box = $('#results');
+  box.innerHTML = spinnerRow(`Searching "${query}" across sites…`);
   try {
     const { t1sCity = '', t1sPincode = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode']);
-    const res = await apiSearch(q, { city: t1sCity, pincode: t1sPincode });
+    const res = await apiSearch(query, { vertical, city: t1sCity, pincode: t1sPincode });
     const groups = groupByEntity(res.results)
       .filter((g) => g.best && priceOf(g.best) > 0)
       .sort((a, b) => priceOf(a.best) - priceOf(b.best));
     if (!groups.length) {
-      box.innerHTML = `<div class="t1s-status t1s-muted">No verified offers right now for "${esc(q)}". Try1Second does not show unverified prices.</div>`;
+      box.innerHTML = `<div class="t1s-status t1s-muted">No verified offers right now for "${esc(query)}". Try1Second does not show unverified prices.</div>`;
       return;
     }
     box.innerHTML = '';
@@ -96,7 +169,7 @@ async function doSearch() {
         try {
           const url = await apiGo(best.sellerUrl, best.id);
           chrome.tabs.create({ url });
-        } catch { chrome.tabs.create({ url: await try1secondSearchUrl(q) }); }
+        } catch { chrome.tabs.create({ url: await try1secondSearchUrl(query) }); }
       });
       box.appendChild(div);
     }
@@ -104,7 +177,8 @@ async function doSearch() {
     box.innerHTML = `<div class="t1s-status t1s-muted">Try1Second unreachable (${esc(err.message || 'error')}). No prices were invented.</div>`;
   }
 }
-$('#go').addEventListener('click', doSearch);
+
+$('#go').addEventListener('click', () => doSearch());
 $('#check-page').addEventListener('click', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab && tab.url;
@@ -112,10 +186,22 @@ $('#check-page').addEventListener('click', async () => {
     $('#results').innerHTML = '<div class="t1s-status t1s-muted">Open a product page first, then press this button.</div>';
     return;
   }
-  $('#q').value = url;
-  doLens(url);
+  pageFlow(url);
 });
 $('#q').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+// AUTO-GRAB: on popup open, read the active tab and run the right flow at once.
+(async function autoGrab() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const url = tab && tab.url;
+    if (!url || !/^https?:\/\//i.test(url)) return;
+    const kind = classifyMerchantUrl(url);
+    if (kind.kind === 'none') return; // nothing useful on this page; leave the box empty
+    $('#q').value = kind.kind === 'search' ? kind.query : url;
+    pageFlow(url, { auto: true });
+  } catch { /* popup closing etc. */ }
+})();
 
 const spinnerRow = (msg) => `<div class="t1s-status"><span class="t1s-spin"></span>${esc(msg)}</div>`;
 
