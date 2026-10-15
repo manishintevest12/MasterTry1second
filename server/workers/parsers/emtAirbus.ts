@@ -118,7 +118,7 @@ export function emtAirbusItems(
   fromCode: string,
   toCode: string,
   dateIso: string,
-  cap = 40,
+  cap = 60,
 ): RawSourceItem[] {
   const today = new Date().toISOString().slice(0, 10);
   const routeLabel = `${route.from} → ${route.to}`;

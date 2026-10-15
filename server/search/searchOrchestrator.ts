@@ -154,7 +154,16 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   }
 
   const response = await runLivePipeline(input, parsed);
-  cachePut(cacheKey, response, ttlSec, staleSec);
+  // Cache-poisoning guard: a transient zero-result search (worker timeouts, edge-gate
+  // sampling on a cold IP) must NOT be replayed for the normal fresh/stale window —
+  // that is how users saw "only 2 flights" or empty feeds for 15 minutes. Empty
+  // responses are cached briefly (45s) so the very next search re-acquires live,
+  // while per-source rate limits still bound the retry pressure.
+  if (response.results.length === 0) {
+    cachePut(cacheKey, response, 45, 45);
+  } else {
+    cachePut(cacheKey, response, ttlSec, staleSec);
+  }
   return response;
 }
 

@@ -161,5 +161,5 @@ export function parseIxigoOffers(
       },
     }));
   }
-  return out.slice(0, 40);
+  return out.slice(0, 60);
 }
