@@ -1,9 +1,10 @@
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { initAnalytics } from './utils/firebaseAnalytics';
-
-initAnalytics();
+// Firebase Analytics is ~200KB of SDK for a non-critical concern. Load it only
+// once the browser is idle so it never blocks first paint (PageSpeed TBT fix).
+const idle = (window as any).requestIdleCallback || ((cb: () => void) => setTimeout(cb, 1200));
+idle(() => { import('./utils/firebaseAnalytics').then((m) => m.initAnalytics()).catch(() => undefined); });
 
 createRoot(document.getElementById('root')!).render(<App />);
 

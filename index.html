@@ -49,7 +49,9 @@
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Non-blocking font load (PageSpeed render-blocking fix): swap media on
+         onload; fallback keeps text visible with system fonts until ready. -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
   </head>
   <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-red-600 selection:text-white min-h-screen">
     <div id="t1s-loader" role="status" aria-live="polite" aria-label="Loading Try1Second">
@@ -63,7 +65,10 @@
     </div>
     <script>
       // Floating merchant tiles, same drift/fade as the app splash screen.
-      (function () {
+      // Deferred to browser idle: 12 third-party favicon fetches must never
+      // compete with the critical path (PageSpeed TBT / third-party fix).
+      var t1sIdle = window.requestIdleCallback || function (cb) { return setTimeout(cb, 1500); };
+      t1sIdle(function () {
         var hosts = ['amazon.in','flipkart.com','myntra.com','makemytrip.com','goibibo.com','booking.com','redbus.in','zomato.com','swiggy.com','bookmyshow.com','goindigo.in','uber.com'];
         var orbit = document.querySelector('#t1s-loader .t1s-orbit');
         var cx = 0.5, cy = 0.42, rx = 0.34, ry = 0.24;
@@ -83,6 +88,7 @@
           orbit.appendChild(t);
         });
       })();
+      });
       // Rotating status lines, mirroring the app splash.
       (function () {
         var lines = ['Comparing 100+ sources', 'Verifying live prices', 'Never pay more'];

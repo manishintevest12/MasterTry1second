@@ -3,24 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
 import { SearchAndFilterHeader } from './components/SearchAndFilterHeader';
 import { ComparisonFeed } from './components/ComparisonFeed';
 import { HomeView } from './components/HomeView';
-import { RadarView } from './components/RadarView';
-import { QuickAppsView } from './components/QuickAppsView';
-import { AiInsightsView } from './components/AiInsightsView';
-import { RewardsHub } from './components/RewardsHub';
+const RadarView = lazy(() => import('./components/RadarView').then((m) => ({ default: m.RadarView })));
+const QuickAppsView = lazy(() => import('./components/QuickAppsView').then((m) => ({ default: m.QuickAppsView })));
+const AiInsightsView = lazy(() => import('./components/AiInsightsView').then((m) => ({ default: m.AiInsightsView })));
+const RewardsHub = lazy(() => import('./components/RewardsHub').then((m) => ({ default: m.RewardsHub })));
 import { FixedBottomBar } from './components/FixedBottomBar';
 import { RedirectionModal } from './components/RedirectionModal';
 import { ReviewModal } from './components/ReviewModal';
 import { PriceAlertModal } from './components/PriceAlertModal';
-import { ProductPageView } from './components/ProductPageView';
-import { PriceAlertsView } from './components/PriceAlertsView';
-import { SpendLensView } from './components/SpendLensView';
+const ProductPageView = lazy(() => import('./components/ProductPageView').then((m) => ({ default: m.ProductPageView })));
+const PriceAlertsView = lazy(() => import('./components/PriceAlertsView').then((m) => ({ default: m.PriceAlertsView })));
+const SpendLensView = lazy(() => import('./components/SpendLensView').then((m) => ({ default: m.SpendLensView })));
 import { BrowserExtensionModal } from './components/BrowserExtensionModal';
 import { NotificationsDrawer } from './components/NotificationsDrawer';
 import { ProfileModal } from './components/ProfileModal';
@@ -29,10 +29,10 @@ import { Footer } from './components/Footer';
 import { AffiliatePartnersSection } from './components/AffiliatePartnersSection';
 import { InfoAndLegalModal } from './components/InfoAndLegalModal';
 import { PartnerInquiryModal } from './components/PartnerInquiryModal';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { AdminLoginView } from './components/admin/AdminLoginView';
-import { MerchantPortal } from './components/merchant/MerchantPortal';
-import { MerchantLoginView } from './components/merchant/MerchantLoginView';
+const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const AdminLoginView = lazy(() => import('./components/admin/AdminLoginView').then((m) => ({ default: m.AdminLoginView })));
+const MerchantPortal = lazy(() => import('./components/merchant/MerchantPortal').then((m) => ({ default: m.MerchantPortal })));
+const MerchantLoginView = lazy(() => import('./components/merchant/MerchantLoginView').then((m) => ({ default: m.MerchantLoginView })));
 import { CplLeadCaptureModal } from './components/CplLeadCaptureModal';
 
 const MainContent: React.FC = () => {
@@ -65,8 +65,9 @@ const MainContent: React.FC = () => {
       {/* In Compare tab, show the Kayak-style search & filter bar */}
       {activeNavTab === 'compare' && <SearchAndFilterHeader />}
 
-      {/* Main View Router */}
+      {/* Main View Router — secondary views lazy-load (PageSpeed bundle fix) */}
       <div className="flex-1">
+        <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
         {activeNavTab === 'home' && <HomeView />}
         {activeNavTab === 'quickapps' && <QuickAppsView />}
         {activeNavTab === 'radar' && <RadarView />}
@@ -78,6 +79,7 @@ const MainContent: React.FC = () => {
         {activeNavTab === 'rewards' && <RewardsHub />}
         {activeNavTab === 'admin' && (isAdminAuthenticated ? <AdminDashboard /> : <AdminLoginView />)}
         {activeNavTab === 'merchant' && (authenticatedVendor ? <MerchantPortal /> : <MerchantLoginView />)}
+        </Suspense>
       </div>
 
       {/* Modals & Drawers */}
