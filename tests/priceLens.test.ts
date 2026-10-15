@@ -166,3 +166,45 @@ test('storefront/homepage titles are not products', () => {
   assert.equal(isStorefrontTitle('Groceries, Fruits, Vegetables & More Online Shopping Site'), true);
   assert.equal(isStorefrontTitle('Sony WH-1000XM5 Wireless Noise Cancelling Headphones'), false);
 });
+
+import { capacitiesOf } from '../server/lens/sameProduct';
+test('same-product guard: capacity mismatch is a different variant (14 Oct 512GB-vs-256GB bug)', () => {
+  // The reported bug: a 512 GB link compared 256 GB listings as "cheapest".
+  assert.equal(isSameProduct('Apple iPhone 17 Pro 512 GB', 'Apple iPhone 17 Pro 256 GB, Silver'), false);
+  assert.equal(isSameProduct('Apple iPhone 17 Pro (512 GB)', 'Apple iPhone 17 Pro 256 GB'), false);
+  // same capacity, different colour = same product
+  assert.equal(isSameProduct('Apple iPhone 17 Pro 512 GB', 'Apple iPhone 17 Pro (Silver, 512 GB)'), true);
+  assert.equal(isSameProduct('Apple iPhone 17 Pro 512 GB', 'Apple iPhone 17 Pro 512 GB: 15.93 cm (6.3") Display'), true);
+  // RAM+storage sets: all pasted capacities must be present in the candidate
+  assert.equal(isSameProduct('Redmi Note 14 (8GB RAM, 128GB Storage)', 'Redmi Note 14 5G (Space Black, 8GB RAM, 128GB Storage)'), true);
+  assert.equal(isSameProduct('Redmi Note 14 (8GB RAM, 128GB Storage)', 'Redmi Note 14 5G (Space Black, 8GB RAM, 256GB Storage)'), false);
+  // TB normalizes to GB for comparison (capacity sets only; token text still differs)
+  assert.deepEqual([...capacitiesOf('Apple iPad Pro 1 TB')], ['1024']);
+  assert.equal(isSameProduct('Apple iPad Pro 1 TB', 'Apple iPad Pro 1TB Wi-Fi'), true);
+  // A pasted title WITHOUT capacity cannot prove the variant: 256 GB offers are NOT it.
+  assert.equal(isSameProduct('iPhone 17 Pro', 'Apple iPhone 17 Pro 256 GB, Silver'), false);
+  // Non-capacity products keep working
+  assert.equal(isSameProduct('boAt Airdopes 141', 'boAt Airdopes 141/8, 42HRS Battery True Wireless Earbuds'), true);
+});
+
+import { recoverCapacityFromDescription } from '../server/lens/productLink';
+test('lens: short Amazon bot-wall title recovers capacity from meta description', () => {
+  // Amazon served <title>iPhone 17 Pro</title> with the variant only in the description.
+  const desc = 'Apple iPhone 17 Pro 512 GB: 15.93 cm (6.3\u2033) Display with Promotion up to 120Hz, A19 Pro Chip';
+  assert.equal(recoverCapacityFromDescription('iPhone 17 Pro', desc), 'Apple iPhone 17 Pro 512 GB');
+  // description head must contain the whole short title (no cross-product promotion)
+  assert.equal(recoverCapacityFromDescription('Samsung Galaxy S24', desc), null);
+  // title already carries capacity -> untouched
+  assert.equal(recoverCapacityFromDescription('iPhone 17 Pro 256 GB', desc), null);
+  // no capacity anywhere -> null (title stays as-is)
+  assert.equal(recoverCapacityFromDescription('boAt Airdopes 141', 'boAt Airdopes 141/8 TWS earbuds with 42HRS battery'), null);
+});
+
+import { isGenericTitle } from '../server/lens/productLink';
+test('lens: generic shelf titles (Flipkart bot wall "Products") are not product names', () => {
+  assert.equal(isGenericTitle('Products'), true);
+  assert.equal(isGenericTitle('  Search Results '), true);
+  assert.equal(isGenericTitle('All Products'), true);
+  assert.equal(isGenericTitle('iPhone 17 Pro'), false);
+  assert.equal(isGenericTitle(null), false);
+});

@@ -33,9 +33,29 @@ export function identityTokens(title: string): string[] {
   return Array.from(new Set(words(title).filter((w) => !STOP.has(w) && !COLORS.has(w) && w.length > 1)));
 }
 
+/** Storage-capacity tokens of a title in canonical GB units ("512 GB", "1TB" -> {512}, {1024}). */
+export function capacitiesOf(title: string): Set<string> {
+  const caps = new Set<string>();
+  for (const m of String(title || '').matchAll(/\b(\d+(?:\.\d+)?)\s?(gb|tb)\b/gi)) {
+    const n = parseFloat(m[1]) * (/^tb$/i.test(m[2]) ? 1024 : 1);
+    if (n > 0) caps.add(String(n));
+  }
+  return caps;
+}
+
 export function isSameProduct(pastedTitle: string, candidateTitle: string): boolean {
   const wantsAccessory = isAccessory(pastedTitle);
   if (!wantsAccessory && isAccessory(candidateTitle)) return false;
+  // Capacity is part of the product's identity (the 14 Oct bug: a 512 GB link
+  // compared 256 GB listings as "cheapest"). If EITHER side declares a storage
+  // capacity, both must declare and they must match exactly — a candidate whose
+  // variant cannot be verified is NOT this product (it stays in `related`).
+  const wantCaps = capacitiesOf(pastedTitle);
+  const haveCaps = capacitiesOf(candidateTitle);
+  if (wantCaps.size || haveCaps.size) {
+    if (!wantCaps.size || !haveCaps.size) return false;
+    for (const c of wantCaps) if (!haveCaps.has(c)) return false;
+  }
   const need = identityTokens(pastedTitle);
   if (need.length === 0) return false;
   const have = new Set(words(candidateTitle));

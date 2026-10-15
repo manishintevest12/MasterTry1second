@@ -145,6 +145,25 @@ export function searchableTitle(t: string): string {
 }
 
 
+/**
+ * Amazon (and some others) serve browserless agents a SHORT <title> ("iPhone 17 Pro")
+ * while the full variant name lives in meta[name=description]
+ * ("Apple iPhone 17 Pro 512 GB: 15.93 cm ..."). Storage capacity is part of the
+ * product identity, so when the resolved title has none but the description head
+ * does (and the head contains every word of the short title), promote the head.
+ */
+export function recoverCapacityFromDescription(title: string, desc: string | null | undefined): string | null {
+  const CAP = /\b\d+(?:\.\d+)?\s?(gb|tb)\b/i;
+  if (!title || !desc || CAP.test(title)) return null;
+  if (!CAP.test(desc)) return null;
+  const head = String(desc).split(/\s*[:|]\s*|\s+with\s+/i)[0].replace(/\s+/g, ' ').trim();
+  if (!CAP.test(head) || head.length > 90) return null;
+  const titleWords = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const headWords = head.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!titleWords || !headWords.includes(titleWords)) return null;
+  return head;
+}
+
 /** A "title" that is only the merchant/domain name is a bot wall (e.g. Amazon's interstitial <title>Amazon.in</title>), not a product. */
 export function isMerchantNameTitle(title: string | null, domain: string, merchant: string): boolean {
   if (!title) return false;
@@ -157,6 +176,13 @@ const STOREFRONT_RE = /\b(online (shopping|store|fashion|grocery|shopping site)|
 export function isStorefrontTitle(title: string | null): boolean {
   if (!title) return false;
   return STOREFRONT_RE.test(title.trim());
+}
+
+/** A "title" that is one generic shelf word ("Products", "Search", "Store") is a bot wall /
+ * category shell, not a product — reject it so the URL-slug fallback can supply the real name. */
+const GENERIC_TITLE_RE = /^(products?|shop|store|search|search results|buy online|online store|best sellers?|deals?|all products?|cart|checkout|home)$/i;
+export function isGenericTitle(title: string | null): boolean {
+  return !!title && GENERIC_TITLE_RE.test(title.trim());
 }
 
 /** A "title" that is an error/interstitial page (503, Access Denied, Just a moment, ...) is a bot wall, not a product. */
@@ -202,6 +228,14 @@ export function parseProductHtml(html: string): Pick<LinkProduct, 'title' | 'tit
   if (!title) {
     const t = $('title').first().text();
     if (t && t.trim().length > 3) { title = cleanTitle(t); titleSource = 'page-title'; }
+  }
+  // Capacity recovery: short bot-wall titles ("iPhone 17 Pro") get their variant back
+  // from the page description ("Apple iPhone 17 Pro 512 GB: ...") so a 512 GB link
+  // can never be compared as a 256 GB listing.
+  if (title) {
+    const desc = $('meta[name="description"]').attr('content') || $('meta[property="og:description"]').attr('content') || '';
+    const recovered = recoverCapacityFromDescription(title, desc);
+    if (recovered) title = cleanTitle(recovered);
   }
   if (!pagePrice) pagePrice = priceNum($('meta[property="product:price:amount"]').attr('content') || $('meta[property="og:price:amount"]').attr('content'));
   if (!image) {
@@ -279,8 +313,10 @@ export async function resolveProductFromLink(rawUrl: string): Promise<LinkProduc
     if (fetchStatus === 'ok') fetchStatus = 'blocked';
   }
 
-  // A "title" that is only the merchant/domain name is a bot wall, not a product.
-  if (isMerchantNameTitle(parsed.title, domain, merchant)) {
+  // A "title" that is only the merchant/domain name, or one generic shelf word
+  // (Flipkart serves <title>Products</title> to gated agents), is a bot wall:
+  // fall back to the URL slug, which still carries the product's own words.
+  if (isMerchantNameTitle(parsed.title, domain, merchant) || isGenericTitle(parsed.title)) {
     parsed = { title: null, titleSource: 'none', pagePrice: null, image: null };
     if (fetchStatus === 'ok') fetchStatus = 'blocked';
   }
