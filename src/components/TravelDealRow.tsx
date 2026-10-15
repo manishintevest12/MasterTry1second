@@ -109,9 +109,9 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
           </div>
         )}
 
-        {(item.sentimentSummary || item.description) && (
-          <p className="text-[10.5px] text-slate-400 mt-3 leading-snug line-clamp-2">{item.sentimentSummary || item.description}</p>
-        )}
+        {/* Provenance note ("Fare acquired via ...") intentionally NOT rendered
+            on cards per owner request 15 Oct; the data_note itself stays stored
+            on the backend row for honesty/audit. */}
       </div>
 
       {/* RIGHT: price + Book (like Skyscanner's "Choose a deal") */}
