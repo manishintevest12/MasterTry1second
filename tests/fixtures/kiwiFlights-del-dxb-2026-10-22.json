@@ -1,0 +1,2254 @@
+{
+ "itineraries": [
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiNkU6MTQ2MTpERUw6MTc5MjYzODMwMDpEWEI6MTc5MjY1MTgwMDplY29ub215OkZhbHNlOjo6NkUiLCJwcmljZSI6IjE5MTI0In0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     }
+    ],
+    "duration": 13500,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "1461",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T03:05:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T06:50:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "19124",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HCl1hIz9gdSHgspAirrCJfzR-ln8UWISRyOzaYL4RcxSUKxbn5lb09u2k_P5ML-tQXwEd5hz6J4OnLbs2aAgNsQEWW2L8lVght3q6yTEzjhfWDnBQuFwipazSkTQ3CYAMkCAkR-SsUiKECgsV93-pqCh-J_t-IxBU1pEl9x6sbDv_l0HaQ6bVrN5-GUSTbbjKtRbegJlYb91VdivrjqYjmUY0BdeH7M_4hJjL4dehUdJYI3IO4YKouQZBBkTlwy_g_7OIMunthU3StvDeWenK0LmIXUWsHGAwVPMVGBjK2hJ-mQ2jcnUqeVAbiWJjlnyu92_P-KVJ7zooaAXYsDWY2Dx2_i38DZ0XZ4hQ7juFPx0GV7jKR34dXo6octrvQhmS1ajrN8QthWdD9KFMF2rdUu-RqjPuen1PDfOvY5bR9fE0fQIkCXpND9GrcQr7ihsOflQzhjPWTg7ZTNJPfQzK2Xnis4Ez32hwerszmYScaSghMWDJIpwC0kLNrsi0OThWUTh0980Ufj96xNeU8tX3dv7MwXHp-C959jB2z7SH-0x92qw0ELbiY-GOvEkkfAq-letBCWsuhTe0I9BohFGYau4nDAZcVCfHrrTMaouxUA4PMsWvYWbc3el_6bbIsyBFKhIcs5jnqPdp12yrqh5hHD7WLtnJ9lsD0j9Tcpduc54uNTCX9GbwOwDgCybZegYMC5k3VgkGSvUappFXBMr0UQnDhmgsV4ft7llIx5oboud4Fg_3ww-TVccQeOIQq3XJq-Bhc96GhkGrh1VirTDuH_bjZcNn8gy3A8UYDRZKuFIxiTNCNBaIuITL-Re6vZ-nUD9ydBaNTMXcTvNInCLrFEDFGYRDr2au50hGU_UfwVWLaZwAXQxwtGHKGup47XVxgsGP9Wjar7eEJl3ZfiTZqlWR89-FE_1C5GEtKLs8qjes-0WoPq0ptGp9Pi1UEEaDlGHAZLsrBwdWRbhQQ21JfNnb8PEvimc5XGAQ1qXH7OKlxxaOHoUDXa3kCR9b0nZSRQ0MmAiq98RODEjQEEGJB0v1bqPNKkW1rQjD37ZNoSs%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hy_8z5zgD1xsHbWuqNZN8Vdyuq87usMf4q14oDAZ337FUthPH9GP0aZ6a4kU0SWSKKvCndDshJsB7Xhfexbguw4qbouMXlg_uy7rUMZKa63w3pbkz_26XDvHe0-lW4x3pfGTLt7d9GZfjUAO9RB9pTP1ShuDWy6cf52S5R6Pb507AkXi9Dq2hUD95iMulJGT0tTcAUABSX5tcYIjsVWe0KjS2g04DFlAyC2cST5iv0T66lCRIRfE1wIO81uCbJDTzWJtL6WvXVroCiKzLypNTwyyI7qbykJQvax5RYaBWTR4NjC3nCqWTDXvl3kO4ITnW5VUaPkCw75GYe1jkZiDQ4Xi5xvSbDkVkTcybha-h7YZGFnXrui4ojizry-px9Qz-o2W6Hr5Tb0uXMa0YrSKzeQIG-yjm2NedlfnQsYFaMefdhKlwi4cmTNUYIgqT42jbqLNVfhk8kenlzF0MSDi7OuZODiYNk3nGkfFnqABbXGs6YX-QhPWO2yCeyDm53z6BQjoTxVFbkGwgLDt2xg56P8fzFRW4ra6h-KB63lzN4dSKMi_fq7JOOX0yjQTaWjmv3j1UCqyXyd3G5_l8jJIHzsWKp1QSmg24DRv_0Ac-CxsK5nVzeGGvyO6LyPxnneZorjG6kypS1gjJdiIDPHonqKZ59_vaoi9K5a3eFre7oC_iRd3zziZ-4XB4YvlKFX3bZ0BKI3uZoBycZ-xrry8518TkMJh2Q67AtS95wU4YpuxEJyswE7vnZOLwpJjOhnd0iiaKjUJuiYkch0iG5l-44kXKxU47heMmVGwgjWo5Cb8N6D4uIqYFKyhP2EbRjz0Uzhh0b1wUyHcuKrVQf3tf7u30MNbsr92rSMFKplQDszYhnkXq8ETB3ovTH493s1EfOmpE9oTgMyi1Vpj4arj9tYp8oPDEvd6Z8-Rt8zE2dhHte5-CLENQ9E1-TOgrk7KO03Ewd46wWYVvaRaogFn1df05fi8SHzf78fV2eY9wsoCjrxyBWlfbaTp8HSuvXIPO5c-rySucF4xypXL-7mJcxqQTnarEE9v2WliM8k-kFlhzmnmA6lHMPFyCW40SVHc-&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiNkU6MTQ2MzpERUw6MTc5MjY3NjQwMDpEWEI6MTc5MjY4OTkwMDplY29ub215OkZhbHNlOjo6NkUiLCJwcmljZSI6IjE5MTI0In0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     }
+    ],
+    "duration": 13500,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "1463",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T13:40:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T17:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "19124",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HDbB0Pg2K0YLB21W2ZI2b3JCUJEsM4m5iokFC70ITt6e56WoWGSK-CwRnhNVPrOt9iPIgOAlycHh0j9vpW5FIatieRigyx9cdFJpLEwuJ9-015NUl0_pQlw1Paqj68-DXaUpdZ6PF4qzYsiT6FIdG-sB5pugCpfUrBPQcvx56lnLuA9Gi4IIkwY6CyxeahzVugcZgP0F6d76xkzzQIgZhi54v0oyVFJAcYgKyINwmoOFaHLNoIBPItt7TPnOlSujv_ETjo96heDBRFBrN0C_GCwUji_9fQsPzGFTTWHSLcEc4yeGk6umo6gOB264EUTfRw9lzgfjjRxuh9kchKOUSnaJZyQBPxZPSjcnDVFC_YTfoFacMLLmX0gR-TDz5M5YZBtpVQbtXSpwzUvC130c8BrLSLVu1rp85njmfshrSXciB_TtlLcCGriFl9JWTWJlHY1uU57QbWZ6TS5dfb3QiV5zD1BAV9ggD5xWo-6ZE0Faq8ouVfeH6QtGaUyPZReBBH1D0Nn0qpygYLmoGqGlSc_-dF26Cyz4ayh4i84FfAULb7atUjYKnA6Txrlwl0OTARSG73pIQK5zXCZ_qYRKqhgfByg9VnB2Lyay7nHxhK3XgnPhQsqoxknWNb6Gd3RWIKlnNIZ6m0PEhaXqQg-Y4x2bFrIm3d4cjo0pMzxCZWjMs5FwFSNxZKCZuQy1mjrcOhEd-6nCASjAAoAbabJO365uKyC3Dt1uMaBxsyWonjN6pL90QXRXalA68MIzI1ClHg0J9SOhp3rX0tBVLF_KnZ6Jw06Uru8rFhddMuy8h0ezrrFBwGHXY90A-tPR5KpdDxHpXhy0OKqwjRl57LVPGY2uo3oO5vYWadsSfwFQxYyQkB-hi44ha-Y8ds3nDovAB7z5f0WqbKBmCiODiu4C54KC40M8oartgFTLTA1Cth3ITDbS6LtEeL0UL5WTC1XticT1JdTsWz2tj9PN2Ej7J9CUXtbryE0tezI0_-HBykgaXdFvOmNny5JzT2O11ci8ZEbuniQaE2m0g6MMMa6N1Ng%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HbExKw8jeGBHldaWzh-lEKATKeVaRzn8VjHf2RW0EDXNvb9Q74lvlsDbKJcZHdenWWXjtruJ80AjG6DpM1vJqlr60qTUJUw8uOBcpUFASCTNzdsjPCRP1U-88DOD2ntiUHxJEGxwSUbNBlE8A0A1X9CfERSNZN7DnQ__ViXSRpVY1-d-RX2uCVOjHJEKmm8eJBKPoidp3L1lai6-k-BubRgb_Q8N82grfFgDQRtkTPpDQ1q-wASMlk1Uvj7siPv6iC4UUo5PKjKQWA2v75aPMqsYxbA8xcD1b6GJ-jMt9vS_wXLlexxYFvT9-4UlI4xqpiz93lPtDGguh84ikq-cVWlpmKrRqCvxoNWDaMXwe1UXQvT7hfigTEz-QC1aUBqRRDVRUTpOh2NWilSDZD177hlrzzeOcJ8ew342aVsiR1_uSsHioxMyABwCjCLLw9CWUcRa-oLaK_N6rLsXpSUALQeEB-Lw9MuwaD8W4UxNYyy3WQLnBxEnWBQg4ICRfBjNihZjnKsakmA9eXgnbhD9nwuwE20imI-oKZjyZzrsfytTJR9AiPHXWlXTcMKgT9uH1_fxmONdaZdrgtSFuE_YMA6T4ktFJpYzti_PoHp7XzmFqIIj-5zwLmyh2J7GNbPFAwGti_eVKZ9JpcZ9Ba5kFj9hSD7dax9qZS1n8mBZtxq1qoT2j-8X2myfT18eW3bAq0TGT33MoSknjy83-wWo1lkA_QiMA8IxtT6gNbI0VPwamiKJfW6dbOJ7oLOgFas0W3iEwDvRNLjV4xyY1aIBwbrk0yAU6HFBw1WXRn1q58OPHrmKea7Bl_LUhnBaRy9SH5Z9Dp3oM052QbMt-GoWjEoAcc9ZxnAKdzk5rAncBNbirlTRfEbAG69KxV5zxlqchUqxllMbT2UVWLdI_tE-FllNFZq8WStf-I63QgV-qizqgC8vTEeElp8hJKIiNogz1UsW55QNJTC65SvinirSmo19hux4setP3bhj84lO8e6wpNH9WUu79DMlucjVV7On2lxvSD2Jpvci9NesLMB2bmOvjbIDP6q1hAv1PwJkRG4LVwLDA53S8J47f_nm3LgiW&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6NDIwOTpERUw6MTc5MjY0OTcwMDpEWEI6MTc5MjY2MzIwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjE5NjcxLjk5OTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 13500,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "4209",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T06:15:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T10:00:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "19671.9999",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HZdvnvD9KamB4k6hppOYTGZtyu8XjG8Z_71GPcQuNa5wVBQiUufNAUyOFHtIZE5Ug0WrPJjYtqDRWiJz4Qv4XEtOXKg0gDLmoC-xI_1Wyrg4BP3NGuoCuiGdHvdDfVEZJ8gAbSNWnZIw9w1g8mLGjl2B2FFLLxH42nqzbqftgXr96UsnWRRDhI8oCKXhsX9iFh0Xx8ivxUVYVJR-7jtH4VOKJJG06cNbODxAlxyDySqo_4flG0w3cCW6vAp0MwQVdPKw2YRTens7zUBctgrtAixPJ3pUPv9q9VQtFIvtLoGDszbr1Q-hLXu7N5XkAOAXOqtJoW5YUIJooZ5HO_RggwrgOMGXFXHxCbkBYR9ZTYo-SZLVT-wOSbPYAm7s2lDJFdLF9AcPFI6flNlX7Lf4D6zR6z9NL2F8BkKvLfKBE5iq5csrQob7tYykuOvFX76szXqlldGqlu6y52gx4vrje7MZgw8LBFIHqeCdW-aqN05oPFpDiV9wneZXO_mBdd6EDsyXEVAW96_m-69nSApFChXZvqUwnkHqmKuqJoo4ztvW8PdPjHKTdeW0f5mfi5fnsopQ-JA0JAJgpjdPnSK5WNnoQgJ5VV44mePmjUOkVD2HkYy6e3wjiSJ3njH50dZx0BflKi71WQNqJ_vEdg_hO6AG0iMOIG1aPowYbvxh8chC72Ftw2d725RxTKTazSuvqCKVKSMTiCzZZoK0cOI-dgv8nRfgccs_3_jtvZ3NgvYBGoZOzX7ZyvSY5OYDiyIfnvpcG9zKNgxbZh1vCuiVlC4tkmdxGxdjCnzzMeBY5VPpys00pmA56CIfcsLT8eaFo8uWYZUG6X-9ToZheYCb2Ni5r35QgqRexmcc-sbFYrGO9sTnYlYbydhLJ3MqpEoDcVLm6oFXvOvAMxpOhwn3yxFKWEWgGREcO8PpFOL0hCjiwSXz9Fcq9df3_piovdQomUR99HWw3GuG0BcVPVEOzVYiDm4VnJKlSogAU1N13nUwKm0eYgeD34FNsxXO98GzLtBi27U1K8_fsaQU2wUnOBa1k_qp4reoEisGC5We2dHwaGV56rYSoM_p4SjvrqiNO&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HeDsrkqZxCdhGG9AnORlly5ZhOYQ7ikWr1kTMN_VtoorbRean8pLtY3lI5iLLqs4H-9PD7eCSuN9n-o9hDAlIKIf4-jCY9qg7t-Fy55WV_BlehdZzrEa-_4vlwr8Xc6bubZhIIfcCY_-FULGm9f8lTuudP5raAdPbUmDtyJQOvNSTAZWYr-1cfJBknbESox6OcCOe_bIF45JfkpGDMmYyc4SMiY_YMhplh_SkXXVCG8g5nZXdhGZwJ-xWLE7L-wjGtqfRXnauRsqDP6N6sr2oK7KonNbvDPse4wjSdos9pya_6kjlm3cwd4civwaC64vb69rxgxPwS0pWI-vmuO4n2e3AJd-Wby90aFiVuFypOjFWl-cdDuobCedi9arDCn7S9vasLtq_yZQLN5eQY_yMrdez7H8WzuKKmX4BjD6qDuvbJNCyvh2hL1DSLcl2S_F9OX2jJCPjue_C_3mwJJ_-R2JJhPVMi0j85Tn2lmogO00pUNbdJqEuQOSpNZ1QHpXFoJs9Ei9CngYQgHKpcUzvN14oeq2G4XgNVa12SM3-wMHR5sNZMJLTVDbCHGO5CgcRpk34ucngm98y31a8mrIQRotygXmW5uIqNm2thpES8MDGztm_GdTJga297htPYTM0ENfpcGUunyUwEmrAzByub61HsgjCYQ3FM4K-oQwfWPoijYe5Kqo7FYjcgOz5eeammmSh4fMnSOUpa62PwOQu1-mcYrq--bxBUabpDUGl06RGgSwa1q9i6qI70TwfKw6u8QGnQPOi5crcOfOrm15nsZwh2Jz5ZKPp1oci8Mg3Rnjb1H0UM8Di8ysu7dMJjzdvLI3uUmx96JorjtywZslZPcHbsTbOeMwkH6Xzl2buG5S8F3mMWCc761KLChEd_3WRIFLFnQbt91yUJvbCp7hYy8E5EnbDrY5NpPwMeZOxwLrSdA46yfrL8JsSMFNlmm3q835VchrW67lRXgAl1qlKwReb-YSBfX9QjjeW7KPi6nMhkzKhv8Er_SWlF2XUJe9ZbsDkwr94OaYjkRjBHrKmG5VKKJJUsseXOytSvb_B4EYeTF88Tn8ZfMDe73sUq0699N_IwXFhwG9NwBTHB2ugug%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6NDMwNTpERUw6MTc5MjY4MjEwMDpEWEI6MTc5MjY5NTYwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjE5NjcxLjk5OTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 13500,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "4305",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T15:15:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T19:00:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "19671.9999",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HpRsffKhXcGuZk6EsoFDnIDgOYpQ9QvDG6eQj-SE_dp_L3bGFgox-mBAsOb6dN0AuDXXwm-oMGSDZk-9lem5-i5k_YEPAdDt-GjpZBww1GWjtyEVZA0phkUfGLS88c75PvFE2xg3lV74y50ebOLmDaJRp2-PSotui7h0yRtDYqf4PKMfRZrZ6jojzj-B7A09yNn_I4MCmOZmu4D6Lg06FiPWDUYv98fD5rMRpF8zP-xeY34j1LFVvtWxe7BKvlDdYWFb6Z4DCCTzPSuoMrOnzFNO8j6kDAXYqWlaMQW3ndBULDfYjWTQcWb4sILXR3Jcqzj3s-9GwHioPV5C-5iOPLBdi1n5dBs4Y1LzkSl48FCqT9LHQPx36pfS2IP_qePMnif8dQElMwac0JmsSkJefzxsGcMMJbU-VHsa39F6Xs4bcafkhc1pNDH6KBo7AI2MthcjvIG9Za0Gr3BZoUutxByfjNPWHF0DHKAnS4JB8durTyfyw9HjiQF8iS8jaj-kWXei3hjkYsx2utt2q4jsYcnUYlOsEjqha3zE7pBfOyt4s4YNx4bphFwgLAG2D9K-a8-GEfRgxslN8S2cGIKsb26i9lxr9ES4fvcejCHjsNjyAAH7Vd3kGksffLzo0bcl96OB5HaHWGzb8i--0DfXEkAD6SzoKxyzfiJCVaLKuHuEMIMtcUU0eUpL2z4JKUFPog-Wviuj3SX6ulxkx4QE1qPPjZ6SphU4vDoR8EIHmr4WyTTFeJqIXn-Isl6A7KeBGIlTk6zp43i4vANwq9BbP8NeHbzlf01_rDZJkF9KbOAWXY2O0lF5eqZgol-RvqkKgDl-SUcmdQNAcZfvJ5JbEZBn6BwIkCQFTMUXIP9mXy75avQkYgD22PSfXLsKuosQzVC_-oo99q_xn0h3jCsj2UP1ZtiXx_Lsy2PBQ-uFZHmu-h1ieRWU8uoD-BbTkKAuUsQ_-jQyu5NrGy89YM0ayFgEaUK6T99OfJ5swwDSFnKxTFJylbdMfLcpjfC_12-CaA973bMF9k5vPLxjpMJlnbCJutD6E4LOPJ5jcRTDFy6owWXPaREv4TBe6-s4trmU6RYEU4BRVk6qnvE1GjwkOdw%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HdPABsnCjoNeSssGfnSzF5rLIn8F6Fqjx8HQoqK9oMaDms-AWI3kRKNlAcq-PHYi5gYKvt-Nkgm57UuYMrlgfTOcVblFqolVmGjoJumHkcQA93P7qsyb6OhzahJekv20OnlJTrCYQDVTi5eFJi7hJH4ORm_BaF0jQ2AxBGHZIttqSxeZF-49AaFaXeE2ZKsbsSNjC8nQ1of-2jUAuaOPj7bGKAyIdG2OP13ylHoaPSGrf9Ddhgh7VOlyd7eci9eE-aaLBg7JU68wndc7uB8rzxsTRSQEuYHJoIb3OCdrh3Pbv1blUiD5e_ewrU2xxRfTer6vVWSgeE17zJMYP2hcWZZm-5cOSZxwZRZdt8fswX9f-5N5R8vwS6HsAIRRLYImAd9DQt1mOP7IlPjF_-PF0_o3Tew0tuXjObeqO9GUPx9YZS0IP3pmShH9AM5aeoODcs6Y8SdBzj4db2nF_CrNN8DHCtkK-kyDv6gk3ddZ5AyLv8q-1Oh8O5m4mmh_BiO5FD1XyHok4jk4edHxowFOmcrcelnflak7TQmM7jzcMO4BqHWelso_8hd0lEVqWX-gS6Uu5rhGkbwuDy_Lj-YrWC9FlgZoWonzWG1hvviVPIF0U1NE6upJxDs-BS8YZytCMxV76fq6urf4KU9zCbkvu0ZORE6ZY7OaFORnzD50EIpzrmBlh_Q0rtppochdA_8qGhB6V5OM4cGD8qfX9-965uQejkoLNVOLlqxZb3o6dYFEVauys3Yw0NlaBH8vOuwHmGnXlLjbg1BQCElhG1AhnU7_AfbpGbsHiOm2NsFVmMcBrsz3iSnWDM-8pKmzwedIH8PA0RMTNnDQDo5bDO8WoqgkD_6CgfteMuqxw6oZIMVBLe3GH0Hk4wEWTkZy-XDzSKLZMsr4rZZPgHVN1oACz5GYC7Cpc4Sf7zJqUKbqFlQOsXZa07B3-vFzTSc3-RgYBXd7E02X4ZZAH9egYCxLtWW7df1Un0qAMi1p_gkS061Mfk-PYttSL2cOew7yLrwAoG8PxUrm43euSOVJropnZBTMQG2MvqgCpuwVKcYCn2jA4yMXZ6UnXLYz3AyoyXVZyehJ6rzPxYBveHkFwzR9NJINU0_FpcH3vusR3Mumk14e2Pg7kdoCqkc-ZiPU0hRUI&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6NDMwNzpERUw6MTc5MjYxMjUwMDpEWEI6MTc5MjYyNzIwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjE5NjcxLjk5OTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 14700,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "4307",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-21T19:55:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T00:00:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "19671.9999",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HsIsVfo_JAbvhUEEuC5HYBgqjjCGwyRBAMGQIV4SVqNLUgH5lBEp8xFQfgHu-6F4N0c2ndymy4d7tQ42zLr9swIQbZtNRLCg6PK2NjbQf-FhwgiPd1Sn9XWFEUK3KdFkw7dfpwXYtsL8Hqjx5B82p7kb9pLP68saDzOlimh3fkGE1AtANLV0f09MvZ2wzFbm2WrS3Vo_jhhLyw9nzUaEKMzqiQddN_20cLJHJwGgqTF1PV9pysNjHs0bLqjXwZ1y4vSF6nomQbQRgVsC6xeg8uk52wD51zbYhn5nkd8RqXah2S3ndsZZg_t-MJ8Z0Q5tF2Exzdx68_eXGL2m6k8Wyj9h4QFO86MGyL55wRgy4ubqyRIqIXD3PbDTR6hcxvwWbqOtDaHNrQWWBN1QclX_Z4-0WGE_0dNn8SJjPtRmX3VpEzmPHkK5pW5OPl74UaiTW-TPI8SeCwkRSk8fcZ_JKF4dOnWulS4z5U_ylS4psPPUZPn2Tt5P61fNQRRN36bRKuqEWO9pRXysCEg0qiv2X1oK97qpCQb1Wp2mFHXxpHqL2toJphWgMdfOjdJd9-8u8KeQtVrIlFSwnBtP3gPKXIzGoW1gGQaSD7LpLNFw_ucBZoJzOsH8TA4NOEpkdQ7tq12W-FnhdT6IZUojb2iyfqPTENTsnaReBdSukVSVSxEMR0kd2d5VP6XVQK-_vvQTiizw3fOLJPM1SfInYUAOPjf5Q3YfjRfGDEUa5_QE_KVyOKCYnsT1q8h2NW5prPMLop6A_h_xsC9WfVsKRxCZK19s1ILwBMijwVzk3YR2Cn_9CC61XQXeN7tZBMQzxJoG16zUvPkvL1RxOu3C0CgUkUOISUEIIPbD8R2ErFvc8boog3J-Hqkl6gAtAQ95miZIjSr7C-sWtwcjCTMoKu-HHJia84zADSVECAQXNL6gmBSoesOehLI6_XWvrUsHJjZ1GG4s-LWTIXoVXGKQss1xmrvkQRE3TIRPqtC5wEiILfpTdekM-ine8F6Rf7PDBwEFFgDnUp7YFwN9JjnOwM1Vcz5NddQdqV9FnflaO0oHrA2wufC5B8I-1eZbd3jDLNjxp&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HylmwawlGyfS_qd9cAFPJfcO5o1T6V7rCW4wwk2uGkUyURns43IMx--nNre2rSU_10EjSPC7DaqrPnqpLt-3W1kI1GBeFl8MSSBAtOjn4hLWwfbIxnUYSFhkr0McQHKb4a87AWQOhG1DNPh9Be1XgggyVrGjZX1BnWDlyZA4dzHp_GGm6OP_rg29qibq_PTlFJe56-P44oYuHiwfYCduMQojyO3FYLSDBQeZhaSinWp9U4fT8IbIF22QaWtHjAcb6-QJzb9-VBr6uLJzxg-TY-JZapLQIhFFZpgNEZcdkciZpJpqLiq2lwTk9VljToUJbfGIyw2AgCVX3Xc14eKOipgtBNYoHamyRl5-aE6-JZqiXYO-4laRCRkXS84FpEWu6f_nsW7Z14_QWU7Vnd4Q-rORwQ7rDsrRfaOvWIkXsCeDq1iW-m2pU8NrN0kIlpC8fsf6otRJcVj0ch3_GTPvVERN8OrKcIeiGXzokY9k6bbhTa_VYRPkBBN6Kr-DNctF-707nZx8Zk6RWMjBtr0aIwNNgH7NOcjgr9p762mrZtUgyWTj2MRTBjMTMei3PyiJl53Dgt_ZEzepRfwbRpq_FVG9ls9yQ63dW7vg8fPHtwaGJem9bEijdPe7LjdV6cMCgMu8iHfLNVk0LXubUu6S1mdwt0xYBG_yxqbzRRt7LLYwCRytaBwJmSpkvym0WCM4q2NbIr5WLWP6aaNDpvrBMR-4b__ts3zYIHHHqL9rm1U_7HAasFfiduoksE7fFsOGnATkMQTkv1wAECQ231yXDAtjhVE-tM82CTNJ-MntgUxyz2zT1oDmU6ui0munl0qJih9OrRhmgJVW57LR1a3H99E6WOgYFpB84YBtc_fnlft2hcmfUuJO9bshsNvreluPKU_rrZZL4KXXCwHQ3wV8RGVQMUJbeV_nW5-tswFdGGkxDqBQmdDc1KnY6gvqM35GQMyz2LfMj11M5QzSkaJV8OgepQ5TOPInUn55G2oA9HX8svJaSALdJJRHVH-tmrCgPb2YYG7Rh2rQWxeb3F-K35fwnEx3kFlu95EEexRQVxM5jaWIo0fYkYQWbAFClrg7K8byt12-1comjFoaciTWucA%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6NDMwOTpERUw6MTc5MjY2MTQwMDpEWEI6MTc5MjY3NjcwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjE5NjcxLjk5OTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 15300,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "4309",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T09:30:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T13:45:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "19671.9999",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HXnjSo8ozgCSQeNr_BW0nKCOIBaftEUFb0vMno4tR8CR0FmT-AfISu02iU4R3YPrkSXZyt5Y0oejQtetemzFlzJX877QTX9rTpGuKblS2rtX78Kl3DoYfZ6_gjsLcnff84OmOK8wmkCPpK5xe-k76sITIwVRjm1cq4AOZ4MY6mqrP-WwKPR54W2hA94mOOZVmcPJbIYm81rl3DHhGfLy9mQBr679DIfxHEdRp0VR1T3jXIlVdOU6-o4ipNtHAOMZ4zxC9h9SP5_R-NoCvQmYHXTR5oG74cNIR5zIlVg1_xXt7lrsr4QyYR3KD1KRK8Ye1UpZpLNyaw9LfK5zixXU930bNA-PcRJkBWWQo2n085sModLfTCQL96sMqL82qj6S-j-S7RVJ8APeeU3j8go0ouNZ2IIrRvW_GyHhG5CCcSSKH_p9cSrAEKfnoTtWMsD_HB6t2j3aeDjBh4effmeHhoABvBNTYDZ_fPNWWtSy0N2BQQQxh2_eRiShfWI2jM0faYF3dnKMvl-h4Jt_OBKqD8Dbu0wtyJc-j5Kv20uO3Fc2PPKAw4b7lcPO0Y6zUsvX9zwag6e0h6GQJcEyNqPK9vv5LTSIoaTdwPwbjS4riKdnjEg1CInLEx-hs1gNlzks55pYxxmMV_C89slUTLFZ08rZv0lDDgNyou1IBWlhRw9IAkIwxoF3JynnFzpDOmTzBg8ulSCx2lgM52CdMRN86MouojhvC73rL2NpHcQpd5J-Euhw30YEk9N2CW1EoB7h_DVyu-3CLtBmr6VJnnWEqf9Wp4XphCSuLaT4eEWV1Y9g626In19jlpaXsGu0X7JJpWz8PRvY0RQQpWaXYk3mJxEeQFjBYXhBej5hs2ZnUwBL4kz8m3ct9JjPy0FtvPY9AYoIKn4o1H60G_RCZ822icJmHB4T3PczT-8SIS7v4hlSuRpZXTxsw1kCaFVqFgpWu7DQUfaZ3YOp_25S5KlxwF7L1ZfS5t7FzZVRspiuIv9Ky6eY_2yCOCd7r_1ou2R04RTv2nrCUVeuXiaBE9WtuGvohPcD9x9svxg1QvOb_1RPjL8BeCsGcxOVCDMn51hcd&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H22FFigf6IIBipB-00qm3cNDANXioXfn8nKvgDYLd_j5kfE8Uu3FLCRsi50Rxck0Ya8f5xP10BFFqzF73-bJv7PB9FoDF5Tq_llY6cfmjd2oYKcyyghCvEBllHN5K2XerRNfwGO2OsN29SwrsN4BIkEqyBkdJllSXK3mpJB4KXyxtMlJCMhHn2fpq5ljH1grh8_s2XinhBlEWNM6Mg5w-gOpWHMfsZO0JNDj8mqORs9Y-52GpcNYpK_X4vXB1-88yhiyg2DWYAf_hphwJm-_3VmmhJrdE4f4hyEdBbd5nKt706cjQIvcj8q91Qevy_K6H89Mgq2y5FM2uaf17bhA3q8ckAuSzexjkEHNJlsUQTg8HSqeyTSojl-HJV0UBnT4wfy3_-Tma9CRi6LmsoRxZdPkD1KwYnWii0vycZjNuxJQw1kS2e5e9XbgpxamS5Htavax09LHgwi1rpl98whfEDSC_JZ-DngTgRAzHcudUk-v5LLZROyDe1olCY3aNss1lb8C7suajPyFGl83un8SLGzM86VZrco6JbdL3VYY_O1v9Ke0m-sNXQJTXufngfWWtK8TojRYU266lbij6JFbkP0F3tr1LMgrU_CVvkjZa19WSEHU8zefCrlyiLE4BsHFdUks-HUIKfeW7SOjJ_zzsegUv7m9-rjP0dlWD20OFd81SwzaQCaiUPvGxILC2yWj2I1TMaeHh6MeCLePjDkfrpk8cS3q56IhnIgz_cbDth21xR4MY26IXrdDv6x_I5zAYPfMJut7HPaZzPQHpx1qndT9NXkIfsh0zWxxfoC1GHqdpe7Ou0ej7Qn4ZlZibarP8GnPcq3BUaNYUUZIKAqJnexPiKK8KSx1LZqFMIhbzD8OIz0dRh1Pnb6SThwj1iYJj1jLb5g_rq4E5zfA23WXDh-HkZ21eNj7HtHqAcX2fxEvGlaszKfbf4_vzhW33ifeoJJqVDavvoByaMqPwa8tzyxBgqjL668q0LM8RdBsjjW_MyApW_AAP1WiMNSlW8AIKunfBfACO_Oz6O1P9wTqqhp2h3LTdkbp3B9UQMH7ubr65xhmWnqk0FkFZtsXQvN6GDivDqnCJZFf0Hxl3B9q1Kw%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiR0Y6MTM1OkRFTDoxNzkyNjg2MDAwOkJBSDoxNzkyNzAxOTAwOmVjb25vbXk6RmFsc2U6OjpHRnxHRjo1MDA6QkFIOjE3OTI3MDcwMDA6RFhCOjE3OTI3MTE4MDA6ZWNvbm9teTpGYWxzZTo6OkdGIiwicHJpY2UiOiIxNTg1NyJ9",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Gulf Air Bahrain",
+      "code": "GF"
+     }
+    ],
+    "duration": 25800,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "135",
+       "carrier": {
+        "name": "Gulf Air Bahrain",
+        "code": "GF"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T16:20:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:45:00Z",
+        "station": {
+         "code": "BAH"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "500",
+       "carrier": {
+        "name": "Gulf Air Bahrain",
+        "code": "GF"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T22:10:00Z",
+        "station": {
+         "code": "BAH"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T23:30:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "15857",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HtKwKERu-1B6wHrBfSc7QqgtHKofbtBj77qkSgOhVChjlzhaT8M9Om22-WPaA5gbELnSViswQpxpjPXwmhFfz7pckKYqm5ZLkmvGiS3oif_MgAvm6i2bmDMhygC2aUC2aTXCh1XOqMiAyTSxCt3nsrYs2RCrbwd1QiUcPNQrw6byPCQDFxMSwAJzl-oCdJabSFy8rUiPrqp-cjiv487JAtkZ944z6CpqDL5HrTFrCJaJpMurYdeacVKfk2i8d8PzfwdyuY5WaiCkWztSuJEkhESm4djwClgkpzZsqRfxlkA6ezm2zKrVkn5VxzEZyYqWpE4EJGpg-G4OsoEkSZs7rfj_AD23QdBXkGNsrJjuUIkY98LrJ9fYZpekYYkJ0CbgRqUUzfJy2EgqeyI4rPQotwBwKKJb8U_Y-bl_4mXAECoL7ne3oo-PiQH4I3qBokjtRXrxwKDggskSAWZ2AJ9rEn4a5SRShT_frpTCIKTzmfyxOuAGUzpvElG3nDz4nC5uWGHnB3l79haO1Vi-W4ncGTS09Ho3SRvw5cRcZ0UNAyGIiQnsEPa7gtkARHNSumDyBcw0TFPvL9pYusw4Z1VDFLK42phXS3UyXnpBBrcTbF400x7oVMzt5v-zPweYe_V1UpYmHMJtu4K4D95IVZJPybO5nvVddLAFMt7GLMIBRcwA1dG0bCl1979EoKripjZjhAJkxZXwn2E2MW3OMGPxzP9GVGeR7ceZj1enF0wyIr2X3aH_Zd8xfZISfbQDdhZq6j0X_3dKtsHnGbMJ2cFDZ8lrMReTCcOOCs0eMXe9jGZSMqOFIYFQtgbbY6lBA_7JE3VnhrZr9k6jdFSkwwFGYY6krSROOZTSD3A9A1fwCC4N1jnfQS_fKkoGAaR6nQBhpx4bcyDvk4h--HJjuCWONP_DtEUhhioz3OKozPjwSfTfr5P6N7FdmrhR2TGSiRLV3pkvU9eMo77UBmMdb4l5Xg0C39WHg05hnRaFTada5yaNGYs7sGAbRmx7kkt93g4cL1Iu3wg-YMzicYos87ZZ4JthS433K6rxhKvkKiB1jqSY17ZooTV_ke-qkCRcDR_tHUHjVyi7AgyozTYyuNnebI2Zc-j8Z6xV2FZ67rUpobMk%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HPd0iI0cdaTiKMaZsRdA0kdKJ1cjFUUmXezLJdj6Z_pvqbTXlZvp5MXiCikv4c9idfHWXcDPuU_UbmLq6AZkfbFR2UTrtlEc3MSIQmRvVzx1Nwmi9Mx9IItXnftnw0aumcShOBp1AFfhlleVV0K5mu-Z3auQpel-qDNjur3RUAhiuraWZ6OOxKcjEPKVECnmD1riSeI9np0_l2N2sshr9Zj1hHez3RpLfZl6NZ8V0U8kQRdtrX9jBI6KOu12_mKxSMeGD9CWci_OwuhNpXLEDOKvkrrr1UAqKftI8GWj7SDc9nthE9Pam9xLjLkbAZl-fSsBJ_xYml_qAeWDoYF1DkicZx_qbcWs7u61qDkRRH7JBoTXquSiCUPp6QGI5m5CIDYs8yGpSKG4jzVS5zL3tPI20I2kp76OHMWSwGRhG4-0xbZG8F1KtNYyAPDPLWSIbFKFT3WHHxq1D0Hf5UiF2ipZsI_1LvSyhpoO47Kyl6npSqmLUo3GV1iygv_-93eMpWgYzfuaUltJyB8HylDiXtvSucMtOy0CYbVOcjPu0fXoJE05LB1yvEF7dGBuV2tD6q_He7ruxC8Xj3Dz-INNnAoH23JOMJIBqhsuGTcFRDi5tJiNHza5uy4pmfHsNvKtPIFIS-FTCvbPBAiPdiu-68u93HnUAnuyhr3dOQZTVUkRZfVlHoap-0sO6_L5LNzBQdS02X4GejTD3nVZgfRAdoiry-qFoegxP5W4aC25H2-UwF63Pu2vuxK1qelvkQJD_uc9OQsgFSvgNappEAp4deeUmfXuR546ggNK7sKcmJiusvDHChifZ-kCCn_97JWglM4EspduLfzaRum5tRQ8ylA0Bb2ExRIJeZI0N5eE8rGR_hIAbOdmnFVttyjyE5IvRilIP_KQ98nFRD1Gz4Aorf30stxMkrkx1PK_v2FLL-w7gIVoptZgd6uzgdmTAsY6IxJRvlOtuVycG9uCT61I1gzqUZCorumuZwkpOzXmC0XVzuy_soZRT1ijDwhTcrzsSevKwMFEjPL-sKkW1AnP8HB1qcO5XejkpoM8fzRlYOVFpcM2N9mjLRBPc9N52r_lhTEwSqGKl7L_nhH_vsOi0jxQBnoixO-1J2InlvQwNqP6E01c0ZEuHaRXcb8gKneuY&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiU0c6NTEwNTpERUw6MTc5MjY4ODcwMDpEWEI6MTc5MjcwMjUwMDplY29ub215OkZhbHNlOjo6U0ciLCJwcmljZSI6IjIxMjUyIn0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Spicejet",
+      "code": "SG"
+     }
+    ],
+    "duration": 13800,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "5105",
+       "carrier": {
+        "name": "Spicejet",
+        "code": "SG"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:05:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:55:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "21252",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HJe2ZENcGXlPKhhgg-E9RkSjPnFKHQxoE9usJJR2UgkCMiE9HaUNLsg2rEs4S8u3UmA1nZzvJi_MQX7Ti35MGEashfxJhEXascxNt4m1oVPFdfQ4SSc4ze13FiePgnKFP7xYjIxm7xHVkZywAnWYc-vHGFYcBlQijEUnSyEOES7WYVw-ATgu68eZgYGakVrqpYuQ-A6NfkB11QTyjAwD4t0vew4O0ZwZYbVvWVYsc3XppKE-NOTpWp-TmVKRs9IIosHOWugwiXCqK2yhXTSwDsLYgckisBwPK-mjyX8BPrrqYDXV5wLtjVY9oJWqZqKs3nRsE4ydxq9JbHwuQjpopRsP1ILuxLLmHiRRkFK7snz3VKvpNU8oEl7Yl3c86Lnk728hDHYLpIELJD-noUqUVepVXlVDXe0utC5Pr4cY_vf0w2zRS74zV_-1HmTMAQlM9DZlQn-ENVoZEIwnqAtDKaniU9HichtEwVrv6XSAZcfUqkPZoS5G_paE1HGSM9zDqSshjJk-sQYQLHqulXSRwRYerQUnfKZxmaV2z_PGjAh_x8UHpG9y6fT4_MbKqGiHan86-hpFT2c6qyWbZAnGH7Rn5gJkeRUnxXzjGfZwpFr0r3kLZ8WTPmxTW4be4jLu_TD4KcWbtQKid9awLdt4jlnbeEchkfeEHwbJWYFWbWRWIzxr5Wvq_oQbAJ-F6CKoCyGVFVCTSQzcWV2DQ3x4ugKoQNXY9z6U2CUJJ9EwR7DX0Sa6dLr9ZCAiLInq3F0UiWwjRTNeuh6lXh3O7JBLokqy80EpWqDAq4ZxWYMBSobEh-4_1He4gfNVWoGMED6EQuplXZRVaVRaPTFlZDduWYndeKN16XChsYt8EZdpOE-i8WELMxYV9R4OwLAMH_kQ2ryodz9wWkE4CTi6CHaHKpNwwxPJv2JnME19ZdpkX0r26KqIzK-gDLpqYZPTSPNNsFOUCz8xPFMr0ltfjl4JdIasQFLNTsnY3fzjceu3BYZC7S54jxzBmy0L8wQpeyHN4cD5caaf_KI_pQAwA9-H1v5VPOwzQtDGa18K-Sx059JU%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HWrkx-lTXISdEiOMWKhxWXyY77aiA_7PaengO8Xkfa2sn5M8TpirsVr7w9bR2j976892gScyN8oCHlsqSAKX1nPVOP9gTisdn0vYLjksE6XhZh3ijiM-ylLZYPrMYv_JNmnRYD9zFyGkv233gz-CffA9ou1gcRt1_FxMXPKZ6g1eKm87SsfU9WACEipR5UmXq7eB1lEEa61Lrvh1FOay2KzKibDzKb2hMleOCAuZMNuLjxlAyOAOe3otbSuHTAM6hJsBTijv4oaQ59uqbHxvWMbm3NSLZ0tketKU31UrjOAOLVKm0YNemXQAGHkXaZfH7pzbcPmMGGg-ZFbg6BWZiFE_qLDINTSUwquTL4Pv3o14pgNhUeue1qjkuZVJ-W8qLAWh0lnpRXFAFclNtcmrDG2L7kkRuGEMh3Avw1XkfXhG9-to1wBYFaQdKORnSg4sadiv3v4f6Sc9umV6yy_c1XTNBUSninENUhv2KWtjNK_fcExEfKY28ZLXjfVO5qNkhnVBO28JTbJCS8toxfc9yYWGn7_fHvmSJZ25EoKuD06bN-fYIy8YxmDPcpsI_wZuOsqWh7mz-l86KUIx5uLBa-gjq3HWtSfSkGWVBjFeqYbVmGObvfeBUirttOC5yJi6RiEusjClhLP5BCBFQqjQ6Z359Q3Ov3Q64vvUJ6Unu0XGLDNTRq5pFPZd2we6EqVrqgv4QKXbU3iMfVSYHf2JMTV1sbeE2QDCy7weCThofJ5kBXfHPpVZVhUQ4w0_YbLVfwdQ8ACHi32TTTOAjDiWAr834kB5KWaMPt5nqFbgFIKCrGouTfGbMHJKYXZBKK7rpi5QtpZE0AONqI7KX65DAA2VFfB5SOio1_29BdhDj5MVv8ss0Z8tsR7i1QF4DK5qR2-esmcgo7KeB_zBlycCprjYfFuG9CmB7TNcbOcH-Q1DV3M0rFx-NKXCmCtjE4_bCfVnHimFnObu9H1RBPlUU5LUPhV1fpImh8EPuLGMxmxQQiEGFSsn1mGbPE-b_L_kbi4m4dpdjKFDh90u_9nBiMHQsIXeckRD93o8SDpdQHHelGNKLhVpz7f7wLUTHD1MojEqi4EJqnrwSY5DUeHFsYg%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiU0c6NTExMTpERUw6MTc5MjY0MTkwMDpEWEI6MTc5MjY1NTcwMDplY29ub215OkZhbHNlOjo6U0ciLCJwcmljZSI6IjIxMjUyIn0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Spicejet",
+      "code": "SG"
+     }
+    ],
+    "duration": 13800,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "5111",
+       "carrier": {
+        "name": "Spicejet",
+        "code": "SG"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T04:05:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T07:55:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "21252",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HP4FERemIoTW7PnB-Ij_4l-rT0zqCb9hh7vvr4S1EZhUaRw2RAGICibjzpYFyrVcN-w9pCawpcaefWftJSSScLtTMDqv8xT4ObOS3O6cU2g0uKUX_sFIzgbYf9vsWSqtdCbdYxjzpD47Xa35Yb7LGnRtsdikZ63Js6v_zus-4C2gF5wB6l4_ec-EiKhdhiQOcymss_GkwfjG423VxFgZVteXZu6fiTcDKlpYw3svh1Zqpe7qHrBjG_KYqVLocxPorCmSHRKZSG0k71Nnasdlvn-JJmn8VXyLAbeWiSE2n2nhRVaDeO7s8yRFOIi7MYfEEeERxk3ppY6uxzAZSv_wEfO7cyTY-BpgIdsay-6IRd4bNQY9kmC06h5Egi-sxVeFEERzoX8BnFGfQFQIufzj-33jfl02DPEZfP6gH0zumcl6h9ijLy-pK2XeTp66SQBZFPRr5EAIPOO71YLCI9tDpiSoeese9vTtkdhkx-ffbjjbOHzTpq-ymTxyl4bZqxm1EJVifaYLHr_nRelHV7r38RbhdtrTAccxD9pzVwt41DSm730jhdz5C3a9L2pr50y95gMBTgFMwgPosCuufCfzCfMmVqwbD1sr-JxjZ9TsCjYjnRi--xJGMfwhJO3GaIznOE9OuNRj7OxVwC2H3qyE7U7QacflPUb25BV2WTiL4sRQXi_ejb-E3QDcZ5orUcM_UJ5ruPWfeVbT1z65Wds7Xzd8QKVLlDWLmRUY9g-RE7BKbSNziSZce7-PtAzpKX_vZ1bwiw1oaEWRSKySkYSsNzSwFYUsg4YaKPsrRbRLTD2p6F3ZOKM6dkIYlV-tQXrA90F7-5h0xpWUqJJrheVVXHeanjiK2t8Vp5BYX_UR8ecEEu7kJQsOKQYljktImzdBcu5DGF7yDs3z4tD-ZDBKit8yXgN6rF0DBMy3_2gHb8fCcHKcDWo5hQA2q_x1d9WRP6-DLfyOheqyGUft8H8DUieQm7HBBGbS4es0qvVFr1HxdGgw16MQCV-1BoUkQxhX4Tez5Y02hYLNR8gyVeOZzELD-s4800A6nn6-SGOB4vLI%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HE1GClTVEDF861VsikgWQ7WEDwRSYQujV2PYBC7obQN9xBVZa4uL3dWpOMjuzw3XgMqJWQuYub6kLCSct7LuXpvUnnZBK8vG-8Gr_DOGQ_fvOBpzkxZyn0Z3qK0NpTmowqc4iFZZonkdh_273m4qWn3WwycQvZvRFHYB0PMmRwg-STAVggKvjYZg5rgY2E8cW7b68jH4IV_q1j00QcCSc33U8nca-XzmxeQ2VEgYnB6uqfTCCAYnxIQoBMc2w1o7T6MfWiRDhhP0-9qFRosC9OnFKGrWrWrhNZZP4QS-DojycUdFBXixUq1z7srGiNnVWHBmTDQFc-x9u_5xUuU9MuvpsOoUbiS6S2WD1tm5-ZL4KdIW3lFvxJrtCX93SDQR4DrTp7OYNI29C8JMqw03sOd7LaA7Oz9POpa1cqi5F12-1wg700iKbb5aJg3F-JlLZaIgnoj-wFp8SXtISH3sXijURNUDUH8B-LCLjygMOeAAMEMPnArS6ipY2P5EtfUXlpvYGwlLtrzIneXzRM318dSOioOJ0QRy6npVP168XID-zkM37RbrO_sd_Hk-WjMh-212btEHgMeRzlFJV0jdnJjijkHblB7GLOtKJocBwCZuhlncYxPl2A3gGGXYNbEi8XxAKEduG3uXhYE4IwySKMa9ShWQxm5Ptr_4_wlJltZV36qkEow62im5_0Y43yp8VP7ier5KqzEms0uXbTV56heyD0f-wV1ZXICB7-aPYXQ6jFasJHhZb4g3XG4RQNTuEfFCd8yqshRWn_L-8fOTHLfSkC2DQdF0Z_VC6HmffKwaO4XqE8nKK3P_JtMCmj03nVKoj66CwTkeinYVVhKouqq-yKp8i2wQPHEr4mD62gWY2jIA8FsWzNbCwdj-kXoM69lqAt4mm6T3GFQBOOEZIXluLpq9oskBpTOu6zHVdneQWi84PRv7O9uJxwxulymjjN8FA1i-Q4pF3rZmTf1wJftRAZnQdF_z2gErXlVZxTP7hJDKC-RjeHetRC5YCilWFtfl8FkbnTwXQzXw5e8xQmL-6Daiadp3Z-GvYs8Whx0q080V-FDYKsW84nENGMVSI&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiRlo6NDQyOkRFTDoxNzkyNjIyNDAwOkRYQjoxNzkyNjM1MzAwOmVjb25vbXk6RmFsc2U6OjpGWiIsInByaWNlIjoiMjI0MTAifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Fly Dubai",
+      "code": "FZ"
+     }
+    ],
+    "duration": 12900,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "442",
+       "carrier": {
+        "name": "Fly Dubai",
+        "code": "FZ"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-21T22:40:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T02:15:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "22410",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HQxYtsXBWgFcEyVeg46xyRaVe0GCQHD4Q3OhX_MKalykQ96vbB7cY6PBt6RA-bcVfG2ehC6cSLcgpIDZCa2_zGi75_2yB-9hFfdvu6vcatI04vxK8mxcGWzKxaiKflMV27-4yx1_v0kK3q_Jqdl2E8TAHxw4Pq0kF4LQ6f4mL-tyQQBZT0vmkAxrjpWk5chbUP0PUzI2XRHyngxIJj98VGuAq9GAizeilDp12TE5CMQwSdgqXmghQXR8AJiwfH0cjNHLazwhx4P5MZX0-laYkhp6ZPJvlsTg6oLte78vbsMYYRhJZtF7g2jSB8SADzVSfnbdkiCCGf-5iU6_X42Stt2hcaDLDeVwOsSF41MVXl3FPgcXY4_DvIH2huPay-1iagEbs99D0QL35i5zBerkPreA_18wkmQtRtHVMtc5btJj4ux-OWrUbGCoZCLTrf1FYCAqzgKgOmFE9lF4T_zmt8SnX91IuP-jti4iR94pcolMddunbfxzaG7cN_MRA8RoDQtrcVSGf6J8OoPq0KQbXgT8aXH2PBW5JaU6PIo2GhFK49B-Jd5JzUeAXTiSrFVxcfsgnt5UuIs7toVTicPQbH1qgfxm49Xp3cq2LuBRKmxALgmjZ-l0AK2wfartdbFkkg3sNuAleYHL0UZtoGN0QnGRd7ApojCQ_j1wkFTrlHcIanIYzXxbCGcyWlKiQeh3VoLofuY7huM3mPVFAWVlOGFL6xpF-YCZotsfg81IQHtkv05MAqOmise7GxvFp_ZdwuubposA3LO20YjBXiDHKb0IHVGQjc8b3f85gG3rL1HdZ6BXnErMn2Hc-blBugCMipybVqyIpXBaYQBWhi_sK-oR7iTvL_PDFQAr8thD16Ttp0lRPMU-jwzZMcV7F6xn3AvBuhwS6RhP04IzTI1VaacOOfKjcWjfjTf3muqWK5Hqoez57lyjKx71pTfQhST8P7E_CUdUj7fSY1cEc5I-iSqPQsTegHU1CLkjNAoBZYOKqXV6SpOpJx5gAeGNl91deqKX-8GFHfC6FhMzxlR9NRkccA4lpL2pTRkJLJpuzKOpdyaNCaupvky3_TNse81np&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H0G1ZmxYt3ISHR4u3-ygPBfOVkPO1EBm9BmDo54lcUAuxYv7DuVupO3Pm62aDYRy8xF5ICOXZcPED9AIk3KX_fIw4qV5A57_s7jcby4dUReEzqWEW-deK0provz4i4KKn3Ou3H6ckq8hd2DgKUEp0qL1fzxb-aBVVUisDYVT3g0dFgL68nILrxIJ41B9SU1qVzUA1T5AZAtQd0YzNYwBgPL5aKZooHze-E47nKVyJ0K35OYnjQKXd245riqTrGZBBgCUf_d0XfACS4pIrYpNUf9dgJz4HnlNNl4eXC7BT_5RzJ6lCPlDrpe5QBB-_8dFcfi1BinM-iuGk9_0s_wNrotQJekZUeaG9K10L6jCTB8Ry-0HXDcJlztk8T_PDQn6f3jL8E0vR1bBgFQ2_4porVM2dNR-YZTKYNn_NUoU8algzQ6RL1ZOhWwvaV4NaKsJgZvDEoD1EnKp-5VdbhWEckfcnBj5lUBP7Rr-fwdyrVh05qfc57f0gBcNWReXpZWIP0kKkK1Oc9WqQhPnf0LtQwS8pFfHo8odfMgEaIkOq1mmUzOPhjPy3XWMN2zuMMuJp3vC9XmCV7jKRXlGs05YmRZO7lzuz1wyxhb0udN-hF_FsTRMGrQQnc17m290nN-NiKr1rBCoEgq0qCK0HH34d_nCYOV66-DGYt3U_-wK78sMKw-dw4EoLPErq5n1T10CSgr7DTWTc1db_WG9dKjg_eqSJ5OKL7CtVyrOu_Q3-VG1bW27-CALJW8TJmKCE9u3zHrYVJvU5pcjR7IxaN00pEEqJVHzYkEg2-TNJydUAX1aEhJsNfxl_HM-DBYKKNTBo8KO1CqZ0_BcXuvuCqCJQVlPf8CgFgqdEVUFOWvbSfVPrCccmNmJWwZeEDjmEMvl2c2uNjwJKNkleJV6pF4r-cEDBVUn898ttEJONCYtflx1oXCeqKVMhYcGhcnnWr5GuAbzYNGnXA8GmXweW7mJX9bIph0YSAzCb0I35D1V2E497FD0_kcGCcgLCWJjq815ty2eaNbxeNcHxaeegrXFoyWTV_q5d3Cs5yEaVdCer2PIL0Z1Z2fsiDq2xSSEI-G9pUljNy45jkGd9ZeHOf-5MJ1HptkdHGvhOAJlCjVCTBjdBWfma0ROtHT6CarENUJgO0TnQ_PZwTRVsi781EWAt7Q%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiRUs6NTE1OkRFTDoxNzkyNjg2OTAwOkRYQjoxNzkyNjk5NTAwOmVjb25vbXk6RmFsc2U6OjpFSyIsInByaWNlIjoiMjMzOTQifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Emirates",
+      "code": "EK"
+     }
+    ],
+    "duration": 12600,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "515",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T16:35:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:05:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "23394",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HNWyn4264xQiCxrs1dPaHqI07BSbOkRCIokMMAs_SQJ0QpqkjD7CY4W7pMyxWzKSGmASgqyO9J8kHAq_2T7URgyUNzPjdhdMwh0eVa0Ejc0z-pkNPaskvLzxMq7_v7EshE7S0HeqN0tPmNN6e5eWNpkDjulfE1lE6smqXsiL7qVjSE2TaVTpeQ8reRD1tmJ8NWdkdeqB2ezi06LartQ55PWAS02B0toMGyvRCbri8cEqxUvNB9NggIC3D8-XP9HvdvpGh-yoYalfL8AdRtShFALZoebBs_L6Ya2nrXij17PYvnUJRjMzQaq8-o2GU09fhEk8siDQDitUAJTX-6jW6PhqA5Wtx_BY00tQ5DAW-40h6Ylj7i1ud6_J5pppOKBXgb9a0dYbsvCOjcdwdQ08qsOAAtHHfm3HoUNMiILulxqjsJyctWhDxKQUaSZKzpdfT2REef1H4FfPPZnZw2OvJ9GMSFnHZOaDc_ctH5uADUIAaDdLBUbLqzp8NLCnu3aya7Xg8r7STqLDb5K-O4UAcOLiftc4imFkgRqg6XLQyFtqueRDjKvrvNb39g260xhUnAT94LB_5EjzUj2U_-KnqrmIiaa2odEeodqG-1ggLLn6ACtT2CY1L_ACINDJs3GST4EGf78u9areix2NSwh8Gj1DqnuuVXKUOPryMGK9m_Yeuvb3KHa3fkPcrFj4xBI_STpalT4-Ittq854h9-Nj1E_T2zQbM4o2rW9mPaCFKP1gFfADxUqtc4-VaUyYvh1fo9cGw0S_t2VL-jSe4EY0YssSju3_RQAXtA-id72a74UanWyuAiUDJrWXWRXNN6M84hhSVPfUyGEiTJBBw-BgIgUg5ueSgjzGLUWUBl9UM1kJ9kiA3NM460sjm2ZYZAM-f4w-u4BPk5ghuoNDEYIj-IJee89jdF_6yqTRGPerlWJsvfH7mlmcou_zfAiEdwN0aXz9qISvs27_O-5-ZfD8c01gHHNE5XMqK7At4XhT-ZPWulpu471xHXORlLB38jOGgIiZcst7NWdYlMDgjiUixcR678NG2csVDt5CXyvQR42KFVxvezJqu2EUAdvAMX1AlQ9pK1bpdLbByV9C_livFSGGGm2TfAp0sq0qv7dzRkhc%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H03ecEtiREUf-3qt6SUCa6wyzwHl_4QxcfvDpx1a2oohP2Dxxooj6E_4rBDfbntWLWPcrjCX3KV3R5FJrE6beU7F9E3hFYEwglJ0MTw4VqFQdn6s1DO3RgAyXkAdSyS9dsi9i0LElIQsZAgMkxOdNT8QM9B4hUmjqsSiDh6_tEYv5KXF4rTyseFbOG2aqljCMLt60lIAsZjOK843k9Mp3frE-dxF70dR62cmAWO8s-DHrx-4TCah47J446ll4MGKqb3hYs_IaKjWU90vqfEBeFQYTy4yhFB-0YHLKYT7bS8xCYzaJ6W8GbqmgDoGokQsq1PZuKvXk6tG-ZXjfxCOCDvmXdSpLBBpkI-vxCGkYWBX-_zLS3zVFBhcHOfiAIqlUxnx-ywPTjJhuKgSoWKA0EhhRAVyVIolP3UVpKl6Z7fbginm7T4cPocTPWwtirFWWOJfz87jF0_zNEbXdRvwYZOGroLV1y3iJ2pq2c406VmtHccA9xsQamgpiRN3HRzUikwoVHTkycOqS7aWbjKnWWxwb8QzP9bgu2hn42gPstK88XPFlsAZbMRSEOTgaO9W9WdK2VjV7nhvig2SgFzhojwr_jJqO4wNW1lqkEN5zYduU36sdoUApXB2X_SqyRPIAVfC1-6rsZtHIx1hOPhlrigsduAglIOnfB6liEfr58rMv-4-er_FwDFTJ0Wb9csUBDcBVfOhRQfP2YI7uS9u-ahPr7XoivMZEpWbTpJQmTXp6WS5mkHzgNnlgXVObbYPHpuqf0Pyvbzh_7a0eXctMhNiNzIlOCOW1NxHJL4BEZFnSDBiiXcrEhtOWv5mG5JG36hzo-AS-ijGEP3zA1vg5ShxCIApW3j2Yr3bG9CCrnVmX96cGMBgAOXm-4t4Z7VZn_Dbubk5ptYk2k3AgSan1r8vT8HuLrdYYnamoSWbd1E_V4Kcy52AxmgObD7JwT1o6Mt7Ii04AuxViavlcXfng4_7OflOtfmdSk5SeqsIc0vvgVTOCrSs__tznBn3Z3t_-elDTAVDtMHQTRaXPP3Mx6FWaSa2G-M78d4UkQTOEbe_7894Xw3W29-LmENZiwTt8VLCfbEDoiIIzautIHiHToyWdum_qwdL5lNDq8eE1e6PrH3ZAyG2j9YxEVTtjbwmp&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiRUs6NTE3OkRFTDoxNzkyNjY2NTAwOkRYQjoxNzkyNjc5MTAwOmVjb25vbXk6RmFsc2U6OjpFSyIsInByaWNlIjoiMjMzOTQifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Emirates",
+      "code": "EK"
+     }
+    ],
+    "duration": 12600,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "517",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T10:55:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T14:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "23394",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HrIdnHgh6EnOq3OJ4MaYm1Zzdwj2swfIBAofLZTCsW6cMN6jNJmXk6_yppzWATzNAzoXW-d1Azlsl7pNUiZnGpFf6YUaH3M7adCTIn9Kh6H9SZSRn68XEnEe2n42uXI0Y_Rcqb6sk-ecjz0t-9_yfg6mp3uAUnVmG0_6mpUdaSgWFrTJdQTPxgoU6pMSFrLJKOiGYDGkyRio-UNXW-It3TLOCU-_S88L3cRgW9GMmULmY7OnUsrkGWtLUvAMTRr3f99EEe260Omj-ko9i7SiLzj5pKQL4V3xORUAYf0OwavfUCRbEBuZkc9Cn0Ee7IRuR2ro2Gcy6w8RKqRamvMVxWKiroW5ScJ-K-l-YwRDRzYbqr02AD9WTMTfVriL44pN0TW-27AzUc0IxW_0n_jfUMhpqH2JzrahKz9_Iv5gc3b0hVPdAutL0Sy5if-RsObC2UVESlqvDddDdv8VQ5URCW7VilxX9bzVb-AfjE7CHwonRDXPzMq4__wdRRX-7T9Me2v9fRqbMgldRZVV4aPPnEyNmkmn5wapY7u210hMYFkciqoUtEKIXj7FqswDKcumuiN6GnqxXIs0L2mwzi0vEfgR_3PbddPCwEq1tt5oc162hxwwMvUhnHuP8kNTaPKEMnSrGrwL_yuEVgfiLN3s2XlY7987n8qVbMM1ZVchJY9R1U0D1mJ62bp91wbIGf1JdtkcS3_snCVtXVZRUw_T_yB1i76fsSIY9WKIX9fiT-YSN_fKDQiLaqk5LlMp-oip5e3kkE2szWN7vMOrX8Kfph-nEitLF2KIiJLeGn5sadye11WEqTJ1mFDUnYRi941x44z2NdabJi9sULS5D4ngDBlZNjSjDGWML1WLunR-bOxbC1OizNtUpTOdGNsSuAnuSj9beCv2qosnvtZEht8I17ClTlJfP33aa8U_ZY-_EuTle0Mf0hYZomNC8hrIoKvGqojXT9oZZuFups-2dII5ewFelJKKKIxWOMVPPzo3ZAKnnqnlk-t_OvQwWbey6EBv26O0whz2lp8a04az74b6ePlDZzLT_kfDK7q8m9BGqYzOX9XMMIqaxOFmVZXd5-JfZOq2Q_MuVS-48UmL9-4ToiU3FWDZtXDiRbLizjOgG8ts%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HPYaFlsI52VzFppGqbAGZeRXAJZJlVBDZTCHM8qBFSvsOIyVgyLJg6HCIlVyberpjm64xlp8RND7_NipMlEbfAZHqZRBrqbi9cJbZuwrkVgvVaBIG-bf4N5bJJMfau-UjAmL9ICF10nsSD8Ql-MQAP4MVq2SmiMD3rDdOi4cs8bOFNOyPzG9Clb6m9RSQkgnIfy6ThVC29YnPSxpMKUjSCzN0TTuFVCJgk5S9jtz0bVm-_KQgPtqHHdtnJV75uLnXA6DYFQIkn9nLwFaEuhRHMHBzKoSJ7Uc0_as3JW9sBYCKRYDi2PKaPhhh7aJrBW4_qkih6W6izaqAafJ-KwxkeTGQ0KLD_pp_YDiwMhjtdV7eEmR_jIbDtzn2ZHGXElMnxTBmpPEY8PBsWmG0-244lGFmo7JOBd0vjjQlkuM3D44Tv1cJO-iAtg1J0M27J4CAhoMELLJ3BgumXzkb7lz_h2FLrgreXxSxxfx9Wbpm4igDR6NY2f_SG0XjCHOuuIu5v6BIIqqkdc7oHHFQMrttOSbtazFO-wSK1J1VZ6Naw26KWRBNVebJ8A7hYgEhLuYxJ_rv2DZ2UQrYwjpD0Gtz4VupLqMohgIkCZODvXTGHzENi-TNAfSQ1rgUo0MNrbI-iebtVzKrfquUMG8qhDDOxnrZMtNFRmLpxx9j3GkXMGINmMikbEt8wRQJYkR1pUlm7uYcUAULh21hrZO3wRB_Ggotccu-jgSrPEGGiXLE9UCpHUrjuVgkuJa1VlFOJ4ncBYQxXI4NH8uFJVHv7IoJ8kO7aLLMYndL4SqEXNPQANK3NUw4U1FR8hnfVQYzq8HqN6h2CcsIqwQ33g9smuhO8AylQsmu46BDW1OmWAfIe1WlfBW1gR79nX-NcpV23VUEseOQcznTkxViJIUmzfNWFHIA64HnjMNDWCpPRSPcqLwqq8EQa-S4tvU6tfB_ZrReDIo1u9MtEeqM_nvemYC8EwjsuA52pYVNRuMgHgPdzNlUtK72a30CdmWBGiik0wsMoMFgKscV2FGrNbb_yW3EzmPGj-dBhJveSaIaA8gyPOfTtZUdBHl-1luDnW75OQeapPNtKZLD2sPrtxQTjyN4XV0UJ_wwkHxV9Wdt8nbuxZsa1GOyAZ8n-4rYBS5S3rG9&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiRUs6NTExOkRFTDoxNzkyNjQ3MDAwOkRYQjoxNzkyNjU5NjAwOmVjb25vbXk6RmFsc2U6OjpFSyIsInByaWNlIjoiMjMzOTQifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Emirates",
+      "code": "EK"
+     }
+    ],
+    "duration": 12600,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "511",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T05:30:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T09:00:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "23394",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H1Ifppb43vOUaYG41aBnZPoyEymVlYMy8ndb9CpsB77dhUZdifAlgA9a6FvH5yKhmTr8MFrqZDVOGNngBotJQYwQH8gZyfUXFqaXWVHHPdWIEjLXA0v60Yizs8nPKkns2I0nx7RO_1gyA9qbbqTEX9GXKSf4FhLSCNR2V1VRgAkqbZMjs8qwhLk03D0N0hfkS1B392T0Azctr3PqkK5or7dIlaGu6oblHdbQx3oDp9gJ2b84lFIpkQA06OL7mP4lJykE6CtDBhcM_56l3DZ1zcSdAP2ahMDn6-8JD2UASGQvIuEYZPJoadvjUC-C23F62M-Xn8oKsBQtWhJ7kBnGLuQL60vz_OvgxIeAL6p09LVC56K-HdAsP64mDBQWIWRFIs99w-JCN3m6bJwhEIlrYO7ZAvZwDgedmILBGSDhlXNSiwiqDEGg0e_5pWIcT0HHat07DsUe2b_DE31LVBPrDyJJ_sxzi0LQWPpQZRL5NrskNyV-GGGhDHagX5SdEybctAibxzWBJ5SDE-rba4Kgje5iNa4Vdi-0k7CtlghdTGFXYqxdbJhkS2X2ISP_SmU451_3k_R0Qj5q4jSOrrdEBKlIc6lkzc7iOpCJ4UPec3fDphcgrCqg98yhAhtQhy1C_0L8ZNDpjNiIKqD11YtETa6HK2i6nlbhDXiBYSZlQahJF14frG5VlC6cWK4YReAXUvbydiswSEMB_qDJ8vpvbLsCx6tcThno_Dzq9fvlNbEzWdEu14a2yIdfqqZSVF7wZ3ZADJOFr2eq7nPMVY2kN0eagb6rnSpOVY9H5V1B1HzIUXrRECFRXIHf0y_-FVz54iro5cIolGkm-3Mt8CtbfKYDPl5deZDYKmNmb5LHtOspCggAruIS9tJECsrNe8Gv2u42wjWIBBz0FZXIXqDkCifGC5l5NztVzfKcOweSQ_fe-Bo_eytEFMij_DjNFMjQtqWlpJS-W1ctM2ql_D8N4916pV2hgM0fp21TqLY6EwIx8817fzt3kcUzI8zS6DYBkSn6VIKyDK8yjcNLVO45iQ0vrOQbiJGiJi7ssi4lYUQiqJjyoPXmjsmn88B26Efle&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HkNU5P7JgK_H2CHZKZqublmiHWmF8pEyROS3qZOsD6nmSR2ytkp_gRI3tR5ULX7-6EtMlcsUUn34oIvylaiDC3sUSMHyM9hu28eo_rT22-d9jCw0th4GMmFUP7wOuK5Hw4PbEAeoGIkzADj8gd24TROVGC_aWKW74pmQsllNgofrMAyOEB9r9gTmfm1M81CUOv2Opl9l5Eecn5OCSYzfzR0-UEy89W3VywxnrWrkfg7Om6mSy6rPVQQAVYsowiFUkHZxltA26C13LOjGyN3IfCpt01nX0VvyyNJEJQgKwd-DUdCM-yVFj9-PnvsI2l_0cp7uzo3MJrWo7bofhomlspWCBPXo2MhSdjGrEkY3DQNEwVt559r9W4LMoMlmg5QwfpYqe_nDE4DbwX8WKQjFt9Ly0yEeNuWhtqV_VsW0IqopaWFHxwY85D8wTPxTCK4XRBkqkdx-UQqCB7SbEMBpo53qLrMh4ly-W-odGfci2qE5oeJE5wSC07lHFSfJd3sFMEvplwFtp51qWvb53f4wRXwwuq9wWpTdQtm2fk7tKBhIwrKbQwOHuRVqR_lhWVarkICHWAyPMV7mr4PGjW-EMcAw9P6O5AEHwmBdiBfshCOTYxTYMAxXFUNe0sc944f8tQkFXu4tYaPc0PE7aomQMM2KUfitsOr5dGxOAZ11V1KWXkvo53oI_RuI2ma0i6IWKhVKidGkTmeGikOluyIpaSN828zBeZo6pRArWOglXupzM3dtUNcr9TZvBtzhMgOxlCE-978zLRyNQVCZzjTmriyymc8gs65JBcpW9lf1NOl3s4crNyrWqP5JAZb8CZCKQtSjAdyQDUzDAxn80lfqUhypFYY7r089t31PwKqcGwpjHCATIxtZVDBsYXu6tKsI-XCOM-j4z49uafOADRkKfUY5IIdTa3Q6bEiiGlE91e4unrABrX_i9EUR-IgJKMN_B04j6eOQU4pFMArhgbi0J-AtioGbgSOTp3npas7ubhtXCB5pgzPOgcdnXwhQNWLANKlFtBgmJEeYX-EKvHQ_GPjOJvbxbqdsPXUWLx5C0K9rATGoJPN_7YgLWC67uW9BrO0KeQO7adiuPBvCugODVXLEqEzkrC9dmXfuMhQExRkA%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiRUs6NTEzOkRFTDoxNzkyNjIzMzAwOkRYQjoxNzkyNjM1OTAwOmVjb25vbXk6RmFsc2U6OjpFSyIsInByaWNlIjoiMjk2NDUuMDAwMSJ9",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Emirates",
+      "code": "EK"
+     }
+    ],
+    "duration": 12600,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "513",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-21T22:55:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T02:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "29645.0001",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HNE7YH-tc2jhdydVJIsto6kLu5kv-Tz2X6REMVFNytvsgd_a2volYh6_b-hihaHCip-UQKZEa52NhrgIElX3wGDIi8NhTnfqgYK7HcFRJVP6JLkXfFwDiZHaWy-OmsfpDEbFyJFii4PpAe1Gjs6Axf63uU6WhzrSgM1iVRsOt2S18i-G7Mxcio78rhsg_fuOL0a34kZ2Uto7zobRurm6WjbF6NRNfQwflrh57ITYbMjIY6O4MYPT4f9PEen6j_8dgUyg3gH2sh_q_3soCUv_aaerz7yY3qOPdAtXez10Wey6E6v7sXSfyjFzCLT1R2pyhGDzfx6srfblLnTZkowKyZPPy4QV1h1eVJabp_AU2CGnuMNmRoE88Z4JFVuKIObPOQbb1_N-fmMkSo1P8zFgk5_mUfROkPVg236x9Gc-elE1y01G1C502-1MCwS7NJY7hGZ9Y_CmBi89GcQvjnG2UMxpHIPWUrp2hu1-x9_92M16zQh2j3gtBXvtzMlKjNeGovMZ20qAasKl9yBUPtzunPWyZNFxx8ZNdqP5lYjiR5kw97zcGOEVPeOOwQSlO4-jo4kbBiL5-C72t9ZUdV6pGEkPFELBxahfegSwn3XPgsW-uLLm3CF96GBoFYGZQTQeE-9QLltrX7YowAImqJ_39WVymU4vqHkqgOcQ-x1Wxu8fiteev5ULPWt_o9wfNH_vBpwA_C-HZzZYqUSG-xds2JjMUao8wyjBIrE6HblVlb4cTus_1tCnOmbPRaMHmxMdU5109hAScDbZE_pmmGIbpUJD0zIwki3LG6W2ApTjclQvng-lBAobJiNyfgscluVzGhRedTLfXcJpqaPZrQRlCspyPidypjvTBrgBjIW2e_So5EuIoPh87GXYNNhG05Xd-aENJILny4bAjWvSjEz5loVFX8GUL5UDHf6xxL7A6YzV-2p0seZjhiQK5xusXczd_6YXBe8MT10pGLkwaacPom3x1y7ENa8f318RI52j1Vazcj-RzOCwZn7RECXZ62liUCEZ1mReBw0g4EeOHiwv5uT6Ayl6ibdzCu5OsUu_f59jQ6wA27wYvLflNmB_1AN6Q&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HRBi9l-Q6Cza3D7TlF1BtSpPYFo1guyRa_dme5ktCRSY-BdM85S_OvLIG7W4TNNaKveZv_80GCp49x69u2BvqrpEFHp8wbfd0US6AxqedaYK0BF5becOLfIolyPIva9Y-4dJuaOD6v0kpUby0vIooRn8Kmlt4fUIU2Ejw3df_SERFRAOJxd_Q-yKK4QgFQ1Dhx6iv9hm8xv6HeMZEZiHJ4caUX4an-pFXqjs8odla6aRdFx0W8h8jpn8dGJ7SBuLTlN5X_v7a-h5UDt947yzEs9lJAiQ2GVZ_MdUIbr2QJY6tCbk0QkrbTMUDcKPKdzsWN8rA5OwExtyinDsBlb8UI0BYWE2iXVNT93jY7qX_cL2jUFZuetZpIbMnrcasKwfnAfXGsaZkRNypS4TMgw2IxfFAS2RGzXnRH4htfBI-11v18D8htVQ-9AKkpEXMVcszihNbBinx0MmeiuVncTng4YfBFD-ibeQTNifok6gvJ7b7HuM2uhbYhDGLaLzX5lxNn_jcvzUoEeKIoxSDjYAZ1XHj2rVxIEq1T_IGPk7-KKO-ZzfnzToC6l4As14yxAQtX0_7piEzTHFJsbpFwE04QAS_Gsu8IiJAoPE9Bg4xe87O7P5BEZIeAQ7soliL92N3io8riHUm2U0ykQhabBb15hkkx4q8NT_wbMiuhZdpMxwKXcioVUTJQhieSFjAM925r9jku-QEdKD151RBwzE-myweiNvqF35g02IZll2jJCIXew8y8XpYWDJXLHF8StYOAU4L9F3Vku843TYBqwclPjCMEMgaQXSF9GUcEPp_qAfeJHpLZmzPCwai3K0PwuvnV31frCvAxq7lQ2HS-2OQdzorxgbVA-q-PYfeaabn2724LOKL4XnR8KBHAP0K_qurFqcoo31d9K588O6foPQmKJ16VMp3yKQFd4WMzV7YjxurF_UuuIZKN_UM2ynNAQsLsK8nkTFuzE76lbJBUCRwjOkTZJD8xvch5HDq3CiMcrxdK3WDaNZcLBTyTIXqN03IPlzDz2wi5irO7lJfHgtjxeRAo999DaW8JYLvxVyfBsrHL-LZ27RmD7hFDhjo7bajkE1-aZzXsga9ZsUT_zcB7PWcA02q9bUIO5YnDJfshW0%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6OTQ4NDpERUw6MTc5MjY5MTcwMDpCT006MTc5MjcwMDQwMDplY29ub215OkZhbHNlOjo6SVh8Rlo6NDQ2OkJPTToxNzkyNzEzMDAwOkRYQjoxNzkyNzI0NzAwOmVjb25vbXk6VHJ1ZTo6VHJ1ZTpGWiIsInByaWNlIjoiMjc2OTIifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Fly Dubai",
+      "code": "FZ"
+     },
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 33000,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "9484",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:55:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:20:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "446",
+       "carrier": {
+        "name": "Fly Dubai",
+        "code": "FZ"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T23:50:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T03:05:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "27692",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hn9IMaDXzlDcgtlcIGX47UJnMJuixxxMmGEBGCtYfFxfCpBPf3mTW2yGp3TSOBQq84C2HE52IA8om7MA5cExYW5tSvKBZb1BrqPTKvpzXQq6Xxt-1bmxSkhNyEroUEk85BZDszVzlt-jNI-pozcz3E2mF1rgdgzSnz7KqlLaUvxBCtrLJUJZaFnbZYr-u9CD8blxhhVuN79VFscjNG7402S2arHARpMHh5AE0K9y8zVL0jmG7cE1vnyVTmT42pORxaad8pau1bH1REh1q9YhpqpnE9lfX0dO9rbtSoZwN60oRg3n1AVZf2HkMOYGcOqjyjwn7fZNVnC_xq1rYXxj1zGAQ_-wFEM8SUKGNrzvMiGDkAlGrGrRGNN8_H4j2dq1P6hKChGejIsIqN2Z0XPfzlasCUtKYojHNQiGHvv02-gMaa-yl8rE-9TSDwPG2PKAGYV-yqvlXZmj_nBFvkDga1L8WyBRaSgxwVeSEZtnrl2Zt_Npt5GDtPHgjEL8mP9Mf2BBOExcvsiraqI0F6G44wBZe2mx-KpwawHSP2GXZ2d4aHueCNaghcgQLCDKdGl-IxYy4yToCuFkCBmoyj0GBq1FpVl24irROWiZyNMKGYL3e6jnlnBWfe-ZcLGcSYgiWMtAQfAv2N3berfEQXRXJUp-WqLdkkB5Rae7JoQZq7VabV9GNWC4DLg93WLvUrmk3T0Ew8PjgnirxMDIJWfnukystomyyi3CQH-tV0xsIXubI1Kd69mfllztnnQTiX08XLoM9POLF7dxGVlmgMbQo7cVOyqGrcOyR8WyOVXTpoCG4AdpQuoqqMFHt21G_VddN8g3jFkcSHj-gd6fV9UakUnZGVjhBP9ihdJ0WcZ6ZODUdzZsM9SZQiCUghs8qkjBOcV8yJlbj_XpARzSU0qCHnIPmrrSGBYKSvIFqSY44Rqygo-oSZ1TbBgD9oBdlziacmeCBbv_xuNSq8bHI9LbcGo07b7Lb2gskA-JiZgjYbBvcfeNKfnY7wEcT9IfCUu0Kste3HCsDr02xBE9xZq8pdJSlUqHXAAjJQ9xacNlGYCvlE0x5nQFw8NAlWLVgqMPf7vDX8QqeIG4c-syR8arZloavUK79ZIsiswEBvo_n6LQaxo6bOew342hGo8SK2DYyCGb8u4iIzGzfthKdI6JXm_Bd0bn2hGDcOk-BVvdLIyAASMYuiUo57cZBeC8tDRGYZMTLGBTM9MHAVDW6zSKadTUQdqUoX0MVVX5TDkT1DiixjZkUDbj-mixCM1tmHrKFHXxfXIfHQ2Dzj78Wp1el3TZzbI1JscgSWcrSez65vdus9EtHbozNUG8r2sIREAe2gCC8Mp1n7T9AXarsI7Kd8h8LNDgX_deUAqIc7z0FshK_BGIy0HRo05ubwXx4728m&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HWOeTd3taO5xPH4JJl1-1FQT6vyCkz8LD6n-ggMuqsGhZXrmPa3gXAhFqtUhpL3p1mTcIOJVz186ISGaNCN71ffWBqG3CXdLagQ09ITFTZf205HIdoZF1igyE6caeBO35CX14ArUMRcwTGFGwxonkBNDX0pSMzDj3nDxWVCp1kILNuy1c-LQNk3kD90Py8zbAPBM52KoHJR0KM-TsurHP7CHck6Kkb_-2WWxg-5gRFWHFi7RZNDNiJ2w8QYJBDdSn_V-y9ic4pmxgTuZMsbDCsHQGQ6cN5gMRBWTWMZZqrOGWgnGoyboskPXgN5AZjxI2AebHI_gyuHQ9ehdp_pVrWQi1wS8xP9RmqSQ2XtFqsrrLKbqmawjJ5dze4ifJl5eFmquP835Ls01AAqg4_QGGyrHLhGeJgtW8SUfqGHlF_rbkm_cUetiGyn5jfh54iqFBd9acdDyVY3UKZRszi4KLSTrepjNIrE-kZFRtseTiK_-tLMmJN2227zePQCQkn--MFO5bPx4U3MXRs6RcK-enuL9aQiR3SKkHifj7TNd6D3FIS_afxSEcOXUm5IjPoG4EO2P5uc_V6IGTLgGU9m4nAHuMOHagAHuCZlQCQu-nFYzqHj2C_wO6wWgAOppOq304Ru8T2gijIwmyhwnOuAEtbkDmZJywRP1kQroeBBmtgQ__pC5AI7nhJTZuplzVuMAGxhHUBP50VMRTUNA4Q5CpkDCWznJ7DrX-Y9YSVPqPVx_IRP3a3bsLQhPa9mq46KVp4tW_yrNualai8jfY8z5MlyfkVUyJzPE2W5hRabfncmxZbsrIR7iZZTI9pkoka1ggtRtmJkPi1O0vwh8Zh0Ep4hp2s7C-L3qj5oWPlf5nFS69pdykG0fo3tYNc74YR42xYyt6Vf1Cfw4r8SFewKPfCYJ9b5BNLcZP9Z0ZzzbSZB4jC4fOk-brY3M2nAUc25xxLzKJ6ri6mvXYQm3YNI38Wk6s4Jpo0HIGUERuh1vnO7OQOk5DnY572UYJxX8ftZJUgDVjmNyrXCDDXMBf-UfyE8BuNGG8njVo7rqvQERVEbZJB1SNdiM6ATS2BI3MkLjpUasxM0dTU4rhyx0zBcGKfNZa1-hnV67XW21j3utnhuJraZJbffO20VrEWrPKM8pkrHJbtUW7NbPtQdARGL3Ye-k0_obhmgEVWUwrWNNnjndRR5PvXS03aBS-pFPP7GG19x41g6WDhoe1sk_bKcaVBuOJW7Fpm1mKExe81Mx3vwJn5XKUl_72SfmPswANyZLGTHf2-dpD6ZsQ3imA7aFxH3971Lfx0Ee6gZyN5ORpMmBDBPSJm0vd0qe4MIjL8h9XCGt9QygZkF-l1l8sGQSyiCM143H8X_0dR6ehsCtcFafebzn610D_ureuIVBnAwLO&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiNkU6MzIyOkRFTDoxNzkyNjkyMDAwOkJPTToxNzkyNzAwMTAwOmVjb25vbXk6RmFsc2U6Ojo2RXw2RToxNDUxOkJPTToxNzkyNzIzMjAwOkRYQjoxNzkyNzM0MDAwOmVjb25vbXk6RmFsc2U6Ojo2RSIsInByaWNlIjoiMjU5NDYifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     }
+    ],
+    "duration": 42000,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "322",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:00:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:15:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "1451",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T02:40:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T05:40:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "25946",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HEy5v9y3JTGNSO81GEfMyEgmPw5fU0JOe2DADNiBZSW5hsUbQA7PXoQ8HDf4Qj26RgLRYk0oX8gYCmHL9n17SWNuSVctOAJxchB1Una2cH_hOhJFXIvmR7KlFjNuvEq6JHeMsx-9sMvDOu5xiHsgexd3VhLlDs0eq8qhaswZd_ArOpBGGydVpRda3BB91JvZTZQt0GjVb25nN-Ihn24IOkq7PQSnbCApao9zoJLQqAJZZpLDo0hiRw3vxvW-1tUUt72ZJkhZBYy_JqgJahOlfIKMZ8YMI7gLUKQlQn-OegL9rtUi8uzjhmuWLoXC7D0Ifl2F7o2UEBSwz0QOsg2UhmSiijaJiZDcAeQHQXQ9EZP4S8GvY6MTJA0JDvXuUhOkDm3Y3kOeBSlx7vcUGD5mhMNZXb48z3FQgnKM3dPpzaeq-RW8zpIFrl3vWfS0YEXCBbebVslvG8HsMOPkqHonSv_7AFIZyZxuhlsyn4CClnRmr3r7xkb74vGOL0gSlCgF-iqBm9B0RqZrpa0DFV0KuPJZUgW8m4rOyQAvm7q0ROtJ0ZkV9jJ4hHYXyo8XeQGzaBxSuuHd6q7_uzNliQQwPSUbgxYiTyrjyHEID2k1aKlAV-S9QoVFIvYDPlK3WorlQzDgH6NRopkaU92Nr9bxvQ6ZU1UpHnxH9dHPGH7EVTYTseLQUk5Ge1JZp6m5HMUPH4-Ofd9ArU8-qOFbrz-_Dvw00lE6xTJvCgztPRQd5wZAvyKEaeVKHUTbmr4tFArwlDXAYLrU4p4TL-qrT4MFVkEwcf_kNYsrT1tcKyLgJyGpKJ1wdVurIB3BNUosDML13bvNmNTDE_X_ZjLI2QiK1dx-RIlUUsB6iaO2RF0VwH2zNWkyc_FpR43nJzOVPGxSz8zAIZdTuDgtS_N_z7VfnlY0-dg6Xzxd1bvosNzGCNxJbmu_-SWQyzMsu12YDL_1V-dRjsYfk1IVnp_vrDMJv9Ia8M01iM8dyFNgV-RTduzLdDu5iqIrXbmte0hVlI8UYgFEFwZGjNRYx__JJ1DplmmPMigKIoAwAErm52imGNupAEOdx08YmMWMUf5OAYjOtZ7z4gDMHR_Iddwdt6AvnyA%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HBBVQVJdLeAKsZxfm66bHiY75L-q746obhSOgK_h8R6viB5QMvBiBBZaEPpEncOBPLaoa7HNTS2X0ZAvqcFlif61ALk5XOeLKT5YOJ9EkpvzOPfwPsqMcWZxMfiCJTTOAxGPQEeqSfYJhDOozwluI8C4skN5zVVws8zSmhw8XDxMsxnUiHgy3otr_i4YZ_LtU1a5o55hUhM89yG1S1Cj1wqf81HC0osVBV-S2sJLnOEUcCBIcGgSNpm1Le7gGcCI0i23og9jqHI28mJ4MCga3NEYP0xC15-087zAu8jjWFWDS85myadiWGl2c00c3nJXxUDC8Pv0TTm2SPuKj6ImF1khaWI3lCHL6MxkMznK0cTWGfgQ-pBTGMiTNn77mhRdYXEMDigYZ40oqLdyut7_UECZ09F9GddzyVDHhtQCQAQDOieYvzxNwFvxVksuXqNqWF898qWCZusq4hezqiPTTccgx0bvi82SsJ5Ndb7HmXyRGAWfsgEvn3tD4XptMXt_Bz9pBKsABdBTHoCknmidYFav2PWO35Huci4n-jOr-Lscd0VtZE6y78c0HxVN3gBGWmEzpxCTvWSDPO_ZIDb7uYAx-b3ShPB5bxJT9Xx2ab6xxUHe05COz8sEu4JlgkRhBm4grv8x3JEGbWXvfZxIRzXoliO5geVbsAmRRsRgcvjYKOOZ7CR3HOlQFcXfJEG-xh24cpfk9zNlBZbWNNACF1iq_gFLh07hvruTKWvPU_3DiPTklZ4Mvu77Fu8Qhq3G8UV16P_NhOHhyvYSe0EmfY4NUlGnlQJT9k1_n2qQn7e7rvoBt7i-3vkRCppXcx06-D10fnfMteTQL9pQsiE-wo0-BeIJWlTfJmlC6lyYb0psiKHwyo-G0abfq16-69p_Q0Y94KZGS1CrJnLDktGe1Y-Hg9n2dsRsBXLZuUW_qPyr05-3JKJMyPNaYnqQoXjwXA1lLXWnXmRkPx-fepcBqucM2rHrEd4Y6hBleeWimahI-i3L4_4kYpSshG337oaWYWxiN9S2RvIWaFWeMMwhJ50R8fF92ofRaJpWhJfZ9ewlL7b7-0jfwh7uedijudszgY9dbpzJ_OmqpsXTEh_xeFpHI7b0zw5nBYoFdWY8o4GE%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiNkU6ODcxOkRFTDoxNzkyNjkyMDAwOkJMUjoxNzkyNzAyNTAwOmVjb25vbXk6RmFsc2U6Ojo2RXw2RToxNDg1OkJMUjoxNzkyNzIzMjAwOkRYQjoxNzkyNzM2NzAwOmVjb25vbXk6RmFsc2U6Ojo2RSIsInByaWNlIjoiMjU0ODUifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     }
+    ],
+    "duration": 44700,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "871",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:00:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:55:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "1485",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T02:40:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T06:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "25485",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hc4Ga1kQ3brYc1cyiZhBZrTQz4V0GW2fvxjZuUD-sbi79mDh4SIUCzukzCKWRmTA4oSeLdpnJ-sfjslmwlydm3MuT8ea3ygc5uCXhADgp7toVYrpPYHKe_-H8HId055BA1uIYs0Zzsv2hugXsCvRXpYBSwiJMhcxzw3fbCKUbZUp1AeAVbyMeqnC3cH5ZIeaBvCu238HaTIJxSPTde17E6yYkGVx0UbWLPICOZF5igQmVL3iYy9QBqPXIGCYeeIkS5XJH35RUhKw91dlVHl2VIo0_JDJXSqgLC112gsZyvQgKcadtSNSoGUxVh2tl9R4Kf2144pupgbVp3rX0P0Zn0ZHFjChKRAjB2F1lqYNnS79a95JJSLLT6pyWc3IRDaxd-C24BZDlDyBFogqp-a1pfNIdtwg-GrXA0OstX3W3CDqh2pm3NjJtqeil2Ex84ahHJthjctCymq2fWoM-ZELASKB8-o8nyjZGJlkXYj-xc-s1JzQS1nhLs9zy8dM_oPCUuKY23DtDI9moeGwx-0jyqGXXYmGDBd2dnVyT6KFO60YTlS39r_t6gFFE9vZurJ0Ud_6BMiTasnFLlVk6uVbhqZuX8eMQq3XqEkoUv2VMmEB9_DCcEUSGoziTHO4q3M_Xx_wuHN1ZbFbFCZ4nw6vsp3A7os185_utDEzdkx5IR-i2G8ClacZBka1E-FpEfLLwHhooDrnwDZpdsBiYsFopJgu8kcv0JFrb8a0kNwp4eFwLazbB4EZJNrb9cn-vVfgkLeGgQEJAKkb-lBFQdCqTw0JvXnhCHs_GA9YMuZtmJnaV4NnBhvtD6jFpnAGBjiDUIj3tptq2pqn-x8HjPGgTfqq7QpDgt4-OGIU9sSlYA7_kdugm8Gf35MokSboNSD5ydus-qOBB5joLXSWEsJy0mR3xA_M_yNj_8DL_4p_IpPJYzyp0s6Br8qmWAACmvRUo0z0kR7B2KgA_ai2ASNt_ZB-MrdwvF6zX4Z7W8sJQHBu1zvb-H8yGzEdTm1Vrh_CdvMgV9fm8D0CTQcuRn7gQIwPZNzQgz1cgCVfLTdoO5nnTq-iZC0zfJnrDA1Fykc0U&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H6Vq896X3Cp1BXNp4BCtuQd6B2Ekh10_ds01b5zBELi2rRoSJPayIuZFlUDv_C_X4EfTHEZ8VuMnJx2jCmXPccaM1xihytN0TPciQPGK7-zExfJYI8J5Zl9544Z1dJkrRBfyNHh0_GaXVDE7SZsQFCRIDfIhbXtl9AwmR1Tr0ZKe7rxBwt8hd296h5Nq8N93Kt_9b_J57w-YftOrYKB--nbOj0ULqrvxZDlNYsC41IqQ6i0t3FfgjkNfUPVI_OJvfnV8aInJDINt-pvhNv9KsQ8ZjXpZAni0etfakHsJY8h4MU9-uQ_d2uwnh2qjCSB-MoeOqztv2a34YGqT17-kRDTjQeG0WXu9n9ZQ7P1PdpgeLqkG1VvA-5ai-WNQ5E1a0xoNolhtK8ULwwxT3vN8EVwZSnEw40KttEHRtH-l2MGX5OxUxtwzoqEDDLQQvkOZAeY46iTrj7ERS7n8jB6DmRvvVq3x1SbwceCNNHuRF3kjNYJoZzVEtlGBB9qKNA1VnZbTarHDxMuK9bB8BhhpILxQq28CwAHp2cqONThF6YbWuvEjBAJTrqTL8rt3Zh-SiBpSaWTPUFcBung4HA6NV3j1xPoukODhx5UrNdaUaYl4XCV4tqRmzexCo4F3CyHXU_jRu0alDftD_8Cw4JMqxcQIgJRkSLos0hTzsUVmM4i6aOW2D3fG6EjS83rHYgOcNEmPQG3JBm0tO-Q8mLg3k_DXIZ3HumCBPVwoANoxXGOzNI6zmaBTxF569kfysX9T3IUSY2eCB5VeG7o-rdLPP9zdWX12KGiyiALggIl2DtZ9ZtioAZSXEhIe5Qlo_iXH_aOqV6od13xqgkYH42gSmxYB8eupQTOf6IIxwES4zkmVPg-CrY8_XPdZl_dQovuMgWHu5DEhl6ppMLX6GqQOkcjy3qmYqDfnAcmzBDDmsX_n5v-gxL3-T4Pdsw9-1hvo3mA8JWJFC9Vy98OWXYQhaQ-EM_c_85ZV9SJZ3NlvhjMpM-rc9vmZ9Qqfd7QHYKVRH7tghrPSAaztf6z8WQn5C1rSTJ2s9B50cTE2UTyYA3g-5YmYwJlNZ_z0Kngx8q5P74rrTlRZc_tCvN9GFkm6Il68d92uh7wjQT9lzukfhVVo%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiNkU6MzIyOkRFTDoxNzkyNjkyMDAwOkJPTToxNzkyNzAwMTAwOmVjb25vbXk6RmFsc2U6Ojo2RXw2RToxNDUzOkJPTToxNzkyNzQ4MTAwOkRYQjoxNzkyNzU5MjAwOmVjb25vbXk6RmFsc2U6Ojo2RSIsInByaWNlIjoiMjQxMDgifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     }
+    ],
+    "duration": 67200,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "322",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:00:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:15:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "1453",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T09:35:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T12:40:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "24108",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HwQC0pTz5s-N3h1fIDZ-3_M3UIwQ_NWWZBuwsThlTjQUHuCKmcpV5hRzs0ae9NyLdTVi5wNUMqapBl-GlFRQ85pYUHOe5v06b-QTqzLdKf8k4jYyXzxpYAZXV1T3TtfXivZpwqRkgSGbSnaOwQhbTHC3ZWcMBQ25BkNSuQyWSuel7nbS983fW5S4newpg4aOtyxq1pm0QAt1YLplbkCe8r03W3vLX0CnQsrmENm4BRRzOVTjrCd8DunpR2LwPnF4wXBsLnlkxH4shW5LY4HbLhjfYUj65-eGikzqwq4ByyHoee9Kkn6JSmwmY7IgzQU4tay5Kv21XLd94CgCFztK6nwfLCMN2cDLpjvK-UCD3dJ519TDB4hGoULNcRJUizgdmDKc5FRHfs2lXh1u6H8vnpDEI62rtQ6hJlcukdzqIN0vw8TgPeMHKGeMlthPAHZqwkL6RIxO0-9y6r1vKSCpUwnt05QaohPIsGfwr_mOGAoFWJX07LmBy66whzmKqG4tdryf6KaC9coSewl4UZ6PwhwVWvKTbJ8CcAIhC6Sg8cg3cKPO5jCVrQhBPs4RK8ozoMfEVWH77be8PsaXL9g4xq3svwzr4mi8Tr3tHAnPz4dLo2MVoocsm7xk0W-uhx89-wUP7BKalGvVoZijLmbxt1t5nEd9dSnRyrQt_9m_f_vhUlb4e5D4IW4XLOSxX6F_c-x29-RLDD6Hc550Xfgbm2g11Df436ErLSGUVLxSGry7s2JbnTUbKK21xjtsEjphzbuwQU_fxIyYfm1NN5DXSmppLc2210PTFHN8q2z-8ZyuTGu1NTx1ztgQqJfb9gqXlOjAaMnfg7-YnVoU21xQHcfniq0VYuudCM_2VyyP7kwP4TtbBWylhVB5Wmtu9NsQYs4X9Q-bGyYFD7T5o3-AalJTTAiN2PlFlrYZiKnRWJ0NeWWweWybgidSiL8bVz3TiXGnT28GEfe94cNBAlc_6AHAjlbielfvJV3gj1O6xw3NHVBg7VmWi4a-wu7_UPO02VbYlkrnefH7tBYDoP77buwB-hvfiL5EdlUxLeEnObQEe--ePqrytFZ5AHKwDF8DQgj4OlndzRoJ2jvNsvkn9Nw%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hws96phwGsaJtmF4hqdXBKTfT5OVkrJUXAvARN5OvyYw3m7QC-PWkscv1q72KmVSgyz69iSzJZ_VCm8lwU-Itr1eNVphQZES-OmAWFsICOlbwbUgUA7p4BIInUAZyWF_zVBKUa2t-TsH3Mgk5fffO8PjzUFZxATgCIqWktueSRDKnNMJX59CTZQr5zhaziwYFpeR21XZbsg3LIeYM5DULtKLLqteGdQylJmN8VAf8vrTQhliiV6PilltJlFequlpzv6TKr78Ph4sIEWTckcM2U0FwcfSTtjE_Y0YlRya1UbUGcuQ03X419pCaObfIyl-Cq_lAQs9TP1T_aJIs0vn7EL4jFaSRapUAzh6TRayQ0EKMa7TZw-nlOY2Nw67GJncITmTYXCXssmv5rBlvNjHOTS9d9lZq1hfQlZgGoacNwYR8_drx9n26aGUJBTz4XFiNOjlU9bnaAzfDnIYNu7dKPzwWWUCAp7dRNXBqjN33GsVCqaJtb4xqbtXgcdpBxXLq6EApLGdII1O7MGZPbkYLPQiW62XyF-uayit-PhKvWdLKicla73-fuNf-8YfTdvvkY_LLkFQgxDlkXau0Y4VXMOuYYjnaMCNmc1E6FZSi4ochYDctucfCM_B7Q1-ritxULWOHxf9HY7Ni0vQsypZzvYNm4SeN324IShl-9mSVfTjxaebPNEVqg8OMJ7lvcxM6InfXtPwQ5_NxeiMs7qTM-urKm_EiECa-68RNtEtRuedNsBlf9niMxeYGDYwZVKWIy0RNopmvfn_nLPm56UUkzw4nCMqg7aprolVjubhf1KuO1HbSRyxZIKvd_DC1fWixfS8sJIPrXfrVbjTMz9o9vTCBxdUuH0dyS92BM4OZuOYCdqgKa6aPNIKeIyyQ3d471lzFGNE2Y0H5rGe55wsZ-1lSVY2irv6Cqe9LiO-a8bQ7TowDaKIIPfxV8X4CYIoPvYOEJC79-eXv6GqRXSjKrqvxIV-IYqWwyfp33AJpzUHUZD7k5WnpI0XTEAz9fxOgkfAIRj4b1y_xHwbMfC5u7Ipl8OPzfe0LP2TNXBrMVj7ZeuWokRg1kxLXVHJW08T0tQgKzcmF1fvt0NIKbQBkkAAGqwthbVmQ-F_603bBGNI%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MTcwNjpERUw6MTc5MjY5MDIwMDpIWUQ6MTc5MjY5ODYwMDplY29ub215OkZhbHNlOjo6QUl8RUs6NTI1OkhZRDoxNzkyNzEwNjAwOkRYQjoxNzkyNzIzNTAwOmVjb25vbXk6VHJ1ZTo6VHJ1ZTpFSyIsInByaWNlIjoiMzcwMTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Emirates",
+      "code": "EK"
+     },
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 33300,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "1706",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:30:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T19:50:00Z",
+        "station": {
+         "code": "HYD"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "525",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T23:10:00Z",
+        "station": {
+         "code": "HYD"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T02:45:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "37019",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hqp5v4CsCyibUSycXSdLXCp0NednQr-tZ4VHpwtR_gqrjeqjKaE06RJng72VmOVizj7UYkoiRjb3INjnNBDIY_ARO0tRvNhvgi43Raz0C3Di9xcGZmI0tBUCJK2nrY9d7Y6osw6RxF0hcCRr6rwcQne88JmCFOVxPiSZzfau_-bPg55chm1cq3Q5WJZUylijDBZ1hgl2nJvp6xyottTqwzos67aj_46T1F2atQu4CD6bqYaXcd7IMnQBWakv4i99JiUsHlE0fXP02LDvt1Kg1IlSJO_iuUk2AgqOEHrYIls7JVMPbrwdFehDWYyrAub583ZhEUTfWDhJr53-CP-HUx3WeilCtLMMzk4C8wkynAXcmj5MZ4OoSUtCdHQNIDQ6g05PTT5g9hjvWjsmyPdOdXGNcIt3rYWslTY9vilrTyPz1pPsF0cCnfj9QuT1Is7lYOOAzJaBX68sQ6EBasivKJ0lu4TDlYW5IjXeoXFqsfCX9KE4IDmQCa_OU8VHle_3-xFxbhL4i_2K2GKmNe5_eTAXT15Ul11_fuxBPgcIOpUKH8qhcXawHv1R5GlZiE3ELnUw6uwjJh_iHkVr44t_r7NJp6SBSYG0a1jDh1J9iV7ObPvVMnQ2eFU2CSwvDYoTPITPEfxFh7uqBqrEXRcTcyaz-IJYXk4quaGlAY2JuVPX-FanxocYLYdUIFpzBRfZMgp7jUX-Ov6RIisrrZqLo_z41p6bC4ewM3vXrQmW5LTJXmyFJMhjqxzuSWEZnGNTZLEJ6nDq81Ah-k82pdNN_VaROGPorHh2D271IrMbpAPsV4tahMm6pxrq0yIym59KSBLinHkevHjLibBHUSs3FEJz0pwdgObxLgrXGPNkj9OJ-XfOOY33AwT_J3QmIebdZGLYWTQD--AklPL51oESztA7OZVMOQT6iIhdElHAv4zZXJpQACeF-7J6xRz9HYQSR5GilqRtB0fKKmk8v9HAUxx2uvz3Lkhmj99PksB4Y7s45uxST7IfyORsAuS7BIppZaONXmxvy1bxuPAzQZ0uLWSgO_pP_OSaQJvARgXdRAeXfHALRmDi6ujA0tEO1rm_u7z4y8xcIgaLKCb58EcOv3E-AwncohkTQNyi-py7d0t_5AvjITUpIUj9GfclHG51PW0OJDVnIKbskpYJbJOwGu-y2Vlt7mYBIzLwX3keoC8udNCqUUnV30R6KMLNyLHcYc-OIXfQve5ydtRDgvYRnZuNTo9ZLoo9uYODhN7Hjb7nzJoDI2jdFip1MSz3uI3U6EhwzKGxFPH6cBC4kUZtELy9IiacEjbF9tKebt0-IvSLYguQcGG2BaIho1uyUzPVBOKwNlQ4hTVMXpPkUfxWe6qfIg2KM56XsH-0mpyab0FR7C0y-nQgU9kp9REn4ng5u&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HOXzF0yp_TspEsgqSdv_DBLgli236yNMxMoXwpXGg6AxcmsBh9If93Y5_sSkgRdLOh8lTj-CT9URTd9NwLoG3LKxTJpkd21qwgfdw4CZAsiymRzTy2bCJaTPMQoMdCXe7_Lso5PhyCui8S7ZzxvqtBh19NywCnGxzDQe84d6_q9bvEGM9OROGv_XRGh6Wh4hlUqUX7OQ1pel9nSq54DFhb-QTV4MiD43GoqXOP0XptOaXSP-XdFbwE9SXIdgLq0HW11t8P8T9OrPSy-b7rsbY92DY0fvoTrGADWIN5SYX1WPGBG3wBdXGQKOwFXTVP3DQPAFhLyzAnMiLMJw3TvjYAohCXxZXQhM5IYaDgqNF6iUmoEKMUKu4Ou1W1Mqg7btdPllJMoh1qEut5vzLT83rGAjTPMJj58jq6QgtfbRpXDxxejSOzdxpksEDJKdOSYZs_JY_otqI3xdLgv6iAIsS78wrgeqS6f39KgjpMjLVVBm1QQQTN-a69Imrfpq0Nm_Sdcn0YfaCg3AQ8FxfQEvisKAXvc3XHhqi9eAREpdWvAyJLl-P2eOVQhLe87d7Cd81eMcbzpabM6qLFrDWUkoM1YVCDInaFKUoEWmSf8x44ISntbA3tAB7k8UVneyC2qtMkCCKcAVrKmJd6I1_fenPUx45QG_qodW6QjbS_iDXo4GbJeTcz-GyB5BUZPauIsP_2U6RGq4m0mBm-pzXlmLJvMxTAzpwm80ZhuzixRp-sM385IpF0qkSOmcVAwa4OoCCviOtWgdxsQEfs1_i3GAvdJ3goLCzmmhaAEyrLVG11nmy8FqQvYO2fjEEi-U8MUDLRegx5iPhDC5zT4QoLxgXKwumxm-QO_pT70F_9DaSMWOx1Ox35YtdFXRMqjRrZWEFXjZQOvpRYXpT09XLd4mec24CWYUkrWNkxXidTO_T6P3_QZUYGwgt6XOUPkbyf7lhn7IzBVR5smG1wnRdY0eT8nGQ8fZQaT9qYsRMIoM4AMXwxnBbFG8oiptQ9f_jmJc7B0JzgMsOIXnV_38w7JWB34DxqTooRKYzN17FcHDPbqAjnBxs52kkDedzP2gTqqOV4nbQoeU15LSVStwSvnY0uXd1EEqgtiIXdqA0xppBxjXOnZqMhe42thC0wlM5rl8D-OENw45KP-dSkF1FWlE5FlooTeg_5veYKhm-Fn7rjQDEYjgLvpE0iYJg616mVUg7Z2RiADVi45RJIFvSFHw4xZFHhFCCp2Z2seh6kEJ4aRTZypLQMXoRxc29HdQvDdtTgLo0vUd5-lsXateYo3PNmxOgN82HgVw_yrXPyIasw4y6ZAeEh_p77vz5jhfyhV3pfZsoGrUS0fDVLX65xVeJA2fhx5fTgBdm1w6KcZxI1qmNQyYqGmU9AVZLnsYNqXal&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiNkU6NjA2MTpERUw6MTc5MjY4OTkwMDpNQUE6MTc5MjcwMDQwMDplY29ub215OkZhbHNlOjo6NkV8RUs6NTQzOk1BQToxNzkyNzA4NTAwOkRYQjoxNzkyNzIzMjAwOmVjb25vbXk6VHJ1ZTo6VHJ1ZTpFSyIsInByaWNlIjoiMzczMjMifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     },
+     {
+      "name": "Emirates",
+      "code": "EK"
+     }
+    ],
+    "duration": 33300,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "6061",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:25:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:20:00Z",
+        "station": {
+         "code": "MAA"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "543",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T22:35:00Z",
+        "station": {
+         "code": "MAA"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T02:40:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "37323",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HqLfSuYfEcg_vgkaHghMlCXhPOL0ely5G7wBIQFlH0zpUZYUcvnnT7tI1nshsu0qRg8P2sNWliEZGJh6pniD_KdGhDWWWuyv2qb2-TPyftQiDiY-s36Uexran8OWT5QFKehQ3LsHH9cTEgCoDMPXKZ5RHP9zQzEWi2Sl4V8z71JBugR0XmrK-gECZ4lFXUXC7WdNvYhIuc1v4WAfOw9-Wxr92xQb5sOgfvRH0aCHpOG2B-EM2exk0oUPOgdOFceI4efewP0Cmy1P_PjY3RjpFVdsBImwdzIcpJMeZLOTLCgzhksDS1SEWU1fwG44x0NssoJ0aHdM19TQXK5SUf9C6_RP5ZqxjL75DmT9kDe07pHwtGb0aT0SWKOS1-ee0LbS-B7kqWeOufO3w6hN8_puHzjw_tvztyG8B_JIXSrKXd3PMIEbf9_7i0_Mc3yEC1T3uY-Uiva-iNQN2pwLZnBggLnWpWrxNXilX6cP6c8W_7XkuW7FmbYTEtG2U-zSSqODottZFoDr9CkHxropL7mcNTpLbRNjMyMJ0kSOhrockxFChzfBieXBIR2Qo3GWch_JsaspJ7vYDX-vfMO9vNLbNAs99SYl7opcvqHT2WXHDsb1-ZVsiiJQfhHaquQyfK3mANKK_IooVhz7AIozXeHUmC9yJz8J-DzWqpIKANdinHYk2pSYuRvvxtM9Ag5Z3AtLHrN8CMWeCkT7nyMgTq0E5QIwVXSv7AYxjU5xIKwMhEY1mOF1OFZ6f6GYuljjR0vTDeTy1bDmGbMYg4y7vbeIladFPEez2DfYTna71Nm3NLPc_LWGDR7keARjovMGX4ccKmWSL9oFsx6pl5Vll-SIk9Gdb-bjoNx2jinrWV9IKEwY6B2jub0l2sbS-y_hN9KyVmc9SFGEgn6cWYDAptL6BAJ-MjpjZCNILr8z-09AFDov4kCh9ENhuz9-sfl-1W1q_FVZjRWqc72OceXxRpVqiL6lk6Nj0O0lNxV16rOZZwA571LYTIvnBjCq5cfctzpmjk6czDrqpZrWtvUb92UK_VQA7jNE3_um6JnuIvT11s5nRaM5c7z4W2_x1YN8BSg3QO8pjHBjppvPjete3tPwuz8ZkKuGI0nmOmVT7BtWOFuPwUlOc5rNdwGXkAjTo8az9N4siauFJ2pPYVhItplwgdkMDqhX50BYMH7PSDUGXU_lheABzqC_ZkgtALX2WbaQk5BjGIV0djJKbbHWbEs1FpMa3u9Qg8WxHuFAbGtCK__q9ynqNb3f2Pi4QCvhG-hdur8Un829xmoy8uGbHZoihV3fMasgaQD_PoS4WK2G6pU1dLAGAx4zmhe0cIWquWFfyOb58u_BgdvZENF3-kxuiyiBBPfDV3U6TbJ7puOJTnLkRcTLNZpBuR_5J226WZZ_q&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hm8dcj4JcZTItJjP_JUMS_XlaXni6XInFTvNKxDt0YZ5uo74uaujl8Kf8QPj0yymFBt-JD7gSpRG2pLJxbWtUfUjXeCiEGcSsXGtntxMxSUef7T__dgeWEpMrzHi_gBOdfOgScxFEI8qBSxhq0txPJqs8d_kJO20Doh9t8_gcjwz2_-2owkoAaxkdCE1hlG9J6WJMkFaiiCzixiGLQoajezYvLSts3wEGC-JjgxGBLKQuwx4VpJpqv1epeWFU7F5C2KpEpk3awdlXXclwlRzpLdZf8mwbxYTzuKhtiJMmQQvra_zM0hIkJm3uwfwz2w88jCJoJXGxy5GP_M0fLg-ngPzW92uRXeAed9vygVnecJ_x24TFwU9-vowbt_6Fo078lb9wVE5TAXxd6ixSLKhWJPR4NFtrbb7EGz1UYRtUz2jh6NaHgn1v72U6QUsacKaYNftyc1M5GFpt_6VHsqybGOc7Zz1k2L5HNHTqhEcMwS3PY_twilUomw_4O5E712ZaXw2LyqjjJ1DXFNKwmQd49FH744h5fHBaTzoIaHMDB8kYnKSUHUvfxB32716iqkkHLb9nRxU5DmPPlyyUbBc-ZSdvf3MSdxfwQak4BXRRzqArZBDQBqyE_R68nPJFY8VwGVnjRLDhkQ5lMEhGFSccUTjDQJK0yKBaPg9SDDcP7EImCgnuuAlqReqtsHQaur5vyuhmi1CjsIFChBxIPZX1yrabs9xd9UgZja_a2iphoBD06awLeJhZKzX662EVMCeb5frFiTTemoFrqBlVArHzTsuylPziRM-SSZuXomcZfCDNJZIjG3OVciVa5oOH_xR6kn5taQd9kD7ThJv90FSjLYFLPR3dxhokaT-jq53Li5iBss3O8kWr0EM8uZHC1V3kuZPQcIhf1vdGHigodGMPHULfZD-cPcQ0qDXhjeYDypty7i3ygDyka704msOBlRpqPiwezhebeEBmPkH52Ry2NCfLDmPaCjKp80068GhnRjfYTJhzhlU35L_psJJB7l1iys-Mpt5yfgDSZgqc2gyCgf87hpdz0ZMV6XKkUP_DyJNy7eG4dma0225DobRhUr4YKAieW6li_OzXslV2Cq7101P8m0ymmkRLN-IJ8sIZeZp0PwL0hbTm1c8e9Xfv8J-jA8MhvQFCDMygtFiPtSHw9e_Y3mBpQmzoUKjdQE_qbW7aKWKpxY6A3NNYVIBfGJnY2rzJBwfrMFyuB6pbyAmBmBLDcLBcZOKN_f1zvAruexFTN_xFtD2z4-h80N8X6TNu0VPyGo4NsNXXjMgWtgW32L-fBG3Ezh9Ep_fxuQrRhEWg8zXStHwraxsON6DAc6xaA4mfq_cu2DgZ42biKQmxD1edW3RcBwOl_m8HsGDt5rpoe1CFc_klb34Tyovf-jJ7&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MjYwOTpERUw6MTc5MjY5MzIwMDpQTlE6MTc5MjcwMTMwMDplY29ub215OkZhbHNlOjo6QUl8U0c6NTE6UE5ROjE3OTI3Njk0MDA6RFhCOjE3OTI3ODE3MDA6ZWNvbm9teTpUcnVlOjpUcnVlOlNHIiwicHJpY2UiOiIyNTM1MCJ9",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     },
+     {
+      "name": "Spicejet",
+      "code": "SG"
+     }
+    ],
+    "duration": 88500,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "2609",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:20:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:35:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "51",
+       "carrier": {
+        "name": "Spicejet",
+        "code": "SG"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T15:30:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T18:55:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "25350",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HjmcNUF_vdduqF5Al1GENxO54DsFqSIu0UO83DHoXKNRxDF8_xexBOnPQjcUtHH6xu0FoV-NpXAOpU_7uZWmXsEKi_vzX3BuqclohpHKrwyX69xgOjZYJwqmzsIvEH7ONQyhXn-iQKKcVByuD_KAsBCl9vKfwTbyZQC5viljjfqLbtis1ccR48NTuf18ST1kUoXo9ORxkAXm3rieGPVNqoR8KXW7u7sxoXhMuMZ_6mfnIkmR-xZH_0hjWUcHBpSh8mM440SxyqBq5wE-LznED8_XEZB8nhoXhBXVuDs0h2bsjaRzPtYBGys3jhr5USmnJHefwEmz9rS1I7BWHVpxz1TVtRWWdekpGoo9ff7ZvkJSOVradKhtrsyZ8-P8zh06c-2n1pB80AqaaFEV2c4BqpVqiNWHHbjTdtbHO0G2PegqzqpJ7gleKJivz49kwN1vnQmKUsBG8EwLqhTUrDcnG2HWttec9iHntJ7QgelSqJn_EMiN75fw3NRJu2wA9phQbKlkd-qoBKBY8cSZj1Zb3rqVUaF25wc7P-gFVd1BBSJRBlWKMeq2KO1Hi1YmPW20Xf8z99mkEmtB5-rXaGl05qcoLIgBT8j6xqAFEzZnltz2B3ey2urN29Wl0gKMrUXAl7JZ0Sufi417qhslMG9o3V6B05qxJzuDcgRpMBYO3S5D47pTeoI0tiU0SzqCvc-PqQ4C7VLFKZ4n-DSy2DfFX19oD-WfUGn2ySK0Y2Qu0Abu4zRnjZtl1y4P9s6mqM-8rsLXP6PYLvgtswcRJukqC25RAMlXJSRhnk0HCVZeXKBFJfsZgzxCJPfO9HQvXEP_vMDCA4OJsDt4Jkf5LaBy07qv18KGuACv6RzIZwWoUAdajvxcD1jbQKf7LEekl6LW9XaR2iX8EiuNWnPhbpVqg5gL9or19LtO9e3E1nF4AOSCjUoFuDCp9YAgg9tAlFyLGQCbqp1-puM3wIgP0inDYkT7kM8up7dl3XutjjKCaZFaClrnkUY-4RYJB6FDYKIcOHyVzYOuGgZGHSA4CgwAOGYe45QaH32apLwLA6JdjAENyAnLTHvosG2CLf5cKy3H3iLYHplSnoD3NQUqg8ji_o-AjZA6ANl1T0jpiQJqhHhiR7_tkQiAk1yDf1iNusy4y_CWw6mZ0sS1dyGJiCBbj2UwDSGJZi6txrt8bM0OCv0c7A5wXu94XOAdqm0r8-rGI6pCjb_De8PoZ0yr-BcW1PwRXuP6UciZ2mH3JLhKisnZtY_ObqSojb-8mkOKb2dn4KLeGdQNLgoJ-Z66jUQj1DbDJ3gwO3mKDX4hTEl0qoF71zRKoHlvQEs43DahIOhelUs0K_8y9Ud7BGifbfHuHE6-TLzQAuR_B8AwwJmd-OOU%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H0AAEAPkLDtV8RZ9PatQFgjh60gJIw6ocVWkKCtyPcgYF1NbdhliRQ-BbfWMTV-_q1RulhCruWpZ15Cu0UJ6bH8iBwvqASWxrRHldWAoLpktcBjvH_9N0DBcvKqrsCnQtSLJ1ijdaFcKrM7bI6UJAnR0jXRcWjA2hzaGewQsgMLdf-L-9zk3bGpwBU9Xs9a9zIRaR2TnJtDB3JHNkXZibrwnlYQlPF6i8mhTh6F8VIpe1kvjzBa9-rRy1cbKfs4MzBrLU6VYXYas-2Ks683g9muZY-OCbF7l7En5PznMkZsxI66rB3FxTZWU-zHzRb33ZirP4CbjYx5CzMl3CXSlfOulAZWLyxcWrXbTpLt-pbzdK-O8xTIx5Z4aORyOoNZwl1kHri4vBrNpG0REQYP0x3vHxyIh89zTMQduUdo_kfX8ZeBphnDGbS6TvlkpbZme7dpJK6ZiznWfvRGJgi1iRzSTpfYuoAT-McTb12360q3b0bTLZwL-aTnW62xUVdtXFs2hwgqg-ALkuocOPmSQmftsp_T8gmnk4a6vM_KygqXzaX-oyuhxnF12qmSHoY1V0vomoGFktiAi-uBOO5cuZouEx_Ii8XMifuag8tJPwOcUJYdZWRSnq3Otas581cwMQ-p-kvdy10X63MVEUY_Y-YB1NoAoGFXbbIO97ZSjC8m56XbBqLpE5Rq5vYCVSYmxr5HdH8Foufjxb807S-RauQh_HrTIUt7Y_UprLQjvGbmtX9vlBhPBKC7LAPt4dqTkwl6VS1GrWHyCYOlgp7AdR-kKxAO9-NGQ2PDygIyoCtKXU7Y8XnmWbTgDAOGiW8KxdA2RKNfv-j_n8bWqvB_5XH5RCvKRpeXFdvdLSUTVqH2zpuyZc_GZyKvqDQKwkBeXz94CIMYB2eqwji_xKuFZNz4AduRck2uLB7GPqUMsBnXTutt1T19A_Mi4sZikvIBcCb6_SSDkLGWJ78P7YgEeJ8IvtFJL061x-zAL2m1X5RidKnNhp5OGmGPgWwt_1LUxgKkVO10fKN7iuOmiKm9oeSyIddD5W5qhynRkuM_Y2N8C6QlQHvPtLdNGPI4Qjp5gAs9kQ2-_46m2m814oHm5lteHkwYcQ9XGuAy_sW7Pm-uXDNdJTVZJC8egV-SphQ0BJNSoiSGAMQNe7gOyxV2-IV3aQuUaejb0O1G9rPWf77kfl-sio5gwopr-pqWP-HE0gY_svNoR4yYKg38ttkG8NegHQLgFnTHoL81mEbdIF92aorAACBXswuVRzrAkQJIkZfpPnGoHQY8RFwbuKk82X7iUYS1ggsPa0d-Cdg5dGPEUOKUgUY3_5-0plVtWgqpiN51dHYC6tVRUiBHAWvXUh-FGyByABiZ91BpeeW8j8pjU%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiR0Y6MTMxOkRFTDoxNzkyNjI1MTAwOkJBSDoxNzkyNjQxMDAwOmVjb25vbXk6RmFsc2U6RFhCOjpHRnxGWjoyNDpCQUg6MTc5MjY0NzAwMDpEWEI6MTc5MjY1MTUwMDplY29ub215OlRydWU6QU1NOlRydWU6RloiLCJwcmljZSI6IjQwMzYxLjk5OTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Gulf Air Bahrain",
+      "code": "GF"
+     },
+     {
+      "name": "Fly Dubai",
+      "code": "FZ"
+     }
+    ],
+    "duration": 26400,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "131",
+       "carrier": {
+        "name": "Gulf Air Bahrain",
+        "code": "GF"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-21T23:25:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T03:50:00Z",
+        "station": {
+         "code": "BAH"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "24",
+       "carrier": {
+        "name": "Fly Dubai",
+        "code": "FZ"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T05:30:00Z",
+        "station": {
+         "code": "BAH"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T06:45:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "40361.9999",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HVNQTZWPWEXSHlbHFH3n7Dg1yurKWjeVhS6X6L1iPCQZswgz7RhF5u7NjnaTaO1jcTVdpec3yblDEkS72UFdfVouJ0ZpzYu6XX6HOqGH0zUGaHKwMnVShB2UTD_xVCXSykn9miVW8taE8HCh-QaHg2UamSUuMkl90JBgiTRgmFQNPth-0lP5UwFnj1hDGmA4NcKFFIq7k2P9qwuCR-cFJ48_gXFZyNZdC7Z7p32vQjWdUePUDcqhZEzxwZGqaO8v6AVOyWcz8TkipftDAgm4NX_3MzaN_dlOmFnJBfsaMrpNq6Oh3Lcv2D2Q3wRQRkCyWl0787vXW3OpU3xODzy3dLJbVqaLey_v2WSJs6P8lObfnTvRm3FcR9-BYnK7fMpvXE5QBut0EBN9xw9vm4Gg-wOHgqdBRiodzMdf6e7F6szyWg-NJ5_Q_5gYD6TGkQDIsJwBdz6xwVqhtzYY47SGW-M-PXo5gvG4P-3gbZe5IMh5z6PCuL5Bp9Lb_41bYL8ZV3wCjAO-cKxduXus2VHsSg2ZI0k6aACIgfiWLpwNsDhrXXweMc6KUuc4k99nv68vlIHADA67oeYl6mrsSbDQVDjETpuT5qb150CMhEbcGwt0FWjp9BTEHGg8R4O00kvS5kqORxCba2-tmZkxcliteMRWMkNN-t4fcH6R05iTYTB3SbTP_JVMqNdWqewCp_wtLSOQZ4dK4T8zvUnunDmOP1yQmK4S4NjhtoOxhAKdtna7uhaWvRAbttmJNl32MxJTESk8GjDLC_mDBSnHUeZ6kFL0KHrnFugnZLdskIpk3wfFC-lM3P04ZE7S23rSLbL5aUw8xhD2gYvbjQQ3X0yFSDDyjRUnQqe8Q6PGKZP4pTGYNpmMof5TiWFSdKPvSH3E4wh2X4e6PO6_3wqwvxGvCLHewSTrXKw3YgDZBPsNJuozKna179oUdCwKph8NpLthuZlIQMMlP5VWIR8xdvay-PekY_SEnsMoBxh9mDuvvKtqYijllaCeLDrciN4F82e7-AiUsGU0-l6iB5WeaK0Pe-1Ydhl_jR9EPKaeUYFdig2rvzZTN7FDZ0rUxeQ9MnQ-YDoV_B7Rk2yVgsY_Vd9GL-oeb_OWVr-mBBtP_RtcyOtQXp-E4JFzP86sFWUKq1sA4eYHaNmQdPXRgvDQUnhV1LDXV3q6Y2FfFqVHY6QZbXuSAbGr4o5rKLtNc8uPQH_-T4wP0Qnt6frk8ZwstCrEj4Kd0eBQt2phvnR56BwJYNr8wXy786UfBHxG6lbSMr3a5dnUzbW6de4qUcpBNjaEjhAp2z87K2NX2B0vw4reO00YkgmYS8sLrk7dSH06U31A1yTZfyD4DeL3zSRVKg2Cl7bOJZ5K9vOCwA4r0yMQ2yARCYDPH1gp4ow19TuiPUnk_&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HRBeRV3FD7LfPBRY9_5kXvjucqwb2_wHJoOgs50EZenmsjvWt0EW8b8w5v-wbclb1Flv2P6PTrxmmcegVjn5nHCOs0phuX_u9ySqLXpQDbYLmjeZ5ZFMRQRxDjGe4WgNZkdJz1VDa6MnDbm6323kgOvJRFIQiLlSC_1fGpzWwj85zIlcUN0lFV7hODmn5HZQlDZ5GVUdxGhTnvhDLlyg0vJMBrI9r60ywpy3wORdWX_lFk2PQQzDMNr_YzJ67GPjSJ0UIXNKgF-PcspVKmD9-mmAslyAwhFZk_FKX6weNaCAPmar9aGbzeUBGAKDKxRjIiK-JKc0StrEcFIjp6ywD_bqgJlc23yaQGMgh2keKEAJ8I_2PwSw9DdpbJOiYnM1XlD7fMl3F2nl-Tg-uiiAOWyGv3Ob7hw_bgbmCvhLN740ewwpwZICNchc1SZg_bLkebieOcZgoFJJwTP5OYRX5u0Qtm1tIoibJBBAF4Asf3LbNY99kmZZ36PnW8eVMzEg4UXdr3qeayJra129RAi7NFh9-ACJBln9Lo9fD9jrikdTr_ZA6PoHoN7OFCo72JEm3UwkyCZQB7HBQ_oPVF1vgEYpbiwFnuDlan7RVWW2jZ7uN6gS9xRFmy1ELTHS2tXSWUchAsnXSyUM8JKuvYTUfMZdim28Bm22n9bjV__H8Z2kFARtKuq99z5ev8KiVleVTyBaqsqW3mayj5zgwDJr4y7Y6EbJg4xD-2cZfQyCxqgWVbsis7hlPxr_2WM_H9JDHPdF3aP8q5aLg7Z39hi6VDdkkhgWi-zcx-n4j62RJ7wSF4TaFOlLI9sKtPYoGKvG-GDsWaHRIe8vpwPXlrEsfwF2EiC-xWBQB8cNuxx4l_vyY-0qMszUj9YV4TGFM2usuzn4d8v090hboYQCk5AQ9-Xnf7h5dAhLzrbZNib-ju3eXy07mFvmon4wav5EKlL-UEvhUZnc8f1FjXrc77l5zRNoN1OiQTyVfxDsco6kh5mzzNlqoBejz2wtx1Ogh6QWfVE7UmqtYbThOASMDmjnALeKypl94fRoKiKJU19L0CfSbi_GwchCY5dan6oL1CCCvQiSPhOLiDUKVBgcgQrcNSbhdbzqSwbLCqH_9AzuVwjswJRc-5dAPBUhjt2jchb2GxJdtBQCHV6Xz3g2apgbAgaXBIV3eJGWZw4S_PQ-t67s2AM_kFCLWewc26QUBMYw-62jXb_Kwx37bNHuwAxhv_3oJS84vVhjuLyoCiW6vitOXJBbsnk_8AEIvWS_ykqig-AU3PV0U9e8jOmNd3eg-H575AeaDWCcmgd0QLZCV7kKd76UWnMjMubgLWcKp39VPc6ajuj_mq97TQN-XcBJ7TmYImAw3EHj9ConPOUGvacG3Q5oCIjt5zC8VYWFYegjC&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6OTQ4NDpERUw6MTc5MjY5MTcwMDpCT006MTc5MjcwMDQwMDplY29ub215OkZhbHNlOjo6SVh8RUs6NTAxOkJPTToxNzkyNzA5NzAwOkRYQjoxNzkyNzIwODAwOmVjb25vbXk6VHJ1ZTo6VHJ1ZTpFSyIsInByaWNlIjoiNDAzNDcifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Emirates",
+      "code": "EK"
+     },
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 29100,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "9484",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:55:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:20:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "501",
+       "carrier": {
+        "name": "Emirates",
+        "code": "EK"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T22:55:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T02:00:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "40347",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HH8xax_u0EIvxAz0rgucJ3KTBMIvm90DaQ5ophswpc3IA4O4B39u9WHdJfkAR0nP1I_bZN1sghGcTEBpPdqf7_1MzODHVigs8SSamtBCH0wZHkF02JhSgpI8QEHV0vdFdWmQwJMFd2AHUMP6UPSiClPJPhjDsz0Iw54d2viAkQoeJvor1zDACoijyafZPTmmd4MTpgxnZZlHtqxT2mZBPYrClpHi-rNnd_Gh4-gGjTU3CBfft3bIQL1DgK0nSMubxLA1Ie39Ltx6j0XQZoY9oviPaa0--2wHL0igQkEA9Z0o5MbXTSa-rxtcGpTGppoXMBKhOAvoxNl4pEghV3LN29TgO6-ToldpCJWlFQgMCxP5R6ih8Y1CCE48ZskabUohFmIYlmFqj26vPIgGSjlVtKOi71vnCDXWabjsIev5FC2zaJxAAXQcohY21DU4cbDfW47VY83TMgo50CFR719awOj1AOICBrI6c8AHgsMB61TF8L-byYz6Ogk0136cwDuY_P8AVEeSqZLS5oYG8Cjew_dpSsLfvj25HAnv2mVDKO0LzpeDEEgCDnJMz5GEy1C1nU-eHQhYu-0-hywfjY6p7ThgG7sS3dZEWVWPnS5k6YjEfhXMVFSXA2B3_lInWeT7CNqbgYpPwbqp4SSHxtmMqrKjzPQ4GIAScToUAFK6PubDo3r6lOTIhSFjcr1nbAIsbCYYD4PtWiEHccVM8xw2TdjyQZcjHUrRipTffGDkzQeWcy0zkDA5jc8bVagdbWXthACG7fCrmejdTrUi9V9M6KxYoMvUhUp8ccJCk-FNFz-k-lGhycPUbANpHsau4BEUoBG3xSXaV6oRk6eqPJeBUWUqAUZvTUJ4gI-UZIICxtlLkpfWbaD41KAMOji_FW1mFY4-bEvZM5B_nD6hHLb_yk08CqZOr2qnxRTc9yJJQWoI_bmvrreRDny1cgz0hwhJGy4FtBpn7yXeAMxqneQKAfFlkmjmNePrEkyFKryQIO371hlQ_yiEwQqw0-jB3qi2geLdMc7ut8fnW7ODky6PH0w_bbp6QOqKs_6NyVA4lWhn16hfMPGN67RGY_ZI3kuvgA3pkVBEF_sI5rjdrsaiYNfrBRjFzzTwEj9dtVK6y7MOZ41IL65uMHw3ph_dloiPotY7hWfcqGMMe0NqmQSChgl9D9lw0-zw1rBWaWBzspgS_WQtdFVRlWAe6VTv96bf1UvUCY4s0t8HD9bzHeYfbTRbiQviFaiTGb3TJU9GQsaQHIunVkQ8T3pn3xka0R_wb8WFt9VDAhjziu9u4-r08xgI9Sl2LCuChX02vACJ3Jofs_COaPgAJI1P_74k2FEoPq7WXkRFtKQ9rm9edhOAkkx1u0rVh_kEfhKo-Zzpve2bFWNfwlLcLkaJWKZcIRn-Fqanw2b_5jBLFL_xEa7kKaQ%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hfya-2RV51i2buY67SMbRELvh73VPQ6o5ID-VJTc--E6_4t_P5NRMtbW8aov9TSPxdPAJ8a_3ZYHgpa1YViGPVVdHBeOeyQhq75O2cnnG0twIIhxNfIg4zQc2lFh5D3hHGF2c-fHxb13ysmvVGdwR8B9H00_pRROT5ehAgLsNgxV4a6-CQSRksT6-bJuwE5JygSX1K4eS3l0D0SKnwP_hSOHLOJNFZMIlzZ28VoIna-szNFqoZ3F_jzmC4oI_5fGObVKYmdGcGUZBPNO0qYaCtbldUkzhv3VlsUJZGqRJ2_jjRn7xrKy_-o_AHhgcppWi8wdqoDHUC5YozoWSl7OkL9WSNHZkDPze6E7mDkMUWlTraW3NtMZ_wQ9fCmUUZUXfNWtGz37amqnReDIwaBoE09HOiwndJkc_TFHNgruWRwIHaSEIaK7pAB_DkMDcfIKmovL0PS4KixrsBMQHVrACnDvk7EkYmDlQe1-WaI0yvsveSVFq7QEUKIoKJvgqNps_oWQr4_ikDFnl8nxy4TXdYdN4SbZwF5ADe2_QObGIBHGEAmaNcKvCXLn3X_gmyZ1s2t6XGRVM4X21D7egp1f_J8VorwlENPb5sQDHyh_P1m5gcZoqcqJZsdgWeeBDjqZc-RcGX1GG516AZTJ-0Ua1Jdvzm07knkG9HcQPtBia8Fq7MBEQqRU75fDYcJB-JoEIlxHiHOJmnZxGlf9bpjOMpyy4y-iSpKxVhKihFQfeelivkRa31MaePXg1b_lg_FeXkHawbNy9bssyQe2-AU4-XlHvNjC1vnJ7Hf05aslC51J0-H9TaquiETVBOzliQ4gwhkS4j3hO-VDtEKV2Xz_IVFTmKPa2iPqQaEFjiDjGOwph2d-uZJ-Pk7mdXec4Q9mkNXVKVnwDNCHivQJsHFukI-kgzsV6a34QyXJu8cfmlXYGwBp50f_6i88qb1E3N2hYXBJHu7Fp139J97w_M2d5oBFi7xDV27RXSE7RIR7pTD5A0rNgnqkW8VvkisZefRKmzmgsK4t2DPUUOheEgRJmR6qDXJimbw8U5WDDT84If9S0_K0C1nB0dfMitHhCw1BrZUfbhG2imEwRo7sDq_J-H4QQgMyKJXqnJhlwFrETdPEFfiQswC0lS7EqkSt8oINxYyT4WqD6FPmpDKXI1GX6d_8_ujfWWph9VmrZVVbW93S2PlIvIJsRRO60B9rnEZ_Fa-YlXVMhBvQovMO4b3hniHjFoybJRlNM4Kn3JU8sVuJ3eCSXlGzK_ZDaNCcOYpjQ_Gdiy_O0WetC2hv4OGRgWMsdvciZThGIXhFYatVuQj9zmMm3NRcIQBA2LzCTjR1lklzLHgt3h2eW3AOUwMJUmsP4Q4i8L0cj4wc85jfPW4u5MSJDk2RyucJCRN8qk1iE&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MjQzOTpERUw6MTc5MjY4OTkwMDpCT006MTc5MjY5ODkwMDplY29ub215OkZhbHNlOjo6QUl8Rlo6NDQ2OkJPTToxNzkyNzEzMDAwOkRYQjoxNzkyNzI0NzAwOmVjb25vbXk6RmFsc2U6OjpGWiIsInByaWNlIjoiMzk3MTUifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Fly Dubai",
+      "code": "FZ"
+     },
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 34800,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "2439",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:25:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T19:55:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "446",
+       "carrier": {
+        "name": "Fly Dubai",
+        "code": "FZ"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T23:50:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T03:05:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "39715",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HZTSqzusLrTWBeSu1u99tlyx6mCbrh6FsN5xKowEx12UzrRgkpijacj3tyJpoR2n-XwARoVn0n-T5I9BnLyxqWeRZmaUo5zEixQof5_5vJ1fH2Y0aPYE9PErAK3A9Lz1xb_9BLibR0GHQGBwizWhCPk5WXBFX1RVSTkB6XLHQl-8GcwZG6YlbU4NHMoV_YWVCFVHj6EU3-DlwIfkqQ6Pptn_5Fvih8_s1TEP04uzcd2DMzmc-CkBQ4A6xQq3vv43b5VbJYlv1lt03UKG8mxRCIu8JRrFGmlwL7TvBtchr2bO6FG_jsxq_sVKXJf_84Lf_kwGsfegPCzDwkmka30uDivCM2AIsPowsPYiiEc-GPTC_d7C53dboYqH2-vGfNnbwrDfKrFqGd-nCbhz0ujqzK_eLF5ngmGCkpXwNFpdl9i2uT67GGoAlmJpyg7De9ThoD_gvuSvB7hOQjOkdI_TcNL5s2rvKTrVSTI5idZEsl2vEHwLHjvffKWvWB8E4ZHja_VUvBDAosHAT3Xr5oytJWdT8JrWQxcouosjP1c6OKG3yeqEHi2zGqQKF1a8yL7rRzbxaJbrwps-vTuEhT2t1v9HXVj4RI8JXlAr0XRBlViehTDBxTwIUQuaSEBMYlZvEHMjqRoyieliSjLocwl7u4oRxGutuMSaw0C6M52LQ2XCDanT_poD6wzREcUNlnBmmP3Lr3iyNi5Vzz6W4D0GboZzTejMximPPYHFat737U1BlNiNbXVl-4wUO-gRKC9xL5ta3C9DwrsxxHC0x5SOSK5YPNZAi6HdeaUfuAl3PYHr9oyQVFKw9J58U497YaodAkrixWOO9jQs22cOthyDc0acCAHhveYmqI_2H4Z7IIXHcV5xI2LIvZO9XbGKiznSNMOSNqLAhb8YsAoVABwLPOqrdKN6afF9gOHY4tD4nW_jkidPzebqTgTrMwX1bzNHJp1XljclnzV85yo4vqAXFbYk3YZNj8xIxybAhVOHqRkUxy6B2fAD3AhQPeXRclYqiAgXzl8x0WK33hxmFDXGAgYsL_Kh4VYIOqsi45jDy7lXAGWb-VK7MhRy073ukNHde6W5w_rM4lqX2d-kIagFRq2MvnBV1nsaq02bo4DmkXwcpY5XrevngS3xVbkNfNTemEBL3zxAugpLZWgNUWoK7Bccbi4R1SExIqvh9aISmVtU%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HRSlPFZ3P8htA606uJgCJSVHbcmZYcooRAysarKCNQ4lOtfTXgK13oePSDEtqHpVWjH3sd1T8xJz6UgyBK29TCo6XfPEJIraLEYBy1inF4GSC5IKEiK1o5_5ZrBoOszgr3g-1tWLawPojmEPebuKwL3qflgoWbaYTOyFwUg1bI5rp6VLS7HCf1_ja-M7fR0GQatcJ-IVRiW18xEtO0rMLM27R8qONUFn-VOPKkTSJnYDO32EMfFLJfx1xAD-HWjC5xWAeiyfmgr1-Z-V6mKEJ4Kul0yaZDZf27kRI5DbFM2IPRdSbIAJxjIf1HlE6DC23FrMi_vemXBzyMf3hOqE6uE0GHCzoHkpGnIHeFpPMDfE4zMA0MBJVSTSVDIqEINICTBd7wcOamWXcY3_g4bNC6rYisru7w4ziHorAWXfKMqnCHdw2UPkxIvtFt4UfS69uPFP4cfddpF7GqcH2twsfYFNn_sWK2cxniUoabb3Poo0Xpv1_j4i-9Ad_UpRx6Kk3aA1fnddnXIejUUMCtQgVAYSYB9-QyHtxI8oUckgtgR0ZrysgBGjqHkueb5INRf1A8YsjJ8Sv6ppbNlHpNYKWnhZdFk73ZFjGFfHzFSoNpMaevnJONo3wmPc2O6yj0uuv7paPsfdlZ7WI97xOQyqTw4Qu2fawUGTY5X2pSr0b4lzYP1p5cHfRlnJRoDxq12kN8HKGsRxInd2bkgUft1m2JofIL8rr9TOrgc380WnhbgQtQxrl4ObiVC95jO24VpbjGyFT06DMxpC4LqqnHjvt5rjg8F87WZDSDe3Z9X66HtCiRbIB8yWAnG5nKJInE7nzRKeMd7tzHtAiq0XDoYXtHYN9q3cfpsy5mx3LdWVpOFtVrzuzzK96t8IwpbdtA2RJLUFJaRSSFIFPf3Eits12DD2fmb-5fFUyaI_rclBBWhS34ceP0itAeXsbt4PUKtBV9Kpn_GCkXCBpYBWRUmwHkvTgbKIP_qJCQhLRAGtZ5jkNUVsU4LOrCDP92zEA8XegV3DxDHUJVrMt67fI_Cth6Ig5Fh7dpe5tPY7w3enrrFbyxJhCaj6LVtPUVyi1-2VqrT4rBQiP-TqAjFI1mdiYWeo34ly9F60TQ6GYWkrf2TW2geYeEibcfVjXwlb9mMc6Miq3-CSeNWhLT5HnL2FdmMqc7s6pK8dUsD3PHPOWO34xwzOns_o6wgViGyxxGL3iQoFprm4NSOiv2oZzyvUnRZ3rTVivsjLQDaYheIN5jgcBJcH6FJeecT8hDhAetvh-&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MjYwOTpERUw6MTc5MjY5MzIwMDpQTlE6MTc5MjcwMTMwMDplY29ub215OkZhbHNlOjo6QUl8QUk6OTgxMTpQTlE6MTc5MjcxNDIwMDpCTFI6MTc5MjcyMDUwMDplY29ub215OkZhbHNlOjo6SVh8V1k6MjgyOkJMUjoxNzkyNzI5NTAwOk1DVDoxNzkyNzQyNDAwOmVjb25vbXk6VHJ1ZTo6VHJ1ZTpXWXxXWTo2MjM6TUNUOjE3OTI3NjY3MDA6RFhCOjE3OTI3NzA5MDA6ZWNvbm9teTpGYWxzZTo6OldZIiwicHJpY2UiOiIzMTkzMSJ9",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Oman Air",
+      "code": "WY"
+     },
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 77700,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "2609",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:20:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:35:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "9811",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T00:10:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T01:55:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "282",
+       "carrier": {
+        "name": "Oman Air",
+        "code": "WY"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T04:25:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T08:00:00Z",
+        "station": {
+         "code": "MCT"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "623",
+       "carrier": {
+        "name": "Oman Air",
+        "code": "WY"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T14:45:00Z",
+        "station": {
+         "code": "MCT"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T15:55:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "31931",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Ht5nL3gYh9ATBZlkBvKO1aa3MhDVm4BEML22HUZQbnnChgSYHoAElrJ0vqRiAHpaMM8mwlxjQWQyjsEGev65HMiSnA_Ivz1SldmYXBNyi_zUn0h6BoSHY929qBSyoRzbdrY0Nr5HEJoj-HSHrTtKjhBY7MAUFUiNgc5mWF7vcKXm7crKT9uSKUF9tYljHmqzp6zFD-eref2flKdVrV5TzXnpYqkPWCMzt3kGPN9ZI68EFH5LkGISh21xj-54C8Y78YVDtODCRODyx_LrazToBCBhQKTZ7rUJDN-XGymdKxjoTFGK_BTGDJ95-vMLbXeBiYOs77CZs6T0T2cRVDkuDUcdfnM3qpxhWVuZudxMjIaiUmKmZGkFcaq937rQvDOw0rXCU8RwKwL_rdoQgDzhGR1cwUhXlgzT-sHtIElVW6LEnK_wXHVSR0A2coBMJsH6HQsbHPnztDVN9nztOIVkzyPrIUaS3ZpHdHi6c2wB-fFSaFPsezy6-YWG9uLp9uzORuLxopje3JDmI8hgjLW-IKkLq4c1hLCLy4taxCFLQ3Z3B605bkpqcNF2GTtoRFpM90VoscZz2Jy2rnGfLjBToFqVshy3ajOOOb2CRh0UoX6K4BED2Yc465dBsXXPEIaY43NYP8Qfq3YVQVPltyQQbsPT-Q4BkggwWSkHO9UuCBs8M3Vrdrvcl_FunvVzrFM3XdoVR-4sUcypRRXQu8uXXuYv5eJx378cH0A6LUHNO3hGOBW24FKRVBcQ1hAjupgi-CoXp9IG2M6RFfuO-gnFp_fkwUgqGfNt3jD9KHpteut8ayPLEMAtM_B2YlYSoTfK0uJAxqLAhBnSnoTPQQMA2C03O2cWFGfhFCkJQdc1N0QrK1RVFmnw3qdSFrGp5yWDDpr6lxaZ3Yck0bl7jzidvjtDBHbTpIrlYvGzHh4EUmCKymvgK1d0zBUhUT0jbjb9A5V2MAE8lk3E0LggkGuAw6lMfLzoAnCp8b3reHWh8skPSQ7e_f8f8W8fupvthWmtAvkzbfhnpw8_MoOnIOaT1RtoQwcwIYKhkD6fkrsCEPcRrjhahLEvXSlqmFajWz2C80UP9C809OG2BLTHkl9AV4lCfl_K9d3mShMsrCnVMW3yEtUXyaUahH752U4kapT6m8bZWxVVIN2h7NH-NrpLVfqPwIEYKF4Nk8t6H_mVnX9Ed7OewOfnp-aTU7S3UjZ7oE4lvEYzT7UfvD98kwxN4V1LyfMveSiT6kUeYDhNNOyWNgPgOaMNJpjht1uzKl-hz8CEUXgj8bG5VtUOtFUDU88fV-7ZhWUpAPRg8AYHV3srryCwB9rOp5IzUsE2kuhN6Pi2TfIIVqCOoZ55GK7wTZg-Q7vEzjcLpEfC4RqyNpSml4neI3FSfvTggFN1Z6Q5a_sxzadW27hnw65BnTlCVihke8z4q_1p9VhaHwZf7LlPi0CCegW3JVpO2vke4gFqjfDxcXXHlhbPtjixmm6lUVl5tJ8s_Yh9btVBi-lWwDm8%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Ho60zaHPDL0Sy73--YJC4QEqVNT-S42knnspawVhmM_iPGT3BT4bly2oxda53LlGYKX8tf6qVXaiJzhSt3T_bVwIrY67PNRWbYNQExQV5lI_LYI11zCoNS5SsEbIaB4FwagAWqbaO-Tqt26s6Zx2wf-FzeDrBzAt0eb6ko7yDFMCcp5oh31_B8Hn_x5qr5ugyVXgqPv1mhcfb2WV1CEXJqIFHKHb-9WA2ROtIEpRsbvWXRMLcSbAB6r8GBnwqEL4K6IT6PxeVNTV6LRr3ZhPeivBe7ANUTTHcl1s9GfCGRnoffkk_VctEOQkjzV9cidWt03uTjqWgC1EOaapA6HnO6qS82TZncqAbNG0KEM64mYK6-QX7kZDDUeElUSmjVJSYCHh3hE8B3X7NqH4DlOH_3X9_NEs2sJlmH7W-KVimgoF438snblnTZoMzLL08Sr1WMVJfsg8orhwTLTDTAgW1KdmeeixSP6cxolNr4m3HibHQ46H-Ex8jf1ysmMp4eAd25ZqohVy4R-u40d5rjBlFBCnDBi-OGbTTUs07j8sClwspJp636L61IjoDzbNFFdBKDtjqG2cxzw3dbOkqWVgToLnhZGwRADS8Y3UMBBMfSN_RES1JtHVQrn1PIlVv5Y17YaYrKVy5FoPdYaJ5TyM8sht5uOL4KLpAhT97tYaZvikntN1ScxW0oaA5JZDSHHu1IVVWPa16Wqqg-GdI4E6OzbVZuTq7NXzfYmWtO8uS9CJOr_oUT020Y9F_ZZjbjoLifNoY5wHlVINqQg5IFcQd3gA0PVj34HCg65HovHMap4FAT5CO1JFHB3eG5kKcE4jFzOOcOG8sexFYIji9VluUrOHvB5kISPCOEzCbR3ZwVT_h5mOmlkLHPcmLFZ2yNnwdhglkW06ruuDbnUazZCf5V0UNzNZ62j3a7XW-XPY4krABN4YTlfs1vJEMru-ypTDSFHOV52QN_8nA8spheSPGMUCcu1vZ6QtcpQ2OUczNO2kuSYVePrW-KMd3qsNHcZ4WSVLAFc2ZRixHZzF6TP9U2kPkSXfBpjY8V9mlA08P2om8GTJU-c7gigWgfP9LfDQJ3s5ZGQRRqrmiW3PWveFDz4gep6elsVB-1c1hXmR5pYLUk0S0tHruYXh6b7hybQD7ZT7klc_BHkKMI7TJ-YQQZLpTRT5zskd9q-rSv4pSyhFp4KxwExNDHwGHAGfh-Bx6eCOUf8wlrOWw1Gf7nSXYwR3gvwuLi5cceAV9hPgBOEgGboV9rQAJpe23MT-DS90Zh2AJtL3iOlM83IlfxQrS9xwjzn_tF_o4P0PGtwwbmD4zlXaKdSoPbunF266QLAXMmze2Z0ioaGPHpY9tdFwW-7Nl-5KCR2nLVhzHYLIlg9e66h1ovSAYmOqz1MFXKVsI5gKN17XOBBwA3TEFJHn7nwk-XyOxEyctav38ztmoNGe8ymXXfvlUQELYTBkEcVz4m0z_iH-kLMmgALcBzMZKu2I09xIZmXX29sCd-FaOGhI%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MjYwOTpERUw6MTc5MjY5MzIwMDpQTlE6MTc5MjcwMTMwMDplY29ub215OkZhbHNlOjo6QUl8QUk6OTgxMTpQTlE6MTc5MjcxNDIwMDpCTFI6MTc5MjcyMDUwMDplY29ub215OkZhbHNlOjo6SVh8QUk6MjYzMDpCTFI6MTc5MjczNzMwMDpCT006MTc5Mjc0NDUwMDplY29ub215OlRydWU6OlRydWU6QUl8QUk6NDIxNzpCT006MTc5Mjc1MTQwMDpEWEI6MTc5Mjc2MTkwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjM4MjE3Ljk5OTkifQ==",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 68700,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "2609",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:20:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:35:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "9811",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T00:10:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T01:55:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "2630",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T06:35:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T08:35:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "4217",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T10:30:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T13:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "38217.9999",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HQ1KwdwQzTQfteBAwAwEK-wRCZrCeXp9FXPe5zIyxU6cUnumkRsGV647VuMfqQD8zALDERPEQxwutV2v9lr0rBl16BgHaUhdKPW6x0RT5dBJFB-0MwoVtQvBrvLGJR7h2jaJIvCyOxRdg0UNEWAToalNBchZ0isk6njvvCuHUo6ZPIfkYXChz2GU8CZAxOL_Vi0MC5vjc8-YeC8I7Hs3PV8I6oF47lktG7X6krPZsbq9nWG8oQSAvlkOhhzXRp3HagsGKtHYQVtSXnavVgsxHOvyX0qhQKDVxKMiSt1qynGW-ZSy0CjKLRL1r9I8ZULdbrsCntGBVIYIfyf810SAqZoBSqXXPa50DBmyvo4HzmvXFXKTeSQEFfhGQwMG_aCE6Upf_EsEzpCrIFs-qaQGaajZo8Rgf6PAOyA8rCe4Sl9sbxQSC82kh4SGrmSUG5nKWzFktipFfjgJ9M1pnjiYWIcl8V_tAWi6Ch9MqkI_sg03grhQgavqxvR7ShdW3vjb1l6-qqnW303gg6K5fXHQIr_BBDnhmEf9mRPl5yyNMZImlAG9rQMrIW7uGMm6RS5lL1xDmx10OvkOKEIpEsuU-C3uxJJUZ9REvsLrHfpg3Tgiagdo3gjGjUeIWH_eIdwBMVZdPJ6OyAKK_zRttVV6a4eSkNtksaildwEUbkPBKqqke9vuhd4gUeD-MslCy_CtYDNe-Ff58XFtf9nS9hiFv2Fvgxxd2tXqRjXyOoaxjI4HaL-wB3rRnF98ENRPr9KaPOJQAKWeyHmVdFggQ7O7V680UE3qVURyb4QHg7eejfrql8InYKkGkKHhvO9O3gwU4M2fKHcuSM0TKHdVbypshxVjxTXrqWwkOwe28anxNiPOuJwc-dRjNtFtmBMjO6rXuxIKQgZwVHZCnZ5kjjqDMBQPTF3TGGudX4nETFHzH7fgCiJDcN0r-x5V0gvG37-KQMfYmca9twGBJmmR10Egl2z_-JHE3ANH0p-F9ld9pG8kA8dxDoqDDPFRPZ_ph2JNxxypEnCKUI8HGAa_CKkhXi0xXUB7Kw6vKLYK-yEHN0wslOy6dnRJdJ88pmzWRZr7YLw74Cmvr4U1bxNhrA3m9lWb4jL8cdh22MzE3WomIBfAbzEPNVnqHxlbcs-HhF1A1BLgLnOHb3yAvbpDfFX43og05LSOdzJggNWUlptvYDAfaGfe_JCEAsYWxWAD2uPzth4Y3ZPouPpfU84P3_07PgNx6N7NSqeb_gLj2DlPAVThGLBcn3vnM1Oy7LWsLZ7PHd-8dIZn9Krx7ofFzrP2Ua0RxKl22N-ynSjypTtRUvPjFp-nJrITYNp0IGy-1ZK0nEKx2iHK83yjFGd4Y2j5kh2ArpZC8ODbjsL5cotlof9ytT2QPdPhXSzhpaxiVb9Oy8-KWZ-n_nDYVjGJ--tAR54eX5Rk-o2OBvekW1vxG0sFL962kn-oveBOgptMjoxBzP7sORoAV4koFLz5l-vobXn0bbT18Z99H2HU77pLsGec%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=H5FrGIG2D0lb2J9RPdZHtUMEgy4r0LkUvlhUaSdPL8Xpg61oU_mNmTFe4LPrkVGnEOxCYFBSJEBSI61av-OBh6M0qf3HCAbp0Eo9elO6izxfsJhQ-fLesbH3Y4BY8d54V_jBxb--_RwSQVVkhtRwCuuWSFiPjIPr7jl-f46KmXqpA4RPqCbeHGtwvaXcmb0ZIizdsK8USliWZhMPfYI23GGUhls6qWhzrIGx9cDDp9OKzJEnKYCCmeYCTu6SZdm5qvA10Of3b0_g96TdI8Cb6yfacmj71uCeC68tWKwlFPXvnJMpyCIsyUVLsg4neNHfXS-V-LQJwQXJxAXiWX9ZjBPvQVx7up9eewiK_YK_eLQKHYsuMEmq-Zt05GEwHw6ExwppgRaBOY7p2ehhC2Sd2120BxzM69Lkgw8-IEZ4aYl5U_VRVxpMSyVDckaXdQquoG723DABkfk-LilDJBhoOcKOMcoJvpCvwbPEHf5dv2dCCcSIzpX4YiIKH6au4L8q9-pNINM-gjGptkr92t-zJiM62cJuzi_16Q-UHM2IURnLRq21bi_UV5skzLQvPptGmSKpTPiftjK2LeoiLIP_nTJeGq6b90qtddzg14UnsKRPzRCYVjtUlLXHZrh1H3VUCDAMxXcwRkyS7yAwS6eu16Mfm3bdtbD7wD-6T1K-McT5R9kjVxcnvYEPtxHeghePyVs1Z4cK_hLIG8XZ_yNnNfMAuKRg7MkACKwrN5Gd3VRIytN0Rnokyvom8nN9PTq0ZReAvzdmlsuu9wMkoGpCN2gZrX56wkACV3uujzHWuipySIDyDLrI4I6YLw8fKBWUwT778la8-NsGV3xgtwAYwIrjPa8HJIkfAK7ers3UxXPuI_GIOaQbMhAIiZ1gb_E7ruwH9onqAUaU02-0tZyZ2oZ7QAm3kyETmQIH8BwkMTzAJ7iuUIO4x4BqYmyj2fhZd_QeFy_DHXF3Qyt1H8aW5hbcrJ4eENUSG0quVFOLWUv8e_bhNSrk_LWKpVIuEMyP_D51DrkOXrHM2pVN0n4T2vDoU2bddutqkXhlq1ZH1H9jGSs39bZocTm6ffq72jFTuPCa-loFN2UL7Pc05k93HehRdi3yYKQJYeTLhO-OkEPFZqLpcsUNEk9ASu2QaZhR4BEY9yPJZUHggovpYjZmkiPKyEATscJj9kMiQhRupNDb9KURDHtH9ITPTLMUkSCESYcQsDA93oVSy1ltFrVG52BQjOZImMCUFfOZaYo1Spg19G2styuHnrFZmyt4GvcxAcHFu6PIBnqymCkqBtEwqzpxS_qCbTDU-j2lokNfLtNdqzrogOb-vq2nm1uDUbuDWo0yCChGyTYJf0Po5GOcJ1-mdwJo9ehqViTPl9AH8qmrkEMARIYPG_ktO3JOm8C_B6IVagUuD36PY8Ajnkt4Jd6EyVcBMTbO1dDyd6HV_Fc0cyKfHDOxPCcIWBFVBxSPY21V1CT9k3RH6BCf5pmWcQw%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MjYwOTpERUw6MTc5MjY5MzIwMDpQTlE6MTc5MjcwMTMwMDplY29ub215OkZhbHNlOjo6QUl8QUk6OTgxMTpQTlE6MTc5MjcxNDIwMDpCTFI6MTc5MjcyMDUwMDplY29ub215OkZhbHNlOjo6SVh8NkU6NTIzNzpCTFI6MTc5MjczMDcwMDpCT006MTc5MjczNzMwMDplY29ub215OlRydWU6OlRydWU6NkV8NkU6MTQ1MzpCT006MTc5Mjc0ODEwMDpEWEI6MTc5Mjc1OTIwMDplY29ub215OkZhbHNlOjo6NkUiLCJwcmljZSI6IjQwNDM3In0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "IndiGo Airlines",
+      "code": "6E"
+     },
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 66000,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "2609",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T18:20:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:35:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "9811",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T00:10:00Z",
+        "station": {
+         "code": "PNQ"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T01:55:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "5237",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T04:45:00Z",
+        "station": {
+         "code": "BLR"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T06:35:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "1453",
+       "carrier": {
+        "name": "IndiGo Airlines",
+        "code": "6E"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T09:35:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T12:40:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "40437",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hvz330Wg4BRgLx2pucRVkm7RMpCW00Rntup_3ep3Zw4HSmcuqmnoLMu21xH8dGp8xtUhUjftbgJeBb4tBvNl25PnsCxWjbQDV8erKTwTZmRNLv0ViGRHMx-fhf1vBoEgC7YK2Hd5Z8GvCA49Dd44zaSTBj-N8XYXOmzM5lwaGOfA5kQxBf29M3Q2iJmyTpjFkGPnoKsxxXF4On7roFYvJMrcJO5WHY3LX4Oe_Mt3a5BaJ5SZ-h7Zf7-srhPskqNrh_cHz-vzDgElXCZy4rg1kkRHmWS8wIifYZAWfRG9-UhgmqXhGCEgUbmZO3D94f-VcPqKs5JPiKV1aHd8g6R5Z69UC9TPGGHFeYlbxmquyWuV1fF-s4RwU68SJUEZ4eiRbYjxiO7ZS6VMPZHwWvsSm3KNjd0NBqULVZ-FOza2zFVeHUchLS0IuTz6NVb1smt5DGXS7YWfpqRt-BSQGUoZvWHhUqC3PMvNwsTXEo8UtzGmAvOr5CAIBuC2J_UEfFLebIYHWY53l8pVEa9QFhRob965Xb5ywRIUXj3IFNcavO0fUOimIQUUw7vmD8BUJ68mMdg0_Pqtilb_F5pFBDaZf8_IbUtI1NIkCbe0ye4WbsRjSu4kCCBMZwqQM9c1xH-JvMolV2jLyovJ7-XuS23PZZluK3mn7hOQL0OJaflDjyrFfq6zLloZjC2KYwBioS_rgkysIh5yPvD17i7d-ecOCV4QlhvgcKBa9BfgXeyub8MbmM8cBqJAAWv8VFfMllXHjcDSrLPVIKtfeVfs2weY7OXhZW-HMcNnWjXAu9iUiopvQBS44k2dzUt5hsIQpfTIcLn9PplxwJckympDC-gwa6IOlMibMY8kJ4pU21LYP_Daay8cKoMnhfg6G9MkUyi5jyXOkUopj04rUG4OYrhDgK0bGUs4GZdUipWVV8StUMbrSe2lSl0qjNww8L6VzD2enArK9X3JnHyOKehOkgHAd5a19URydLvzqxHrnxsw8Ct8M_aeCcGAYsQ3MQ-xqOIz229PNgkAI-opnGpJFTEXRIQKoK1ewXCBTOehAxIJdX13J5rRGdnkGxXD6_7HohcRCywsiROmlwQpL6eCv7JkNSc5GH4b_yWv-WRdolLj4wYkYb1JIP7ADccbpGyKKA3ECMNABFsHx3wa_v11RudNZE90P0fBVaDiVkbUT0pYQU9ykGoU-uCX6T4LkKTD2tLBPQ6BhCtB1Bh8uiolXoP0oicPgUwsSjZR_q1wJpt6vVV521lzIr1RRPa3rmQq2oOUqqdE_lc6BmQYfQMU0s0g6ioZp-C_q-PwKUK3PU_woS0MGGJSjhmKtIkouUuWcN87f_37Y4oAjfDLjWJVnwYcBZeMaKTOhMGX8gYDDUS_zeAylk6m72EhjDRJStZNRPVY0TLgqQHhfeAPxvT6Ww2RWCwwtEOCp_y0Xe8dmJWiD7r2vGOozlGPcGfqvIfW2WoCborDDmC7T_SpAgaZd4HMg2Q%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HI4HVbdGl_Ly33quLQTm_Z_1ZSkKtK0lWSbUDbwvrvJDtFeu8FZOSfbqxdkmv8lRLUF4H6ALlDSPmd-Jy0XneTcQax_y0OSe5KDX5F5LCfD7GMy_4Ju0qvb32jXar0euwHEQh8gy6RoIhCeCLXvSXpXDVUNd4sN4B-IkzLMp1QtXx5DedaqP4K5-ACIFguIj3tUVqQ-foyv5fxDnRy7-AqrxP7xTzB-19E1y1drjBewX-3xOFcu8eRJ6wq0d5BVRvWQBzvxVSU-LyCDyN4T9BDXpPepom2MCBRG-WsiqdYvBrQdTwtifSQKAe24IhEBfLDKLNq4eVdyta1kQJO7jhAeTnr2JLjzKb0EJOkjkNbcNx_5edPO-ZWDABHfDKUNAmQWKfJW6LBjmeNL7ocEgck0LfZY1IYERKywD76NDOWAnK8oe7vTC25BquJjHd-MSUl-TR109m_mjjwNHMmYtsu2QcoQLwbuheZ5DYRW3jMMsZZBjLJTh76dkpppyFFmOrZEIPZG1gPmiCUN27aAZQ4oiW2Wbraxf9PnerjrRdiGlxo9aGIYQEhE0ebt7EJP85IAEYTK_SqqZUHcOlWrT6do0C2KHhzzUL8QzT5zSrpv8rVtnsqNk4YxDueer110qe-f4Nq8wqtnoWRZMKN9sIL5ZbIfBTuRtisfZVSXeHqKW2bZDXntM2kihfQ42H2dtawjdZYz0WMnMlo6ME6QVbd8K4tCBom9lEcXYaVS6BTHpjql_LE43bLJiqOPvc2uJHL0ukVzzIKY-ZNLq4Rc98WyqF_XMaZiQ7HFChJDOZXVlNqe9nqAACMccriUtlBFHFkiVTE6upB8DbtVrmENGBSB5ZVxhNC5PShv7TRbYKRtxiUIvYv0hHQgWcGogwFMk3YK9SYjzUpe3yUIWxHepLtEqhAOcBO-Y5uwSmqkvrI9YMVD1qD5VahCNzK7P0pXi1ML95LRVj_3eOotGJtUWdBqameWMGHe02gsrv0arxKx2A-G3WwhFtVl0R5Nw_bUoYhDJerFyLTlJsw0zrzikqnnb86XkSRx07Dw1f99Up1vKlnmgne6NedpzBvgJlampclkQ9bOeUZUKran4yLTzAemMOEqsaQXe8xXTCrRTjOu6gJMaaMXc08DiK0tsJ4QOdTEHfwaAz--Izqk1HPa-POczj-wNF07mAA0V3bZbMBjk_DUYvSDv0z9UqHuiOAeNqEKo4rPoYg7Pg9khuclKHOnH2-XVn0BWUJ2NFJx_cTJxKClC5ZbHEVSmSGq9hcpo2zdARPKuuXZxeOwGxgXR1BIAcIlFS6sAHZI7H2LPH2yODUuT2g60S3qNie-xpUS0eDHwpNt70V74q5Yw1V00eFVS3LsfCKAktXXeZdQ-N5wIkS1PlqYbM5Mn3z_G6Be4OcbZxBI_vg2smXSRJ9CSnbH0XccTuLErB0IG48vt9AqFSCzilT7bYT06KEm7PNvrr6cC8g4lxc3wEiZCqVgEBtQ%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiR0Y6MTMxOkRFTDoxNzkyNjI1MTAwOkJBSDoxNzkyNjQxMDAwOmVjb25vbXk6RmFsc2U6OjpHRnxGWjoyNDpCQUg6MTc5MjY0NzAwMDpEWEI6MTc5MjY1MTUwMDplY29ub215OlRydWU6OlRydWU6RloiLCJwcmljZSI6Ijc4MjIxIn0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Gulf Air Bahrain",
+      "code": "GF"
+     },
+     {
+      "name": "Fly Dubai",
+      "code": "FZ"
+     }
+    ],
+    "duration": 26400,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "131",
+       "carrier": {
+        "name": "Gulf Air Bahrain",
+        "code": "GF"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-21T23:25:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T03:50:00Z",
+        "station": {
+         "code": "BAH"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "24",
+       "carrier": {
+        "name": "Fly Dubai",
+        "code": "FZ"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T05:30:00Z",
+        "station": {
+         "code": "BAH"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T06:45:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "78221",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HIyi9oi_5cSzFPqKX8wvLOq8mFD_0XVbKCj3oegxstIc_rueDBJ1tWj0fUmhoHve-xm6RC7lrKqivT2JrBrICtyq7cDO32BsOa2m9ezqIWzkynpOOAD6iaofSje2WjHyBtl2_Z98YYnKBccaQsMZxLktmzqExVhlvr7D2EJpSLXuUAr4yi5BDsDkrjom90eLIv4duOsNaSNlwX8oIIW9KbNbqMu8AgsAbGzhGVEh_JecUv5ZY8gd78kP-DtjlDPcqDfH4dC2y795RIoGAWgXuvea6VBwrrAZ2I-KtDPt6FgFN4r-SU7gR-VJIzuIMbgXqCosGgxFpOxMZdJtM7-lNELUj_j6h7ckzGWiz1Xhu3TpKUFpM1wSpBu4LKip4FwhXGnROxlhhXdcVoRbY6tF_UOJSWCjMMFMLKCjS51zUSzvNZ2rHXY57wUiEiU_q4c6ATRnVBS4VzwdMEzn8FFb48AX3ZQoitQlME_h4GmREhjzkB_HMqxUysiXjScVDo_Rf0pG2nozGVkiJ94dctjEFSQ14c-rnwDm5wigdKaKZYTj4_hFvTVK2cKMTfBzVPTCmh2Ck1WntVut8-7ZF2ZNRP2km2xJdmwKSQ09ljgUPbcd9VB_SQDP2-cXkW9k51ya0cCnyc56wOjh7z-9CIb6jFpsUoWExPgtloAdH15vr2jVDhI-LEUc7-4C-0VP3UhiO_B06ynI8-Voz4X7gi_KJn9kRn8ih61zFCp6NeHOJP7kHalfT3RelPjqDPBOcBYYz5ZbJcEmJBNmO-qQM9WCKNNxAF5A_e3BvqT54fbtbK1Gb0ACyr2bf2XG5dxFQnp4pE7ipEy78Jqw_j71s4smQsrAF6Mr099ol3YuaRnUxmXvgI0RGH7Fo7h4ZPVk4_bsO9X4jbE-rv_WS3YeuJaya7jEh3YkeBF0PMEWPeK8nDQun4-5-tRFQupMMFUSLDCyLYUekoHAy6R6D9W0D6hSzGZGwyjin2F9wJA0gHJG8QIg6Lu2ONJP4oUX2QDEnMNrMg7dhqHO0FTSlatnXbWppXb4PK54aIPUkUFEHj9FcZ_nhIKYMoh41qdO3wjm8qQwM4K6Llj-HESEnHBIRbH90spH0iyJPVe_rvtDcYM4G8YR1OTcLZ5trfb6aBDc45eZTnybBT6d0jl-xAqTtM5DwEKDD3T20PMOT8cJZqpcIdCrLNZHULBNbTPMm8cR9qLOZPEe6OxBwNG9ka6NoUYNu5prbM_BYOmPyjAtTrrQ8cBewU08MsPnjRJH52TeYFqgrlm5wA1jlzVaE3YpolAvuRBxBMPheZjG-wY0lPIy03BxJkKGhspJDfVOjWyYV4gpxEsBOjTfIAmAWr4Tmn0fEug%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Ho6Dq9e-5Ce7QY1kA9O_oXtN1-cl-5OmvuiSs0OQMjGZlOuL9HD6AZBZNdK1KPTHXDoUcbQFaektpSsc3bMEW_fXJn_xcg5NQbhK2c2V0NTDCsMczBcPFeE2NN4fSmgSkLdy8frmv2uWyEpataYw9w417XO-1i29GRKLmuZ_Yg3oo3-JYLXRSDPBlt4-wzkxuk2TjWFDwE-xdJBhsjO3Bpk-yWkvBMuU9kFlnLLimHP7DNfekvQgahbyXsMYUiHtOxP4VhV9sNpXg8guXiBqhcYyqNCNnyEE_KWDbprqjJTi6EUFS_9jcPtrAH18sMRUHYDylpj6IfibSjKEGKKpMpdtXsWw66ES-y9jL3eWw8tqRVTgFCs3PdqcePKsoA2XgCUqIIkOoXB8KRcPREpCmVLMmUUugy8JBwlI4Yai_ZZgX1MtJyswGDaW9bKx9sv9pD1zErq1ZirIE29tRNf2nk4sc4IgUa7jw4lZWtx_A-5Qu6KOcg-EK_rJHEj3tWFm6cP8dnX6m0mRsiMcnuFao3AH3JFkK4cynso6sI8WIfo_q4DPP-tEaqCURYyM4ddVZ5u24K_wuZ16n7_gaokVJtcTRtM-WCUMaccC44mMRQ3CqpXM5iwxmqNr3Apnzf-pCoV_kDpt50PFZxeB25U08D5EnON0oKpegbOLXQ35EGFsP4K9_W0pY2hjJTh5zqfDQ-ySOQCUFkEvGh8k7OWd9b1mz4_1kO5nklI8iNnNFEZxjS5qmOpB4uoPKumnVWe-HvK9CEmS9zOYvD8Zd_e6m9DgAVm_ryKtMqffZKt7xUjWp2ge1Xre4DbqV_e0OFRDh5LBf5vjPncxPvWeiuMJJ4bfx5kCKkIh6UXJjNDAJwbfQ0AGjKLDmz97e0msK7BxttmwjV2SRi90DC52lWclqeFdqu15_hIQgzvJfxxqb2_scpyxtOt0yv2WSrcGxR4ByJpXycKQyJbTdgbI9jGW5sCBc5RCaTG40rhVJeO0ZXZ_9Dfs_RiS3BZSc2O3DdLZG6nP7JNjnX0rh5M_JgHpUcQr_lEj8VKCj4Lz_IBZol8ZQeO7BUFaDJntGl2P-HGeNh54lMkxZ06-K24_RFfuu_v01mWjmEjHpPk9WfSm2yPyh3v5gkd6QsyluOsp5yGxswxpqy99_90x1RWbgDSJgLcWGr-8M4Bsd9xIRgdzEv-VmtnbFR_u2NzYB3JPWoZU6N6ykO2WEIsz1DsGoylDUrROAQajPagD3iGwkygxoUXbKmYLr-W4WfUlxoA5zuWCkj56pyKZL8_LFEr2lpDVW7UaB102twofGSreIwU7_M2GhCHMnkDO5N4fJ6W4KOjodm2NElN8xX577ST37bBxsnw%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MTc4NTpERUw6MTc5MjY1MDYwMDpCT006MTc5MjY1OTMwMDplY29ub215OkZhbHNlOjo6QUl8QUk6NDIxNzpCT006MTc5MjY2NTAwMDpEWEI6MTc5MjY3NTUwMDplY29ub215OkZhbHNlOk9UUDo6QUkiLCJwcmljZSI6IjgxMzUxIn0=",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 24900,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "1785",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T06:30:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T08:55:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "4217",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T10:30:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T13:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "81351",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HmCwpIe3JVn5Yz35cGm4EkmbVewYHs_jh_4TwidEBj4DAmq-6bFMH_VevMsdjw2bjZFM3VT8L9yGdIBFPKxv1cXs-x5QEGQm29WlDmdNzXhpeNNcPqBlqiGO6QVhlE8qN-bYw2eCN9VATFfMWVegJVhVedCDUwFqFCs8Op5A9CI1NMKItk4Sf54tGjOtbE-MX_kA1Q_ma8s_m7kihspJIxoZW4sXvYZLOiZCzIzlEp4a7gRYPEyQOj8qqv3GPcP1JxaymXkCEifwdtHMc6etcK8bGhEEN0Q-U5I96nUJ17v_LxLrPqLo6ThRpS-ARKO-SHVTg3rWSedfQOkWWwGIJo4y5Xj_-lyQD3pZvl8ncP__gqZ8AaZhryHg83LiACcA64T-lmMpeC5UXAlyomSo-pPbvXQgTFqwNQRmo3C9ub3k6Ol8LVZe6_rqCxTNH8mlwwdbykmbizfGA541KmYSKHI5A5NedW43GP0H_05It8UzoQShLQT0uOxiXngTejUXnZeRr2y3G07LJmcz2fbtPECuBhr5DWKqyiJ9h6Y-tZV3_70vnFesUMjeKc7HVUygDYGnqAngsUoMM1CdNXwwhv1DUaXkqeoZOdRQBmv0oSfdJhmnzu2SGt1sS6FmNJpluAXfxUCwQ0HFaYKS_U1YmSYZGXvMOrHVosWmA39lOd9R8vIXf7j2nHp6F5XFxg2xSdbl9kkbRdUq9moK8jQy1Q3whTqSqtehW_HMeQ-Q6NE8BAbVdNWB2ckD9YT-SWZieBS1O63cKnNP_EW8vY_Lp5O885QCCrCVazsTIDkhsWXU0T7N5HHCwscWp_qrfDuk31HM8836stwx0OtHK7NA7Mc-b6aItLn9mcgHXj5NqkO8Td6Xn3ClVq1lC076yLg8IG6UdwLn0GPrpnpgFwtutnfH6jI5HzpTwjtgTn--m_l7VpPm9EY8oD-ZMUAuf9g7SiADQDR6lA8p2s82kQ0s4wMH4Mfdgf1ABYJb1affvE8TGSFlGLC8B5HFlxBTnPtb2XENAyO334vDkrMp1Vuq2tfmtqMLW2pHTba4zGnz2Ti71dKZ6aKi88zyVXy5G_yja8cfOaok5vACcrcoDYN1mboO-1MtlafegVynz4CKMRuTLAwYRvQu3zVTS8X7HrD5N&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HhI7wmReeAsdTy4u9i6tt7iUypyg1hN9XUdRi1y6Ct9FTyA3rxqxgOrZsrPQurvQH3O7ibabh-Jd4aQ0PqeSRJLyElUDb5j0Cus-DvTheouHNXwKVfOmqdON66QS81a9Cocbxq2NQ9bgMaAyQvXSC0hDJXrPvafewc604t72jh7_rfcfLbeKXo-g6VjKR2ncStSE_RgJ664DLaJrbbLHuvQ8z1H6c9WVv3W-TU2w0jhjhqEAVS_oLcK_R-Z9lFJkkLS5ifFsmXHUtiKCfIVWZU0T5-U1sFZWfvSM8cjBtvlNIJSjYtN1qNHegmwJd958Y-U5-7KUULhFaGqGdoLjH-KrZK0SwTojBuZe4F36fRdR3Q-CWuvQYBgA__P7UwMfEDkSkeupD9Hm2LNt-yP82n0QahRzj6SVh9Jj2hO1uprz3v2tGh44uyoh_Kw718JEZDgmeuLdOL16ePLFuUmynSFmfAQ9O75ZRBVWbgrzbrIw61nBMDX2zsuDfM-lzf_LnbZMteC_y_7caEmZWcciD7B0pwRyyboggIBsVaKTXBj8Tc-oWnl5I2Y7qs_luPYw8A3S2d6xyY0avDFrB_7C84HA5gtoIVsYB8TgjZwm5T-8iikPeNzqEweR5WlF-ptHWh47Q7xNZdyG_JSqY-YslV2q0FRlGEZHipzadK0kDBSNTuvLCZoFLN3aYu0ivuXd6YEyJWFDSQS-G1A1GE3KztGflTq43U26Fwp3dz0Tspnln0vlVBt_03MuGYXjkRJm1gJ5JNWL8LiAuKdYDVMrI8tv_0RJabh8VQRe_ZkPOiljt10UoPk3pCw0uYiaIXAh9yqesGGY6roJWdDEgbAoLbETWBNXkYEaSI4kpva93goSrj31shDUWotcWetF_zqD36Mvrvio_fMyRaD4dVqZ0TbQg6MV5cYqkQALRHmfTA4svbS674eg3LJRQ23u3OGEUKAvlqs8zscb3_l1Y0nQCEgdsEAYtWMq_WuhUXHGmfSUoTkGD9DdLT22s0WUv5mjO101PW5v3vFA-nI_w5J7iP1gOB8Qnh38ZnN-t0sp0CZrN9hzbCBqM2gdS31hRoBOax1NJHEK3GqK8QP_B1H6WiMyQTMybuAb3kQQlgKNTH-yq3sTWcBzVqlh8-ylN-oCVjdmiDMzGvCU745sJJcwEbA%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6MTc4NTpERUw6MTc5MjY1MDYwMDpCT006MTc5MjY1OTMwMDplY29ub215OkZhbHNlOjo6QUl8QUk6NDIxNzpCT006MTc5MjY2NTAwMDpEWEI6MTc5MjY3NTUwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjEzNDIxNyJ9",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 24900,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "1785",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T06:30:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T08:55:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "4217",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T10:30:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T13:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "134217",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HZjDMboOhPLmf_cUJYJFXpgrE2NkLVPpGTb55Tz98LMOtHQnga4DTtROFXN3i5rdE3gwZ_9YhAKIuz6RfsnLHusizCFYdNfCfjEuLg5FrLGvBdxX_SHaA2dp88h6cJ2UOe7SOE4oV3QzuSEcntbbPleUvpjQYhhtBZwG-gWG_rhHpRC_6lnVl3PmGgIxThzDrdVMoaskxCL9MHB1mj5kTc5z-SsozUwerUKPhb9xIaMZ2H5yaa75Rk_2PFGVhgFbyHuqJsXzlk7NxFQg7qXuHPQUNn1_FNWz1OGPU7HOnznnA1GYElpISs4-jQOlSQ3swZYU_3Wpmx0Xb3qeTPoiU9pjHu_NEAj69v9YkFwmSLajcRlE5zPn9bbsJiZieIME5BGmHyDqduYLD8jmdwBD15zD-v-7g6p2aWdRSZdL40vpCf4Ib3GlgFnKNnhy_eMeH107YAaEOvFUP9FJNsvxX12gsyopQwtIAR-CAMW5eFSCG7zgLDK5VNLfzRG_drkFbDZ4XSJUS4LWaBSQ7SfOSc_ekv2KtJNmx65yBCiJZL1XIde3d1MKUlkCv2wpCarvgzy-fp95-N_vqqx0Pia_qEHGjuRY4HJDHOIqufK-KxLqtFsTeR99ocpUtQDbLt7Dq3eLfc-wvxJgd6-HouUygldJQ7_WekFJ_wxouzAhQOZwq_igvACy0B1y6j5uTcYmZqVg8kPkC38D-zeyOdnM16i03xeoM2JWgj0cwIlRxiJiEaT1p7Gyxa6JNJFVorLk4bDonK-BYSDl9qVdxncwWJI1MpdER4HmvKvgarWjUw8BU6P13Jm5q3gnqSGO098QkEDeQZ_n81EFFnWyqB2iLrGey_vNtQr12WSfua5PxMCyI_litP_y1ZjTFa4uGu9eHCfXer4Fj-_kdROdYN9y3o9FcTDqDdFhvebzK2tXcFEfAQinXnPImVghDBDRNxRXHRqrWTVI-q685rgPlilnyDAknJsVYuWviMUvN-SQxQGO1rGC7aitIRNp7teXQ_iM16nVqxSRcbTYhrPoTW4nYe658m2SJNQLA5vN6PQ4rG4sfM1S3VLB0WC8mGxVyDOZDsmhtisVeR1DHQSkBs2ezLnq8TOuNEzQ3T1oukFSGitk%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HVgtp5qLqfDRb0UnlJDNiQcBJUnjSJUh-qaKe6jYn8L3vnUK5R5LWW_QMay5mnnW1yO3p8NtvlYJfJqnZnV_KuL-sLux_KwiZzD1Ty2fxImT-cGvilcuRHVgYSDU9E-c2nDe6CLyT6_PNIlhmPUP7iKQwee4bOkSgZuAnaTioeEz9Ja9xgvkL6M3lXQD3kM5S7M8pJKFxt9LtHbsLLwov7Yyjezkkon6ufDznTNGMMVuRg2u3TYyGF4XDfxh60NbwEDYsqxo6nCI8MsM885hCN3zzgXDhijB_CicwwRPT0NKnP09sEJfqGEU9b80Y7LpsC2egXFC-9yYQm1atzZiowM60DRgyJhE8C3iNKeb2VOApMhMfIozahwabZLataIPzq-_SqWlEa0JWPnmiv9YG7vDy7XvIDMdsrh_x7zcBUn7UzC_vwLSNao0ZTIBfM5lQbL7Zh0kFejwuZ4pcUcsxihK4Iuax8KVHL3kQQd1zUugYRIb0RqJjkVYWB0VhuiHA4rfhvBdP3v7b1bcjvPdNBPE9V91g2QJo8oN6v30Xx9A7BT2wiOJ6J6ymeNn4KRdqJ3LLklBWHok7hpHhCVhTqMtrNUr3aUgrrwN7p2R6ETpH5I-Ld22P8zHerPHQAHLneM_HF6K95mW0L_yUV6ES5jhEv1fNldxZHg-NLuiN5ib-VwubQgAsWtZBX8GV8bj3tftGVwIop-EBctL1zneCfoEzaLOLx1-tMEUtM3NbckvCVBbgops3PFc9DCGVLY0K5NF8d2ZIS5_xlLUIXU5RuxAIJzXJaH0yFpLjLDfvP-sVxjzCrkBbC_SSre0CDNrQbecmVucL8WE5tDXvBc8EsimyiZl1d-Vm_JIiGJ33jT4T6IwP2Cm-iwjPA9QhvkE5j4DjkBjvRk9BTyGY2IHwRYk5dWwLqi2EjkIqobbaT7frdduaDrGJ6qsyEBv5AQjXkYpb6I5z65Wd3dBPC_sb7_SAbw24rAcwOT2Jnf7rRhVN9tthXjEgFllm1sH7wMJPFt47zWou8MkcXgRHIBnX2gKh5fab-xjqSkj4VmI6HGV47G8pIZdmhp3de6G3n__y1r1ycVP7KSXRkSTHKovoJz9KCzW1YMgzzglYcia0R7Majr4VT6MEuTLAtoCqjb3nOYCCagLW9ll8rh_gzXQJxQ%3D%3D&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "ItineraryOneWay:eyJwcm92aWRlcnMiOiJLSVdJLUJBU0lDOktJV0kiLCJyb3V0ZV9kYXRhIjoiQUk6OTQ4NDpERUw6MTc5MjY5MTcwMDpCT006MTc5MjcwMDQwMDplY29ub215OkZhbHNlOjo6SVh8QUk6NDIxNTpCT006MTc5MjcxNTEwMDpEWEI6MTc5MjcyNTkwMDplY29ub215OkZhbHNlOjo6QUkiLCJwcmljZSI6IjEzOTkyOCJ9",
+   "sector": {
+    "carriers": [
+     {
+      "name": "Air India Limited",
+      "code": "AI"
+     }
+    ],
+    "duration": 34200,
+    "sectorSegments": [
+     {
+      "segment": {
+       "code": "9484",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-22T17:55:00Z",
+        "station": {
+         "code": "DEL"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-22T20:20:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       }
+      }
+     },
+     {
+      "segment": {
+       "code": "4215",
+       "carrier": {
+        "name": "Air India Limited",
+        "code": "AI"
+       },
+       "source": {
+        "utcTimeIso": "2026-10-23T00:25:00Z",
+        "station": {
+         "code": "BOM"
+        }
+       },
+       "destination": {
+        "utcTimeIso": "2026-10-23T03:25:00Z",
+        "station": {
+         "code": "DXB"
+        }
+       }
+      }
+     }
+    ]
+   },
+   "price": {
+    "amount": "139928",
+    "currency": {
+     "code": "INR"
+    }
+   },
+   "bookingOptions": {
+    "edges": [
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=HH87wVc53ej-lnBN5MpzKqJ0IeB9TkrfTaEMeMXSVlEOzUsmwLSjX_lmEFWRAvotna63GpcSFQRGb17mU4UEfpMxfSHQMwl7BTnhwo90GTQJ7e47vrS1Bin-7vBqtT1nkPBMj2cFsFeENEaBop27LtJbhAbaIOUZV_FPwHaajuQOzGvfISZ1RLKOWpep6nIT-9UNfY8gsatL_mg1WkpnbuV6hFcM_uQG9AImAP2Mji_f8nzZ-biKduegKcIuEiE604OmL7WNPOZMWuhZYPMf5vx6h0mtYhY4pDyk97l5p2hgR1i8ZEMX5zpnmrSUtGdEPLXc3GrYqk8ZG5zEDzvKJSx2nS32zwryhe-u7nuqklb5kZDHo2-NVSaDQPl4lCpTTWFH21IUGJmwq5_pfZ5cUVJkww_db-nx1vbIC-EQ5NRVExKmRwcirPjrXI9tH-w4FmlzhX6WlGK6CLfNkB3mPwBHmI8yxoygxmz5oFDr0yw0chyTibriHJXgo-tcy501JCSHwPK3yWr2sCSmqhCFmhZ6FlmVyemFQf1ohsmU_LyCAjdf0r4_ZU37Xhh7s9P4cmvQQwF3bYXh1Fg0_97G551EZvdy6mhPYMvCqq6SX55ReCJL-8pEUKcCZ-bvT-OBhxycWTOyhsEXlGLgLKrhEQ5arSZBKdfWvzY9CtrGtMqIlipZExIjmUMLOz1zMIKXWhHuvD0ef104PyWL85JW39_9qLDqPOEXxzIvW9DtAm-O-33SLN6urF-QscOTFoosk4OXum18CAxJQ1diyiSIqqmQEIpGxvcbKsoTyPySv8-AArSqCtkChciUE2djBFlvTYF4Q9PlrUKc_HJLUMvphgwFgucE8Cb8Saqqoiq67N8CTyCZluO18jsRzUlWFte4Xh9cJuwkgg3JEVAyszshhwCfbmZ2T2IjlY0bwafN1XuwtTe49USWu8eVeJZYp6fc9tP9ju-_elUOsVJ6bkKhpKSVJYY-ZEgJmH87c1ewODkTkrn4LVpFYNYGliP-7sDTwHQjHuX42y0rU2vu_xSYgpk30M0Wfr27xr_WH6IIQ0gkuTfFjdKmjPVEmvxOK6G3jDQPS1eLgamye2rOwHO-EUOwl4c4gccSR6ckppXf2HDeRWTaMTp6uK-bsQ9LGZG2a46Sbmri5BaaKA9aYSwbyL65_btoTrIBXWlBXjpQvB_U%3D&searchType=oneWay&searchBags=0.0"
+      }
+     },
+     {
+      "node": {
+       "bookingUrl": "/en/booking/?direct=true&locale=en&currency=inr&passengers=1-0-0&token=Hky3c_W7ZzZ94Y4CMIxcYBgyuqZg1C3-E2jtLp3l8KGW7ndRMvL7jtoY9Z0v-YuZGcS5NZe1pv6WELay3EZrXHYLoLTZKfHE517G4VRzkeVf7aEqKSpBZGHtOkfujYJpZ42hoE54v9-RF1tF3vhKKbQn0H5EhTys7u60scj-sTwoULvTRN9DeLr0pIrati5CWlvWMfJVF36dOw5Iy-7jSXueHnbld-kkcfUlzBRoCEuk5r8OmPQ7rugz5b7Q4a2Z64Zv8Yb7Ysz-Mfbyxe79DDv_lZMZqRNc-yjMbic7kVt1Gdi8xDUpmhwYaYiesUrUyWAqh3BBFbmjrufiISAbm3oS3s_RDeAcFpoBkbQ_uRrCu8gOl0eEjKSwKhwSplO6t77D6ghGvi4cpbtljcCZjWGxYtkoTHWgd5B2pg6m7nUyrpte7sOPrAweclovl0tN_7nxJih8ZBtPvuA9ARxpl-7Z86sbKkNbI6452izuAwjKafK26rME8wY0Vefir_GKvyjY8V4yYqPfytk5UJtcdNZWpLpL3C6BKEjUTA1IRPr5BpBz7bFwyqOAm1vMMXcZmsYZefbFZ_IiqjCWK98O0dkO0bJucZg_Vpr5SmHqRqkM-ZIexOb8d_ac-6rjBk8jqvxzL3MyW7-OAvKUQ8O87YU_pjqCkOdmPV9CK6ckk6McDXG0rkjpMg4IlvoCBb7nHpLETqSV4fR7lj7d1m27qruI2_AsCnyszE9VgtIylRbJ9aTAF-GWQNFXrPp6GK8J8IG9gQofFkZhowE4cMKDzGJOV29vJJi0G6dNX0NNWLqyz2AhCiYS-7-bwZOq27Vf-yux1LUf0qt7BjcGmyPXh1ZX5U593AUrtgRMVhDPXVDodcbSa7rmXN-ZYdDLwF3G5HWvVoyY5I75tkxBUaIVRxyn-AU-Qe8_RpHaU0suSmLbUOg3lbpY2zxZ86D_GjkHu-jf8Y_gHzZeyO4Y-UvDQGqvwouz4ZQdQVgmBEGncQaNxLD9XgkeEaSi2rDwKmyquAMTEkcqrz2JdDCH0R5Y7VDd04N4BncRPSnWPbS6GluKso3HtHyY1foSUGMkqTlK7-r0gmMDR-ZEoHpWyY4rcEmkQy3a6LqLDDtgWDPZSQoqIlTh_-ljmlopDGFjxkoOwM5ZpWICwfrzKrH0XC22kNbJcunNJeVjoU7fNUL7Tyiw9cRcR5P0RtsbdequgcorRWRTtrEPMxS2SWEiS8jNgAo2mJtET4e9Q7CiKnyTOXNpLqnLqwKiAQNkqn2ut7jLy&searchType=oneWay&searchBags=0.0"
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "total": 31
+}

@@ -14,6 +14,7 @@ import { AcquisitionError } from '../../common/httpClient';
 import { parseEmtFareCalendar, emtFareItems } from '../parsers/emtFareCalendar';
 import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus';
 import { resolveAirport, IATA } from '../../common/airportLookup';
+import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
@@ -270,6 +271,34 @@ export const flightsWorker: VerticalWorker = {
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
         const rt2 = { ...rt, fromCode: (await resolveAirport(rt.from, rt.fromCode)).code || rt.fromCode, toCode: (await resolveAirport(rt.to, rt.toCode)).code || rt.toCode };
         return expediaFlightsSearch(ctx, rt2, dIso);
+      },
+    },
+    {
+      // Kiwi.com flights (umbrella/v2 GraphQL, cracked 15 Oct 2026 — no auth,
+      // ~800ms, INR prices, works for ANY world route). Seller = Kiwi.com, the
+      // ticket-selling website; operating airline stays in title/brand per owner
+      // policy. Deeplink = Kiwi's per-itinerary booking URL (its own token).
+      sourceId: 'w_flights_kiwi',
+      name: 'Flights worker: Kiwi.com worldwide live fares (seller = Kiwi.com)',
+      priority: 12,
+      maxPerMinute: 2,
+      timeoutMs: 40_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return []; // unknown city — honest skip
+        const dIso = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const res = await kiwiSearch(from, to, dIso);
+        if (res === null) throw new AcquisitionError('ACCESS_CHALLENGE', `kiwi.com graphql HTTP 403/429 for ${from}-${to} on ${dIso}`, 403);
+        const items = kiwiItems(res.itineraries, ctx.source, { from: rt.from, to: rt.to }, from, to, dIso);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `kiwi.com returned no itineraries departing ${from}-${to} on ${dIso} (search total ${res.total})`);
+        return items;
       },
     },
     // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
