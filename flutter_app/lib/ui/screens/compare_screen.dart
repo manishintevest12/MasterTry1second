@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -264,7 +266,10 @@ class _CompareScreenState extends State<CompareScreen> {
     final res = await Navigator.push<String>(
       context,
       MaterialPageRoute(
-        builder: (c) => _CityPickerScreen(title: title),
+        builder: (c) => _CityPickerScreen(
+          title: title,
+          busMode: _state.vertical == 'bus',
+        ),
       ),
     );
     if (res != null && res.isNotEmpty) {
@@ -417,16 +422,26 @@ class _CompareScreenState extends State<CompareScreen> {
 // ---------------------------------------------------------------------------
 
 class _CityPickerScreen extends StatefulWidget {
-  const _CityPickerScreen({required this.title});
+  const _CityPickerScreen({required this.title, this.busMode = false});
   final String title;
+  final bool busMode;
 
   @override
   State<_CityPickerScreen> createState() => _CityPickerScreenState();
 }
 
+/// Row model for the picker: either a city/area suggestion or a section header.
+class _PickerRow {
+  final String text, subtext, badge;
+  final bool isHeader;
+  const _PickerRow(this.text, this.subtext, this.badge, {this.isHeader = false});
+}
+
 class _CityPickerScreenState extends State<_CityPickerScreen> {
   final _c = TextEditingController();
   List<CitySuggestion> _filtered = kAutoCities;
+  List<_PickerRow> _busRows = const [];
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -436,24 +451,118 @@ class _CityPickerScreenState extends State<_CityPickerScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _c.removeListener(_onSearch);
     _c.dispose();
     super.dispose();
   }
 
   void _onSearch() {
-    final q = _c.text.trim().toLowerCase();
-    setState(() {
-      if (q.isEmpty) {
-        _filtered = kAutoCities;
-      } else {
-        _filtered = kAutoCities.where((c) {
-          return c.text.toLowerCase().contains(q) ||
-              c.subtext.toLowerCase().contains(q) ||
-              c.badge.toLowerCase().contains(q);
-        }).toList();
+    final q = _c.text.trim();
+    if (!widget.busMode) {
+      final lq = q.toLowerCase();
+      setState(() {
+        if (lq.isEmpty) {
+          _filtered = kAutoCities;
+        } else {
+          _filtered = kAutoCities.where((c) {
+            return c.text.toLowerCase().contains(lq) ||
+                c.subtext.toLowerCase().contains(lq) ||
+                c.badge.toLowerCase().contains(lq);
+          }).toList();
+        }
+      });
+      return;
+    }
+    // Bus mode: live redBus registry (tier-1/2/3 towns + boarding points)
+    _debounce?.cancel();
+    if (q.length < 2) {
+      setState(() => _busRows = const []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 300), _fetchBusLocations);
+  }
+
+  Future<void> _fetchBusLocations() async {
+    final q = _c.text.trim();
+    if (q.length < 2) return;
+    try {
+      final data = await AppState.instance.api
+          .getJson('/api/bus/locations?q=${Uri.encodeComponent(q)}');
+      final locs = (data['locations'] as List?) ?? const [];
+      final rows = <_PickerRow>[];
+      for (final raw in locs) {
+        final l = raw as Map<String, dynamic>;
+        final name = (l['name'] ?? '') as String;
+        if (l['type'] == 'CITY') {
+          rows.add(_PickerRow(
+            name,
+            ((l['region'] ?? '') as String).isNotEmpty ? (l['region'] as String) : (l['parentName'] ?? '') as String,
+            'City',
+          ));
+          // Popular boarding points of this city — same registry the redBus app shows
+          final bps = (l['boardingPoints'] as List?) ?? const [];
+          if (name.toLowerCase().contains(q.toLowerCase()) && bps.isNotEmpty) {
+            rows.add(_PickerRow('Popular Boarding Points near you · $name', '', '', isHeader: true));
+            for (final bp in bps) {
+              final b = bp as Map<String, dynamic>;
+              rows.add(_PickerRow((b['name'] ?? '') as String, (b['parentName'] ?? '') as String, 'Board at'));
+            }
+          }
+        } else {
+          rows.add(_PickerRow(
+            name,
+            ((l['parentName'] ?? '') as String).isNotEmpty ? 'Area in ${l['parentName']}' : 'Boarding area',
+            'Board at',
+          ));
+        }
       }
-    });
+      if (mounted) setState(() => _busRows = rows);
+    } catch (_) {
+      // network/API failure -> fall back to the static city list below
+      if (mounted) setState(() => _busRows = const []);
+    }
+  }
+
+  /// Bus-mode list: live redBus rows with 'Board at' pills + section headers;
+  /// static city list as fallback when the registry call returned nothing.
+  Widget _buildBusRows() {
+    final rows = _busRows.isNotEmpty
+        ? _busRows
+        : _filtered
+            .map((c) => _PickerRow(c.text, c.subtext, c.badge))
+            .toList(growable: false);
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: rows.length,
+      separatorBuilder: (_, __) => Divider(height: 1, color: border(context)),
+      itemBuilder: (c, i) {
+        final r = rows[i];
+        if (r.isHeader) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(8, 14, 8, 6),
+            child: Text(r.text, style: tx(c, 10.5, w: FontWeight.w900, color: T1SColors.red)),
+          );
+        }
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          title: Text(r.text, style: tx(c, 13.5, w: FontWeight.w800)),
+          subtitle: r.subtext.isNotEmpty ? Text(r.subtext, style: tx(c, 11, color: muted(c))) : null,
+          trailing: r.badge.isNotEmpty
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isDark(c) ? T1SColors.slate800 : T1SColors.slate50,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: border(c)),
+                  ),
+                  child: Text(r.badge, style: tx(c, 10, w: FontWeight.w800, color: muted(c))),
+                )
+              : null,
+          onTap: () => Navigator.pop(c, r.text),
+        );
+      },
+    );
   }
 
   @override
@@ -492,22 +601,24 @@ class _CityPickerScreenState extends State<_CityPickerScreen> {
               ),
             ),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _filtered.length,
-                separatorBuilder: (_, __) => Divider(height: 1, color: border(context)),
-                itemBuilder: (c, i) {
-                  final item = _filtered[i];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                    title: Text(item.text, style: tx(c, 13.5, w: FontWeight.w800)),
-                    subtitle: item.subtext.isNotEmpty
-                        ? Text(item.subtext, style: tx(c, 11, color: muted(c)))
-                        : (item.badge.isNotEmpty ? Text(item.badge, style: tx(c, 11, color: T1SColors.red)) : null),
-                    onTap: () => Navigator.pop(c, item.text),
-                  );
-                },
-              ),
+              child: widget.busMode
+                  ? _buildBusRows()
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filtered.length,
+                      separatorBuilder: (_, __) => Divider(height: 1, color: border(context)),
+                      itemBuilder: (c, i) {
+                        final item = _filtered[i];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                          title: Text(item.text, style: tx(c, 13.5, w: FontWeight.w800)),
+                          subtitle: item.subtext.isNotEmpty
+                              ? Text(item.subtext, style: tx(c, 11, color: muted(c)))
+                              : (item.badge.isNotEmpty ? Text(item.badge, style: tx(c, 11, color: T1SColors.red)) : null),
+                          onTap: () => Navigator.pop(c, item.text),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -826,7 +937,7 @@ class _SearchCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: () => onOpenCityPicker(from, 'Select From City'),
+                      onTap: () => onOpenCityPicker(from, 'Select From City / Town / Boarding Point'),
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -868,7 +979,7 @@ class _SearchCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: InkWell(
-                      onTap: () => onOpenCityPicker(to, 'Select To City'),
+                      onTap: () => onOpenCityPicker(to, 'Select To City / Town'),
                       borderRadius: BorderRadius.circular(10),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -1287,6 +1398,15 @@ class _FeedBody extends StatelessWidget {
             it.spec('veg') == 'true' ||
             (it.title.toLowerCase().contains('veg') && !it.title.toLowerCase().contains('non-veg'));
         if (!isVeg) return false;
+      }
+
+      if (meta.id == 'bus' && filterOpts.busFacets.isNotEmpty) {
+        for (final f in filterOpts.busFacets) {
+          if (!busFacetMatch(f, it)) return false;
+        }
+      }
+      if (meta.id == 'bus' && filterOpts.busBoardingPoint != null) {
+        if (it.spec('boarding point') != filterOpts.busBoardingPoint) return false;
       }
 
       if ((meta.id == 'flights' || meta.id == 'bus') && filterOpts.departureBuckets.isNotEmpty) {

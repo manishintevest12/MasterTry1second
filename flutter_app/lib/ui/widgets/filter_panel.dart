@@ -14,6 +14,10 @@ class FilterOptions {
   final bool vegOnly;
   final Set<String> departureBuckets; // 'Morning', 'Afternoon', 'Evening', 'Night'
   final Set<int> starRatings; // 3, 4, 5
+  // Bus facets (owner reference UI, 16 Oct): facet ids mirror the web's
+  // BusFilters.tsx; boarding point narrows to services boarding at that exact stop.
+  final Set<String> busFacets;
+  final String? busBoardingPoint;
 
   const FilterOptions({
     this.sortOrder = SortOrder.best,
@@ -23,6 +27,8 @@ class FilterOptions {
     this.vegOnly = false,
     this.departureBuckets = const {},
     this.starRatings = const {},
+    this.busFacets = const {},
+    this.busBoardingPoint,
   });
 
   FilterOptions copyWith({
@@ -33,6 +39,9 @@ class FilterOptions {
     bool? vegOnly,
     Set<String>? departureBuckets,
     Set<int>? starRatings,
+    Set<String>? busFacets,
+    String? busBoardingPoint,
+    bool clearBoardingPoint = false,
   }) {
     return FilterOptions(
       sortOrder: sortOrder ?? this.sortOrder,
@@ -42,6 +51,8 @@ class FilterOptions {
       vegOnly: vegOnly ?? this.vegOnly,
       departureBuckets: departureBuckets ?? this.departureBuckets,
       starRatings: starRatings ?? this.starRatings,
+      busFacets: busFacets ?? this.busFacets,
+      busBoardingPoint: clearBoardingPoint ? null : (busBoardingPoint ?? this.busBoardingPoint),
     );
   }
 
@@ -54,9 +65,49 @@ class FilterOptions {
     if (vegOnly) count++;
     if (departureBuckets.isNotEmpty) count++;
     if (starRatings.isNotEmpty) count++;
+    if (busFacets.isNotEmpty) count++;
+    if (busBoardingPoint != null) count++;
     return count;
   }
 }
+
+/// Bus facet id -> real spec check (mirrors web busFacetPred; specs come from
+/// the redBus/AbhiBus parsers). A facet with no matches is never offered.
+bool busFacetMatch(String id, CompareItem it) {
+  switch (id) {
+    case 'ac':
+      return it.spec('ac') == 'yes';
+    case 'nonac':
+      return it.spec('ac') == 'no';
+    case 'sleeper':
+      return it.spec('sleeper') == 'yes';
+    case 'seater':
+      return it.spec('seater') == 'yes';
+    case 'premium':
+      return it.spec('premium') == 'yes';
+    case 'free_cancellation':
+      return it.spec('free cancellation') == 'yes';
+    case 'live_tracking':
+      return it.spec('live tracking') == 'yes';
+    case 'mticket':
+      return it.spec('mticket') == 'yes';
+    case 'direct_bus':
+      return it.spec('direct bus') == 'yes';
+  }
+  return false;
+}
+
+const kBusFacetDefs = <(String, String)>[
+  ('premium', 'Primo Bus'),
+  ('free_cancellation', 'Free Cancellation'),
+  ('ac', 'AC'),
+  ('sleeper', 'SLEEPER'),
+  ('seater', 'SEATER'),
+  ('nonac', 'NONAC'),
+  ('live_tracking', 'Live Tracking'),
+  ('mticket', 'm-Ticket'),
+  ('direct_bus', 'Direct Bus'),
+];
 
 class FilterPanel extends StatefulWidget {
   const FilterPanel({
@@ -310,6 +361,82 @@ class _FilterPanelState extends State<FilterPanel> {
                         ),
                     ],
                   ),
+                ],
+
+                // 5b. Bus facility facets + boarding point (owner reference UI)
+                if (widget.vertical == 'bus') ...[
+                  // facet counts over the live set; zero-count facets hidden
+                  ...() {
+                    final counts = <String, int>{};
+                    for (final it in widget.items) {
+                      for (final (id, _) in kBusFacetDefs) {
+                        if (busFacetMatch(id, it)) counts[id] = (counts[id] ?? 0) + 1;
+                      }
+                    }
+                    final visible = kBusFacetDefs.where((d) => (counts[d.$1] ?? 0) > 0).toList();
+                    if (visible.isEmpty) return const <Widget>[];
+                    return <Widget>[
+                      const SizedBox(height: 10),
+                      Text('BUS FACILITIES', style: tx(context, 10, w: FontWeight.w900, color: muted(context))),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final (id, label) in visible)
+                            FilterChip(
+                              label: Text('$label (${counts[id]})', style: tx(context, 10.5, w: FontWeight.w700)),
+                              selected: widget.options.busFacets.contains(id),
+                              selectedColor: T1SColors.red.withValues(alpha: 0.15),
+                              checkmarkColor: T1SColors.red,
+                              onSelected: (sel) {
+                                final next = Set<String>.from(widget.options.busFacets);
+                                if (sel) {
+                                  next.add(id);
+                                } else {
+                                  next.remove(id);
+                                }
+                                widget.onChanged(widget.options.copyWith(busFacets: next));
+                              },
+                            ),
+                        ],
+                      ),
+                    ];
+                  }(),
+                  // Popular boarding points from the live set
+                  ...() {
+                    final bpCounts = <String, int>{};
+                    for (final it in widget.items) {
+                      final bp = it.spec('boarding point');
+                      if (bp.isNotEmpty) bpCounts[bp] = (bpCounts[bp] ?? 0) + 1;
+                    }
+                    final bps = bpCounts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+                    if (bps.isEmpty) return const <Widget>[];
+                    return <Widget>[
+                      const SizedBox(height: 10),
+                      Text('BOARDING POINT', style: tx(context, 10, w: FontWeight.w900, color: muted(context))),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final e in bps.take(8))
+                            FilterChip(
+                              label: Text('${e.key} (${e.value})', style: tx(context, 10.5, w: FontWeight.w700)),
+                              selected: widget.options.busBoardingPoint == e.key,
+                              selectedColor: T1SColors.red.withValues(alpha: 0.15),
+                              checkmarkColor: T1SColors.red,
+                              onSelected: (sel) {
+                                widget.onChanged(widget.options.copyWith(
+                                  busBoardingPoint: e.key,
+                                  clearBoardingPoint: !sel,
+                                ));
+                              },
+                            ),
+                        ],
+                      ),
+                    ];
+                  }(),
                 ],
 
                 // 6. Star Ratings (Hotels)
