@@ -14,3 +14,4 @@ flutter_app/android/.gradle/
 flutter_app/android/local.properties
 flutter_app/ios/Pods/
 flutter_app/ios/.symlinks/
+tmp/
