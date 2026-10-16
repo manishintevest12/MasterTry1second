@@ -10203,6 +10203,19 @@ var init_food = __esm({
           }
         },
         {
+          // Uber Eats India: the service no longer operates in India — Uber sold Uber Eats India to
+          // Zomato in January 2020. Verified live: www.ubereats.com/in/* returns HTTP 410 Gone, no
+          // /in/ store URLs exist in the store sitemaps, and /city/mumbai returns 404. This probe
+          // is registered so the source is honestly attempted and reported per search.
+          sourceId: "w_food_ubereats",
+          name: "Food worker: Uber Eats (India) probe",
+          priority: 15,
+          run: async () => {
+            const r = await cffiFetch("https://www.ubereats.com/in/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", `Uber Eats does not operate in India: Uber sold its India food-delivery business to Zomato in January 2020 (verified live: ubereats.com/in/* returns HTTP 410 Gone). No Indian menus or prices exist on Uber Eats.`);
+          }
+        },
+        {
           sourceId: "w_food_swiggy",
           name: "Food worker: Swiggy dish search (dish, price, photo, restaurant)",
           priority: 5,
@@ -10608,6 +10621,89 @@ var init_quickRideCabs = __esm({
   }
 });
 
+// server/workers/parsers/indriveIntercity.ts
+async function indriveCityLookup(term) {
+  const q3 = term.trim().replace(/\s+/g, " ");
+  if (q3.length < 2) return null;
+  const url = `${HOST_API}/web/v1/cities?search=${encodeURIComponent(q3)}&country_id=${INDIA_COUNTRY_ID}`;
+  const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 15e3, headers: HEADERS });
+  if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `InDrive city search HTTP ${r.status}`, r.status);
+  let cities;
+  try {
+    cities = JSON.parse(r.body || "[]");
+  } catch {
+    throw new AcquisitionError("MALFORMED_RESPONSE", "InDrive city search non-JSON");
+  }
+  if (!Array.isArray(cities) || !cities.length) return null;
+  const t = q3.toLowerCase();
+  const byName = cities.find((c) => String(c.name).toLowerCase().includes(t));
+  return byName || cities[0];
+}
+async function indrivePrices(fromId, toId) {
+  const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
+  const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 15e3, headers: HEADERS });
+  if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `InDrive prices HTTP ${r.status}`, r.status);
+  let rows;
+  try {
+    rows = JSON.parse(r.body || "[]");
+  } catch {
+    throw new AcquisitionError("MALFORMED_RESPONSE", "InDrive prices non-JSON");
+  }
+  return Array.isArray(rows) ? rows : [];
+}
+function buildIndriveOffers(source, fromCity, toCity, from, to, rows) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const items = [];
+  for (const row of rows) {
+    const vehicle = ORDER_LABELS[row.order_type];
+    if (!vehicle || !Number(row.min_price)) continue;
+    const rangeNote = row.max_price > row.min_price ? `published range \u20B9${row.min_price}\u2013\u20B9${row.max_price}` : `published price \u20B9${row.min_price}`;
+    items.push(newRawItem(source, {
+      title: `${fromCity} to ${toCity} cab (InDrive Intercity, ${vehicle}, one-way)`,
+      brand: "InDrive",
+      price: Math.round(Number(row.min_price)),
+      currency: "INR",
+      seller: "InDrive",
+      travel: { route: `${fromCity} to ${toCity}`.toLowerCase(), seatType: vehicle === "pool" ? "shared" : "unknown" },
+      attributes: {
+        pickup: fromCity,
+        drop: toCity,
+        route: `${fromCity} to ${toCity}`,
+        vehicle_type: `InDrive Intercity (${vehicle})`,
+        trip_type: "one-way",
+        price_basis: `InDrive's own published intercity ${rangeNote} for ${from.name} \u2192 ${to.name}, retrieved ${today}`,
+        data_note: `InDrive rides are passenger-name-your-price; this is InDrive's published indicative band from its intercity web app (guest API), not a fixed fare. City pair resolved via InDrive's own city registry: ${from.name} (id ${from.id}) \u2192 ${to.name} (id ${to.id}).`
+      },
+      sellerUrl: WEB,
+      identifiers: { sku: `indrive-ic-${from.id}-${to.id}-${row.order_type}` },
+      evidence: { sourceUrl: `${HOST_API}/web/v1/prices?city_from_id=${from.id}&city_to_id=${to.id}`, extractedFields: ["min_price", "max_price", "order_type"] }
+    }));
+  }
+  return items.sort((a, b) => a.price - b.price);
+}
+var HOST_API, WEB, INDIA_COUNTRY_ID, HEADERS, ORDER_LABELS;
+var init_indriveIntercity = __esm({
+  "server/workers/parsers/indriveIntercity.ts"() {
+    init_contract();
+    init_curlCffiFetch();
+    init_httpClient();
+    HOST_API = "https://ic3-gw-cf.euce1.indriverapp.com";
+    WEB = "https://intercity.indrive.com/";
+    INDIA_COUNTRY_ID = 14;
+    HEADERS = {
+      Accept: "application/json",
+      Origin: "https://intercity.indrive.com",
+      Referer: "https://intercity.indrive.com/",
+      "Accept-Language": "en-IN,en;q=0.9"
+    };
+    ORDER_LABELS = {
+      private: "private car",
+      pool: "pool"
+      // "parcel" is package delivery, not a passenger ride — never emitted
+    };
+  }
+});
+
 // server/workers/verticals/cab.ts
 function routeFromQuery2(raw) {
   const cleaned = raw.replace(/\b(cab|taxi|ride|auto|uber|ola|rapido|book|a|an|the|price|fare|for|drop|pickup|from|need|want|go|going)\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -10615,7 +10711,217 @@ function routeFromQuery2(raw) {
   if (!m) return null;
   return { from: m[1].trim(), to: m[2].trim() };
 }
-var cabWorker;
+async function uberBearerToken(appId, appSecret) {
+  if (_uberTokenCache && Date.now() < _uberTokenCache.expiresAt) return _uberTokenCache.token;
+  const basic = Buffer.from(`${appId}:${appSecret}`).toString("base64");
+  const r = await cffiFetch("https://login.uber.com/oauth/v2/token", {
+    method: "POST",
+    timeoutMs: 15e3,
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${basic}` },
+    body: "grant_type=client_credentials"
+  });
+  if (r.status !== 200) return null;
+  try {
+    const j = JSON.parse(r.body || "{}");
+    const token = String(j?.access_token || "");
+    const ttl = Number(j?.expires_in || 0);
+    if (!token || !ttl) return null;
+    _uberTokenCache = { token, expiresAt: Date.now() + Math.max(ttl - 60, 60) * 1e3 };
+    return token;
+  } catch {
+    return null;
+  }
+}
+function uberCitySlugFor(place) {
+  const p = place.toLowerCase();
+  for (const c of UBER_CITY_SLUGS) if (c.keys.some((k) => p.includes(k))) return { slug: c.slug, city: c.city };
+  return null;
+}
+function normPlace(s) {
+  return s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((t) => t.length > 2 && !["and", "the", "st", "station"].includes(t));
+}
+function uberDestMatchScore(routeEnd, destName) {
+  const a = normPlace(routeEnd);
+  const b = normPlace(destName);
+  if (!a.length || !b.length) return 0;
+  let hits = 0;
+  for (const t of a) if (b.includes(t) || b.some((x) => x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x)))) hits++;
+  return hits / Math.min(a.length, b.length);
+}
+async function uberCityFares(slug, city) {
+  const url = `https://www.uber.com/global/en/r/cities/${slug}/`;
+  const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
+  if (r.status !== 200 || !(r.body || "").includes("Average price with UberX")) throw new AcquisitionError("EMPTY_RESPONSE", `Uber city guide page unavailable (HTTP ${r.status}) for ${city}`);
+  const out = [];
+  const re = /cmln__paragraph">([^<]{2,80})</g;
+  const txts = [];
+  let m;
+  while (m = re.exec(r.body || "")) txts.push(m[1].trim());
+  for (let i = 0; i + 1 < txts.length; i++) {
+    const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
+    if (priceM && !/^\s*[₹]/.test(txts[i])) {
+      const price = Number(priceM[1].replace(/,/g, ""));
+      if (price > 0) out.push({ dest: txts[i], price, city, slug, fetchedUrl: url });
+    }
+  }
+  return out;
+}
+async function uberSsrFallback(ctx, rt, reason) {
+  const cityInfo = uberCitySlugFor(rt.from) || uberCitySlugFor(rt.to);
+  if (!cityInfo) throw new AcquisitionError("EMPTY_RESPONSE", `Uber live fare unavailable (${reason}); no Uber city guide page exists for this city, and no live guest fare API is available without credentials.`);
+  const fares = await uberCityFares(cityInfo.slug, cityInfo.city);
+  let best = null;
+  for (const fare of fares) {
+    const score = uberDestMatchScore(rt.to, fare.dest);
+    if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
+  }
+  if (!best) throw new AcquisitionError("EMPTY_RESPONSE", `Uber live fare unavailable (${reason}); Uber's published ${cityInfo.city} fare table covers ${fares.length} destinations and none matches "${rt.to}".`);
+  const dropName = best.fare.dest;
+  const drop = await photonGeocode(`${dropName}, ${cityInfo.city}`) || await photonGeocode(rt.to);
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
+  const ul = new URL("https://m.uber.com/ul/");
+  ul.searchParams.set("client_id", uberClientId);
+  ul.searchParams.set("action", "setPickup");
+  ul.searchParams.set("pickup[my_location]", "true");
+  if (drop) {
+    ul.searchParams.set("dropoff[latitude]", String(drop.lat));
+    ul.searchParams.set("dropoff[longitude]", String(drop.lon));
+  }
+  ul.searchParams.set("dropoff[nickname]", dropName.slice(0, 60));
+  return [newRawItem(ctx.source, {
+    title: `${cityInfo.city} to ${dropName} cab (UberX, published average)`,
+    brand: "Uber",
+    price: best.fare.price,
+    currency: "INR",
+    seller: "Uber",
+    travel: { route: `${cityInfo.city} to ${dropName}`.toLowerCase(), seatType: "unknown" },
+    attributes: {
+      pickup: cityInfo.city,
+      drop: dropName,
+      route: `${cityInfo.city} to ${dropName}`,
+      vehicle_type: "UberX",
+      trip_type: "one-way",
+      price_basis: `Uber-published ${cityInfo.city} average for ${dropName} (UberX) on ${today}`,
+      data_note: `Fare is Uber's own published city-guide average (SSR table on uber.com), not a live route quote; live quotes need official API credentials (${reason}). Deeplink is the Uber universal link with our client_id, routed via /api/out so an affiliate campaign (direct or network) attaches when available.`
+    },
+    sellerUrl: ul.toString(),
+    identifiers: { sku: `uber-ssr-${best.fare.slug}-${dropName}`.toLowerCase().replace(/\s+/g, "-") },
+    evidence: { sourceUrl: best.fare.fetchedUrl, extractedFields: ["SSR city-guide fare table row"] }
+  })];
+}
+async function olaCityList() {
+  if (_olaCityCache && Date.now() - _olaCityCache.at < 24 * 3600 * 1e3) return _olaCityCache.cities;
+  const r = await cffiFetch(`${OLA_RC_BASE}/fleet/bpdproxy/bpd/rest/v1/city?country_code=IN`, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "application/json", "X-Client-Key": OLA_RC_KEY, "X-TraceId": `t1s-${Date.now()}`, Referer: `${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, Origin: OLA_RC_BASE } });
+  if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Ola BPD city list HTTP ${r.status}`, r.status);
+  const j = JSON.parse(r.body || "[]");
+  if (!Array.isArray(j) || !j.length) throw new AcquisitionError("EMPTY_RESPONSE", "Ola BPD city list empty");
+  _olaCityCache = { at: Date.now(), cities: j };
+  return j;
+}
+function olaCardFare(c, km, mins) {
+  const base = Number(c.base_fare) || 0;
+  const inclusive = Number(c.inclusive_km) || 0;
+  const r1 = Number(c.rate_per_km) || Number(c.rate_per_unit_distance) || 0;
+  const t1 = c.threshold_1 != null ? Number(c.threshold_1) : null;
+  const t2 = c.threshold_2 != null ? Number(c.threshold_2) : null;
+  const rA = Number(c.rate_after_threshold_1) || r1;
+  const rB = Number(c.rate_after_threshold_2) || rA;
+  const perMin = Number(c.rate_per_trip_minute) || 0;
+  let fare = base;
+  let rem = Math.max(km - inclusive, 0);
+  if (rem > 0 && r1 > 0) {
+    if (t1 != null) {
+      const s1 = Math.min(rem, Math.max(t1 - inclusive, 0));
+      fare += s1 * r1;
+      rem -= s1;
+      if (rem > 0 && t2 != null) {
+        const s2 = Math.min(rem, Math.max(t2 - t1, 0));
+        fare += s2 * rA;
+        rem -= s2;
+        if (rem > 0) fare += rem * rB;
+      } else if (rem > 0) fare += rem * rA;
+    } else fare += rem * r1;
+  }
+  fare += perMin * mins;
+  const minF = Number(c.min_fare) || 0;
+  return Math.max(Math.round(fare), Math.round(minF));
+}
+async function olaRateCards(cityId, timezone) {
+  const p = await cffiFetch(`${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, { impersonate: "chrome", timeoutMs: 2e4, returnCookies: true, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
+  const jar = Object.entries(p.cookies || {}).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("; ");
+  const xsrf = (p.cookies || {})["XSRF-TOKEN"] || "";
+  const H = { "Content-Type": "application/json", Accept: "application/json", "X-Client-Key": OLA_RC_KEY, "X-TraceId": `t1s-${Date.now()}`, "csrf-token": xsrf, Cookie: jar, Referer: `${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, Origin: OLA_RC_BASE };
+  const r = await cffiFetch(`${OLA_RC_BASE}/fleet/pricing/v1/ratecard/all`, { impersonate: "chrome", timeoutMs: 3e4, method: "POST", headers: { ...H, "x-timezone": timezone || "IST" }, body: JSON.stringify({ city_id: cityId, country: "IN", service_type: { p2p: null }, user_request_time: null }) });
+  if (r.status !== 200 || !(r.body || "").includes("p2p")) throw new AcquisitionError("SERVER_ERROR", `Ola rate-card DB HTTP ${r.status}`, r.status);
+  const j = JSON.parse(r.body || "{}");
+  const now = Date.now();
+  const isDate = (s) => s ? (/* @__PURE__ */ new Date(s.replace(" ", "T") + (s.includes("+") ? "" : "+05:30"))).getTime() : NaN;
+  const cards = (j.p2p || []).filter((c) => !c.deleted_at && c.status === "approved" && c.rate_card_type === "base" && (!c.valid_to || isDate(c.valid_to) > now) && (!c.valid_from || isDate(c.valid_from) <= now) && (c.threshold_type == null || c.threshold_type === "distance_based") && (Number(c.base_fare) || 0) >= 0 && (Number(c.rate_per_km) || Number(c.rate_per_unit_distance) || 0) > 0);
+  return cards;
+}
+function olaPickCards(cards) {
+  const best = {};
+  const rank = (x) => (x.time_of_day === "AL" || !x.time_of_day ? 1 : 0) * 1e12 + (/* @__PURE__ */ new Date(String(x.created_at || "").replace(" ", "T") + "+05:30")).getTime();
+  for (const c of cards) {
+    if (!OLA_CATEGORY_LABELS.some((l) => l.cat === c.category)) continue;
+    const prev = best[c.category];
+    if (!prev || rank(c) > rank(prev)) best[c.category] = c;
+  }
+  return best;
+}
+async function olaRateCardFallback(ctx, rt, reason) {
+  const cities = await olaCityList();
+  const pFrom = rt.from.toLowerCase();
+  const pTo = rt.to.toLowerCase();
+  let city = cities.find((c) => pFrom.includes(String(c.name || "").toLowerCase())) || cities.find((c) => pTo.includes(String(c.name || "").toLowerCase()));
+  if (!city) {
+    throw new AcquisitionError("EMPTY_RESPONSE", `Ola fare unavailable (${reason}); "${rt.from}" is not an Ola operating city in Ola's own BPD registry (${cities.length} IN cities).`);
+  }
+  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), photonGeocode(rt.from), photonGeocode(rt.to)]);
+  if (!a || !b) return [];
+  const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15e3, headers: { Accept: "application/json" } });
+  if (osrm.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OSRM HTTP ${osrm.status}`, osrm.status);
+  const route = (JSON.parse(osrm.body || "{}").routes || [])[0];
+  if (!route) throw new AcquisitionError("NOT_FOUND", `OSRM found no road route between ${rt.from} and ${rt.to}`);
+  const km = Number(route.distance) / 1e3;
+  const mins = Number(route.duration) / 60;
+  const best = olaPickCards(cards);
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const items = [];
+  for (const { cat, label } of OLA_CATEGORY_LABELS) {
+    const card = best[cat];
+    if (!card) continue;
+    const price = olaCardFare(card, km, mins);
+    if (!price || price < 10 || price > 1e5) continue;
+    const ul = new URL("https://book.olacabs.com/");
+    ul.searchParams.set("lat", String(a.lat));
+    ul.searchParams.set("lng", String(a.lon));
+    items.push(newRawItem(ctx.source, {
+      title: `${rt.from} to ${rt.to} cab (${label}, one-way)`,
+      brand: "Ola",
+      price,
+      currency: "INR",
+      seller: "Ola",
+      travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
+      attributes: {
+        pickup: rt.from,
+        drop: rt.to,
+        route: `${rt.from} to ${rt.to}`,
+        vehicle_type: label,
+        trip_type: "one-way",
+        price_basis: `Estimate computed from Ola's own published ${city.name} rate card (${label}) + OSRM road distance (${km.toFixed(1)} km), retrieved ${today}`,
+        data_note: `Ola has no public guest fare API without OLA_API_KEY (${reason}). This estimate applies Ola's official BPD rate-card formula (base + distance slabs + per-minute) to the real OSRM road distance; it is not a live surge-adjusted quote. Deeplink opens Ola web booking with pickup set; complete the ride in the app.`
+      },
+      sellerUrl: ul.toString(),
+      identifiers: { sku: `ola-rc-${city.id}-${cat}-${rt.from}-${rt.to}`.toLowerCase().replace(/\s+/g, "-") },
+      evidence: { sourceUrl: `${OLA_RC_BASE}/merchandising/rate-card?api_ver=v1`, extractedFields: ["Ola BPD rate card (p2p, approved, base)"] }
+    }));
+  }
+  if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Ola rate-card DB has no live consumer card for ${city.name}`);
+  return items.sort((x, y) => x.price - y.price);
+}
+var _uberTokenCache, UBER_CITY_SLUGS, OLA_RC_BASE, OLA_RC_KEY, _olaCityCache, OLA_CATEGORY_LABELS, cabWorker;
 var init_cab = __esm({
   "server/workers/verticals/cab.ts"() {
     init_verticalWorker();
@@ -10623,10 +10929,37 @@ var init_cab = __esm({
     init_savaariCabs();
     init_bharatTaxi();
     init_quickRideCabs();
+    init_indriveIntercity();
     init_curlCffiFetch();
     init_contract();
     init_osmTravel();
     init_httpClient();
+    _uberTokenCache = null;
+    UBER_CITY_SLUGS = [
+      { keys: ["delhi", "new delhi", "ndls"], slug: "new-delhi-new-delhi-in", city: "New Delhi" },
+      { keys: ["mumbai", "bombay"], slug: "mumbai-maharashtra-in", city: "Mumbai" },
+      { keys: ["bangalore", "bengaluru"], slug: "bangalore-karnataka-in", city: "Bangalore" },
+      { keys: ["chennai", "madras"], slug: "chennai-tamil-nadu-in", city: "Chennai" },
+      { keys: ["hyderabad"], slug: "hyderabad-telangana-in", city: "Hyderabad" },
+      { keys: ["kolkata", "calcutta"], slug: "kolkata-west-bengal-in", city: "Kolkata" },
+      { keys: ["ahmedabad", "ahmadabad"], slug: "ahmedabad-gujarat-in", city: "Ahmedabad" },
+      { keys: ["jaipur"], slug: "jaipur-rajasthan-in", city: "Jaipur" },
+      { keys: ["lucknow"], slug: "lucknow-uttar-pradesh-in", city: "Lucknow" }
+    ];
+    OLA_RC_BASE = "https://webapps.olacabs.com";
+    OLA_RC_KEY = "a3abb50bpd6p4bcdb519df4f0a140f53jfkhqfad";
+    _olaCityCache = null;
+    OLA_CATEGORY_LABELS = [
+      { cat: "auto", label: "Ola Auto" },
+      { cat: "bike", label: "Ola Bike" },
+      { cat: "mini_non_ac", label: "Ola Mini" },
+      { cat: "compact", label: "Ola Compact" },
+      { cat: "prime_play", label: "Ola Prime Play" },
+      { cat: "prime_plus", label: "Ola Prime" },
+      { cat: "economy_suv", label: "Ola SUV" },
+      { cat: "luxury_sedan", label: "Ola Luxury Sedan" },
+      { cat: "erick", label: "Ola e-Rick" }
+    ];
     cabWorker = {
       vertical: "cab",
       tasks: [
@@ -10641,15 +10974,15 @@ var init_cab = __esm({
           timeoutMs: 25e3,
           run: async (ctx) => {
             const key = String(process.env.OLA_API_KEY || "").trim();
-            if (!key) throw new AcquisitionError("EMPTY_RESPONSE", "Ola API credentials not configured: set OLA_API_KEY in hPanel env (official Ola Cabs API; a demo key will be rejected by Ola with 401 \u2014 the owner will supply the original token).");
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
+            if (!key) return olaRateCardFallback(ctx, rt, "OLA_API_KEY not configured in hPanel env");
             const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
             if (!a || !b) return [];
-            const url = `https://api.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
+            const url = `https://devapi.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
             const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { "X-APP-TOKEN": key, Accept: "application/json" } });
-            if (r.status === 401 || r.status === 403) throw new AcquisitionError("FORBIDDEN", `Ola API rejected credentials (HTTP ${r.status}) \u2014 set a valid OLA_API_KEY`, r.status);
-            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Ola API HTTP ${r.status}`, r.status);
+            if (r.status === 401 || r.status === 403) return olaRateCardFallback(ctx, rt, `official Ola API rejected the key (HTTP ${r.status})`);
+            if (r.status !== 200) return olaRateCardFallback(ctx, rt, `official Ola API HTTP ${r.status}`);
             let j;
             try {
               j = JSON.parse(r.body);
@@ -10691,23 +11024,33 @@ var init_cab = __esm({
           }
         },
         {
-          // Uber: official Uber API price estimates (developer.uber.com / v1.2). Credentials in
-          // UBER_SERVER_TOKEN (owner supplies the real token; demo keys are rejected with 401 — verified live).
+          // Uber: official Uber API price estimates (developer.uber.com / v1.2). Auth: OAuth2
+          // client_credentials (UBER_APPLICATION_ID + UBER_CLIENT_SECRET) with legacy UBER_SERVER_TOKEN
+          // fallback. Token is fetched from login.uber.com/oauth/v2/token and cached in-process.
           sourceId: "w_cab_uber",
           name: "Cab worker: Uber India fare estimates (official API)",
           priority: 15,
           maxPerMinute: 10,
           timeoutMs: 25e3,
           run: async (ctx) => {
-            const token = String(process.env.UBER_SERVER_TOKEN || "").trim();
-            if (!token) throw new AcquisitionError("EMPTY_RESPONSE", "Uber API credentials not configured: set UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price; demo keys are rejected by Uber with 401 \u2014 the owner will supply the original token).");
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
+            let authHeaders = null;
+            const appId = String(process.env.UBER_APPLICATION_ID || "").trim();
+            const appSecret = String(process.env.UBER_CLIENT_SECRET || "").trim();
+            const serverToken = String(process.env.UBER_SERVER_TOKEN || "").trim();
+            if (appId && appSecret) {
+              const bearer = await uberBearerToken(appId, appSecret);
+              if (bearer) authHeaders = { Authorization: `Bearer ${bearer}` };
+            }
+            if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
+            if (!authHeaders) return uberSsrFallback(ctx, rt, "official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)");
             const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
             if (!a || !b) return [];
-            const url = `https://api.uber.com/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
-            const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { Authorization: `Token ${token}`, Accept: "application/json" } });
-            if (r.status === 401 || r.status === 403) throw new AcquisitionError("FORBIDDEN", `Uber API rejected credentials (HTTP ${r.status}) \u2014 set a valid UBER_SERVER_TOKEN`, r.status);
+            const apiHost = String(process.env.UBER_API_HOST || "api.uber.com").trim() || "api.uber.com";
+            const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
+            const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { ...authHeaders, Accept: "application/json" } });
+            if (r.status === 401 || r.status === 403) return uberSsrFallback(ctx, rt, `official Uber API rejected credentials (HTTP ${r.status})`);
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Uber API HTTP ${r.status}`, r.status);
             let j;
             try {
@@ -10722,13 +11065,20 @@ var init_cab = __esm({
               const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
               if (!price) continue;
               const vehicle = String(p.localized_display_name || "Uber cab").slice(0, 60);
+              const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
+              const ul = new URL("https://m.uber.com/ul/");
+              ul.searchParams.set("client_id", uberClientId);
+              ul.searchParams.set("action", "setPickup");
+              ul.searchParams.set("pickup[my_location]", "true");
+              ul.searchParams.set("dropoff[latitude]", String(b.lat));
+              ul.searchParams.set("dropoff[longitude]", String(b.lon));
+              ul.searchParams.set("dropoff[nickname]", rt.to.slice(0, 60));
               items.push(newRawItem(ctx.source, {
                 title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
                 brand: "Uber",
                 price,
                 currency: String(p.currency_code || "INR"),
                 seller: "Uber",
-                sellerUrl: "https://m.uber.com/looking/",
                 travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
                 attributes: {
                   pickup: rt.from,
@@ -10740,23 +11090,27 @@ var init_cab = __esm({
                   duration_minutes: p.duration != null ? String(Math.round(p.duration / 60)) : "",
                   fare_range: p.low_estimate && p.high_estimate ? `Rs ${p.low_estimate} - Rs ${p.high_estimate}` : "",
                   price_basis: `Uber API price estimate on ${today}`,
-                  data_note: "Fare estimate from the official Uber API (developer.uber.com /v1.2/estimates/price)"
+                  data_note: `Fare estimate from the official Uber API (${apiHost} /v1.2/estimates/price); deeplink is the Uber universal link with our client_id, routed via /api/out so an affiliate campaign (direct or network) attaches when available`
                 },
+                sellerUrl: ul.toString(),
                 identifiers: { sku: `uber-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, "-") },
                 evidence: { sourceUrl: url, extractedFields: ["Uber API estimates/price"] }
               }));
             }
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Uber API returned no fare estimate for this route");
+            if (!items.length) return uberSsrFallback(ctx, rt, "official Uber API returned no fare estimate for this route");
             return items;
           }
         },
         {
-          sourceId: "w_cab_indrive",
-          name: "Cab worker: InDrive India (probe)",
+          // Rapido: verified live — rapido.bike serves SSR SEO route pages (/delhi/routes/<From>-<To>, city
+          // sitemaps list thousands) but they carry NO fares; the only API hosts in the web bundle are
+          // internal .svc.production.internal services (unreachable). Fare estimates are in-app only.
+          sourceId: "w_cab_rapido",
+          name: "Cab worker: Rapido (probe)",
           priority: 15,
           run: async () => {
-            const r = await cffiFetch("https://indrive.com/en-in/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "InDrive publishes no fare list anywhere on the web \u2014 its model is rider-offered (negotiated) fares set per-ride in the app.");
+            const r = await cffiFetch("https://www.rapido.bike/delhi/routes/Saket-Sainik_Farm", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError("EMPTY_RESPONSE", "Rapido publishes no fares on the web: rapido.bike route pages are SEO content only and the web bundle references only internal service hosts (verified live). Fare estimates are available only in the Rapido app.");
           }
         },
         {
@@ -10830,6 +11184,27 @@ var init_cab = __esm({
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `QuickRide HTTP ${r.status}`, r.status);
             const items = parseQuickRideCabs(r.body, ctx.source, url, rt.from, rt.to);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `QuickRide fare table has no row for ${rt.from} to ${rt.to}`);
+            return items;
+          }
+        },
+        {
+          // InDrive (India): guest API of the intercity web app — published city-pair
+          // price bands (ic3-gw-cf.euce1.indriverapp.com). Rides are name-your-price,
+          // so offers carry InDrive's own indicative range, never a fixed fare.
+          sourceId: "w_cab_indrive",
+          name: "Cab worker: InDrive India intercity price bands",
+          priority: 14,
+          maxPerMinute: 10,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            if (!rt) return [];
+            const [from, to] = await Promise.all([indriveCityLookup(rt.from), indriveCityLookup(rt.to)]);
+            if (!from || !to) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity registry has no match for ${!from ? rt.from : rt.to} (India registry only)`);
+            if (from.id === to.id) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity: "${rt.from}" and "${rt.to}" resolved to the same city (${from.name})`);
+            const rows = await indrivePrices(from.id, to.id);
+            const items = buildIndriveOffers(ctx.source, rt.from, rt.to, from, to, rows);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity has no published price band for ${from.name} \u2192 ${to.name}`);
             return items;
           }
         },
@@ -11184,6 +11559,11 @@ function extractImLayouts(body) {
     seen.add(id);
     out.push({ id, endpoint: m[1].includes("listing") ? "campaign/listing/v2" : "layout/v2" });
   }
+  for (const m of body.matchAll(/layoutId[\\":\s]+(\d{4,8})/g)) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    out.push({ id: m[1], endpoint: "layout/v2" });
+  }
   return out;
 }
 function imTokenize(term) {
@@ -11333,6 +11713,7 @@ var init_grocery = __esm({
             for (const profile of ["chrome", "safari17_0", "chrome110"]) {
               r = await cffiFetch(url, { impersonate: profile, method: "POST", body: "{}", timeoutMs: 22e3, headers: blHeaders });
               if (r.status === 200 && r.body) break;
+              if (r.status === 403 || r.status === 429) await new Promise((res) => setTimeout(res, 1500));
             }
             if (r.status === 403 || r.status === 202) throw new AcquisitionError("ACCESS_CHALLENGE", `Blinkit search API HTTP ${r.status} (tried 3 TLS fingerprints)`);
             if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `Blinkit search API HTTP ${r.status}`, r.status);
@@ -11414,6 +11795,10 @@ var init_grocery = __esm({
             if (pod) storeId = pod[1];
             const products = [];
             const sources2 = [homeUrl];
+            try {
+              collectImProducts(JSON.parse(home.body), products);
+            } catch {
+            }
             const layouts = extractImLayouts(home.body).slice(0, 18);
             const calls = [{ endpoint: "campaign/listing/v2", id: "35019" }, ...layouts];
             for (const c of calls) {
@@ -12559,6 +12944,20 @@ var init_movies = __esm({
           }
         },
         {
+          // PVR INOX (mandatory source): pvrinox.com + inoxmovies.com edge-gate datacenter IPs
+          // (403 on every path); pvrx.io / m.inoxmovies.com / api.inoxmovies.com are DNS-dead.
+          // Registered so every movie search attempts it live and reports honestly; if the
+          // gate ever lifts, the HTML parsing work can begin on the returned page.
+          sourceId: "w_movies_pvrinox",
+          name: "Movies worker: PVR INOX (probe)",
+          priority: 8,
+          run: async () => {
+            const r = await cffiFetch("https://www.pvrinox.com/", { impersonate: "chrome", timeoutMs: 12e3, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
+            if (r.status === 200) throw new AcquisitionError("ACCESS_CHALLENGE", `PVR INOX gate unexpectedly open (HTTP 200) \u2014 parsing work needed, see docs/LIVE-ENDPOINTS.md`);
+            throw new AcquisitionError("ACCESS_CHALLENGE", `PVR INOX movies is edge-gated (HTTP ${r.status} on pvrinox.com; inoxmovies.com same gate, pvrx.io and m./api. hosts DNS-dead) \u2014 showtimes and seat prices are available only on the PVR INOX app.`);
+          }
+        },
+        {
           sourceId: "w_movies_district",
           name: "Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)",
           priority: 8,
@@ -12663,6 +13062,12 @@ function parseAbhiBusServices(json, source, route) {
         ...t.startTime ? { departure: `${String(t.startTime)}${t.arriveTime ? ` \u2192 ${String(t.arriveTime)}` : ""}` } : {},
         ...t.travelTime ? { duration: `~${String(t.travelTime).slice(0, 8)} h` } : {},
         ...Number.isFinite(seats) ? { seats_available: String(seats) } : {},
+        ...busType ? { bus_type: busType.slice(0, 80) } : {},
+        ...t.startTime ? { departure_time: String(t.startTime).slice(0, 5) } : {},
+        // structured facets from AbhiBus's own bus-type string (no invention)
+        ac: /non[- ]?a\/?c/i.test(busType) ? "no" : /a\/?c|air conditioned/i.test(busType) ? "yes" : "",
+        sleeper: /sleeper/i.test(busType) ? "yes" : /seater/i.test(busType) ? "no" : "",
+        seater: /seater/i.test(busType) ? "yes" : "",
         ...rating ? { rating } : {},
         ...s?.busInsights?.busThumbnailUrl && /^https:\/\//.test(s.busInsights.busThumbnailUrl) ? { image_url: s.busInsights.busThumbnailUrl } : {},
         platform: "AbhiBus",
@@ -12803,12 +13208,23 @@ function parseRedBusSearch(json, source, route) {
       attributes: {
         operator,
         ...inv.departureTime ? { departure: `${inv.departureTime.slice(11, 16)}${inv.arrivalTime ? ` \u2192 ${inv.arrivalTime.slice(11, 16)} (+1)` : ""}` } : {},
+        ...inv.departureTime ? { departure_time: inv.departureTime.slice(11, 16) } : {},
         ...duration ? { duration } : {},
         ...Number.isFinite(seats) ? { seats_available: String(seats) } : {},
         ...Number.isFinite(totalSeats) && totalSeats > 0 ? { total_seats: String(totalSeats) } : {},
         ...rating ? { rating, rating_count: String(inv.numberOfReviews || "") } : {},
-        ...inv.isSleeper ? { sleeper: "yes" } : {},
-        ...inv.isAc ? { ac: "yes" } : {},
+        ...busType ? { bus_type: busType.slice(0, 80) } : {},
+        // Structured facets for the bus filter chips (never invented: every flag
+        // comes straight off the redBus inventory object).
+        ac: inv.isAc === true || inv.isAc === false ? inv.isAc ? "yes" : "no" : /non[- ]?a\/?c/i.test(busType) ? "no" : /a\/?c|air conditioned/i.test(busType) ? "yes" : "",
+        sleeper: inv.isSleeper === true || /sleeper/i.test(busType) ? "yes" : /seater/i.test(busType) ? "no" : "",
+        seater: inv.isSeater === true ? "yes" : "",
+        ...inv.isPremium === true ? { premium: "yes" } : {},
+        ...String(inv.cancellationPolicy || "").includes(":100:") ? { free_cancellation: "yes" } : {},
+        ...inv.isLiveTrackingAvailable === true ? { live_tracking: "yes" } : {},
+        ...inv.isMticketEnabled === true ? { mticket: "yes" } : {},
+        ...inv.isDirectBus === true ? { direct_bus: "yes" } : {},
+        ...Number.isFinite(Number(inv.availableWindowSeats)) ? { window_seats: String(inv.availableWindowSeats) } : {},
         ...Array.isArray(inv.amenities) && inv.amenities.length ? { amenities: String(inv.amenities.length) } : {},
         ...inv.standardBpName ? { boarding_point: String(inv.standardBpName) } : {},
         ...inv.standardDpName ? { dropping_point: String(inv.standardDpName) } : {},
@@ -15525,7 +15941,7 @@ function filterByQueryEntity(offers, query) {
     return hits >= Math.ceil(tokens.length / 2);
   });
 }
-function normPlace(x) {
+function normPlace2(x) {
   const code = x.match(/\(([A-Za-z]{3})\)/)?.[1]?.toLowerCase();
   let t = x.replace(/\([^)]*\)/g, " ").replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ").replace(/\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b/g, " ").replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(PLACE_NOISE, " ").replace(/[,.]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
   t = PLACE_ALIASES[t] || t;
@@ -15538,7 +15954,7 @@ function parseRouteQuery(raw) {
   raw = withBracketedCodes(raw);
   const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
-  const from = normPlace(m[1].replace(/^\s*from\s+/i, "")), to = normPlace(m[2]);
+  const from = normPlace2(m[1].replace(/^\s*from\s+/i, "")), to = normPlace2(m[2]);
   if (!from.city || !to.city) return null;
   return { from, to };
 }
@@ -15572,7 +15988,7 @@ function routeFilter(offers, query) {
 }
 function destinationFilter(offers, query) {
   const head = String(query.rawQuery || "").split(",")[0];
-  const q3 = normPlace(head);
+  const q3 = normPlace2(head);
   const city = (query.location?.city || "").toLowerCase();
   const target = q3.city || city;
   if (!target) return offers;
@@ -19433,7 +19849,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto25, apiRouter;
+var import_express, import_crypto25, apiRouter, busLocationCache;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -19484,6 +19900,46 @@ var init_routes = __esm({
         res.json({ ok: true, ...await pythonDiagnostics() });
       } catch (e) {
         res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
+    });
+    busLocationCache = /* @__PURE__ */ new Map();
+    apiRouter.get("/bus/locations", async (req, res) => {
+      const q3 = String(req.query.q || "").trim();
+      if (q3.length < 2) return res.json({ locations: [] });
+      const key = q3.toLowerCase();
+      const hit = busLocationCache.get(key);
+      if (hit && Date.now() - hit.at < 24 * 3600 * 1e3) return res.json({ locations: hit.docs });
+      try {
+        const r = await cffiFetch(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(q3)}&limit=20`, {
+          impersonate: "chrome",
+          timeoutMs: 15e3,
+          headers: { Accept: "application/json" }
+        });
+        if (r.status !== 200) return res.json({ locations: [], error: `redBus citySuggestion HTTP ${r.status}` });
+        const docs = JSON.parse(r.body || "{}").response?.docs || [];
+        const locations = docs.filter((d) => Number(d?.ID) > 0).filter((d) => !d?.cc || String(d.cc).toUpperCase() === "IND").sort((a, b) => Number(b?.rank || 0) - Number(a?.rank || 0)).slice(0, 20).map((d) => ({
+          id: Number(d.ID),
+          name: String(d.Name || ""),
+          type: String(d.locationType || "CITY").toUpperCase(),
+          // CITY | AREA (AREA = specific boarding locality)
+          region: String(d.region || ""),
+          parentName: String(d.parentLocationName || ""),
+          // Popular boarding points for this city (redBus's own BpList) — shown in the
+          // From dropdown exactly like the reference UI ("Board at" rows).
+          boardingPoints: (Array.isArray(d.BpList) ? d.BpList : []).slice(0, 6).map((bp) => ({
+            id: Number(bp?.ID),
+            name: String(bp?.Name || ""),
+            parentName: String(bp?.parentLocationName || "")
+          }))
+        }));
+        busLocationCache.set(key, { at: Date.now(), docs: locations });
+        if (busLocationCache.size > 500) {
+          const oldest = [...busLocationCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+          if (oldest) busLocationCache.delete(oldest[0]);
+        }
+        return res.json({ locations });
+      } catch (e) {
+        return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
       }
     });
     apiRouter.get("/status", (_req, res) => {
