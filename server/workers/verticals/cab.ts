@@ -177,7 +177,7 @@ export const cabWorker: VerticalWorker = {
       },
     },
     {
-            sourceId: 'w_cab_meru',
+      sourceId: 'w_cab_meru',
       name: 'Cab worker: Meru (probe)',
       priority: 15,
       run: async () => {
