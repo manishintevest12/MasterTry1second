@@ -57,6 +57,10 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   __NEXT_DATA__.pTableData route-level min/max fare.
 
 ## Cab
+### Rapido (Cab & Ride) — app-only, honest empty source (re-verified 15 Oct)
+- www.rapido.bike is a Next.js marketing site. Full bundle scan (Home.js 116KB, commons 592KB, main 38KB): the ONLY web APIs are captain (DRIVER) signup flows (/api/captainSignup, /api/otp, /api/event) plus internal hosts (rapido-entities.svc.production.internal, darwinbox HR, param.ai). No rider fare/estimate API exists on the web surface.
+- Policy: rider fares stay an honest EMPTY_RESPONSE ("available only on app"); do not re-recon the web bundles without a new angle (e.g. app APK API map).
+
 ### Ola (Cab & Ride) — LIVE via BPD rate-card database (no API key needed)
 - Official devapi.olacabs.com/v1/products stays the primary stage (OLA_API_KEY; X-APP-TOKEN header) — absent/rejected key falls back automatically.
 - FALLBACK (live, verified 15 Oct): Ola's own merchandising web app exposes the BPD rate-card DB.
