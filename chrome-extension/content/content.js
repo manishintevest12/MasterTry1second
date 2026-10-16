@@ -35,6 +35,14 @@
       <img class="t1s-wd" src="${chrome.runtime.getURL('images/logo-wordmark.png')}" alt="" />
     </span>`;
 
+  // light lockup: dark-charcoal surfaces (sidebar head, #151922) need the
+  // white-text wordmark + white-outline icon; the original navy PNGs vanish there.
+  const logoSvgLight = `
+    <span class="t1s-lockup" role="img" aria-label="Try1Second">
+      <span class="t1s-ic"><img src="${chrome.runtime.getURL('images/logo-icon-light.png')}" alt="" /><span class="t1s-ring"></span><span class="t1s-sweep"></span><svg class="t1s-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0L14 9.5 24 12 14 14.5 12 24 10 14.5 0 12 10 9.5Z" fill="#fff"/></svg></span>
+      <img class="t1s-wd" src="${chrome.runtime.getURL('images/logo-wordmark-light.png')}" alt="" />
+    </span>`;
+
   const PRODUCT_VERTICALS = new Set(['ecommerce', 'grocery']);
   const SEARCH_VERTICALS = new Set(['ecommerce', 'grocery', 'food', 'movies', 'bus']);
 
@@ -693,7 +701,7 @@
     sb.id = SIDEBAR_ID;
     sb.innerHTML = `
       <div class="t1s-sb-head">
-        <div class="t1s-sb-logo">${logoSvg}</div>
+        <div class="t1s-sb-logo">${logoSvgLight}</div>
         <span class="t1s-sb-title"></span>
         <button type="button" class="t1s-sb-close" title="Close">${ICON.x}</button>
       </div>
@@ -780,7 +788,7 @@
     brand.title = 'Open Try1Second';
     brand.innerHTML = `
       <span class="t1s-dock-x" title="Hide the rail on this site">${ICON.x}</span>
-      <img src="${chrome.runtime.getURL('images/logo-icon.png')}" alt="Try1Second" />
+      <img src="${chrome.runtime.getURL('images/logo-icon-light.png')}" alt="Try1Second" />
       <span class="t1s-dots">${'<i></i>'.repeat(9)}</span>`;
     brand.addEventListener('click', async (e) => {
       if (e.target.closest('.t1s-dock-x')) { e.stopPropagation(); await hideDockHere(); dock.remove(); dockEl = null; return; }

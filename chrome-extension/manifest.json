@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Try1Second Price Tracker & Auto Coupon",
   "short_name": "Try1Second",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Auto-grabs the page you are on, compares prices across sites, 365-day price history, price-drop alerts and 1-click Auto Coupon Tester for every major store.",
   "permissions": [
     "storage",
@@ -72,17 +72,11 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "images/logo-icon.png",
-        "images/logo-wordmark.png",
-        "images/logo-full.png"
+        "images/*",
+        "popup/*"
       ],
       "matches": [
-        "https://www.amazon.in/*",
-        "https://www.flipkart.com/*",
-        "https://www.myntra.com/*",
-        "https://www.ajio.com/*",
-        "https://www.tatacliq.com/*",
-        "https://www.meesho.com/*"
+        "<all_urls>"
       ]
     }
   ]

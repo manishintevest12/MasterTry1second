@@ -270,6 +270,8 @@
   background: #151922; color: #fff; flex: none;
 }
 .t1s-sb-logo img { height: 26px; width: auto; display: block; }
+.t1s-sb-logo .t1s-ic img { width: 27px; height: 26px; }
+.t1s-sb-logo .t1s-wd { height: 20px; }
 .t1s-sb-title { font-size: 14px; font-weight: 900; letter-spacing: .2px; flex: 1; }
 .t1s-sb-close {
   width: 28px; height: 28px; border-radius: 50%; border: none; background: #2c3242; color: #fff;

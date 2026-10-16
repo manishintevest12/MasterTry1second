@@ -200,6 +200,67 @@ if (classifyMatch) {
   }
 }
 
+// ---- v1.8.1: logo visibility on dark surfaces (owner report) ----
+{
+  const popupHtml = fs.readFileSync('chrome-extension/popup/popup.html', 'utf8');
+  t('popup dark hero uses the light wordmark', popupHtml.includes('logo-wordmark-light.png'));
+  t('popup dark hero uses the light icon', popupHtml.includes('logo-icon-light.png'));
+
+  const contentCode = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
+  t('sidebar head (dark #151922) uses the light lockup', contentCode.includes('logoSvgLight') && contentCode.includes('<div class="t1s-sb-logo">${logoSvgLight}</div>'));
+  t('dock brand pill uses the light icon', /brand.innerHTML[\s\S]*logo-icon-light\.png/.test(contentCode));
+  t('floating bar (white bg) keeps the original dark wordmark', contentCode.includes('class="t1s-logo">${logoSvg}</div>'));
+
+  // the light PNGs exist and really differ: wordmark navy -> white
+  const zlib = require('zlib');
+  function pngPixels(path) {
+    const buf = fs.readFileSync(path);
+    const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+    let off = 8, idat = [];
+    while (off < buf.length) {
+      const len = buf.readUInt32BE(off), type = buf.toString('ascii', off + 4, off + 8);
+      if (type === 'IDAT') idat.push(buf.subarray(off + 8, off + 8 + len));
+      off += 12 + len;
+    }
+    const raw = zlib.inflateSync(Buffer.concat(idat));
+    const bpp = 4, stride = w * bpp + 1;
+    const out = Buffer.alloc(h * w * bpp);
+    const paeth = (a, b, c) => {
+      const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+      return (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+    };
+    for (let y = 0; y < h; y++) {
+      const f = raw[y * stride];
+      for (let x = 0; x < w * bpp; x++) {
+        const cur = raw[y * stride + 1 + x];
+        const left = x >= bpp ? out[y * w * bpp + x - bpp] : 0;
+        const up = y > 0 ? out[(y - 1) * w * bpp + x] : 0;
+        const ul = y > 0 && x >= bpp ? out[(y - 1) * w * bpp + x - bpp] : 0;
+        let v = cur;
+        if (f === 1) v = cur + left;
+        else if (f === 2) v = cur + up;
+        else if (f === 3) v = cur + ((left + up) >> 1);
+        else if (f === 4) v = cur + paeth(left, up, ul);
+        out[y * w * bpp + x] = v & 255;
+      }
+    }
+    const px = [];
+    for (let i = 0; i < out.length; i += 4) px.push([out[i], out[i+1], out[i+2], out[i+3]]);
+    return { px, w, h };
+  }
+  const orig = pngPixels('chrome-extension/images/logo-wordmark.png');
+  const lite = pngPixels('chrome-extension/images/logo-wordmark-light.png');
+  let navyKept = 0, navyWhitened = 0;
+  for (let i = 0; i < orig.px.length; i += 7) {
+    const [r, g, b, a] = orig.px[i];
+    if (a > 200 && r < 90 && g < 90 && b < 110) {
+      const [R] = lite.px[i];
+      if (R > 200) navyWhitened++; else navyKept++;
+    }
+  }
+  t('light wordmark converts navy text to white', navyKept === 0 && navyWhitened > 50, `whitened=${navyWhitened} kept=${navyKept}`);
+}
+
     console.log(`pass ${pass} / fail ${fail}`);
   process.exit(fail ? 1 : 0);
 })();
