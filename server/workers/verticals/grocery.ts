@@ -213,6 +213,9 @@ export const groceryWorker: VerticalWorker = {
         for (const profile of ['chrome', 'safari17_0', 'chrome110']) {
           r = await cffiFetch(url, { impersonate: profile, method: 'POST', body: '{}', timeoutMs: 22_000, headers: blHeaders });
           if (r.status === 200 && r.body) break;
+          // Cloudflare samples per-request: a short cooldown between TLS profiles
+          // materially raises the odds the next profile passes.
+          if (r.status === 403 || r.status === 429) await new Promise((res) => setTimeout(res, 1500));
         }
         if (r.status === 403 || r.status === 202) throw new AcquisitionError('ACCESS_CHALLENGE', `Blinkit search API HTTP ${r.status} (tried 3 TLS fingerprints)`);
         if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `Blinkit search API HTTP ${r.status}`, r.status);

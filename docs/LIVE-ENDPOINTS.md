@@ -136,13 +136,14 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
 - **Blinkit** [blinkit.ts] — POST /v1/layout/search?q= (app_client=consumer_web
   + lat/lon). Chrome→safari17_0→chrome110 fingerprint retry ladder. 15 Oct:
   Cloudflare 403s BOTH sandbox and Hostinger prod IPs on all 3 fingerprints
-  (worked 13 Oct from sandbox) — IP-range block. Recon 15 Oct: **api.blinkit.com
-  is an OPEN Kong gateway** (no Cloudflare, "no Route matched" JSON) but app
-  routes unknown — com.blinkit.app APK not on any browserless mirror (Aptoide
-  lacks it; APKPure/APKMirror/apkfab CF-gated; Uptodown listing removed). Host-
-  header spoof (Host: blinkit.com) reaches the site vhost but gets the same CF
-  challenge. Full recon: recon-blinkit.md. Recovery options: APK from a real
-  device, or retest the web recipe after IP quiet time, or QuickCommerce API.
+  (worked 13 Oct from sandbox). **15 Oct 23:50: BLOCK LIFTED — recipe verified
+  LIVE again from sandbox**: milk/Mumbai, atta/Gurgaon, maggi/Delhi each returned
+  12 real items via the existing w_grocery_blinkit worker. Worker hardened with
+  a 1.5s cooldown between TLS profiles (CF samples per-request). api.blinkit.com
+  stays a dead end: OPEN Kong gateway but /v1/* route probes all 404 (no Route
+  matched) — app routes are not served there. APK not on any browserless mirror.
+  If CF re-samples on the Hostinger prod IP, the honest ACCESS_CHALLENGE fail
+  fires after the 3-fingerprint ladder; retest after quiet time.
 - **BigBasket** [bigbasket.ts] — 3-step cookie handshake (homepage →
   serviceable → _bb_addressinfo/_bb_pin_code/_bb_lat_long → listing-svc/v2).
   15 Oct: RECIPE CONFIRMED, NO DRIFT — ps-page chunk (bbassets.com, ungated)
