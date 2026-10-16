@@ -37,7 +37,7 @@ import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
 import { userNotifications, broadcastNotifications, markRead, markAllRead } from '../notifications/notifications';
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
-import { pythonDiagnostics } from '../common/curlCffiFetch';
+import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
 
 export const apiRouter = Router();
 
@@ -59,6 +59,49 @@ apiRouter.get('/health', async (_req: Request, res: Response) => {
 /** Which Python interpreters the host offers and whether curl_cffi loads in them (shared-hosting diagnostics). */
 apiRouter.get('/health/transport', async (_req: Request, res: Response) => {
   try { res.json({ ok: true, ...(await pythonDiagnostics()) }); } catch (e: any) { res.status(500).json({ ok: false, error: String(e?.message || e) }); }
+});
+
+// Bus deep-location autocomplete: redBus's own Solr registry covers tier-1/2/3
+// towns (Harda, etc.) AND area-level boarding points (BpList per city, the same
+// "Popular Boarding Points" data the redBus app shows). Cached in-process 24h.
+const busLocationCache = new Map<string, { at: number; docs: any[] }>();
+apiRouter.get('/bus/locations', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json({ locations: [] });
+  const key = q.toLowerCase();
+  const hit = busLocationCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return res.json({ locations: hit.docs });
+  try {
+    const r = await cffiFetch(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(q)}&limit=8`, {
+      impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json' },
+    });
+    if (r.status !== 200) return res.json({ locations: [], error: `redBus citySuggestion HTTP ${r.status}` });
+    const docs: any[] = (JSON.parse(r.body || '{}').response?.docs) || [];
+    const locations = docs
+      .filter((d: any) => Number(d?.ID) > 0)
+      .sort((a: any, b: any) => Number(b?.rank || 0) - Number(a?.rank || 0))
+      .slice(0, 8)
+      .map((d: any) => ({
+        id: Number(d.ID),
+        name: String(d.Name || ''),
+        type: String(d.locationType || 'CITY').toUpperCase(), // CITY | AREA (AREA = specific boarding locality)
+        region: String(d.region || ''),
+        parentName: String(d.parentLocationName || ''),
+        // Popular boarding points for this city (redBus's own BpList) — shown in the
+        // From dropdown exactly like the reference UI ("Board at" rows).
+        boardingPoints: (Array.isArray(d.BpList) ? d.BpList : []).slice(0, 6).map((bp: any) => ({
+          id: Number(bp?.ID), name: String(bp?.Name || ''), parentName: String(bp?.parentLocationName || ''),
+        })),
+      }));
+    busLocationCache.set(key, { at: Date.now(), docs: locations });
+    if (busLocationCache.size > 500) {
+      const oldest = [...busLocationCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) busLocationCache.delete(oldest[0]);
+    }
+    return res.json({ locations });
+  } catch (e: any) {
+    return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+  }
 });
 
 apiRouter.get('/status', (_req, res) => {

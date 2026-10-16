@@ -72,6 +72,12 @@ export function parseAbhiBusServices(
         ...(t.startTime ? { departure: `${String(t.startTime)}${t.arriveTime ? ` → ${String(t.arriveTime)}` : ''}` } : {}),
         ...(t.travelTime ? { duration: `~${String(t.travelTime).slice(0, 8)} h` } : {}),
         ...(Number.isFinite(seats) ? { seats_available: String(seats) } : {}),
+        ...(busType ? { bus_type: busType.slice(0, 80) } : {}),
+        ...(t.startTime ? { departure_time: String(t.startTime).slice(0, 5) } : {}),
+        // structured facets from AbhiBus's own bus-type string (no invention)
+        ac: /non[- ]?a\/?c/i.test(busType) ? 'no' : (/a\/?c|air conditioned/i.test(busType) ? 'yes' : ''),
+        sleeper: /sleeper/i.test(busType) ? 'yes' : (/seater/i.test(busType) ? 'no' : ''),
+        seater: /seater/i.test(busType) ? 'yes' : '',
         ...(rating ? { rating } : {}),
         ...(s?.busInsights?.busThumbnailUrl && /^https:\/\//.test(s.busInsights.busThumbnailUrl) ? { image_url: s.busInsights.busThumbnailUrl } : {}),
         platform: 'AbhiBus',

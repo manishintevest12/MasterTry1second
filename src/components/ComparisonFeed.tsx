@@ -8,6 +8,7 @@ import { TravelDealRow } from './TravelDealRow';
 import { HotelDealCard } from './HotelDealCard';
 import { groupHotels, compareHotelGroupsDefault } from '../utils/hotelGroups';
 import { groupOffers } from '../utils/offerGroups';
+import { BusFiltersBar, busFacetPred } from './BusFilters';
 import { NativeAdCard } from './NativeAdCard';
 import { CreditCardCard } from './CreditCardCard';
 import { CreditCardsCompareModal } from './CreditCardsCompareModal';
@@ -31,6 +32,12 @@ export const ComparisonFeed: React.FC = () => {
   } = useApp();
 
   const meta = VERTICAL_META[vertical] || VERTICAL_META.flights;
+
+  // Bus filter chips + boarding point (owner reference UI, 16 Oct)
+  const [busChips, setBusChips] = useState<string[]>([]);
+  const [busBoarding, setBusBoarding] = useState<string | null>(null);
+  const toggleBusChip = (id: string) => setBusChips((prev) => prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]);
+  const isBus = vertical === 'bus';
 
   // Credit-cards compare tray: up to 3 cards selected for side-by-side comparison.
   const [ccCompare, setCcCompare] = useState<Array<any>>([]);
@@ -84,6 +91,14 @@ export const ComparisonFeed: React.FC = () => {
     filtered = filtered.filter((it) => matchSmartFilter(it, smartFilter));
   }
 
+  // Bus facets: counts are computed over the smart-filtered set BEFORE chips apply;
+  // chips then filter, and an active boarding point narrows to services boarding there.
+  const busFilterBase = isBus ? [...filtered] : [];
+  if (isBus) {
+    if (busChips.length) filtered = filtered.filter((it) => busChips.every((c) => busFacetPred(c, it as any)));
+    if (busBoarding) filtered = filtered.filter((it) => String((it as any).specs?.['boarding point'] || '') === busBoarding);
+  }
+
   // Sort (prompt sort hint wins only when the tab is still on 'best')
   const effectiveSort = (sortOption === 'best' && smartFilter?.sortHint) ? smartFilter.sortHint : sortOption;
   const sorted = [...filtered].sort((a, b) => {
@@ -108,6 +123,8 @@ export const ComparisonFeed: React.FC = () => {
 
   useEffect(() => {
     setVisibleCount(INITIAL_VISIBLE_COUNT);
+    setBusChips([]);
+    setBusBoarding(null);
   }, [vertical, searchQuery, smartFilterText, selectedCategory]);
 
   // Hotels: same property from several sites becomes ONE card with a price row per site.
@@ -278,6 +295,18 @@ export const ComparisonFeed: React.FC = () => {
             <div className="space-y-4">
               {/* Native Google AdSense Injection: The very first result card displayed must be a Google Ad */}
               <NativeAdCard vertical={vertical} userLocation={userLocation} />
+
+              {/* Bus filter chips + boarding points (only for the bus vertical) */}
+              {isBus && busFilterBase.length > 0 && (
+                <BusFiltersBar
+                  baseItems={busFilterBase as any}
+                  activeChips={busChips}
+                  onToggleChip={toggleBusChip}
+                  boardingPoint={busBoarding}
+                  onSelectBoardingPoint={setBusBoarding}
+                  cityLabel={userLocation.city}
+                />
+              )}
 
               {/* Standard Organic Result Cards */}
               {isHotels

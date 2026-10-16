@@ -5,6 +5,8 @@ export interface AutocompleteSuggestion {
   badge?: string;
   icon?: string;
   type: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'category' | 'location';
+  /** Optional section header rendered above this row (e.g. 'Popular Boarding Points'). */
+  section?: string;
 }
 
 export const AUTOCOMPLETE_CITIES: AutocompleteSuggestion[] = [

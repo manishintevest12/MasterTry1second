@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Bus } from 'lucide-react';
 import {
   Search,
   MapPin,
@@ -26,7 +27,7 @@ interface AutocompleteInputProps {
   onChange: (val: string) => void;
   onSelect?: (val: string, suggestion?: AutocompleteSuggestion) => void;
   placeholder?: string;
-  type?: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'location' | 'all';
+  type?: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'location' | 'bus-location' | 'all';
   className?: string;
   inputClassName?: string;
   icon?: React.ReactNode;
@@ -54,6 +55,53 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Bus deep-location typeahead: redBus's own registry via /api/bus/locations —
+  // tier-1/2/3 towns (Harda etc.) AND area-level boarding points with real IDs.
+  const [busRemote, setBusRemote] = useState<AutocompleteSuggestion[]>([]);
+  const [busRemoteLoading, setBusRemoteLoading] = useState(false);
+  const isBusLocation = type === 'bus-location';
+  React.useEffect(() => {
+    if (!isBusLocation) return;
+    const q = value.trim();
+    if (q.length < 2) { setBusRemote([]); return; }
+    let cancelled = false;
+    setBusRemoteLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/bus/locations?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const locs: any[] = Array.isArray(data?.locations) ? data.locations : [];
+        const out: AutocompleteSuggestion[] = [];
+        for (const l of locs) {
+          if (l.type === 'CITY') {
+            out.push({ text: l.name, subtext: l.region || l.parentName || 'Bus stand', badge: 'City', type: 'location' });
+            const cityMatch = String(l.name).toLowerCase().includes(q.toLowerCase());
+            if (cityMatch && Array.isArray(l.boardingPoints) && l.boardingPoints.length) {
+              for (const bp of l.boardingPoints) {
+                out.push({
+                  text: bp.name,
+                  subtext: bp.parentName || l.name,
+                  badge: 'Board at',
+                  type: 'location',
+                  section: `Popular Boarding Points near you · ${l.name}`,
+                });
+              }
+            }
+          } else {
+            out.push({ text: l.name, subtext: l.parentName ? `Area in ${l.parentName}` : 'Boarding area', badge: 'Board at', type: 'location' });
+          }
+        }
+        setBusRemote(out.slice(0, 12));
+      } catch {
+        if (!cancelled) setBusRemote([]);
+      } finally {
+        if (!cancelled) setBusRemoteLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [value, isBusLocation]);
+
   // Derive suggestions
   const suggestions: AutocompleteSuggestion[] = React.useMemo(() => {
     if (presetList && presetList.length > 0) {
@@ -67,8 +115,13 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         badge: 'Category',
       }));
     }
+    if (isBusLocation) {
+      // real redBus locations first; static city list only as offline fallback
+      if (busRemote.length > 0) return busRemote;
+      return getFilteredSuggestions(value, 'city', 14);
+    }
     return getFilteredSuggestions(value, type, 14);
-  }, [value, type, presetList]);
+  }, [value, type, presetList, busRemote, isBusLocation]);
 
   // Click outside to close
   useEffect(() => {
@@ -205,8 +258,17 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         >
           <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] text-slate-500 font-semibold tracking-wide uppercase">
             <span className="flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-orange-500" />
-              <span>Instant Autocomplete Suggestions</span>
+              {isBusLocation ? (
+                <>
+                  <Bus className="w-3 h-3 text-[#d84e55]" />
+                  <span>{busRemoteLoading ? 'Searching live bus locations…' : 'Live bus stops · cities, towns & boarding points'}</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3 h-3 text-orange-500" />
+                  <span>Instant Autocomplete Suggestions</span>
+                </>
+              )}
             </span>
             <span className="font-mono text-[9px] text-slate-400">↑↓ to navigate · ↵ select</span>
           </div>
@@ -254,7 +316,16 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
           <div className="py-1">
             {suggestions.map((sugg, idx) => {
               const isSelected = highlightedIndex === idx;
+              const showSection =
+                !!sugg.section && (idx === 0 || suggestions[idx - 1].section !== sugg.section);
               return (
+                <React.Fragment key={`${sugg.text}-${idx}`}>
+                {showSection && (
+                  <div className="px-3.5 pt-2 pb-1 text-[10px] font-black text-slate-700 bg-slate-50 border-y border-slate-100 flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3 text-[#d84e55]" />
+                    <span>{sugg.section}</span>
+                  </div>
+                )}
                 <button
                   key={`${sugg.text}-${idx}`}
                   type="button"
@@ -295,6 +366,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
                     </span>
                   )}
                 </button>
+                </React.Fragment>
               );
             })}
           </div>

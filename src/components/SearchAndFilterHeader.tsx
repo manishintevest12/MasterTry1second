@@ -1037,8 +1037,8 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                     value={busFrom}
                     onChange={setBusFrom}
                     onSelect={(val) => setBusFrom(val)}
-                    type="city"
-                    placeholder="From (Bengaluru)"
+                    type="bus-location"
+                    placeholder="From (Bengaluru / Harda / Teen Imli Square)"
                     className="w-full"
                     inputClassName="text-xs font-bold text-slate-900"
                   />
@@ -1091,8 +1091,8 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                     setSearchQuery(q);
                     triggerLiveLocationScrape(q, undefined, travelDatesFor('bus', busDate));
                   }}
-                  type="city"
-                  placeholder="To (Hyderabad / Manali)"
+                  type="bus-location"
+                  placeholder="To (Hyderabad / Manali / Harda)"
                   className="w-full"
                   inputClassName="text-xs font-bold text-slate-900"
                 />
