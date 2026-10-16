@@ -57,6 +57,13 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   __NEXT_DATA__.pTableData route-level min/max fare.
 
 ## Cab
+### Uber (Cab & Ride) — LIVE via SSR city-guide fare tables + universal deep link (no API creds)
+- Official API /v1.2/estimates/price stays the primary stage (UBER_APPLICATION_ID+UBER_CLIENT_SECRET OAuth2 client_credentials, or UBER_SERVER_TOKEN; UBER_API_HOST=sandbox-api.uber.com for sandbox testing) but the registered app's secret mismatches, so the worker falls back automatically.
+- FALLBACK (live, verified 15 Oct): www.uber.com/global/en/r/cities/<slug>/ SSR pages carry "Average price with UberX*" tables. Verified slugs: new-delhi-new-delhi-in, mumbai-maharashtra-in, bangalore-karnataka-in, chennai-tamil-nadu-in, hyderabad-telangana-in, kolkata-west-bengal-in, ahmedabad-gujarat-in, jaipur-rajasthan-in, lucknow-uttar-pradesh-in. Parse: cmln__paragraph">TEXT</p> pairs; a name followed by a "₹NNN" text = destination fare row.
+- Matching rule: only the DROP side of the route may match a published destination (matching pickup produced absurd offers). No match => honest EMPTY_RESPONSE.
+- Deeplink: m.uber.com/ul/?client_id=<UBER_CLIENT_ID>&action=setPickup&pickup[my_location]=true&dropoff[lat/lon/nickname] routed via /api/out so an affiliate campaign (direct or network, e.g. a future Uber affiliate program) attaches server-side when available.
+- DEAD ENDS (do not re-recon): m.uber.com/go/graphql guest data queries return 400 "something went wrong" (IP-gated; only __typename works unauthenticated); RefreshShoppingOrder mutation needs auth; www.uber.com/graphql is a marketing schema with no PUDO/fare types; www /api/ RPC has getPlaceDetails + getDirections but no fare handler; cities index /global/en/r/cities/ is a JS shell.
+
 - **Savaari** [savaariCabs.ts] — JSON-LD FAQ flat fares. **QuickRide**
   [quickRideCabs.ts] — SSR fare table. **BharatTaxi** [bharatTaxi.ts] —
   bharattaxi.com/{from}/to/{to} SSR flat fares (legacy-spelling aliases).

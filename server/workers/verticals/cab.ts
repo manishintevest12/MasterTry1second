@@ -43,6 +43,110 @@ async function uberBearerToken(appId: string, appSecret: string): Promise<string
   } catch { return null; }
 }
 
+// ---------------------------------------------------------------------------
+// Uber SSR city-guide fallback (no API credentials needed).
+// Uber publishes per-city guides with "Average price with UberX*" tables for
+// popular destinations (real Uber-published averages, rendered server-side on
+// www.uber.com). When official API credentials are absent/blocked we use these
+// honestly: the offer states it is a published city average, not a live quote.
+const UBER_CITY_SLUGS: { keys: string[]; slug: string; city: string }[] = [
+  { keys: ['delhi', 'new delhi', 'ndls'], slug: 'new-delhi-new-delhi-in', city: 'New Delhi' },
+  { keys: ['mumbai', 'bombay'], slug: 'mumbai-maharashtra-in', city: 'Mumbai' },
+  { keys: ['bangalore', 'bengaluru'], slug: 'bangalore-karnataka-in', city: 'Bangalore' },
+  { keys: ['chennai', 'madras'], slug: 'chennai-tamil-nadu-in', city: 'Chennai' },
+  { keys: ['hyderabad'], slug: 'hyderabad-telangana-in', city: 'Hyderabad' },
+  { keys: ['kolkata', 'calcutta'], slug: 'kolkata-west-bengal-in', city: 'Kolkata' },
+  { keys: ['ahmedabad', 'ahmadabad'], slug: 'ahmedabad-gujarat-in', city: 'Ahmedabad' },
+  { keys: ['jaipur'], slug: 'jaipur-rajasthan-in', city: 'Jaipur' },
+  { keys: ['lucknow'], slug: 'lucknow-uttar-pradesh-in', city: 'Lucknow' },
+];
+
+function uberCitySlugFor(place: string): { slug: string; city: string } | null {
+  const p = place.toLowerCase();
+  for (const c of UBER_CITY_SLUGS) if (c.keys.some((k) => p.includes(k))) return { slug: c.slug, city: c.city };
+  return null;
+}
+
+function normPlace(s: string): string[] {
+  return s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((t) => t.length > 2 && !['and', 'the', 'st', 'station'].includes(t));
+}
+
+/** Match a route endpoint against an SSR destination name; returns overlap score. */
+function uberDestMatchScore(routeEnd: string, destName: string): number {
+  const a = normPlace(routeEnd); const b = normPlace(destName);
+  if (!a.length || !b.length) return 0;
+  let hits = 0;
+  for (const t of a) if (b.includes(t) || b.some((x) => (x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x))))) hits++;
+  return hits / Math.min(a.length, b.length);
+}
+
+interface UberCityFare { dest: string; price: number; city: string; slug: string; fetchedUrl: string }
+
+async function uberCityFares(slug: string, city: string): Promise<UberCityFare[]> {
+  const url = `https://www.uber.com/global/en/r/cities/${slug}/`;
+  const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 20_000, headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9' } });
+  if (r.status !== 200 || !(r.body || '').includes('Average price with UberX')) throw new AcquisitionError('EMPTY_RESPONSE', `Uber city guide page unavailable (HTTP ${r.status}) for ${city}`);
+  const out: UberCityFare[] = [];
+  const re = /cmln__paragraph">([^<]{2,80})</g;
+  const txts: string[] = []; let m: RegExpExecArray | null;
+  while ((m = re.exec(r.body || ''))) txts.push(m[1].trim());
+  for (let i = 0; i + 1 < txts.length; i++) {
+    const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
+    if (priceM && !/^\s*[₹]/.test(txts[i])) {
+      const price = Number(priceM[1].replace(/,/g, ''));
+      if (price > 0) out.push({ dest: txts[i], price, city, slug, fetchedUrl: url });
+    }
+  }
+  return out;
+}
+
+
+/** SSR city-guide fallback: emit the honest published average when the queried
+ *  destination appears in Uber's own city fare table. Never fabricates. */
+async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reason: string): Promise<any[]> {
+  const cityInfo = uberCitySlugFor(rt.from) || uberCitySlugFor(rt.to);
+  if (!cityInfo) throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); no Uber city guide page exists for this city, and no live guest fare API is available without credentials.`);
+  const fares = await uberCityFares(cityInfo.slug, cityInfo.city);
+  // match either route endpoint against published destinations, best score wins
+  // Only the DROP side may match a published destination — matching the pickup
+  // produced absurd offers (e.g. "delhi to kanpur" -> "Delhi Cantt station").
+  let best: { fare: UberCityFare; score: number; end: string } | null = null;
+  for (const fare of fares) {
+    const score = uberDestMatchScore(rt.to, fare.dest);
+    if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
+  }
+  if (!best) throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); Uber's published ${cityInfo.city} fare table covers ${fares.length} destinations and none matches "${rt.to}".`);
+  const dropName = best.fare.dest;
+  const drop = (await photonGeocode(`${dropName}, ${cityInfo.city}`)) || (await photonGeocode(rt.to));
+  const today = new Date().toISOString().slice(0, 10);
+  const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
+  const ul = new URL('https://m.uber.com/ul/');
+  ul.searchParams.set('client_id', uberClientId);
+  ul.searchParams.set('action', 'setPickup');
+  ul.searchParams.set('pickup[my_location]', 'true');
+  if (drop) {
+    ul.searchParams.set('dropoff[latitude]', String(drop.lat));
+    ul.searchParams.set('dropoff[longitude]', String(drop.lon));
+  }
+  ul.searchParams.set('dropoff[nickname]', dropName.slice(0, 60));
+  return [newRawItem(ctx.source, {
+    title: `${cityInfo.city} to ${dropName} cab (UberX, published average)`,
+    brand: 'Uber',
+    price: best.fare.price, currency: 'INR',
+    seller: 'Uber',
+    travel: { route: `${cityInfo.city} to ${dropName}`.toLowerCase(), seatType: 'unknown' },
+    attributes: {
+      pickup: cityInfo.city, drop: dropName, route: `${cityInfo.city} to ${dropName}`,
+      vehicle_type: 'UberX', trip_type: 'one-way',
+      price_basis: `Uber-published ${cityInfo.city} average for ${dropName} (UberX) on ${today}`,
+      data_note: `Fare is Uber's own published city-guide average (SSR table on uber.com), not a live route quote; live quotes need official API credentials (${reason}). Deeplink is the Uber universal link with our client_id, routed via /api/out so an affiliate campaign (direct or network) attaches when available.`,
+    },
+    sellerUrl: ul.toString(),
+    identifiers: { sku: `uber-ssr-${best.fare.slug}-${dropName}`.toLowerCase().replace(/\s+/g, '-') },
+    evidence: { sourceUrl: best.fare.fetchedUrl, extractedFields: ['SSR city-guide fare table row'] },
+  })];
+}
+
 export const cabWorker: VerticalWorker = {
   vertical: 'cab',
   tasks: [
@@ -96,6 +200,7 @@ export const cabWorker: VerticalWorker = {
         return items;
       },
     },
+
     {
       // Uber: official Uber API price estimates (developer.uber.com / v1.2). Auth: OAuth2
       // client_credentials (UBER_APPLICATION_ID + UBER_CLIENT_SECRET) with legacy UBER_SERVER_TOKEN
@@ -117,13 +222,13 @@ export const cabWorker: VerticalWorker = {
           if (bearer) authHeaders = { Authorization: `Bearer ${bearer}` };
         }
         if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
-        if (!authHeaders) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API credentials not configured: set UBER_APPLICATION_ID + UBER_CLIENT_SECRET (OAuth2 client credentials) or UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price).');
+        if (!authHeaders) return uberSsrFallback(ctx, rt, 'official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)');
         const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
         if (!a || !b) return [];
         const apiHost = String(process.env.UBER_API_HOST || 'api.uber.com').trim() || 'api.uber.com'; // set UBER_API_HOST=sandbox-api.uber.com to test against Uber's sandbox
         const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
         const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { ...authHeaders, Accept: 'application/json' } });
-        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Uber API rejected credentials (HTTP ${r.status}) — check UBER_APPLICATION_ID/UBER_CLIENT_SECRET (or UBER_SERVER_TOKEN)`, r.status);
+        if (r.status === 401 || r.status === 403) return uberSsrFallback(ctx, rt, `official Uber API rejected credentials (HTTP ${r.status})`);
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Uber API HTTP ${r.status}`, r.status);
         let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Uber API non-JSON'); }
         const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
@@ -161,7 +266,7 @@ export const cabWorker: VerticalWorker = {
             evidence: { sourceUrl: url, extractedFields: ['Uber API estimates/price'] },
           }));
         }
-        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API returned no fare estimate for this route');
+        if (!items.length) return uberSsrFallback(ctx, rt, 'official Uber API returned no fare estimate for this route');
         return items;
       },
     },
