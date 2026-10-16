@@ -92,7 +92,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
             out.push({ text: l.name, subtext: l.parentName ? `Area in ${l.parentName}` : 'Boarding area', badge: 'Board at', type: 'location' });
           }
         }
-        setBusRemote(out.slice(0, 12));
+        setBusRemote(out.slice(0, 16));
       } catch {
         if (!cancelled) setBusRemote([]);
       } finally {
@@ -116,9 +116,14 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
       }));
     }
     if (isBusLocation) {
-      // real redBus locations first; static city list only as offline fallback
+      // real redBus locations first; static city list only as offline fallback.
+      // Bus fallback must show India towns only — no airports, no international
+      // flight-style entries (Doha/SIN/BKK airports belong to flight search).
       if (busRemote.length > 0) return busRemote;
-      return getFilteredSuggestions(value, 'city', 14);
+      return getFilteredSuggestions(value, 'city', 14).filter((sg) => {
+        const st = `${sg.subtext || ''} ${sg.badge || ''}`;
+        return !/airport|international/i.test(st);
+      });
     }
     return getFilteredSuggestions(value, type, 14);
   }, [value, type, presetList, busRemote, isBusLocation]);
@@ -187,6 +192,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   };
 
   const renderIcon = (sugg: AutocompleteSuggestion) => {
+    if (isBusLocation) return <Bus className="w-3.5 h-3.5 text-rose-600 shrink-0" />;
     if (sugg.type === 'city') return <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
     if (sugg.type === 'grocery') return <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
     if (sugg.type === 'food') return <Utensils className="w-3.5 h-3.5 text-orange-500 shrink-0" />;

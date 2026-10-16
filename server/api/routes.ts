@@ -72,15 +72,18 @@ apiRouter.get('/bus/locations', async (req, res) => {
   const hit = busLocationCache.get(key);
   if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return res.json({ locations: hit.docs });
   try {
-    const r = await cffiFetch(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(q)}&limit=8`, {
+    const r = await cffiFetch(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(q)}&limit=20`, {
       impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json' },
     });
     if (r.status !== 200) return res.json({ locations: [], error: `redBus citySuggestion HTTP ${r.status}` });
     const docs: any[] = (JSON.parse(r.body || '{}').response?.docs) || [];
     const locations = docs
       .filter((d: any) => Number(d?.ID) > 0)
+      // India only (owner: tier-1/2/3 towns where buses actually run) — redBus
+      // marks country in `cc`; keep unknown-cc rows only if cc is absent.
+      .filter((d: any) => !d?.cc || String(d.cc).toUpperCase() === 'IND')
       .sort((a: any, b: any) => Number(b?.rank || 0) - Number(a?.rank || 0))
-      .slice(0, 8)
+      .slice(0, 20)
       .map((d: any) => ({
         id: Number(d.ID),
         name: String(d.Name || ''),
