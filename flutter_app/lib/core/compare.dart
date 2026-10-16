@@ -530,11 +530,15 @@ List<HotelGroup> sortHotels(List<HotelGroup> gs, SortMode mode) {
     case SortMode.highestRated:
       out.sort((a, b) => (b.rating10 ?? 0).compareTo(a.rating10 ?? 0));
     case SortMode.best:
+      // Owner rule (16 Oct): multi-site comparison cards (2+ companies) lead the
+      // feed, cheapest first among them; single-site hotels follow, cheapest first.
+      // Pure price order only when the user explicitly picks Cheapest.
       out.sort((a, b) {
-        final byRows = b.rows.length.compareTo(a.rows.length);
-        if (byRows != 0) return byRows;
-        final byRating = (b.rating10 ?? 0).compareTo(a.rating10 ?? 0);
-        return byRating != 0 ? byRating : a.best.price.compareTo(b.best.price);
+        final byMulti = ((a.rows.length >= 2) ? 0 : 1).compareTo((b.rows.length >= 2) ? 0 : 1);
+        if (byMulti != 0) return byMulti;
+        final byPrice = a.best.price.compareTo(b.best.price);
+        if (byPrice != 0) return byPrice;
+        return (b.rating10 ?? 0).compareTo(a.rating10 ?? 0);
       });
   }
   return out;

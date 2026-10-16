@@ -53,6 +53,19 @@ export function siteOf(it: ComparisonItem): string {
   return q?.sellerName || it.provider || 'Seller';
 }
 
+/**
+ * Default ('best') hotel feed order — owner rule (16 Oct 2026): cards comparing
+ * 2+ companies come FIRST (cheapest among them first), single-site hotels follow
+ * (again cheapest first). Pure price order only when the user explicitly picks
+ * the Cheapest filter (then a cheap single-property hotel may top the feed).
+ */
+export function compareHotelGroupsDefault(a: HotelGroup, b: HotelGroup): number {
+  const multi = (g: HotelGroup) => (g.rows.length >= 2 ? 0 : 1);
+  return multi(a) - multi(b)
+    || (a.best.price || Infinity) - (b.best.price || Infinity)
+    || (b.rating10 || 0) - (a.rating10 || 0);
+}
+
 export function groupHotels(items: ComparisonItem[]): HotelGroup[] {
   const groups = new Map<string, HotelGroup>();
   for (const it of items) {

@@ -6,7 +6,7 @@ import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
 import { TravelDealRow } from './TravelDealRow';
 import { HotelDealCard } from './HotelDealCard';
-import { groupHotels } from '../utils/hotelGroups';
+import { groupHotels, compareHotelGroupsDefault } from '../utils/hotelGroups';
 import { groupOffers } from '../utils/offerGroups';
 import { NativeAdCard } from './NativeAdCard';
 import { CreditCardCard } from './CreditCardCard';
@@ -117,7 +117,11 @@ export const ComparisonFeed: React.FC = () => {
     const gs = groupHotels(sorted);
     if (sortOption === 'cheapest') gs.sort((a, b) => a.best.price - b.best.price);
     else if (sortOption === 'highest_rated') gs.sort((a, b) => (b.rating10 || 0) - (a.rating10 || 0));
-    else gs.sort((a, b) => (b.rows.length - a.rows.length) || ((b.rating10 || 0) - (a.rating10 || 0)) || (a.best.price - b.best.price));
+    // 'best': owner rule (16 Oct) — multi-site comparison cards (2+ companies) lead
+    // the feed, cheapest first among them; single-site hotels follow, cheapest first.
+    // Pure-price ordering only when the user explicitly picks the Cheapest filter
+    // (then a cheap single-property hotel may top the feed, as intended).
+    else gs.sort(compareHotelGroupsDefault);
     return gs;
   }, [isHotels, sorted, sortOption]);
   // Every other vertical: ONE card per product, however many websites sell it. The card shows the
