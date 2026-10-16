@@ -164,19 +164,7 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   recon-bigbasket.md.
 - **QuickCommerce API** [grocery.ts] — api.quickcommerceapi.com/v1/search
   (needs QUICKCOMMERCE_API_KEY in hPanel; /v1/health-status public).
-- **Zepto** — BLOCKED for search (user-search.zepto.co.in/api/v3/search +
-  lms get_page = CloudFront WAF 429; zeptonow.com all-HTML 202 challenge) but
-  15 Oct recon found 3 UNGATED api-gateway routes (Kong, no IP block):
-  (1) serviceability-service/api/v1/serviceability?lat&lng&regionId (200 —
-  needs the correct regionId, 1-42 all false for Delhi/Mumbai/Gurgaon/B'lore;
-  no region-list route), (2) product-assortment-service/api/v2/store-products-
-  by-store-subcategory-id (400 wants StoreId UUID — need a serviceable store
-  first), (3) recipe-service/api/v1/recipe/search-products (needs recipeId).
-  151-route map extracted from the APK Hermes bundle (recon-zepto.md);
-  anonymous-device-token host undiscovered. Path to prices: crack regionId →
-  stores[].uuid → subcategory UUIDs.
-
-## E-commerce
+- **Zepto** — PARTIALLY CRACKED (16 Oct, post-midnight session): (1) SERVICEABILITY SOLVED — GET api-gateway.zepto.co.in/serviceability-service/api/v1/serviceability?lat=<lat>&long=<lng> — param is `long` NOT `lng` (earlier 500s/regionId dead-end was this typo). Returns serviceable:true + PRIMARY/SECONDARY/TERTIARY store UUIDs per location (Gurgaon f5e682bc-1124-4bcf-8fca-734bd8b59d7f, Mumbai 4a54d5f5-0bd9-4b8f-b08a-120d8e7926d7). (2) Live category taxonomy: v2/category/grid?latitude&longitude + v1/category?category_id=<cat>&store_id=<store> -> availableSubcategories UUIDs (Fruits&Veg All=e78a8422-5f20-4e4b-9a9f-22a0e53962e3), l1Ids/merchIds/subcatL1Mapping. (3) PRODUCTS STILL BLOCKED: v2/store-products-by-store-subcategory-id returns 200 but storeProducts=[] for EVERY combo (fresh IDs, real stores Gurgaon/Mumbai, page 0/1, page_size, with/without compatible_components header, with cookie jar) — guest-gating at the service level, NOT stale IDs. v3/store-products needs "SP IDs or PV IDs". vertical-feed is DEPRECATED (Kong 503 message). user-search WAF 429 unchanged. bff-gateway.zeptonow.com/.zepto.com = 202 challenge everything; auth/create-csrf-token is site-internal (404 on Kong). Web bundle: widget calls send `compatible_components` flag list; signed headers x-xsrf-token/x-csrf-secret/request-signature derive from zeptonow.com cookies the 202 shell never sets. NEXT ANGLES: (a) lms get_page widget resolver params may hold the missing store-products input; (b) reverse the request-signature algorithm (m() in chunk 24645) and forge a guest signature; (c) re-scan the APK Hermes bundle for newer assortment routes; (d) retest search WAF after IP quiet time.
 - **Amazon.in** [amazonIn.ts], **Flipkart** [flipkart.ts], **Ajio** [ajio.ts],
   **Myntra** [myntra.ts] (__myx brace-matching), **TataCLiQ** [tatacliq.ts] —
   searchbff.tatacliq.com/v2/products/mpl/search; X-ACCESS-TOKEN = AES-192-CBC
