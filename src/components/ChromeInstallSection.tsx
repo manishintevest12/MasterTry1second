@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Chrome, Play, Sparkles, Bell, TrendingDown, Ticket, ArrowRight, BadgeCheck, ShieldCheck, MapPin } from 'lucide-react';
+import { Chrome, Play, Sparkles, Bell, TrendingDown, Ticket, ArrowRight, BadgeCheck, ShieldCheck, MapPin, ShoppingBag, ShoppingBasket, Utensils, Plane, Building2, Bus, Car, Film, Landmark, CreditCard, Gift } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAppLinks } from '../utils/useAppLinks';
 
@@ -173,6 +173,24 @@ export const ChromeInstallSection: React.FC = () => {
     },
   ];
 
+  /** All 13 real Try1Second engines the extension + site cover (11 product
+      verticals plus Coupons and Rewards). Honest notes, no fake numbers. */
+  const ENGINES: Array<{ icon: React.ReactNode; name: string; note: string }> = [
+    { icon: <ShoppingBag className="w-4 h-4" />, name: 'Shopping', note: '6 stores, side by side' },
+    { icon: <ShoppingBasket className="w-4 h-4" />, name: '10-min Grocery', note: 'quick-commerce live' },
+    { icon: <Utensils className="w-4 h-4" />, name: 'Food Delivery', note: 'same dish, live prices' },
+    { icon: <Plane className="w-4 h-4" />, name: 'Flights', note: 'live fares, real dates' },
+    { icon: <Building2 className="w-4 h-4" />, name: 'Hotels', note: 'real per-night rates' },
+    { icon: <Bus className="w-4 h-4" />, name: 'Bus', note: 'tier-1 to tier-3 towns' },
+    { icon: <Car className="w-4 h-4" />, name: 'Cab & Ride', note: 'live fare estimates' },
+    { icon: <Film className="w-4 h-4" />, name: 'Movies', note: 'seats & showtimes' },
+    { icon: <Landmark className="w-4 h-4" />, name: 'Loans', note: 'real rate ranges' },
+    { icon: <ShieldCheck className="w-4 h-4" />, name: 'Insurance', note: 'premium quotes' },
+    { icon: <CreditCard className="w-4 h-4" />, name: 'Credit Cards', note: 'fees & rewards' },
+    { icon: <Ticket className="w-4 h-4" />, name: 'Coupons', note: 'auto-tested on checkout' },
+    { icon: <Gift className="w-4 h-4" />, name: 'Rewards', note: 'points & daily spin' },
+  ];
+
   const [slide, setSlide] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -192,10 +210,11 @@ export const ChromeInstallSection: React.FC = () => {
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10" aria-label="Try1Second Chrome extension">
       <div
-        className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 sm:p-10"
+        className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col gap-8 p-6 sm:p-10"
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
       >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* LEFT: copy + CTAs + laurels + stat rows */}
         <div className="flex flex-col justify-center">
           <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -271,6 +290,26 @@ export const ChromeInstallSection: React.FC = () => {
                 className={`rounded-full transition-all cursor-pointer ${i === slide ? 'w-2.5 h-2.5' : 'w-2 h-2'}`}
                 style={{ background: i === slide ? '#E11D48' : '#cbd5e1' }}
               />
+            ))}
+          </div>
+        </div>
+        </div>
+
+        {/* ALL 13 VERTICAL ENGINES — always visible across the full card width */}
+        <div className="border-t border-slate-100 pt-6">
+          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
+            <Sparkles className="w-4 h-4" style={{ color: ACCENT_BG }} />
+            <span>All 13 vertical engines &middot; one extension</span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7 gap-2.5">
+            {ENGINES.map((e) => (
+              <div key={e.name} className="flex items-center gap-2.5 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5">
+                <span className="flex-none text-red-600" style={{ color: ACCENT_BG }} aria-hidden>{e.icon}</span>
+                <div className="min-w-0">
+                  <div className="text-[12px] font-black text-slate-900 leading-tight">{e.name}</div>
+                  <div className="text-[10px] font-bold text-slate-500 leading-tight truncate">{e.note}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
