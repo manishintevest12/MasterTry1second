@@ -153,6 +153,13 @@
     panel.style.display = 'none';
     let panelOpen = false;
     bar.querySelector('.t1s-bar-toggle').addEventListener('click', () => {
+      // If the sidebar absorbed (or detached) the panel, bring it back to the
+      // page first so the toggle always shows a visible card.
+      if (!panel.isConnected || panel.closest('#' + SIDEBAR_ID)) {
+        document.documentElement.appendChild(panel);
+        panel.classList.remove('t1s-in-sidebar');
+        panelOpen = false;
+      }
       panelOpen = !panelOpen;
       panel.style.display = panelOpen ? '' : 'none';
       if (panelOpen && !panel.dataset.rendered) { panel.dataset.rendered = '1'; renderPanelFlow(panel, product, { t1sCity, t1sPincode }); }

@@ -3,8 +3,10 @@
    Features are unchanged — this is a pure visual layer over the same DOM ids. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { background: #F4F7FA; }
 body {
   width: 380px;
+  overflow-x: hidden;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #F4F7FA;
   color: #151922;
@@ -14,6 +16,9 @@ body {
 .t1s-hero { background: #151922; padding: 12px 14px 12px; color: #fff; }
 .t1s-hero-top { display: flex; align-items: center; justify-content: space-between; }
 .t1s-hero img { display: block; }
+.t1s-ic { position: relative; display: inline-flex; flex: none; }
+.t1s-ic img { width: 31px; height: 33px; }
+.t1s-wd { height: 17px; width: auto; }
 .t1s-hero-title { margin-top: 9px; font-size: 13.5px; font-weight: 900; letter-spacing: .2px; }
 .t1s-hero-badge {
   display: inline-block; margin-top: 5px; background: #E11D48; color: #fff;

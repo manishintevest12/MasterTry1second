@@ -3,7 +3,7 @@
 
 .t1s-root {
   position: fixed;
-  right: 18px;
+  right: 84px; /* left of the 64px right rail so the white card never covers it */
   bottom: 18px;
   z-index: 2147483000;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -263,7 +263,8 @@
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 .t1s-sb * { font-family: inherit; }
-.t1s-sb.t1s-sb-open { transform: translateX(0); }
+.t1s-sb:not(.t1s-sb-open) { visibility: hidden; pointer-events: none; }
+.t1s-sb.t1s-sb-open { transform: translateX(0); visibility: visible; }
 .t1s-sb-head {
   display: flex; align-items: center; gap: 10px; padding: 12px 14px;
   background: #151922; color: #fff; flex: none;

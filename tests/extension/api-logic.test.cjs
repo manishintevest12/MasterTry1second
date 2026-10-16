@@ -153,6 +153,21 @@ if (classifyMatch) {
   t('SW respects dropNotifications pref', /dropNotifications/.test(swCode));
 }
 
+// ---- v1.7.2: white-block layout bugs (popup wordmark overflow, panel/dock overlap) ----
+{
+  const popupCss = fs.readFileSync('chrome-extension/popup/popup.css', 'utf8');
+  t('popup wordmark sized (no 652px natural-width overflow)', /\.t1s-wd\s*{\s*height:\s*17px/.test(popupCss));
+  t('popup logo icon sized', /\.t1s-ic img\s*{\s*width:\s*31px/.test(popupCss));
+  t('popup html background matches body (no white strip)', /html\s*{\s*background:\s*#F4F7FA/.test(popupCss));
+
+  const contentCss = fs.readFileSync('chrome-extension/content/content.css', 'utf8');
+  t('comparison panel sits left of the 64px rail (right: 84px, no overlap)', /\.t1s-root\s*{[^}]*right:\s*84px/.test(contentCss.replace(/\n/g, ' ')) || contentCss.includes('right: 84px'));
+  t('closed sidebar cannot leave a white sheet (visibility guard)', contentCss.includes('.t1s-sb:not(.t1s-sb-open) { visibility: hidden'));
+
+  const contentCode = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
+  t('bar toggle re-attaches a detached/absorbed panel (isConnected check)', contentCode.includes('!panel.isConnected || panel.closest'));
+}
+
     console.log(`pass ${pass} / fail ${fail}`);
   process.exit(fail ? 1 : 0);
 })();
