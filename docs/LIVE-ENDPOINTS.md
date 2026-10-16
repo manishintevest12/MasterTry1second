@@ -57,6 +57,18 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   __NEXT_DATA__.pTableData route-level min/max fare.
 
 ## Cab
+### Ola (Cab & Ride) — LIVE via BPD rate-card database (no API key needed)
+- Official devapi.olacabs.com/v1/products stays the primary stage (OLA_API_KEY; X-APP-TOKEN header) — absent/rejected key falls back automatically.
+- FALLBACK (live, verified 15 Oct): Ola's own merchandising web app exposes the BPD rate-card DB.
+  1. GET https://webapps.olacabs.com/fleet/bpdproxy/bpd/rest/v1/city?country_code=IN with headers X-Client-Key: a3abb50bbd6p4bcdb519df4f0a140f53jfkhqfad (public web client token from window.owConfig on /merchandising/rate-card) — 417 IN cities with id/name/timezone. Ungated GET.
+  2. Fetch https://webapps.olacabs.com/merchandising/rate-card?api_ver=v1 once for the cookie jar (_csrf, XSRF-TOKEN, OSRN_v1) — ALL THREE cookies are required; XSRF-only returns 500 EBADCSRFTOKEN.
+  3. POST https://webapps.olacabs.com/fleet/pricing/v1/ratecard/all body {city_id, country:"IN", service_type:{p2p:null}, user_request_time:null}, headers X-Client-Key + csrf-token:<XSRF-TOKEN cookie> + x-timezone — returns EVERY p2p rate card for the city (Delhi: 2,923, incl. actively-maintained all-day "AL"/peak WP/EP/MP/WL cards updated same-day).
+- Fare formula (approved, non-deleted, rate_card_type=base, threshold_type=distance_based): base_fare + distance slabs (rate_per_km to threshold_1, rate_after_threshold_1 to threshold_2, rate_after_threshold_2 beyond; minus inclusive_km) + rate_per_trip_minute * mins; floor min_fare. Picker prefers time_of_day AL (all-day) cards, newest created wins.
+- Categories mapped: auto, bike, mini_non_ac, compact, prime_play, prime_plus (labelled Ola Prime), economy_suv, luxury_sedan, erick. micro EXCLUDED (cards are 25km-inclusive pass products).
+- Offers are labelled estimates: Ola's own published rate card applied to OSRM road distance; NOT a live surge-adjusted quote (runtime surge/wait can raise the in-app fare).
+- Deeplink: https://book.olacabs.com/?lat=<pickup>&lng=<pickup> via /api/out (web booking; finish ride in app).
+- DEAD ENDS: OLA_API_KEY path 401 until owner supplies real token; book.olacabs.com is a webpack shell with no guest fare RPC; www.olacabs.com is a Magento marketing site.
+
 ### Uber (Cab & Ride) — LIVE via SSR city-guide fare tables + universal deep link (no API creds)
 - Official API /v1.2/estimates/price stays the primary stage (UBER_APPLICATION_ID+UBER_CLIENT_SECRET OAuth2 client_credentials, or UBER_SERVER_TOKEN; UBER_API_HOST=sandbox-api.uber.com for sandbox testing) but the registered app's secret mismatches, so the worker falls back automatically.
 - FALLBACK (live, verified 15 Oct): www.uber.com/global/en/r/cities/<slug>/ SSR pages carry "Average price with UberX*" tables. Verified slugs: new-delhi-new-delhi-in, mumbai-maharashtra-in, bangalore-karnataka-in, chennai-tamil-nadu-in, hyderabad-telangana-in, kolkata-west-bengal-in, ahmedabad-gujarat-in, jaipur-rajasthan-in, lucknow-uttar-pradesh-in. Parse: cmln__paragraph">TEXT</p> pairs; a name followed by a "₹NNN" text = destination fare row.
