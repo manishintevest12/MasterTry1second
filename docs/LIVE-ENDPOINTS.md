@@ -61,6 +61,14 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
 - www.rapido.bike is a Next.js marketing site. Full bundle scan (Home.js 116KB, commons 592KB, main 38KB): the ONLY web APIs are captain (DRIVER) signup flows (/api/captainSignup, /api/otp, /api/event) plus internal hosts (rapido-entities.svc.production.internal, darwinbox HR, param.ai). No rider fare/estimate API exists on the web surface.
 - Policy: rider fares stay an honest EMPTY_RESPONSE ("available only on app"); do not re-recon the web bundles without a new angle (e.g. app APK API map).
 
+### InDrive (Cab & Ride) — LIVE via intercity web guest API (no auth)
+- intercity.indrive.com (InDrive's intercity booking web app) exposes its API gateway in Next.js runtimeConfig: NEXT_PUBLIC_HOST_API = ic3-gw-cf.euce1.indriverapp.com. Guest, no WAF, no auth (verified 15 Oct).
+- GET /web/v1/cities?search=<q>&country_id=14 — India city registry (id, name, sub_name, INR). Search may rank loosely (search "agra" first returns "Konappana Agrahara") — parser prefers a name-includes match.
+- GET /web/v1/prices?city_from_id=<id>&city_to_id=<id> — published price bands: [{min_price,max_price,order_type:"private"|"parcel"|"pool"}]. Delhi NCR(5233)→Jaipur(5250): private ₹1600–₹5600, pool ₹1000–₹5600; Mumbai(5243)→Pune: private ₹500, pool ₹300.
+- /web/v1/popular/routes?limit=6&country_id=14 also works (limit >6 returns 400).
+- Offers emit private+pool only (parcel = package delivery, dropped); price = band minimum, the full ₹min–₹max range is in price_basis; data_note states rides are name-your-price so the band is indicative, never a fixed fare. Deeplink = intercity.indrive.com.
+- DEAD ENDS: intra-city rides have NO web surface (app-only, offer-based); indrive.com main site is a marketing Next.js shell; my.indrive.com is the logged-in app shell.
+
 ### Ola (Cab & Ride) — LIVE via BPD rate-card database (no API key needed)
 - Official devapi.olacabs.com/v1/products stays the primary stage (OLA_API_KEY; X-APP-TOKEN header) — absent/rejected key falls back automatically.
 - FALLBACK (live, verified 15 Oct): Ola's own merchandising web app exposes the BPD rate-card DB.

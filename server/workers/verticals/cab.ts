@@ -8,6 +8,7 @@ import { buildCabEstimate } from '../parsers/osrmCab';
 import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs'
 import { bharatTaxiSlug, parseBharatTaxiCabs } from '../parsers/bharatTaxi';;
 import { parseQuickRideCabs } from '../parsers/quickRideCabs';
+import { indriveCityLookup, indrivePrices, buildIndriveOffers } from '../parsers/indriveIntercity';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import { photonGeocode } from '../parsers/osmTravel';
@@ -424,15 +425,6 @@ export const cabWorker: VerticalWorker = {
       },
     },
     {
-      sourceId: 'w_cab_indrive',
-      name: 'Cab worker: InDrive India (probe)',
-      priority: 15,
-      run: async () => {
-        const r = await cffiFetch('https://indrive.com/en-in/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'InDrive publishes no fare list anywhere on the web — its model is rider-offered (negotiated) fares set per-ride in the app.');
-      },
-    },
-    {
       // Rapido: verified live — rapido.bike serves SSR SEO route pages (/delhi/routes/<From>-<To>, city
       // sitemaps list thousands) but they carry NO fares; the only API hosts in the web bundle are
       // internal .svc.production.internal services (unreachable). Fare estimates are in-app only.
@@ -518,6 +510,28 @@ export const cabWorker: VerticalWorker = {
         return items;
       },
     },
+    {
+      // InDrive (India): guest API of the intercity web app — published city-pair
+      // price bands (ic3-gw-cf.euce1.indriverapp.com). Rides are name-your-price,
+      // so offers carry InDrive's own indicative range, never a fixed fare.
+      sourceId: 'w_cab_indrive',
+      name: 'Cab worker: InDrive India intercity price bands',
+      priority: 14,
+      maxPerMinute: 10,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const [from, to] = await Promise.all([indriveCityLookup(rt.from), indriveCityLookup(rt.to)]);
+        if (!from || !to) throw new AcquisitionError('EMPTY_RESPONSE', `InDrive intercity registry has no match for ${!from ? rt.from : rt.to} (India registry only)`);
+        if (from.id === to.id) throw new AcquisitionError('EMPTY_RESPONSE', `InDrive intercity: "${rt.from}" and "${rt.to}" resolved to the same city (${from.name})`);
+        const rows = await indrivePrices(from.id, to.id);
+        const items = buildIndriveOffers(ctx.source, rt.from, rt.to, from, to, rows);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `InDrive intercity has no published price band for ${from.name} → ${to.name}`);
+        return items;
+      },
+    },
+
     {
       sourceId: 'w_cab_osrm',
       name: 'Cab worker: OSRM real-distance fare estimate',
