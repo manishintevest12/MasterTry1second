@@ -64,3 +64,8 @@ Ungated storefront APIs (instamart.swiggy.com, no auth, datacenter-IP curl_cffi 
 - GOTCHA: campaign listing nests items at JSON depth 13 (`data.cards[0].card.card.navigationTabs[0].cards[1].gridElements.infoWithStyle.items`) — structure-agnostic walker needs depth cap ≥ 15
 - Gated (202 empty, edge rule): `/api/instamart/search/v2` (POST), `search/mart/v2`, `search/suggest-items/v2`, `collection/v2`, `collection/items`
 - Worker `w_grocery_instamart`: home → storeId + 18 layouts → grids (client-side plural-stem query filter) → 12 offers; honest EMPTY when no whole-product match. Verified: Indore chips 1/biscuits 12, Mumbai masala 3/baby wipes 4/cookies 12.
+
+
+## Zepto follow-up (16 Oct, post-midnight)
+- All 4 next-angle seeds tried: (a) lms/api/v2/get_page = WAF 429 (all body shapes); (b) request-signature NOT required for 200s (store-products already 200s) — the gate is inside the assortment service; (c) Hermes bundle re-scan: no newer assortment routes (string pool only shows product-assortment-service + the known v2/v3 set); (d) user-search WAF unchanged.
+- Working chain remains: serviceability (lat/long) -> store UUIDs; category/grid + v1/category -> fresh subcategory UUIDs. store-products-by-store-subcategory-id answers 200/empty for every guest combo — likely needs the LMS widget resolver.params (server-side params) which sit behind the WAF. Fallback plan: capture resolver params from a real device session later, or retry WAF after IP quiet time.
