@@ -560,6 +560,13 @@
     warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.7 18.3 13.9 4.6a2.2 2.2 0 0 0-3.8 0L2.3 18.3a2 2 0 0 0 1.7 3h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
     info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
     wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
+    cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 3h2l2.6 12.4a1.6 1.6 0 0 0 1.6 1.3h7.6a1.6 1.6 0 0 0 1.6-1.3L21 7H6"/></svg>',
+    basket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 2.4 10.3A2 2 0 0 0 7.3 21h9.4a2 2 0 0 0 2-1.7L21 9"/><path d="m8 9 4-6 4 6"/><path d="M3 9h18"/><path d="M10 14v3M14 14v3"/></svg>',
+    bus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M4 11h16"/><circle cx="8" cy="19" r="1.8"/><circle cx="16" cy="19" r="1.8"/><path d="M4 17h2M18 17h2"/><path d="M8 5v3M16 5v3"/></svg>',
+    film: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 8h4M3 12h4M3 16h4M17 8h4M17 12h4M17 16h4"/></svg>',
+    bank: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-6 9 6"/><path d="M3 9h18"/><path d="M5 9v9M9.5 9v9M14.5 9v9M19 9v9"/><path d="M3 21h18"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.6 3.2 7.9 7.5 9 4.3-1.1 7.5-4.4 7.5-9V6Z"/><path d="m9 12 2 2 4-4"/></svg>',
+    card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>',
   };
 
   const DOCK_ITEMS = [
@@ -1165,13 +1172,20 @@
     }
   }
 
-  /** What's New — the live comparison verticals (reference image 4, honest site lists). */
+  /** What's New — ALL 11 Try1Second verticals with honest source lists (no fake numbers). */
   function viewWhatsNew(body) {
     const cards = [
-      { icon: ICON.hotel, badge: 'Hotel Comparison', title: 'Compare Hotel Prices', desc: 'Real fares across MakeMyTrip, Goibibo, Agoda, Cleartrip, Yatra & Booking.com.', tint: '#F0F4FF' },
-      { icon: ICON.plane, badge: 'Flight Comparison', title: 'Compare Flight Fares', desc: 'Live fares across MakeMyTrip, EaseMyTrip, Ixigo, Yatra, Cleartrip, IndiGo & Akasa Air.', tint: '#F0FDF4' },
-      { icon: ICON.food, badge: 'Food Comparison', title: 'Compare Food Delivery Prices', desc: 'Compare dish prices across Swiggy, Zomato, Domino’s & Pizza Hut for the same order.', tint: '#FFF7ED' },
-      { icon: ICON.car, badge: 'Cab Comparison', desc: 'Live Ola, Uber, InDrive & Meru fare estimates before you book — no fake numbers.', title: 'Compare Cab Prices', tint: '#FEFCE8' },
+      { icon: ICON.cart, badge: 'Shopping', title: 'Compare Shopping Prices', desc: 'Amazon, Flipkart, Meesho, Myntra, Ajio & Tata CLiQ — side by side, cheapest first.', tint: '#eef2f9' },
+      { icon: ICON.basket, badge: 'Grocery', title: 'Compare 10-Minute Grocery', desc: 'Blinkit, Zepto, Instamart, BigBasket & Flipkart Minutes prices for the same basket.', tint: '#edf9ef' },
+      { icon: ICON.food, badge: 'Food', title: 'Compare Food Delivery Prices', desc: 'Swiggy, Zomato, Domino’s, Pizza Hut & EatSure — same dish, live prices.', tint: '#f9f2e8' },
+      { icon: ICON.plane, badge: 'Flights', title: 'Compare Flight Fares', desc: 'MakeMyTrip, EaseMyTrip, Ixigo, Yatra, Cleartrip, IndiGo & Akasa Air — live fares.', tint: '#eef2f9' },
+      { icon: ICON.hotel, badge: 'Hotels', title: 'Compare Hotel Prices', desc: 'MakeMyTrip, Goibibo, Agoda, Cleartrip, Yatra & Booking.com — real fares per night.', tint: '#edf9ef' },
+      { icon: ICON.bus, badge: 'Bus', title: 'Compare Bus Tickets', desc: 'redBus, AbhiBus, MakeMyTrip, Yatra & Ixigo — tier-1 to tier-3 towns, with boarding points.', tint: '#f9f2e8' },
+      { icon: ICON.car, badge: 'Cab', title: 'Compare Cab Prices', desc: 'Live Ola, Uber, InDrive & Meru fare estimates before you book — no fake numbers.', tint: '#f9f6e8' },
+      { icon: ICON.film, badge: 'Movies', title: 'Compare Movie Tickets', desc: 'BookMyShow, District, Paytm, PVR INOX, Cinepolis & TicketNew — seats & showtimes.', tint: '#f3e8f9' },
+      { icon: ICON.bank, badge: 'Loans', title: 'Compare Loan Rates', desc: 'Paisabazaar, BankBazaar, Policybazaar, Money View, KreditBee & Navi — real rate ranges.', tint: '#eef2f9' },
+      { icon: ICON.shield, badge: 'Insurance', title: 'Compare Insurance Premiums', desc: 'Policybazaar, Ditto, InsuranceDekho, Acko, Digit & Coverfox — term & motor quotes.', tint: '#edf9ef' },
+      { icon: ICON.card, badge: 'Credit Cards', title: 'Compare Credit Cards', desc: 'BankBazaar & Paisabazaar card offers — fees, rewards & eligibility side by side.', tint: '#f9f2e8' },
     ];
     body.innerHTML = '<div class="t1s-wn-list"></div>';
     const list = body.querySelector('.t1s-wn-list');

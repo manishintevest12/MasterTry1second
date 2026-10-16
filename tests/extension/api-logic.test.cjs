@@ -79,7 +79,8 @@ const popupCode = fs.readFileSync('chrome-extension/popup/popup.js', 'utf8');
 const classifyMatch = popupCode.match(/function classifyMerchantUrl[\s\S]*?\n\}/);
 t('popup.js defines classifyMerchantUrl for auto-grab routing', !!classifyMatch);
 if (classifyMatch) {
-  vm.runInThisContext(classifyMatch[0] + ';globalThis.__classify = classifyMerchantUrl;');
+  const hvM = popupCode.match(/const HOST_VERTICALS = \{[\s\S]*?\};/);
+  vm.runInThisContext((hvM ? hvM[0] + ';' : '') + classifyMatch[0] + ';globalThis.__classify = classifyMerchantUrl;');
   const classify = globalThis.__classify;
   t('flipkart search URL -> search "iphone"', classify('https://www.flipkart.com/search?q=iphone&otracker=search').query === 'iphone');
   t('amazon /s?k= -> search', classify('https://www.amazon.in/s?k=iphone+15').query === 'iphone 15');
@@ -166,6 +167,37 @@ if (classifyMatch) {
 
   const contentCode = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
   t('bar toggle re-attaches a detached/absorbed panel (isConnected check)', contentCode.includes('!panel.isConnected || panel.closest'));
+}
+
+// ---- v1.8.0: end-to-end autograb + 11-vertical What's New ----
+{
+  const popupCode = fs.readFileSync('chrome-extension/popup/popup.js', 'utf8');
+  // images are real offer images, https-only
+  t('popup imgOf only accepts https offer images', popupCode.includes("/^https:/.test(a.image_url || '')") && popupCode.includes("/^https:/.test(x)"));
+  t('popup lens best card shows a real thumbnail', popupCode.includes('bestImg') && popupCode.includes('t1s-thumb'));
+  // host-aware vertical routing (a Blinkit search is grocery, not ecommerce)
+  const hvMatch = popupCode.match(/const HOST_VERTICALS = \{[\s\S]*?\};/);
+  t('HOST_VERTICALS map present', !!hvMatch);
+  if (hvMatch) {
+    t('blinkit search routes to grocery', /'blinkit\.com':\s*'grocery'/.test(hvMatch[0]));
+    t('swiggy search routes to food', /'swiggy\.com':\s*'food'/.test(hvMatch[0]));
+    t('bookmyshow search routes to movies', /'bookmyshow\.com':\s*'movies'/.test(hvMatch[0]));
+  }
+  t('search kind carries its vertical to doVerticalSearch', /kind\.vertical \|\| 'ecommerce'/.test(popupCode));
+  // travel route pages get an honest hop card instead of a dead end
+  t('routeOnly pages offer a Compare hop', popupCode.includes('Route detected on this page') && popupCode.includes('t1s-route-hop'));
+
+  // What's New covers ALL 11 verticals with honest source lists
+  const contentCode = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
+  const wnMatch = contentCode.match(/function viewWhatsNew[\s\S]*?const cards = \[([\s\S]*?)\];/);
+  t("viewWhatsNew card list present", !!wnMatch);
+  if (wnMatch) {
+    const badges = [...wnMatch[1].matchAll(/badge: '([^']+)'/g)].map((m) => m[1]);
+    t("What's New shows all 11 verticals", badges.length === 11, badges.join(','));
+    t('shopping card cites the 6 mandated stores', /Amazon, Flipkart, Meesho, Myntra, Ajio & Tata CLiQ/.test(wnMatch[1]));
+    t('bus card includes tier-3 towns + boarding points claim', /tier-1 to tier-3 towns, with boarding points/.test(wnMatch[1]));
+    t('no fake numbers: cab card keeps honest tagline', /no fake numbers/.test(wnMatch[1]));
+  }
 }
 
     console.log(`pass ${pass} / fail ${fail}`);

@@ -31,11 +31,13 @@ async function doLens(input) {
     }
     const best = rows[0];
     const saving = res.pageVsCheapest && res.pageVsCheapest.saving > 0 ? `<div class="t1s-lens-save">Saves ${inr(res.pageVsCheapest.saving)} vs this page</div>` : '';
+    const bestImg = imgOf(best);
     box.innerHTML = `
       <div class="t1s-lens-best">
         <div class="t1s-lens-head">Cheapest we found</div>
         <div class="t1s-item-title">${esc(res.product?.title || '')}</div>
         <div class="t1s-item-row">
+          ${bestImg ? `<img class="t1s-thumb" src="${esc(bestImg)}" alt="" />` : ''}
           <div>
             <span class="t1s-item-price">${inr(best.price)}</span>
             <div class="t1s-item-site">${esc(best.seller)}</div>
@@ -48,8 +50,10 @@ async function doLens(input) {
     for (const [i, r] of rows.slice(1, 8).entries()) {
       const div = document.createElement('div');
       div.className = 't1s-item';
+      const img = imgOf(r);
       div.innerHTML = `
         <div class="t1s-item-row">
+          ${img ? `<img class="t1s-thumb" src="${esc(img)}" alt="" />` : ''}
           <div><div class="t1s-item-site"><strong>${esc(r.seller)}</strong></div><div class="t1s-item-more">${esc((r.title || '').slice(0, 60))}</div></div>
           <div style="text-align:right"><span class="t1s-item-price">${inr(r.price)}</span><br/><button class="t1s-btn t1s-item-open" data-go="${i + 1}">Open</button></div>
         </div>`;
@@ -67,7 +71,22 @@ async function doSearch(vertical) {
   if (!vertical && looksLikeLink(q)) return pageFlow(q);
   return doVerticalSearch(q, vertical || 'ecommerce');
 }
+/** Honest product image (https-only, straight from the offer's attributes). */
+function imgOf(r) {
+  const a = (r && r.attributes) || {};
+  if (/^https:/.test(a.image_url || '')) return a.image_url;
+  const many = String(a.image_urls || '').split('|').filter((x) => /^https:/.test(x));
+  return many[0] || '';
+}
+
 // ---------- smart page routing (auto-grab) ----------
+/** Search pages on these hosts belong to these verticals (not e-commerce). */
+const HOST_VERTICALS = {
+  'blinkit.com': 'grocery', 'bigbasket.com': 'grocery', 'zeptonow.com': 'grocery', 'jiomart.com': 'grocery',
+  'swiggy.com': 'food', 'zomato.com': 'food', 'dominos.co.in': 'food',
+  'bookmyshow.com': 'movies',
+};
+
 /** What kind of merchant page is this URL? */
 function classifyMerchantUrl(raw) {
   let u;
@@ -90,7 +109,7 @@ function classifyMerchantUrl(raw) {
     if (st) term = st.split(':')[0];
   }
   term = term.replace(/\+/g, ' ').replace(/[-_]+/g, ' ').trim();
-  if ((isSearchPath || term) && term) return { kind: 'search', query: term };
+  if ((isSearchPath || term) && term) return { kind: 'search', query: term, vertical: HOST_VERTICALS[host] || 'ecommerce' };
   // any other page on a merchant host: the content script may still know more
   return { kind: 'unknown' };
 }
@@ -111,10 +130,32 @@ async function pageFlow(url, { auto = false } = {}) {
         $('#q').value = url;
         return doVerticalSearch(product.title, product.vertical || 'ecommerce');
       }
+      if (product && product.routeOnly) {
+        const route = product.routeQuery || product.title;
+        $('#q').value = route;
+        $('#results').innerHTML = `
+          <div class="t1s-lens-best">
+            <div class="t1s-lens-head">Route detected on this page</div>
+            <div class="t1s-item-title">${esc(route)}</div>
+            <div class="t1s-item-row">
+              <div class="t1s-item-more">Compare live fares for this exact route on Try1Second.</div>
+              <button class="t1s-btn t1s-item-open" id="t1s-route-hop">Compare</button>
+            </div>
+          </div>`;
+        $('#results').querySelector('#t1s-route-hop').addEventListener('click', async () => {
+          chrome.tabs.create({ url: await try1secondSearchUrl(route) });
+          window.close();
+        });
+        return;
+      }
     } catch { /* no content script on this page */ }
   }
 
   const kind = classifyMerchantUrl(url);
+  if (kind.kind === 'search' && kind.query) {
+    $('#q').value = kind.query;
+    return doVerticalSearch(kind.query, kind.vertical || 'ecommerce');
+  }
   if (kind.kind === 'product') {
     $('#q').value = url;
     return doLens(url);
@@ -155,9 +196,11 @@ async function doVerticalSearch(query, vertical) {
       const best = g.best;
       const div = document.createElement('div');
       div.className = 't1s-item';
+      const gimg = imgOf(best);
       div.innerHTML = `
         <div class="t1s-item-title">${esc(best.title)}</div>
         <div class="t1s-item-row">
+          ${gimg ? `<img class="t1s-thumb" src="${esc(gimg)}" alt="" />` : ''}
           <div>
             <span class="t1s-item-price">${inr(priceOf(best))}</span>
             <div class="t1s-item-site">${esc(best.seller || best.vendor || '')}</div>
