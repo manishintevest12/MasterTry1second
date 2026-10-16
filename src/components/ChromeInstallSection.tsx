@@ -22,8 +22,8 @@ interface Slide {
   demo: React.ReactNode;
 }
 
-const ACCENT = 'text-[#4F46E5]';
-const ACCENT_BG = '#4F46E5';
+const ACCENT = 'text-red-600';
+const ACCENT_BG = '#E11D48'; // Try1Second brand red — matches the extension
 const GREEN = '#10B981';
 
 const LAURELS = [
@@ -34,7 +34,7 @@ const LAURELS = [
 
 const STAT_ROWS = [
   { icon: <Chrome className="w-4 h-4" />, name: 'Chrome & Edge ready', value: '21 store domains' },
-  { icon: <MapPin className="w-4 h-4 text-[#4F46E5]" />, name: '13 vertical engines', value: 'Flights to grocery' },
+  { icon: <MapPin className="w-4 h-4 text-red-600" />, name: '13 vertical engines', value: 'Flights to grocery' },
   { icon: <TrendingDown className="w-4 h-4 text-emerald-600" />, name: 'Real price history', value: '365-day recorded charts' },
 ];
 
@@ -47,22 +47,22 @@ const DemoAlert: React.FC = () => (
     <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-64 ml-auto">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-black text-slate-900">Price Alerts</span>
-        <Bell className="w-4 h-4 text-[#4F46E5]" />
+        <Bell className="w-4 h-4 text-red-600" />
       </div>
       <p className="text-[11px] text-slate-500 font-semibold mb-3">Set a price drop alert to buy later</p>
       <div className="space-y-2">
         <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-          <span className="text-[10px] font-bold text-slate-500">Current price</span>
+          <span className="text-[10.5px] font-bold text-slate-600">Current price</span>
           <span className="text-xs font-black text-slate-900">{inr(72999)}</span>
         </div>
         <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-          <span className="text-[10px] font-bold text-slate-500">Target price</span>
-          <span className="text-xs font-black text-[#4F46E5]">{inr(70000)}</span>
+          <span className="text-[10.5px] font-bold text-slate-600">Target price</span>
+          <span className="text-xs font-black text-red-600">{inr(70000)}</span>
         </div>
         <button type="button" className="w-full py-2.5 rounded-xl text-white text-xs font-black" style={{ background: ACCENT_BG }}>
           Set alert
         </button>
-        <p className="text-[9.5px] text-slate-400 text-center font-semibold">You get notified the moment a verified price crosses your target</p>
+        <p className="text-[10px] text-slate-500 text-center font-bold">You get notified the moment a verified price crosses your target</p>
       </div>
     </div>
     <div className="absolute -bottom-3 right-4 bg-emerald-500 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
@@ -75,7 +75,7 @@ const DemoCompare: React.FC = () => (
   <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-72 ml-auto">
     <div className="flex items-center justify-between mb-3">
       <span className="text-xs font-black text-slate-900">Compare prices</span>
-      <Sparkles className="w-4 h-4 text-[#4F46E5]" />
+      <Sparkles className="w-4 h-4 text-red-600" />
     </div>
     <div className="space-y-2">
       <div className="relative bg-emerald-50 border border-emerald-300 rounded-xl px-3 py-2">
@@ -98,7 +98,7 @@ const DemoCompare: React.FC = () => (
         <div key={r.s} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
           <div>
             <div className="text-[11px] font-black text-slate-900">{r.s}</div>
-            <div className="text-[9px] font-bold text-slate-500">{r.c}</div>
+            <div className="text-[9.5px] font-bold text-slate-600">{r.c}</div>
           </div>
           <span className="text-xs font-black text-slate-900">{inr(r.p)}</span>
         </div>
@@ -113,14 +113,14 @@ const DemoCompare: React.FC = () => (
 const DemoCoupons: React.FC = () => (
   <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-64 ml-auto">
     <div className="flex items-center gap-2 mb-3">
-      <Ticket className="w-4 h-4 text-[#4F46E5]" />
+      <Ticket className="w-4 h-4 text-red-600" />
       <span className="text-xs font-black text-slate-900">Auto-Test Coupons</span>
     </div>
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-[11px] font-black text-slate-900">iPhone 17</div>
-          <div className="text-[9px] font-bold text-slate-500">4 live coupons detected</div>
+          <div className="text-[9.5px] font-bold text-slate-600">4 live coupons detected</div>
         </div>
         <span className="text-xs font-black text-slate-900">{inr(82900)}</span>
       </div>
@@ -198,7 +198,7 @@ export const ChromeInstallSection: React.FC = () => {
       >
         {/* LEFT: copy + CTAs + laurels + stat rows */}
         <div className="flex flex-col justify-center">
-          <div className="flex items-center gap-2 text-[10.5px] font-black uppercase tracking-widest text-slate-400">
+          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
             {s.icon}
             <span key={s.id + '-label'} className="animate-in fade-in slide-in-from-bottom-1 duration-300">{s.label}</span>
           </div>
@@ -206,7 +206,7 @@ export const ChromeInstallSection: React.FC = () => {
             <span key={s.id + '-a'} className="block animate-in fade-in slide-in-from-bottom-2 duration-300">{s.headingA}</span>
             <span key={s.id + '-b'} className={`${ACCENT} block animate-in fade-in slide-in-from-bottom-3 duration-300`}>{s.headingAccent}</span>
           </h2>
-          <p className="mt-3 text-sm text-slate-500 max-w-md leading-relaxed">{s.sub}</p>
+          <p className="mt-3 text-[15px] text-slate-600 max-w-md leading-relaxed font-medium">{s.sub}</p>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
@@ -221,7 +221,7 @@ export const ChromeInstallSection: React.FC = () => {
             <button
               type="button"
               onClick={openExtensionModal}
-              className="px-5 py-3 rounded-xl bg-white text-sm font-black border-2 transition-all flex items-center gap-2 cursor-pointer hover:-translate-y-0.5"
+              className="px-5 py-3 rounded-xl bg-white text-sm font-black border-2 border-red-600 text-red-600 shadow-sm hover:shadow-md transition-all flex items-center gap-2 cursor-pointer hover:-translate-y-0.5"
               style={{ borderColor: ACCENT_BG, color: ACCENT_BG }}
             >
               <Play className="w-4 h-4" />
@@ -236,7 +236,7 @@ export const ChromeInstallSection: React.FC = () => {
                 <span className="text-amber-400" aria-hidden>🏆</span>
                 <div>
                   <div className="text-xs font-black text-slate-900">{l.title}</div>
-                  <div className="text-[10px] font-semibold text-slate-400">{l.sub}</div>
+                  <div className="text-[10.5px] font-bold text-slate-500">{l.sub}</div>
                 </div>
               </div>
             ))}
@@ -248,7 +248,7 @@ export const ChromeInstallSection: React.FC = () => {
               <div key={r.name} className="flex items-center gap-2.5 text-xs">
                 {r.icon}
                 <span className="font-black text-slate-800">{r.name}</span>
-                <span className="text-slate-400 font-semibold">· {r.value}</span>
+                <span className="text-slate-500 font-bold">· {r.value}</span>
               </div>
             ))}
           </div>
@@ -269,7 +269,7 @@ export const ChromeInstallSection: React.FC = () => {
                 aria-label={`Show ${sl.id} demo`}
                 onClick={() => setSlide(i)}
                 className={`rounded-full transition-all cursor-pointer ${i === slide ? 'w-2.5 h-2.5' : 'w-2 h-2'}`}
-                style={{ background: i === slide ? '#4F46E5' : '#cbd5e1' }}
+                style={{ background: i === slide ? '#E11D48' : '#cbd5e1' }}
               />
             ))}
           </div>

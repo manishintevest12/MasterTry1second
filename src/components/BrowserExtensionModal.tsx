@@ -256,11 +256,8 @@ export const BrowserExtensionModal: React.FC<{ isOpen: boolean; onClose: () => v
                 <h3 className="font-extrabold text-base sm:text-lg text-white">
                   Try1Second Chrome & Edge Extension
                 </h3>
-                <span className="text-[10px] bg-red-600/90 text-white font-mono font-bold px-2 py-0.5 rounded-full uppercase">
-                  V3 Injected Content Script
-                </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-300 font-medium">
                 Live On-Page Overlay, 365-Day Price History Graph, and 1-Click Auto-Apply Coupon Tester.
               </p>
             </div>
@@ -407,7 +404,7 @@ export const BrowserExtensionModal: React.FC<{ isOpen: boolean; onClose: () => v
                           Live On-Page Extension
                         </span>
                       </div>
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-slate-600 font-semibold">
                         Historical telemetry & real-time competitor price auditor
                       </span>
                     </div>
