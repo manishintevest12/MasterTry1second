@@ -225,6 +225,21 @@ export const moviesWorker: VerticalWorker = {
       },
     },
     {
+      // PVR INOX (mandatory source): pvrinox.com + inoxmovies.com edge-gate datacenter IPs
+      // (403 on every path); pvrx.io / m.inoxmovies.com / api.inoxmovies.com are DNS-dead.
+      // Registered so every movie search attempts it live and reports honestly; if the
+      // gate ever lifts, the HTML parsing work can begin on the returned page.
+      sourceId: 'w_movies_pvrinox',
+      name: 'Movies worker: PVR INOX (probe)',
+      priority: 8,
+      run: async () => {
+        const r = await cffiFetch('https://www.pvrinox.com/', { impersonate: 'chrome', timeoutMs: 12_000, headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9' } });
+        if (r.status === 200) throw new AcquisitionError('ACCESS_CHALLENGE', `PVR INOX gate unexpectedly open (HTTP 200) — parsing work needed, see docs/LIVE-ENDPOINTS.md`);
+        throw new AcquisitionError('ACCESS_CHALLENGE', `PVR INOX movies is edge-gated (HTTP ${r.status} on pvrinox.com; inoxmovies.com same gate, pvrx.io and m./api. hosts DNS-dead) — showtimes and seat prices are available only on the PVR INOX app.`);
+      },
+    },
+
+    {
       sourceId: 'w_movies_district',
       name: 'Movies worker: District by Zomato / Paytm movies (schema.org JSON-LD ItemList, web deeplinks)',
       priority: 8,
