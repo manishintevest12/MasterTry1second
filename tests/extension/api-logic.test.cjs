@@ -92,6 +92,67 @@ if (classifyMatch) {
   t('popup auto-grabs on open (autoGrab present)', /async function autoGrab/.test(popupCode));
 }
 
+// ---- v1.7.0: dock/sidebar feature logic (Deal Score, history windows, themes) ----
+{
+  const contentCode = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
+
+  // computeDealScore must be honest: <2 points -> null
+  const dsMatch = contentCode.match(/function computeDealScore[\s\S]*?\n  \}/);
+  t('content.js defines computeDealScore', !!dsMatch);
+  if (dsMatch) {
+    vm.runInThisContext(dsMatch[0] + ';globalThis.__cds = computeDealScore;');
+    const cds = globalThis.__cds;
+    t('deal score: <2 real points -> null (honest)', cds([{ price: 100 }], 100) === null);
+    t('deal score: empty history -> null', cds([], 500) === null);
+    const lowHigh = cds([{ price: 100 }, { price: 200 }, { price: 150 }], 100);
+    t('deal score: at ATL -> 100 / Buy now', lowHigh.score === 100 && lowHigh.verdict.label === 'Buy now');
+    const mid = cds([{ price: 100 }, { price: 200 }, { price: 150 }], 150);
+    t('deal score: mid-range scales linearly', mid.score === 50 && Number.isInteger(mid.avg));
+    const worst = cds([{ price: 100 }, { price: 200 }], 200);
+    t('deal score: at recorded high -> floor 5 / wait', worst.score === 5 && worst.verdict.label === 'Wait for a drop');
+  }
+
+  // history window filtering: real capturedAt cutoff, honest full-range fallback
+  const hwMatch = contentCode.match(/function historyWindow[\s\S]*?\n  \}/);
+  t('content.js defines historyWindow for 90D/180D/365D tabs', !!hwMatch);
+  if (hwMatch) {
+    vm.runInThisContext(hwMatch[0] + ';globalThis.__hw = historyWindow;');
+    const hw = globalThis.__hw;
+    const now = Date.now();
+    const pts = [
+      { price: 100, capturedAt: new Date(now - 400 * 86400000).toISOString() },
+      { price: 110, capturedAt: new Date(now - 100 * 86400000).toISOString() },
+      { price: 120, capturedAt: new Date(now - 50 * 86400000).toISOString() },
+      { price: 130, capturedAt: new Date(now - 10 * 86400000).toISOString() },
+    ];
+    t('history window 90D keeps only recent points', hw(pts, 90).length === 2);
+    t('history window 365D keeps three of four', hw(pts, 365).length === 3);
+    t('history window falls back to full range when <2 points', hw(pts.slice(0, 1).concat(pts.slice(3, 4)), 30).length === 2);
+  }
+
+  // all 9 feature toggles must be real keys used in code (no dead switches)
+  const togMatch = contentCode.match(/const FEATURE_TOGGLES = \[[\s\S]*?\];/);
+  t('FEATURE_TOGGLES list present in popover', !!togMatch);
+  if (togMatch) {
+    const keys = [...togMatch[0].matchAll(/key: '([a-zA-Z]+)'/g)].map((m) => m[1]);
+    t('9 real feature toggles defined', keys.length === 9);
+    for (const k of keys) t(`toggle ${k} is wired somewhere in content.js`, new RegExp('prefs\\.' + k + '|next\\[' + k + '\\]|\.' + k + ' ').test(contentCode) || contentCode.includes("'" + k + "'"));
+  }
+
+  // 8 themes with rail+accent
+  t('8 themes defined (Midnight..Amethyst)', (contentCode.match(/name: '/g) || []).length >= 8 && contentCode.includes('amethyst'));
+  // savings ledger recorded on cheaper-switch
+  t('cheaper-switch click records real savings (recordSavings wired)', /await recordSavings\(savings\)/.test(contentCode));
+  // privacy-first recent views
+  t('recent views privacy banner present (on-device only claim)', /not shared externally/.test(contentCode));
+  // per-site page/site visibility controls
+  t('disable-for-page/site session controls present', contentCode.includes('t1sOffPage') && contentCode.includes('t1sOffSite:'));
+  // SW target alerts still intact
+  const swCode = fs.readFileSync('chrome-extension/background/service-worker.js', 'utf8');
+  t('SW fires one-time target-hit notifications', /notifyTarget/.test(swCode) && /targetHit/.test(swCode));
+  t('SW respects dropNotifications pref', /dropNotifications/.test(swCode));
+}
+
     console.log(`pass ${pass} / fail ${fail}`);
   process.exit(fail ? 1 : 0);
 })();

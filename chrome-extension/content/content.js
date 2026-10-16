@@ -124,11 +124,16 @@
     // no detectable product entity (search pages, listings): it offers a hop to
     // the metasearch rather than invented numbers.
     state.prefs = await getPrefs();
-    await recordRecent(product);
+    // Visibility (profile settings): per-page / per-site off until next visit.
+    if (sessionStorage.getItem('t1sOffPage') === '1' || sessionStorage.getItem('t1sOffSite:' + location.hostname) === '1') return;
+    if (state.prefs.recentRecording !== false) await recordRecent(product);
     await mountDock(product);
+    applyTheme(await getTheme());
 
     const bar = buildBar();
-    if (!state.prefs.showBar) bar.style.display = 'none';
+    if (state.prefs.showBar === false) bar.style.display = 'none';
+    if (state.prefs.minimizeBar === true) bar.classList.add('t1s-bar-min');
+    if (state.prefs.autoCoupons === false) { const cb = bar.querySelector('.t1s-bar-coupon'); if (cb) cb.style.display = 'none'; }
     bar.querySelector('.t1s-bar-coupon').addEventListener('click', () => renderCoupons(bar, product));
 
     if (product.routeOnly) {
@@ -351,6 +356,7 @@
       link.href = '#';
       link.addEventListener('click', async (e) => {
         e.preventDefault();
+        await recordSavings(savings); // real ledger: counted on cheaper-switch
         if (best.sellerUrl) {
           try { window.open(await apiGo(best.sellerUrl, best.id), '_blank', 'noopener'); return; } catch { /* fall through */ }
         }
@@ -358,6 +364,19 @@
       });
       body.appendChild(cheaper);
     }
+
+    // Onelist save row (owner's Onelist feature): real local wishlist.
+    const prefNow = state.prefs || {};
+    const oneRow = el('div', 't1s-row-tools');
+    oneRow.innerHTML = `<button type="button" class="t1s-btn" id="t1s-onelist-add">＋ Onelist</button><span class="t1s-muted">Save to your one wishlist</span>`;
+    body.appendChild(oneRow);
+    const oneBtn = oneRow.querySelector('#t1s-onelist-add');
+    if (prefNow.onelistEnabled === false) oneRow.style.display = 'none';
+    oneBtn.addEventListener('click', async () => {
+      await addToOneList({ title: product.title, site: product.site, price: bestPrice || product.price || 0, url: location.href.slice(0, 400), at: Date.now() });
+      oneBtn.textContent = 'Saved ✓';
+      setTimeout(() => { oneBtn.textContent = '＋ Onelist'; }, 1800);
+    });
 
     // 4) Advice + track row
     const verdict = verdictFrom(historyPoints, bestPrice);
@@ -401,6 +420,7 @@
   function updateTrackBtn(btn) {
     btn.textContent = state.tracking ? 'Tracking ✓' : 'Track price';
     btn.classList.toggle('t1s-tracking', state.tracking);
+    applyFeaturePrefs(state.prefs || {}); // respect toggles on (re)render
   }
 
   /** Buy/wait advice derived ONLY from real recorded history. */
@@ -523,18 +543,42 @@
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>',
     x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
     arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+    onelist: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12.5 11 15l5-6"/></svg>',
+    whatsnew: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 12.4 2 5.6a1.6 1.6 0 0 1 2-1.9l6.7 1.9a2 2 0 0 0 1.1 0L19.5 3a1.6 1.6 0 0 1 2 1.9l-1.4 6.4a1.9 1.9 0 0 0 0 .9l1.5 7.2a1.6 1.6 0 0 1-2.2 1.8l-6.2-2.7a2 2 0 0 0-1.2 0l-6.5 2.8a1.6 1.6 0 0 1-2.2-1.8L3 14.6a2 2 0 0 1 0-1Z"/><path d="M12 8v8"/><path d="M8.5 12h7"/></svg>',
+    user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-5 8-5s6.5 1 8 5"/></svg>',
+    hotel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16"/><path d="M2 21h20"/><path d="M8 21v-3h8v3"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 8h.01M12 8h.01M16 8h.01"/></svg>',
+    plane: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l4.6-3.7a2 2 0 0 0-1.7-3.4l-5.6 1L7.6 2 6 3.4l2.7 4.9-4.3 1.4-2-1.2-1.2 1 2.8 3 1.2 4.2 1.7-.6-.7-2.5 4.3 1.6 1.7 4.6-3.3 4.7 1.2 1.5-1.1-1.2-2.1Z"/></svg>',
+    food: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v8a3 3 0 0 0 6 0V3"/><path d="M8 11v10"/><path d="M17 3c-1.7 1-2.5 3-2.5 5.5S15.5 12 17 12s2.5-1 2.5-3.5S18.7 4 17 3Z"/><path d="M17 12v9"/></svg>',
+    car: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14v-5l-2-6a2 2 0 0 0-1.9-1.4H8.9A2 2 0 0 0 7 6L5 12Z"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/><path d="M5 12h14"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.7 18.3 13.9 4.6a2.2 2.2 0 0 0-3.8 0L2.3 18.3a2 2 0 0 0 1.7 3h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+    wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>',
   };
 
   const DOCK_ITEMS = [
-    { id: 'alerts', label: 'Price Alerts', icon: ICON.bell },
+    { id: 'alerts', label: 'Alerts', icon: ICON.bell },
     { id: 'coupons', label: 'Coupons', icon: ICON.ticket },
     { id: 'score', label: 'Deal Score', icon: ICON.gauge },
-    { id: 'recent', label: 'Recent Views', icon: ICON.eye },
-    { id: 'tracked', label: 'Tracked Items', icon: ICON.heart },
-    { id: 'rewards', label: 'Rewards Hub', icon: ICON.gift },
+    { id: 'recent', label: 'Recent', icon: ICON.eye },
+    { id: 'onelist', label: 'Onelist', icon: ICON.onelist },
+    { id: 'tracked', label: 'Tracked', icon: ICON.heart },
+    { id: 'rewards', label: 'Rewards', icon: ICON.gift },
+    { id: 'whatsnew', label: "What's New", icon: ICON.whatsnew },
   ];
 
-  const VIEW_TITLES = { main: 'Try1Second', alerts: 'Price Alerts', coupons: 'Coupons', score: 'Deal Score', recent: 'Recent Views', tracked: 'Tracked Items', rewards: 'Rewards Hub', settings: 'Settings' };
+  const VIEW_TITLES = { main: 'Try1Second', alerts: 'Price Alerts', coupons: 'Coupons', score: 'Deal Score', recent: 'Recent Views', onelist: 'Onelist', tracked: 'Tracked Items', rewards: 'Rewards Hub', whatsnew: "What's New", profile: 'My Profile', settings: 'Settings' };
+
+  /** 8 themes (owner reference): rail + accent colors, stored in t1sTheme. */
+  const THEMES = {
+    midnight:  { name: 'Midnight',  rail: '#222055', accent: '#5D46E6' },
+    sunset:    { name: 'Sunset',    rail: '#4a1f2e', accent: '#FF6600' },
+    forest:    { name: 'Forest',    rail: '#1c3a2c', accent: '#0E9F6E' },
+    ocean:     { name: 'Ocean',     rail: '#12314e', accent: '#0E7FBF' },
+    blossom:    { name: 'Blossom',    rail: '#4a2340', accent: '#D63384' },
+    aurora:    { name: 'Aurora',    rail: '#123d3d', accent: '#0EA5A5' },
+    obsidian:  { name: 'Obsidian',  rail: '#151922', accent: '#8B93A7' },
+    amethyst:  { name: 'Amethyst',  rail: '#331f66', accent: '#8B5CF6' },
+  };
 
   async function getPrefs() {
     try {
@@ -546,6 +590,35 @@
         return Object.assign({ showBar: true, dropNotifications: true }, t1sPrefs);
       } catch { return { showBar: true, dropNotifications: true }; }
     }
+  }
+
+  async function getTheme() {
+    const { t1sTheme = 'midnight' } = await chrome.storage.local.get('t1sTheme');
+    return THEMES[t1sTheme] ? t1sTheme : 'midnight';
+  }
+
+  function applyTheme(name) {
+    const t = THEMES[name] || THEMES.midnight;
+    const root = document.documentElement;
+    root.style.setProperty('--t1s-rail', t.rail);
+    root.style.setProperty('--t1s-accent', t.accent);
+    for (const n of [dockEl, sidebarEl]) if (n) n.setAttribute('data-t1s-theme', name);
+  }
+
+  async function recordSavings(amount) {
+    try {
+      const { t1sSavings = { total: 0, count: 0 } } = await chrome.storage.local.get('t1sSavings');
+      const next = { total: (Number(t1sSavings.total) || 0) + (Number(amount) || 0), count: (Number(t1sSavings.count) || 0) + 1, lastAt: Date.now() };
+      await chrome.storage.local.set({ t1sSavings: next });
+    } catch { /* best-effort local stat */ }
+  }
+
+  async function addToOneList(entry) {
+    const { t1sOnelist = { lists: [] } } = await chrome.storage.local.get('t1sOnelist');
+    const data = t1sOnelist.lists?.length ? t1sOnelist : { lists: [{ name: 'My Wishlist', items: [] }] };
+    const list = data.lists[0];
+    if (!list.items.some((i) => i.url === entry.url)) list.items.unshift(entry);
+    await chrome.storage.local.set({ t1sOnelist: data });
   }
 
   async function savePrefs(p) {
@@ -648,7 +721,9 @@
       else if (id === 'recent') await viewRecent(body);
       else if (id === 'tracked') await viewTracked(body);
       else if (id === 'rewards') viewRewards(body);
-      else if (id === 'settings') await viewSettings(body);
+      else if (id === 'onelist') await viewOnelist(body);
+      else if (id === 'whatsnew') viewWhatsNew(body);
+      else if (id === 'profile') await viewProfile(body);
     } catch (err) {
       body.innerHTML = `<div class="t1s-status t1s-muted">Something went wrong reaching the Try1Second engine (${esc(err.message || 'network error')}).</div>`;
     }
@@ -660,7 +735,7 @@
     const b = el('button', 't1s-dock-btn');
     b.type = 'button';
     b.dataset.view = item.id;
-    b.innerHTML = `<span class="t1s-dock-ic">${item.icon}</span><span class="t1s-dock-tip">${esc(item.label)}</span>`;
+    b.innerHTML = `<span class="t1s-dock-ic">${item.icon}</span><span class="t1s-dock-lb">${esc(item.label)}</span><span class="t1s-dock-tip">${esc(item.label)}</span>`;
     b.addEventListener('click', () => {
       const wasActive = b.classList.contains('t1s-dock-active');
       dockEl.querySelectorAll('.t1s-dock-btn').forEach((x) => x.classList.remove('t1s-dock-active'));
@@ -701,10 +776,101 @@
     });
     dock.appendChild(brand);
 
-    // settings at the bottom
-    const gear = dockBtn({ id: 'settings', label: 'Settings', icon: ICON.gear });
+    // gear opens the DARK feature popover (owner reference image 1)
+    const gear = el('button', 't1s-dock-btn t1s-dock-txt');
+    gear.type = 'button';
+    gear.innerHTML = `<span class="t1s-dock-ic">${ICON.gear}</span><span class="t1s-dock-lb">Toggles</span><span class="t1s-dock-tip">Feature toggles</span>`;
+    gear.addEventListener('click', () => toggleFeaturePopover());
     dock.appendChild(gear);
+
+    // profile at the very bottom (savings + settings tabs)
+    const prof = el('button', 't1s-dock-btn t1s-dock-txt t1s-dock-prof');
+    prof.type = 'button';
+    prof.innerHTML = `<span class="t1s-dock-ic">${ICON.user}</span><span class="t1s-dock-lb">Profile</span><span class="t1s-dock-tip">My Profile</span>`;
+    prof.addEventListener('click', () => {
+      const wasActive = prof.classList.contains('t1s-dock-active');
+      dockEl.querySelectorAll('.t1s-dock-btn').forEach((x) => x.classList.remove('t1s-dock-active'));
+      if (wasActive && sidebarEl?.classList.contains('t1s-sb-open')) { closeSidebar(); return; }
+      prof.classList.add('t1s-dock-active');
+      openView('profile');
+    });
+    dock.appendChild(prof);
     return dock;
+  }
+
+  /** Dark feature-toggles popover (reference image 1: #0d111c, #5e5dff switches).
+   *  Every toggle is REAL and wired: no dead switches. */
+  let featurePopover = null;
+
+  const FEATURE_TOGGLES = [
+    { key: 'historyGraph', label: 'Price History Graph', def: true },
+    { key: 'dropNotifications', label: 'Price Alerts', def: true },
+    { key: 'autoCoupons', label: 'Auto Coupons', def: true },
+    { key: 'cheaperBar', label: 'Cheaper-Elsewhere Bar', def: true },
+    { key: 'recentRecording', label: 'Recent Views', def: true },
+    { key: 'onelistEnabled', label: 'Onelist', def: true },
+    { key: 'showBar', label: 'Compare Bar (Deal Scanner)', def: true },
+    { key: 'minimizeBar', label: 'Minimize Compare Bar', def: false },
+    { key: 'dockVisible', label: 'Right Rail', def: true },
+  ];
+
+  async function toggleFeaturePopover() {
+    if (featurePopover) { featurePopover.remove(); featurePopover = null; return; }
+    const prefs = await getPrefs();
+    const pop = el('div', 't1s-feat-pop');
+    pop.innerHTML = `<div class="t1s-feat-head">Try1Second <span>v${esc(chrome.runtime.getManifest().version)}</span></div><div class="t1s-feat-list"></div>`;
+    const list = pop.querySelector('.t1s-feat-list');
+    for (const t of FEATURE_TOGGLES) {
+      const on = prefs[t.key] !== undefined ? !!prefs[t.key] : t.def;
+      const row = el('div', 't1s-feat-row');
+      row.innerHTML = `<span class="${on ? '' : 't1s-feat-dim'}">${esc(t.label)}</span><button type="button" class="t1s-feat-tg ${on ? 'on' : ''}" role="switch" aria-checked="${on}"><i></i></button>`;
+      row.querySelector('.t1s-feat-tg').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const next = Object.assign({}, await getPrefs());
+        for (const t2 of FEATURE_TOGGLES) if (next[t2.key] === undefined) next[t2.key] = t2.def;
+        next[t.key] = !next[t.key];
+        await savePrefs(next);
+        btn.classList.toggle('on', next[t.key]);
+        btn.setAttribute('aria-checked', String(next[t.key]));
+        row.querySelector('span').classList.toggle('t1s-feat-dim', !next[t.key]);
+        applyFeaturePrefs(next);
+      });
+      list.appendChild(row);
+    }
+    document.documentElement.appendChild(pop);
+    const rect = dockEl.getBoundingClientRect();
+    pop.style.right = (window.innerWidth - rect.left + 12) + 'px';
+    pop.style.top = Math.max(12, Math.min(window.innerHeight - pop.offsetHeight - 12, rect.top)) + 'px';
+    featurePopover = pop;
+    const closer = (ev) => {
+      if (!pop.contains(ev.target) && !dockEl.contains(ev.target)) {
+        pop.remove(); featurePopover = null;
+        document.removeEventListener('mousedown', closer);
+      }
+    };
+    document.addEventListener('mousedown', closer);
+  }
+
+  /** Apply toggle effects immediately on the live page. */
+  function applyFeaturePrefs(prefs) {
+    const bar = document.getElementById(BAR_ID);
+    if (bar) {
+      if (prefs.showBar === false) bar.style.display = 'none';
+      else {
+        bar.style.display = '';
+        bar.classList.toggle('t1s-bar-min', prefs.minimizeBar === true);
+        const couponBtn = bar.querySelector('.t1s-bar-coupon');
+        if (couponBtn) couponBtn.style.display = prefs.autoCoupons === false ? 'none' : '';
+      }
+    }
+    if (prefs.dockVisible === false && dockEl) { dockEl.remove(); dockEl = null; }
+    const panelNow = document.getElementById(PANEL_ID);
+    if (panelNow) {
+      const hist = panelNow.querySelector('.t1s-hist');
+      if (hist) hist.style.display = prefs.historyGraph === false ? 'none' : '';
+      const cheaper = panelNow.querySelector('.t1s-cheaper');
+      if (cheaper) cheaper.style.display = prefs.cheaperBar === false ? 'none' : '';
+    }
   }
 
   // ---------- views ------------------------------------------------------
@@ -862,11 +1028,32 @@
 
   async function viewRecent(body) {
     const { t1sRecent = [] } = await chrome.storage.local.get('t1sRecent');
-    if (!t1sRecent.length) {
-      body.innerHTML = `<div class="t1s-sb-empty"><b>No recent views yet</b><span>Products you open on supported stores appear here, so you can jump back and re-compare in one tap.</span></div>`;
+    const prefs = await getPrefs();
+    const remembering = prefs.recentRecording !== false;
+    const banner = `
+      <div class="t1s-privacy"><span class="t1s-privacy-ic">${ICON.warn}</span>
+        Your data stays on your device and is <b>not shared externally</b>.</div>
+      <div class="t1s-toggle-row"><span>Remember recent views</span>
+        <button type="button" class="t1s-toggle ${remembering ? 'on' : ''}" id="t1s-remember" role="switch" aria-checked="${remembering}"><i></i></button></div>`;
+    body.innerHTML = banner + '<div class="t1s-recent-list"></div>';
+    body.querySelector('#t1s-remember').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const next = Object.assign({}, await getPrefs());
+      next.recentRecording = !(next.recentRecording !== false);
+      await savePrefs(next);
+      btn.classList.toggle('on', next.recentRecording);
+      btn.setAttribute('aria-checked', String(next.recentRecording));
+      if (!next.recentRecording) await chrome.storage.local.remove('t1sRecent');
+      if (next.recentRecording) await recordRecent(state.product || {});
+    });
+    if (!remembering) {
+      body.querySelector('.t1s-recent-list').innerHTML = `<div class="t1s-sb-empty"><i class="t1s-italic">Recent views are turned off. Nothing new is recorded.</i></div>`;
       return;
     }
-    body.innerHTML = '<div class="t1s-recent-list"></div>';
+    if (!t1sRecent.length) {
+      body.querySelector('.t1s-recent-list').innerHTML = `<div class="t1s-sb-empty"><i class="t1s-italic">No recently viewed items found.</i></div>`;
+      return;
+    }
     const list = body.querySelector('.t1s-recent-list');
     for (const r of t1sRecent) {
       const row = el('button', 't1s-recent-row');
@@ -915,6 +1102,193 @@
     }
   }
 
+  /** Onelist — one local wishlist across all stores (reference image 3). */
+  async function viewOnelist(body) {
+    const prefs = await getPrefs();
+    const { t1sOnelist = { lists: [] } } = await chrome.storage.local.get('t1sOnelist');
+    const hasLists = t1sOnelist.lists?.length;
+    body.innerHTML = `
+      <div class="t1s-tabs-pill"><button type="button" class="t1s-tab2 active">My Lists</button><button type="button" class="t1s-tab2">Shared with me</button></div>
+      <div class="t1s-onelist-body"></div>`;
+    const mine = body.querySelector('.t1s-onelist-body');
+    const tabs = body.querySelectorAll('.t1s-tab2');
+    tabs.forEach((t, i) => t.addEventListener('click', () => {
+      tabs.forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      mine.innerHTML = i === 0 ? '' : `<div class="t1s-sb-empty"><b>Nothing shared yet</b><span>List sharing between accounts arrives on try1second.com — your Onelist itself works fully offline, right now.</span></div>`;
+    }));
+    if (prefs.onelistEnabled === false) {
+      mine.innerHTML = `<div class="t1s-sb-empty"><b>Onelist is turned off</b><span>Enable it from the gear → Feature toggles.</span></div>`;
+      return;
+    }
+    if (!hasLists) {
+      mine.innerHTML = `
+        <div class="t1s-onel-hero">
+          <div class="t1s-onel-art"><span>Amazon</span><span>Flipkart</span><span>Myntra</span><span>Ajio</span><span>CLiQ</span><span>Meesho</span></div>
+          <b>All your wishlists. All in one place.</b>
+          <span>Save products from every store into ONE list — kept on this device.</span>
+          <button type="button" class="t1s-pill-btn" id="t1s-new-list">Create your first Onelist</button>
+        </div>
+        <div class="t1s-sb-empty"><b>Your Onelist is empty</b><span>Hit “＋ Onelist” on any product page to save it here.</span></div>`;
+      mine.querySelector('#t1s-new-list').addEventListener('click', async () => {
+        await chrome.storage.local.set({ t1sOnelist: { lists: [{ name: 'My Wishlist', items: [] }] } });
+        await viewOnelist(body);
+      });
+      return;
+    }
+    const list = t1sOnelist.lists[0];
+    mine.innerHTML = `
+      <div class="t1s-view-head"><b>${esc(list.name)}</b> · ${list.items.length} saved</div>
+      <div class="t1s-recent-list"></div>`;
+    const rows = mine.querySelector('.t1s-recent-list');
+    if (!list.items.length) {
+      rows.innerHTML = `<div class="t1s-sb-empty"><i class="t1s-italic">Your Onelist is empty. Save products to come back to later.</i></div>`;
+      return;
+    }
+    for (const it of list.items.slice(0, 30)) {
+      const row = el('button', 't1s-recent-row');
+      row.type = 'button';
+      const when = it.at ? new Date(it.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+      row.innerHTML = `
+        <div class="t1s-alert-txt"><b>${esc((it.title || '').slice(0, 80))}</b>
+        <span>${esc(it.site || '')}${it.price ? ` · ${inr(it.price)}` : ''} · ${esc(when)}</span></div>
+        ${ICON.arrow}`;
+      row.addEventListener('click', () => window.open(it.url, '_blank', 'noopener'));
+      rows.appendChild(row);
+    }
+  }
+
+  /** What's New — the live comparison verticals (reference image 4, honest site lists). */
+  function viewWhatsNew(body) {
+    const cards = [
+      { icon: ICON.hotel, badge: 'Hotel Comparison', title: 'Compare Hotel Prices', desc: 'Real fares across MakeMyTrip, Goibibo, Agoda, Cleartrip, Yatra & Booking.com.', tint: '#F0F4FF' },
+      { icon: ICON.plane, badge: 'Flight Comparison', title: 'Compare Flight Fares', desc: 'Live fares across MakeMyTrip, EaseMyTrip, Ixigo, Yatra, Cleartrip, IndiGo & Akasa Air.', tint: '#F0FDF4' },
+      { icon: ICON.food, badge: 'Food Comparison', title: 'Compare Food Delivery Prices', desc: 'Compare dish prices across Swiggy, Zomato, Domino’s & Pizza Hut for the same order.', tint: '#FFF7ED' },
+      { icon: ICON.car, badge: 'Cab Comparison', desc: 'Live Ola, Uber, InDrive & Meru fare estimates before you book — no fake numbers.', title: 'Compare Cab Prices', tint: '#FEFCE8' },
+    ];
+    body.innerHTML = '<div class="t1s-wn-list"></div>';
+    const list = body.querySelector('.t1s-wn-list');
+    for (const c of cards) {
+      const card = el('div', 't1s-wn-card');
+      card.innerHTML = `
+        <div class="t1s-wn-art" style="background:${c.tint}">${c.icon}</div>
+        <div class="t1s-wn-txt">
+          <span class="t1s-wn-badge">${esc(c.badge)}</span>
+          <b>${esc(c.title)}</b>
+          <span>${esc(c.desc)}</span>
+          <button type="button" class="t1s-wn-link">Compare Now ${ICON.arrow}</button>
+        </div>`;
+      card.querySelector('.t1s-wn-link').addEventListener('click', () => window.open('https://www.try1second.com', '_blank', 'noopener'));
+      list.appendChild(card);
+    }
+  }
+
+  /** Profile — Savings (REAL on-device savings ledger) + Settings tabs (reference images 5-7). */
+  async function viewProfile(body) {
+    const { t1sSavings = { total: 0, count: 0 } } = await chrome.storage.local.get('t1sSavings');
+    const theme = await getTheme();
+    const { t1sDockHidden = [] } = await chrome.storage.local.get('t1sDockHidden');
+    const total = Number(t1sSavings.total) || 0;
+    const count = Number(t1sSavings.count) || 0;
+
+    body.innerHTML = `
+      <div class="t1s-prof-user">
+        <span class="t1s-prof-ava">${ICON.user}</span>
+        <div><b>Not logged in</b><a href="https://www.try1second.com" target="_blank" rel="noopener">Log in on Try1Second to sync</a></div>
+      </div>
+      <div class="t1s-tabs-pill"><button type="button" class="t1s-tab2 active">Savings</button><button type="button" class="t1s-tab2">Settings</button></div>
+      <div class="t1s-prof-body"></div>`;
+    const pane = body.querySelector('.t1s-prof-body');
+    const tabs = body.querySelectorAll('.t1s-tab2');
+
+    const drawSavings = () => {
+      pane.innerHTML = `
+        <div class="t1s-savings-hero">
+          <span class="t1s-sav-ic">${ICON.wallet}</span>
+          ${count > 0
+            ? `<div class="t1s-sav-big">${inr(total)}</div><b>saved across ${count} cheaper-switch${count > 1 ? 'es' : ''}</b>
+               <span>Counted when you switch to a cheaper verified offer via Try1Second.</span>`
+            : `<b>Your savings will appear here.</b><span>Try1Second finds coupons, price drops and better prices as you shop — every cheaper switch you make adds here.</span>`}
+        </div>
+        <div class="t1s-promo-card">
+          <div><b>Compare Cab Prices</b><span>Live Ola, Uber &amp; InDrive fare estimates before you book.</span></div>
+          <button type="button" class="t1s-pill-btn">Get now</button>
+        </div>`;
+      pane.querySelector('.t1s-pill-btn').addEventListener('click', () => window.open('https://www.try1second.com', '_blank', 'noopener'));
+    };
+
+    const drawSettings = async () => {
+      const { t1sCity = '', t1sPincode = '', t1sApiBase = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode', 't1sApiBase']);
+      const pageOff = sessionStorage.getItem('t1sOffPage') === '1';
+      const siteOff = sessionStorage.getItem('t1sOffSite:' + location.hostname) === '1';
+      pane.innerHTML = `
+        <div class="t1s-view-head"><b>Visibility</b></div>
+        <div class="t1s-vis-row"><span>Disable for this page (until next visit)</span><button type="button" class="t1s-toggle ${pageOff ? 'on' : ''}" id="t1s-off-page"><i></i></button></div>
+        <div class="t1s-vis-row"><span>Disable for this site (until next visit)</span><button type="button" class="t1s-toggle ${siteOff ? 'on' : ''}" id="t1s-off-site"><i></i></button></div>
+        <div class="t1s-vis-row t1s-vis-link"><span>Blocked sites (${t1sDockHidden.length})</span><button type="button" class="t1s-view-all" id="t1s-view-blocked">View All</button></div>
+        <div id="t1s-blocked-box"></div>
+        <div class="t1s-view-head" style="margin-top:14px"><b>Live pricing</b></div>
+        <label class="t1s-set-row">City<input class="t1s-set-in" id="t1s-set-city" value="${esc(t1sCity)}" placeholder="e.g. Indore"/></label>
+        <label class="t1s-set-row">Pincode<input class="t1s-set-in" id="t1s-set-pin" value="${esc(t1sPincode)}" placeholder="e.g. 452001"/></label>
+        <label class="t1s-set-row">Backend URL<input class="t1s-set-in" id="t1s-set-api" value="${esc(t1sApiBase)}" placeholder="https://www.try1second.com"/></label>
+        <div class="t1s-view-head" style="margin-top:14px"><b>Choose Theme</b></div>
+        <div class="t1s-theme-grid"></div>`;
+      pane.querySelector('#t1s-off-page').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const off = btn.classList.toggle('on');
+        if (off) { sessionStorage.setItem('t1sOffPage', '1'); location.reload(); }
+        else sessionStorage.removeItem('t1sOffPage');
+      });
+      pane.querySelector('#t1s-off-site').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const off = btn.classList.toggle('on');
+        if (off) { sessionStorage.setItem('t1sOffSite:' + location.hostname, '1'); location.reload(); }
+        else sessionStorage.removeItem('t1sOffSite:' + location.hostname);
+      });
+      pane.querySelector('#t1s-view-blocked').addEventListener('click', () => {
+        const box = pane.querySelector('#t1s-blocked-box');
+        if (!t1sDockHidden.length) { box.innerHTML = `<div class="t1s-muted" style="margin-top:6px">No sites blocked.</div>`; return; }
+        box.innerHTML = '';
+        for (const h of t1sDockHidden) {
+          const r = el('div', 't1s-vis-row');
+          r.innerHTML = `<span>${esc(h)}</span><button type="button" class="t1s-view-all">Unblock</button>`;
+          r.querySelector('button').addEventListener('click', async () => {
+            const { t1sDockHidden: cur = [] } = await chrome.storage.local.get('t1sDockHidden');
+            await chrome.storage.local.set({ t1sDockHidden: (cur || []).filter((x) => x !== h) });
+            r.remove();
+          });
+          box.appendChild(r);
+        }
+      });
+      for (const [id, key] of [['t1s-set-city', 't1sCity'], ['t1s-set-pin', 't1sPincode'], ['t1s-set-api', 't1sApiBase']]) {
+        pane.querySelector('#' + id).addEventListener('change', async (e) => {
+          const set = {}; set[key] = e.target.value.trim();
+          await chrome.storage.local.set(set);
+        });
+      }
+      const grid = pane.querySelector('.t1s-theme-grid');
+      for (const [id, t] of Object.entries(THEMES)) {
+        const c = el('button', 't1s-theme-card' + (id === theme ? ' active' : ''));
+        c.type = 'button';
+        c.innerHTML = `<span class="t1s-theme-dot" style="background:${t.rail}"></span><span>${esc(t.name)}</span>`;
+        c.addEventListener('click', async () => {
+          await chrome.storage.local.set({ t1sTheme: id });
+          applyTheme(id);
+          grid.querySelectorAll('.t1s-theme-card').forEach((x) => x.classList.remove('active'));
+          c.classList.add('active');
+        });
+        grid.appendChild(c);
+      }
+    };
+
+    tabs.forEach((t, i) => t.addEventListener('click', () => {
+      tabs.forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      if (i === 0) drawSavings(); else drawSettings();
+    }));
+    drawSavings();
+  }
+
   function viewRewards(body) {
     body.innerHTML = `
       <div class="t1s-score-wrap">
@@ -927,55 +1301,10 @@
     body.querySelector('a').href = 'https://www.try1second.com';
   }
 
-  async function viewSettings(body) {
-    const prefs = await getPrefs();
-    const { t1sCity = '', t1sPincode = '', t1sApiBase = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode', 't1sApiBase']);
-    const hidden = await dockHiddenHere();
-    const toggles = [
-      { key: 'showBar', label: 'Floating compare bar', on: prefs.showBar },
-      { key: 'dropNotifications', label: 'Price-drop notifications', on: prefs.dropNotifications },
-    ];
-    body.innerHTML = `
-      <div class="t1s-view-head">Customisation</div>
-      <div class="t1s-toggles"></div>
-      <div class="t1s-view-head" style="margin-top:14px">Live pricing</div>
-      <label class="t1s-set-row">City<input class="t1s-set-in" id="t1s-set-city" value="${esc(t1sCity)}" placeholder="e.g. Indore"/></label>
-      <label class="t1s-set-row">Pincode<input class="t1s-set-in" id="t1s-set-pin" value="${esc(t1sPincode)}" placeholder="e.g. 452001"/></label>
-      <label class="t1s-set-row">Backend URL<input class="t1s-set-in" id="t1s-set-api" value="${esc(t1sApiBase)}" placeholder="https://www.try1second.com"/></label>
-      ${hidden ? '<button type="button" class="t1s-checkpage" id="t1s-unhide">Show the rail on this site again</button>' : ''}
-      <div class="t1s-muted" style="margin-top:12px">Try1Second v${esc(chrome.runtime.getManifest().version)} · 21 stores · 13 verticals · every price verified live.</div>`;
-    const box = body.querySelector('.t1s-toggles');
-    for (const t of toggles) {
-      const row = el('div', 't1s-toggle-row');
-      row.innerHTML = `<span>${esc(t.label)}</span><button type="button" class="t1s-toggle ${t.on ? 'on' : ''}" role="switch" aria-checked="${t.on}"><i></i></button>`;
-      row.querySelector('.t1s-toggle').addEventListener('click', async (e) => {
-        const btn = e.currentTarget;
-        const next = Object.assign({}, await getPrefs());
-        next[t.key] = !next[t.key];
-        await savePrefs(next);
-        btn.classList.toggle('on', next[t.key]);
-        btn.setAttribute('aria-checked', String(next[t.key]));
-        if (t.key === 'showBar') {
-          const bar = document.getElementById(BAR_ID);
-          if (bar) bar.style.display = next.showBar ? '' : 'none';
-        }
-      });
-      box.appendChild(row);
-    }
-    for (const [id, key] of [['t1s-set-city', 't1sCity'], ['t1s-set-pin', 't1sPincode'], ['t1s-set-api', 't1sApiBase']]) {
-      body.querySelector('#' + id).addEventListener('change', async (e) => {
-        const set = {}; set[key] = e.target.value.trim();
-        await chrome.storage.local.set(set);
-        if (key === 't1sApiBase' && typeof setBackendUrl === 'function') setBackendUrl(set[key]);
-      });
-    }
-    const uh = body.querySelector('#t1s-unhide');
-    if (uh) uh.addEventListener('click', async () => { await unhideDockHere(); uh.remove(); });
-  }
-
   /** Attach the dock on supported pages (unless the owner hid it for this site). */
   async function mountDock(product) {
     if (await dockHiddenHere()) return;
+    if (state.prefs.dockVisible === false) return;
     state.prefs = await getPrefs();
     ensureChrome();
   }
