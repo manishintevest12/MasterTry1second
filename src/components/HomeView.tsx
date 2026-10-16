@@ -21,6 +21,7 @@ import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId } from '../types';
 import { PriceLens, PriceLensAndAssistant } from './PriceLensAndAssistant';
+import { ChromeInstallSection } from './ChromeInstallSection';
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -293,7 +294,10 @@ export const HomeView: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. LIVE RADAR SNIPPET */}
+      {/* 3. CHROME EXTENSION INSTALL SECTION (reference design, honest startup copy) */}
+      <ChromeInstallSection />
+
+      {/* 4. LIVE RADAR SNIPPET */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6 shadow-md">
           <div className="space-y-2">

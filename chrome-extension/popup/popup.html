@@ -6,13 +6,29 @@
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <header class="t1s-top">
-    <div class="t1s-lockup" role="img" aria-label="Try1Second - 1 Second Is All It Takes">
-      <span class="t1s-ic"><img src="../images/logo-icon.png" alt="" /><span class="t1s-ring"></span><span class="t1s-sweep"></span><svg class="t1s-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0L14 9.5 24 12 14 14.5 12 24 10 14.5 0 12 10 9.5Z" fill="#fff"/></svg></span>
-      <img class="t1s-wd" src="../images/logo-wordmark.png" alt="" />
+  <!-- Dark hero strip (reference design): current Try1Second logo + title + badge + feature subtext -->
+  <header class="t1s-hero">
+    <div class="t1s-hero-top">
+      <div class="t1s-lockup" role="img" aria-label="Try1Second - 1 Second Is All It Takes">
+        <span class="t1s-ic"><img src="../images/logo-icon.png" alt="" /><span class="t1s-ring"></span><span class="t1s-sweep"></span><svg class="t1s-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 0L14 9.5 24 12 14 14.5 12 24 10 14.5 0 12 10 9.5Z" fill="#fff"/></svg></span>
+        <img class="t1s-wd" src="../images/logo-wordmark.png" alt="" />
+      </div>
+      <span id="drops-badge" class="t1s-drops hidden"></span>
     </div>
-    <span id="drops-badge" class="t1s-drops hidden"></span>
+    <div class="t1s-hero-title">Try1Second Chrome &amp; Edge Extension</div>
+    <span class="t1s-hero-badge">LIVE ON-PAGE OVERLAY</span>
+    <p class="t1s-hero-sub">Live On-Page Overlay, 365-Day Price History Graph, and 1-Click Auto-Apply Coupon Tester.</p>
   </header>
+
+  <!-- Store pills row (the 21 real merchant domains from the manifest) -->
+  <div class="t1s-stores" aria-label="Works on these stores">
+    <span class="t1s-store"><i class="t1s-dot t1s-dot-black"></i>Amazon India</span>
+    <span class="t1s-store"><i class="t1s-dot t1s-dot-blue"></i>Flipkart</span>
+    <span class="t1s-store"><i class="t1s-dot t1s-dot-orange"></i>Swiggy</span>
+    <span class="t1s-store"><i class="t1s-dot t1s-dot-yellow"></i>Blinkit</span>
+    <span class="t1s-store"><i class="t1s-dot t1s-dot-red"></i>MakeMyTrip</span>
+    <span class="t1s-store t1s-store-more">+16 more sites</span>
+  </div>
 
   <nav class="t1s-tabs">
     <button class="t1s-tab active" data-tab="search">Search</button>
@@ -26,14 +42,14 @@
       <input id="q" type="text" placeholder="Search a product or paste any product link…" />
       <button id="go" class="t1s-go">→</button>
     </div>
-    <button id="check-page" class="t1s-btn t1s-checkpage" type="button">Find cheapest for this page</button>
+    <button id="check-page" class="t1s-btn t1s-checkpage" type="button">⚡ Find cheapest for this page</button>
     <div id="results" class="t1s-results"></div>
   </section>
 
   <!-- TRACKED -->
   <section id="tab-tracked" class="t1s-panel hidden">
     <div class="t1s-row-tools">
-      <button id="poll-now" class="t1s-btn">Check prices now</button>
+      <button id="poll-now" class="t1s-btn t1s-checkpage">⚡ Check prices now</button>
       <span id="last-poll" class="t1s-muted"></span>
     </div>
     <div id="tracked-list" class="t1s-results"></div>

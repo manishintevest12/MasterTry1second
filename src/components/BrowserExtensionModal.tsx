@@ -13,7 +13,6 @@ import {
   ArrowRight,
   ShieldCheck,
   Download,
-  Code2,
   SlidersHorizontal,
   Flame,
   Check,
@@ -196,7 +195,8 @@ export const BrowserExtensionModal: React.FC<{ isOpen: boolean; onClose: () => v
 }) => {
   const [selectedSiteKey, setSelectedSiteKey] = useState<string>('amazon');
   const [graphTimeframe, setGraphTimeframe] = useState<'90d' | '180d' | '365d'>('365d');
-  const [activeTab, setActiveTab] = useState<'simulator' | 'code'>('simulator');
+  // 'Extension Code & Manifest' tab removed (owner, 16 Oct): the modal is the
+  // Live Overlay Simulator only — the extension ships as a packaged download.
 
   // Auto Coupon Runner State
   const [isTestingCoupons, setIsTestingCoupons] = useState<boolean>(false);
@@ -267,28 +267,6 @@ export const BrowserExtensionModal: React.FC<{ isOpen: boolean; onClose: () => v
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="bg-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs">
-              <button
-                type="button"
-                onClick={() => setActiveTab('simulator')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  activeTab === 'simulator' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                Live Overlay Simulator
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('code')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                  activeTab === 'code' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                <Code2 className="w-3.5 h-3.5" />
-                <span>Extension Code & Manifest</span>
-              </button>
-            </div>
-
             <button
               type="button"
               onClick={onClose}
@@ -299,7 +277,7 @@ export const BrowserExtensionModal: React.FC<{ isOpen: boolean; onClose: () => v
           </div>
         </div>
 
-        {activeTab === 'simulator' ? (
+        
           <div className="flex-1 flex flex-col overflow-hidden bg-slate-100">
             {/* Merchant Website Browser Navigation Bar (Simulated URL bar) */}
             <div className="p-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
@@ -628,89 +606,6 @@ export const BrowserExtensionModal: React.FC<{ isOpen: boolean; onClose: () => v
               </div>
             </div>
           </div>
-        ) : (
-          /* Developer Extension Manifest & Content Script Tab */
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs bg-slate-900 text-slate-200 font-mono">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div>
-                <h4 className="font-bold text-white text-sm">Chrome / Edge Manifest V3 Package Files</h4>
-                <p className="text-slate-400 text-xs">
-                  Ready to deploy unpacked extension package for Amazon, Flipkart, Swiggy, and MakeMyTrip.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setCopiedCode(true);
-                  setTimeout(() => setCopiedCode(false), 2000);
-                }}
-                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                {copiedCode ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                <span>{copiedCode ? 'Copied to Clipboard!' : 'Copy Extension Code'}</span>
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <span className="text-amber-400 font-bold block mb-1">1. manifest.json (Manifest V3)</span>
-                <pre className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-[11px] leading-relaxed overflow-x-auto text-emerald-300">
-{`{
-  "manifest_version": 3,
-  "name": "Try1Second Price Tracker & Auto Coupon",
-  "version": "1.4.0",
-  "description": "365-Day Price History, Fake Discount Scanner & 1-Click Auto Coupon Tester for Amazon, Flipkart & Swiggy.",
-  "permissions": ["storage", "activeTab"],
-  "host_permissions": [
-    "*://*.amazon.in/*",
-    "*://*.flipkart.com/*",
-    "*://*.swiggy.com/*",
-    "*://*.blinkit.com/*",
-    "*://*.makemytrip.com/*"
-  ],
-  "content_scripts": [
-    {
-      "matches": [
-        "*://*.amazon.in/*",
-        "*://*.flipkart.com/*",
-        "*://*.swiggy.com/*",
-        "*://*.blinkit.com/*",
-        "*://*.makemytrip.com/*"
-      ],
-      "js": ["contentScript.js"],
-      "run_at": "document_end"
-    }
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": "icons/icon128.png"
-  }
-}`}
-                </pre>
-              </div>
-
-              <div>
-                <span className="text-amber-400 font-bold block mb-1">2. contentScript.js (Injected Floating Overlay)</span>
-                <pre className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-[11px] leading-relaxed overflow-x-auto text-sky-300">
-{`// Try1Second Injected Content Script
-(function initTry1SecondOverlay() {
-  const overlay = document.createElement('div');
-  overlay.id = 'try1second-floating-bar';
-  overlay.innerHTML = \`
-    <div style="position:fixed;bottom:20px;right:20px;z-index:999999;background:#ffffff;border:2px solid #ef4444;border-radius:24px;box-shadow:0 10px 40px rgba(0,0,0,0.25);padding:14px 20px;display:flex;align-items:center;gap:12px;font-family:sans-serif;">
-      <span style="background:#ef4444;color:#fff;font-weight:900;padding:4px 8px;border-radius:12px;font-size:11px;">TRY1SECOND</span>
-      <span style="font-weight:bold;font-size:13px;color:#0f172a;">ATL: ₹\${allTimeLow}</span>
-      <button id="t1s-auto-coupon" style="background:#0f172a;color:#fff;border:none;border-radius:12px;padding:6px 12px;cursor:pointer;font-weight:bold;font-size:12px;">Auto-Test Coupons</button>
-    </div>
-  \`;
-  document.body.appendChild(overlay);
-})();`}
-                </pre>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

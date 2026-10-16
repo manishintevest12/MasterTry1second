@@ -53,6 +53,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 async function pollTracked() {
   const { t1sTracked = [] } = await chrome.storage.local.get('t1sTracked');
   const { t1sCity = '', t1sPincode = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode']);
+  // owner-set preferences (v1.6.0 settings toggles)
+  let prefs = { showBar: true, dropNotifications: true };
+  try {
+    const { t1sPrefs = {} } = await chrome.storage.sync.get('t1sPrefs');
+    prefs = Object.assign(prefs, t1sPrefs);
+  } catch {
+    const { t1sPrefs = {} } = await chrome.storage.local.get('t1sPrefs');
+    prefs = Object.assign(prefs, t1sPrefs);
+  }
   let drops = 0;
   const updated = [];
 
@@ -65,10 +74,19 @@ async function pollTracked() {
         const prev = Number(item.lastPrice) || 0;
         if (prev > 0 && price < prev) {
           drops++;
-          notifyDrop(item, price, prev);
+          if (prefs.dropNotifications) notifyDrop(item, price, prev);
           item.lastPrice = price;
         } else if (price !== prev) {
           item.lastPrice = price;
+        }
+        // Price Alerts (sidebar, v1.6.0): notify ONCE when a target set by the
+        // user is crossed by a VERIFIED live price; re-arms if it climbs back above.
+        const target = Number(item.target) || 0;
+        if (target > 0 && price <= target && !item.targetHit && prefs.dropNotifications) {
+          notifyTarget(item, price, target);
+          item.targetHit = true;
+        } else if (target > 0 && price > target) {
+          item.targetHit = false;
         }
       }
       // backend had no verified offer -> keep item untouched (honest, no guess)
@@ -84,6 +102,17 @@ async function pollTracked() {
     await chrome.storage.local.set({ t1sDrops: t1sDrops + drops });
   }
   await refreshBadge();
+}
+
+function notifyTarget(item, price, target) {
+  chrome.notifications.create(`t1s-target-${item.key}-${Date.now()}`, {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+    title: 'Target price reached',
+    message: `${item.title.slice(0, 90)}
+Now ${inr(price)} — your target was ${inr(target)} on Try1Second`,
+    priority: 2,
+  });
 }
 
 function notifyDrop(item, newPrice, oldPrice) {

@@ -13,9 +13,9 @@
 
 .t1s-card {
   background: #fff;
-  border: 1px solid #e2e8f0;
+  border: 2px solid #E11D48;
   border-radius: 16px;
-  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.16);
   overflow: hidden;
 }
 
@@ -25,9 +25,12 @@
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
-  background: #fff;
+  background: #151922;
   border-bottom: 1px solid #f1f5f9;
 }
+.t1s-head .t1s-btn { background: #151922; color: #e7e9ef; border-color: #2c3242; }
+.t1s-head .t1s-btn:hover { background: #1f2530; }
+.t1s-head .t1s-btn-track.t1s-tracking { background: #00A86B; border-color: #00A86B; color: #fff; }
 
 .t1s-logo { display: flex; align-items: center; }
 .t1s-head-actions { display: flex; gap: 6px; }
@@ -49,7 +52,7 @@
 .t1s-btn-open:hover { background: #fff1f2; border-color: #fda4af; }
 .t1s-btn-collapse { width: 26px; padding: 5px 0; text-align: center; font-size: 13px; line-height: 1; }
 
-.t1s-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.t1s-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; background: #F4F7FA; }
 
 .t1s-status { font-size: 12px; color: #475569; display: flex; align-items: center; gap: 8px; }
 .t1s-muted { color: #94a3b8; }
@@ -159,3 +162,209 @@
 .t1s-coupon-code.t1s-copied{background:#16a34a;border-color:#16a34a;color:#fff}
 .t1s-coupon-empty{font-size:12px;color:#64748b}
 @media (max-width:560px){.t1s-bar{left:12px;right:12px;bottom:12px;justify-content:center}}
+
+
+/* ---------- reference additions (16 Oct): history tabs, stat row, cheaper bar ---------- */
+.t1s-hist-tabs { display: flex; gap: 6px; margin: 8px 0 2px; }
+.t1s-htab {
+  border: 1px solid #e2e8f0; background: #fff; color: #475569;
+  font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 999px;
+  cursor: pointer; font-family: inherit;
+}
+.t1s-htab.active { background: #151922; color: #fff; border-color: #151922; }
+.t1s-hist-view { background: #fff; border: 1px solid #e5e9f0; border-radius: 12px; padding: 10px; }
+.t1s-hist-stats { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.t1s-stat {
+  flex: 1 1 90px; display: flex; flex-direction: column; gap: 2px;
+  background: #F4F7FA; border: 1px solid #e5e9f0; border-radius: 10px; padding: 6px 8px;
+}
+.t1s-stat em { font-style: normal; font-size: 8.5px; font-weight: 900; letter-spacing: .4px; color: #94a3b8; }
+.t1s-stat b { font-size: 12.5px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.t1s-stat .t1s-green { color: #00A86B; }
+.t1s-hist-when { font-size: 9.5px; color: #94a3b8; margin-top: 6px; font-weight: 600; }
+
+/* green cheaper-elsewhere bar (real cross-site verified savings only) */
+.t1s-cheaper {
+  background: #00A86B; color: #fff; border-radius: 12px; padding: 10px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.t1s-cheaper-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.t1s-cheaper-txt b { font-size: 12.5px; font-weight: 900; }
+.t1s-cheaper-txt span { font-size: 10px; opacity: .92; font-weight: 600; }
+.t1s-cheaper-btn {
+  flex: none; background: #fff; color: #00794e; border: none; border-radius: 10px;
+  font-size: 10.5px; font-weight: 900; padding: 7px 10px; cursor: pointer;
+  text-decoration: none; font-family: inherit;
+}
+.t1s-cheaper-btn:hover { background: #f0fdf6; }
+
+
+/* ====================================================================
+   v1.6.0 — RIGHT-EDGE DOCK + SLIDE-OUT SIDEBAR (owner reference design:
+   deep-indigo rail #222055, circle buttons #36347A, active #4845A8,
+   black tooltips #0D0D10; Try1Second logo stays our PNG lockup).
+   ==================================================================== */
+
+.t1s-dock {
+  position: fixed; right: 10px; top: 50%; transform: translateY(-50%);
+  z-index: 2147483001; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: #222055; border-radius: 999px; padding: 10px 7px;
+  box-shadow: 0 8px 28px rgba(15, 15, 45, 0.35);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.t1s-dock * { font-family: inherit; }
+.t1s-dock-btn {
+  position: relative; width: 38px; height: 38px; border-radius: 50%;
+  background: #36347A; border: none; color: #fff; cursor: pointer; padding: 0;
+  display: flex; align-items: center; justify-content: center; transition: background .15s, transform .15s;
+}
+.t1s-dock-btn:hover { background: #4845A8; transform: scale(1.06); }
+.t1s-dock-btn.t1s-dock-active { background: #4845A8; box-shadow: inset 0 0 0 2px #6c68c9; }
+.t1s-dock-ic svg { width: 18px; height: 18px; display: block; }
+.t1s-dock-tip {
+  position: absolute; right: 48px; top: 50%; transform: translateY(-50%);
+  background: #0D0D10; color: #fff; font-size: 11px; font-weight: 800; padding: 5px 10px;
+  border-radius: 8px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+.t1s-dock-tip::after {
+  content: ''; position: absolute; right: -4px; top: 50%; transform: translateY(-50%) rotate(45deg);
+  width: 8px; height: 8px; background: #0D0D10; border-radius: 1px;
+}
+.t1s-dock-btn:hover .t1s-dock-tip { opacity: 1; }
+.t1s-dock-chev svg { transform: rotate(180deg); }
+.t1s-dock.t1s-dock-collapsed .t1s-dock-btn, .t1s-dock.t1s-dock-collapsed .t1s-dock-chev { display: none; }
+
+/* brand pill: logo + 3x3 dots grid; X badge hides the rail per-site */
+.t1s-dock-brand {
+  position: relative; background: #151922; border: none; border-radius: 14px; cursor: pointer;
+  width: 44px; padding: 7px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.t1s-dock-brand img { width: 26px; height: 28px; object-fit: contain; display: block; }
+.t1s-dots { display: grid; grid-template-columns: repeat(3, 4px); gap: 3px; }
+.t1s-dots i { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.75); }
+.t1s-dock-x {
+  position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%;
+  background: #758596; color: #fff; display: flex; align-items: center; justify-content: center;
+}
+.t1s-dock-x svg { width: 10px; height: 10px; }
+.t1s-dock-x:hover { background: #E11D48; }
+.t1s-dock.t1s-dock-collapsed .t1s-dock-x { display: none; }
+
+/* ---------- sidebar ---------- */
+.t1s-sb {
+  position: fixed; top: 0; right: 68px; height: 100vh; width: 380px; max-width: calc(100vw - 84px);
+  z-index: 2147483002; background: #fff; border-radius: 18px 0 0 18px;
+  box-shadow: -14px 0 44px rgba(15, 15, 45, 0.28);
+  display: flex; flex-direction: column; overflow: hidden;
+  transform: translateX(110%); transition: transform .22s ease-out;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.t1s-sb * { font-family: inherit; }
+.t1s-sb.t1s-sb-open { transform: translateX(0); }
+.t1s-sb-head {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  background: #151922; color: #fff; flex: none;
+}
+.t1s-sb-logo img { height: 26px; width: auto; display: block; }
+.t1s-sb-title { font-size: 14px; font-weight: 900; letter-spacing: .2px; flex: 1; }
+.t1s-sb-close {
+  width: 28px; height: 28px; border-radius: 50%; border: none; background: #2c3242; color: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.t1s-sb-close:hover { background: #E11D48; }
+.t1s-sb-close svg { width: 13px; height: 13px; }
+.t1s-sb-body { flex: 1; overflow-y: auto; padding: 14px; background: #F4F7FA; }
+.t1s-sb-foot {
+  flex: none; padding: 8px 14px; background: #fff; border-top: 1px solid #e5e9f0;
+  font-size: 9.5px; font-weight: 700; color: #94a3b8; text-align: center;
+}
+
+/* in-sidebar comparison panel: full height, no fixed positioning */
+.t1s-in-sidebar { position: static !important; width: 100% !important; max-width: 100% !important; }
+.t1s-in-sidebar .t1s-card { box-shadow: none; }
+
+/* ---------- shared view bits ---------- */
+.t1s-view-head { font-size: 11.5px; color: #4b5567; font-weight: 700; line-height: 1.55; margin-bottom: 12px; }
+.t1s-view-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.t1s-checkpage {
+  border: none; background: #FF6600; color: #fff; border-radius: 10px; padding: 8px 12px;
+  font-size: 11px; font-weight: 900; cursor: pointer;
+}
+.t1s-checkpage:hover { background: #e65c00; }
+.t1s-checkpage:disabled { opacity: .6; cursor: default; }
+
+.t1s-sb-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+  background: #fff; border: 1px solid #e5e9f0; border-radius: 14px; padding: 26px 16px;
+}
+.t1s-sb-empty b { font-size: 13px; font-weight: 900; color: #151922; }
+.t1s-sb-empty span { font-size: 10.5px; color: #64748b; line-height: 1.55; }
+.t1s-sb-empty .t1s-empty-logo { width: 44px; height: 47px; object-fit: contain; margin-bottom: 4px; }
+.t1s-sb-empty a { margin-top: 8px; text-decoration: none; }
+.t1s-sb-empty-mini { text-align: left; align-items: flex-start; margin-top: 14px; }
+
+.t1s-alert-list, .t1s-recent-list, .t1s-coupon-list { display: flex; flex-direction: column; gap: 8px; }
+.t1s-alert-row, .t1s-recent-row {
+  display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e9f0;
+  border-radius: 12px; padding: 10px; text-align: left;
+}
+.t1s-recent-row { cursor: pointer; width: 100%; border: 1px solid #e5e9f0; }
+.t1s-recent-row:hover { border-color: #FF6600; }
+.t1s-recent-row svg { width: 14px; height: 14px; color: #94a3b8; flex: none; }
+.t1s-alert-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.t1s-alert-txt b { font-size: 11.5px; font-weight: 800; color: #151922; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t1s-alert-txt span { font-size: 10px; color: #64748b; font-weight: 600; }
+.t1s-alert-row input {
+  width: 84px; border: 1px solid #e5e9f0; border-radius: 8px; padding: 6px 8px;
+  font-size: 11px; font-weight: 800; outline: none; flex: none;
+}
+.t1s-alert-row input:focus { border-color: #FF6600; }
+.t1s-remove { border: none; background: none; color: #94a3b8; cursor: pointer; font-size: 12px; padding: 4px; flex: none; }
+.t1s-remove:hover { color: #E11D48; }
+
+.t1s-coupon-row2 {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #fff; border: 1px solid #e5e9f0; border-radius: 12px; padding: 10px 12px;
+}
+.t1s-coupon-row2 .t1s-coupon-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.t1s-coupon-row2 b { font-size: 11.5px; font-weight: 800; color: #151922; }
+.t1s-coupon-row2 span { font-size: 10px; color: #64748b; font-weight: 600; }
+.t1s-coupon-row2 .t1s-checkpage { flex: none; }
+
+/* deal score ring */
+.t1s-score-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; background: #fff; border: 1px solid #e5e9f0; border-radius: 16px; padding: 20px 14px; }
+.t1s-score-ring { width: 132px; height: 132px; }
+.t1s-score-verdict { font-size: 14px; font-weight: 900; padding: 4px 14px; border-radius: 999px; background: #F4F7FA; color: #151922; }
+.t1s-score-verdict.t1s-green { color: #00A86B; }
+.t1s-score-verdict.t1s-amber { color: #b45309; }
+.t1s-score-note { font-size: 10px; color: #94a3b8; font-weight: 700; text-align: center; }
+.t1s-score-wrap .t1s-hist-stats { width: 100%; margin-top: 6px; }
+
+/* settings */
+.t1s-toggles { display: flex; flex-direction: column; gap: 4px; }
+.t1s-toggle-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #fff; border: 1px solid #e5e9f0; border-radius: 12px; padding: 10px 12px;
+  font-size: 12px; font-weight: 800; color: #151922;
+}
+.t1s-toggle {
+  width: 40px; height: 22px; border-radius: 999px; border: none; cursor: pointer;
+  background: #E2E8F0; position: relative; transition: background .15s; padding: 0; flex: none;
+}
+.t1s-toggle i {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: left .15s;
+}
+.t1s-toggle.on { background: #22C55E; }
+.t1s-toggle.on i { left: 20px; }
+.t1s-set-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #fff; border: 1px solid #e5e9f0; border-radius: 12px; padding: 9px 12px;
+  font-size: 11.5px; font-weight: 800; color: #151922; margin-bottom: 8px;
+}
+.t1s-set-in {
+  width: 170px; border: 1px solid #e5e9f0; border-radius: 8px; padding: 7px 9px;
+  font-size: 11px; font-weight: 700; outline: none;
+}
+.t1s-set-in:focus { border-color: #FF6600; }
+#t1s-unhide { margin-top: 12px; width: 100%; }
