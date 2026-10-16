@@ -570,7 +570,7 @@
 
   /** 8 themes (owner reference): rail + accent colors, stored in t1sTheme. */
   const THEMES = {
-    midnight:  { name: 'Midnight',  rail: '#222055', accent: '#5D46E6' },
+    midnight:  { name: 'Midnight',  rail: '#151922', accent: '#E11D48' }, // brand: charcoal rail + Try1Second red
     sunset:    { name: 'Sunset',    rail: '#4a1f2e', accent: '#FF6600' },
     forest:    { name: 'Forest',    rail: '#1c3a2c', accent: '#0E9F6E' },
     ocean:     { name: 'Ocean',     rail: '#12314e', accent: '#0E7FBF' },
@@ -798,7 +798,7 @@
     return dock;
   }
 
-  /** Dark feature-toggles popover (reference image 1: #0d111c, #5e5dff switches).
+  /** Dark feature-toggles popover (owner reference image 1: #0d111c surface, red switches per brand rule).
    *  Every toggle is REAL and wired: no dead switches. */
   let featurePopover = null;
 

@@ -201,14 +201,14 @@
 
 /* ====================================================================
    v1.6.0 — RIGHT-EDGE DOCK + SLIDE-OUT SIDEBAR (owner reference design:
-   deep-indigo rail #222055, circle buttons #36347A, active #4845A8,
+   deep-indigo rail #151922, circle buttons #2c3242, active #E11D48,
    black tooltips #0D0D10; Try1Second logo stays our PNG lockup).
    ==================================================================== */
 
 .t1s-dock {
   position: fixed; right: 10px; top: 50%; transform: translateY(-50%);
   z-index: 2147483001; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  background: var(--t1s-rail, #222055); border-radius: 18px; padding: 10px 5px 8px; width: 64px;
+  background: var(--t1s-rail, #151922); border-radius: 18px; padding: 10px 5px 8px; width: 64px;
   box-shadow: 0 8px 28px rgba(15, 15, 45, 0.35);
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
@@ -220,7 +220,7 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center; transition: background .15s;
 }
 .t1s-dock-btn:hover { background: rgba(255,255,255,.18); }
-.t1s-dock-btn.t1s-dock-active { background: var(--t1s-accent, #4845A8); }
+.t1s-dock-btn.t1s-dock-active { background: var(--t1s-accent, #E11D48); }
 .t1s-dock-ic svg { width: 18px; height: 18px; display: block; }
 .t1s-dock-tip {
   position: absolute; right: 60px; top: 50%; transform: translateY(-50%);
@@ -404,7 +404,7 @@
   position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
   background: #fff; transition: left .15s;
 }
-.t1s-feat-tg.on { background: #5e5dff; }
+.t1s-feat-tg.on { background: #E11D48; }
 .t1s-feat-tg.on i { left: 20px; }
 
 /* recent views privacy banner (reference image 2) */
@@ -427,7 +427,7 @@
   flex: 1; border: none; background: transparent; border-radius: 9px; padding: 7px 4px;
   font-size: 11.5px; font-weight: 800; color: #6b7280; cursor: pointer; font-family: inherit;
 }
-.t1s-tab2.active { background: var(--t1s-accent, #5D46E6); color: #fff; }
+.t1s-tab2.active { background: var(--t1s-accent, #E11D48); color: #fff; }
 
 /* onelist */
 .t1s-onel-hero {
@@ -442,7 +442,7 @@
 .t1s-onel-hero b { font-size: 14px; font-weight: 900; color: #151922; }
 .t1s-onel-hero > span { font-size: 10.5px; color: #64748b; line-height: 1.5; }
 .t1s-pill-btn {
-  border: none; background: var(--t1s-accent, #5D46E6); color: #fff; border-radius: 999px;
+  border: none; background: var(--t1s-accent, #E11D48); color: #fff; border-radius: 999px;
   padding: 9px 18px; font-size: 11.5px; font-weight: 900; cursor: pointer; font-family: inherit; margin-top: 4px;
 }
 .t1s-pill-btn:hover { filter: brightness(1.08); }
@@ -455,18 +455,18 @@
 }
 .t1s-wn-art {
   width: 76px; height: 76px; border-radius: 12px; flex: none; display: flex;
-  align-items: center; justify-content: center; color: var(--t1s-accent, #5D46E6);
+  align-items: center; justify-content: center; color: var(--t1s-accent, #E11D48);
 }
 .t1s-wn-art svg { width: 34px; height: 34px; }
 .t1s-wn-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .t1s-wn-badge {
   align-self: flex-start; font-size: 8.5px; font-weight: 900; letter-spacing: .4px; text-transform: uppercase;
-  color: var(--t1s-accent, #5D46E6); background: #F0F4FF; border-radius: 999px; padding: 3px 8px;
+  color: var(--t1s-accent, #E11D48); background: #FDE8EC; border-radius: 999px; padding: 3px 8px;
 }
 .t1s-wn-txt b { font-size: 13px; font-weight: 900; color: #151922; }
 .t1s-wn-txt > span:nth-of-type(1) { font-size: 10.5px; color: #4d4d4d; line-height: 1.5; }
 .t1s-wn-link {
-  align-self: flex-start; border: none; background: none; color: var(--t1s-accent, #5D46E6);
+  align-self: flex-start; border: none; background: none; color: var(--t1s-accent, #E11D48);
   font-size: 11px; font-weight: 900; cursor: pointer; display: flex; align-items: center; gap: 5px; padding: 2px 0;
 }
 .t1s-wn-link svg { width: 13px; height: 13px; }
@@ -477,17 +477,17 @@
   border-radius: 14px; padding: 12px; margin-bottom: 12px;
 }
 .t1s-prof-ava {
-  width: 40px; height: 40px; border-radius: 50%; background: var(--t1s-accent, #5D46E6);
+  width: 40px; height: 40px; border-radius: 50%; background: var(--t1s-accent, #E11D48);
   color: #fff; display: flex; align-items: center; justify-content: center; flex: none;
 }
 .t1s-prof-ava svg { width: 20px; height: 20px; }
 .t1s-prof-user b { display: block; font-size: 12.5px; font-weight: 900; color: #151922; }
-.t1s-prof-user a { font-size: 10.5px; font-weight: 800; color: var(--t1s-accent, #5D46E6); text-decoration: none; }
+.t1s-prof-user a { font-size: 10.5px; font-weight: 800; color: var(--t1s-accent, #E11D48); text-decoration: none; }
 .t1s-savings-hero {
   display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
   background: #F3F4FD; border-radius: 16px; padding: 24px 16px; margin-bottom: 12px;
 }
-.t1s-sav-ic { color: var(--t1s-accent, #5D46E6); }
+.t1s-sav-ic { color: var(--t1s-accent, #E11D48); }
 .t1s-sav-ic svg { width: 30px; height: 30px; }
 .t1s-sav-big { font-size: 30px; font-weight: 900; color: #151922; font-variant-numeric: tabular-nums; }
 .t1s-savings-hero b { font-size: 12px; font-weight: 900; color: #151922; }
@@ -505,7 +505,7 @@
   font-size: 11.5px; font-weight: 700; color: #1F1F1F; margin-bottom: 8px;
 }
 .t1s-view-all {
-  border: none; background: none; color: #4338CA; font-size: 11px; font-weight: 800;
+  border: none; background: none; color: #E11D48; font-size: 11px; font-weight: 800;
   text-decoration: underline; cursor: pointer; padding: 0; font-family: inherit;
 }
 .t1s-theme-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -513,6 +513,6 @@
   background: #fff; border: 1.5px solid #e5e9f0; border-radius: 12px; padding: 9px 4px 7px;
   display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; font-family: inherit;
 }
-.t1s-theme-card.active { border-color: #c7d2fe; background: #eef2ff; }
+.t1s-theme-card.active { border-color: #fecdd3; background: #fff1f2; }
 .t1s-theme-dot { width: 22px; height: 22px; border-radius: 50%; display: block; border: 2px solid #fff; box-shadow: 0 0 0 1px #e5e9f0; }
 .t1s-theme-card span:last-child { font-size: 8.5px; font-weight: 800; color: #4b5567; }
