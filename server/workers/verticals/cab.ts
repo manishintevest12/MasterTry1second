@@ -120,7 +120,8 @@ export const cabWorker: VerticalWorker = {
         if (!authHeaders) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API credentials not configured: set UBER_APPLICATION_ID + UBER_CLIENT_SECRET (OAuth2 client credentials) or UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price).');
         const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
         if (!a || !b) return [];
-        const url = `https://api.uber.com/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
+        const apiHost = String(process.env.UBER_API_HOST || 'api.uber.com').trim() || 'api.uber.com'; // set UBER_API_HOST=sandbox-api.uber.com to test against Uber's sandbox
+        const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
         const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { ...authHeaders, Accept: 'application/json' } });
         if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Uber API rejected credentials (HTTP ${r.status}) — check UBER_APPLICATION_ID/UBER_CLIENT_SECRET (or UBER_SERVER_TOKEN)`, r.status);
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Uber API HTTP ${r.status}`, r.status);
@@ -132,11 +133,19 @@ export const cabWorker: VerticalWorker = {
           const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
           if (!price) continue;
           const vehicle = String(p.localized_display_name || 'Uber cab').slice(0, 60);
+          const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
+          const ul = new URL('https://m.uber.com/ul/');
+          ul.searchParams.set('client_id', uberClientId);
+          ul.searchParams.set('action', 'setPickup');
+          ul.searchParams.set('pickup[my_location]', 'true');
+          ul.searchParams.set('dropoff[latitude]', String(b.lat));
+          ul.searchParams.set('dropoff[longitude]', String(b.lon));
+          ul.searchParams.set('dropoff[nickname]', rt.to.slice(0, 60));
           items.push(newRawItem(ctx.source, {
             title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
             brand: 'Uber',
             price, currency: String(p.currency_code || 'INR'),
-            seller: 'Uber', sellerUrl: 'https://m.uber.com/looking/',
+            seller: 'Uber',
             travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: 'unknown' },
             attributes: {
               pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,
@@ -145,8 +154,9 @@ export const cabWorker: VerticalWorker = {
               duration_minutes: p.duration != null ? String(Math.round(p.duration / 60)) : '',
               fare_range: p.low_estimate && p.high_estimate ? `Rs ${p.low_estimate} - Rs ${p.high_estimate}` : '',
               price_basis: `Uber API price estimate on ${today}`,
-              data_note: 'Fare estimate from the official Uber API (developer.uber.com /v1.2/estimates/price)',
+              data_note: `Fare estimate from the official Uber API (${apiHost} /v1.2/estimates/price); deeplink is the Uber universal link with our client_id, routed via /api/out so an affiliate campaign (direct or network) attaches when available`,
             },
+            sellerUrl: ul.toString(),
             identifiers: { sku: `uber-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, '-') },
             evidence: { sourceUrl: url, extractedFields: ['Uber API estimates/price'] },
           }));
