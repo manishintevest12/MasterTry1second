@@ -108,6 +108,19 @@ export const foodWorker: VerticalWorker = {
       },
     },
     {
+      // Uber Eats India: the service no longer operates in India — Uber sold Uber Eats India to
+      // Zomato in January 2020. Verified live: www.ubereats.com/in/* returns HTTP 410 Gone, no
+      // /in/ store URLs exist in the store sitemaps, and /city/mumbai returns 404. This probe
+      // is registered so the source is honestly attempted and reported per search.
+      sourceId: 'w_food_ubereats',
+      name: 'Food worker: Uber Eats (India) probe',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.ubereats.com/in/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', `Uber Eats does not operate in India: Uber sold its India food-delivery business to Zomato in January 2020 (verified live: ubereats.com/in/* returns HTTP 410 Gone). No Indian menus or prices exist on Uber Eats.`);
+      },
+    },
+    {
       sourceId: 'w_food_swiggy',
       name: 'Food worker: Swiggy dish search (dish, price, photo, restaurant)',
       priority: 5,

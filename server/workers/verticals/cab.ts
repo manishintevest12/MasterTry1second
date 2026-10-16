@@ -21,6 +21,28 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
   return { from: m[1].trim(), to: m[2].trim() };
 }
 
+
+// Uber OAuth2 client-credentials bearer token with in-process cache.
+let _uberTokenCache: { token: string; expiresAt: number } | null = null;
+async function uberBearerToken(appId: string, appSecret: string): Promise<string | null> {
+  if (_uberTokenCache && Date.now() < _uberTokenCache.expiresAt) return _uberTokenCache.token;
+  const basic = Buffer.from(`${appId}:${appSecret}`).toString('base64');
+  const r = await cffiFetch('https://login.uber.com/oauth/v2/token', {
+    method: 'POST', timeoutMs: 15_000,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${basic}` },
+    body: 'grant_type=client_credentials',
+  });
+  if (r.status !== 200) return null;
+  try {
+    const j = JSON.parse(r.body || '{}');
+    const token = String(j?.access_token || '');
+    const ttl = Number(j?.expires_in || 0);
+    if (!token || !ttl) return null;
+    _uberTokenCache = { token, expiresAt: Date.now() + Math.max(ttl - 60, 60) * 1000 };
+    return token;
+  } catch { return null; }
+}
+
 export const cabWorker: VerticalWorker = {
   vertical: 'cab',
   tasks: [
@@ -40,9 +62,9 @@ export const cabWorker: VerticalWorker = {
         if (!rt) return [];
         const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
         if (!a || !b) return [];
-        const url = `https://api.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
+        const url = `https://devapi.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
         const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { 'X-APP-TOKEN': key, Accept: 'application/json' } });
-        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Ola API rejected credentials (HTTP ${r.status}) — set a valid OLA_API_KEY`, r.status);
+        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Ola API rejected credentials (HTTP ${r.status}) — set a valid OLA_API_KEY (devapi.olacabs.com host)`, r.status);
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Ola API HTTP ${r.status}`, r.status);
         let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Ola API non-JSON'); }
         const cats: any[] = Array.isArray(j?.categories) ? j.categories : [];
@@ -75,23 +97,32 @@ export const cabWorker: VerticalWorker = {
       },
     },
     {
-      // Uber: official Uber API price estimates (developer.uber.com / v1.2). Credentials in
-      // UBER_SERVER_TOKEN (owner supplies the real token; demo keys are rejected with 401 — verified live).
+      // Uber: official Uber API price estimates (developer.uber.com / v1.2). Auth: OAuth2
+      // client_credentials (UBER_APPLICATION_ID + UBER_CLIENT_SECRET) with legacy UBER_SERVER_TOKEN
+      // fallback. Token is fetched from login.uber.com/oauth/v2/token and cached in-process.
       sourceId: 'w_cab_uber',
       name: 'Cab worker: Uber India fare estimates (official API)',
       priority: 15,
       maxPerMinute: 10,
       timeoutMs: 25_000,
       run: async (ctx) => {
-        const token = String(process.env.UBER_SERVER_TOKEN || '').trim();
-        if (!token) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API credentials not configured: set UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price; demo keys are rejected by Uber with 401 — the owner will supply the original token).');
         const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
         if (!rt) return [];
+        let authHeaders: Record<string, string> | null = null;
+        const appId = String(process.env.UBER_APPLICATION_ID || '').trim();
+        const appSecret = String(process.env.UBER_CLIENT_SECRET || '').trim();
+        const serverToken = String(process.env.UBER_SERVER_TOKEN || '').trim();
+        if (appId && appSecret) {
+          const bearer = await uberBearerToken(appId, appSecret);
+          if (bearer) authHeaders = { Authorization: `Bearer ${bearer}` };
+        }
+        if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
+        if (!authHeaders) throw new AcquisitionError('EMPTY_RESPONSE', 'Uber API credentials not configured: set UBER_APPLICATION_ID + UBER_CLIENT_SECRET (OAuth2 client credentials) or UBER_SERVER_TOKEN in hPanel env (official Uber API /v1.2/estimates/price).');
         const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
         if (!a || !b) return [];
         const url = `https://api.uber.com/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
-        const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { Authorization: `Token ${token}`, Accept: 'application/json' } });
-        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Uber API rejected credentials (HTTP ${r.status}) — set a valid UBER_SERVER_TOKEN`, r.status);
+        const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { ...authHeaders, Accept: 'application/json' } });
+        if (r.status === 401 || r.status === 403) throw new AcquisitionError('FORBIDDEN', `Uber API rejected credentials (HTTP ${r.status}) — check UBER_APPLICATION_ID/UBER_CLIENT_SECRET (or UBER_SERVER_TOKEN)`, r.status);
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Uber API HTTP ${r.status}`, r.status);
         let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Uber API non-JSON'); }
         const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
@@ -134,7 +165,19 @@ export const cabWorker: VerticalWorker = {
       },
     },
     {
-      sourceId: 'w_cab_meru',
+      // Rapido: verified live — rapido.bike serves SSR SEO route pages (/delhi/routes/<From>-<To>, city
+      // sitemaps list thousands) but they carry NO fares; the only API hosts in the web bundle are
+      // internal .svc.production.internal services (unreachable). Fare estimates are in-app only.
+      sourceId: 'w_cab_rapido',
+      name: 'Cab worker: Rapido (probe)',
+      priority: 15,
+      run: async () => {
+        const r = await cffiFetch('https://www.rapido.bike/delhi/routes/Saket-Sainik_Farm', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Rapido publishes no fares on the web: rapido.bike route pages are SEO content only and the web bundle references only internal service hosts (verified live). Fare estimates are available only in the Rapido app.');
+      },
+    },
+    {
+            sourceId: 'w_cab_meru',
       name: 'Cab worker: Meru (probe)',
       priority: 15,
       run: async () => {

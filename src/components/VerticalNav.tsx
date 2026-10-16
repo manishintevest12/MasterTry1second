@@ -31,7 +31,7 @@ const VERTICALS: VerticalTabItem[] = [
   { id: 'grocery', name: '10-Min Grocery', icon: Zap, tagline: 'Quick-Commerce' },
   { id: 'food', name: 'Food', icon: Utensils, tagline: 'Dishes & Outlets' },
   { id: 'movie', name: 'Movies', icon: Film, tagline: 'IMAX & Cinema' },
-  { id: 'cab', name: 'Cab & Rides', icon: Car, tagline: 'Surge & Fare Check' },
+  { id: 'cab', name: 'Cab & Ride', icon: Car, tagline: 'Surge & Fare Check' },
   { id: 'loans', name: 'Loans', icon: Landmark, tagline: 'Lowest APR & EMI' },
   { id: 'insurance', name: 'Insurance', icon: ShieldCheck, tagline: '1 Cr Health & Car' },
   { id: 'creditcards', name: 'Credit Cards', icon: CreditCard, tagline: 'Fees, Rewards, APR' },
