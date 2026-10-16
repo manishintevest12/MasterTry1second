@@ -25,6 +25,24 @@ export async function photonGeocode(name: string): Promise<GeoPoint | null> {
   return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: name };
 }
 
+/** UI search endpoints arrive locality-decorated ("Chappan Dukan / MG Road, Indore",
+ * "Terminal 3 Airport (110037)", "DLF Cyber City, Gurugram"). City-based registries
+ * (Ola BPD, InDrive, BharatTaxi/Savaari route slugs, Uber city guides) need the clean
+ * CITY: strip pincode parens and keep the LAST comma segment; no comma -> whole string. */
+export function cityFromRouteText(place: string): string {
+  const noPin = place.replace(/\(\s*\d{6}\s*\)/g, ' ');
+  const parts = noPin.split(',').map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  return (parts.length ? parts[parts.length - 1] : noPin.replace(/\s+/g, ' ').trim()) || place.trim();
+}
+
+/** Geocode a UI endpoint: full string first (most precise), clean-city fallback. */
+export async function geocodePlace(name: string): Promise<GeoPoint | null> {
+  const a = await photonGeocode(name);
+  if (a) return a;
+  const city = cityFromRouteText(name);
+  return city !== name ? photonGeocode(city) : null;
+}
+
 export interface OverpassElement {
   type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number };
   tags: Record<string, string>;

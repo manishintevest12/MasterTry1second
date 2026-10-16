@@ -37,11 +37,23 @@ export async function indriveCityLookup(term: string): Promise<InDriveCity | nul
   let cities: InDriveCity[];
   try { cities = JSON.parse(r.body || '[]'); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'InDrive city search non-JSON'); }
   if (!Array.isArray(cities) || !cities.length) return null;
-  const t = q.toLowerCase();
-  // prefer a city whose NAME contains the query (e.g. search "agra" returned
-  // "Konappana Agrahara" first — the exact-name match "Agra" wins instead)
-  const byName = cities.find((c) => String(c.name).toLowerCase().includes(t));
-  return byName || cities[0];
+  // Rank: exact name, then a word-boundary prefix, then substring (owner bug 16 Oct:
+  // search "bhopal" picked "Bhopalgarh" because it appeared first in the list).
+  const pick = indrivePickCity(cities, q);
+  return pick || cities[0];
+}
+
+/** Pure ranking helper (unit-tested): exact == prefix(word-boundary) == substring == null. */
+export function indrivePickCity(cities: InDriveCity[], q: string): InDriveCity | null {
+  const t = q.trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!t) return null;
+  const norm = (s: string) => String(s).toLowerCase().replace(/\s+/g, ' ');
+  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rx = new RegExp(`^${esc}\\b`);
+  return cities.find((c) => norm(c.name) === t)
+    || cities.find((c) => rx.test(norm(c.name)))
+    || cities.find((c) => norm(c.name).includes(t))
+    || null;
 }
 
 /** Fetch InDrive's published intercity price bands for a city pair. */

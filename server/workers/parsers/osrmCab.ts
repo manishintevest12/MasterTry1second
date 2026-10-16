@@ -7,14 +7,14 @@
  */
 import type { RawSourceItem, SourceConfig } from '../../types';
 import { newRawItem } from '../../sources/contract';
-import { photonGeocode } from './osmTravel';
+import { geocodePlace } from './osmTravel';
 
 export async function buildCabEstimate(
   source: SourceConfig, from: string, to: string, date: string | undefined,
   fetchRoute: (lon1: number, lat1: number, lon2: number, lat2: number) => Promise<{ distanceM: number; durationS: number }>,
   ratePerKm: number, sourceUrl: string,
 ): Promise<RawSourceItem[]> {
-  const [a, b] = await Promise.all([photonGeocode(from), photonGeocode(to)]);
+  const [a, b] = await Promise.all([geocodePlace(from), geocodePlace(to)]);
   if (!a || !b) return [];
   const route = await fetchRoute(a.lon, a.lat, b.lon, b.lat);
   const km = Math.round(route.distanceM / 100) / 10;

@@ -2480,6 +2480,17 @@ async function photonGeocode(name) {
   const f = features.find((x) => x?.properties?.countrycode === "IN") || features.find(inIndiaBbox) || features[0];
   return { lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], label: name };
 }
+function cityFromRouteText(place) {
+  const noPin = place.replace(/\(\s*\d{6}\s*\)/g, " ");
+  const parts = noPin.split(",").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean);
+  return (parts.length ? parts[parts.length - 1] : noPin.replace(/\s+/g, " ").trim()) || place.trim();
+}
+async function geocodePlace(name) {
+  const a = await photonGeocode(name);
+  if (a) return a;
+  const city = cityFromRouteText(name);
+  return city !== name ? photonGeocode(city) : null;
+}
 function parseOverpassHotels(json, source, city, bbox, queryUrl) {
   const els = Array.isArray(json?.elements) ? json.elements : [];
   const out = [];
@@ -10381,7 +10392,7 @@ var init_food = __esm({
 
 // server/workers/parsers/osrmCab.ts
 async function buildCabEstimate(source, from, to, date, fetchRoute, ratePerKm, sourceUrl) {
-  const [a, b] = await Promise.all([photonGeocode(from), photonGeocode(to)]);
+  const [a, b] = await Promise.all([geocodePlace(from), geocodePlace(to)]);
   if (!a || !b) return [];
   const route = await fetchRoute(a.lon, a.lat, b.lon, b.lat);
   const km = Math.round(route.distanceM / 100) / 10;
@@ -10635,9 +10646,16 @@ async function indriveCityLookup(term) {
     throw new AcquisitionError("MALFORMED_RESPONSE", "InDrive city search non-JSON");
   }
   if (!Array.isArray(cities) || !cities.length) return null;
-  const t = q3.toLowerCase();
-  const byName = cities.find((c) => String(c.name).toLowerCase().includes(t));
-  return byName || cities[0];
+  const pick2 = indrivePickCity(cities, q3);
+  return pick2 || cities[0];
+}
+function indrivePickCity(cities, q3) {
+  const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!t) return null;
+  const norm3 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc}\\b`);
+  return cities.find((c) => norm3(c.name) === t) || cities.find((c) => rx.test(norm3(c.name))) || cities.find((c) => norm3(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -10767,17 +10785,17 @@ async function uberCityFares(slug, city) {
   return out;
 }
 async function uberSsrFallback(ctx, rt, reason) {
-  const cityInfo = uberCitySlugFor(rt.from) || uberCitySlugFor(rt.to);
+  const cityInfo = uberCitySlugFor(rt.from) || uberCitySlugFor(cityFromRouteText(rt.from)) || uberCitySlugFor(rt.to) || uberCitySlugFor(cityFromRouteText(rt.to));
   if (!cityInfo) throw new AcquisitionError("EMPTY_RESPONSE", `Uber live fare unavailable (${reason}); no Uber city guide page exists for this city, and no live guest fare API is available without credentials.`);
   const fares = await uberCityFares(cityInfo.slug, cityInfo.city);
   let best = null;
   for (const fare of fares) {
-    const score = uberDestMatchScore(rt.to, fare.dest);
+    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), uberDestMatchScore(cityFromRouteText(rt.to), fare.dest));
     if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
   }
   if (!best) throw new AcquisitionError("EMPTY_RESPONSE", `Uber live fare unavailable (${reason}); Uber's published ${cityInfo.city} fare table covers ${fares.length} destinations and none matches "${rt.to}".`);
   const dropName = best.fare.dest;
-  const drop = await photonGeocode(`${dropName}, ${cityInfo.city}`) || await photonGeocode(rt.to);
+  const drop = await photonGeocode(`${dropName}, ${cityInfo.city}`) || await geocodePlace(rt.to);
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
   const ul = new URL("https://m.uber.com/ul/");
@@ -10874,11 +10892,14 @@ async function olaRateCardFallback(ctx, rt, reason) {
   const cities = await olaCityList();
   const pFrom = rt.from.toLowerCase();
   const pTo = rt.to.toLowerCase();
-  let city = cities.find((c) => pFrom.includes(String(c.name || "").toLowerCase())) || cities.find((c) => pTo.includes(String(c.name || "").toLowerCase()));
+  const cFrom = cityFromRouteText(rt.from).toLowerCase();
+  const cTo = cityFromRouteText(rt.to).toLowerCase();
+  const nm = (c) => String(c.name || "").toLowerCase();
+  let city = cities.find((c) => pFrom.includes(nm(c))) || cities.find((c) => cFrom.includes(nm(c))) || cities.find((c) => pTo.includes(nm(c))) || cities.find((c) => cTo.includes(nm(c)));
   if (!city) {
     throw new AcquisitionError("EMPTY_RESPONSE", `Ola fare unavailable (${reason}); "${rt.from}" is not an Ola operating city in Ola's own BPD registry (${cities.length} IN cities).`);
   }
-  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), photonGeocode(rt.from), photonGeocode(rt.to)]);
+  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePlace(rt.from), geocodePlace(rt.to)]);
   if (!a || !b) return [];
   const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15e3, headers: { Accept: "application/json" } });
   if (osrm.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OSRM HTTP ${osrm.status}`, osrm.status);
@@ -10977,7 +10998,7 @@ var init_cab = __esm({
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
             if (!key) return olaRateCardFallback(ctx, rt, "OLA_API_KEY not configured in hPanel env");
-            const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
+            const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
             if (!a || !b) return [];
             const url = `https://devapi.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
             const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { "X-APP-TOKEN": key, Accept: "application/json" } });
@@ -11045,7 +11066,7 @@ var init_cab = __esm({
             }
             if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
             if (!authHeaders) return uberSsrFallback(ctx, rt, "official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)");
-            const [a, b] = await Promise.all([photonGeocode(rt.from), photonGeocode(rt.to)]);
+            const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
             if (!a || !b) return [];
             const apiHost = String(process.env.UBER_API_HOST || "api.uber.com").trim() || "api.uber.com";
             const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
@@ -11141,7 +11162,7 @@ var init_cab = __esm({
           run: async (ctx) => {
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
-            const url = `https://www.bharattaxi.com/${bharatTaxiSlug(rt.from)}/to/${bharatTaxiSlug(rt.to)}`;
+            const url = `https://www.bharattaxi.com/${bharatTaxiSlug(cityFromRouteText(rt.from))}/to/${bharatTaxiSlug(cityFromRouteText(rt.to))}`;
             const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
             if (r.status === 404) return [];
             if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `BharatTaxi HTTP ${r.status}`, r.status);
@@ -11159,8 +11180,8 @@ var init_cab = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery2(raw);
             if (!rt) return [];
-            const from = savaariRouteSlug(rt.from);
-            const to = savaariRouteSlug(rt.to);
+            const from = savaariRouteSlug(cityFromRouteText(rt.from));
+            const to = savaariRouteSlug(cityFromRouteText(rt.to));
             const url = `https://www.savaari.com/${from}/${from}-to-${to}-cabs`;
             const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
             if (r.status === 404) return [];
@@ -11199,7 +11220,12 @@ var init_cab = __esm({
           run: async (ctx) => {
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
-            const [from, to] = await Promise.all([indriveCityLookup(rt.from), indriveCityLookup(rt.to)]);
+            const lookup2 = async (x) => {
+              const byCity = await indriveCityLookup(cityFromRouteText(x));
+              if (byCity) return byCity;
+              return cityFromRouteText(x) !== x ? indriveCityLookup(x) : null;
+            };
+            const [from, to] = await Promise.all([lookup2(rt.from), lookup2(rt.to)]);
             if (!from || !to) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity registry has no match for ${!from ? rt.from : rt.to} (India registry only)`);
             if (from.id === to.id) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity: "${rt.from}" and "${rt.to}" resolved to the same city (${from.name})`);
             const rows = await indrivePrices(from.id, to.id);
