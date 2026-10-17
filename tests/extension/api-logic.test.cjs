@@ -203,12 +203,12 @@ if (classifyMatch) {
 // ---- v1.8.1: logo visibility on dark surfaces (owner report) ----
 {
   const popupHtml = fs.readFileSync('chrome-extension/popup/popup.html', 'utf8');
-  t('popup dark hero uses the light wordmark', popupHtml.includes('logo-wordmark-light.png'));
-  t('popup dark hero uses the light icon', popupHtml.includes('logo-icon-light.png'));
+  t('popup hero keeps the ORIGINAL wordmark (owner 17 Oct: never restyle the logo)', popupHtml.includes('logo-wordmark.png') && !popupHtml.includes('logo-wordmark-light.png'));
+  t('popup hero keeps the ORIGINAL icon', popupHtml.includes('logo-icon.png') && !popupHtml.includes('logo-icon-light.png'));
 
   const contentCode = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
-  t('sidebar head (dark #151922) uses the light lockup', contentCode.includes('logoSvgLight') && contentCode.includes('<div class="t1s-sb-logo">${logoSvgLight}</div>'));
-  t('dock brand pill uses the light icon', /brand.innerHTML[\s\S]*logo-icon-light\.png/.test(contentCode));
+  t('sidebar head uses the original lockup (light surface, owner rule)', contentCode.includes('<div class="t1s-sb-logo">${logoSvg}</div>') && !contentCode.includes('logoSvgLight'));
+  t('dock brand pill keeps the original icon on a white pill', /brand.innerHTML[\s\S]*logo-icon\.png/.test(contentCode) && !/brand.innerHTML[\s\S]*logo-icon-light\.png/.test(contentCode));
   t('floating bar (white bg) keeps the original dark wordmark', contentCode.includes('class="t1s-logo">${logoSvg}</div>'));
 
   // the light PNGs exist and really differ: wordmark navy -> white

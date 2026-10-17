@@ -25,11 +25,12 @@
   justify-content: space-between;
   gap: 8px;
   padding: 10px 12px;
-  background: #151922;
-  border-bottom: 1px solid #f1f5f9;
+  /* owner 17 Oct: keep the ORIGINAL dark logo — flip this surface to light */
+  background: #fff;
+  border-bottom: 1px solid #e5e9f0;
 }
-.t1s-head .t1s-btn { background: #151922; color: #e7e9ef; border-color: #2c3242; }
-.t1s-head .t1s-btn:hover { background: #1f2530; }
+.t1s-head .t1s-btn { background: #F4F7FA; color: #4b5567; border-color: #e5e9f0; }
+.t1s-head .t1s-btn:hover { background: #eef2f7; }
 .t1s-head .t1s-btn-track.t1s-tracking { background: #00A86B; border-color: #00A86B; color: #fff; }
 
 .t1s-logo { display: flex; align-items: center; }
@@ -239,7 +240,7 @@
 
 /* brand pill: logo + 3x3 dots grid; X badge hides the rail per-site */
 .t1s-dock-brand {
-  position: relative; background: #151922; border: none; border-radius: 14px; cursor: pointer;
+  position: relative; background: #fff; border: 1px solid #e5e9f0; border-radius: 14px; cursor: pointer;
   width: 44px; padding: 7px 0 8px; display: flex; flex-direction: column; align-items: center; gap: 6px;
 }
 .t1s-dock-brand img { width: 26px; height: 28px; object-fit: contain; display: block; }
