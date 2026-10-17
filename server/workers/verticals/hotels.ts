@@ -20,6 +20,7 @@ import { cityVariants, slugOf } from '../../common/cityAlias';
 import {
   oyoCityPaths, parseOyoPreloadedState, parseOyoHotels, parseOyoOffers,
 } from '../parsers/oyoHotels';
+import { parseYatraHotels, parseYatraOffers, yatraPageSearchUrl, yatraSrpUrl, YATRA_HOTELS_API_KEY } from '../parsers/yatraHotels';
 import {
   agodaCitySlugs, extractAgodaCityId, extractAgodaPageConfig, agodaGateHeaders,
   AGODA_CITY_SEARCH_QUERY, buildAgodaCitySearchVars, extractAgodaProperties,
@@ -471,12 +472,45 @@ export const hotelsWorker: VerticalWorker = {
       },
     },
     {
+      // Yatra hotels — owner-mandated source, LIVE 17 Oct (TravelGuru tgapi pageSearch,
+      // captured via stealth CDP interception, replayed browserless with curl_cffi).
       sourceId: 'w_hotels_yatra',
-      name: 'Hotels worker: Yatra (probe)',
-      priority: 20,
-      run: async () => {
-        await cffiFetch('https://www.yatra.com/hotels', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Yatra hotels serves an SPA shell (414KB, no SSR prices); quote XHRs require a session.');
+      name: 'Hotels worker: Yatra live per-night rates',
+      priority: 7,
+      maxPerMinute: 6,
+      timeoutMs: 60_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        const headers = {
+          'x-api-key': YATRA_HOTELS_API_KEY, // public — Yatra's own web app sends it
+          'x-customer-ip': '106.51.30.10', // any client ip string the site expects
+          Accept: 'application/json',
+          'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+          Origin: 'https://hotel.yatra.com',
+          Referer: 'https://hotel.yatra.com/',
+        };
+        const hotels: ReturnType<typeof parseYatraHotels> = [];
+        let total: number | null = null;
+        for (let page = 1; page <= 3; page++) { // up to 30 offers per search
+          const r = await cffiFetch(yatraPageSearchUrl(city, checkin, checkout, page), {
+            impersonate: 'chrome', timeoutMs: 45_000, headers,
+          });
+          if (r.status !== 200) {
+            if (page === 1) throw new AcquisitionError('SERVER_ERROR', `Yatra pageSearch HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+            break;
+          }
+          let body: any = null;
+          try { body = JSON.parse(r.body); } catch { /* fallthrough */ }
+          if (page === 1) total = body?.data?.content?.totalResultCount ?? null;
+          const batch = body ? parseYatraHotels(body) : [];
+          const fresh = batch.filter((h: any) => !hotels.some((seen: any) => seen.id === h.id));
+          hotels.push(...fresh);
+          if (fresh.length === 0 || body?.meta?.lastPage === true) break;
+        }
+        if (!hotels.length || total == null) throw new AcquisitionError('EMPTY_RESPONSE', `Yatra pageSearch returned no hotels for "${city}"`);
+        return parseYatraOffers(hotels, ctx.source, city, { checkin, checkout });
       },
     },
   ],

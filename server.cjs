@@ -3514,7 +3514,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num3 = (x) => {
+  const num4 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -3535,17 +3535,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num3(rating.value),
-      ratingCount: num3(rating.count),
-      pricePerNight: num3(pricing.bookingPrice),
-      tax: num3(tax.total_tax),
-      priceInclusive: num3(tax.final_price_with_tax),
-      slashedPrice: num3(pricing.slashedPrice),
-      discountPercentage: num3(pricing.discountPercentage),
+      rating: num4(rating.value),
+      ratingCount: num4(rating.count),
+      pricePerNight: num4(pricing.bookingPrice),
+      tax: num4(tax.total_tax),
+      priceInclusive: num4(tax.final_price_with_tax),
+      slashedPrice: num4(pricing.slashedPrice),
+      discountPercentage: num4(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num3(geo.lat ?? geo.latitude),
-      lon: num3(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num4(geo.lat ?? geo.latitude),
+      lon: num4(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -3602,6 +3602,108 @@ var init_oyoHotels = __esm({
     init_contract();
     init_cityAlias();
     OYO_WEB = "https://www.oyorooms.com";
+  }
+});
+
+// server/workers/parsers/yatraHotels.ts
+function parseYatraHotels(body) {
+  const content = body?.data?.content;
+  const rates = Array.isArray(body?.data?.rates?.hotels) ? body.data.rates.hotels : [];
+  const rateById = /* @__PURE__ */ new Map();
+  for (const r of rates) if (r?.id) rateById.set(String(r.id), r);
+  const hotels = Array.isArray(content?.hotels) ? content.hotels : [];
+  const out = [];
+  for (const h of hotels) {
+    if (!h || typeof h !== "object") continue;
+    const rate = rateById.get(String(h.id ?? "")) || {};
+    out.push({
+      id: String(h.id ?? ""),
+      name: String(h.n ?? h.orgName ?? "").trim(),
+      slug: typeof h.hsk === "string" ? h.hsk : null,
+      rating: num(h?.gr?.rating),
+      reviews: num(h?.gr?.reviews),
+      city: typeof h?.loc?.c === "string" ? h.loc.c : null,
+      area: typeof h?.loc?.a === "string" ? h.loc.a : null,
+      lat: num(h?.loc?.la),
+      lon: num(h?.loc?.lo),
+      imageUrl: typeof h?.cldImage?.url === "string" ? h.cldImage.url : null,
+      categories: Array.isArray(h.ctg) ? h.ctg.filter((x) => typeof x === "string") : [],
+      rackRate: num(h.r),
+      price: num(rate.price),
+      basePrice: num(rate.basePrice),
+      roomName: typeof rate.roomName === "string" ? rate.roomName : null,
+      bookable: rate.bookable !== false,
+      roomsLeft: num(rate.roomsLeft),
+      freeCancel: Boolean(rate.freeCancel)
+    });
+  }
+  return out;
+}
+function yatraPageSearchUrl(city, checkin, checkout, page = 1) {
+  const ci = ddmmyyyy(checkin);
+  const co = ddmmyyyy(checkout);
+  return `${YATRA_HOTELS_API}?checkOutDate=${co}&checkInDate=${ci}&city=${encodeURIComponent(city)}&source=BOOKING_ENGINE&tenant=B2C&page=${page}&offset=${page * 10}&rooms%5B0%5D.id=1&rooms%5B0%5D.noOfAdults=2&rooms%5B0%5D.noOfChildren=0&type=all&otherRateplans=all&allImages=true&showBOR=true&loggedIn=false&offset=10`;
+}
+function yatraSrpUrl(city, checkin, checkout) {
+  const ci = encodeURIComponent(ddmmyyyy(checkin));
+  const co = encodeURIComponent(ddmmyyyy(checkout));
+  const c = encodeURIComponent(city);
+  return `${YATRA_SRP}?checkoutDate=${co}&checkinDate=${ci}&source=BOOKING_ENGINE&pg=1&tenant=B2C&city.name=${c}&city.code=${c}&state.name=${c}&state.code=${c}&country.name=IND&country.code=IND&roomRequests%5B0%5D.id=1&roomRequests%5B0%5D.noOfAdults=2&roomRequests%5B0%5D.noOfChildren=0`;
+}
+function parseYatraOffers(hotels, source, city, meta) {
+  const out = [];
+  for (const h of hotels) {
+    if (!h.name || h.price == null || h.price <= 0 || !h.bookable) continue;
+    const attrs = {
+      image_url: h.imageUrl,
+      rating: h.rating != null ? String(h.rating) : null,
+      // /5 scale on Yatra
+      review_count: h.reviews,
+      city: h.city || city,
+      area: h.area,
+      latitude: h.lat,
+      longitude: h.lon,
+      property_id: h.id,
+      room_type: h.roomName,
+      price_basis: h.basePrice != null && h.basePrice < h.price ? `per night on Yatra (\u20B9${Math.round(h.basePrice)} base + taxes; total \u20B9${Math.round(h.price)})` : "per night on Yatra (all-inclusive total)",
+      data_note: "Live per-night rates observed on Yatra hotel search"
+    };
+    if (h.roomsLeft != null && h.roomsLeft <= 5) attrs.rooms_left = String(h.roomsLeft);
+    if (h.freeCancel) attrs.free_cancellation = "true";
+    if (h.rackRate != null && h.rackRate > h.price) attrs.rack_rate = String(Math.round(h.rackRate));
+    out.push(newRawItem(source, {
+      title: h.name,
+      seller: "Yatra",
+      sellerUrl: yatraSrpUrl(h.city || city, meta.checkin, meta.checkout),
+      currency: "INR",
+      price: Math.round(h.price),
+      attributes: attrs,
+      travel: { date: meta.checkin, route: `${h.city || city} stay`, roomType: h.roomName || void 0 },
+      evidence: {
+        sourceUrl: yatraSrpUrl(city, meta.checkin, meta.checkout),
+        sourceReference: h.id,
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+function ddmmyyyy(iso2) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num;
+var init_yatraHotels = __esm({
+  "server/workers/parsers/yatraHotels.ts"() {
+    init_contract();
+    YATRA_HOTELS_API = "https://hotel.yatra.com/tgapi/hotels/v1/pageSearch";
+    YATRA_HOTELS_API_KEY = "JN9aWyj7hJ1ZrExC7Ozo";
+    YATRA_SRP = "https://hotel.yatra.com/nextui/hotel-search/dom/search";
+    num = (x) => {
+      if (x == null || x === "") return null;
+      const n = Number(x);
+      return Number.isFinite(n) ? n : null;
+    };
   }
 });
 
@@ -3973,7 +4075,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
-var OYO_WEB_URL, ddmmyyyy, agodaCityIdCache, hotelsWorker;
+var OYO_WEB_URL, ddmmyyyy2, agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -3989,9 +4091,10 @@ var init_hotels = __esm({
     init_httpClient();
     init_cityAlias();
     init_oyoHotels();
+    init_yatraHotels();
     init_agodaHotels();
     OYO_WEB_URL = "https://www.oyorooms.com";
-    ddmmyyyy = (iso2) => {
+    ddmmyyyy2 = (iso2) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
       return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
     };
@@ -4387,7 +4490,7 @@ var init_hotels = __esm({
             let lastStatus = 0;
             let lastBody = "";
             for (const path10 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path10}/?checkin=${ddmmyyyy(checkin)}&checkout=${ddmmyyyy(checkout)}&guests=2&rooms=1`, {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path10}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -4405,12 +4508,52 @@ var init_hotels = __esm({
           }
         },
         {
+          // Yatra hotels — owner-mandated source, LIVE 17 Oct (TravelGuru tgapi pageSearch,
+          // captured via stealth CDP interception, replayed browserless with curl_cffi).
           sourceId: "w_hotels_yatra",
-          name: "Hotels worker: Yatra (probe)",
-          priority: 20,
-          run: async () => {
-            await cffiFetch("https://www.yatra.com/hotels", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Yatra hotels serves an SPA shell (414KB, no SSR prices); quote XHRs require a session.");
+          name: "Hotels worker: Yatra live per-night rates",
+          priority: 7,
+          maxPerMinute: 6,
+          timeoutMs: 6e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city || city.length < 3) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            const headers = {
+              "x-api-key": YATRA_HOTELS_API_KEY,
+              // public — Yatra's own web app sends it
+              "x-customer-ip": "106.51.30.10",
+              // any client ip string the site expects
+              Accept: "application/json",
+              "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+              Origin: "https://hotel.yatra.com",
+              Referer: "https://hotel.yatra.com/"
+            };
+            const hotels = [];
+            let total = null;
+            for (let page = 1; page <= 3; page++) {
+              const r = await cffiFetch(yatraPageSearchUrl(city, checkin, checkout, page), {
+                impersonate: "chrome",
+                timeoutMs: 45e3,
+                headers
+              });
+              if (r.status !== 200) {
+                if (page === 1) throw new AcquisitionError("SERVER_ERROR", `Yatra pageSearch HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+                break;
+              }
+              let body = null;
+              try {
+                body = JSON.parse(r.body);
+              } catch {
+              }
+              if (page === 1) total = body?.data?.content?.totalResultCount ?? null;
+              const batch = body ? parseYatraHotels(body) : [];
+              const fresh = batch.filter((h) => !hotels.some((seen) => seen.id === h.id));
+              hotels.push(...fresh);
+              if (fresh.length === 0 || body?.meta?.lastPage === true) break;
+            }
+            if (!hotels.length || total == null) throw new AcquisitionError("EMPTY_RESPONSE", `Yatra pageSearch returned no hotels for "${city}"`);
+            return parseYatraOffers(hotels, ctx.source, city, { checkin, checkout });
           }
         }
       ]
@@ -5316,13 +5459,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num(v);
+    f.stops = num2(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num(v);
+    const n = num2(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -5364,7 +5507,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num(pick(o, FARE_KEYS));
+    const fare = num2(pick(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -5528,12 +5671,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num2, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num = (v) => {
+    num2 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -5692,7 +5835,7 @@ function yatraTriggerUrl(from, to, depIso, countryFrom = "IN", countryTo = "IN")
   const [y, m, d] = depIso.split("-");
   return `${YATRA_API}/air-service/dom2/trigger?ADT=1&CHD=0&INF=0&class=Economy&destination=${to}&destinationCountry=${countryTo}&flexi=0&flight_depart_date=${encodeURIComponent(`${d}/${m}/${y}`)}&hb=&noOfSegments=1&origin=${from}&originCountry=${countryFrom}&type=O&unique=${Date.now()}&viewName=normal`;
 }
-function yatraSrpUrl(from, to, depIso) {
+function yatraSrpUrl3(from, to, depIso) {
   const [y, m, d] = depIso.split("-");
   return `${YATRA_API}/air-search-ui/dom2/trigger?flex=0&viewName=normal&source=fresco-flights&type=O&class=Economy&ADT=1&CHD=0&INF=0&noOfSegments=1&origin=${from}&originCountry=IN&destination=${to}&destinationCountry=IN&flight_depart_date=${encodeURIComponent(`${d}/${m}/${y}`)}&arrivalDate=`;
 }
@@ -5817,7 +5960,7 @@ function yatraCalendarItems(body, source, fromCity, toCity, fromCode, toCode, de
   }
   if (!targetKey) return [];
   const dateLabel = targetKey === depIso ? `on ${targetKey}` : `(cheapest upcoming, ${targetKey})`;
-  const srp = yatraSrpUrl(fromCode, toCode, targetKey);
+  const srp = yatraSrpUrl3(fromCode, toCode, targetKey);
   const items = [];
   for (const [code, af] of Object.entries(day[targetKey].af)) {
     const price = Number(af?.tf);
@@ -10465,7 +10608,7 @@ var init_flights = __esm({
             if (!IATA[rt.from.toLowerCase().trim()] || !IATA[rt.to.toLowerCase().trim()]) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const routeKey = `${from}${to}${dep.replace(/-/g, "")}`;
-            const srp = yatraSrpUrl(from, to, dep);
+            const srp = yatraSrpUrl3(from, to, dep);
             const hdrs = {
               Accept: "application/json, text/plain, */*",
               Referer: "https://flight.yatra.com/air-search-ui/dom2/trigger",
@@ -15354,9 +15497,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num2(p.pricing?.discount?.prim_price?.sp);
+      const sp = num3(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num2(p.pricing?.discount?.mrp);
+      const mrp = num3(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -15392,11 +15535,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num2;
+var num3;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num2 = (v) => {
+    num3 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -17164,7 +17307,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num3 = (key) => {
+  const num4 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -17175,8 +17318,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num3("servicecount")) || 0,
-    operators: field("operators") || num3("operators") || "",
+    servicecount: Number(num4("servicecount")) || 0,
+    operators: field("operators") || num4("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
