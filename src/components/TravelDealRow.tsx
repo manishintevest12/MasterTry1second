@@ -60,6 +60,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
   const carrier = item.vertical === 'flights' ? item.provider : operator;
   const hasTimes = !!(dep && arr);
   const priceNote = item.vertical === 'cab' ? 'estimated fare' : item.vertical === 'bus' ? 'per seat, from' : 'per adult, from';
+  const appOnlyFares = spec(item, 'price basis', 'price_basis') === 'app_only_fares';
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs hover:shadow-md hover:border-slate-300 transition-all overflow-hidden">
@@ -122,6 +123,8 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
               <p className="text-2xl font-black text-slate-900 leading-none">₹{(item.primaryPrice || 0).toLocaleString('en-IN')}</p>
               <p className="text-[10px] text-slate-500 mt-1">{priceNote}</p>
             </>
+          ) : appOnlyFares ? (
+            <p className="text-sm font-bold text-slate-500">Fare on app</p>
           ) : (
             <p className="text-sm font-bold text-slate-500">Price unavailable</p>
           )}

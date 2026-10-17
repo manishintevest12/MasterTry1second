@@ -46,6 +46,4 @@ test('every city-based cab worker routes through the clean-city extraction', () 
   assert.ok(src.includes('indriveCityLookup(cityFromRouteText(x))'), 'InDrive looks up the clean city');
   assert.ok(src.includes('uberCitySlugFor(cityFromRouteText(rt.from))'), 'Uber city guide tries the clean city');
   assert.ok(src.includes('geocodePlace(rt.from)'), 'geocoding falls back to the clean city');
-  const osrm = readFileSync('server/workers/parsers/osrmCab.ts', 'utf8');
-  assert.ok(osrm.includes('geocodePlace'), 'OSRM estimate geocodes with fallback');
 });

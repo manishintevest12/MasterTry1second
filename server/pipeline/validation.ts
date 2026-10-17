@@ -77,7 +77,9 @@ const VERTICAL_RULES: Record<VerticalId, FieldRule[]> = {
   cab: [
     { name: 'pickup', present: (o) => Boolean(o.attributes['pickup'] || o.location?.city) },
     { name: 'destination', present: (o) => Boolean(o.attributes['drop'] || o.travel?.route) },
-    { name: 'fare', present: (o) => o.prices.mandatoryTotal !== undefined },
+    // App-only platforms (Rapido): the fare honestly lives in the seller's app — an explicit
+    // app_only_fares row passes with the fare flagged unverified, never a missing-price bug.
+    { name: 'fare', present: (o) => o.prices.mandatoryTotal !== undefined || o.attributes['price_basis'] === 'app_only_fares' },
     { name: 'currency', present: (o) => isSupportedCurrency(o.prices.currency) },
     { name: 'vehicle_type', present: (o) => Boolean(o.attributes['vehicle_type']), blocking: false },
   ],

@@ -4,14 +4,15 @@
  * transparent, labelled estimate (never a live operator quote).
  */
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
-import { buildCabEstimate } from '../parsers/osrmCab';
 import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs'
 import { bharatTaxiSlug, parseBharatTaxiCabs } from '../parsers/bharatTaxi';;
 import { parseQuickRideCabs } from '../parsers/quickRideCabs';
 import { indriveCityLookup, indrivePrices, buildIndriveOffers } from '../parsers/indriveIntercity';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
-import { photonGeocode, cityFromRouteText, geocodePlace } from '../parsers/osmTravel';
+import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace } from '../parsers/osmTravel';
+import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability } from '../parsers/rapidoCabs';
+import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { AcquisitionError } from '../../common/httpClient';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
@@ -60,6 +61,16 @@ const UBER_CITY_SLUGS: { keys: string[]; slug: string; city: string }[] = [
   { keys: ['ahmedabad', 'ahmadabad'], slug: 'ahmedabad-gujarat-in', city: 'Ahmedabad' },
   { keys: ['jaipur'], slug: 'jaipur-rajasthan-in', city: 'Jaipur' },
   { keys: ['lucknow'], slug: 'lucknow-uttar-pradesh-in', city: 'Lucknow' },
+  { keys: ['gurgaon', 'gurugram'], slug: 'gurgaon-haryana-in', city: 'Gurgaon' },
+  { keys: ['chandigarh'], slug: 'chandigarh-chandigarh-in', city: 'Chandigarh' },
+  { keys: ['kochi', 'ernakulam'], slug: 'kochi-kerala-in', city: 'Kochi' },
+  { keys: ['guwahati'], slug: 'guwahati-assam-in', city: 'Guwahati' },
+  { keys: ['indore'], slug: 'indore-madhya-pradesh-in', city: 'Indore' },
+  { keys: ['thiruvananthapuram', 'trivandrum'], slug: 'thiruvananthapuram-kerala-in', city: 'Thiruvananthapuram' },
+  { keys: ['mysore', 'mysuru'], slug: 'mysore-karnataka-in', city: 'Mysore' },
+  { keys: ['vadodara', 'baroda'], slug: 'vadodara-gujarat-in', city: 'Vadodara' },
+  { keys: ['bhubaneswar'], slug: 'bhubaneswar-odisha-in', city: 'Bhubaneswar' },
+  { keys: ['jodhpur'], slug: 'jodhpur-rajasthan-in', city: 'Jodhpur' },
 ];
 
 function uberCitySlugFor(place: string): { slug: string; city: string } | null {
@@ -69,7 +80,9 @@ function uberCitySlugFor(place: string): { slug: string; city: string } | null {
 }
 
 function normPlace(s: string): string[] {
-  return s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((t) => t.length > 2 && !['and', 'the', 'st', 'station'].includes(t));
+  return s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/)
+    .filter((t) => t.length > 2 && !['and', 'the', 'st', 'station'].includes(t))
+    .map((t) => canonCity(t)); // canonical spellings: "gurgaon" matches a published "gurugram"
 }
 
 /** Match a route endpoint against an SSR destination name; returns overlap score. */
@@ -105,10 +118,22 @@ async function uberCityFares(slug: string, city: string): Promise<UberCityFare[]
 /** SSR city-guide fallback: emit the honest published average when the queried
  *  destination appears in Uber's own city fare table. Never fabricates. */
 async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reason: string): Promise<any[]> {
-  const cityInfo = uberCitySlugFor(rt.from) || uberCitySlugFor(cityFromRouteText(rt.from))
+  // City resolution: curated metro guides first (alias keys), then Uber's OWN sitemap-published
+  // India city-page registry (2241 localities, scanned 17 Oct). A published page = real presence.
+  const [fromCity, toCity] = await Promise.all([cityForPlace(rt.from), cityForPlace(rt.to)]);
+  const curated = uberCitySlugFor(rt.from) || uberCitySlugFor(cityFromRouteText(rt.from))
     || uberCitySlugFor(rt.to) || uberCitySlugFor(cityFromRouteText(rt.to));
-  if (!cityInfo) throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); no Uber city guide page exists for this city, and no live guest fare API is available without credentials.`);
-  const fares = await uberCityFares(cityInfo.slug, cityInfo.city);
+  const registry = (fromCity && uberIndiaCityFor(fromCity)) || uberIndiaCityFor(rt.from)
+    || (toCity && uberIndiaCityFor(toCity)) || uberIndiaCityFor(rt.to) || uberIndiaCityFor(cityFromRouteText(rt.to));
+  const cityInfo = curated || registry;
+  if (!cityInfo) throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); no Uber city page exists for this city in Uber's own sitemap, and no live guest fare API is available without credentials.`);
+  let fares: UberCityFare[] = [];
+  let pricedRows: any[] | null = null;
+  try {
+    fares = await uberCityFares(cityInfo.slug, cityInfo.city);
+  } catch {
+    fares = []; // presence page without a published fare table -> app-only row below
+  }
   // match either route endpoint against published destinations, best score wins
   // Only the DROP side may match a published destination — matching the pickup
   // produced absurd offers (e.g. "delhi to kanpur" -> "Delhi Cantt station").
@@ -117,7 +142,8 @@ async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reaso
     const score = Math.max(uberDestMatchScore(rt.to, fare.dest), uberDestMatchScore(cityFromRouteText(rt.to), fare.dest));
     if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
   }
-  if (!best) throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); Uber's published ${cityInfo.city} fare table covers ${fares.length} destinations and none matches "${rt.to}".`);
+  if (!best) { pricedRows = null; } // city has fares but not for this destination -> app-only row below
+  if (best) {
   const dropName = best.fare.dest;
   const drop = (await photonGeocode(`${dropName}, ${cityInfo.city}`)) || (await geocodePlace(rt.to));
   const today = new Date().toISOString().slice(0, 10);
@@ -146,6 +172,29 @@ async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reaso
     sellerUrl: ul.toString(),
     identifiers: { sku: `uber-ssr-${best.fare.slug}-${dropName}`.toLowerCase().replace(/\s+/g, '-') },
     evidence: { sourceUrl: best.fare.fetchedUrl, extractedFields: ['SSR city-guide fare table row'] },
+  })];
+  }
+
+  // Presence-only path (owner request 17 Oct: "Uber 96+ cities without API"). Uber's own
+  // sitemap publishes a city page for this city (2241 Indian localities), but no web fare
+  // exists for this route — surface an honest "available only on app" row, price invented NEVER.
+  const cityPage = `https://www.uber.com/global/en/r/cities/${cityInfo.slug}/`;
+  return [newRawItem(ctx.source, {
+    title: `${rt.from} to ${rt.to} Uber cab (app booking)`,
+    brand: 'Uber',
+    currency: 'INR',
+    seller: 'Uber',
+    sellerUrl: cityPage,
+    travel: { route: `${rt.from} → ${rt.to}` },
+    attributes: {
+      pickup: rt.from, drop: rt.to, route: `${rt.from} → ${rt.to}`,
+      vehicle_type: 'Uber cab', trip_type: 'one-way',
+      price_basis: 'app_only_fares',
+      fare_table_note: fares.length ? `Uber's published ${cityInfo.city} fare table covers ${fares.length} other destinations` : '',
+      data_note: `Uber operates in ${cityInfo.city} (Uber's own sitemap-published city page); live fares are quoted only in the Uber app or after web login — available only on app, never estimated (${reason}).`,
+    },
+    identifiers: { sku: `uber-presence-${cityInfo.slug}`.toLowerCase().replace(/\s+/g, '-') },
+    evidence: { sourceUrl: cityPage, extractedFields: ['title', 'seller', 'currency'], sourceReference: "Uber's sitemap-published city page (presence; app-only fares)" },
   })];
 }
 
@@ -431,15 +480,46 @@ export const cabWorker: VerticalWorker = {
       },
     },
     {
-      // Rapido: verified live — rapido.bike serves SSR SEO route pages (/delhi/routes/<From>-<To>, city
-      // sitemaps list thousands) but they carry NO fares; the only API hosts in the web bundle are
-      // internal .svc.production.internal services (unreachable). Fare estimates are in-app only.
+      // Rapido (owner request 17 Oct: add without API). rapido.bike publishes NO fares on the web
+      // (route/city pages are SEO content; the web bundle references only internal .svc hosts),
+      // but it DOES publish which cities it serves (cities sitemap, 96 cities) and per-route pages.
+      // For INTRA-CITY queries inside a served city we emit honest availability rows
+      // (Bike Taxi / Auto / Cab) with the fare left "available only on app" — zero numbers invented.
+      // Intercity queries return [] honestly: Rapido's published network is city-local.
       sourceId: 'w_cab_rapido',
-      name: 'Cab worker: Rapido (probe)',
+      name: 'Cab worker: Rapido city availability (app-only fares: Bike/Auto/Cab)',
       priority: 15,
-      run: async () => {
-        const r = await cffiFetch('https://www.rapido.bike/delhi/routes/Saket-Sainik_Farm', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Rapido publishes no fares on the web: rapido.bike route pages are SEO content only and the web bundle references only internal service hosts (verified live). Fare estimates are available only in the Rapido app.');
+      run: async (ctx) => {
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const fetchText = async (url: string): Promise<string> => {
+          const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/xml,text/xml,*/*' } });
+          if (r.status !== 200) throw new AcquisitionError('EMPTY_RESPONSE', `Rapido sitemap HTTP ${r.status}`);
+          return r.body || '';
+        };
+        const [cities, fromCity, toCity] = await Promise.all([
+          rapidoServedCities(fetchText),
+          cityForPlace(rt.from),
+          cityForPlace(rt.to),
+        ]);
+        let a = fromCity ? rapidoCityLookup(cities, fromCity) : null;
+        let b = toCity ? rapidoCityLookup(cities, toCity) : null;
+        // Text-hint fallback: some area pincodes exist in neither India Post nor OSM
+        // (e.g. "Indore Airport (452022)") — but the endpoint text itself names the
+        // other endpoint's resolved city, which is real evidence, not invention.
+        const namesCity = (place: string, city: string) =>
+          cityFromRouteText(place).toLowerCase().includes(city.toLowerCase()) || place.toLowerCase().includes(city.toLowerCase());
+        if (!a && b && b.name && namesCity(rt.from, b.name)) a = b;
+        if (!b && a && a.name && namesCity(rt.to, a.name)) b = a;
+        if (!a || !b) return []; // Rapido does not serve one of the cities — honestly no rows
+        if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) return []; // intercity: no published coverage
+        return buildRapidoAvailability({
+          source: ctx.source,
+          from: rt.from,
+          to: rt.to,
+          city: a.name,
+          mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`,
+        });
       },
     },
     {
@@ -543,27 +623,7 @@ export const cabWorker: VerticalWorker = {
       },
     },
 
-    {
-      sourceId: 'w_cab_osrm',
-      name: 'Cab worker: OSRM real-distance fare estimate',
-      priority: 10,
-      maxPerMinute: 10,
-      run: async (ctx) => {
-        const raw = String(ctx.query.rawQuery || '');
-        const rt = routeFromQuery(raw);
-        if (!rt) return [];
-        const ratePerKm = Number((ctx.source.config as any)?.ratePerKm) || 18;
-        const fetchRoute = async (lon1: number, lat1: number, lon2: number, lat2: number) => {
-          const r = await ctx.fetch(`https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`, { expectJson: true });
-          if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `OSRM HTTP ${r.status}`, r.status);
-          let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'OSRM non-JSON'); }
-          const route = j?.routes?.[0];
-          if (!route) throw new AcquisitionError('NOT_FOUND', 'OSRM found no route between the points');
-          return { distanceM: Number(route.distance), durationS: Number(route.duration) };
-        };
-        return buildCabEstimate(ctx.source, rt.from, rt.to, ctx.query.travelDates?.depart, fetchRoute, ratePerKm, 'https://router.project-osrm.org/');
-      },
-    },
+
   ],
 };
 registerVerticalWorker(cabWorker);

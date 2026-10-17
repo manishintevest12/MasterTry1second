@@ -35,6 +35,55 @@ export function cityFromRouteText(place: string): string {
   return (parts.length ? parts[parts.length - 1] : noPin.replace(/\s+/g, ' ').trim()) || place.trim();
 }
 
+/** Resolve the CITY for a UI endpoint. Comma-suffixed strings are easy, but the
+ *  pincode-hotspot UI sends locality-only text ("Terminal 3 Airport (110037)") — for
+ *  those, geocode the pincode and reverse-geocode its centroid to the city name
+ *  (verified: 110037 -> Delhi, 122002 -> Gurgaon, 452001 -> Juni Indore Tahsil). */
+export async function cityForPlace(place: string): Promise<string | null> {
+  const clean = cityFromRouteText(place);
+  const pin = place.match(/\((\d{6})\)/)?.[1];
+  if (!pin) return clean || null;
+
+  // Primary: India Post's public pincode registry (no auth) — District-level city
+  // (verified: 122002 -> Gurgaon, 452001 -> Indore). Some area pincodes (e.g. the
+  // 452022 airport zone) carry no postal records — fall through below.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+      if (res.ok) {
+        const j: any = await res.json();
+        const po = j?.[0]?.PostOffice?.[0];
+        const district = po?.District || po?.Block || null;
+        if (district) return /delhi/i.test(district) ? 'New Delhi' : String(district);
+      }
+      await new Promise((r) => setTimeout(r, 400));
+    } catch { await new Promise((r) => setTimeout(r, 400)); }
+  }
+
+  // Fallback: Nominatim postal-code search (India-only). display_name shape is
+  // "PIN, <locality>..., <district>, <state>, India" — the district is the last
+  // token before the state, and district-level naming matches the India Post path
+  // (verified: 110001 -> New Delhi, 122002 -> Gurugram, 201309 -> Gautam Buddha Nagar).
+  // Bare-pincode geocoding is deliberately NOT used: photon resolves unknown pincodes
+  // to foreign namesakes (452022 -> a Russian village, verified live).
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?postalcode=${pin}&countrycodes=in&format=jsonv2&limit=1`,
+      { headers: { 'User-Agent': 'Try1Second/1.0' } },
+    );
+    if (res.ok) {
+      const rows: any[] = (await res.json()) || [];
+      if (rows.length) {
+        const parts = String(rows[0].display_name || '').split(',').map((x: string) => x.trim()).filter(Boolean);
+        // parts: [PIN, ...localities, district, state, 'India']
+        const district = parts.length >= 4 ? parts[parts.length - 3] : parts[1];
+        if (district && !/^\d+$/.test(district)) return /delhi/i.test(district) ? 'New Delhi' : district;
+      }
+    }
+  } catch { /* fall through to the comma-suffix guess */ }
+  return clean || null;
+}
+
 /** Geocode a UI endpoint: full string first (most precise), clean-city fallback. */
 export async function geocodePlace(name: string): Promise<GeoPoint | null> {
   const a = await photonGeocode(name);
