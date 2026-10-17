@@ -42,6 +42,14 @@ const MainContent: React.FC = () => {
     authenticatedVendor,
     isExtensionModalOpen,
     closeExtensionModal,
+    redirectionState,
+    leadCaptureState,
+    reviewModalItem,
+    priceAlertModalItem,
+    isNotificationsOpen,
+    isProfileOpen,
+    infoModalTab,
+    isPartnerModalOpen,
   } = useApp();
 
   const isFullDashboard = activeNavTab === 'admin' || activeNavTab === 'merchant';
@@ -83,17 +91,20 @@ const MainContent: React.FC = () => {
       </div>
 
       {/* Modals & Drawers — lazy: nothing here renders on landing (TBT fix) */}
+      {/* Modals & Drawers — lazily mounted ONLY when their open-flag flips, so
+          not a single modal chunk is fetched or executed on the landing page
+          (mobile TBT fix, 17 Oct). Each component still guards itself internally. */}
       <Suspense fallback={null}>
-      <RedirectionModal />
-      <CplLeadCaptureModal />
-      <ReviewModal />
-      <PriceAlertModal />
-      <BrowserExtensionModal isOpen={isExtensionModalOpen} onClose={closeExtensionModal} />
-      <NotificationsDrawer />
-      <ProfileModal />
+      {redirectionState?.isOpen && <RedirectionModal />}
+      {leadCaptureState?.isOpen && <CplLeadCaptureModal />}
+      {reviewModalItem && <ReviewModal />}
+      {priceAlertModalItem && <PriceAlertModal />}
+      {isExtensionModalOpen && <BrowserExtensionModal isOpen onClose={closeExtensionModal} />}
+      {isNotificationsOpen && <NotificationsDrawer />}
+      {isProfileOpen && <ProfileModal />}
       <ToastContainer />
-      <InfoAndLegalModal />
-      <PartnerInquiryModal />
+      {infoModalTab && <InfoAndLegalModal />}
+      {isPartnerModalOpen && <PartnerInquiryModal />}
       </Suspense>
 
       {/* Direct & Affiliate Metasearch Partners Section (Above Footer) */}
