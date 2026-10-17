@@ -14260,6 +14260,7 @@ var init_grocery = __esm({
       delhi: [28.6315, 77.2167],
       noida: [28.5355, 77.391],
       gurgaon: [28.4595, 77.0266],
+      gurugram: [28.4595, 77.0266],
       bengaluru: [12.9716, 77.5946],
       bangalore: [12.9716, 77.5946],
       mumbai: [19.076, 72.8777],
@@ -14273,7 +14274,16 @@ var init_grocery = __esm({
       indore: [22.7196, 75.8577],
       chandigarh: [30.7333, 76.7794],
       kochi: [9.9312, 76.2673],
-      nagpur: [21.1458, 79.0882]
+      // Nagpur: city-center coords 21.1458/79.0882 return "location not serviceable" on the
+      // api3.blinkit.com app gateway; 21.1582/79.0928 verified live (15 milk offers, 17 Oct).
+      nagpur: [21.1582, 79.0928],
+      // Verified live on the Blinkit app gateway 17 Oct (milk: Bhopal 19, Surat 19, Patna 13,
+      // Coimbatore 19, Guwahati 13 offers).
+      bhopal: [23.2599, 77.4126],
+      surat: [21.1702, 72.8311],
+      patna: [25.5941, 85.1376],
+      coimbatore: [11.0168, 76.9558],
+      guwahati: [26.1445, 91.7362]
     };
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
     QUICK_FAILS = [
@@ -14416,9 +14426,9 @@ var init_grocery = __esm({
               Referer: `${BB}/ps/?q=${encodeURIComponent(term)}`
             };
             const home = await cffiFetch(`${BB}/`, { impersonate: "chrome", timeoutMs: 2e4, returnCookies: true });
-            if (home.status !== 200 || !home.cookies) throw new AcquisitionError("ACCESS_CHALLENGE", `BigBasket homepage HTTP ${home.status}`);
+            const homeCookies = home.status === 200 && home.cookies ? home.cookies : {};
             const svUrl = `${BB}/ui-svc/v1/serviceable/?lat=${lat}&lng=${lng}&send_all_serviceability=true`;
-            const sv = await cffiFetch(svUrl, { impersonate: "chrome", headers: baseHeaders, timeoutMs: 15e3, cookies: home.cookies, returnCookies: true });
+            const sv = await cffiFetch(svUrl, { impersonate: "chrome", headers: baseHeaders, timeoutMs: 15e3, cookies: homeCookies, returnCookies: true });
             let pi = {};
             try {
               pi = JSON.parse(sv.body).places_info || {};
@@ -14428,13 +14438,23 @@ var init_grocery = __esm({
             const pincode = String(pi.pincode || "");
             const addrCookie = `${pi.lat ?? lat}_${pi.lng ?? lng}_${area}_${pincode}_1_false_true_true_Express`;
             const listingUrl = `${BB}/listing-svc/v2/products?type=ps&slug=${encodeURIComponent(term)}&page=1`;
-            const r = await cffiFetch(listingUrl, {
+            const listingCookies = { ...sv.cookies, _bb_addressinfo: addrCookie, _bb_pin_code: pincode, _bb_lat_long: Buffer.from(`${lat}|${lng}`).toString("base64") };
+            let r = await cffiFetch(listingUrl, {
               impersonate: "chrome",
               timeoutMs: 25e3,
               headers: { ...baseHeaders, "x-latitude": String(pi.lat ?? lat), "x-longitude": String(pi.lng ?? lng) },
-              cookies: { ...sv.cookies, _bb_addressinfo: addrCookie, _bb_pin_code: pincode, _bb_lat_long: Buffer.from(`${lat}|${lng}`).toString("base64") }
+              cookies: listingCookies
             });
-            if (r.status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `BigBasket listing API HTTP 403 (Akamai)`);
+            if (r.status === 403) {
+              await new Promise((res) => setTimeout(res, 2500));
+              r = await cffiFetch(listingUrl, {
+                impersonate: "safari17_0",
+                timeoutMs: 25e3,
+                headers: { ...baseHeaders, "x-latitude": String(pi.lat ?? lat), "x-longitude": String(pi.lng ?? lng) },
+                cookies: { ...listingCookies, ...sv.cookies || {} }
+              });
+            }
+            if (r.status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `BigBasket listing API HTTP 403 (Akamai, homepage ${home.status === 200 ? "ok" : "blocked"})`);
             if (r.status === 400) throw new AcquisitionError("EMPTY_RESPONSE", `BigBasket listing API rejected the location handshake (HTTP 400)`);
             if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `BigBasket listing API HTTP ${r.status}`, r.status);
             const items = parseBigbasket(r.body, ctx.source, listingUrl, cityLabel, 16);
@@ -14499,29 +14519,51 @@ var init_grocery = __esm({
         },
         {
           sourceId: "w_grocery_amazon_in",
-          name: "Grocery worker: Amazon.in grocery listings",
+          name: "Grocery worker: Amazon.in grocery listings (Imperva bm-verify bounce)",
           priority: 10,
           run: async (ctx) => {
             const term = q2(ctx);
             if (!term) return [];
             const url = `https://www.amazon.in/s?k=${encodeURIComponent(term)}`;
-            let items = [];
-            let lastBody = "";
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              const r = await ctx.fetch(url);
-              if (r.status === 200) {
-                lastBody = r.body;
-                items = parseAmazonIn(r.body, ctx.source, url);
-                if (items.length) break;
-              } else if (attempt === 1 && r.status >= 500) {
-                await new Promise((res) => setTimeout(res, 1500));
-                continue;
-              } else {
-                throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "FORBIDDEN", `Amazon.in HTTP ${r.status}`, r.status);
+            let body = "";
+            let status = 0;
+            let jar;
+            const bounce = async (startCookies) => {
+              let r = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true, ...startCookies ? { cookies: startCookies } : {} });
+              let b = r.body || "";
+              let st = r.status;
+              let ck = r.cookies || startCookies || {};
+              for (let hop = 0; hop < 2 && st === 200 && b.includes("bm-verify"); hop++) {
+                const m = b.match(/URL='([^']+)'/);
+                if (!m) break;
+                const vUrl = m[1].startsWith("/") ? "https://www.amazon.in" + m[1] : m[1];
+                await new Promise((res) => setTimeout(res, 1200));
+                r = await cffiFetch(vUrl, { cookies: ck, returnCookies: true, timeoutMs: 22e3 });
+                b = r.body || "";
+                st = r.status;
+                ck = r.cookies || ck;
               }
+              return { body: b, status: st, cookies: ck };
+            };
+            let out = await bounce();
+            body = out.body;
+            status = out.status;
+            jar = out.cookies;
+            if (status === 503) {
+              await new Promise((res) => setTimeout(res, 2500));
+              out = await bounce();
+              body = out.body;
+              status = out.status;
+              jar = out.cookies;
             }
-            if (!items.length && looksLikeChallenge(lastBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a challenge page");
-            return items;
+            if (status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in HTTP 403 (edge denied)", 403);
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Amazon.in HTTP ${status}`, status);
+            const items = parseAmazonIn(body, ctx.source, url);
+            if (items.length) return items;
+            if (body.includes("bm-verify") || looksLikeChallenge(body)) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a challenge page");
+            }
+            throw new AcquisitionError("EMPTY_RESPONSE", `Amazon.in returned no grocery products for "${term}"`);
           }
         },
         {
