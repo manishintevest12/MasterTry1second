@@ -238,6 +238,29 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   paths default 400 {"Response":"Bad Request"}); PWA chunk sets on
   jsak.mmtcdn.com are open but the federated search widget contains no fare
   API. Probe w_flights_makemytrip attempts the live SRP URL each search.
+- **Via.com** [viaFlights.ts] — LIVE (17 Oct). in.via.com is an old jQuery B2C
+  site; per-flight results (/itinerary, /flight/search) 502/500 for browserless
+  HTTP, but the search-box fare-calendar API is fully OPEN: POST
+  /apiv2/flight/fare-calendar?authToken=553f5767-... (authToken ships verbatim
+  in their public JS bundles, used by their own pages) with JSON body
+  {"src","dest","startDate","endDate"(yyyy-mm-dd),"fareType":"b2c","oneWay":true}
+  -> { cd: [ { dt, pr(INR), prType: LOW/MEDIUM/HIGH } ] }, ~267-day window.
+  w_flights_via emits ONE honest offer (exact requested date, else cheapest
+  upcoming), seller Via.com, deeplink to their own /flight/search URL.
+  Live-verified: DEL-BOM 2026-10-25 = Rs6114. NEXT ANGLE for per-flight data:
+  /apiv2/flight/search accepts sectorInfoList but wants a nested "sectors"
+  shape we have not mapped; /itinerary needs their result-page JS bundle.
+- HappyEasyGo flights — probe w_flights_happyeasygo: flight.happyeasygo.com
+  no longer resolves (DNS dead); www.happyeasygo.com/flight/ is a Vue/Nuxt
+  client-rendered shell; apiproxy/apipro hosts do not resolve. No browserless
+  API — no real prices to acquire.
+- Paytm flights — probe w_flights_paytm: travel.paytm.com is Akamai-403 from
+  datacenter IPs on all TLS fingerprints (chrome/safari); paytm.com/
+  flight-tickets is a client-rendered marketing shell with no SSR fares.
+- Amazon India flights — probe w_flights_amazon: Amazon.in has NO flight
+  booking product (verified 17 Oct: /flights generic page, /flight-search and
+  /gp/flight-search 404, no booking widget on the domain). Honest no-product
+  verdict, never fabricated.
 - Goibibo flights — BLOCKED: www.goibibo.com/flights/* = HTTP/2 stream reset or
   504 AkamaiGHost (edge accepted, origin tarpits); forced HTTP/1.1 hangs;
   m.goibibo.com 503; flights.goibibo.com 403 "Access Denied" (Akamai) on all

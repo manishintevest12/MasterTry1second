@@ -17,6 +17,7 @@ import { resolveAirport, IATA } from '../../common/airportLookup';
 import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
+import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems } from '../parsers/viaFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
 import { usdToInrRate } from '../../common/fxRates';
@@ -542,6 +543,84 @@ export const flightsWorker: VerticalWorker = {
         });
         const { airports, airlines, routes } = await loadOpenFlights(fetchFn);
         return parseRoute(airports, airlines, routes, ctx.source, rt.from, rt.to, ctx.query.travelDates?.depart, URL_AP);
+      },
+    },
+    // ---- Owner-requested flight sources (17 Oct 2026): Via.com LIVE, HEG/Paytm/Amazon honest probes ----
+    {
+      // Via.com: the B2C site's own fare-calendar API (open; public bundle authToken).
+      // Per-flight results (/itinerary) 502 for browserless HTTP; the calendar gives
+      // real per-day lowest fares for the route (~267-day window), like EMT/IndiGo/Akasa.
+      sourceId: 'w_flights_via',
+      name: 'Flights worker: Via.com fare calendar (B2C apiv2)',
+      priority: 14,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const from = (await resolveAirport(rt.from, rt.fromCode)).code;
+        const to = (await resolveAirport(rt.to, rt.toCode)).code;
+        if (!from || !to) return []; // unknown city — honest skip
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const endDate = new Date(Date.now() + 330 * 86400_000).toISOString().slice(0, 10);
+        const body = JSON.stringify({ src: from, dest: to, startDate: dep, endDate, fareType: 'b2c', oneWay: true });
+        const r = await cffiFetch(viaFareCalendarUrl(), {
+          method: 'POST',
+          impersonate: 'chrome',
+          timeoutMs: 20_000,
+          body,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            Referer: 'https://in.via.com/flight-tickets',
+            Origin: 'https://in.via.com',
+          },
+        });
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Via.com fare-calendar HTTP ${r.status}`, r.status);
+        const fares = parseViaFareCalendar(r.body);
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Via.com fare-calendar returned no fares for this route');
+        return viaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
+      },
+    },
+    {
+      // HappyEasyGo: flight.happyeasygo.com no longer resolves; www.happyeasygo.com/flight/
+      // is a Vue/Nuxt client-rendered shell with no browserless API (apiproxy/apipro DNS dead).
+      sourceId: 'w_flights_happyeasygo',
+      name: 'Flights worker: HappyEasyGo (probe)',
+      priority: 24,
+      run: async () => {
+        const res = await cffiFetch('https://www.happyeasygo.com/flight/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
+          'HappyEasyGo flight search renders client-side only (flight.happyeasygo.com no longer resolves); no SSR fares and no open browserless API — no real prices to acquire.');
+      },
+    },
+    {
+      // Paytm flights: travel.paytm.com is Akamai-403 from datacenter IPs on all
+      // fingerprints; paytm.com/flight-tickets is a client-rendered marketing shell.
+      sourceId: 'w_flights_paytm',
+      name: 'Flights worker: Paytm (probe)',
+      priority: 25,
+      run: async () => {
+        const res = await cffiFetch('https://travel.paytm.com/flights/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
+          res.status === 403
+            ? 'Paytm travel (travel.paytm.com) denies datacenter IPs at the Akamai edge (403 on all TLS fingerprints); flight search loads only via sessioned app APIs.'
+            : 'Paytm flights page rendered no SSR fares to browserless HTTP.');
+      },
+    },
+    {
+      // Amazon India does not have a flight booking product (recon 17 Oct 2026):
+      // amazon.in/flights serves a generic page, /flight-search and /gp/flight-search are 404.
+      sourceId: 'w_flights_amazon',
+      name: 'Flights worker: Amazon India (no flights product)',
+      priority: 26,
+      run: async () => {
+        throw new AcquisitionError('EMPTY_RESPONSE',
+          'Amazon India does not offer flight booking (no flights product exists on amazon.in; /flights is a generic page and /flight-search is 404) — no real fares to acquire, never fabricated.');
       },
     },
   ],
