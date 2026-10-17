@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
 
@@ -50,6 +53,9 @@ class _HotelPickerScreenState extends State<HotelPickerScreen> {
   late final TextEditingController _searchController;
   late DateTime _checkIn;
   late DateTime _checkOut;
+  Timer? _typeaheadDebounce;
+  List<Map<String, dynamic>> _liveResults = const [];
+  bool _liveLoading = false;
   late int _adults;
   late int _children;
   late int _rooms;
@@ -96,8 +102,31 @@ class _HotelPickerScreenState extends State<HotelPickerScreen> {
 
   @override
   void dispose() {
+    _typeaheadDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  /// LIVE hotel-name + destination typeahead via /api/hotels/locations
+  /// (TravelGuru autosuggest — real properties, never invented).
+  void _onSearchChanged(String text) {
+    _typeaheadDebounce?.cancel();
+    final q = text.trim();
+    if (q.length < 2) {
+      if (_liveResults.isNotEmpty || _liveLoading) setState(() { _liveResults = const []; _liveLoading = false; });
+      return;
+    }
+    setState(() => _liveLoading = true);
+    _typeaheadDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final rows = await AppState.instance.api.hotelLocations(q);
+        if (!mounted) return;
+        setState(() { _liveResults = rows; _liveLoading = false; });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() { _liveResults = const []; _liveLoading = false; });
+      }
+    });
   }
 
   void _finishSelection(String destination) {
@@ -176,7 +205,7 @@ class _HotelPickerScreenState extends State<HotelPickerScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: TextField(
                 controller: _searchController,
-                onChanged: (_) => setState(() {}),
+                onChanged: (t) { setState(() {}); _onSearchChanged(t); },
                 decoration: InputDecoration(
                   hintText: 'Search hotel, city, or country',
                   prefixIcon: const Icon(Icons.search_rounded, size: 20),
@@ -380,6 +409,69 @@ class _HotelPickerScreenState extends State<HotelPickerScreen> {
                     ),
 
                     const SizedBox(height: 12),
+                  ],
+
+                  if (query.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 8),
+                      child: Text(
+                        _liveLoading
+                            ? 'SEARCHING LIVE HOTELS…'
+                            : _liveResults.isNotEmpty
+                                ? 'LIVE HOTELS & DESTINATIONS'
+                                : 'POPULAR MATCHES',
+                        style: tx(context, 11, w: FontWeight.w900, color: muted(context), ls: 0.8),
+                      ),
+                    ),
+                    for (final r in _liveResults)
+                      InkWell(
+                        onTap: () {
+                          final name = '${r['name'] ?? ''}'.trim();
+                          final city = '${r['cityName'] ?? ''}'.trim();
+                          _finishSelection(r['type'] == 'HOTEL' && city.isNotEmpty ? '$name, $city' : (city.isNotEmpty && r['type'] != 'HOTEL' ? city : name));
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: (r['type'] == 'HOTEL' ? T1SColors.blue600 : T1SColors.emerald600).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                alignment: Alignment.center,
+                                child: Icon(
+                                  r['type'] == 'HOTEL' ? Icons.hotel_rounded : Icons.location_city_rounded,
+                                  size: 18,
+                                  color: r['type'] == 'HOTEL' ? T1SColors.blue600 : T1SColors.emerald600,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('${r['name'] ?? ''}', style: tx(context, 13, w: FontWeight.w800), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      r['type'] == 'HOTEL'
+                                          ? 'Hotel in ${r['cityName'] ?? ''}${(r['stateName'] ?? '') != '' ? ', ${r['stateName']}' : ''}'
+                                          : 'Destination · ${r['stateName'] ?? ''}',
+                                      style: tx(context, 10.5, color: muted(context)),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(Icons.chevron_right_rounded, color: muted(context), size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
 
                   Padding(

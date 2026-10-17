@@ -365,12 +365,49 @@ export const AUTOCOMPLETE_CATEGORIES: Record<string, string[]> = {
   ],
 };
 
+
+/** Hotel-destination fallback pool (hotels vertical). Destination-flavoured ONLY —
+ *  no airports, no IATA codes. Used when the LIVE /api/hotels/locations typeahead
+ *  (TravelGuru autosuggest) is unreachable. */
+export const AUTOCOMPLETE_HOTEL_DESTINATIONS: AutocompleteSuggestion[] = [
+  { text: 'Goa', subtext: 'Beach resorts, villas & shacks · North & South Goa', badge: 'Beach', type: 'location' },
+  { text: 'Mumbai', subtext: 'Marine Drive, Juhu & Bandra hotels · Maharashtra', badge: 'Metro', type: 'location' },
+  { text: 'New Delhi', subtext: 'Connaught Place, Aerocity & Karol Bagh stays · Delhi NCR', badge: 'Capital', type: 'location' },
+  { text: 'Bengaluru', subtext: 'MG Road, Indiranagar & Whitefield hotels · Karnataka', badge: 'Metro', type: 'location' },
+  { text: 'Hyderabad', subtext: 'Hitec City, Banjara Hills & Charminar area · Telangana', badge: 'Metro', type: 'location' },
+  { text: 'Chennai', subtext: 'Marina Beach, OMR & T Nagar hotels · Tamil Nadu', badge: 'Metro', type: 'location' },
+  { text: 'Kolkata', subtext: 'Park Street, Salt Lake & Howrah area · West Bengal', badge: 'Metro', type: 'location' },
+  { text: 'Jaipur', subtext: 'Hawa Mahal, Amer Fort & heritage havelis · Rajasthan', badge: 'Heritage', type: 'location' },
+  { text: 'Udaipur', subtext: 'Lake Pichola palace hotels & resorts · Rajasthan', badge: 'Heritage', type: 'location' },
+  { text: 'Manali', subtext: 'Old Manali, Solang Valley & riverside cottages · HP', badge: 'Hill Station', type: 'location' },
+  { text: 'Shimla', subtext: 'Mall Road, Jakhu & ridge-view hotels · Himachal', badge: 'Hill Station', type: 'location' },
+  { text: 'Mussoorie', subtext: 'Gun Hill, Kempty Falls & Mall Road stays · Uttarakhand', badge: 'Hill Station', type: 'location' },
+  { text: 'Nainital', subtext: 'Naini Lake facing resorts & mallital hotels · Uttarakhand', badge: 'Hill Station', type: 'location' },
+  { text: 'Rishikesh', subtext: 'Ganga-view ashrams, camps & resorts · Uttarakhand', badge: 'Spiritual', type: 'location' },
+  { text: 'Srinagar', subtext: 'Dal Lake houseboats & shikara stays · Kashmir', badge: 'Paradise', type: 'location' },
+  { text: 'Leh Ladakh', subtext: 'Pangong, Nubra Valley & Leh town hotels', badge: 'High Altitude', type: 'location' },
+  { text: 'Munnar', subtext: 'Tea estate resorts & hill cottages · Kerala', badge: 'Hill Station', type: 'location' },
+  { text: 'Alleppey', subtext: 'Backwater houseboats & lake resorts · Kerala', badge: 'Backwaters', type: 'location' },
+  { text: 'Puri', subtext: 'Beach hotels near Jagannath Temple · Odisha', badge: 'Pilgrimage', type: 'location' },
+  { text: 'Indore', subtext: 'Palasia, Vijay Nagar & airport-area hotels · MP', badge: 'Clean City', type: 'location' },
+  { text: 'Bhopal', subtext: 'Lake View, Shahpura & MP Nagar hotels · MP', badge: 'City of Lakes', type: 'location' },
+  { text: 'Ujjain', subtext: 'Mahakal temple-area dharamshalas & hotels · MP', badge: 'Pilgrimage', type: 'location' },
+  { text: 'Pune', subtext: 'Koregaon Park, Hinjewadi & Kharadi hotels', badge: 'IT Hub', type: 'location' },
+  { text: 'Ahmedabad', subtext: 'Sabarmati, SG Highway & airport hotels · Gujarat', badge: 'Commercial', type: 'location' },
+  { text: 'Agra', subtext: 'Taj Mahal-view hotels & Fatehabad Road · UP', badge: 'World Wonder', type: 'location' },
+  { text: 'Varanasi', subtext: 'Ghat-side stays & Dashashwamedh area · UP', badge: 'Spiritual', type: 'location' },
+  { text: 'Amritsar', subtext: 'Golden Temple-area hotels & heritage · Punjab', badge: 'Spiritual', type: 'location' },
+  { text: 'Nashik', subtext: 'Vineyard resorts & Trimbakeshwar stays · Maharashtra', badge: 'Wine Capital', type: 'location' },
+  { text: 'Coorg', subtext: 'Coffee plantation homestays & villas · Karnataka', badge: 'Hill Station', type: 'location' },
+  { text: 'Ooty', subtext: 'Nilgiri resorts, tea gardens & lake view · TN', badge: 'Hill Station', type: 'location' },
+];
+
 /**
  * Smart Search Helper to match queries against suggestions
  */
 export function getFilteredSuggestions(
   query: string,
-  type: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'location' | 'all',
+  type: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'location' | 'hotel-location' | 'all',
   limit: number = 10
 ): AutocompleteSuggestion[] {
   const cleanQ = (query || '').toLowerCase().trim();
@@ -378,6 +415,7 @@ export function getFilteredSuggestions(
   let pool: AutocompleteSuggestion[] = [];
 
   if (type === 'city') pool = AUTOCOMPLETE_CITIES;
+  else if (type === 'hotel-location') pool = AUTOCOMPLETE_HOTEL_DESTINATIONS;
   else if (type === 'product') pool = AUTOCOMPLETE_PRODUCTS;
   else if (type === 'grocery') pool = AUTOCOMPLETE_GROCERY;
   else if (type === 'food') pool = AUTOCOMPLETE_FOOD;

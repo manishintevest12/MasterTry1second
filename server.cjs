@@ -24380,7 +24380,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto25, apiRouter, busLocationCache;
+var import_express, import_crypto25, apiRouter, hotelLocationCache, busLocationCache;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -24413,6 +24413,7 @@ var init_routes = __esm({
     init_catalogueStore();
     init_logger();
     init_curlCffiFetch();
+    init_yatraHotels();
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", async (_req, res) => {
       const store2 = getStore();
@@ -24432,6 +24433,47 @@ var init_routes = __esm({
         res.json({ ok: true, ...await pythonDiagnostics() });
       } catch (e) {
         res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
+    });
+    hotelLocationCache = /* @__PURE__ */ new Map();
+    apiRouter.get("/hotels/locations", async (req, res) => {
+      const q3 = String(req.query.q || "").trim();
+      if (q3.length < 2) return res.json({ locations: [] });
+      const key = q3.toLowerCase();
+      const hit = hotelLocationCache.get(key);
+      if (hit && Date.now() - hit.at < 24 * 3600 * 1e3) return res.json({ locations: hit.docs });
+      try {
+        const r = await cffiFetch(
+          `https://cdn.travelguru.com/api/v4/autosuggest?key=${encodeURIComponent(q3)}&filter=all&count=12&propertyType=all`,
+          { impersonate: "chrome", timeoutMs: 15e3, headers: { Accept: "application/json", "x-api-key": YATRA_HOTELS_API_KEY, Referer: "https://hotel.yatra.com/", Origin: "https://hotel.yatra.com" } }
+        );
+        if (r.status !== 200) return res.json({ locations: [], error: `TravelGuru autosuggest HTTP ${r.status}` });
+        const hotels = JSON.parse(r.body || "{}").hotels || [];
+        const cities = [];
+        const props = [];
+        for (const h of hotels) {
+          const cc = String(h?.countryCode || "").toUpperCase();
+          if (cc && cc !== "IND") continue;
+          const doc = {
+            name: String(h?.displayName || ""),
+            type: h?.type === "HOTEL" ? "HOTEL" : "CITY",
+            cityName: String(h?.cityName || ""),
+            stateName: String(h?.stateName || ""),
+            propertyType: String(h?.propertyType || ""),
+            sourceId: String(h?.sourceID || "")
+          };
+          if (!doc.name) continue;
+          (doc.type === "HOTEL" ? props : cities).push(doc);
+        }
+        const locations = [...cities, ...props].slice(0, 14);
+        hotelLocationCache.set(key, { at: Date.now(), docs: locations });
+        if (hotelLocationCache.size > 500) {
+          const oldest = [...hotelLocationCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+          if (oldest) hotelLocationCache.delete(oldest[0]);
+        }
+        return res.json({ locations });
+      } catch (e) {
+        return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
       }
     });
     busLocationCache = /* @__PURE__ */ new Map();

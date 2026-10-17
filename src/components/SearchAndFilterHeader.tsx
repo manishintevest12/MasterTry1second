@@ -952,9 +952,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                       onSelect={(val) => {
                         setHotelDestination(val);
                         setSearchQuery(val);
-                        triggerLiveLocationScrape(val);
+                        triggerLiveLocationScrape(val, undefined, travelDatesFor('hotels', hotelDates));
                       }}
-                      type="city"
+                      type="hotel-location"
                       placeholder="Where are you going? (e.g. Delhi, Mumbai, Goa, Manali)"
                       className="w-full"
                       inputClassName="text-xs font-bold text-slate-900"

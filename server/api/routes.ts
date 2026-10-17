@@ -39,6 +39,7 @@ import { userNotifications, broadcastNotifications, markRead, markAllRead } from
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
 import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
+import { YATRA_HOTELS_API_KEY } from '../workers/parsers/yatraHotels';
 
 export const apiRouter = Router();
 
@@ -60,6 +61,55 @@ apiRouter.get('/health', async (_req: Request, res: Response) => {
 /** Which Python interpreters the host offers and whether curl_cffi loads in them (shared-hosting diagnostics). */
 apiRouter.get('/health/transport', async (_req: Request, res: Response) => {
   try { res.json({ ok: true, ...(await pythonDiagnostics()) }); } catch (e: any) { res.status(500).json({ ok: false, error: String(e?.message || e) }); }
+});
+
+
+// Hotel destination + property-name autocomplete (hotels vertical). Yatra's
+// hotel platform (TravelGuru) autosuggest returns LIVE hotel names, cities and
+// localities — the same registry their own site uses. Browserless curl_cffi,
+// cached in-process 24h. Fixes: hotel search previously suggested AIRPORTS
+// ("New Delhi (DEL)" with plane icons) because it shared the flights city pool.
+const hotelLocationCache = new Map<string, { at: number; docs: any[] }>();
+apiRouter.get('/hotels/locations', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json({ locations: [] });
+  const key = q.toLowerCase();
+  const hit = hotelLocationCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return res.json({ locations: hit.docs });
+  try {
+    const r = await cffiFetch(
+      `https://cdn.travelguru.com/api/v4/autosuggest?key=${encodeURIComponent(q)}&filter=all&count=12&propertyType=all`,
+      { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json', 'x-api-key': YATRA_HOTELS_API_KEY, Referer: 'https://hotel.yatra.com/', Origin: 'https://hotel.yatra.com' } },
+    );
+    if (r.status !== 200) return res.json({ locations: [], error: `TravelGuru autosuggest HTTP ${r.status}` });
+    const hotels: any[] = (JSON.parse(r.body || '{}').hotels) || [];
+    // Cities/areas first (destinations), then individual properties (hotel names).
+    const cities: any[] = [];
+    const props: any[] = [];
+    for (const h of hotels) {
+      const cc = String(h?.countryCode || '').toUpperCase();
+      if (cc && cc !== 'IND') continue; // India stays only
+      const doc = {
+        name: String(h?.displayName || ''),
+        type: h?.type === 'HOTEL' ? 'HOTEL' : 'CITY',
+        cityName: String(h?.cityName || ''),
+        stateName: String(h?.stateName || ''),
+        propertyType: String(h?.propertyType || ''),
+        sourceId: String(h?.sourceID || ''),
+      };
+      if (!doc.name) continue;
+      (doc.type === 'HOTEL' ? props : cities).push(doc);
+    }
+    const locations = [...cities, ...props].slice(0, 14);
+    hotelLocationCache.set(key, { at: Date.now(), docs: locations });
+    if (hotelLocationCache.size > 500) {
+      const oldest = [...hotelLocationCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) hotelLocationCache.delete(oldest[0]);
+    }
+    return res.json({ locations });
+  } catch (e: any) {
+    return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+  }
 });
 
 // Bus deep-location autocomplete: redBus's own Solr registry covers tier-1/2/3

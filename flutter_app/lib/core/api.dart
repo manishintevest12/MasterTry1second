@@ -882,6 +882,14 @@ class Try1SecondApi {
     return [for (final r in (res['results'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
   }
 
+  /// GET /api/hotels/locations — LIVE hotel-name + destination typeahead
+  /// (TravelGuru autosuggest proxy, same registry Yatra's hotel site uses).
+  /// Returns [{name, type: HOTEL|CITY, cityName, stateName, propertyType, sourceId}].
+  Future<List<Map<String, dynamic>>> hotelLocations(String q) async {
+    final res = await _get('/api/hotels/locations?q=${Uri.encodeQueryComponent(q)}');
+    return [for (final r in (res['locations'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
+  }
+
   /// GET /api/geo/reverse — name a dropped pin; null when the map has no name (never invented).
   Future<Map<String, dynamic>?> geoReverse(double lat, double lng) async {
     final res = await _get('/api/geo/reverse?lat=${lat.toStringAsFixed(6)}&lng=${lng.toStringAsFixed(6)}');

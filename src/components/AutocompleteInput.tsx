@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bus } from 'lucide-react';
+import { Bus, Bed } from 'lucide-react';
 import {
   Search,
   MapPin,
@@ -27,7 +27,7 @@ interface AutocompleteInputProps {
   onChange: (val: string) => void;
   onSelect?: (val: string, suggestion?: AutocompleteSuggestion) => void;
   placeholder?: string;
-  type?: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'location' | 'bus-location' | 'all';
+  type?: 'city' | 'product' | 'grocery' | 'food' | 'date' | 'location' | 'bus-location' | 'hotel-location' | 'all';
   className?: string;
   inputClassName?: string;
   icon?: React.ReactNode;
@@ -58,8 +58,13 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   // Bus deep-location typeahead: redBus's own registry via /api/bus/locations —
   // tier-1/2/3 towns (Harda etc.) AND area-level boarding points with real IDs.
   const [busRemote, setBusRemote] = useState<AutocompleteSuggestion[]>([]);
+  // Hotels typeahead: LIVE hotel names + destinations via /api/hotels/locations
+  // (TravelGuru autosuggest — same registry Yatra's hotel site uses).
+  const [hotelRemote, setHotelRemote] = useState<AutocompleteSuggestion[]>([]);
+  const [hotelRemoteLoading, setHotelRemoteLoading] = useState(false);
   const [busRemoteLoading, setBusRemoteLoading] = useState(false);
   const isBusLocation = type === 'bus-location';
+  const isHotelLocation = type === 'hotel-location';
   React.useEffect(() => {
     if (!isBusLocation) return;
     const q = value.trim();
@@ -102,6 +107,33 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     return () => { cancelled = true; clearTimeout(t); };
   }, [value, isBusLocation]);
 
+  React.useEffect(() => {
+    if (!isHotelLocation) return;
+    const q = value.trim();
+    if (q.length < 2) { setHotelRemote([]); return; }
+    let cancelled = false;
+    setHotelRemoteLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/hotels/locations?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const locs: any[] = Array.isArray(data?.locations) ? data.locations : [];
+        const out: AutocompleteSuggestion[] = locs.map((l) =>
+          l.type === 'HOTEL'
+            ? { text: l.name, subtext: l.cityName ? `Hotel in ${l.cityName}${l.stateName ? ', ' + l.stateName : ''}` : 'Hotel', badge: 'Hotel', type: 'location' as const }
+            : { text: l.name, subtext: l.stateName || l.cityName || 'Destination', badge: 'Destination', type: 'location' as const },
+        );
+        setHotelRemote(out.slice(0, 14));
+      } catch {
+        if (!cancelled) setHotelRemote([]);
+      } finally {
+        if (!cancelled) setHotelRemoteLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [value, isHotelLocation]);
+
   // Derive suggestions
   const suggestions: AutocompleteSuggestion[] = React.useMemo(() => {
     if (presetList && presetList.length > 0) {
@@ -125,8 +157,15 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         return !/airport|international/i.test(st);
       });
     }
+    if (isHotelLocation) {
+      // Destinations first (typed city matches from the curated hotel pool), then
+      // LIVE hotel-name suggestions. NO airports, NO IATA codes (flights only).
+      const dest = getFilteredSuggestions(value, 'hotel-location', 3);
+      if (hotelRemote.length > 0) return [...dest, ...hotelRemote].slice(0, 14);
+      return getFilteredSuggestions(value, 'hotel-location', 14);
+    }
     return getFilteredSuggestions(value, type, 14);
-  }, [value, type, presetList, busRemote, isBusLocation]);
+  }, [value, type, presetList, busRemote, hotelRemote, isBusLocation, isHotelLocation]);
 
   // Click outside to close
   useEffect(() => {
@@ -193,6 +232,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
 
   const renderIcon = (sugg: AutocompleteSuggestion) => {
     if (isBusLocation) return <Bus className="w-3.5 h-3.5 text-rose-600 shrink-0" />;
+    if (isHotelLocation) return <Bed className="w-3.5 h-3.5 text-[#003580] shrink-0" />;
     if (sugg.type === 'city') return <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />;
     if (sugg.type === 'grocery') return <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
     if (sugg.type === 'food') return <Utensils className="w-3.5 h-3.5 text-orange-500 shrink-0" />;
@@ -268,6 +308,11 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
                 <>
                   <Bus className="w-3 h-3 text-[#d84e55]" />
                   <span>{busRemoteLoading ? 'Searching live bus locations…' : 'Live bus stops · cities, towns & boarding points'}</span>
+                </>
+              ) : isHotelLocation ? (
+                <>
+                  <Bed className="w-3 h-3 text-[#003580]" />
+                  <span>{hotelRemoteLoading ? 'Searching live hotels & destinations…' : 'Live hotels · destinations & properties'}</span>
                 </>
               ) : (
                 <>
