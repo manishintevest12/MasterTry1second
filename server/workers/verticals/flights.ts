@@ -19,6 +19,7 @@ import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareIte
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
+import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
 import { usdToInrRate } from '../../common/fxRates';
@@ -324,21 +325,45 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
+      // Goibibo LIVE (17 Oct 2026): the SPA search tarpits on datacenter IPs, but
+      // the SEO route landing pages are SERVER-RENDERED with the full listing
+      // state in __NEXT_DATA__ (props.pageProps.data.state.listing): real per-flight
+      // total INR fares, airline names, times, stops, and the page's own service
+      // date (itinerary DEL-BOM-20/10/2026). Every offer is labelled with that
+      // real date. Discovered via browser recon + verified browserless.
       sourceId: 'w_flights_goibibo',
-      name: 'Flights worker: Goibibo flights (probe)',
-      priority: 15,
-      run: async () => {
-        // Attempt the real SRP URL live (dynamic date) so a gate lift is detected on any IP.
-        const dd = new Date(Date.now() + 7 * 86400_000);
-        const iso = dd.toISOString().slice(0, 10);
-        const r = await cffiFetch(
-          `https://www.goibibo.com/flights/search/?source=Indore&destination=New%20Delhi&triptype=O&tripdate=${iso}&adults=1`,
-          { impersonate: 'chrome', timeoutMs: 12_000 },
-        );
-        if (r.status === 200 && (r.body || '').length > 50_000) {
-          throw new AcquisitionError('ACCESS_CHALLENGE', 'Goibibo SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: Akamai 504/reset).');
+      name: 'Flights worker: Goibibo SSR route-page fares',
+      priority: 9,
+      maxPerMinute: 4,
+      timeoutMs: 35_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const url = goibiboRouteUrl(rt.from, rt.to);
+        let r;
+        try {
+          r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000, headers: {
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            Referer: 'https://www.google.com/',
+          } });
+        } catch (e: any) {
+          throw new AcquisitionError('SERVER_ERROR', `Goibibo route page unreachable: ${String(e?.message || e)}`);
         }
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Goibibo flights is edge-gated to browserless datacenter HTTP: www.goibibo.com/flights/* gives HTTP/2 stream reset or 504 AkamaiGHost gateway timeouts; m.goibibo.com 503; flights.goibibo.com returns Akamai "Access Denied" 403 on all paths; api.goibibo.com 503 DNS failure (recon 14 Oct 2026). Retest from production IP after deploy.');
+        if (r.status === 404) return []; // route page does not exist — honest "no such route page"
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo edge-blocked the route page (HTTP ${r.status}).`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Goibibo route page HTTP ${r.status}`, r.status);
+        const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
+        if (!items.length) return [];
+        // cheapest 40, like the other flights sources
+        items.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+        return items.slice(0, 40);
       },
     },
     {

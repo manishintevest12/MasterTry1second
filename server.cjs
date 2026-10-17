@@ -5698,6 +5698,150 @@ var init_yatraFlights = __esm({
   }
 });
 
+// server/workers/parsers/goibiboFlights.ts
+function goibiboRouteUrl(fromCity, toCity) {
+  const slug = (c) => {
+    const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").trim();
+    return (SLUG_ALIASES[k] || k).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  };
+  return `https://www.goibibo.com/flights/${slug(fromCity)}-to-${slug(toCity)}-flights/`;
+}
+function stripTags(s) {
+  return String(s).replace(/<[^>]*>/g, "").trim();
+}
+function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
+  let root = null;
+  const m = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (m) {
+    try {
+      root = JSON.parse(m[1]);
+    } catch {
+      root = null;
+    }
+  }
+  if (!root) {
+    for (const s of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) {
+      const b = s[1];
+      if (b.includes('"journeyMap"') && b.trim().startsWith("{")) {
+        try {
+          root = JSON.parse(b);
+          break;
+        } catch {
+        }
+      }
+    }
+  }
+  const listing = root?.props?.pageProps?.data?.state?.listing;
+  if (!listing) return [];
+  const itin = String(listing?.flightSearchParams?.itinerary || "");
+  const dm = itin.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const fareDate = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : "";
+  const jm = listing?.journeyMap?.data || {};
+  const groups = listing?.journeys?.allJourneys;
+  if (!Array.isArray(groups) || !groups.length) return [];
+  const journeys = Array.isArray(groups[0]) ? groups[0] : [];
+  const out = [];
+  for (const j of journeys) {
+    const price = Number(j.fare);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const keys = Array.isArray(j.journeyKeys) ? j.journeyKeys : [];
+    if (!keys.length) continue;
+    const legs = String(keys[0]).split("|");
+    const firstKey = legs[0];
+    const lastKey = legs[legs.length - 1];
+    const firstSeg = jm[firstKey];
+    const lastSeg = jm[lastKey];
+    if (!firstSeg) continue;
+    const stops = legs.length - 1;
+    const name = stripTags(String(j.simpleAirlineHeading?.nm || "")) || EMT_AIRLINES[String(j.airlineCodes?.[0] || "")]?.name || "Flight";
+    const flightNo2 = stripTags(String(j.flightNumber || j.simpleAirlineHeading?.cd || "")).slice(0, 40);
+    const depT = String(firstSeg.depTime || "");
+    const arrT = String(lastSeg?.arrTime || "");
+    const routeLabel = `${fromCity} \u2192 ${toCity}`;
+    const dateLabel = fareDate ? `on ${fareDate}` : "";
+    out.push(newRawItem(source, {
+      title: `${name} ${flightNo2} ${routeLabel} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"} ${dateLabel}`.slice(0, 200),
+      brand: name,
+      price: Math.round(price),
+      currency: "INR",
+      seller: "Goibibo",
+      sellerUrl: pageUrl,
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: fareDate },
+      attributes: {
+        airline: name,
+        flight_number: flightNo2,
+        ...depT ? { departure: depT } : {},
+        ...arrT ? { arrival: arrT } : {},
+        stops: String(stops),
+        origin: String(firstSeg.depCityCd || ""),
+        destination: String(lastSeg?.arrCityCd || ""),
+        ...firstSeg.duration ? { duration: `${firstSeg.duration.h || "00"}h ${firstSeg.duration.m || "00"}m` } : {},
+        price_basis: `total Goibibo fare for 1 adult from Goibibo's own route-page listing on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`,
+        data_note: `Fare acquired from Goibibo's server-rendered route page on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}${fareDate ? ` for its service date ${fareDate}` : ""}; booking continues on Goibibo's own website.`,
+        image: ""
+      },
+      identifiers: { sku: `gi-${keys[0]}`.replace(/[^A-Za-z0-9$|.:-]/g, "-") },
+      evidence: {
+        sourceUrl: pageUrl,
+        extractedFields: ["listing.journeys.allJourneys[].fare (INR)", "simpleAirlineHeading.nm", "journeyKeys", "journeyMap.data[].depTime/arrTime/stops"]
+      }
+    }));
+  }
+  return out;
+}
+var SLUG_ALIASES;
+var init_goibiboFlights = __esm({
+  "server/workers/parsers/goibiboFlights.ts"() {
+    init_contract();
+    init_emtFareCalendar();
+    SLUG_ALIASES = {
+      "new delhi": "delhi",
+      delhi: "delhi",
+      mumbai: "mumbai",
+      bengaluru: "bangalore",
+      bangalore: "bangalore",
+      mysuru: "mysore",
+      mysore: "mysore",
+      gurgaon: "gurugram",
+      gurugram: "gurugram",
+      "kolkata": "kolkata",
+      chennai: "chennai",
+      hyderabad: "hyderabad",
+      pune: "pune",
+      goa: "goa",
+      panaji: "goa",
+      jaipur: "jaipur",
+      ahmedabad: "ahmedabad",
+      lucknow: "lucknow",
+      indore: "indore",
+      bhopal: "bhopal",
+      nagpur: "nagpur",
+      patna: "patna",
+      guwahati: "guwahati",
+      kochi: "kochi",
+      coimbatore: "coimbatore",
+      chandigarh: "chandigarh",
+      varanasi: "varanasi",
+      srinagar: "srinagar",
+      dehradun: "dehradun",
+      amritsar: "amritsar",
+      udaipur: "udaipur",
+      jodhpur: "jodhpur",
+      trivandrum: "trivandrum",
+      thiruvananthapuram: "trivandrum",
+      vizag: "vizag",
+      visakhapatnam: "vizag",
+      surat: "surat",
+      vadodara: "vadodara",
+      rajkot: "rajkot",
+      ranchi: "ranchi",
+      bhubaneswar: "bhubaneswar",
+      imphal: "imphal",
+      agartala: "agartala"
+    };
+  }
+});
+
 // server/workers/parsers/expediaFlightsQuery.ts
 var EXPEDIA_FLIGHTS_QUERY;
 var init_expediaFlightsQuery = __esm({
@@ -9715,6 +9859,7 @@ var init_flights = __esm({
     init_akasaFlights();
     init_viaFlights();
     init_yatraFlights();
+    init_goibiboFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
     init_fxRates();
@@ -9976,20 +10121,44 @@ var init_flights = __esm({
           }
         },
         {
+          // Goibibo LIVE (17 Oct 2026): the SPA search tarpits on datacenter IPs, but
+          // the SEO route landing pages are SERVER-RENDERED with the full listing
+          // state in __NEXT_DATA__ (props.pageProps.data.state.listing): real per-flight
+          // total INR fares, airline names, times, stops, and the page's own service
+          // date (itinerary DEL-BOM-20/10/2026). Every offer is labelled with that
+          // real date. Discovered via browser recon + verified browserless.
           sourceId: "w_flights_goibibo",
-          name: "Flights worker: Goibibo flights (probe)",
-          priority: 15,
-          run: async () => {
-            const dd = new Date(Date.now() + 7 * 864e5);
-            const iso2 = dd.toISOString().slice(0, 10);
-            const r = await cffiFetch(
-              `https://www.goibibo.com/flights/search/?source=Indore&destination=New%20Delhi&triptype=O&tripdate=${iso2}&adults=1`,
-              { impersonate: "chrome", timeoutMs: 12e3 }
-            );
-            if (r.status === 200 && (r.body || "").length > 5e4) {
-              throw new AcquisitionError("ACCESS_CHALLENGE", "Goibibo SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: Akamai 504/reset).");
+          name: "Flights worker: Goibibo SSR route-page fares",
+          priority: 9,
+          maxPerMinute: 4,
+          timeoutMs: 35e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const url = goibiboRouteUrl(rt.from, rt.to);
+            let r;
+            try {
+              r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4, headers: {
+                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                Referer: "https://www.google.com/"
+              } });
+            } catch (e) {
+              throw new AcquisitionError("SERVER_ERROR", `Goibibo route page unreachable: ${String(e?.message || e)}`);
             }
-            throw new AcquisitionError("EMPTY_RESPONSE", 'Goibibo flights is edge-gated to browserless datacenter HTTP: www.goibibo.com/flights/* gives HTTP/2 stream reset or 504 AkamaiGHost gateway timeouts; m.goibibo.com 503; flights.goibibo.com returns Akamai "Access Denied" 403 on all paths; api.goibibo.com 503 DNS failure (recon 14 Oct 2026). Retest from production IP after deploy.');
+            if (r.status === 404) return [];
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo edge-blocked the route page (HTTP ${r.status}).`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Goibibo route page HTTP ${r.status}`, r.status);
+            const items = parseGoibiboSsr(r.body, ctx.source, url, rt.from, rt.to);
+            if (!items.length) return [];
+            items.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+            return items.slice(0, 40);
           }
         },
         {
