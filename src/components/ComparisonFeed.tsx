@@ -69,21 +69,13 @@ export const ComparisonFeed: React.FC = () => {
     });
   }
 
-  // Filter by search query. For live-searched verticals the backend has ALREADY matched the
-  // query (route, location, product); re-filtering on the raw text hides valid results
-  // (e.g. "New Delhi (DEL) to Dubai (DXB)" is never a substring of an offer title).
-  const BACKEND_MATCHED = ['flights', 'bus', 'cab', 'hotels', 'food', 'movies'];
-  if (searchQuery.trim() && !BACKEND_MATCHED.includes(vertical)) {
-    const q = searchQuery.toLowerCase();
-    filtered = filtered.filter(
-      (it) =>
-        it.title.toLowerCase().includes(q) ||
-        it.subtitle.toLowerCase().includes(q) ||
-        it.provider.toLowerCase().includes(q) ||
-        it.category.toLowerCase().includes(q) ||
-        Object.values(it.specs).some((val) => val.toLowerCase().includes(q))
-    );
-  }
+  // Search query: the backend has ALREADY matched the query for every vertical
+  // (strict whole-word token matching for product/dish queries; route matching for
+  // travel). Re-filtering on the raw text here HIDES valid results — "dell laptop"
+  // is never a contiguous substring of a title like "Dell Inspiron 3520 Laptop",
+  // so this client-side substring filter was emptying the whole ecom feed
+  // (owner bug report 17 Oct: ecom 'dell laptop' showed 0 results despite 20 offers).
+  // The feed therefore trusts the backend-matched items as-is.
 
   // Filter by Smart AI Filter prompt (shared NL parser: price/rating/veg/flags/tokens)
   const smartFilter = smartFilterText.trim() ? parseSmartFilter(smartFilterText) : null;
