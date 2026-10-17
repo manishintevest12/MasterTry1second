@@ -16,6 +16,7 @@ import '../widgets/kit.dart';
 import '../widgets/typeahead_field.dart';
 import 'hotel_picker_screen.dart';
 import 'place_picker_screen.dart';
+import 'map_pin_picker_screen.dart';
 
 /// Small const map of lat/lng for top ~40 Indian cities for geolocator pre-fill
 const kCityCoords = <String, Map<String, double>>{
@@ -175,6 +176,31 @@ class _CompareScreenState extends State<CompareScreen> {
 
   String _iso(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Uber-style map pin (17 Oct): open the draggable map, adopt the exact spot.
+  Future<void> _pickOnMap(bool pickup) async {
+    final spot = await Navigator.of(context).push<PickedSpot>(
+      MaterialPageRoute(
+        builder: (_) => MapPinPickerScreen(
+          isPickup: pickup,
+          initialLat: pickup ? _state.pickLat : null,
+          initialLng: pickup ? _state.pickLng : null,
+          initialLabel: _state.city,
+        ),
+      ),
+    );
+    if (spot == null || !mounted) return;
+    if (pickup) {
+      setState(() => _from.text = spot.label);
+      // Exact pin becomes the user's location; every live search now carries
+      // its coordinates (api.live -> /api/scrape/live `coordinates`).
+      await _state.setLocation(spot.city.isNotEmpty ? spot.city : _state.city, spot.pincode ?? _state.pincode, lat: spot.lat, lng: spot.lng);
+      toast(context, 'Pickup pinned: ${spot.address}');
+    } else {
+      setState(() => _to.text = spot.label);
+      _runSearch(force: true);
+    }
+  }
 
   void _swap() {
     final f = _from.text;
@@ -356,6 +382,7 @@ class _CompareScreenState extends State<CompareScreen> {
                 onPickCity: _pickCity,
                 onUseCurrentLocationForCab: _useCurrentLocationForCab,
                 onOpenCityPicker: _openCityPicker,
+                onPickOnMap: _pickOnMap,
                 onOpenPlacePicker: _openPlacePicker,
                 onOpenHotelPicker: _openHotelPicker,
               ),
@@ -697,6 +724,7 @@ class _SearchCard extends StatelessWidget {
     required this.onPickCity,
     required this.onUseCurrentLocationForCab,
     required this.onOpenCityPicker,
+    required this.onPickOnMap,
     required this.onOpenPlacePicker,
     required this.onOpenHotelPicker,
   });
@@ -715,6 +743,7 @@ class _SearchCard extends StatelessWidget {
   final VoidCallback onPickCity;
   final VoidCallback onUseCurrentLocationForCab;
   final Function(TextEditingController, String) onOpenCityPicker;
+  final Function(bool) onPickOnMap; // Uber-style map pin: true = pickup, false = drop
   final Function(bool) onOpenPlacePicker;
   final VoidCallback onOpenHotelPicker;
 
@@ -757,6 +786,19 @@ class _SearchCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                InkWell(
+                  onTap: () => onPickOnMap(true),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: border(context)),
+                    ),
+                    child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
+                  ),
+                ),
                 const SizedBox(width: 4),
                 GestureDetector(
                   onTap: onSwap,
@@ -797,6 +839,19 @@ class _SearchCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
+                ),
+                InkWell(
+                  onTap: () => onPickOnMap(false),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: border(context)),
+                    ),
+                    child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
                   ),
                 ),
               ],

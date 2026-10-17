@@ -738,6 +738,8 @@ class Try1SecondApi {
     String query, {
     String city = 'Indore',
     String pincode = '452001',
+    double? lat,
+    double? lng,
     String? depart,
     String? returnDate,
   }) async {
@@ -747,6 +749,8 @@ class Try1SecondApi {
       'query': query.trim(),
       'pincode': pincode,
       'city': city,
+      // Exact map pin (MapPinPicker): the engine gets the precise point, not just the city.
+      if (lat != null && lng != null) 'coordinates': {'lat': lat, 'lng': lng},
       if (dateSensitive && depart != null) 'travelDates': {'depart': depart, if (returnDate != null) 'return': returnDate},
     });
     return LiveResponse.fromJson(res);
@@ -870,6 +874,19 @@ class Try1SecondApi {
     final res = await _post('/api/rewards/referral', {}, token: token);
     final v = res['link'] ?? res['url'] ?? res['referralLink'] ?? res['code'];
     return v?.toString();
+  }
+
+  /// GET /api/geo/search — Nominatim proxy (India-bounded) for the map pin picker.
+  Future<List<Map<String, dynamic>>> geoSearch(String q) async {
+    final res = await _get('/api/geo/search?q=${Uri.encodeQueryComponent(q)}');
+    return [for (final r in (res['results'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
+  }
+
+  /// GET /api/geo/reverse — name a dropped pin; null when the map has no name (never invented).
+  Future<Map<String, dynamic>?> geoReverse(double lat, double lng) async {
+    final res = await _get('/api/geo/reverse?lat=${lat.toStringAsFixed(6)}&lng=${lng.toStringAsFixed(6)}');
+    final place = res['place'];
+    return place is Map<String, dynamic> ? place : null;
   }
 
   /// Public GET for ad-hoc read endpoints (status, provenance, picks, ...).

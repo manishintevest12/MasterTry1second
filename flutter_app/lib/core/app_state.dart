@@ -34,6 +34,9 @@ class AppState extends ChangeNotifier {
   String vertical = 'flights';
   String city = 'Indore';
   String pincode = '452001';
+  /// Exact map-picked pickup point (MapPinPicker); sent with every live search.
+  double? pickLat;
+  double? pickLng;
   PendingSearch? pending;
 
   int unread = 0;
@@ -103,9 +106,13 @@ class AppState extends ChangeNotifier {
     return p;
   }
 
-  Future<void> setLocation(String newCity, String newPin) async {
+  Future<void> setLocation(String newCity, String newPin, {double? lat, double? lng}) async {
     city = newCity.trim().isEmpty ? city : newCity.trim();
     pincode = newPin.trim().isEmpty ? pincode : newPin.trim();
+    if (lat != null && lng != null) {
+      pickLat = lat;
+      pickLng = lng;
+    }
     await store.saveSettings(city: city, pincode: pincode);
     cache.clear();
     cacheQuery.clear();
@@ -121,7 +128,7 @@ class AppState extends ChangeNotifier {
     final flying = _inFlight[cacheKey];
     if (flying != null) return flying;
     final f = api
-        .live(key, q, city: city, pincode: pincode, depart: depart, returnDate: returnDate)
+        .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate)
         .then((res) {
       cache[key] = res;
       cacheQuery[key] = cacheKey;
