@@ -48,6 +48,7 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
   // gallery photos (Yatra/Cleartrip) rendered fine.
   const [skip, setSkip] = useState(0);
   useEffect(() => { setSkip(0); setImgIdx(0); }, [group.key]);
+  const photos = group.gallery.length ? group.gallery : group.image ? [group.image] : [];
   const shown = photos.slice(skip);
   const [showAll, setShowAll] = useState(false);
   const [detail, setDetail] = useState(false);
@@ -55,7 +56,6 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
   const bestQuote = best.item.sellerQuotes.find((q) => q.isLowest) || best.item.sellerQuotes[0];
   const tracked = trackedItemIds.includes(best.item.id);
   const pct = dealPercent(group);
-  const photos = group.gallery.length ? group.gallery : group.image ? [group.image] : [];
   const rows = showAll ? group.rows : group.rows.slice(0, 3);
 
   const go = (row = best) => {

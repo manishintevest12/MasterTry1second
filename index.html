@@ -72,6 +72,7 @@
       var t1sOrbit = function () {
         var hosts = ['amazon.in','flipkart.com','myntra.com','makemytrip.com','goibibo.com','booking.com','redbus.in','zomato.com','swiggy.com','bookmyshow.com','goindigo.in','uber.com'];
         var orbit = document.querySelector('#t1s-loader .t1s-orbit');
+        if (!orbit) return; // React removed the splash before idle fired — orbit is optional eye-candy
         var cx = 0.5, cy = 0.42, rx = 0.34, ry = 0.24;
         hosts.forEach(function (h, i) {
           var a = (i / hosts.length) * 2 * Math.PI - Math.PI / 2;
