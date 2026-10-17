@@ -3514,7 +3514,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num4 = (x) => {
+  const num5 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -3535,17 +3535,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num4(rating.value),
-      ratingCount: num4(rating.count),
-      pricePerNight: num4(pricing.bookingPrice),
-      tax: num4(tax.total_tax),
-      priceInclusive: num4(tax.final_price_with_tax),
-      slashedPrice: num4(pricing.slashedPrice),
-      discountPercentage: num4(pricing.discountPercentage),
+      rating: num5(rating.value),
+      ratingCount: num5(rating.count),
+      pricePerNight: num5(pricing.bookingPrice),
+      tax: num5(tax.total_tax),
+      priceInclusive: num5(tax.final_price_with_tax),
+      slashedPrice: num5(pricing.slashedPrice),
+      discountPercentage: num5(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num4(geo.lat ?? geo.latitude),
-      lon: num4(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num5(geo.lat ?? geo.latitude),
+      lon: num5(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -3700,6 +3700,123 @@ var init_yatraHotels = __esm({
     YATRA_HOTELS_API_KEY = "JN9aWyj7hJ1ZrExC7Ozo";
     YATRA_SRP = "https://hotel.yatra.com/nextui/hotel-search/dom/search";
     num = (x) => {
+      if (x == null || x === "") return null;
+      const n = Number(x);
+      return Number.isFinite(n) ? n : null;
+    };
+  }
+});
+
+// server/workers/parsers/emtHotels.ts
+function emtCityPaths(city) {
+  const out = [];
+  for (const v of cityVariants(city)) {
+    const p = `hotels/hotels-in-${slugOf(v)}`;
+    if (!out.includes(p)) out.push(p);
+  }
+  return out.slice(0, 6);
+}
+function parseEmtLdJson(html) {
+  const blocks = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g) || [];
+  for (const b of blocks) {
+    try {
+      const d = JSON.parse(b.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, ""));
+      if (d?.["@type"] === "ItemList" && Array.isArray(d.itemListElement)) return d.itemListElement;
+    } catch {
+    }
+  }
+  return [];
+}
+function parseEmtHotelLinks(html) {
+  const map = /* @__PURE__ */ new Map();
+  const re = /href="(https:\/\/www\.easemytrip\.com\/hotels\/([a-z0-9-]+)-(\d+)\/?)"/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const id = m[3];
+    if (!map.has(id)) map.set(id, m[1]);
+  }
+  return map;
+}
+function emtIdFromImage(imageUrl) {
+  if (!imageUrl) return null;
+  const m = /emthotel-(\d+)\//.exec(imageUrl);
+  return m ? m[1] : null;
+}
+function parseEmtHotels(items, links) {
+  const out = [];
+  for (const it of items) {
+    if (!it || typeof it !== "object" || typeof it.name !== "string") continue;
+    const image = typeof it.image === "string" ? it.image : null;
+    const id = emtIdFromImage(image) || "";
+    const addr = it.address || {};
+    const street = typeof addr.streetAddress === "string" ? addr.streetAddress : "";
+    const [area, localityPart] = street.split(">");
+    out.push({
+      id,
+      name: it.name.trim(),
+      starRating: num2(it?.starRating?.ratingValue),
+      area: area?.trim() || null,
+      locality: localityPart?.trim() || (typeof addr.addressLocality === "string" ? addr.addressLocality : null),
+      region: typeof addr.addressRegion === "string" ? addr.addressRegion : null,
+      latitude: num2(it?.geo?.latitude),
+      longitude: num2(it?.geo?.longitude),
+      price: num2(it.priceRange),
+      imageUrl: image,
+      deeplink: id && links.get(id) || null,
+      checkInTime: typeof it.checkInTime === "string" ? it.checkInTime : null,
+      checkOutTime: typeof it.checkOutTime === "string" ? it.checkOutTime : null
+    });
+  }
+  return out;
+}
+function parseEmtOffers(hotels, source, city, meta) {
+  const out = [];
+  const srpUrl = `${EMT_HOTELS_WEB}/${meta.path}/?checkin=${ddmmyyyyDash(meta.checkin)}&checkout=${ddmmyyyyDash(meta.checkout)}&c=IN&num_rooms=1&adults=2`;
+  for (const h of hotels) {
+    if (!h.name || h.price == null || h.price <= 0) continue;
+    const attrs = {
+      image_url: h.imageUrl,
+      star_rating: h.starRating != null ? String(h.starRating) : null,
+      area: h.area,
+      address: h.locality,
+      city: h.region || city,
+      latitude: h.latitude,
+      longitude: h.longitude,
+      property_id: h.id || null,
+      price_basis: "per night as listed on EaseMyTrip city page",
+      data_note: "Live per-night rates observed on EaseMyTrip hotel listing"
+    };
+    if (h.checkInTime) attrs.check_in_time = h.checkInTime;
+    if (h.checkOutTime) attrs.check_out_time = h.checkOutTime;
+    out.push(newRawItem(source, {
+      title: h.name,
+      seller: "EaseMyTrip",
+      sellerUrl: h.deeplink || srpUrl,
+      // property page if id-matched, else the price-owning SRP
+      currency: "INR",
+      price: Math.round(h.price),
+      attributes: attrs,
+      travel: { date: meta.checkin, route: `${city} stay` },
+      evidence: {
+        sourceUrl: srpUrl,
+        sourceReference: h.id || h.name,
+        extractedFields: ["title", "price", "rating", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+function ddmmyyyyDash(iso2) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+var EMT_HOTELS_WEB, num2;
+var init_emtHotels = __esm({
+  "server/workers/parsers/emtHotels.ts"() {
+    init_contract();
+    init_cityAlias();
+    EMT_HOTELS_WEB = "https://www.easemytrip.com";
+    num2 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4092,6 +4209,7 @@ var init_hotels = __esm({
     init_cityAlias();
     init_oyoHotels();
     init_yatraHotels();
+    init_emtHotels();
     init_agodaHotels();
     OYO_WEB_URL = "https://www.oyorooms.com";
     ddmmyyyy2 = (iso2) => {
@@ -4505,6 +4623,38 @@ var init_hotels = __esm({
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
             throw new AcquisitionError("EMPTY_RESPONSE", `OYO listing for "${city}" carried no parseable PRELOADED_STATE`);
+          }
+        },
+        {
+          // EaseMyTrip hotels — owner-mandated source (17 Oct). City SEO pages are full
+          // SSR with a JSON-LD ItemList of ~20 hotels incl. real per-night prices.
+          sourceId: "w_hotels_emt",
+          name: "Hotels worker: EaseMyTrip live per-night rates",
+          priority: 9,
+          maxPerMinute: 6,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city || city.length < 3) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            let lastStatus = 0;
+            for (const path10 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path10}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+                impersonate: "chrome",
+                timeoutMs: 3e4,
+                headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
+              });
+              lastStatus = r.status;
+              if (r.status !== 200) continue;
+              const items = parseEmtLdJson(r.body);
+              if (!items.length) continue;
+              const links = parseEmtHotelLinks(r.body);
+              const hotels = parseEmtHotels(items, links);
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path10 });
+            }
+            if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
+            if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
+            throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip listing for "${city}" carried no hotels`);
           }
         },
         {
@@ -5459,13 +5609,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num2(v);
+    f.stops = num3(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num2(v);
+    const n = num3(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -5507,7 +5657,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num2(pick(o, FARE_KEYS));
+    const fare = num3(pick(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -5671,12 +5821,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num2, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num3, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num2 = (v) => {
+    num3 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -15497,9 +15647,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num3(p.pricing?.discount?.prim_price?.sp);
+      const sp = num4(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num3(p.pricing?.discount?.mrp);
+      const mrp = num4(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -15535,11 +15685,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num3;
+var num4;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num3 = (v) => {
+    num4 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -17307,7 +17457,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num4 = (key) => {
+  const num5 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -17318,8 +17468,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num4("servicecount")) || 0,
-    operators: field("operators") || num4("operators") || "",
+    servicecount: Number(num5("servicecount")) || 0,
+    operators: field("operators") || num5("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""

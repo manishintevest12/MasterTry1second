@@ -21,6 +21,7 @@ import {
   oyoCityPaths, parseOyoPreloadedState, parseOyoHotels, parseOyoOffers,
 } from '../parsers/oyoHotels';
 import { parseYatraHotels, parseYatraOffers, yatraPageSearchUrl, yatraSrpUrl, YATRA_HOTELS_API_KEY } from '../parsers/yatraHotels';
+import { emtCityPaths, parseEmtLdJson, parseEmtHotelLinks, parseEmtHotels, parseEmtOffers, ddmmyyyyDash } from '../parsers/emtHotels';
 import {
   agodaCitySlugs, extractAgodaCityId, extractAgodaPageConfig, agodaGateHeaders,
   AGODA_CITY_SEARCH_QUERY, buildAgodaCitySearchVars, extractAgodaProperties,
@@ -469,6 +470,37 @@ export const hotelsWorker: VerticalWorker = {
         if (lastStatus === 404) throw new AcquisitionError('EMPTY_RESPONSE', `OYO has no city page for "${city}"`);
         if (lastStatus !== 0) throw new AcquisitionError('SERVER_ERROR', `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
         throw new AcquisitionError('EMPTY_RESPONSE', `OYO listing for "${city}" carried no parseable PRELOADED_STATE`);
+      },
+    },
+    {
+      // EaseMyTrip hotels — owner-mandated source (17 Oct). City SEO pages are full
+      // SSR with a JSON-LD ItemList of ~20 hotels incl. real per-night prices.
+      sourceId: 'w_hotels_emt',
+      name: 'Hotels worker: EaseMyTrip live per-night rates',
+      priority: 9,
+      maxPerMinute: 6,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        let lastStatus = 0;
+        for (const path of emtCityPaths(city)) {
+          const r = await cffiFetch(`https://www.easemytrip.com/${path}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            impersonate: 'chrome', timeoutMs: 30_000,
+            headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
+          });
+          lastStatus = r.status;
+          if (r.status !== 200) continue; // unknown spelling -> try next variant
+          const items = parseEmtLdJson(r.body);
+          if (!items.length) continue;
+          const links = parseEmtHotelLinks(r.body);
+          const hotels = parseEmtHotels(items, links);
+          if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path });
+        }
+        if (lastStatus === 404) throw new AcquisitionError('EMPTY_RESPONSE', `EaseMyTrip has no city page for "${city}"`);
+        if (lastStatus !== 0) throw new AcquisitionError('SERVER_ERROR', `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
+        throw new AcquisitionError('EMPTY_RESPONSE', `EaseMyTrip listing for "${city}" carried no hotels`);
       },
     },
     {
