@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/compare.dart';
 import '../../core/theme.dart';
 import 'redirect_sheet.dart';
+import 'hotel_detail.dart';
 import '../../core/verticals.dart';
 import '../screens/compare_screen.dart' show showTrackSheet;
 import 'kit.dart';
@@ -446,9 +447,31 @@ class HotelCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Stack(
+          GestureDetector(
+            onTap: () => showHotelDetail(context, g),
+            child: Stack(
             children: [
               NetImage(g.image ?? g.gallery.firstOrNull, height: 130, fallbackIcon: Icons.hotel_rounded),
+              if (g.gallery.length > 1)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.photo_library_rounded, size: 10, color: Colors.white70),
+                        const SizedBox(width: 3),
+                        Text('${g.gallery.length} photos', style: tx(context, 8.5, w: FontWeight.w800, color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                ),
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -506,6 +529,7 @@ class HotelCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
           ),
           Padding(
             padding: const EdgeInsets.all(12),
