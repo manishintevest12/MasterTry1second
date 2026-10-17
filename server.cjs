@@ -3514,7 +3514,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num5 = (x) => {
+  const num6 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -3535,17 +3535,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num5(rating.value),
-      ratingCount: num5(rating.count),
-      pricePerNight: num5(pricing.bookingPrice),
-      tax: num5(tax.total_tax),
-      priceInclusive: num5(tax.final_price_with_tax),
-      slashedPrice: num5(pricing.slashedPrice),
-      discountPercentage: num5(pricing.discountPercentage),
+      rating: num6(rating.value),
+      ratingCount: num6(rating.count),
+      pricePerNight: num6(pricing.bookingPrice),
+      tax: num6(tax.total_tax),
+      priceInclusive: num6(tax.final_price_with_tax),
+      slashedPrice: num6(pricing.slashedPrice),
+      discountPercentage: num6(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num5(geo.lat ?? geo.latitude),
-      lon: num5(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num6(geo.lat ?? geo.latitude),
+      lon: num6(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -3817,6 +3817,112 @@ var init_emtHotels = __esm({
     init_cityAlias();
     EMT_HOTELS_WEB = "https://www.easemytrip.com";
     num2 = (x) => {
+      if (x == null || x === "") return null;
+      const n = Number(x);
+      return Number.isFinite(n) ? n : null;
+    };
+  }
+});
+
+// server/workers/parsers/saffronStays.ts
+function saffronSearchBody(location) {
+  return {
+    location,
+    page: 1,
+    no_of_guest: 2,
+    no_of_room: 1,
+    suitables: [],
+    amenities: [],
+    sort_by: "",
+    signature: "",
+    min_price: 0,
+    max_price: 25e5,
+    pocket: false,
+    same_day: false,
+    non_shared: false,
+    new_home: false,
+    top_rated: false,
+    lat: null,
+    long: null,
+    mint_fresh: false,
+    is_agent: "",
+    distance: 125
+  };
+}
+function saffronImageUrl(imageId) {
+  return `${SAFFRON_IMG_BASE}/${imageId}?tr=w-640,q-75`;
+}
+function parseSaffronVillas(data) {
+  const out = [];
+  for (const v of data) {
+    if (!v || typeof v !== "object" || typeof v.title !== "string") continue;
+    out.push({
+      id: String(v.id ?? ""),
+      title: v.title.trim(),
+      location: typeof v.location === "string" ? v.location : null,
+      latitude: num3(v.latitude),
+      longitude: num3(v.longitude),
+      pricePerNight: num3(v.price_per_night),
+      perNightAfterDiscount: num3(v.per_night_price_after_discount),
+      totalWithTax: num3(v.total_amount_with_tax),
+      baseWithTax: num3(v.base_price_with_tax),
+      rating: num3(v.rating),
+      reviews: num3(v.total_reviews),
+      capacity: num3(v.max_capacity ?? v.capacity),
+      bedrooms: num3(v.bedrooms),
+      signature: typeof v.signature === "string" ? v.signature : null,
+      available: v.is_available !== false,
+      imageIds: Array.isArray(v.images) ? v.images.filter((x) => typeof x === "string").slice(0, 6) : [],
+      seoUrl: typeof v.seo_url === "string" ? v.seo_url : null
+    });
+  }
+  return out;
+}
+function parseSaffronOffers(villas, source, city) {
+  const out = [];
+  for (const v of villas) {
+    const price = v.perNightAfterDiscount ?? v.pricePerNight;
+    if (!v.title || price == null || price <= 0 || !v.available) continue;
+    const attrs = {
+      image_url: v.imageIds[0] ? saffronImageUrl(v.imageIds[0]) : null,
+      images: v.imageIds.map(saffronImageUrl).join("|") || null,
+      rating: v.rating != null ? v.rating.toFixed(1) : null,
+      review_count: v.reviews,
+      location: v.location,
+      latitude: v.latitude,
+      longitude: v.longitude,
+      property_id: v.id,
+      bedrooms: v.bedrooms,
+      max_capacity: v.capacity,
+      collection: v.signature,
+      price_basis: v.totalWithTax && v.totalWithTax > price ? `villa per night on SaffronStays (\u20B9${Math.round(price)} + taxes; total \u20B9${Math.round(v.totalWithTax)})` : "villa per night on SaffronStays (as listed)",
+      data_note: "Live villa per-night rates observed on SaffronStays search"
+    };
+    out.push(newRawItem(source, {
+      title: v.title,
+      seller: "SaffronStays",
+      sellerUrl: v.seoUrl ? `${SAFFRON_WEB}/villas/${v.seoUrl}` : `${SAFFRON_WEB}/villas`,
+      currency: "INR",
+      price: Math.round(price),
+      attributes: attrs,
+      travel: { route: `${city} stay` },
+      evidence: {
+        sourceUrl: `${SAFFRON_WEB}/search?location=${encodeURIComponent(city)}`,
+        sourceReference: v.id,
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num3;
+var init_saffronStays = __esm({
+  "server/workers/parsers/saffronStays.ts"() {
+    init_contract();
+    SAFFRON_API = "https://ecapi4.saffronstays.com/api/search-advance";
+    SAFFRON_IMG_BASE = "https://ik.imagekit.io/5tgxhsqev/saffronstays-media";
+    SAFFRON_WEB = "https://www.saffronstays.com";
+    num3 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4210,6 +4316,7 @@ var init_hotels = __esm({
     init_oyoHotels();
     init_yatraHotels();
     init_emtHotels();
+    init_saffronStays();
     init_agodaHotels();
     OYO_WEB_URL = "https://www.oyorooms.com";
     ddmmyyyy2 = (iso2) => {
@@ -4596,6 +4703,40 @@ var init_hotels = __esm({
         {
           // OYO hotels — owner-mandated source (17 Oct). City SEO listing pages are full
           // SSR: window.__PRELOADED_STATE__ carries 20 real per-night prices + images.
+          // SaffronStays — owner-mandated source (17 Oct). Boutique villas; search API
+          // captured via stealth CDP interception, replayed browserless with curl_cffi.
+          sourceId: "w_hotels_saffronstays",
+          name: "Hotels worker: SaffronStays live villa rates",
+          priority: 10,
+          maxPerMinute: 6,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city || city.length < 3) return [];
+            const r = await cffiFetch(SAFFRON_API, {
+              impersonate: "chrome",
+              method: "POST",
+              timeoutMs: 25e3,
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json, text/plain, */*",
+                Origin: "https://www.saffronstays.com",
+                Referer: "https://www.saffronstays.com/"
+              },
+              body: JSON.stringify(saffronSearchBody(city))
+            });
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `SaffronStays search-advance HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+            let body = null;
+            try {
+              body = JSON.parse(r.body);
+            } catch {
+            }
+            const villas = Array.isArray(body?.data) ? parseSaffronVillas(body.data) : [];
+            if (!villas.length) throw new AcquisitionError("EMPTY_RESPONSE", `SaffronStays returned no villas for "${city}"`);
+            return parseSaffronOffers(villas, ctx.source, city);
+          }
+        },
+        {
           sourceId: "w_hotels_oyo",
           name: "Hotels worker: OYO live per-night rates",
           priority: 8,
@@ -5609,13 +5750,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num3(v);
+    f.stops = num4(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num3(v);
+    const n = num4(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -5657,7 +5798,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num3(pick(o, FARE_KEYS));
+    const fare = num4(pick(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -5821,12 +5962,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num3, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num4, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num3 = (v) => {
+    num4 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -15647,9 +15788,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num4(p.pricing?.discount?.prim_price?.sp);
+      const sp = num5(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num4(p.pricing?.discount?.mrp);
+      const mrp = num5(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -15685,11 +15826,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num4;
+var num5;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num4 = (v) => {
+    num5 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -17457,7 +17598,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num5 = (key) => {
+  const num6 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -17468,8 +17609,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num5("servicecount")) || 0,
-    operators: field("operators") || num5("operators") || "",
+    servicecount: Number(num6("servicecount")) || 0,
+    operators: field("operators") || num6("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""

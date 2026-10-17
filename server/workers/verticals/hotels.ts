@@ -22,6 +22,7 @@ import {
 } from '../parsers/oyoHotels';
 import { parseYatraHotels, parseYatraOffers, yatraPageSearchUrl, yatraSrpUrl, YATRA_HOTELS_API_KEY } from '../parsers/yatraHotels';
 import { emtCityPaths, parseEmtLdJson, parseEmtHotelLinks, parseEmtHotels, parseEmtOffers, ddmmyyyyDash } from '../parsers/emtHotels';
+import { saffronSearchBody, parseSaffronVillas, parseSaffronOffers, SAFFRON_API } from '../parsers/saffronStays';
 import {
   agodaCitySlugs, extractAgodaCityId, extractAgodaPageConfig, agodaGateHeaders,
   AGODA_CITY_SEARCH_QUERY, buildAgodaCitySearchVars, extractAgodaProperties,
@@ -446,6 +447,35 @@ export const hotelsWorker: VerticalWorker = {
     {
       // OYO hotels — owner-mandated source (17 Oct). City SEO listing pages are full
       // SSR: window.__PRELOADED_STATE__ carries 20 real per-night prices + images.
+      // SaffronStays — owner-mandated source (17 Oct). Boutique villas; search API
+      // captured via stealth CDP interception, replayed browserless with curl_cffi.
+      sourceId: 'w_hotels_saffronstays',
+      name: 'Hotels worker: SaffronStays live villa rates',
+      priority: 10,
+      maxPerMinute: 6,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const r = await cffiFetch(SAFFRON_API, {
+          impersonate: 'chrome', method: 'POST', timeoutMs: 25_000,
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/plain, */*',
+            Origin: 'https://www.saffronstays.com',
+            Referer: 'https://www.saffronstays.com/',
+          },
+          body: JSON.stringify(saffronSearchBody(city)),
+        });
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `SaffronStays search-advance HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
+        let body: any = null;
+        try { body = JSON.parse(r.body); } catch { /* fallthrough */ }
+        const villas = Array.isArray(body?.data) ? parseSaffronVillas(body.data) : [];
+        if (!villas.length) throw new AcquisitionError('EMPTY_RESPONSE', `SaffronStays returned no villas for "${city}"`);
+        return parseSaffronOffers(villas, ctx.source, city);
+      },
+    },
+    {
       sourceId: 'w_hotels_oyo',
       name: 'Hotels worker: OYO live per-night rates',
       priority: 8,
