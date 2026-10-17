@@ -24453,7 +24453,10 @@ function offerToComparisonItem(o) {
   const attrs = o.attributes || {};
   const specs = {};
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, " ")] = String(v);
-  if (String(o.vertical) === "flights" && o.brand && !specs["airline"]) {
+  const brandName2 = o.brand ? String(o.brand).toLowerCase().trim() : "";
+  const sellerNames = [o.seller, o.vendor].map((v) => v ? String(v).toLowerCase().trim() : "").filter(Boolean);
+  const brandIsSeller = brandName2 && sellerNames.includes(brandName2);
+  if (String(o.vertical) === "flights" && o.brand && !specs["airline"] && !brandIsSeller) {
     specs["airline"] = String(o.brand);
   }
   if (o.travel?.route) specs["Route"] = String(o.travel.route);

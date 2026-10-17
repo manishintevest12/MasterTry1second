@@ -288,7 +288,10 @@ function offerToComparisonItem(o: any) {
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, ' ')] = String(v);
   // Owner 17 Oct: flight cards must show the OPERATING AIRLINE name alongside the
   // selling website (Ixigo/Yatra/EMT...). Airline lives on the offer's brand field.
-  if (String(o.vertical) === 'flights' && o.brand && !specs['airline']) {
+  const brandName = o.brand ? String(o.brand).toLowerCase().trim() : '';
+  const sellerNames = [o.seller, o.vendor].map((v) => (v ? String(v).toLowerCase().trim() : '')).filter(Boolean);
+  const brandIsSeller = brandName && sellerNames.includes(brandName);
+  if (String(o.vertical) === 'flights' && o.brand && !specs['airline'] && !brandIsSeller) {
     specs['airline'] = String(o.brand);
   }
   if (o.travel?.route) specs['Route'] = String(o.travel.route);
