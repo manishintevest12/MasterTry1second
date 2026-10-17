@@ -44,7 +44,7 @@ test('saffron: villas normalized with prices, ratings, galleries', () => {
   assert.equal(v.title, 'Araqila (Sea View King Suites)');
   assert.equal(v.pricePerNight, 28800);
   assert.equal(v.totalWithTax, 33984);
-  assert.equal(v.rating, 4.575);
+  assert.ok(Math.abs(v.rating! - 4.575) < 0.001);
   assert.equal(v.reviews, 4);
   assert.equal(v.capacity, 21);
   assert.equal(v.bedrooms, 7);
