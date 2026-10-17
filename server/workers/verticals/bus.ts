@@ -55,7 +55,7 @@ export const busWorker: VerticalWorker = {
         try {
           const getJson = async (url: string): Promise<any> => {
             const s = Date.now();
-            const r = await ctx.fetch(url, { expectJson: true, timeoutMs: 8_000, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
+            const r = await ctx.fetch(url, { expectJson: true, timeoutMs: 12_000, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
             steps.push(`suggest=${r.latencyMs ?? Date.now() - s}ms/${r.status}`);
             if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `redBus suggestion HTTP ${r.status}`, r.status);
             try { return JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'redBus citySuggestion non-JSON'); }

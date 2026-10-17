@@ -287,7 +287,8 @@ export const groceryWorker: VerticalWorker = {
         if (!pool.length) throw new AcquisitionError('EMPTY_RESPONSE', `Zepto rails had ${all.length} products, none matching "${term}" (search pages are app-side)`);
         const cityNote = cityLabel ? ` for ${cityLabel}` : '';
         return pool.slice(0, 16).map((p) => newRawItem(ctx.source, {
-          title: `${p.brand ? p.brand + ' ' : ''}${p.name}`.slice(0, 140),
+          // SSR names usually already carry the brand ("Amul Gold...") — never double-prefix.
+          title: `${p.brand && !p.name.toLowerCase().startsWith(p.brand.toLowerCase()) ? p.brand + ' ' : ''}${p.name}`.slice(0, 140),
           price: Math.round(p.price),
           listPrice: p.mrp && p.mrp > p.price ? Math.round(p.mrp) : undefined,
           currency: 'INR',
