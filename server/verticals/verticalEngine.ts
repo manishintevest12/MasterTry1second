@@ -108,14 +108,27 @@ function placeHit(text: string, side: { code?: string; city: string }): boolean 
   return !!((side.code && new RegExp(`\\b${side.code}\\b`, 'i').test(s)) || (side.city && (s.includes(side.city) || alias.some((a) => s.includes(a)))));
 }
 /** Keep only offers whose route matches the typed route (both ends). Offers with no route cannot prove relevance. */
+/** One side of an offer route vs the typed side. Offer routes keep their raw punctuation
+ * ("Chappan Dukan / MG Road, Indore") while the typed side is normalized, and city-level
+ * offers ("Indore to ...") are contained inside a typed locality. Normalize the offer
+ * endpoint, then accept containment in either direction (owner bug 17 Oct: 11 worker
+ * offers were silently dropped for locality-decorated routes). */
+function routeSideHit(rawSide: string, side: { code?: string; city: string }): boolean {
+  const s = normPlace(rawSide).city;
+  if (!s) return false;
+  if (placeHit(s, side)) return true;
+  const t = side.city || '';
+  if (!t) return false;
+  return s === t || t.includes(s) || s.includes(t);
+}
 export function routeFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   const rt = parseRouteQuery(query.rawQuery || '');
   if (!rt) return offers;
   return offers.filter((o) => {
-    const r = String(o.travel?.route || o.attributes?.['route'] || '').toLowerCase();
+    const r = String(o.travel?.route || o.attributes?.['route'] || '');
     if (!r) return false;
     const [src = '', dst = ''] = r.split(/\s+(?:to|→|->)\s+/);
-    return placeHit(src, rt.from) && placeHit(dst, rt.to);
+    return routeSideHit(src, rt.from) && routeSideHit(dst, rt.to);
   });
 }
 /** Keep only offers located in the typed city/destination (hotels, food, grocery browse). */

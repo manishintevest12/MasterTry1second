@@ -20601,14 +20601,22 @@ function placeHit(text, side) {
   const alias = Object.entries(PLACE_ALIASES).filter(([, v]) => v === side.city).map(([k]) => k);
   return !!(side.code && new RegExp(`\\b${side.code}\\b`, "i").test(s) || side.city && (s.includes(side.city) || alias.some((a) => s.includes(a))));
 }
+function routeSideHit(rawSide, side) {
+  const s = normPlace2(rawSide).city;
+  if (!s) return false;
+  if (placeHit(s, side)) return true;
+  const t = side.city || "";
+  if (!t) return false;
+  return s === t || t.includes(s) || s.includes(t);
+}
 function routeFilter(offers, query) {
   const rt = parseRouteQuery(query.rawQuery || "");
   if (!rt) return offers;
   return offers.filter((o) => {
-    const r = String(o.travel?.route || o.attributes?.["route"] || "").toLowerCase();
+    const r = String(o.travel?.route || o.attributes?.["route"] || "");
     if (!r) return false;
     const [src2 = "", dst = ""] = r.split(/\s+(?:to|→|->)\s+/);
-    return placeHit(src2, rt.from) && placeHit(dst, rt.to);
+    return routeSideHit(src2, rt.from) && routeSideHit(dst, rt.to);
   });
 }
 function destinationFilter(offers, query) {

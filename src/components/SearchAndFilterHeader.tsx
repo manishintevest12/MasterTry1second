@@ -32,6 +32,7 @@ import { LocationPickerModal } from './LocationPickerModal';
 const MapPinPicker = React.lazy(() => import('./MapPinPicker'));
 import { PINCODE_DATABASE } from '../utils/locationHelper';
 import { AutocompleteInput } from './AutocompleteInput';
+import { LocationHintInput } from './LocationHintInput';
 import { VoiceSearchButton } from './VoiceSearchButton';
 import { AUTOCOMPLETE_CATEGORIES } from '../data/autocompleteData';
 import { CategoryPickerDropdown } from './CategoryPickerDropdown';
@@ -185,6 +186,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
   // 9. Cab
   const [cabDrop, setCabDrop] = useState<string>('DLF Cyber City, Gurugram (122002)');
+  // Uber-style editable pickup (owner request 17 Oct): null = follow the profile/GPS location.
+  const [cabPickup, setCabPickup] = useState<string | null>(null);
+  const cabPickupValue = cabPickup !== null ? cabPickup : `${userLocation.locality}, ${userLocation.city}`;
   const [cabScheduleDate, setCabScheduleDate] = useState<string>('Today (Ride Now)');
 
   /** Backend route parsers need "<from> to <to>"; a bare destination can never resolve a route. */
@@ -233,8 +237,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
 
   const handleSwapCab = () => {
     // swap pickup and drop
-    const prevLocality = userLocation.locality;
-    setCabDrop(prevLocality);
+    const prevPickup = cabPickupValue;
+    setCabPickup(cabDrop);
+    setCabDrop(prevPickup);
   };
 
   const handleSwapBus = () => {
@@ -605,43 +610,47 @@ const handleSelectJourneyDate = (formattedDate: string) => {
             </div>
 
             <div className="bg-slate-900 rounded-2xl p-2.5 border border-slate-800 grid grid-cols-1 md:grid-cols-12 gap-2 text-white items-center">
-              {/* Pickup Pin with GPS Lock Button directly embedded */}
-              <div className="md:col-span-5 flex items-center bg-slate-800 rounded-xl px-3 py-2 text-xs border border-slate-700">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 mr-2.5 shrink-0" />
-                <div className="flex-1 min-w-0 mr-2">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block">
-                    Pickup Location (GPS / Pin)
-                  </span>
-                  <input
-                    type="text"
-                    readOnly
-                    value={`${userLocation.locality} (${userLocation.pincode})`}
-                    onClick={() => handleOpenLocationModal('cab')}
-                    className="w-full bg-transparent focus:outline-hidden font-bold text-white cursor-pointer truncate"
-                  />
-                </div>
-
-                {/* Instant GPS Pickup Button */}
-                <button
-                  type="button"
-                  title="Detect Exact GPS Pickup Point"
-                  onClick={detectGpsLocation}
-                  disabled={isGpsLocating}
-                  className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border border-emerald-500/30"
-                >
-                  <Crosshair className={`w-3 h-3 ${isGpsLocating ? 'animate-spin' : ''}`} />
-                  <span>{userLocation.isGps ? 'GPS Locked' : 'Use GPS'}</span>
-                </button>
-                <button
-                  type="button"
-                  title="Pick exact pickup point on the map (drag and drop)"
-                  onClick={() => setMapPickerMode('pickup')}
-                  className="ml-1 px-2 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border border-red-500/30"
-                >
-                  <MapPin className="w-3 h-3" />
-                  <span>Map</span>
-                </button>
-              </div>
+              {/* Pickup — Uber-style hint typeahead (screenshot reference 17 Oct) with GPS + Map actions */}
+              <LocationHintInput
+                value={cabPickupValue}
+                mode="pickup"
+                label="Pickup Location"
+                placeholder="Enter pickup point (e.g. Chappan Dukan)..."
+                onChange={(v) => setCabPickup(v)}
+                onSelect={(short) => {
+                  setCabPickup(short);
+                  const q = routeQuery(short, cabDrop);
+                  setSearchQuery(q);
+                  triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+                }}
+                onEnter={() => {
+                  const q = routeQuery(cabPickupValue, cabDrop);
+                  setSearchQuery(q);
+                  triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+                }}
+                className="md:col-span-5"
+                rightExtra={<>
+                  <button
+                    type="button"
+                    title="Detect Exact GPS Pickup Point"
+                    onClick={detectGpsLocation}
+                    disabled={isGpsLocating}
+                    className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border border-emerald-500/30"
+                  >
+                    <Crosshair className={`w-3 h-3 ${isGpsLocating ? 'animate-spin' : ''}`} />
+                    <span className="hidden lg:inline">{userLocation.isGps ? 'GPS Locked' : 'Use GPS'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    title="Pick exact pickup point on the map (drag and drop)"
+                    onClick={() => setMapPickerMode('pickup')}
+                    className="ml-1 px-2 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border border-red-500/30"
+                  >
+                    <MapPin className="w-3 h-3" />
+                    <span className="hidden lg:inline">Map</span>
+                  </button>
+                </>}
+              />
 
               {/* Swap */}
               <div className="flex justify-center md:col-span-1">
@@ -654,56 +663,55 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                 </button>
               </div>
 
-              {/* Drop Pin with Autocomplete */}
-              <div className="md:col-span-4 flex items-center bg-slate-800 rounded-xl px-3 py-1.5 text-xs border border-slate-700">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 mr-2.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="text-[9px] text-slate-400 uppercase font-bold block mb-0.5">
-                    Drop Destination (Hotspots & Airports)
-                  </span>
+              {/* Drop — Uber-style hint typeahead (screenshot reference 17 Oct) with voice + map actions */}
+              <LocationHintInput
+                value={cabDrop}
+                mode="drop"
+                label="Drop Destination"
+                placeholder="Enter drop destination (e.g. Martand Chowk, IGI Airport)..."
+                onChange={(v) => {
+                  setCabDrop(v);
+                  setSearchQuery(v);
+                }}
+                onSelect={(short) => {
+                  setCabDrop(short);
+                  const q = routeQuery(cabPickupValue, short);
+                  setSearchQuery(q);
+                  triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+                }}
+                onEnter={() => {
+                  const q = routeQuery(cabPickupValue, cabDrop);
+                  setSearchQuery(q);
+                  triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+                }}
+                className="md:col-span-4"
+                rightExtra={<>
                   <VoiceSearchButton
-  onTranscript={(text) => {
-    setCabDrop(text);
-    const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, text);
-    setSearchQuery(q);
-    triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
-  }}
-  accent="dark"
-/>
-                  <AutocompleteInput
-                    value={cabDrop}
-                    onChange={(val) => {
-                      setCabDrop(val);
-                      setSearchQuery(val);
-                    }}
-                    onSelect={(val) => {
-                      setCabDrop(val);
-                      const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, val);
+                    onTranscript={(text) => {
+                      setCabDrop(text);
+                      const q = routeQuery(cabPickupValue, text);
                       setSearchQuery(q);
                       triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
                     }}
-                    type="location"
-                    placeholder="Enter drop destination (e.g. DLF Cyber City, IGI Airport)..."
-                    className="w-full"
-                    inputClassName="text-xs font-bold text-white placeholder:text-slate-500"
+                    accent="dark"
                   />
-                </div>
-                <button
-                  type="button"
-                  title="Pick exact drop point on the map (drag and drop)"
-                  onClick={() => setMapPickerMode('drop')}
-                  className="p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors cursor-pointer shrink-0 border border-red-500/30"
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    title="Pick exact drop point on the map (drag and drop)"
+                    onClick={() => setMapPickerMode('drop')}
+                    className="ml-1 p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors cursor-pointer shrink-0 border border-red-500/30"
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                  </button>
+                </>}
+              />
 
               {/* Compare Fares Button */}
               <div className="md:col-span-2">
                 <button
                   type="button"
                   onClick={() => {
-                    const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, cabDrop);
+                    const q = routeQuery(cabPickupValue, cabDrop);
                     setSearchQuery(q);
                     triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
                   }}

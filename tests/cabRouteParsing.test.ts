@@ -57,3 +57,28 @@ test('routeFilter: keeps app-only (Rapido) rows for a pincode route — both end
   assert.ok(kept.some((o) => o.seller === 'Ola'), 'Ola priced row survives');
   assert.ok(!kept.some((o) => o.seller === 'X'), 'a default-route offer for a different route is filtered out');
 });
+
+test('routeFilter: locality-decorated UI routes survive — offer route keeps punctuation, typed side is normalized (owner bug 17 Oct: 11 offers, 0 shown)', () => {
+  const query = { rawQuery: 'Chappan Dukan / MG Road, Indore to Martand Chowk, Indore' } as unknown as ParsedQuery;
+  const ola = {
+    vertical: 'cab', title: 'Chappan to Martand Ola Auto', seller: 'Ola',
+    travel: { route: 'chappan dukan / mg road, indore to martand chowk, indore' },
+  } as unknown as NormalizedOffer;
+  const rapido = {
+    vertical: 'cab', title: 'Chappan to Martand Rapido Bike', seller: 'Rapido',
+    travel: { route: 'Chappan Dukan / MG Road, Indore → Martand Chowk, Indore' },
+  } as unknown as NormalizedOffer;
+  const stranger = {
+    vertical: 'cab', title: 'Indore to Indore Jn. UberX', seller: 'Uber',
+    travel: { route: 'indore to indore jn.' },
+  } as unknown as NormalizedOffer;
+  const wrongRoute = {
+    vertical: 'cab', title: 'Indore to Bhopal cab', seller: 'X',
+    travel: { route: 'indore to bhopal' },
+  } as unknown as NormalizedOffer;
+  const kept = routeFilter([ola, rapido, stranger, wrongRoute], query);
+  assert.ok(kept.some((o) => o.seller === 'Ola'), 'Ola row with raw-punctuation route survives');
+  assert.ok(kept.some((o) => o.seller === 'Rapido'), 'Rapido arrow-separated route survives');
+  assert.ok(!kept.some((o) => o.seller === 'Uber'), 'an offer for a different intra-city route is filtered out');
+  assert.ok(!kept.some((o) => o.seller === 'X'), 'a different-route offer is filtered out');
+});
