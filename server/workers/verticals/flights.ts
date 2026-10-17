@@ -18,6 +18,7 @@ import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems } from '../parsers/viaFlights';
+import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
 import { usdToInrRate } from '../../common/fxRates';
@@ -341,12 +342,83 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
+      // Yatra FULL PER-FLIGHT (17 Oct 2026): the air-service JSON API behind the
+      // Angular SRP is OPEN browserless (no cookie/sensor handshake; verified
+      // from datacenter IPs). Flow: GET /air-service/dom2/trigger (mints the
+      // searchId AND returns the first result batch), then per-airline polls
+      // /air-service/dom2/poll?polling_id=<searchId>_<supplier> for 5 suppliers.
+      // Fallback: the 60-day lowest-fare calendar. Discovered via live-browser
+      // network capture; replayed and verified with curl_cffi only.
       sourceId: 'w_flights_yatra',
-      name: 'Flights worker: Yatra flights (probe)',
-      priority: 16,
-      run: async () => {
-        await cffiFetch('https://flight.yatra.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Yatra flight search is a JS shell to browserless HTTP (HTTP/2 stream reset); fares are session-gated. Cheap-flights SEO pages return 404.');
+      name: 'Flights worker: Yatra live per-flight search (air-service API)',
+      priority: 8,
+      maxPerMinute: 3,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return [];
+        // The dom2 service is the domestic pipeline; non-IN routes are honestly skipped.
+        if (!IATA[rt.from.toLowerCase().trim()] || !IATA[rt.to.toLowerCase().trim()]) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const routeKey = `${from}${to}${dep.replace(/-/g, '')}`;
+        const srp = yatraSrpUrl(from, to, dep);
+        const hdrs = {
+          Accept: 'application/json, text/plain, */*',
+          Referer: 'https://flight.yatra.com/air-search-ui/dom2/trigger',
+          'X-Requested-With': 'XMLHttpRequest',
+        };
+
+        // 1) trigger = search init + first batch
+        const t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), { impersonate: 'chrome', timeoutMs: 30_000, headers: hdrs });
+        if (t0.status === 403 || t0.status === 429) {
+          throw new AcquisitionError(t0.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Yatra air-service edge-blocked (HTTP ${t0.status}).`, t0.status);
+        }
+        if (t0.status >= 500) throw new AcquisitionError('SERVER_ERROR', `Yatra air-service HTTP ${t0.status}`, t0.status);
+        if (t0.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Yatra air-service HTTP ${t0.status}: ${(t0.body || '').slice(0, 120)}`, t0.status);
+
+        let items = parseYatraBatch(t0.body, ctx.source, srp, routeKey, rt.from, rt.to);
+        // 2) per-airline polls (each returns one more batch)
+        const sidMatch = t0.body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        const sid = sidMatch ? sidMatch[0] : '';
+        if (sid) {
+          for (const sup of YATRA_SUPPLIERS) {
+            try {
+              const r = await cffiFetch(
+                `https://flight.yatra.com/air-service/dom2/poll?polling_id=${sid}_${sup}&_i=${Date.now()}`,
+                { impersonate: 'chrome', timeoutMs: 20_000, headers: hdrs },
+              );
+              if (r.status === 200) {
+                items = items.concat(parseYatraBatch(r.body, ctx.source, srp, routeKey, rt.from, rt.to));
+              }
+            } catch { /* soft-fail: keep batches already acquired */ }
+          }
+        }
+        // dedupe by sku and cap
+        const bySku = new Map<string, any>();
+        for (const it of items) bySku.set(String(it.identifiers?.sku || it.title), it);
+        const deduped = [...bySku.values()].sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+        if (deduped.length) return deduped.slice(0, 40);
+
+        // 3) calendar fallback (route with no live batch right now)
+        try {
+          const to2 = new Date(Date.now() + 60 * 86400_000).toISOString().slice(0, 10);
+          const c = await cffiFetch(yatraCalendarUrl(from, to, dep.slice(0, 10), to2), { impersonate: 'chrome', timeoutMs: 20_000, headers: hdrs });
+          if (c.status === 200) {
+            const cal = yatraCalendarItems(c.body, ctx.source, rt.from, rt.to, from, to, dep);
+            if (cal.length) return cal.slice(0, 10);
+          }
+        } catch { /* fall through */ }
+
+        // An empty 200 for a route Yatra doesn't fly is a successful "no service
+        // here" answer — return [] (circuit-safe), never fabricate.
+        return [];
       },
     },
     {

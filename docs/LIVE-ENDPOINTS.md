@@ -262,6 +262,22 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   booking product (verified 17 Oct: /flights generic page, /flight-search and
   /gp/flight-search 404, no booking widget on the domain). Honest no-product
   verdict, never fabricated.
+- **Yatra flights** [yatraFlights.ts] — LIVE FULL PER-FLIGHT (17 Oct): the
+  air-service JSON API behind the Angular SRP is OPEN browserless (no cookies,
+  no sensor, no guest token; verified from datacenter IPs). Flow: GET
+  flight.yatra.com/air-service/dom2/trigger?ADT=1&...&destination=BOM&flight_depart_date=25/10/2026
+  &origin=DEL&type=O&unique=<ms> mints the searchId AND returns the first batch
+  (resultData[0].fltSchedule[DELBOM20261025][], fareDetails[][].O.ADT.tf INR);
+  then per-airline polls GET /air-service/dom2/poll?polling_id=<searchId>_<QPAPI|6EAPI|AIRASIAAPI|1AWS4|SGAPI>
+  add the remaining batches (6E poll alone carries ~180 flights). Fallback:
+  GET /lowest-fare-service/dom2/get-fare?origin&destination&from&to(dd-MM-yyyy,~60d)&tripType=O&airlines=all
+  = per-day per-airline lowest fare with ow[] flight number/times. Seller=Yatra
+  (ticket-selling-site policy), deeplink to Yatra's own air-search-ui SRP URL.
+  Worker w_flights_yatra, priority 8: trigger -> 5 polls -> cheapest-40 dedupe,
+  calendar fallback, empty 200 for unserved routes = success. Verified live:
+  DEL-BOM 25 Oct 40 offers (Air India Express Rs6476, Akasa QP-1805 Rs6675,
+  IndiGo 6E-353 Rs6845; matches EMT/Ixigo price levels). Discovered via live-browser
+  network capture (Browserbase+CDP), replayed/verified curl_cffi-only.
 - Goibibo flights — BLOCKED: www.goibibo.com/flights/* = HTTP/2 stream reset or
   504 AkamaiGHost (edge accepted, origin tarpits); forced HTTP/1.1 hangs;
   m.goibibo.com 503; flights.goibibo.com 403 "Access Denied" (Akamai) on all
@@ -269,7 +285,7 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   gfs/fss/gateway/flight-scanapi hosts do not resolve. Probe w_flights_goibibo
   attempts the live SRP URL each search. Both MMT-group sites: retest only from
   a new IP (production Hostinger pull) — gate is IP-reputation based.
-Akamai/Bot-Manager: MMT, Goibibo, Yatra (HTTP/2 reset), Agoda (graphql gate
+Akamai/Bot-Manager: MMT, Goibibo, Agoda (graphql gate
 headers cracked but needs runtime-built document), Trip.com, Marriott, Hilton,
 Trivago (/gw/graphql), Kayak, Skyscanner, Zepto (Kong 429), Flipkart Minutes,
 Meesho, Instamart search/collection (202), api-prod-flight host search,

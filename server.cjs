@@ -4335,19 +4335,19 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
     }
   }
   const out = [];
-  for (const [airlineName, rs] of matched) {
+  for (const [airlineName2, rs] of matched) {
     const direct = rs.filter((r) => r.stops === 0).length;
     const r0 = rs[0];
     const srcAp = fromAirports.find((a) => a.iata === r0.srcIata);
     const dstAp = toAirports.find((a) => a.iata === r0.dstIata);
     out.push(newRawItem(source, {
-      title: `${airlineName}: ${srcAp.city} (${srcAp.iata}) \u2192 ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: canonicalAirlineName(airlineName).slice(0, 100),
-      sellerUrl: airlineSiteFor(airlineName) || sourceUrl,
+      title: `${airlineName2}: ${srcAp.city} (${srcAp.iata}) \u2192 ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
+      seller: canonicalAirlineName(airlineName2).slice(0, 100),
+      sellerUrl: airlineSiteFor(airlineName2) || sourceUrl,
       currency: "INR",
       travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...date ? { date } : {}, seatType: "unknown" },
       attributes: {
-        airline: airlineName.slice(0, 100),
+        airline: airlineName2.slice(0, 100),
         ...r0.airlineIata ? { airline_code: r0.airlineIata } : {},
         from_iata: srcAp.iata,
         to_iata: dstAp.iata,
@@ -4357,7 +4357,7 @@ function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, 
       },
       evidence: {
         sourceUrl,
-        sourceReference: `${r0.srcIata}-${r0.dstIata}:${airlineName}`,
+        sourceReference: `${r0.srcIata}-${r0.dstIata}:${airlineName2}`,
         extractedFields: ["route", "airline", "airports"]
       }
     }));
@@ -5518,6 +5518,183 @@ var init_viaFlights = __esm({
     init_contract();
     VIA_BASE = "https://in.via.com";
     VIA_AUTH_TOKEN = "553f5767-373f-4d98-9e6d-08fa87400a42";
+  }
+});
+
+// server/workers/parsers/yatraFlights.ts
+function yatraTriggerUrl(from, to, depIso, countryFrom = "IN", countryTo = "IN") {
+  const [y, m, d] = depIso.split("-");
+  return `${YATRA_API}/air-service/dom2/trigger?ADT=1&CHD=0&INF=0&class=Economy&destination=${to}&destinationCountry=${countryTo}&flexi=0&flight_depart_date=${encodeURIComponent(`${d}/${m}/${y}`)}&hb=&noOfSegments=1&origin=${from}&originCountry=${countryFrom}&type=O&unique=${Date.now()}&viewName=normal`;
+}
+function yatraSrpUrl(from, to, depIso) {
+  const [y, m, d] = depIso.split("-");
+  return `${YATRA_API}/air-search-ui/dom2/trigger?flex=0&viewName=normal&source=fresco-flights&type=O&class=Economy&ADT=1&CHD=0&INF=0&noOfSegments=1&origin=${from}&originCountry=IN&destination=${to}&destinationCountry=IN&flight_depart_date=${encodeURIComponent(`${d}/${m}/${y}`)}&arrivalDate=`;
+}
+function yatraCalendarUrl(from, to, fromIso, toIso) {
+  const f = fromIso.split("-").reverse().join("-");
+  const t = toIso.split("-").reverse().join("-");
+  return `${YATRA_API}/lowest-fare-service/dom2/get-fare?origin=${from}&destination=${to}&from=${f}&to=${t}&tripType=O&airlines=all&_i=${Date.now()}&src=srp`;
+}
+function airlineName(code, map) {
+  const n = map?.[code];
+  if (typeof n === "string" && n.trim()) return n.trim();
+  const e = EMT_AIRLINES[code];
+  if (e?.name) return e.name;
+  return code;
+}
+function hhmm2(iso2, hm) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso2) ? `${iso2} ${hm}` : `${iso2} ${hm}`.trim();
+}
+function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
+  let root;
+  try {
+    root = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  if (typeof root === "string") {
+    try {
+      root = JSON.parse(root);
+    } catch {
+      return [];
+    }
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const batches = Array.isArray(root?.resultData) ? root.resultData : [root];
+  for (const batch of batches) {
+    if (!batch || typeof batch !== "object") continue;
+    if (String(batch.isError) === "1" && !batch.fltSchedule) continue;
+    const sched = batch.fltSchedule;
+    const airlineMap = sched?.airlineNames || {};
+    const flights = sched?.[routeKey];
+    const fares = batch.fareDetails?.[routeKey];
+    if (!Array.isArray(flights) || !fares) continue;
+    for (const f of flights) {
+      const od = Array.isArray(f?.OD) ? f.OD[0] : null;
+      if (!od) continue;
+      const fid = String(od.fid || f.ID || "");
+      if (!fid || seen.has(fid)) continue;
+      const segs = Array.isArray(od.FS) ? od.FS : [];
+      if (!segs.length) continue;
+      const fare = fares?.[fid]?.O?.ADT;
+      const price = Number(fare?.tf ?? fare?.ftf);
+      if (!Number.isFinite(price) || price <= 0) continue;
+      const first = segs[0];
+      const last = segs[segs.length - 1];
+      const ac = String(first.ac || "");
+      const fl = String(first.fl || "");
+      const name = airlineName(ac, airlineMap);
+      const stops = segs.length - 1;
+      const depDate = String(first.ddt || "").slice(0, 10);
+      const routeLabel = `${fromCity} \u2192 ${toCity}`;
+      seen.add(fid);
+      out.push(newRawItem(source, {
+        title: `${name} ${ac}${fl ? `-${fl}` : ""} ${routeLabel} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"}`.slice(0, 200),
+        brand: name,
+        price: Math.round(price),
+        currency: "INR",
+        seller: "Yatra",
+        sellerUrl: srpUrl,
+        travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: depDate },
+        attributes: {
+          airline: name,
+          flight_number: `${ac}${fl}`,
+          departure: hhmm2(depDate, String(first.dd || "")),
+          arrival: hhmm2(String(last.adt || "").slice(0, 10), String(last.ad || "")),
+          duration: String(od.tdu || first.du || ""),
+          stops: String(stops),
+          origin: String(first.dac || ""),
+          destination: String(last.aac || ""),
+          fare_basis: String(od.fareId || "Economy"),
+          price_basis: `total Yatra fare for 1 adult from Yatra's own flight search API on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`,
+          data_note: `Fare acquired from Yatra's official flight search API on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; booking continues on Yatra's own website.`,
+          image: ""
+        },
+        identifiers: { sku: fid },
+        evidence: {
+          sourceUrl: srpUrl,
+          extractedFields: ["fltSchedule[].OD[].FS[].ac/fl/dd/ad/dac/aac", "fareDetails[][].O.ADT.tf (INR)", "airlineNames"]
+        }
+      }));
+    }
+  }
+  return out;
+}
+function yatraCalendarItems(body, source, fromCity, toCity, fromCode, toCode, depIso) {
+  let root;
+  try {
+    root = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  if (typeof root === "string") {
+    try {
+      root = JSON.parse(root);
+    } catch {
+      return [];
+    }
+  }
+  const day = root?.day;
+  if (!day || typeof day !== "object") return [];
+  const exact = day[depIso];
+  let targetKey = null;
+  if (exact && exact.af && Object.keys(exact.af).length) targetKey = depIso;
+  else {
+    const upcoming = Object.keys(day).filter((k) => k > depIso).sort();
+    for (const k of upcoming) {
+      if (day[k]?.af && Object.keys(day[k].af).length) {
+        targetKey = k;
+        break;
+      }
+    }
+  }
+  if (!targetKey) return [];
+  const dateLabel = targetKey === depIso ? `on ${targetKey}` : `(cheapest upcoming, ${targetKey})`;
+  const srp = yatraSrpUrl(fromCode, toCode, targetKey);
+  const items = [];
+  for (const [code, af] of Object.entries(day[targetKey].af)) {
+    const price = Number(af?.tf);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const ow = Array.isArray(af.ow) ? af.ow[0] : null;
+    const name = String(ow?.an || EMT_AIRLINES[code]?.name || code);
+    const fl = String(ow?.fl || "");
+    const depT = String(ow?.ddt || "").slice(11, 16);
+    const arrT = String(ow?.adt || "").slice(11, 16);
+    items.push(newRawItem(source, {
+      title: `${name} ${code}${fl ? `-${fl}` : ""} ${fromCity} \u2192 ${toCity} ${dateLabel} from \u20B9${Math.round(price)}`.slice(0, 200),
+      brand: name,
+      price: Math.round(price),
+      currency: "INR",
+      seller: "Yatra",
+      sellerUrl: srp,
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: targetKey },
+      attributes: {
+        airline: name,
+        flight_number: `${code}${fl}`,
+        ...depT ? { departure: depT } : {},
+        ...arrT ? { arrival: arrT } : {},
+        fare_class: `lowest ${name} fare on Yatra's fare calendar for this route`,
+        price_basis: `Yatra lowest-fare calendar value on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`,
+        data_note: `Fare acquired from Yatra's official fare calendar on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}; booking continues on Yatra's own website.`,
+        image: ""
+      },
+      identifiers: { sku: `yatra-cal-${fromCode}-${toCode}-${targetKey}-${code}` },
+      evidence: {
+        sourceUrl: yatraCalendarUrl(fromCode, toCode, targetKey, targetKey),
+        extractedFields: ["day[][].af[].tf (INR)", "day[][].af[].ow[].fl/ddt/adt"]
+      }
+    }));
+  }
+  return items;
+}
+var YATRA_API, YATRA_SUPPLIERS;
+var init_yatraFlights = __esm({
+  "server/workers/parsers/yatraFlights.ts"() {
+    init_contract();
+    init_emtFareCalendar();
+    YATRA_API = "https://flight.yatra.com";
+    YATRA_SUPPLIERS = ["QPAPI", "6EAPI", "AIRASIAAPI", "1AWS4", "SGAPI"];
   }
 });
 
@@ -9537,6 +9714,7 @@ var init_flights = __esm({
     init_indigoFlights();
     init_akasaFlights();
     init_viaFlights();
+    init_yatraFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
     init_fxRates();
@@ -9815,12 +9993,73 @@ var init_flights = __esm({
           }
         },
         {
+          // Yatra FULL PER-FLIGHT (17 Oct 2026): the air-service JSON API behind the
+          // Angular SRP is OPEN browserless (no cookie/sensor handshake; verified
+          // from datacenter IPs). Flow: GET /air-service/dom2/trigger (mints the
+          // searchId AND returns the first result batch), then per-airline polls
+          // /air-service/dom2/poll?polling_id=<searchId>_<supplier> for 5 suppliers.
+          // Fallback: the 60-day lowest-fare calendar. Discovered via live-browser
+          // network capture; replayed and verified with curl_cffi only.
           sourceId: "w_flights_yatra",
-          name: "Flights worker: Yatra flights (probe)",
-          priority: 16,
-          run: async () => {
-            await cffiFetch("https://flight.yatra.com/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Yatra flight search is a JS shell to browserless HTTP (HTTP/2 stream reset); fares are session-gated. Cheap-flights SEO pages return 404.");
+          name: "Flights worker: Yatra live per-flight search (air-service API)",
+          priority: 8,
+          maxPerMinute: 3,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            const from = fromA.code;
+            const to = toA.code;
+            if (!from || !to) return [];
+            if (!IATA[rt.from.toLowerCase().trim()] || !IATA[rt.to.toLowerCase().trim()]) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const routeKey = `${from}${to}${dep.replace(/-/g, "")}`;
+            const srp = yatraSrpUrl(from, to, dep);
+            const hdrs = {
+              Accept: "application/json, text/plain, */*",
+              Referer: "https://flight.yatra.com/air-search-ui/dom2/trigger",
+              "X-Requested-With": "XMLHttpRequest"
+            };
+            const t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), { impersonate: "chrome", timeoutMs: 3e4, headers: hdrs });
+            if (t0.status === 403 || t0.status === 429) {
+              throw new AcquisitionError(t0.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Yatra air-service edge-blocked (HTTP ${t0.status}).`, t0.status);
+            }
+            if (t0.status >= 500) throw new AcquisitionError("SERVER_ERROR", `Yatra air-service HTTP ${t0.status}`, t0.status);
+            if (t0.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Yatra air-service HTTP ${t0.status}: ${(t0.body || "").slice(0, 120)}`, t0.status);
+            let items = parseYatraBatch(t0.body, ctx.source, srp, routeKey, rt.from, rt.to);
+            const sidMatch = t0.body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+            const sid = sidMatch ? sidMatch[0] : "";
+            if (sid) {
+              for (const sup of YATRA_SUPPLIERS) {
+                try {
+                  const r = await cffiFetch(
+                    `https://flight.yatra.com/air-service/dom2/poll?polling_id=${sid}_${sup}&_i=${Date.now()}`,
+                    { impersonate: "chrome", timeoutMs: 2e4, headers: hdrs }
+                  );
+                  if (r.status === 200) {
+                    items = items.concat(parseYatraBatch(r.body, ctx.source, srp, routeKey, rt.from, rt.to));
+                  }
+                } catch {
+                }
+              }
+            }
+            const bySku = /* @__PURE__ */ new Map();
+            for (const it of items) bySku.set(String(it.identifiers?.sku || it.title), it);
+            const deduped = [...bySku.values()].sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+            if (deduped.length) return deduped.slice(0, 40);
+            try {
+              const to2 = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
+              const c = await cffiFetch(yatraCalendarUrl(from, to, dep.slice(0, 10), to2), { impersonate: "chrome", timeoutMs: 2e4, headers: hdrs });
+              if (c.status === 200) {
+                const cal = yatraCalendarItems(c.body, ctx.source, rt.from, rt.to, from, to, dep);
+                if (cal.length) return cal.slice(0, 10);
+              }
+            } catch {
+            }
+            return [];
           }
         },
         {
