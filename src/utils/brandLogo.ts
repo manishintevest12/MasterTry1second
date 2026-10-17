@@ -11,6 +11,11 @@ const AIRLINE_NAME_TO_IATA: Record<string, string> = {
   'thai airways': 'TG', 'british airways': 'BA', 'lufthansa': 'LH', 'air arabia': 'G9', 'flydubai': 'FZ',
   'oman air': 'WY', 'saudia': 'SV', 'turkish airlines': 'TK', 'malaysia airlines': 'MH', 'airasia': 'AK',
   'cathay pacific': 'CX', 'virgin atlantic': 'VS', 'klm': 'KL', 'air france': 'AF', 'kuwait airways': 'KU',
+  'gulf air': 'GF', 'royal jordanian': 'RJ', 'jazeera airways': 'J9', 'srilankan': 'UL', 'sri lankan airlines': 'UL',
+  'maldivian': 'Q2', 'thai airasia': 'FD', 'nok air': 'DD', 'ethiopian': 'ET', 'egyptair': 'MS',
+  'kenya airways': 'KQ', 'el al': 'LY', 'air canada': 'AC', 'united': 'UA', 'american airlines': 'AA',
+  'air asia x': 'D7', 'batik air': 'ID', 'lion air': 'JT', 'scoot': 'TR', 'jetstar': 'JQ',
+  'air mauritius': 'MK', 'air seychelles': 'HM', 'us airways': 'US', 'air astana': 'KC',
 };
 
 const DOMAIN_BY_BRAND: Array<[RegExp, string]> = [
@@ -31,11 +36,23 @@ const DOMAIN_BY_BRAND: Array<[RegExp, string]> = [
   [/policybazaar/i, 'policybazaar.com'], [/bajaj/i, 'bajajfinserv.in'], [/money ?view/i, 'moneyview.in'],
   [/hdfc ergo/i, 'hdfcergo.com'], [/hdfc/i, 'hdfcbank.com'], [/acko/i, 'acko.com'], [/digit/i, 'godigit.com'],
   [/sbi/i, 'sbi.co.in'], [/icici/i, 'icicibank.com'], [/axis/i, 'axisbank.com'], [/kotak/i, 'kotak.com'],
+  // Owner 17 Oct: companies whose logos were resolving to generic/blank favicons.
+  [/bharat ?taxi/i, 'bharattaxi.com'], [/travelguru/i, 'travelguru.com'], [/kiwi/i, 'kiwi.com'],
+  [/expedia/i, 'expedia.com'], [/via\.com/i, 'via.com'], [/saffronstays/i, 'saffronstays.com'],
+  [/ditto/i, 'dittoinsurance.com'], [/insurancedekho/i, 'insurancedekho.com'], [/coverfox/i, 'coverfox.com'],
+  [/kreditbee/i, 'kreditbee.in'], [/(^|\b)navi(\b|$)/i, 'navi.com'], [/cardinsider/i, 'cardinsider.com'],
+  [/nykaa/i, 'nykaa.com'], [/snapdeal/i, 'snapdeal.com'], [/tata ?neu/i, 'tatacliq.com'],
+  [/oven ?story/i, 'ovenstorypizzas.com'], [/eatsure/i, 'eatsure.com'], [/blu?smart/i, 'bluSmart.in'],
+  [/indigo/i, 'goindigo.in'], [/spicejet/i, 'spicejet.com'], [/air india express/i, 'airindiaexpress.in'],
+  [/(^|\b)air india(\b|$)/i, 'airindia.in'], [/akasa/i, 'akasaair.com'], [/vistara/i, 'airvistara.com'],
+  [/emer?ging/i, 'emergingtravel.com'], [/alibaba/i, 'alibaba.com'],
 ];
 
 export function airlineIata(item: { specs?: Record<string, string>; provider?: string; subtitle?: string }): string | undefined {
   const code = item.specs?.['airline code'] || item.specs?.['airline_code'];
   if (code && /^[A-Za-z0-9]{2}$/.test(code)) return code.toUpperCase();
+  const alName = String(item.specs?.['airline'] || '').toLowerCase().trim();
+  if (alName && AIRLINE_NAME_TO_IATA[alName]) return AIRLINE_NAME_TO_IATA[alName];
   const name = (item.provider || item.subtitle || '').toLowerCase().trim();
   return AIRLINE_NAME_TO_IATA[name];
 }
@@ -55,7 +72,7 @@ export function brandLogoUrl(item: { vertical: string; specs?: Record<string, st
   let dom = brandDomain(name) || item.sellerQuotes?.[0]?.sourceDomain?.replace(/^www\./, '');
   // Data hosts (open-data mirrors, APIs) are never a brand: show initials instead of their favicon.
   if (dom && /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|osrm|project-osrm)\./i.test(dom)) dom = undefined;
-  return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=64` : undefined;
+  return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : undefined;
 }
 
 export function initials(name: string): string {

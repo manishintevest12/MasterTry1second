@@ -90,6 +90,7 @@ class _CompareScreenState extends State<CompareScreen> {
   final _q = TextEditingController();
   final _from = TextEditingController();
   final _to = TextEditingController();
+  final _foodAddr = TextEditingController(); // Food delivery address typeahead (owner 17 Oct)
   DateTime _date = DateTime.now().add(const Duration(days: 1));
   DateTime _checkOutDate = DateTime.now().add(const Duration(days: 3));
   String _hotelGuests = '2 Adults · 1 Room';
@@ -386,6 +387,8 @@ class _CompareScreenState extends State<CompareScreen> {
                 onPickOnMap: _pickOnMap,
                 onOpenPlacePicker: _openPlacePicker,
                 onOpenHotelPicker: _openHotelPicker,
+                foodAddr: _foodAddr,
+                onPickFoodAddress: _pickFoodAddress,
               ),
               const SizedBox(height: 12),
               _StatusStrip(res: _res, loading: _loading, error: _error, onRetry: () => _runSearch(force: true)),
@@ -418,6 +421,18 @@ class _CompareScreenState extends State<CompareScreen> {
         ),
       ),
     ]);
+  }
+
+  /// Owner 17 Oct (food): typed delivery address -> reverse-geocode -> city+pincode.
+  Future<void> _pickFoodAddress(Map<String, dynamic> place) async {
+    final lat = (place['lat'] as num?)?.toDouble();
+    final lng = (place['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return;
+    final rev = await AppState.instance.api.geoReverse(lat, lng);
+    final city = (rev?['city'] as String?)?.isNotEmpty == true ? rev!['city'] as String : _state.city;
+    final pin = (rev?['pincode'] as String?)?.isNotEmpty == true ? rev!['pincode'] as String : _state.pincode;
+    await _state.setLocation(city, pin);
+    if (mounted) await _runSearch(force: true);
   }
 
   Future<void> _pickCity() async {
@@ -728,6 +743,8 @@ class _SearchCard extends StatelessWidget {
     required this.onPickOnMap,
     required this.onOpenPlacePicker,
     required this.onOpenHotelPicker,
+    this.foodAddr,
+    this.onPickFoodAddress,
   });
 
   final VoidCallback onSwap;
@@ -747,6 +764,8 @@ class _SearchCard extends StatelessWidget {
   final Function(bool) onPickOnMap; // Uber-style map pin: true = pickup, false = drop
   final Function(bool) onOpenPlacePicker;
   final VoidCallback onOpenHotelPicker;
+  final TextEditingController? foodAddr;
+  final void Function(Map<String, dynamic>)? onPickFoodAddress;
 
   @override
   Widget build(BuildContext context) {
@@ -1140,7 +1159,16 @@ class _SearchCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Row(children: [Expanded(child: _CityChip(city: city, onTap: onPickCity))]),
+            if (meta.id == 'food' && foodAddr != null && onPickFoodAddress != null)
+              LocationHintField(
+                controller: foodAddr!,
+                label: 'Delivery address',
+                placeholder: 'Search delivery address...',
+                mode: 'pickup',
+                onSelect: (_, place) => onPickFoodAddress!(place),
+              )
+            else
+              Row(children: [Expanded(child: _CityChip(city: city, onTap: onPickCity))]),
           ],
         );
     }

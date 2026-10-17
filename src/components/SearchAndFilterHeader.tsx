@@ -33,6 +33,7 @@ const MapPinPicker = React.lazy(() => import('./MapPinPicker'));
 import { PINCODE_DATABASE } from '../utils/locationHelper';
 import { AutocompleteInput } from './AutocompleteInput';
 import { LocationHintInput } from './LocationHintInput';
+import { FoodLocationHint } from './FoodLocationHint';
 import { VoiceSearchButton } from './VoiceSearchButton';
 import { AUTOCOMPLETE_CATEGORIES } from '../data/autocompleteData';
 import { CategoryPickerDropdown } from './CategoryPickerDropdown';
@@ -189,6 +190,8 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   // Uber-style editable pickup (owner request 17 Oct): null = follow the profile/GPS location.
   const [cabPickup, setCabPickup] = useState<string | null>(null);
   const cabPickupValue = cabPickup !== null ? cabPickup : `${userLocation.locality}, ${userLocation.city}`;
+  // Food address typeahead (owner 17 Oct): null = show resolved locality from location state.
+  const [foodAddrText, setFoodAddrText] = React.useState<string | null>(null);
   const [cabScheduleDate, setCabScheduleDate] = useState<string>('Today (Ride Now)');
 
   /** Backend route parsers need "<from> to <to>"; a bare destination can never resolve a route. */
@@ -310,29 +313,19 @@ const handleSelectJourneyDate = (formattedDate: string) => {
             <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
               {/* Left Pill: Enter delivery location via Pincode or GPS */}
               <div className="relative md:w-96 shrink-0 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleOpenLocationModal('food')}
-                  className="w-full bg-white rounded-2xl px-4 py-3.5 flex items-center justify-between text-left shadow-md hover:shadow-lg transition-all cursor-pointer group"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <MapPin className="w-5 h-5 text-[#fc8019] fill-[#fc8019] shrink-0" />
-                    <div className="truncate">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-slate-900 truncate">
-                          {userLocation.locality}
-                        </span>
-                        <span className="text-[10px] font-mono font-bold bg-orange-100 text-orange-800 px-1 rounded-sm">
-                          {userLocation.pincode}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 block truncate">
-                        {userLocation.isGps ? '📍 Exact GPS Live' : userLocation.city}
-                      </span>
-                    </div>
-                  </div>
-                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0 ml-1 group-hover:text-slate-700" />
-                </button>
+                <FoodLocationHint
+                  value={foodAddrText !== null ? foodAddrText : userLocation.locality}
+                  onChange={setFoodAddrText}
+                  onPicked={(spot) => {
+                    setFoodAddrText(null); // show resolved locality from state
+                    setMapPickedLocation(spot as any);
+                    if (searchQuery) triggerLiveLocationScrape(searchQuery);
+                  }}
+                  onUseGps={detectGpsLocation}
+                  gpsBusy={isGpsLocating}
+                  placeholder={`Search delivery address near ${userLocation.city}...`}
+                  className="w-full"
+                />
 
                 {/* Instant 1-Click GPS Button */}
                 <button

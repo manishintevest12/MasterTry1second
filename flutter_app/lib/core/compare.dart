@@ -274,7 +274,7 @@ String offerKey(CompareItem it) {
       if (dep.isEmpty) return 'b|${_norm(it.title)}|${_norm(it.provider)}';
       return 'b|$op|$dep|$type';
     case 'cab':
-      return 'c|${_norm(it.spec('pickup'))}|${_norm(it.spec('drop'))}|${_norm(it.spec('vehicle type'))}|${_norm(it.spec('trip type'))}';
+      return 'c|${_norm(it.spec('pickup'))}|${_norm(it.spec('drop'))}|${_cabVehicleClass(it.spec('vehicle type').isNotEmpty ? it.spec('vehicle type') : it.title)}|${_norm(it.spec('trip type'))}';
     case 'food':
       return 'fd|${_tokens(it.title)}|${_norm(it.spec('restaurant'))}';
     case 'movie':
@@ -291,6 +291,17 @@ String offerKey(CompareItem it) {
     default:
       return 'e|${_tokens(it.title)}|${_norm(it.spec('brand'))}';
   }
+}
+
+/// Cab cards compare providers for the SAME vehicle CATEGORY (owner 17 Oct: "auto,
+/// bike, cab teeno... same card pr cheapest top pr baki neeche"). Ola Auto + Rapido
+/// Auto are one card, Ola Bike + Rapido Bike Taxi one card, every car class is the
+/// "cab" card — cheapest row on top, rest below, app-only rows last.
+String _cabVehicleClass(String v) {
+  final s = v.toLowerCase();
+  if (RegExp('bike|scoot').hasMatch(s)) return 'bike';
+  if (RegExp('auto|rickshaw').hasMatch(s)) return 'auto';
+  return 'cab';
 }
 
 List<OfferRow> _rowsFor(CompareItem it) {
@@ -310,7 +321,9 @@ List<OfferGroup> groupOffers(List<CompareItem> items) {
         groups[key] = OfferGroup(key, it.vertical, it, [row], row);
         continue;
       }
-      final dup = g.rows.indexWhere((r) => r.site == row.site);
+      // Cab: the same operator's vehicle VARIANTS (Ola Mini/Prime/SUV, BharatTaxi
+      // Dzire/Ertiga/Innova) all stay on the category card — no same-site collapse.
+      final dup = it.vertical == 'cab' ? -1 : g.rows.indexWhere((r) => r.site == row.site);
       if (dup >= 0) {
         final cur = g.rows[dup];
         final better = row.priceAvailable && (!cur.priceAvailable || row.price < cur.price);

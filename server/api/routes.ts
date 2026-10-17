@@ -286,6 +286,11 @@ function offerToComparisonItem(o: any) {
   const attrs: Record<string, string> = o.attributes || {};
   const specs: Record<string, string> = {};
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, ' ')] = String(v);
+  // Owner 17 Oct: flight cards must show the OPERATING AIRLINE name alongside the
+  // selling website (Ixigo/Yatra/EMT...). Airline lives on the offer's brand field.
+  if (String(o.vertical) === 'flights' && o.brand && !specs['airline']) {
+    specs['airline'] = String(o.brand);
+  }
   if (o.travel?.route) specs['Route'] = String(o.travel.route);
   if (o.travel?.date) specs['Date'] = String(o.travel.date);
   const fetchedAt = o.provenance?.fetchedAt;

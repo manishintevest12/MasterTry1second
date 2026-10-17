@@ -162,6 +162,35 @@ String _domainOf(String site) {
     'Savaari': 'savaari.com',
     'Bharat Taxi': 'bharattaxi.com',
     'CardInsider': 'cardinsider.com',
+    // Owner 17 Oct: sellers whose logos were missing/blank in the app.
+    'TravelGuru': 'travelguru.com',
+    'SaffronStays': 'saffronstays.com',
+    'Kiwi': 'kiwi.com',
+    'Expedia': 'expedia.com',
+    'Via': 'via.com',
+    'OYO': 'oyorooms.com',
+    'Treebo': 'treebo.com',
+    'Zingbus': 'zingbus.com',
+    'InDrive': 'indrive.com',
+    'QuickRide': 'quickride.in',
+    'Rapido': 'rapido.bike',
+    'Meru': 'meru.in',
+    'Ditto': 'dittoinsurance.com',
+    'InsuranceDekho': 'insurancedekho.com',
+    'Coverfox': 'coverfox.com',
+    'Acko': 'acko.com',
+    'Digit': 'godigit.com',
+    'KreditBee': 'kreditbee.in',
+    'Navi': 'navi.com',
+    'Nykaa': 'nykaa.com',
+    'Snapdeal': 'snapdeal.com',
+    'JioMart': 'jiomart.com',
+    'Pizza Hut': 'pizzahut.co.in',
+    'Oven Story': 'ovenstorypizzas.com',
+    'EatSure': 'eatsure.com',
+    'Air India': 'airindia.in',
+    'SpiceJet': 'spicejet.com',
+    'Vistara': 'airvistara.com',
   };
   for (final e in map.entries) {
     if (site.toLowerCase().contains(e.key.toLowerCase())) return e.value;
@@ -215,7 +244,10 @@ class TravelTile extends StatelessWidget {
     final seats = it.spec('seats').isNotEmpty ? it.spec('seats') : (it.spec('capacity').isNotEmpty ? it.spec('capacity') : '');
     final tripType = it.spec('trip type').isNotEmpty ? it.spec('trip type') : (it.spec('trip_type').isNotEmpty ? it.spec('trip_type') : '');
 
+    // Owner 17 Oct: airline name visible on flight cards alongside the seller website.
+    final airline = it.spec('airline');
     final specs = [
+      if (airline.isNotEmpty) airline,
       if (it.spec('flight number').isNotEmpty) it.spec('flight number'),
       if (durMin > 0) durMin < 60 ? '$durMin m' : '${durMin ~/ 60}h ${durMin % 60}m',
       if (it.spec('departure time').isNotEmpty) '${it.spec('departure time')} → ${it.spec('arrival time')}',

@@ -14993,7 +14993,7 @@ function uberDestMatchScore(routeEnd, destName) {
   if (!a.length || !b.length) return 0;
   let hits = 0;
   for (const t of a) if (b.includes(t) || b.some((x) => x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x)))) hits++;
-  return hits / Math.min(a.length, b.length);
+  return hits / a.length;
 }
 async function uberCityFares(slug, city) {
   const url = `https://www.uber.com/global/en/r/cities/${slug}/`;
@@ -15027,8 +15027,10 @@ async function uberSsrFallback(ctx, rt, reason) {
     fares = [];
   }
   let best = null;
+  const altCity = cityFromRouteText(rt.to).toLowerCase();
+  const altAllowed = altCity !== cityInfo.city.toLowerCase();
   for (const fare of fares) {
-    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), uberDestMatchScore(cityFromRouteText(rt.to), fare.dest));
+    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), altAllowed ? uberDestMatchScore(altCity, fare.dest) : 0);
     if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
   }
   if (!best) {
@@ -24451,6 +24453,9 @@ function offerToComparisonItem(o) {
   const attrs = o.attributes || {};
   const specs = {};
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, " ")] = String(v);
+  if (String(o.vertical) === "flights" && o.brand && !specs["airline"]) {
+    specs["airline"] = String(o.brand);
+  }
   if (o.travel?.route) specs["Route"] = String(o.travel.route);
   if (o.travel?.date) specs["Date"] = String(o.travel.date);
   const fetchedAt = o.provenance?.fetchedAt;

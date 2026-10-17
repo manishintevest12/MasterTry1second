@@ -51,6 +51,8 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
   const stopsRaw = spec(item, 'stops');
   const stops = stopsRaw !== undefined && stopsRaw !== '' ? (Number(stopsRaw) === 0 ? 'Direct' : `${stopsRaw} stop${Number(stopsRaw) > 1 ? 's' : ''}`) : undefined;
   const flightNo = spec(item, 'flight number');
+  // Owner 17 Oct: airline name must be visible on flight cards alongside the seller website.
+  const airlineName = item.vertical === 'flights' ? spec(item, 'airline') : undefined;
   const route = spec(item, 'Route', 'route') || '';
   const [from, to] = route.split(/\s*(?:→|to)\s*/i);
   const date = spec(item, 'Date', 'travel date', 'departure date');
@@ -78,7 +80,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-900 truncate">{carrier}</p>
             <p className="text-[11px] text-slate-500 truncate">
-              {[flightNo, busType, date].filter(Boolean).join(' · ') || item.subtitle}
+              {[airlineName, flightNo, busType, date].filter(Boolean).join(' · ') || item.subtitle}
             </p>
           </div>
           {(item as any).freshnessStatus === 'LIVE_VERIFIED' && (
@@ -147,7 +149,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
             <Heart className={`w-4 h-4 ${tracked ? 'fill-rose-500' : ''}`} />
           </button>
         </div>
-        {quote && <p className="hidden sm:block text-[10px] text-slate-400 text-right truncate">on {quote.sourceDomain || quote.sellerName}</p>}
+        {quote && <p className="hidden sm:block text-[10px] text-slate-400 text-right truncate">on {quote.sourceDomain || quote.sellerName}{airlineName && airlineName.toLowerCase() !== carrier.toLowerCase() && <> · <span className="font-semibold text-slate-600">{airlineName}</span></>}</p>}
       </div>
     </div>
 
