@@ -20,6 +20,7 @@ import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from 
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
+import { parseCleartripFlights, cleartripSearchUrl } from '../parsers/cleartripFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
 import { usdToInrRate } from '../../common/fxRates';
@@ -474,12 +475,53 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
+      // Cleartrip LIVE (17 Oct): GET /flight/search/v2 (desktop search API) returns
+      // the full fare matrix browserless — headers lifted from Cleartrip's own
+      // Next.js bundle (x-client-id cleartrip, channel desktop, caller UI,
+      // x-unified-header with uuid trackingId). 194 cards DEL-BOM with real INR
+      // totals, base+tax split, times, stops, live coupon text. Old "client-side
+      // only" verdict superseded.
       sourceId: 'w_flights_cleartrip',
-      name: 'Flights worker: Cleartrip flights (probe)',
-      priority: 17,
-      run: async () => {
-        await cffiFetch('https://www.cleartrip.com/flights/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip flight results render client-side only; the SEO route pages (/flights/<city>-<city>/) return 404 and the search results XHR requires a session.');
+      name: 'Flights worker: Cleartrip live fares (search v2 API)',
+      priority: 8,
+      maxPerMinute: 4,
+      timeoutMs: 35_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 5 * 86400_000).toISOString().slice(0, 10);
+        const dmy = dep.split('-').reverse().join('/');
+        const url = cleartripSearchUrl(fromA.code, toA.code, dmy);
+        let r;
+        try {
+          r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000, headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'x-client-id': 'cleartrip',
+            'x-source-type': 'Desktop',
+            channel: 'desktop',
+            'app-agent': 'DESKTOP',
+            caller: 'UI',
+            'x-unified-header': JSON.stringify({ platform: 'desktop', trackingId: crypto.randomUUID?.() || String(Date.now()), source: 'CLEARTRIP' }),
+            Referer: 'https://www.cleartrip.com/flights',
+          } });
+        } catch (e: any) {
+          throw new AcquisitionError('SERVER_ERROR', `Cleartrip search API unreachable: ${String(e?.message || e)}`);
+        }
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Cleartrip edge-blocked search v2 (HTTP ${r.status}).`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Cleartrip search v2 HTTP ${r.status}`, r.status);
+        const items = parseCleartripFlights(r.body, ctx.source, rt.from, rt.to, dep);
+        if (!items.length) return [];
+        items.sort((a: any, b: any) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+        return items.slice(0, 40);
       },
     },
     {

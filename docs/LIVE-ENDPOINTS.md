@@ -278,8 +278,16 @@ Akamai/Bot-Manager: MMT, Agoda (graphql gate
 headers cracked but needs runtime-built document), Trip.com, Marriott, Hilton,
 Trivago (/gw/graphql), Kayak, Skyscanner, Zepto (Kong 429), Flipkart Minutes,
 Meesho, Instamart search/collection (202), api-prod-flight host search,
-Cleartrip flights (all /flights/* paths 403 Akamai from datacenter IPs while
-/hotels/* paths pass — route-level SEO pages 403 too),
+Cleartrip flights SUPERSEDED 17 Oct: the desktop search API
+GET www.cleartrip.com/flight/search/v2?from=DEL&to=BOM&depart_date=25/10/2026&adults=1
+with headers (x-client-id cleartrip, x-source-type Desktop, channel desktop, app-agent
+DESKTOP, caller UI, x-unified-header {"platform":"desktop","trackingId":<uuid>,"source":"CLEARTRIP"})
+returns the FULL fare matrix browserless (194 cards DEL-BOM): cards.J1[] ->
+subTravelOptionIds[0] -> subTravelOptions[].fareIds[0] ->
+fares[].pricing.totalPricing.totalPrice INR (+totalBaseFare, totalTax, coupon message
+"₹934 off with BBDHDFC"). Worker w_flights_cleartrip priority 8, cheapest-40.
+Verified live: DEL-BOM Rs6675 Akasa, BLR-GOI Rs3176 (1 "IC" code card is Cleartrip's
+own data, shown raw), IDR-BHO 11 connecting offers,
 MMT bus 16KB shell, BMS quickbook, redBus protobuf capi. Akamai _abck sensor
 needs real JS execution — out of browserless scope; retry only from new IPs.
 

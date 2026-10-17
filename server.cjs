@@ -5842,6 +5842,78 @@ var init_goibiboFlights = __esm({
   }
 });
 
+// server/workers/parsers/cleartripFlights.ts
+function cleartripSearchUrl(from, to, depDmy) {
+  return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
+}
+function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
+  let d = null;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const cards = d?.cards?.J1;
+  const subOptions = d?.subTravelOptions || {};
+  const fares = d?.fares || {};
+  if (!Array.isArray(cards) || !cards.length) return [];
+  const out = [];
+  for (const c of cards) {
+    const s = c.summary || {};
+    const legs = Array.isArray(s.flights) ? s.flights : [];
+    if (!legs.length) continue;
+    const airlineCode = String(legs[0].airlineCode || "");
+    const flightNo2 = legs.map((l) => `${l.airlineCode || ""}${l.flightNumber || ""}`.trim()).join("/").slice(0, 40);
+    const st = Array.isArray(c.subTravelOptionIds) ? subOptions[c.subTravelOptionIds[0]] : null;
+    const fareId = st?.fareIds?.[0] || st?.cheapestFareId;
+    const fare = fareId ? fares[fareId] : null;
+    const price = Number(fare?.pricing?.totalPricing?.totalPrice);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const airlineName2 = EMT_AIRLINES[airlineCode]?.name || airlineCode || "Flight";
+    const stops = Number(s.stops || 0);
+    const depT = String(s.firstDeparture?.time || "").slice(11, 16);
+    const arrT = String(s.lastArrival?.time || "").slice(11, 16);
+    const dur = s.totalDuration ? `${String(s.totalDuration.hh || 0).padStart(2, "0")}h ${String(s.totalDuration.mm || 0).padStart(2, "0")}m` : "";
+    const couponMsg = String(fare?.pricing?.totalPricing?.message || "").trim();
+    const srpUrl = `https://www.cleartrip.com/flights/results?from=${s.firstDeparture?.airport?.code || ""}&to=${s.lastArrival?.airport?.code || ""}&depart_date=${depIso}&adults=1`;
+    out.push(newRawItem(source, {
+      title: `${airlineName2} ${flightNo2} ${fromCity} \u2192 ${toCity} ${stops ? `(${stops} stop${stops > 1 ? "s" : ""})` : "non-stop"}`.slice(0, 200),
+      brand: airlineName2,
+      price: Math.round(price),
+      currency: "INR",
+      seller: "Cleartrip",
+      sellerUrl: srpUrl,
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: depIso },
+      attributes: {
+        airline: airlineName2,
+        flight_number: flightNo2,
+        ...depT ? { departure: depT } : {},
+        ...arrT ? { arrival: arrT } : {},
+        stops: String(stops),
+        origin: String(s.firstDeparture?.airport?.code || ""),
+        destination: String(s.lastArrival?.airport?.code || ""),
+        ...dur ? { duration: dur } : {},
+        ...couponMsg ? { coupon: couponMsg } : {},
+        price_basis: `total Cleartrip fare for 1 adult (base \u20B9${fare?.pricing?.totalPricing?.totalBaseFare ?? "?"} + tax \u20B9${fare?.pricing?.totalPricing?.totalTax ?? "?"}) from Cleartrip's own search API on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`,
+        data_note: `Fare acquired from Cleartrip's flight search API on ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}${couponMsg ? `; active Cleartrip coupon: ${couponMsg}` : ""}; booking continues on Cleartrip's own website.`,
+        image: ""
+      },
+      identifiers: { sku: String(c.travelOptionId || flightNo2).slice(0, 120) },
+      evidence: {
+        sourceUrl: cleartripSearchUrl(s.firstDeparture?.airport?.code || "", s.lastArrival?.airport?.code || "", depIso.split("-").reverse().join("/")),
+        extractedFields: ["cards.J1[].summary", "subTravelOptions[].fareIds[0]", "fares[].pricing.totalPricing.totalPrice (INR)"]
+      }
+    }));
+  }
+  return out;
+}
+var init_cleartripFlights = __esm({
+  "server/workers/parsers/cleartripFlights.ts"() {
+    init_contract();
+    init_emtFareCalendar();
+  }
+});
+
 // server/workers/parsers/expediaFlightsQuery.ts
 var EXPEDIA_FLIGHTS_QUERY;
 var init_expediaFlightsQuery = __esm({
@@ -9860,6 +9932,7 @@ var init_flights = __esm({
     init_viaFlights();
     init_yatraFlights();
     init_goibiboFlights();
+    init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
     init_fxRates();
@@ -10272,12 +10345,51 @@ var init_flights = __esm({
           }
         },
         {
+          // Cleartrip LIVE (17 Oct): GET /flight/search/v2 (desktop search API) returns
+          // the full fare matrix browserless — headers lifted from Cleartrip's own
+          // Next.js bundle (x-client-id cleartrip, channel desktop, caller UI,
+          // x-unified-header with uuid trackingId). 194 cards DEL-BOM with real INR
+          // totals, base+tax split, times, stops, live coupon text. Old "client-side
+          // only" verdict superseded.
           sourceId: "w_flights_cleartrip",
-          name: "Flights worker: Cleartrip flights (probe)",
-          priority: 17,
-          run: async () => {
-            await cffiFetch("https://www.cleartrip.com/flights/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError("EMPTY_RESPONSE", "Cleartrip flight results render client-side only; the SEO route pages (/flights/<city>-<city>/) return 404 and the search results XHR requires a session.");
+          name: "Flights worker: Cleartrip live fares (search v2 API)",
+          priority: 8,
+          maxPerMinute: 4,
+          timeoutMs: 35e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
+            const dmy = dep.split("-").reverse().join("/");
+            const url = cleartripSearchUrl(fromA.code, toA.code, dmy);
+            let r;
+            try {
+              r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4, headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "x-client-id": "cleartrip",
+                "x-source-type": "Desktop",
+                channel: "desktop",
+                "app-agent": "DESKTOP",
+                caller: "UI",
+                "x-unified-header": JSON.stringify({ platform: "desktop", trackingId: crypto.randomUUID?.() || String(Date.now()), source: "CLEARTRIP" }),
+                Referer: "https://www.cleartrip.com/flights"
+              } });
+            } catch (e) {
+              throw new AcquisitionError("SERVER_ERROR", `Cleartrip search API unreachable: ${String(e?.message || e)}`);
+            }
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Cleartrip edge-blocked search v2 (HTTP ${r.status}).`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Cleartrip search v2 HTTP ${r.status}`, r.status);
+            const items = parseCleartripFlights(r.body, ctx.source, rt.from, rt.to, dep);
+            if (!items.length) return [];
+            items.sort((a, b) => (Number(a.price) || Infinity) - (Number(b.price) || Infinity));
+            return items.slice(0, 40);
           }
         },
         {
