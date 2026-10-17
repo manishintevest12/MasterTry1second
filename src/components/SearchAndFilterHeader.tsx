@@ -27,6 +27,9 @@ import {
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { LocationPickerModal } from './LocationPickerModal';
+// Lazy: the map bundle (Leaflet) only downloads when the pin picker opens —
+// the main bundle stays lean.
+const MapPinPicker = React.lazy(() => import('./MapPinPicker'));
 import { PINCODE_DATABASE } from '../utils/locationHelper';
 import { AutocompleteInput } from './AutocompleteInput';
 import { VoiceSearchButton } from './VoiceSearchButton';
@@ -56,6 +59,7 @@ export const SearchAndFilterHeader: React.FC = () => {
     clearSmartFilter,
     userLocation,
     detectGpsLocation,
+    setMapPickedLocation,
     isGpsLocating,
     triggerLiveLocationScrape,
     items,
@@ -90,6 +94,8 @@ export const SearchAndFilterHeader: React.FC = () => {
   // Location Modal State
   const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
   const [locationModalContext, setLocationModalContext] = useState<'food' | 'grocery' | 'cab'>('food');
+  // Uber-style map pin (owner request 17 Oct): 'pickup' or 'drop' picker for Cab & Ride.
+  const [mapPickerMode, setMapPickerMode] = useState<'pickup' | 'drop' | null>(null);
 
   // Generic and Vertical-specific state
   const [origin, setOrigin] = useState<string>(meta.defaultOrigin || '');
@@ -626,6 +632,15 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   <Crosshair className={`w-3 h-3 ${isGpsLocating ? 'animate-spin' : ''}`} />
                   <span>{userLocation.isGps ? 'GPS Locked' : 'Use GPS'}</span>
                 </button>
+                <button
+                  type="button"
+                  title="Pick exact pickup point on the map (drag and drop)"
+                  onClick={() => setMapPickerMode('pickup')}
+                  className="ml-1 px-2 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 border border-red-500/30"
+                >
+                  <MapPin className="w-3 h-3" />
+                  <span>Map</span>
+                </button>
               </div>
 
               {/* Swap */}
@@ -673,6 +688,14 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                     inputClassName="text-xs font-bold text-white placeholder:text-slate-500"
                   />
                 </div>
+                <button
+                  type="button"
+                  title="Pick exact drop point on the map (drag and drop)"
+                  onClick={() => setMapPickerMode('drop')}
+                  className="p-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors cursor-pointer shrink-0 border border-red-500/30"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               {/* Compare Fares Button */}
@@ -1629,6 +1652,30 @@ const handleSelectJourneyDate = (formattedDate: string) => {
       </div>
 
       </div>
+
+      {/* Uber-style draggable map pin (Cab & Ride, owner request 17 Oct) */}
+      <React.Suspense fallback={null}>
+      <MapPinPicker
+        isOpen={mapPickerMode !== null}
+        onClose={() => setMapPickerMode(null)}
+        mode={mapPickerMode === 'drop' ? 'drop' : 'pickup'}
+        initial={userLocation.coordinates?.lat && userLocation.coordinates?.lng ? userLocation.coordinates : undefined}
+        initialLabel={userLocation?.city || undefined}
+        onApply={(spot) => {
+          if (mapPickerMode === 'pickup') {
+            // Exact pin becomes the user's location; every search auto-carries its coordinates.
+            setMapPickedLocation(spot);
+          } else {
+            const dropLabel = spot.locality || spot.address.split(',')[0] || 'Pinned drop';
+            const dropText = spot.city && !dropLabel.toLowerCase().includes(spot.city.toLowerCase()) ? `${dropLabel}, ${spot.city}` : dropLabel;
+            setCabDrop(dropText);
+            const q = routeQuery(`${userLocation.locality}, ${userLocation.city}`, dropText);
+            setSearchQuery(q);
+            triggerLiveLocationScrape(q, undefined, travelDatesFor('cab', dateStr));
+          }
+        }}
+      />
+      </React.Suspense>
 
       {/* Reusable Location Picker Modal */}
       <LocationPickerModal

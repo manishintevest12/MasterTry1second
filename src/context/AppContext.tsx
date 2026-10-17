@@ -202,6 +202,8 @@ interface AppContextType {
   userLocation: UserLocationState;
   detectGpsLocation: () => Promise<void>;
   setPincodeLocation: (pin: string) => void;
+  /** Uber-style map pin (MapPinPicker): adopt an exact picked spot as the user's location. */
+  setMapPickedLocation: (spot: { lat: number; lng: number; address: string; locality: string; city: string; pincode?: string }) => void;
   isGpsLocating: boolean;
   isCompareMenuOpen: boolean;
   setIsCompareMenuOpen: (open: boolean) => void;
@@ -773,6 +775,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       `📍 Area Synced to Pincode: ${loc.pincode}`,
       `${loc.address} · Servicing dark stores and ride hubs updated.`
     );
+  };
+
+  const setMapPickedLocation = (spot: { lat: number; lng: number; address: string; locality: string; city: string; pincode?: string }) => {
+    // The pin is exact; fill any missing city/pincode context from the pincode registry
+    // (Nominatim sometimes omits the postcode for open land) — never the reverse.
+    let city = spot.city;
+    let pincode = spot.pincode;
+    if (!city || !pincode) {
+      const reg = pincode ? resolveLocationByPincode(pincode) : null;
+      if (reg) { city = city || reg.city; pincode = pincode || reg.pincode; }
+    }
+    const loc: UserLocationState = {
+      address: spot.address,
+      locality: spot.locality || spot.address.split(',')[0] || 'Pinned spot',
+      city: city || spot.locality || 'India',
+      pincode: pincode || '',
+      coordinates: { lat: spot.lat, lng: spot.lng },
+      isGps: true,
+      accuracyText: 'Exact map pin',
+    };
+    setUserLocation(loc);
+    addToast('success', '📍 Exact Pickup Point Pinned', `${loc.address.slice(0, 90)}${pincode ? ` (Pincode: ${pincode})` : ''} · coordinates attached to every cab search.`);
   };
 
   // REAL DATA ONLY: no seeded demo items. The catalogue fills from the backend's
@@ -2291,6 +2315,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         userLocation,
         detectGpsLocation,
         setPincodeLocation,
+        setMapPickedLocation,
         isGpsLocating,
         isCompareMenuOpen,
         setIsCompareMenuOpen,

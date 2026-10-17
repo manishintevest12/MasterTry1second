@@ -9,6 +9,7 @@ import type { VerticalId } from '../types';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
+import { geoSearch, geoReverse } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
@@ -105,6 +106,25 @@ apiRouter.get('/bus/locations', async (req, res) => {
   } catch (e: any) {
     return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
   }
+});
+
+// ---- Open geo proxy for the Uber-style drag-and-drop map pin (Cab & Ride, 17 Oct) ----
+// Leaflet + OSM tiles in the browser; the backend proxies Nominatim (UA + 1 req/s
+// throttle + 24h cache in common/geoProxy). Open data, no keys, no fabrication.
+apiRouter.get('/geo/search', async (req, res) => {
+  const q = String(req.query.q || '').slice(0, 120);
+  if (q.trim().length < 2) return res.json({ results: [] });
+  const results = await geoSearch(q, 6);
+  res.json({ results });
+});
+
+apiRouter.get('/geo/reverse', async (req, res) => {
+  const lat = Number(req.query.lat), lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return res.status(400).json({ error: 'lat and lng are required numbers' });
+  }
+  const place = await geoReverse(lat, lng);
+  res.json({ place }); // place: null when Nominatim has no answer — never invented
 });
 
 apiRouter.get('/status', (_req, res) => {
@@ -296,6 +316,9 @@ apiRouter.post('/scrape/live', async (req, res) => {
       return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
     } : undefined,
     guests: Number(req.body.guests) || undefined,
+    // Exact map pin (MapPinPicker, 17 Oct): the engine gets the precise point, not just the city.
+    lat: typeof req.body.coordinates?.lat === 'number' ? req.body.coordinates.lat : undefined,
+    lng: typeof req.body.coordinates?.lng === 'number' ? req.body.coordinates.lng : undefined,
   };
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
