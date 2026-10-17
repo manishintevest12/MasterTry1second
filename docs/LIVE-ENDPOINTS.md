@@ -278,14 +278,21 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   DEL-BOM 25 Oct 40 offers (Air India Express Rs6476, Akasa QP-1805 Rs6675,
   IndiGo 6E-353 Rs6845; matches EMT/Ixigo price levels). Discovered via live-browser
   network capture (Browserbase+CDP), replayed/verified curl_cffi-only.
-- Goibibo flights — BLOCKED: www.goibibo.com/flights/* = HTTP/2 stream reset or
-  504 AkamaiGHost (edge accepted, origin tarpits); forced HTTP/1.1 hangs;
-  m.goibibo.com 503; flights.goibibo.com 403 "Access Denied" (Akamai) on all
-  paths incl. app-header POSTs; api.goibibo.com 503 "DNS failure" (origin gone);
-  gfs/fss/gateway/flight-scanapi hosts do not resolve. Probe w_flights_goibibo
-  attempts the live SRP URL each search. Both MMT-group sites: retest only from
+- **Goibibo flights** [goibiboFlights.ts] — LIVE (17 Oct): the SPA search tarpits
+  datacenter IPs (HTTP/2 reset, m-site 503, flights.goibibo 403 — old verdict stands
+  for the app itself) but the SEO route landing pages are SERVER-RENDERED with the
+  full listing state: GET www.goibibo.com/flights/<from>-to-<to>-flights/ (legacy
+  spellings: bangalore, mysore, gurugram; goibiboRouteUrl aliases) embeds a ~1.5MB
+  Next.js __NEXT_DATA__ -> props.pageProps.data.state.listing with
+  journeys.allJourneys[0][] per-flight offers: fare (total INR), simpleAirlineHeading.nm
+  (airline), flightNumber, journeyKeys "ORIG$DEST$YYYY-MM-DD HH:MM$FLNO" (legs joined |),
+  journeyMap.data[] depTime/arrTime/duration/stops. The page picks its own nearest
+  service date (itinerary DEL-BOM-20/10/2026) — every offer carries that real date.
+  Seller=Goibibo, deeplink = the same route page. Worker w_flights_goibibo priority 9,
+  cheapest-40, 404 route page = honest empty. Verified live: DEL-BOM 15 offers
+  (Akasa QP-1833 Rs6675, IndiGo 6E-5096 Rs6757), BLR-GOI 13 offers.
   a new IP (production Hostinger pull) — gate is IP-reputation based.
-Akamai/Bot-Manager: MMT, Goibibo, Agoda (graphql gate
+Akamai/Bot-Manager: MMT, Agoda (graphql gate
 headers cracked but needs runtime-built document), Trip.com, Marriott, Hilton,
 Trivago (/gw/graphql), Kayak, Skyscanner, Zepto (Kong 429), Flipkart Minutes,
 Meesho, Instamart search/collection (202), api-prod-flight host search,
