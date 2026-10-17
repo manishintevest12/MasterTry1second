@@ -7,6 +7,7 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseBlinkit } from '../parsers/blinkit';
+import { ZEP_API_BASE, zeptoAppHeaders, zeptoStoreId, parseZeptoSearch } from '../parsers/zeptoSearch';
 import { parseBigbasket } from '../parsers/bigbasket';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
@@ -26,7 +27,6 @@ const q = (ctx: { query: any }) =>
     .replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, ' ').replace(/\s+/g, ' ').trim();
 
 const QUICK_FAILS: Array<{ sourceId: string; url: (t: string) => string; probe: string; note: string }> = [
-  { sourceId: 'w_grocery_zepto', url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: 'https://www.zeptonow.com/', note: 'Zeptonow returns a 202 JS challenge shell to browserless HTTP' },
   { sourceId: 'w_grocery_flipkart_minutes', url: (t) => `https://www.flipkart.com/minutes-store`, probe: 'https://www.flipkart.com/minutes-store', note: 'Flipkart Minutes store is a JS shell with no SSR product prices' },
 ];
 
@@ -180,6 +180,45 @@ export const groceryWorker: VerticalWorker = {
         throw new AcquisitionError('EMPTY_RESPONSE', src.note.replace(/returns|serves/, 'served'));
       },
     })),
+    {
+      // Zepto (owner request 17 Oct). Recon: zeptonow.com -> zepto.com web is AWS-WAF cookie-challenged
+      // on EVERY endpoint (bff-gateway 202 even from a real browser without the challenge cookie) and web
+      // search is login-gated; the mobile app's Kong gateway route POST /api/v3/search EXISTS (429 = WAF,
+      // 404 = no-route — verified). This worker attempts it with APK-extracted app headers; the WAF's
+      // acceptance is IP-dependent (sandbox 429s — Hostinger retest pending). Honest fail otherwise.
+      sourceId: 'w_grocery_zepto',
+      name: 'Grocery worker: Zepto app search (api-gateway v3/search, APK-extracted)',
+      priority: 14,
+      timeoutMs: 30_000,
+      run: async (ctx: any) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const loc = ctx.query.location || {};
+        const coords =
+          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
+            ? ([loc.lat, loc.lng] as [number, number])
+            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
+        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
+        const [lat, lng] = coords;
+        // 1. Serviceability (known-ungated): proves the location is served + gives the store UUID.
+        let storeId: string | null = null;
+        try {
+          const svcUrl = `${ZEP_API_BASE}/serviceability-service/api/v1/serviceability?lat=${lat}&long=${lng}`;
+          const svc = await cffiFetch(svcUrl, { impersonate: 'chrome', timeoutMs: 15_000, headers: zeptoAppHeaders() });
+          if (svc.status === 200 && svc.body) storeId = zeptoStoreId(svc.body);
+        } catch { /* store id is optional context for the search call */ }
+        // 2. App search route (WAF-dependent).
+        const body = JSON.stringify({ query: term, latitude: lat, longitude: lng, ...(storeId ? { store_id: storeId } : {}), page: 0, page_size: 30 });
+        const r = await cffiFetch(`${ZEP_API_BASE}/api/v3/search`, { impersonate: 'chrome', method: 'POST', body, timeoutMs: 22_000, headers: zeptoAppHeaders() });
+        if (r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `Zepto search WAF 429 from this IP (${ZEP_API_BASE}/api/v3/search exists but the WAF rejects this IP; Hostinger retest pending)`);
+        if (r.status === 404) throw new AcquisitionError('NOT_FOUND', 'Zepto v3/search route not found on the Kong gateway (no route matched)');
+        if (r.status === 400) throw new AcquisitionError('MALFORMED_RESPONSE', `Zepto search rejected the request body: ${(r.body || '').slice(0, 160)}`);
+        if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `Zepto search HTTP ${r.status}: ${(r.body || '').slice(0, 160)}`);
+        const items = parseZeptoSearch(r.body, ctx.source, term, cityLabel, 16);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `Zepto returned no products for "${term}" at ${cityLabel} (200, body ${(r.body || '').slice(0, 120)})`);
+        return items;
+      },
+    },
     {
       // Blinkit LIVE: /v1/layout/search answers real JSON to browserless HTTP when sent with the
       // web-app headers (app_client=consumer_web + lat/lon). Server-side search, location-aware prices.

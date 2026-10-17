@@ -13948,6 +13948,138 @@ var init_blinkit = __esm({
   }
 });
 
+// server/workers/parsers/zeptoSearch.ts
+function zeptoAppHeaders(extra = {}) {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "x-platform": "ANDROID",
+    "app-version": "26.9.2",
+    "device-id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
+    ...extra
+  };
+}
+function zeptoStoreId(serviceabilityJson) {
+  try {
+    const walk = (node, depth = 0) => {
+      if (!node || depth > 12) return null;
+      if (typeof node === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(node)) return node;
+      if (Array.isArray(node)) {
+        for (const v of node) {
+          const r = walk(v, depth + 1);
+          if (r) return r;
+        }
+        return null;
+      }
+      if (typeof node === "object") {
+        for (const v of Object.values(node)) {
+          const r = walk(v, depth + 1);
+          if (r) return r;
+        }
+      }
+      return null;
+    };
+    return walk(JSON.parse(serviceabilityJson));
+  } catch {
+    return null;
+  }
+}
+function rupees2(v) {
+  if (typeof v === "number" && v > 0) return v < 1e5 ? Math.round(v * 100) / 100 : void 0;
+  if (typeof v === "string" && /^\d+(\.\d+)?$/.test(v.trim())) {
+    const n = Number(v);
+    return n > 0 && n < 1e5 ? n : void 0;
+  }
+  if (v && typeof v === "object") {
+    const u = Number(v.units ?? v.unit ?? 0), n = Number(v.nanos ?? 0);
+    if (u || n) {
+      const r = u + n / 1e9;
+      return r > 0 && r < 1e5 ? Math.round(r * 100) / 100 : void 0;
+    }
+  }
+  return void 0;
+}
+function collectZeptoProducts(node, out, depth = 0) {
+  if (!node || depth > 18 || out.length > 1200) return;
+  if (Array.isArray(node)) {
+    for (const v of node) collectZeptoProducts(v, out, depth + 1);
+    return;
+  }
+  if (typeof node === "object") {
+    const name = NAME_KEYS.map((k) => node[k]).find((v) => typeof v === "string" && String(v).trim().length > 2);
+    if (name) {
+      let price;
+      let mrp;
+      for (const k of PRICE_KEYS) {
+        price = rupees2(node[k]);
+        if (price !== void 0) break;
+      }
+      for (const k of MRP_KEYS) {
+        mrp = rupees2(node[k]);
+        if (mrp !== void 0) break;
+      }
+      const pack = PACK_KEYS.map((k) => node[k]).find((v) => typeof v === "string" && String(v).trim());
+      const image = typeof node.image === "string" ? node.image : Array.isArray(node.images) && typeof node.images[0] === "string" ? node.images[0] : node.image_url ?? (Array.isArray(node.image_ids) ? node.image_ids[0] : void 0);
+      const id = typeof (node.id ?? node.pvid ?? node.product_id ?? node.sku_id) === "string" ? String(node.id ?? node.pvid ?? node.product_id ?? node.sku_id) : void 0;
+      if (price !== void 0 || mrp !== void 0) {
+        out.push({ name: String(name).trim().slice(0, 120), id, image: typeof image === "string" ? image : void 0, price, mrp: mrp && mrp > (price ?? 0) ? mrp : void 0, pack });
+      }
+    }
+    for (const v of Object.values(node)) collectZeptoProducts(v, out, depth + 1);
+  }
+}
+function parseZeptoSearch(json, source, term, cityLabel, max) {
+  let root;
+  try {
+    root = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const found = [];
+  collectZeptoProducts(root, found);
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const p of found) {
+    if (items.length >= max) break;
+    if (!p.price || !p.name) continue;
+    const key = `${p.name}|${p.price}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const t = p.name.toLowerCase();
+    const token = term.toLowerCase().split(/\s+/)[0];
+    if (token.length > 2 && !t.includes(token) && !t.includes(token.replace(/s$/, ""))) continue;
+    items.push(newRawItem(source, {
+      title: p.name,
+      price: Math.round(p.price),
+      listPrice: p.mrp && p.mrp > p.price ? Math.round(p.mrp) : void 0,
+      currency: "INR",
+      seller: "Zepto",
+      sellerUrl: `https://www.zepto.com/search?query=${encodeURIComponent(term)}`,
+      attributes: {
+        pack_size: p.pack || "",
+        eta_minutes: "10",
+        outlet: cityLabel,
+        data_note: `Zepto app search API (api-gateway.zepto.co.in/api/v3/search, APK-extracted route, no API key); price is Zepto's own published price for ${cityLabel}. Web search requires login \u2014 the deeplink lands on Zepto's site.`,
+        ...p.image ? { image_url: p.image } : {}
+      },
+      identifiers: p.id ? { sku: `zepto-${p.id}` } : {},
+      evidence: { extractedFields: ["title", "price", "currency"], sourceReference: "Zepto v3/search app API" }
+    }));
+  }
+  return items;
+}
+var ZEP_API_BASE, NAME_KEYS, PRICE_KEYS, MRP_KEYS, PACK_KEYS;
+var init_zeptoSearch = __esm({
+  "server/workers/parsers/zeptoSearch.ts"() {
+    init_contract();
+    ZEP_API_BASE = "https://api-gateway.zepto.co.in";
+    NAME_KEYS = ["name", "productName", "product_name", "display_name", "title"];
+    PRICE_KEYS = ["price", "selling_price", "offer_price", "effective_price", "final_price", "value", "amount"];
+    MRP_KEYS = ["mrp", "list_price", "strike_price", "marked_price"];
+    PACK_KEYS = ["pack_size", "packSize", "quantity_description", "unit", "weight", "size"];
+  }
+});
+
 // server/workers/parsers/bigbasket.ts
 function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   let root;
@@ -14119,6 +14251,7 @@ var init_grocery = __esm({
     init_amazonIn();
     init_flipkart();
     init_blinkit();
+    init_zeptoSearch();
     init_bigbasket();
     init_httpClient();
     init_curlCffiFetch();
@@ -14144,7 +14277,6 @@ var init_grocery = __esm({
     };
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
     QUICK_FAILS = [
-      { sourceId: "w_grocery_zepto", url: (t) => `https://www.zeptonow.com/search?query=${encodeURIComponent(t)}`, probe: "https://www.zeptonow.com/", note: "Zeptonow returns a 202 JS challenge shell to browserless HTTP" },
       { sourceId: "w_grocery_flipkart_minutes", url: (t) => `https://www.flipkart.com/minutes-store`, probe: "https://www.flipkart.com/minutes-store", note: "Flipkart Minutes store is a JS shell with no SSR product prices" }
     ];
     IM_BASE = "https://instamart.swiggy.com";
@@ -14170,6 +14302,41 @@ var init_grocery = __esm({
             throw new AcquisitionError("EMPTY_RESPONSE", src2.note.replace(/returns|serves/, "served"));
           }
         })),
+        {
+          // Zepto (owner request 17 Oct). Recon: zeptonow.com -> zepto.com web is AWS-WAF cookie-challenged
+          // on EVERY endpoint (bff-gateway 202 even from a real browser without the challenge cookie) and web
+          // search is login-gated; the mobile app's Kong gateway route POST /api/v3/search EXISTS (429 = WAF,
+          // 404 = no-route — verified). This worker attempts it with APK-extracted app headers; the WAF's
+          // acceptance is IP-dependent (sandbox 429s — Hostinger retest pending). Honest fail otherwise.
+          sourceId: "w_grocery_zepto",
+          name: "Grocery worker: Zepto app search (api-gateway v3/search, APK-extracted)",
+          priority: 14,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const term = q2(ctx);
+            if (!term) return [];
+            const loc = ctx.query.location || {};
+            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
+            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
+            const [lat, lng] = coords;
+            let storeId = null;
+            try {
+              const svcUrl = `${ZEP_API_BASE}/serviceability-service/api/v1/serviceability?lat=${lat}&long=${lng}`;
+              const svc = await cffiFetch(svcUrl, { impersonate: "chrome", timeoutMs: 15e3, headers: zeptoAppHeaders() });
+              if (svc.status === 200 && svc.body) storeId = zeptoStoreId(svc.body);
+            } catch {
+            }
+            const body = JSON.stringify({ query: term, latitude: lat, longitude: lng, ...storeId ? { store_id: storeId } : {}, page: 0, page_size: 30 });
+            const r = await cffiFetch(`${ZEP_API_BASE}/api/v3/search`, { impersonate: "chrome", method: "POST", body, timeoutMs: 22e3, headers: zeptoAppHeaders() });
+            if (r.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", `Zepto search WAF 429 from this IP (${ZEP_API_BASE}/api/v3/search exists but the WAF rejects this IP; Hostinger retest pending)`);
+            if (r.status === 404) throw new AcquisitionError("NOT_FOUND", "Zepto v3/search route not found on the Kong gateway (no route matched)");
+            if (r.status === 400) throw new AcquisitionError("MALFORMED_RESPONSE", `Zepto search rejected the request body: ${(r.body || "").slice(0, 160)}`);
+            if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `Zepto search HTTP ${r.status}: ${(r.body || "").slice(0, 160)}`);
+            const items = parseZeptoSearch(r.body, ctx.source, term, cityLabel, 16);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Zepto returned no products for "${term}" at ${cityLabel} (200, body ${(r.body || "").slice(0, 120)})`);
+            return items;
+          }
+        },
         {
           // Blinkit LIVE: /v1/layout/search answers real JSON to browserless HTTP when sent with the
           // web-app headers (app_client=consumer_web + lat/lon). Server-side search, location-aware prices.
