@@ -15,11 +15,18 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 // City coordinates for quick-commerce APIs (BlinkIt/Zepto/etc. price by delivery zone).
 const GCITY_COORDS: Record<string, [number, number]> = {
   'new delhi': [28.6315, 77.2167], delhi: [28.6315, 77.2167], noida: [28.5355, 77.391],
-  gurgaon: [28.4595, 77.0266], bengaluru: [12.9716, 77.5946], bangalore: [12.9716, 77.5946],
+  gurgaon: [28.4595, 77.0266], gurugram: [28.4595, 77.0266], bengaluru: [12.9716, 77.5946], bangalore: [12.9716, 77.5946],
   mumbai: [19.076, 72.8777], pune: [18.5204, 73.8567], hyderabad: [17.385, 78.4867],
   chennai: [13.0827, 80.2707], kolkata: [22.5726, 88.3639], ahmedabad: [23.0225, 72.5714],
   jaipur: [26.9124, 75.7873], lucknow: [26.8467, 80.9462], indore: [22.7196, 75.8577],
-  chandigarh: [30.7333, 76.7794], kochi: [9.9312, 76.2673], nagpur: [21.1458, 79.0882],
+  chandigarh: [30.7333, 76.7794], kochi: [9.9312, 76.2673],
+  // Nagpur: city-center coords 21.1458/79.0882 return "location not serviceable" on the
+  // api3.blinkit.com app gateway; 21.1582/79.0928 verified live (15 milk offers, 17 Oct).
+  nagpur: [21.1582, 79.0928],
+  // Verified live on the Blinkit app gateway 17 Oct (milk: Bhopal 19, Surat 19, Patna 13,
+  // Coimbatore 19, Guwahati 13 offers).
+  bhopal: [23.2599, 77.4126], surat: [21.1702, 72.8311], patna: [25.5941, 85.1376],
+  coimbatore: [11.0168, 76.9558], guwahati: [26.1445, 91.7362],
 };
 
 const q = (ctx: { query: any }) =>
