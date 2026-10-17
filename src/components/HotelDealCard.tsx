@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Heart, Tag, MapPin, Star, ChevronLeft, ChevronRight, Check, ExternalLink, Coffee, Wifi, Waves, ChevronDown } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { type HotelGroup, dealPercent } from '../utils/hotelGroups';
@@ -41,7 +41,14 @@ const amenityIcon = (a: string) => {
 export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = ({ group, nights }) => {
   const { trackedItemIds, toggleTrackPrice, startRedirection } = useApp();
   const [imgIdx, setImgIdx] = useState(0);
-  const [imgBroken, setImgBroken] = useState(false);
+  // Photos are tried in order: when one fails to load in the visitor's browser
+  // (CDN hiccup, geo-blocked image edge, expired token) advance to the next
+  // photo instead of collapsing the whole card to the placeholder. Owner bug
+  // 17 Oct: one broken Agoda photo blanked 'The Park Indore' while the other
+  // gallery photos (Yatra/Cleartrip) rendered fine.
+  const [skip, setSkip] = useState(0);
+  useEffect(() => { setSkip(0); setImgIdx(0); }, [group.key]);
+  const shown = photos.slice(skip);
   const [showAll, setShowAll] = useState(false);
   const [detail, setDetail] = useState(false);
   const best = group.best;
@@ -60,9 +67,9 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs hover:shadow-md hover:border-slate-300 transition-all overflow-hidden flex flex-col md:flex-row">
       {/* PHOTO */}
       <button type="button" onClick={() => setDetail(true)} aria-label={`Open ${group.name} details and photos`} className="relative w-full md:w-60 h-48 md:h-auto md:min-h-[220px] shrink-0 bg-slate-100 group block cursor-pointer">
-        {photos.length > 0 && !imgBroken ? (
-          <img src={photos[imgIdx % photos.length]} alt={group.name} loading="lazy" referrerPolicy="no-referrer"
-            className="absolute inset-0 w-full h-full object-cover" onError={() => setImgBroken(true)} />
+        {shown.length > 0 ? (
+          <img src={shown[imgIdx % shown.length]} alt={group.name} loading="lazy" referrerPolicy="no-referrer"
+            className="absolute inset-0 w-full h-full object-cover" onError={() => setSkip((v) => v + 1)} />
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
             <span className="text-3xl font-black">{initials(group.name)}</span>
@@ -73,17 +80,17 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
           className={`absolute top-3 right-3 p-2 rounded-xl bg-white/95 shadow-xs border border-slate-200 cursor-pointer ${tracked ? 'text-rose-600' : 'text-slate-600 hover:text-slate-900'}`}>
           <Heart className={`w-4 h-4 ${tracked ? 'fill-rose-500' : ''}`} />
         </button>
-        {photos.length > 1 && (
+        {shown.length > 1 && (
           <>
-            <button type="button" onClick={() => setImgIdx((i) => (i - 1 + photos.length) % photos.length)} className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/90 shadow cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"><ChevronLeft className="w-4 h-4" /></button>
-            <button type="button" onClick={() => setImgIdx((i) => (i + 1) % photos.length)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/90 shadow cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"><ChevronRight className="w-4 h-4" /></button>
+            <button type="button" onClick={() => setImgIdx((i) => (i - 1 + shown.length) % shown.length)} className="absolute left-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/90 shadow cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"><ChevronLeft className="w-4 h-4" /></button>
+            <button type="button" onClick={() => setImgIdx((i) => (i + 1) % shown.length)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/90 shadow cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"><ChevronRight className="w-4 h-4" /></button>
             <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-              {photos.slice(0, 6).map((_, i) => <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === imgIdx % photos.length ? 'bg-white' : 'bg-white/50'}`} />)}
+              {shown.slice(0, 6).map((_, i) => <span key={i} className={`w-1.5 h-1.5 rounded-full ${i === imgIdx % shown.length ? 'bg-white' : 'bg-white/50'}`} />)}
             </div>
           </>
         )}
         {group.propertyType && <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-slate-900/75 text-white text-[10px] font-bold">{group.propertyType}</span>}
-        {photos.length > 0 && !imgBroken && <span className="absolute top-3 left-3 px-2 py-1 rounded-lg bg-white/90 shadow-xs text-slate-700 text-[10px] font-bold flex items-center gap-1"><Images className="w-3 h-3" />{photos.length}</span>}
+        {shown.length > 0 && <span className="absolute top-3 left-3 px-2 py-1 rounded-lg bg-white/90 shadow-xs text-slate-700 text-[10px] font-bold flex items-center gap-1"><Images className="w-3 h-3" />{photos.length}</span>}
       </button>
 
       {/* DETAILS + SITE PRICE ROWS */}

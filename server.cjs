@@ -28236,6 +28236,14 @@ async function createApp() {
   const app = (0, import_express4.default)();
   app.use((0, import_compression.default)());
   app.use(import_express4.default.json({ limit: "256kb" }));
+  app.use((req, res, next) => {
+    const host = (req.headers.host || "").toLowerCase();
+    if (host === "try1second.com" || /^try1second\.com:\d+$/.test(host)) {
+      res.redirect(301, `https://www.try1second.com${req.originalUrl || req.url}`);
+      return;
+    }
+    next();
+  });
   const { settings: settings2 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
   const { apiRouter: apiRouter2, bootstrapBackend: bootstrapBackend2 } = await Promise.resolve().then(() => (init_routes(), routes_exports));
   const { adminRouter: adminRouter2 } = await Promise.resolve().then(() => (init_adminRoutes(), adminRoutes_exports));

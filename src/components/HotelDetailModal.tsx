@@ -49,7 +49,7 @@ const Lightbox: React.FC<{ photos: string[]; idx: number; onIdx: (i: number) => 
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 max-w-[90vw] overflow-x-auto">
           {photos.map((p, i) => (
             <button key={p + i} type="button" onClick={() => onIdx(i)} className={`w-10 h-10 rounded-md overflow-hidden shrink-0 border-2 cursor-pointer ${i === idx ? 'border-white' : 'border-transparent opacity-60 hover:opacity-100'}`}>
-              <img src={p} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={p} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer"  onError={() => onImgError(p)} />
             </button>
           ))}
         </div>
@@ -61,9 +61,16 @@ const Lightbox: React.FC<{ photos: string[]; idx: number; onIdx: (i: number) => 
 export const HotelDetailModal: React.FC<{ group: HotelGroup; nights?: number; onClose: () => void }> = ({ group, nights, onClose }) => {
   const { trackedItemIds, toggleTrackPrice, startRedirection } = useApp();
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
   const best = group.best;
   const tracked = trackedItemIds.includes(best.item.id);
-  const photos = group.gallery.length ? group.gallery : group.image ? [group.image] : [];
+  const allPhotos = group.gallery.length ? group.gallery : group.image ? [group.image] : [];
+  // Broken/geo-blocked photos are dropped live: the grid and lightbox only ever
+  // show photos that actually load in the visitor's browser (17 Oct Agoda fix).
+  const photos = allPhotos.filter((p) => !failed[p]);
+  useEffect(() => { setFailed({}); setLightbox(null); }, [group.key]);
+  useEffect(() => { if (lightbox !== null && lightbox >= photos.length) setLightbox(photos.length ? photos.length - 1 : null); }, [photos.length, lightbox]);
+  const onImgError = (p: string) => setFailed((f) => (f[p] ? f : { ...f, [p]: true }));
   // Reference layout: grid of tiles; when more photos exist than tiles, the last tile
   // is the "Show all photos" opener (Booking.com pattern).
   const GRID_TILES = 8;
@@ -107,7 +114,7 @@ export const HotelDetailModal: React.FC<{ group: HotelGroup; nights?: number; on
             <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl overflow-hidden">
               {gridPhotos.map((p, i) => (
                 <button key={p + i} type="button" onClick={() => setLightbox(i)} className="relative aspect-square sm:aspect-[4/3] bg-slate-100 overflow-hidden group cursor-pointer">
-                  <img src={p} alt={`${group.name} photo ${i + 1}`} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" />
+                  <img src={p} alt={`${group.name} photo ${i + 1}`} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"  onError={() => onImgError(p)} />
                 </button>
               ))}
               {(showAllTile || photos.length > 1) && (

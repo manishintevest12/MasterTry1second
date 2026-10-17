@@ -19,6 +19,20 @@ export async function createApp(): Promise<express.Express> {
   app.use(compression()); // gzip BEFORE routes so API JSON + static both compress
   app.use(express.json({ limit: '256kb' }));
 
+  // Canonical host redirect (17 Oct, PageSpeed TTFB fix). Live measurements:
+  // https://try1second.com/ (non-www) answers in 0.8-2.6s on Hostinger's edge
+  // while https://www.try1second.com/ answers in ~0.25s consistently. PageSpeed
+  // was run against the non-www host, so the slow TTFB poisoned FCP/LCP/SI.
+  // A 301 here (≈50ms) moves every non-www hit onto the fast www route.
+  app.use((req, res, next) => {
+    const host = (req.headers.host || '').toLowerCase();
+    if (host === 'try1second.com' || /^try1second\.com:\d+$/.test(host)) {
+      res.redirect(301, `https://www.try1second.com${req.originalUrl || req.url}`);
+      return;
+    }
+    next();
+  });
+
   const { settings } = await import('./common/settings');
   const { apiRouter, bootstrapBackend } = await import('./api/routes');
   const { adminRouter } = await import('./admin/adminRoutes');
