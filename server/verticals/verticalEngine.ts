@@ -65,7 +65,13 @@ export function withBracketedCodes(raw: string): string {
 }
 export function parseRouteQuery(raw: string): { from: { code?: string; city: string }; to: { code?: string; city: string } } | null {
   raw = withBracketedCodes(raw);
-  const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
+  // Owner bug 17 Oct: the pincode/hotspot UI sends locality-decorated endpoints
+  // ("Connaught Place (110001) to Terminal 3 Airport (110037)") — the old class
+  // [a-zA-Z\s.] rejected digits/parens, the parse failed, and resolveCabQuery()
+  // silently rewrote the search to a DEFAULT route (e.g. Indore->Bhopal), showing
+  // fares for a route the user never typed. Broadened classes keep pincode/slash/
+  // comma decorated text parseable; normPlace() still strips the noise.
+  const m = raw.match(/([a-zA-Z][a-zA-Z0-9\s.,()\/&'-]{1,60}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z0-9\s.,()\/&'-]{1,60}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const from = normPlace(m[1].replace(/^\s*from\s+/i, '')), to = normPlace(m[2]);
   if (!from.city || !to.city) return null;

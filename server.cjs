@@ -18401,7 +18401,7 @@ function withBracketedCodes(raw) {
 }
 function parseRouteQuery(raw) {
   raw = withBracketedCodes(raw);
-  const m = raw.match(/([a-zA-Z][a-zA-Z\s.]{1,28}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z\s.]{1,28}(?:\s*\([A-Za-z]{3}\))?)/);
+  const m = raw.match(/([a-zA-Z][a-zA-Z0-9\s.,()\/&'-]{1,60}?(?:\s*\([A-Za-z]{3}\))?)\s+(?:to|→|->|-)\s+([a-zA-Z][a-zA-Z0-9\s.,()\/&'-]{1,60}(?:\s*\([A-Za-z]{3}\))?)/);
   if (!m) return null;
   const from = normPlace2(m[1].replace(/^\s*from\s+/i, "")), to = normPlace2(m[2]);
   if (!from.city || !to.city) return null;
