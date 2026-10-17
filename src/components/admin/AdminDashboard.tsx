@@ -78,6 +78,7 @@ export type AdminTab =
 
 export const AdminDashboard: React.FC = () => {
   const {
+    hydrateAdminRecords,
     setActiveNavTab,
     navigateToSecretRoute,
     isAdminAuthenticated,
@@ -104,6 +105,9 @@ export const AdminDashboard: React.FC = () => {
     updateAffiliateNetwork,
     simulateNetworkPostback,
   } = useApp();
+  // Admin-only mock records (purchases, payouts, scrapers, networks...) load ONLY here,
+  // keeping ~40KB of admin arrays out of the bundle every visitor parses at boot.
+  React.useEffect(() => { hydrateAdminRecords(); }, [hydrateAdminRecords]);
 
   const [activeTab, setActiveTab] = useState<AdminTab>('traffic_performance');
   const [purchaseFilterVertical, setPurchaseFilterVertical] = useState<string>('all');

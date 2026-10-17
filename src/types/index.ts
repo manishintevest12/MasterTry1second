@@ -583,7 +583,8 @@ export type QuickAppPartnerType =
   | 'CPI - IOS'
   | 'CPI - Windows'
   | 'CPL'
-  | 'CPS';
+  | 'CPS'
+  | 'Vertical Source';
 
 export interface QuickAppPartner {
   id: string;
@@ -596,7 +597,7 @@ export interface QuickAppPartner {
   description: string;
   payoutRate: string;
   payoutAmount: number;
-  status: 'active' | 'paused';
+  status: 'active' | 'paused' | 'inactive';
   rating: number;
   downloadsOrUsers?: string;
   badge?: string;

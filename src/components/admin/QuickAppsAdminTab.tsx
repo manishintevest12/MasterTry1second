@@ -101,7 +101,7 @@ export const QuickAppsAdminTab: React.FC = () => {
     description: 'Instant food & grocery ordering with exclusive app discounts.',
     payoutRate: '₹45 / Android Install',
     payoutAmount: 45,
-    status: 'active' as 'active' | 'paused',
+    status: 'active' as 'active' | 'paused' | 'inactive',
     rating: 4.6,
     downloadsOrUsers: '50M+ Downloads',
     badge: 'Popular',
@@ -188,6 +188,7 @@ export const QuickAppsAdminTab: React.FC = () => {
       'CPI - Windows': { count: 0, payout: 0 },
       CPL: { count: 0, payout: 0 },
       CPS: { count: 0, payout: 0 },
+      'Vertical Source': { count: 0, payout: 0 },
     };
 
     quickAppRedirectionLogs.forEach((log) => {
@@ -909,7 +910,7 @@ export const QuickAppsAdminTab: React.FC = () => {
                   <label className="block text-slate-700 font-semibold mb-1">Status</label>
                   <select
                     value={formState.status}
-                    onChange={(e) => setFormState({ ...formState, status: e.target.value as 'active' | 'paused' })}
+                    onChange={(e) => setFormState({ ...formState, status: e.target.value as 'active' | 'paused' | 'inactive' })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-hidden focus:border-red-500 cursor-pointer font-bold"
                   >
                     <option value="active">Active</option>

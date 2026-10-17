@@ -35,6 +35,7 @@ export const Navbar: React.FC = () => {
     setActiveNavTab,
     vertical,
     setVertical,
+    authUser,
     userPoints,
     spinsAvailable,
     trackedItemIds,
@@ -202,7 +203,7 @@ export const Navbar: React.FC = () => {
                   </button>
                 </div>
                 <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-500 font-medium">{userPoints} pts</span>
+                  <span className="text-slate-500 font-medium">{authUser ? `${userPoints} pts` : 'Sign in to earn'}</span>
                   <button onClick={() => { handleNavClick('radar'); setMobileOpen(false); }} className="text-red-600 font-bold hover:underline cursor-pointer">
                     Open Radar →
                   </button>
@@ -347,12 +348,25 @@ export const Navbar: React.FC = () => {
                   <span className="text-amber-400 font-mono">1S</span>
                 </div>
                 <div className="text-left hidden sm:block">
-                  <span className="text-xs font-bold text-slate-900 block leading-tight">
-                    Standard...
-                  </span>
-                  <span className="text-[10px] font-semibold text-red-600 block leading-none">
-                    {userPoints} pts
-                  </span>
+                  {authUser ? (
+                    <>
+                      <span className="text-xs font-bold text-slate-900 block leading-tight max-w-24 truncate">
+                        {(authUser.displayName || authUser.email || 'Account').split(' ')[0]}
+                      </span>
+                      <span className="text-[10px] font-semibold text-red-600 block leading-none">
+                        {userPoints} pts
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs font-bold text-slate-900 block leading-tight">
+                        Sign in
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate-500 block leading-none">
+                        Earn rewards
+                      </span>
+                    </>
+                  )}
                 </div>
               </button>
             </div>

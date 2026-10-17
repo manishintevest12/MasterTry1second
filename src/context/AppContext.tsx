@@ -134,16 +134,6 @@ import {
   INITIAL_MERCHANT_METRICS,
   INITIAL_VENDOR_ACCOUNTS,
 } from '../data/merchantData';
-import {
-  INITIAL_USER_PURCHASES,
-  INITIAL_PARTNER_PAYOUTS,
-  INITIAL_AFFILIATE_IDS,
-  INITIAL_SCRAPERS,
-  INITIAL_API_INTEGRATIONS,
-  INITIAL_AFFILIATE_NETWORKS,
-  INITIAL_USER_LOGINS,
-  INITIAL_SPIN_WINNERS,
-} from '../data/adminMockData';
 import { INITIAL_RESIDENTIAL_PROXIES, parseBulkProxies } from '../data/proxyData';
 import {
   getBrowserGpsLocation,
@@ -399,6 +389,8 @@ interface AppContextType {
   authBusy: boolean;
   authError: string | null;
   loginWithGoogle: () => Promise<boolean>;
+  refreshUserPoints: () => Promise<void>;
+  hydrateAdminRecords: () => Promise<void>;
   logoutUser: () => void;
   trackQuickAppRedirection: (partnerId: string) => QuickAppRedirectionLog | null;
   clearQuickAppRedirectionLogs: () => void;
@@ -439,12 +431,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const closeExtensionModal = () => setIsExtensionModalOpen(false);
 
   // Admin state
-  const [userPurchases, setUserPurchases] = useState<UserPurchaseRecord[]>(INITIAL_USER_PURCHASES);
-  const [partnerPayouts, setPartnerPayouts] = useState<PartnerPayoutSummary[]>(INITIAL_PARTNER_PAYOUTS);
-  const [affiliateIds, setAffiliateIds] = useState<AffiliateIdConfig[]>(INITIAL_AFFILIATE_IDS);
-  const [scrapers, setScrapers] = useState<CustomScraperConfig[]>(INITIAL_SCRAPERS);
-  const [apiIntegrations, setApiIntegrations] = useState<ApiIntegrationConfig[]>(INITIAL_API_INTEGRATIONS);
-  const [affiliateNetworks, setAffiliateNetworks] = useState<AffiliateNetworkHubConfig[]>(INITIAL_AFFILIATE_NETWORKS);
+  const [userPurchases, setUserPurchases] = useState<UserPurchaseRecord[]>([]);
+  const [partnerPayouts, setPartnerPayouts] = useState<PartnerPayoutSummary[]>([]);
+  const [affiliateIds, setAffiliateIds] = useState<AffiliateIdConfig[]>([]);
+  const [scrapers, setScrapers] = useState<CustomScraperConfig[]>([]);
+  const [apiIntegrations, setApiIntegrations] = useState<ApiIntegrationConfig[]>([]);
+  const [affiliateNetworks, setAffiliateNetworks] = useState<AffiliateNetworkHubConfig[]>([]);
 
   // 100+ Direct Partners Directory & Management
   const [directPartners, setDirectPartners] = useState<DirectPartnerItem[]>(INITIAL_DIRECT_PARTNERS);
@@ -490,7 +482,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // User Login & Session state
-  const [userLogins, setUserLogins] = useState<UserLoginSession[]>(INITIAL_USER_LOGINS);
+  const [userLogins, setUserLogins] = useState<UserLoginSession[]>([]);
+  // Admin mock records load ONLY when the Admin dashboard is opened (keeps ~40KB of
+  // admin-only arrays out of the eager bundle every visitor parses at boot).
+  const hydrateAdminRecords = useCallback(async () => {
+    if (userPurchases.length && partnerPayouts.length) return;
+    const m = await import('../data/adminMockData');
+    setUserPurchases(m.INITIAL_USER_PURCHASES);
+    setUserLogins(m.INITIAL_USER_LOGINS);
+    setPartnerPayouts(m.INITIAL_PARTNER_PAYOUTS);
+    setAffiliateIds(m.INITIAL_AFFILIATE_IDS);
+    setScrapers(m.INITIAL_SCRAPERS);
+    setApiIntegrations(m.INITIAL_API_INTEGRATIONS);
+    setAffiliateNetworks(m.INITIAL_AFFILIATE_NETWORKS);
+    setSpinWinners(m.INITIAL_SPIN_WINNERS);
+  }, [userPurchases.length, partnerPayouts.length]);
 
   // Dynamic Spin & Earn State
   const [spinCostPoints, setSpinCostPoints] = useState<number>(100);
@@ -503,7 +509,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isActive: true,
     }))
   );
-  const [spinWinners, setSpinWinners] = useState<SpinWinnerLog[]>(INITIAL_SPIN_WINNERS);
+  const [spinWinners, setSpinWinners] = useState<SpinWinnerLog[]>([]);
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
   const [proxies, setProxies] = useState<ResidentialProxyConfig[]>(INITIAL_RESIDENTIAL_PROXIES);
@@ -829,7 +835,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [smartFilterText, setSmartFilterText] = useState<string>('');
   const [sortOption, setSortOption] = useState<'cheapest' | 'best' | 'fastest' | 'highest_rated'>('cheapest');
   const [trackedItemIds, setTrackedItemIds] = useState<string[]>(['fl-1', 'groc-1', 'ecom-1']);
-  const [userPoints, setUserPoints] = useState<number>(75); // Start with 75 points so user is close to 100
+  // Owner rule 17 Oct: NEVER show invented points. Logged-out visitors see no points
+  // at all (navbar shows 'Sign in'); the real balance loads from /api/rewards/me
+  // once a session exists. Local optimistic deltas only apply on top of the
+  // SERVER-confirmed balance while signed in.
+  const [userPoints, setUserPoints] = useState<number>(0);
+  const refreshUserPoints = useCallback(async () => {
+    const token = localStorage.getItem('try1_session');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/rewards/me', { headers: { Authorization: `Bearer ${token}` } });
+      const data = res.ok ? await res.json() : null;
+      if (data?.success) setUserPoints(data.validPoints || 0);
+    } catch { /* offline: keep last known server value */ }
+  }, []);
   const [wonRewards, setWonRewards] = useState<WonReward[]>([]);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
   const [selectedWonReward, setSelectedWonReward] = useState<WonReward | null>(null);
@@ -2207,6 +2226,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return false;
       }
       persistSession(data.token, data.user);
+      refreshUserPoints();
       return true;
     } catch (err: any) {
       setAuthError(err?.code?.includes('popup') ? 'Google sign-in window was closed.' : String(err?.message || err));
@@ -2220,6 +2240,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('try1_session');
     localStorage.removeItem('try1_user');
     setAuthUser(null);
+    setUserPoints(0); // never keep a signed-out user's points visible
   };
 
   // ============ Notifications hub (auto price drops + admin pushes) ============
@@ -2291,7 +2312,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          if (d?.success) setAuthUser(d.user);
+          if (d?.success) { setAuthUser(d.user); refreshUserPoints(); }
           else { localStorage.removeItem('try1_session'); localStorage.removeItem('try1_user'); setAuthUser(null); }
         })
         .catch(() => setAuthUser(user)); // backend unreachable — keep the last known session
@@ -2306,6 +2327,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         authError,
         loginWithGoogle,
         logoutUser,
+        refreshUserPoints,
+        hydrateAdminRecords,
         vertical,
         setVertical: handleSetVertical,
         activeNavTab,

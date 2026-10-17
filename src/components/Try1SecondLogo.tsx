@@ -38,7 +38,7 @@ export const Try1SecondLogo: React.FC<LogoProps> = ({
       aria-label="Try1Second - 1 Second Is All It Takes"
     >
       <span className="t1s-logo-icon relative inline-flex">
-        <img src="/logo-icon.png" alt="" draggable={false} width={259} height={254} className={`${h} w-auto max-w-none`} />
+        <img src="/logo-icon.webp" alt="" draggable={false} width={259} height={254} className={`${h} w-auto max-w-none`} />
         <span className="t1s-logo-ring" aria-hidden="true" />
         <span className="t1s-logo-sweep" aria-hidden="true" />
         <svg className="t1s-logo-spark" viewBox="0 0 24 24" aria-hidden="true">
@@ -48,7 +48,7 @@ export const Try1SecondLogo: React.FC<LogoProps> = ({
       {!iconOnly && (
         <span className="t1s-logo-wordwrap inline-flex flex-col items-start justify-center">
           <img
-            src="/logo-wordmark.png"
+            src="/logo-wordmark.webp"
             alt=""
             draggable={false}
             width={721}
@@ -57,7 +57,7 @@ export const Try1SecondLogo: React.FC<LogoProps> = ({
           />
           {tagline && (
             <img
-              src="/logo-tagline.png"
+              src="/logo-tagline.webp"
               alt=""
               draggable={false}
               width={533}
