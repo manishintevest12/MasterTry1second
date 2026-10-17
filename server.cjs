@@ -1625,6 +1625,17 @@ function parseAmazonIn(html, source, searchUrl) {
   });
   return out.slice(0, 20);
 }
+function extractAmazonGallery(pdpHtml) {
+  const urls = [];
+  const push = (u) => {
+    if (/^https:\/\/m\.media-amazon\.com\/.*\.(jpe?g|png|webp)/i.test(u) && !urls.includes(u)) urls.push(u);
+  };
+  for (const m of pdpHtml.matchAll(/"hiRes"\s*:\s*"(https:[^"]+)"/g)) push(m[1]);
+  if (urls.length < 2) {
+    for (const m of pdpHtml.matchAll(/"large"\s*:\s*"(https:[^"]+)"/g)) push(m[1]);
+  }
+  return urls.slice(0, 6);
+}
 var cheerio, import_crypto2;
 var init_amazonIn = __esm({
   "server/workers/parsers/amazonIn.ts"() {
@@ -2140,6 +2151,27 @@ var init_relianceDigital = __esm({
 });
 
 // server/workers/verticals/ecommerce.ts
+async function enrichAmazonGalleries(items, jar) {
+  const targets = items.filter((it) => it.identifiers?.vendorProductId).slice(0, 3);
+  for (const it of targets) {
+    try {
+      const asin = String(it.identifiers.vendorProductId);
+      await new Promise((res) => setTimeout(res, 900));
+      const r = await cffiFetch(`https://www.amazon.in/dp/${asin}`, { cookies: jar, timeoutMs: 12e3 });
+      if (r.status !== 200 || r.body.includes("bm-verify") || looksLikeChallenge(r.body)) continue;
+      const gallery = extractAmazonGallery(r.body);
+      if (gallery.length >= 2) {
+        it.attributes = it.attributes || {};
+        it.attributes.image_urls = gallery.join("|");
+        if (!it.attributes.image_url && gallery[0]) it.attributes.image_url = gallery[0];
+        it.evidence = it.evidence || {};
+        it.evidence.extractedFields = [.../* @__PURE__ */ new Set([...it.evidence.extractedFields || [], "pdp_gallery"])];
+      }
+    } catch {
+    }
+  }
+  return items;
+}
 var import_node_crypto, q, ecommerceWorker;
 var init_ecommerce = __esm({
   "server/workers/verticals/ecommerce.ts"() {
@@ -2172,6 +2204,7 @@ var init_ecommerce = __esm({
             let body = "";
             let status = 0;
             const r1 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+            let jar = r1.cookies;
             body = r1.body;
             status = r1.status;
             if (status === 200 && body.includes("bm-verify")) {
@@ -2179,7 +2212,8 @@ var init_ecommerce = __esm({
               if (m) {
                 const vUrl = m[1].startsWith("/") ? "https://www.amazon.in" + m[1] : m[1];
                 await new Promise((res) => setTimeout(res, 1200));
-                const r2 = await cffiFetch(vUrl, { cookies: r1.cookies, returnCookies: true, timeoutMs: 22e3 });
+                const r2 = await cffiFetch(vUrl, { cookies: jar, returnCookies: true, timeoutMs: 22e3 });
+                jar = r2.cookies || jar;
                 body = r2.body;
                 status = r2.status;
                 if (status === 200 && body.includes("bm-verify")) {
@@ -2187,7 +2221,7 @@ var init_ecommerce = __esm({
                   if (m2) {
                     await new Promise((res) => setTimeout(res, 1200));
                     const v2 = m2[1].startsWith("/") ? "https://www.amazon.in" + m2[1] : m2[1];
-                    const r3 = await cffiFetch(v2, { cookies: r2.cookies, timeoutMs: 22e3 });
+                    const r3 = await cffiFetch(v2, { cookies: jar, timeoutMs: 22e3 });
                     body = r3.body;
                     status = r3.status;
                   }
@@ -2197,6 +2231,7 @@ var init_ecommerce = __esm({
             if (status === 503) {
               await new Promise((res) => setTimeout(res, 2500));
               const r4 = await cffiFetch(url, { timeoutMs: 18e3, returnCookies: true });
+              jar = r4.cookies || jar;
               body = r4.body;
               status = r4.status;
               if (status === 200 && body.includes("bm-verify")) {
@@ -2204,7 +2239,7 @@ var init_ecommerce = __esm({
                 if (m3) {
                   await new Promise((res) => setTimeout(res, 1200));
                   const v3 = m3[1].startsWith("/") ? "https://www.amazon.in" + m3[1] : m3[1];
-                  const r5 = await cffiFetch(v3, { cookies: r4.cookies, timeoutMs: 22e3 });
+                  const r5 = await cffiFetch(v3, { cookies: jar, timeoutMs: 22e3 });
                   body = r5.body;
                   status = r5.status;
                 }
@@ -2213,7 +2248,7 @@ var init_ecommerce = __esm({
             if (status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in HTTP 403 (edge denied)", 403);
             if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Amazon.in HTTP ${status}`, status);
             const items = parseAmazonIn(body, ctx.source, url);
-            if (items.length) return items;
+            if (items.length) return enrichAmazonGalleries(items, jar);
             if (body.includes("bm-verify") || looksLikeChallenge(body)) {
               throw new AcquisitionError("ACCESS_CHALLENGE", "Amazon.in presented a bm-verify challenge that did not clear");
             }

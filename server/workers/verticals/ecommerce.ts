@@ -4,7 +4,7 @@
  * SSR markup/embedded state); Open Library stays as the existing structured source.
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
-import { parseAmazonIn } from '../parsers/amazonIn';
+import { parseAmazonIn, extractAmazonGallery } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
@@ -16,6 +16,34 @@ import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 const q = (ctx: { query: any }) => String(ctx.query.entityName || ctx.query.rawQuery || '').trim();
+
+
+/**
+ * Owner rule (15 Oct): every e-commerce product card must show multiple images.
+ * Amazon's SRP cards carry only the hero shot, so we fetch the product page for
+ * the top few parsed offers and lift the colorImages hiRes[] gallery. Strictly
+ * soft-fail: any non-200/challenge/blocked PDP keeps the SRP single image.
+ */
+async function enrichAmazonGalleries(items: any[], jar: any): Promise<any[]> {
+  const targets = items.filter((it) => it.identifiers?.vendorProductId).slice(0, 3);
+  for (const it of targets) {
+    try {
+      const asin = String(it.identifiers.vendorProductId);
+      await new Promise((res) => setTimeout(res, 900));
+      const r = await cffiFetch(`https://www.amazon.in/dp/${asin}`, { cookies: jar, timeoutMs: 12_000 });
+      if (r.status !== 200 || r.body.includes('bm-verify') || looksLikeChallenge(r.body)) continue;
+      const gallery = extractAmazonGallery(r.body);
+      if (gallery.length >= 2) {
+        it.attributes = it.attributes || {};
+        it.attributes.image_urls = gallery.join('|');
+        if (!it.attributes.image_url && gallery[0]) it.attributes.image_url = gallery[0];
+        it.evidence = it.evidence || {};
+        it.evidence.extractedFields = [...new Set([...(it.evidence.extractedFields || []), 'pdp_gallery'])];
+      }
+    } catch { /* soft-fail: keep SRP image */ }
+  }
+  return items;
+}
 
 export const ecommerceWorker: VerticalWorker = {
   vertical: 'ecommerce',
@@ -34,13 +62,15 @@ export const ecommerceWorker: VerticalWorker = {
         let body = '';
         let status = 0;
         const r1 = await cffiFetch(url, { timeoutMs: 18_000, returnCookies: true });
+        let jar: any = (r1 as any).cookies;
         body = r1.body; status = r1.status;
         if (status === 200 && body.includes('bm-verify')) {
           const m = body.match(/URL='([^']+)'/);
           if (m) {
             const vUrl = m[1].startsWith('/') ? 'https://www.amazon.in' + m[1] : m[1];
             await new Promise((res) => setTimeout(res, 1200));
-            const r2 = await cffiFetch(vUrl, { cookies: r1.cookies, returnCookies: true, timeoutMs: 22_000 });
+            const r2 = await cffiFetch(vUrl, { cookies: jar, returnCookies: true, timeoutMs: 22_000 });
+            jar = (r2 as any).cookies || jar;
             body = r2.body; status = r2.status;
             // one more bounce in case the edge chains tokens
             if (status === 200 && body.includes('bm-verify')) {
@@ -48,7 +78,7 @@ export const ecommerceWorker: VerticalWorker = {
               if (m2) {
                 await new Promise((res) => setTimeout(res, 1200));
                 const v2 = m2[1].startsWith('/') ? 'https://www.amazon.in' + m2[1] : m2[1];
-                const r3 = await cffiFetch(v2, { cookies: r2.cookies, timeoutMs: 22_000 });
+                const r3 = await cffiFetch(v2, { cookies: jar, timeoutMs: 22_000 });
                 body = r3.body; status = r3.status;
               }
             }
@@ -58,13 +88,14 @@ export const ecommerceWorker: VerticalWorker = {
         if (status === 503) {
           await new Promise((res) => setTimeout(res, 2500));
           const r4 = await cffiFetch(url, { timeoutMs: 18_000, returnCookies: true });
+          jar = (r4 as any).cookies || jar;
           body = r4.body; status = r4.status;
           if (status === 200 && body.includes('bm-verify')) {
             const m3 = body.match(/URL='([^']+)'/);
             if (m3) {
               await new Promise((res) => setTimeout(res, 1200));
               const v3 = m3[1].startsWith('/') ? 'https://www.amazon.in' + m3[1] : m3[1];
-              const r5: any = await cffiFetch(v3, { cookies: (r4 as any).cookies, timeoutMs: 22_000 });
+              const r5: any = await cffiFetch(v3, { cookies: jar, timeoutMs: 22_000 });
               body = r5.body; status = r5.status;
             }
           }
@@ -72,7 +103,7 @@ export const ecommerceWorker: VerticalWorker = {
         if (status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', 'Amazon.in HTTP 403 (edge denied)', 403);
         if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Amazon.in HTTP ${status}`, status);
         const items = parseAmazonIn(body, ctx.source, url);
-        if (items.length) return items;
+        if (items.length) return enrichAmazonGalleries(items, jar);
         if (body.includes('bm-verify') || looksLikeChallenge(body)) {
           throw new AcquisitionError('ACCESS_CHALLENGE', 'Amazon.in presented a bm-verify challenge that did not clear');
         }

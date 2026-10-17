@@ -71,3 +71,21 @@ export function parseAmazonIn(html: string, source: SourceConfig, searchUrl: str
   });
   return out.slice(0, 20);
 }
+
+/**
+ * Amazon PDP image-gallery extractor (17 Oct). A product page embeds the
+ * "colorImages" block ("ImageBlockATF" data): 'colorImages' : { 'initial':
+ * [{ hiRes: "...", large: "...", thumb: "...", variant: "MAIN" }, ...] }.
+ * Returns deduped https-only hiRes (fallback large) image URLs, max 6.
+ */
+export function extractAmazonGallery(pdpHtml: string): string[] {
+  const urls: string[] = [];
+  const push = (u: string) => {
+    if (/^https:\/\/m\.media-amazon\.com\/.*\.(jpe?g|png|webp)/i.test(u) && !urls.includes(u)) urls.push(u);
+  };
+  for (const m of pdpHtml.matchAll(/"hiRes"\s*:\s*"(https:[^"]+)"/g)) push(m[1]);
+  if (urls.length < 2) {
+    for (const m of pdpHtml.matchAll(/"large"\s*:\s*"(https:[^"]+)"/g)) push(m[1]);
+  }
+  return urls.slice(0, 6);
+}
