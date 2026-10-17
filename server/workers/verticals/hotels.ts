@@ -13,7 +13,10 @@ import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../p
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
 import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
+import { parseGoibiboHotelsSsr } from '../parsers/goibiboHotels';
 import { cffiFetch } from '../../common/curlCffiFetch';
+import { newRawItem } from '../../sources/contract';
+import type { RawSourceItem } from '../../types';
 import { AcquisitionError } from '../../common/httpClient';
 import { cityVariants, slugOf } from '../../common/cityAlias';
 
@@ -122,17 +125,68 @@ export const hotelsWorker: VerticalWorker = {
       },
     },
     {
-      // Goibibo hotels — owner-mandated mandatory source. Same Akamai edge gate today.
+      // Goibibo hotels — owner-mandated mandatory source. /hotels/* SEO pages are
+      // Akamai-stubbed (8-byte "200 - OK") from sandbox + Browserbase IPs while the
+      // /flights/* SEO pages on the SAME IP serve full __NEXT_DATA__ SSR — a
+      // path-scoped bot gate, not an IP burn. This is a SELF-DETECTING full-flow
+      // probe (MMT-flights pattern): every search actually fetches the hotel SEO
+      // page, so a clean production Hostinger IP activates it automatically.
+      // The parser is shape-tolerant (walks __NEXT_DATA__ for hotel-shaped rows).
       sourceId: 'w_hotels_goibibo',
       priority: 15,
+      timeoutMs: 30_000,
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
-        const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
-        const r = await cffiFetch(`https://www.goibibo.com/hotels/hotels-in-${slug}/`, { impersonate: 'chrome', timeoutMs: 25_000 });
-        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `Goibibo HTTP ${r.status}`);
-        if (r.body.length < 500) throw new AcquisitionError('ACCESS_CHALLENGE', 'Goibibo returned an empty Akamai edge body (no sensor cookie)');
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Goibibo hotel page reached but carried no parseable SSR data');
+        const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+        const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
+        let lastErr: AcquisitionError | null = null;
+        for (const slug of attempts) {
+          const url = `https://www.goibibo.com/hotels/${slug}/`;
+          let r;
+          try {
+            r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000, headers: {
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+              Referer: 'https://www.google.com/',
+            } });
+          } catch (e: any) {
+            lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable: ${String(e?.message || e).slice(0, 80)}`);
+            continue;
+          }
+          if (r.status === 404) continue; // spelling has no page: try the -ct variant
+          if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
+          if (r.status !== 200) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels HTTP ${r.status}`); continue; }
+          if (r.body.length < 500) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', 'Goibibo hotels returned the 8-byte Akamai stub ("200 - OK") for this IP — path-scoped gate; retries each search'); continue; }
+          const rows = parseGoibiboHotelsSsr(r.body);
+          if (!rows.length) { lastErr = new AcquisitionError('EMPTY_RESPONSE', `Goibibo hotel page reached (${r.body.length} bytes) but carried no parseable hotel listings`); continue; }
+          rows.sort((a, b) => a.price - b.price);
+          const offers: RawSourceItem[] = [];
+          for (const h of rows.slice(0, 40)) {
+            offers.push(newRawItem(ctx.source, {
+              title: h.name,
+              seller: 'Goibibo',
+              sellerUrl: url, // redirect only to the site that owns the price
+              currency: 'INR',
+              price: h.price,
+              attributes: {
+                image_url: h.image || '',
+                rating: h.rating !== undefined ? String(h.rating) : '',
+                locality: h.locality || '',
+                city,
+                price_basis: 'per night for 1 room (page picks its own service date)',
+                data_note: 'Live nightly rates from Goibibo hotel search results (SEO page)',
+              },
+              evidence: {
+                sourceUrl: url,
+                sourceReference: h.url,
+                extractedFields: ['title', 'price', 'rating', 'locality', 'image_url'],
+              },
+            }));
+          }
+          return offers;
+        }
+        throw lastErr || new AcquisitionError('NOT_FOUND', `Goibibo has no hotels page for "${city}"`, 404);
       },
     },
     {

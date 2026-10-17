@@ -1994,25 +1994,25 @@ function parseNykaa(html, source, pageUrl) {
   if (Array.isArray(direct) && direct.length && "discountedPrice" in (direct[0] || {})) {
     products = direct;
   } else {
-    const walk = (o, depth) => {
+    const walk2 = (o, depth) => {
       if (depth > 10 || !o || typeof o !== "object") return [];
       if (Array.isArray(o)) {
         if (o.length && typeof o[0] === "object" && o[0] && ("discountedPrice" in o[0] || "price" in o[0]) && ("title" in o[0] || "subTitle" in o[0])) {
           return o;
         }
         for (const v of o) {
-          const r = walk(v, depth + 1);
+          const r = walk2(v, depth + 1);
           if (r.length) return r;
         }
         return [];
       }
       for (const v of Object.values(o)) {
-        const r = walk(v, depth + 1);
+        const r = walk2(v, depth + 1);
         if (r.length) return r;
       }
       return [];
     };
-    products = walk(root, 0);
+    products = walk2(root, 0);
   }
   if (!products.length) return [];
   const hrefs = /* @__PURE__ */ new Map();
@@ -2074,25 +2074,25 @@ function parseJiomart(body, source, pageUrl) {
   }
   let items = Array.isArray(root?.items) ? root.items : [];
   if (!items.length) {
-    const walk = (o, depth) => {
+    const walk2 = (o, depth) => {
       if (depth > 8 || !o || typeof o !== "object") return [];
       if (Array.isArray(o)) {
         if (o.length && typeof o[0] === "object" && o[0] && "name" in o[0] && (o[0]?.price?.effective || o[0]?.price?.marked)) {
           return o;
         }
         for (const v of o) {
-          const r = walk(v, depth + 1);
+          const r = walk2(v, depth + 1);
           if (r.length) return r;
         }
         return [];
       }
       for (const v of Object.values(o)) {
-        const r = walk(v, depth + 1);
+        const r = walk2(v, depth + 1);
         if (r.length) return r;
       }
       return [];
     };
-    items = walk(root, 0);
+    items = walk2(root, 0);
   }
   if (!items.length) return [];
   const out = [];
@@ -3438,6 +3438,103 @@ var init_ixigoHotels = __esm({
   }
 });
 
+// server/workers/parsers/goibiboHotels.ts
+function walk(node, out, depth = 0) {
+  if (depth > 9 || !node) return;
+  if (Array.isArray(node)) {
+    if (node.length >= 3 && node.length <= 800) {
+      const scored = node.filter((x) => x && typeof x === "object" && !Array.isArray(x)).map((x) => scoreHotelLike(x)).filter((x) => x.score > 0);
+      if (scored.length >= Math.max(3, Math.floor(node.length * 0.6))) {
+        out.push(...scored);
+      }
+    }
+    for (const x of node) walk(x, out, depth + 1);
+    return;
+  }
+  if (typeof node === "object") {
+    for (const v of Object.values(node)) walk(v, out, depth + 1);
+  }
+}
+function keyMatches(key, keys) {
+  const lk = key.toLowerCase();
+  return keys.some((n) => {
+    const ln = n.toLowerCase();
+    return lk === ln || lk.endsWith("." + ln);
+  });
+}
+function scoreHotelLike(o) {
+  let score = 0;
+  const flat = flatten(o, 0, 3);
+  for (const k of Object.keys(flat)) {
+    if (keyMatches(k, NAME_KEYS)) score += 2;
+    if (keyMatches(k, PRICE_KEYS)) score += 3;
+    if (keyMatches(k, RATING_KEYS)) score += 1;
+    if (keyMatches(k, IMG_KEYS)) score += 1;
+  }
+  return { obj: flat, score };
+}
+function flatten(o, depth, maxDepth, prefix = "") {
+  const out = {};
+  for (const [k, v] of Object.entries(o || {})) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === "object" && !Array.isArray(v) && depth < maxDepth) {
+      Object.assign(out, flatten(v, depth + 1, maxDepth, key));
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+function pickFirst(flat, keys) {
+  for (const [k, v] of Object.entries(flat)) {
+    const lk = k.toLowerCase();
+    if (keys.some((n) => lk === n.toLowerCase()) || keys.some((n) => lk.endsWith("." + n.toLowerCase()))) return v;
+  }
+  return void 0;
+}
+function parseGoibiboHotelsSsr(body) {
+  const m = /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(body);
+  if (!m) return [];
+  let data;
+  try {
+    data = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const hits = [];
+  walk(data, hits);
+  hits.sort((a, b) => b.score - a.score);
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const h of hits) {
+    if (h.score < 5) continue;
+    const name = String(pickFirst(h.obj, NAME_KEYS) || "").trim();
+    let price = Number(pickFirst(h.obj, PRICE_KEYS)) || 0;
+    if (Array.isArray(pickFirst(h.obj, PRICE_KEYS))) price = Number(pickFirst(h.obj, PRICE_KEYS)[0]) || 0;
+    if (!name || !Number.isFinite(price) || price < 100 || price > 1e7) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const rating = Number(pickFirst(h.obj, RATING_KEYS)) || void 0;
+    let image = String(pickFirst(h.obj, IMG_KEYS) || "");
+    if (image && image.startsWith("//")) image = "https:" + image;
+    const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
+    const slug = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
+    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug || void 0 });
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+var NAME_KEYS, PRICE_KEYS, RATING_KEYS, IMG_KEYS;
+var init_goibiboHotels = __esm({
+  "server/workers/parsers/goibiboHotels.ts"() {
+    NAME_KEYS = ["name", "displayName", "hotelName", "hotel_name", "propertyName", "title"];
+    PRICE_KEYS = ["price", "fare", "total", "totalPrice", "sellingPrice", "amount", "perNight", "baseFare", "finalPrice"];
+    RATING_KEYS = ["rating", "hotelRating", "userRating", "starRating", "goibiboRating"];
+    IMG_KEYS = ["image", "imgUrl", "imageUrl", "thumbnail", "hotelImage", "mainImage", "imageURL"];
+  }
+});
+
 // server/common/cityAlias.ts
 function cityVariants(city) {
   const n = norm(city);
@@ -4310,7 +4407,9 @@ var init_hotels = __esm({
     init_cleartripHotels();
     init_airbnbHotels();
     init_ixigoHotels();
+    init_goibiboHotels();
     init_curlCffiFetch();
+    init_contract();
     init_httpClient();
     init_cityAlias();
     init_oyoHotels();
@@ -4346,17 +4445,78 @@ var init_hotels = __esm({
           }
         },
         {
-          // Goibibo hotels — owner-mandated mandatory source. Same Akamai edge gate today.
+          // Goibibo hotels — owner-mandated mandatory source. /hotels/* SEO pages are
+          // Akamai-stubbed (8-byte "200 - OK") from sandbox + Browserbase IPs while the
+          // /flights/* SEO pages on the SAME IP serve full __NEXT_DATA__ SSR — a
+          // path-scoped bot gate, not an IP burn. This is a SELF-DETECTING full-flow
+          // probe (MMT-flights pattern): every search actually fetches the hotel SEO
+          // page, so a clean production Hostinger IP activates it automatically.
+          // The parser is shape-tolerant (walks __NEXT_DATA__ for hotel-shaped rows).
           sourceId: "w_hotels_goibibo",
           priority: 15,
+          timeoutMs: 3e4,
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
-            const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const r = await cffiFetch(`https://www.goibibo.com/hotels/hotels-in-${slug}/`, { impersonate: "chrome", timeoutMs: 25e3 });
-            if (r.status !== 200) throw new AcquisitionError("ACCESS_CHALLENGE", `Goibibo HTTP ${r.status}`);
-            if (r.body.length < 500) throw new AcquisitionError("ACCESS_CHALLENGE", "Goibibo returned an empty Akamai edge body (no sensor cookie)");
-            throw new AcquisitionError("EMPTY_RESPONSE", "Goibibo hotel page reached but carried no parseable SSR data");
+            const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
+            let lastErr = null;
+            for (const slug of attempts) {
+              const url = `https://www.goibibo.com/hotels/${slug}/`;
+              let r;
+              try {
+                r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: {
+                  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                  "Accept-Language": "en-US,en;q=0.9",
+                  Referer: "https://www.google.com/"
+                } });
+              } catch (e) {
+                lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable: ${String(e?.message || e).slice(0, 80)}`);
+                continue;
+              }
+              if (r.status === 404) continue;
+              if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
+              if (r.status !== 200) {
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels HTTP ${r.status}`);
+                continue;
+              }
+              if (r.body.length < 500) {
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", 'Goibibo hotels returned the 8-byte Akamai stub ("200 - OK") for this IP \u2014 path-scoped gate; retries each search');
+                continue;
+              }
+              const rows = parseGoibiboHotelsSsr(r.body);
+              if (!rows.length) {
+                lastErr = new AcquisitionError("EMPTY_RESPONSE", `Goibibo hotel page reached (${r.body.length} bytes) but carried no parseable hotel listings`);
+                continue;
+              }
+              rows.sort((a, b) => a.price - b.price);
+              const offers = [];
+              for (const h of rows.slice(0, 40)) {
+                offers.push(newRawItem(ctx.source, {
+                  title: h.name,
+                  seller: "Goibibo",
+                  sellerUrl: url,
+                  // redirect only to the site that owns the price
+                  currency: "INR",
+                  price: h.price,
+                  attributes: {
+                    image_url: h.image || "",
+                    rating: h.rating !== void 0 ? String(h.rating) : "",
+                    locality: h.locality || "",
+                    city,
+                    price_basis: "per night for 1 room (page picks its own service date)",
+                    data_note: "Live nightly rates from Goibibo hotel search results (SEO page)"
+                  },
+                  evidence: {
+                    sourceUrl: url,
+                    sourceReference: h.url,
+                    extractedFields: ["title", "price", "rating", "locality", "image_url"]
+                  }
+                }));
+              }
+              return offers;
+            }
+            throw lastErr || new AcquisitionError("NOT_FOUND", `Goibibo has no hotels page for "${city}"`, 404);
           }
         },
         {
@@ -5775,18 +5935,18 @@ function fillMeta(o, f) {
 }
 function collectFlights(root) {
   const out = [];
-  const walk = (node, depth) => {
+  const walk2 = (node, depth) => {
     const mine = [];
     if (depth > 14 || node == null) return mine;
     if (Array.isArray(node)) {
-      for (const v of node) mine.push(...walk(v, depth + 1));
+      for (const v of node) mine.push(...walk2(v, depth + 1));
       return mine;
     }
     if (typeof node !== "object") return mine;
     const o = node;
     for (const [k, v] of Object.entries(o)) {
       if (FLIGHT_DETAIL_KEYS.includes(k) || v == null) continue;
-      mine.push(...walk(v, depth + 1));
+      mine.push(...walk2(v, depth + 1));
     }
     const no = flightNo(o);
     if (no) {
@@ -5815,7 +5975,7 @@ function collectFlights(root) {
     }
     return mine;
   };
-  out.push(...walk(root, 0));
+  out.push(...walk2(root, 0));
   return out;
 }
 function parseIndigoSearch(body) {
@@ -5886,11 +6046,11 @@ async function indigoWebFareCalendar(cffiFetch2, fromCode, toCode, depIso) {
   });
   if (rTok.status !== 200) return [];
   let tok;
-  const walk = (o) => {
+  const walk2 = (o) => {
     if (o && typeof o === "object") {
       for (const k of Object.keys(o)) {
         if (k === "token" && typeof o[k] === "string" && o[k].split(".").length === 3) return o[k];
-        const r2 = walk(o[k]);
+        const r2 = walk2(o[k]);
         if (r2) return r2;
       }
     }
@@ -5899,7 +6059,7 @@ async function indigoWebFareCalendar(cffiFetch2, fromCode, toCode, depIso) {
   try {
     let raw = JSON.parse(rTok.body);
     if (typeof raw === "string") raw = JSON.parse(raw);
-    tok = walk(raw);
+    tok = walk2(raw);
   } catch {
     return [];
   }
@@ -23322,6 +23482,48 @@ var init_priceAlerts = __esm({
   }
 });
 
+// server/workers/parsers/mmtAutosuggest.ts
+function parseMmtAutosuggest(body, kind) {
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(data)) return [];
+  const out = [];
+  for (const d of data) {
+    if (!d || typeof d !== "object") continue;
+    const cc = String(d.countryCode || "").toUpperCase();
+    if (cc && cc !== "IN") continue;
+    const name = String(d.displayName || "").split(",")[0].trim() || String(d.displayName || "").trim();
+    const rawName = String(d.displayName || "").trim();
+    if (!rawName) continue;
+    const city = String(d.cityName || "").trim();
+    if (kind === "city" && String(d.type || "") !== "city") continue;
+    const id = String(d.id || "").trim();
+    const star = Number(d.srating) || void 0;
+    const centre = d?.centre || d?.location || {};
+    out.push({
+      name: kind === "hotel" ? rawName : name,
+      type: kind === "hotel" ? "HOTEL" : "CITY",
+      cityName: city,
+      stateName: String(d.stateName || "").trim() || void 0,
+      countryName: String(d.countryName || "").trim() || void 0,
+      hotelId: kind === "hotel" ? id || void 0 : void 0,
+      cityCode: String(d.cityCode || "").trim() || void 0,
+      starRating: star && star > 0 ? star : void 0,
+      lat: Number(centre.lat) || void 0,
+      lng: Number(centre.lng) || void 0
+    });
+  }
+  return out;
+}
+var init_mmtAutosuggest = __esm({
+  "server/workers/parsers/mmtAutosuggest.ts"() {
+  }
+});
+
 // server/marketing/placements.ts
 var placements_exports = {};
 __export(placements_exports, {
@@ -24414,6 +24616,7 @@ var init_routes = __esm({
     init_logger();
     init_curlCffiFetch();
     init_yatraHotels();
+    init_mmtAutosuggest();
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", async (_req, res) => {
       const store2 = getStore();
@@ -24443,14 +24646,36 @@ var init_routes = __esm({
       const hit = hotelLocationCache.get(key);
       if (hit && Date.now() - hit.at < 24 * 3600 * 1e3) return res.json({ locations: hit.docs });
       try {
-        const r = await cffiFetch(
-          `https://cdn.travelguru.com/api/v4/autosuggest?key=${encodeURIComponent(q3)}&filter=all&count=12&propertyType=all`,
-          { impersonate: "chrome", timeoutMs: 15e3, headers: { Accept: "application/json", "x-api-key": YATRA_HOTELS_API_KEY, Referer: "https://hotel.yatra.com/", Origin: "https://hotel.yatra.com" } }
-        );
-        if (r.status !== 200) return res.json({ locations: [], error: `TravelGuru autosuggest HTTP ${r.status}` });
-        const hotels = JSON.parse(r.body || "{}").hotels || [];
+        const [tg, mmtH, mmtC] = await Promise.all([
+          cffiFetch(
+            `https://cdn.travelguru.com/api/v4/autosuggest?key=${encodeURIComponent(q3)}&filter=all&count=12&propertyType=all`,
+            { impersonate: "chrome", timeoutMs: 15e3, headers: { Accept: "application/json", "x-api-key": YATRA_HOTELS_API_KEY, Referer: "https://hotel.yatra.com/", Origin: "https://hotel.yatra.com" } }
+          ).catch(() => null),
+          cffiFetch(
+            `https://mapi.makemytrip.com/autosuggest/v5/search?t=hotel&q=${encodeURIComponent(q3)}`,
+            { impersonate: "chrome", timeoutMs: 15e3, headers: { Accept: "application/json", Referer: "https://www.makemytrip.com/" } }
+          ).catch(() => null),
+          cffiFetch(
+            `https://mapi.makemytrip.com/autosuggest/v5/search?t=city&q=${encodeURIComponent(q3)}`,
+            { impersonate: "chrome", timeoutMs: 15e3, headers: { Accept: "application/json", Referer: "https://www.makemytrip.com/" } }
+          ).catch(() => null)
+        ]);
+        const hotels = tg && tg.status === 200 ? JSON.parse(tg.body || "{}").hotels || [] : [];
+        const mmtHotels = mmtH && mmtH.status === 200 ? parseMmtAutosuggest(mmtH.body, "hotel") : [];
+        const mmtCities = mmtC && mmtC.status === 200 ? parseMmtAutosuggest(mmtC.body, "city") : [];
+        if (!hotels.length && !mmtHotels.length && !mmtCities.length) {
+          const errBits = [`TravelGuru ${tg ? tg.status : "ERR"}`, `MMT ${mmtH ? mmtH.status : "ERR"}`];
+          return res.json({ locations: [], error: errBits.join(" \xB7 ") });
+        }
         const cities = [];
         const props = [];
+        const seenDest = /* @__PURE__ */ new Set();
+        for (const c of mmtCities) {
+          const key2 = c.name.toLowerCase();
+          if (!c.name || seenDest.has(key2)) continue;
+          seenDest.add(key2);
+          cities.push({ name: c.name, type: "CITY", cityName: c.cityName, stateName: c.stateName || "", cityCode: c.cityCode || "", registry: "makemytrip" });
+        }
         for (const h of hotels) {
           const cc = String(h?.countryCode || "").toUpperCase();
           if (cc && cc !== "IND") continue;
@@ -24460,10 +24685,24 @@ var init_routes = __esm({
             cityName: String(h?.cityName || ""),
             stateName: String(h?.stateName || ""),
             propertyType: String(h?.propertyType || ""),
-            sourceId: String(h?.sourceID || "")
+            sourceId: String(h?.sourceID || ""),
+            registry: "yatra"
           };
           if (!doc.name) continue;
+          if (doc.type === "CITY" && seenDest.has(doc.name.toLowerCase())) continue;
           (doc.type === "HOTEL" ? props : cities).push(doc);
+        }
+        const seenHotel = /* @__PURE__ */ new Set();
+        for (const p of props) seenHotel.add(`${p.name.toLowerCase()}|${String(p.cityName).toLowerCase()}`);
+        for (const mh of mmtHotels) {
+          const segs = mh.name.split(",").map((x) => x.trim()).filter(Boolean);
+          const dedup = [];
+          for (const seg of segs) if (!dedup.some((d) => d.toLowerCase() === seg.toLowerCase())) dedup.push(seg);
+          const display = dedup.join(", ");
+          const key2 = `${mh.name.toLowerCase()}|${mh.cityName.toLowerCase()}`;
+          if (!mh.name || seenHotel.has(key2)) continue;
+          seenHotel.add(key2);
+          props.push({ name: display, type: "HOTEL", cityName: mh.cityName, stateName: mh.stateName || "", hotelId: mh.hotelId || "", starRating: mh.starRating, lat: mh.lat, lng: mh.lng, registry: "makemytrip" });
         }
         const locations = [...cities, ...props].slice(0, 14);
         hotelLocationCache.set(key, { at: Date.now(), docs: locations });

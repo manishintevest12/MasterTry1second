@@ -40,6 +40,7 @@ import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../
 import { log } from '../common/logger';
 import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
 import { YATRA_HOTELS_API_KEY } from '../workers/parsers/yatraHotels';
+import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
 
 export const apiRouter = Router();
 
@@ -77,15 +78,41 @@ apiRouter.get('/hotels/locations', async (req, res) => {
   const hit = hotelLocationCache.get(key);
   if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return res.json({ locations: hit.docs });
   try {
-    const r = await cffiFetch(
-      `https://cdn.travelguru.com/api/v4/autosuggest?key=${encodeURIComponent(q)}&filter=all&count=12&propertyType=all`,
-      { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json', 'x-api-key': YATRA_HOTELS_API_KEY, Referer: 'https://hotel.yatra.com/', Origin: 'https://hotel.yatra.com' } },
-    );
-    if (r.status !== 200) return res.json({ locations: [], error: `TravelGuru autosuggest HTTP ${r.status}` });
-    const hotels: any[] = (JSON.parse(r.body || '{}').hotels) || [];
+    // LIVE registries in parallel: TravelGuru (Yatra hotels) + MakeMyTrip mapi
+    // autosuggest (t=hotel gives real property ids + star ratings; t=city gives
+    // destinations). Both verified browserless; both India-only.
+    const [tg, mmtH, mmtC] = await Promise.all([
+      cffiFetch(
+        `https://cdn.travelguru.com/api/v4/autosuggest?key=${encodeURIComponent(q)}&filter=all&count=12&propertyType=all`,
+        { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json', 'x-api-key': YATRA_HOTELS_API_KEY, Referer: 'https://hotel.yatra.com/', Origin: 'https://hotel.yatra.com' } },
+      ).catch(() => null),
+      cffiFetch(
+        `https://mapi.makemytrip.com/autosuggest/v5/search?t=hotel&q=${encodeURIComponent(q)}`,
+        { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json', Referer: 'https://www.makemytrip.com/' } },
+      ).catch(() => null),
+      cffiFetch(
+        `https://mapi.makemytrip.com/autosuggest/v5/search?t=city&q=${encodeURIComponent(q)}`,
+        { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json', Referer: 'https://www.makemytrip.com/' } },
+      ).catch(() => null),
+    ]);
+    const hotels: any[] = (tg && tg.status === 200) ? ((JSON.parse(tg.body || '{}').hotels) || []) : [];
+    const mmtHotels = mmtH && mmtH.status === 200 ? parseMmtAutosuggest(mmtH.body, 'hotel') : [];
+    const mmtCities = mmtC && mmtC.status === 200 ? parseMmtAutosuggest(mmtC.body, 'city') : [];
+    if (!hotels.length && !mmtHotels.length && !mmtCities.length) {
+      const errBits = [`TravelGuru ${tg ? tg.status : 'ERR'}`, `MMT ${mmtH ? mmtH.status : 'ERR'}`];
+      return res.json({ locations: [], error: errBits.join(' · ') });
+    }
     // Cities/areas first (destinations), then individual properties (hotel names).
+    // MMT destination rows carry cityCode; MMT property rows carry hotelId + starRating.
     const cities: any[] = [];
     const props: any[] = [];
+    const seenDest = new Set<string>();
+    for (const c of mmtCities) {
+      const key = c.name.toLowerCase();
+      if (!c.name || seenDest.has(key)) continue;
+      seenDest.add(key);
+      cities.push({ name: c.name, type: 'CITY', cityName: c.cityName, stateName: c.stateName || '', cityCode: c.cityCode || '', registry: 'makemytrip' });
+    }
     for (const h of hotels) {
       const cc = String(h?.countryCode || '').toUpperCase();
       if (cc && cc !== 'IND') continue; // India stays only
@@ -96,9 +123,25 @@ apiRouter.get('/hotels/locations', async (req, res) => {
         stateName: String(h?.stateName || ''),
         propertyType: String(h?.propertyType || ''),
         sourceId: String(h?.sourceID || ''),
+        registry: 'yatra',
       };
       if (!doc.name) continue;
+      if (doc.type === 'CITY' && seenDest.has(doc.name.toLowerCase())) continue;
       (doc.type === 'HOTEL' ? props : cities).push(doc);
+    }
+    const seenHotel = new Set<string>();
+    for (const p of props) seenHotel.add(`${p.name.toLowerCase()}|${String(p.cityName).toLowerCase()}`);
+    for (const mh of mmtHotels) {
+      // MMT displayName repeats the city ('The Taj Mahal Palace, Mumbai, Mumbai, Maharashtra') —
+      // dedupe comma segments keeping order ('The Taj Mahal Palace, Mumbai').
+      const segs = mh.name.split(',').map((x) => x.trim()).filter(Boolean);
+      const dedup: string[] = [];
+      for (const seg of segs) if (!dedup.some((d) => d.toLowerCase() === seg.toLowerCase())) dedup.push(seg);
+      const display = dedup.join(', ');
+      const key = `${mh.name.toLowerCase()}|${mh.cityName.toLowerCase()}`;
+      if (!mh.name || seenHotel.has(key)) continue;
+      seenHotel.add(key);
+      props.push({ name: display, type: 'HOTEL', cityName: mh.cityName, stateName: mh.stateName || '', hotelId: mh.hotelId || '', starRating: mh.starRating, lat: mh.lat, lng: mh.lng, registry: 'makemytrip' });
     }
     const locations = [...cities, ...props].slice(0, 14);
     hotelLocationCache.set(key, { at: Date.now(), docs: locations });
