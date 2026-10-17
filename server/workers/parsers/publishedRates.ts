@@ -136,7 +136,11 @@ export function buildRateOffer(
     seller: opts.seller,
     sellerUrl: opts.sellerUrl,
     currency: 'INR',
-    price: undefined, // a published rate/premium schedule is not a single purchasable price
+    // The indicative rate minimum is the row's comparable value — same convention as
+    // BankBazaar's lender rows (price = rate) — rendered as % by the loans/insurance UI.
+    // Without it the route-level price filter dropped every published-rate row the
+    // moment any priced row existed (owner bug 17 Oct: only 1 company per vertical).
+    price: opts.facts.rateMin,
     attributes: attrs,
     evidence: {
       sourceUrl: opts.pageUrl,

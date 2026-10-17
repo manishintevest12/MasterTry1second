@@ -22,6 +22,13 @@ const NON_COMPARISON_VERTICALS: string[] = [
   'food', 'hotels', 'flights', 'bus', 'cab', 'insurance', 'loans', 'movies', 'creditcards',
 ];
 
+// Categorical attributes that identify what kind of product an offer is, used by the
+// query filter for summary-style rows whose title is a rate/premium, not a product name.
+const CATEGORICAL_ATTR_KEYS = [
+  'loan_type', 'insurance_type', 'plan_type', 'card_type',
+  'product_type', 'service_type', 'category', 'provider_type',
+] as const;
+
 function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   if (!query.entityName) return offers;
   const tokens = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
@@ -31,8 +38,16 @@ function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): Nor
     return offers; // relevance still applied by ranking (title/vendor match)
   }
   return offers.filter((o) => {
-    // Match against the title AND the vendor/merchant name
-    const text = `${o.title} ${o.vendor || ''}`.toLowerCase();
+    // Match against the title AND the vendor/merchant name AND categorical attributes.
+    // Finance summary rows (loans/insurance/creditcards published-rate pages) carry the
+    // product category in attributes (loan_type/insurance_type/card_type...), not in the
+    // title — e.g. Paisabazaar's "11.1-16.15% p.a." row IS a personal-loan offer. Without
+    // the attribute text the query filter silently dropped every 1-item finance source
+    // (only lender-wise BankBazaar rows survived).
+    const attrText = CATEGORICAL_ATTR_KEYS
+      .map((k) => String((o.attributes as Record<string, unknown>)?.[k] ?? ''))
+      .join(' ');
+    const text = `${o.title} ${o.vendor || ''} ${attrText}`.toLowerCase();
     // At least half the significant query tokens should match
     const hits = tokens.filter((t) => text.includes(t)).length;
     return hits >= Math.ceil(tokens.length / 2);

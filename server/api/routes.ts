@@ -265,6 +265,11 @@ apiRouter.post('/search', async (req, res) => {
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
   const response = await runSearch(input);
+  if (process.env.LOG_LEVEL === 'debug') {
+    const vc: Record<string, number> = {};
+    for (const o of response.results as any[]) vc[String((o as any).vendor || (o as any).seller || '?')] = (vc[String((o as any).vendor || (o as any).seller || '?')] || 0) + 1;
+    console.error(JSON.stringify({ dbg: 'runSearch raw', n: response.results.length, vendors: vc, vertical: String(input.vertical || '') }));
+  }
   res.json({ success: response.results.length > 0 || response.state.servedFrom !== 'unavailable', ...response });
 });
 
@@ -490,7 +495,12 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // Regex token boundary: 'milk' must appear as a WHOLE word, so 'buttermilk'
     // does not match 'milk'. Simple plural stemming keeps 'shoes' matching 'shoe'.
     const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
-    return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 };
+    // Finance rows carry their comparable value in attributes when the page publishes
+    // a rate/premium schedule rather than one purchasable price — those are valued.
+    const financeAttrValued = ['loans', 'insurance', 'creditcards'].includes(String((o as any).vertical))
+      && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null
+        || o.attributes?.annual_fee != null || o.attributes?.sum_insured != null);
+    return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 || financeAttrValued };
   });
   const verticalsNeedingTitleMatch = new Set(['food', 'grocery', 'ecommerce']);
   let kept = scored;

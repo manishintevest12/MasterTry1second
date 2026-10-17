@@ -2718,8 +2718,11 @@ function buildRateOffer(source, opts) {
     seller: opts.seller,
     sellerUrl: opts.sellerUrl,
     currency: "INR",
-    price: void 0,
-    // a published rate/premium schedule is not a single purchasable price
+    // The indicative rate minimum is the row's comparable value — same convention as
+    // BankBazaar's lender rows (price = rate) — rendered as % by the loans/insurance UI.
+    // Without it the route-level price filter dropped every published-rate row the
+    // moment any priced row existed (owner bug 17 Oct: only 1 company per vertical).
+    price: opts.facts.rateMin,
     attributes: attrs,
     evidence: {
       sourceUrl: opts.pageUrl,
@@ -20590,7 +20593,8 @@ function filterByQueryEntity(offers, query) {
     return offers;
   }
   return offers.filter((o) => {
-    const text = `${o.title} ${o.vendor || ""}`.toLowerCase();
+    const attrText = CATEGORICAL_ATTR_KEYS.map((k) => String(o.attributes?.[k] ?? "")).join(" ");
+    const text = `${o.title} ${o.vendor || ""} ${attrText}`.toLowerCase();
     const hits = tokens.filter((t) => text.includes(t)).length;
     return hits >= Math.ceil(tokens.length / 2);
   });
@@ -20683,7 +20687,7 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var NON_COMPARISON_VERTICALS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
+var NON_COMPARISON_VERTICALS, CATEGORICAL_ATTR_KEYS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
     NON_COMPARISON_VERTICALS = [
@@ -20701,6 +20705,16 @@ var init_verticalEngine = __esm({
       "loans",
       "movies",
       "creditcards"
+    ];
+    CATEGORICAL_ATTR_KEYS = [
+      "loan_type",
+      "insurance_type",
+      "plan_type",
+      "card_type",
+      "product_type",
+      "service_type",
+      "category",
+      "provider_type"
     ];
     PLACE_ALIASES = {
       "new delhi": "delhi",
@@ -24908,6 +24922,11 @@ var init_routes = __esm({
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
       const response = await runSearch(input);
+      if (process.env.LOG_LEVEL === "debug") {
+        const vc = {};
+        for (const o of response.results) vc[String(o.vendor || o.seller || "?")] = (vc[String(o.vendor || o.seller || "?")] || 0) + 1;
+        console.error(JSON.stringify({ dbg: "runSearch raw", n: response.results.length, vendors: vc, vertical: String(input.vertical || "") }));
+      }
       res.json({ success: response.results.length > 0 || response.state.servedFrom !== "unavailable", ...response });
     });
     HOTEL_SOURCE_LABEL = {
@@ -24974,7 +24993,8 @@ var init_routes = __esm({
       const scored = response.results.map((o) => {
         const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
         const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
-        return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 };
+        const financeAttrValued = ["loans", "insurance", "creditcards"].includes(String(o.vertical)) && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null || o.attributes?.annual_fee != null || o.attributes?.sum_insured != null);
+        return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 || financeAttrValued };
       });
       const verticalsNeedingTitleMatch = /* @__PURE__ */ new Set(["food", "grocery", "ecommerce"]);
       let kept = scored;
