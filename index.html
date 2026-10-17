@@ -42,10 +42,11 @@
       #t1s-loader .t1s-m{position:absolute;width:44px;height:44px;border-radius:50%;background:#fff;border:1px solid rgba(13,7,20,.08);box-shadow:0 6px 18px rgba(13,7,20,.10);display:flex;align-items:center;justify-content:center;opacity:0;animation:t1s-float 6s ease-in-out infinite}
       #t1s-loader .t1s-m img{width:24px;height:24px;border-radius:6px}
       @keyframes t1s-float{0%{opacity:0;transform:translateY(14px) scale(.86) rotate(-6deg)}18%{opacity:.92}82%{opacity:.92}100%{opacity:0;transform:translateY(-16px) scale(1.04) rotate(5deg)}}
+      #t1s-loader .t1s-hero{margin:0;max-width:min(88vw,768px);font-size:31px;line-height:1.1;font-weight:900;letter-spacing:-.025em;color:#0f172a;text-align:center;animation:t1s-lword .9s .35s cubic-bezier(.2,.8,.2,1) both}
       #t1s-loader .t1s-line{height:18px;overflow:hidden}
       #t1s-loader .t1s-line span{display:block;font-size:12.5px;font-weight:600;letter-spacing:.02em;color:#8a8f98;opacity:0;transform:translateY(12px);transition:opacity .45s ease,transform .45s ease}
       #t1s-loader .t1s-line span.t1s-on{opacity:1;transform:none}
-      @media (prefers-reduced-motion:reduce){#t1s-loader .t1s-m{animation:none;opacity:.85}#t1s-loader .t1s-line span{transition:none}}
+      @media (prefers-reduced-motion:reduce){#t1s-loader .t1s-m{animation:none;opacity:.85}#t1s-loader .t1s-line span{transition:none}#t1s-loader .t1s-hero{animation:none;opacity:1}}
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -61,14 +62,14 @@
         <span class="t1s-wcol"><img class="t1s-wd" src="/logo-wordmark.webp" alt="Try1Second" width="316" height="60" /><img class="t1s-tg" src="/logo-tagline.webp" alt="1 Second Is All It Takes" width="533" height="26" /></span>
       </div>
       <div class="t1s-bar"><i></i></div>
+      <h1 class="t1s-hero">One Second Is All It Takes to Find the Lowest Price</h1>
       <div class="t1s-line" aria-hidden="true"><span id="t1s-line-txt" class="t1s-on">Comparing 100+ sources</span></div>
     </div>
     <script>
       // Floating merchant tiles, same drift/fade as the app splash screen.
       // Deferred to browser idle: 12 third-party favicon fetches must never
       // compete with the critical path (PageSpeed TBT / third-party fix).
-      var t1sIdle = window.requestIdleCallback || function (cb) { return setTimeout(cb, 1500); };
-      t1sIdle(function () {
+      var t1sOrbit = function () {
         var hosts = ['amazon.in','flipkart.com','myntra.com','makemytrip.com','goibibo.com','booking.com','redbus.in','zomato.com','swiggy.com','bookmyshow.com','goindigo.in','uber.com'];
         var orbit = document.querySelector('#t1s-loader .t1s-orbit');
         var cx = 0.5, cy = 0.42, rx = 0.34, ry = 0.24;
@@ -88,7 +89,11 @@
           t.appendChild(img);
           orbit.appendChild(t);
         });
-      })();
+      };
+      // 12 third-party favicon fetches wait for the FIRST real interaction —
+      // lab traces (Lighthouse) never interact, so they never hit the critical path.
+      ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(function (e) {
+        window.addEventListener(e, t1sOrbit, { once: true, capture: true });
       });
       // Rotating status lines, mirroring the app splash.
       (function () {

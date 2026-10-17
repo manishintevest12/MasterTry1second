@@ -19,7 +19,7 @@ const AIRLINE_IATA: Record<string, string> = {
 const BRAND_DOMAIN: Array<[RegExp, string]> = [
   [/redbus/i, 'redbus.in'], [/abhibus/i, 'abhibus.com'], [/zingbus/i, 'zingbus.com'], [/intrcity/i, 'intrcity.com'],
   [/vrl/i, 'vrlbus.in'], [/srs travels/i, 'srsbooking.com'], [/savaari/i, 'savaari.com'], [/quick ?ride/i, 'quickride.in'],
-  [/ola\b/i, 'olacabs.com'], [/uber/i, 'uber.com'], [/rapido/i, 'rapido.bike'], [/cleartrip/i, 'cleartrip.com'],
+  [/ola\b/i, 'book.olacabs.com'], [/uber/i, 'uber.com'], [/rapido/i, 'rapido.bike'], [/cleartrip/i, 'cleartrip.com'],
   [/airbnb/i, 'airbnb.co.in'], [/makemytrip/i, 'makemytrip.com'], [/goibibo/i, 'goibibo.com'], [/booking\.com/i, 'booking.com'],
   [/easemytrip/i, 'easemytrip.com'], [/ixigo/i, 'ixigo.com'], [/swiggy/i, 'swiggy.com'], [/zomato/i, 'zomato.com'],
   [/domino/i, 'dominos.co.in'], [/bookmyshow/i, 'bookmyshow.com'], [/ticketnew/i, 'ticketnew.com'], [/cinepolis/i, 'cinepolisindia.com'],
@@ -61,6 +61,12 @@ function hostOf(u?: string): string | undefined {
   try { return u ? new URL(u).hostname.replace(/^www\./, '') : undefined; } catch { return undefined; }
 }
 
+/** Brands stuck with a 16x16 favicon ship a bundled high-res asset instead (17 Oct). */
+const HD_LOGO: Array<[RegExp, string]> = [
+  [/redbus/i, '/brand-logos/redbus.svg'],
+  [/big ?basket|bb ?now/i, '/brand-logos/bigbasket.png'],
+];
+
 export function brandImageFor(o: NormalizedOffer): string | undefined {
   const attrs: any = o.attributes || {};
   if (o.vertical === 'flights') {
@@ -75,6 +81,8 @@ export function brandImageFor(o: NormalizedOffer): string | undefined {
     if (ld) return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(ld)}&sz=128`;
   }
   const label = `${o.seller || ''} ${o.vendor || ''}`;
+  const hd = HD_LOGO.find(([re]) => re.test(label))?.[1];
+  if (hd) return hd;
   let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
   if (!dom) { const h = hostOf((o as any).sellerUrl); if (h && !DATA_HOST.test(h)) dom = h; }
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : undefined;

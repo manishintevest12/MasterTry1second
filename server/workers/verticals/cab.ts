@@ -153,10 +153,16 @@ async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reaso
   // rows ("Indore Jn.") priced a route the user never typed, and the route filter then
   // dropped the row, silently vanishing Uber from intra-city results (owner bug 17 Oct).
   // Suppress the alternate when it names the guide city itself; the raw drop must match.
+  // INTRA-CITY guard (owner bug 17 Oct): when BOTH endpoints sit inside the guide's own
+  // city, every published landmark in that city's fare table scores high on the shared
+  // city token — the guide's own-city averages ("Indore Jn.") priced a route the user
+  // never typed, and the route filter then dropped the row, silently vanishing Uber.
+  const guideCityRe = new RegExp(`\\b${cityInfo.city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+  const intraCity = guideCityRe.test(rt.from) && guideCityRe.test(rt.to);
   const altCity = cityFromRouteText(rt.to).toLowerCase();
-  const altAllowed = altCity !== cityInfo.city.toLowerCase();
+  const altAllowed = !intraCity && altCity !== cityInfo.city.toLowerCase();
   for (const fare of fares) {
-    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), altAllowed ? uberDestMatchScore(altCity, fare.dest) : 0);
+    const score = intraCity ? 0 : Math.max(uberDestMatchScore(rt.to, fare.dest), altAllowed ? uberDestMatchScore(altCity, fare.dest) : 0);
     if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
   }
   if (!best) { pricedRows = null; } // city has fares but not for this destination -> app-only row below
@@ -521,6 +527,13 @@ export const cabWorker: VerticalWorker = {
         ]);
         let a = fromCity ? rapidoCityLookup(cities, fromCity) : null;
         let b = toCity ? rapidoCityLookup(cities, toCity) : null;
+        // Locality text ("indore bypass") resolves to no pincode, so cityForPlace hands
+        // back the raw string and the strict lookup misses. The place text itself NAMES
+        // a served city (word-boundary) — that is real evidence, not invention.
+        const cityInText = (place: string) => cities.find((c) =>
+          new RegExp(`\\b${c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(place)) || null;
+        if (!a) a = cityInText(`${rt.from} ${fromCity || ''}`);
+        if (!b) b = cityInText(`${rt.to} ${toCity || ''}`);
         // Text-hint fallback: some area pincodes exist in neither India Post nor OSM
         // (e.g. "Indore Airport (452022)") — but the endpoint text itself names the
         // other endpoint's resolved city, which is real evidence, not invention.

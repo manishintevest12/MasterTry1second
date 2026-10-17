@@ -3,13 +3,15 @@ import { Heart, Tag, MapPin, Star, ChevronLeft, ChevronRight, Check, ExternalLin
 import { useApp } from '../context/AppContext';
 import { type HotelGroup, dealPercent } from '../utils/hotelGroups';
 import { brandLogoUrl, initials } from '../utils/brandLogo';
+import { HotelDetailModal } from './HotelDetailModal';
+import { Images } from 'lucide-react';
 
 /** Trivago-style hotel card: photo gallery | name, area, rating, amenities + per-site price rows | best deal + View Deal. */
 
 const ratingWord = (r: number) => (r >= 9 ? 'Exceptional' : r >= 8.5 ? 'Excellent' : r >= 8 ? 'Very good' : r >= 7 ? 'Good' : r >= 6 ? 'Pleasant' : 'Rated');
 const ratingColor = (r: number) => (r >= 8 ? 'bg-emerald-600' : r >= 7 ? 'bg-lime-600' : r >= 6 ? 'bg-amber-500' : 'bg-slate-500');
 
-const SiteLogo: React.FC<{ site: string; hotelName?: string }> = ({ site, hotelName }) => {
+export const SiteLogo: React.FC<{ site: string; hotelName?: string }> = ({ site, hotelName }) => {
   const [ok, setOk] = useState(true);
   const direct = site === 'Hotel website';
   const url = direct ? undefined : brandLogoUrl({ vertical: 'hotels', provider: site, subtitle: site });
@@ -41,6 +43,7 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
   const [imgIdx, setImgIdx] = useState(0);
   const [imgBroken, setImgBroken] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [detail, setDetail] = useState(false);
   const best = group.best;
   const bestQuote = best.item.sellerQuotes.find((q) => q.isLowest) || best.item.sellerQuotes[0];
   const tracked = trackedItemIds.includes(best.item.id);
@@ -56,7 +59,7 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs hover:shadow-md hover:border-slate-300 transition-all overflow-hidden flex flex-col md:flex-row">
       {/* PHOTO */}
-      <div className="relative w-full md:w-60 h-48 md:h-auto md:min-h-[220px] shrink-0 bg-slate-100 group">
+      <button type="button" onClick={() => setDetail(true)} aria-label={`Open ${group.name} details and photos`} className="relative w-full md:w-60 h-48 md:h-auto md:min-h-[220px] shrink-0 bg-slate-100 group block cursor-pointer">
         {photos.length > 0 && !imgBroken ? (
           <img src={photos[imgIdx % photos.length]} alt={group.name} loading="lazy" referrerPolicy="no-referrer"
             className="absolute inset-0 w-full h-full object-cover" onError={() => setImgBroken(true)} />
@@ -80,11 +83,17 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
           </>
         )}
         {group.propertyType && <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-slate-900/75 text-white text-[10px] font-bold">{group.propertyType}</span>}
-      </div>
+        {photos.length > 0 && !imgBroken && <span className="absolute top-3 left-3 px-2 py-1 rounded-lg bg-white/90 shadow-xs text-slate-700 text-[10px] font-bold flex items-center gap-1"><Images className="w-3 h-3" />{photos.length}</span>}
+      </button>
 
       {/* DETAILS + SITE PRICE ROWS */}
       <div className="flex-1 min-w-0 p-4 sm:p-5">
-        <h3 className="text-lg font-black text-slate-900 leading-tight line-clamp-2">{group.name}</h3>
+        <button type="button" onClick={() => setDetail(true)} className="text-left cursor-pointer group/title" aria-label="Open hotel details">
+          <h3 className="text-lg font-black text-slate-900 leading-tight line-clamp-2 group-hover/title:text-orange-600 transition-colors">{group.name}</h3>
+        </button>
+        <button type="button" onClick={() => setDetail(true)} className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:underline cursor-pointer">
+          <Images className="w-3 h-3" />Details &amp; photos{photos.length ? ` (${photos.length})` : ''}
+        </button>
         <p className="text-xs text-slate-600 mt-1 flex items-center gap-1">
           <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
           <span className="truncate"><b className="font-bold">{group.locality || group.city || 'Location on site'}</b>{group.locality && group.city ? `, ${group.city}` : ''}</span>
@@ -147,6 +156,7 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
           <span>View Deal</span><ExternalLink className="w-3.5 h-3.5" />
         </button>
       </div>
+      {detail && <HotelDetailModal group={group} nights={nights} onClose={() => setDetail(false)} />}
     </div>
   );
 };

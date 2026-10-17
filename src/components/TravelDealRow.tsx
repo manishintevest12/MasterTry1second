@@ -57,6 +57,16 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
   const [from, to] = route.split(/\s*(?:→|to)\s*/i);
   const date = spec(item, 'Date', 'travel date', 'departure date');
   const busType = item.vertical === 'bus' ? spec(item, 'seat type', 'bus type') || item.features?.[0] : undefined;
+  // Owner 17 Oct: cab cards must say which vehicle this is (Bike / Auto / Cab variant).
+  const cabVehicleOf = (it: ComparisonItem) => {
+    const vt = spec(it, 'vehicle type');
+    if (vt) return vt;
+    const t = String(it.title || '');
+    const m = /cab \(([^,)]+)/i.exec(t);
+    return m ? m[1].trim() : undefined;
+  };
+  const cabVehicle = item.vertical === 'cab' ? cabVehicleOf(item) : undefined;
+  const vehicleClass = cabVehicle ? (/bike|scoot/i.test(cabVehicle) ? 'Bike' : /auto|rickshaw/i.test(cabVehicle) ? 'Auto' : 'Cab') : undefined;
   const seats = spec(item, 'seats available');
   const operator = spec(item, 'operator') || item.provider;
   const carrier = item.vertical === 'flights' ? item.provider : operator;
@@ -80,7 +90,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-900 truncate">{carrier}</p>
             <p className="text-[11px] text-slate-500 truncate">
-              {[airlineName, flightNo, busType, date].filter(Boolean).join(' · ') || item.subtitle}
+              {[airlineName, flightNo, busType, cabVehicle, date].filter(Boolean).join(' · ') || item.subtitle}
             </p>
           </div>
           {(item as any).freshnessStatus === 'LIVE_VERIFIED' && (
@@ -108,6 +118,9 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
           <div className="mt-4 flex items-center gap-2 text-sm text-slate-700 font-semibold">
             <span className="truncate">{from || item.title}</span>
             {to && <><ArrowRight className="w-4 h-4 text-slate-400 shrink-0" /><span className="truncate">{to}</span></>}
+            {vehicleClass && (
+              <span className={`shrink-0 ml-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${vehicleClass === 'Bike' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : vehicleClass === 'Auto' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>{vehicleClass}</span>
+            )}
             {duration && <span className="ml-auto text-[11px] text-slate-500 font-medium flex items-center gap-1"><Clock className="w-3 h-3" />{duration}</span>}
           </div>
         )}
@@ -170,7 +183,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
               return (
                 <div key={r.item.id + i} className="flex items-center gap-3 px-4 sm:px-5 py-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800 truncate">{r.site}</p>
+                    <p className="text-sm font-bold text-slate-800 truncate">{r.site}{item.vertical === 'cab' && cabVehicleOf(r.item) && <span className="ml-1.5 text-[11px] font-semibold text-slate-500">{cabVehicleOf(r.item)}</span>}</p>
                     {i === 0 && r.priceAvailable && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Lowest price</span>}
                   </div>
                   <p className={`text-base font-black ${i === 0 && r.priceAvailable ? 'text-emerald-700' : 'text-slate-900'}`}>

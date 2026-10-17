@@ -21,7 +21,7 @@ const AIRLINE_NAME_TO_IATA: Record<string, string> = {
 const DOMAIN_BY_BRAND: Array<[RegExp, string]> = [
   [/redbus/i, 'redbus.in'], [/abhibus/i, 'abhibus.com'], [/zingbus/i, 'zingbus.com'], [/intrcity|intercity smart/i, 'intrcity.com'],
   [/vrl/i, 'vrlbus.in'], [/srs/i, 'srsbooking.com'], [/nuego/i, 'ngo.nuego.in'], [/flixbus/i, 'flixbus.in'],
-  [/savaari/i, 'savaari.com'], [/quick ?ride/i, 'quickride.in'], [/ola/i, 'olacabs.com'], [/uber/i, 'uber.com'],
+  [/savaari/i, 'savaari.com'], [/quick ?ride/i, 'quickride.in'], [/ola/i, 'book.olacabs.com'], [/uber/i, 'uber.com'],
   [/rapido/i, 'rapido.bike'], [/indrive/i, 'indrive.com'], [/blusmart/i, 'blusmart.com'], [/meru/i, 'meru.in'],
   [/cleartrip/i, 'cleartrip.com'], [/airbnb/i, 'airbnb.co.in'], [/makemytrip|mmt/i, 'makemytrip.com'],
   [/goibibo/i, 'goibibo.com'], [/booking\.com/i, 'booking.com'], [/agoda/i, 'agoda.com'], [/yatra/i, 'yatra.com'],
@@ -48,6 +48,16 @@ const DOMAIN_BY_BRAND: Array<[RegExp, string]> = [
   [/emer?ging/i, 'emergingtravel.com'], [/alibaba/i, 'alibaba.com'],
 ];
 
+/**
+ * Owner 17 Oct: some brands publish only a 16x16 favicon — Google's favicon service
+ * upscales it into a pixelated smear (redBus, BigBasket screenshots). For those we
+ * ship the brand's own high-res logo as a static asset instead.
+ */
+const HD_LOGO: Array<[RegExp, string]> = [
+  [/redbus/i, '/brand-logos/redbus.svg'],
+  [/big ?basket|bb ?now/i, '/brand-logos/bigbasket.png'],
+];
+
 export function airlineIata(item: { specs?: Record<string, string>; provider?: string; subtitle?: string }): string | undefined {
   const code = item.specs?.['airline code'] || item.specs?.['airline_code'];
   if (code && /^[A-Za-z0-9]{2}$/.test(code)) return code.toUpperCase();
@@ -69,6 +79,7 @@ export function brandLogoUrl(item: { vertical: string; specs?: Record<string, st
     if (iata) return `https://www.gstatic.com/flights/airline_logos/70px/${iata}.png`;
   }
   const name = `${item.provider || ''} ${item.subtitle || ''}`;
+  for (const [re, asset] of HD_LOGO) if (re.test(name)) return asset;
   let dom = brandDomain(name) || item.sellerQuotes?.[0]?.sourceDomain?.replace(/^www\./, '');
   // Data hosts (open-data mirrors, APIs) are never a brand: show initials instead of their favicon.
   if (dom && /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|osrm|project-osrm)\./i.test(dom)) dom = undefined;

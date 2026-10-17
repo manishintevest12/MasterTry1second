@@ -2949,6 +2949,8 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
     const score = scoreText.match(/(\d(?:\.\d)?)\b/)?.[1];
     const href = card.find('a[href*="/hotel/"]').first().attr("href") || "";
     const propUrl = href ? `https://www.booking.com${href.split("?")[0]}` : searchUrl;
+    const imgEl = card.find('img[data-testid="hotel-image"]').first().length ? card.find('img[data-testid="hotel-image"]').first() : card.find('img[src*="bstatic.com"], img[data-src*="bstatic.com"]').first();
+    const img = String(imgEl.attr("src") || imgEl.attr("data-src") || "").trim();
     const distance = card.find('[data-testid="distance"]').first().text().trim();
     if (!price) return;
     out.push(newRawItem(source, {
@@ -2960,6 +2962,7 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
       availability: "in_stock",
       travel: { roomType: "as listed on Booking.com" },
       attributes: {
+        ...img ? { image_url: img } : {},
         ...score ? { review_score: score } : {},
         ...distance ? { distance_from_center: distance.slice(0, 40) } : {},
         price_scope: `nightly rate for ${checkin} \u2192 ${checkout} (as displayed by Booking.com)`,
@@ -2969,7 +2972,7 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
         sourceUrl: searchUrl,
         sourceReference: name,
         rawFingerprint: fingerprint,
-        extractedFields: ["title", "price", ...score ? ["review_score"] : []]
+        extractedFields: ["title", "price", ...img ? ["image_url"] : [], ...score ? ["review_score"] : []]
       }
     }));
   });
@@ -3389,7 +3392,10 @@ function parseIxigoHotels(html, source, pageUrl, city) {
       brand: name.slice(0, 200),
       price: Math.round(fare),
       currency: "INR",
-      seller: name.slice(0, 120),
+      // Owner rule (17 Oct): the seller is the PLATFORM whose price is shown — a hotel's
+      // NAME must never appear in the Platforms & Sellers sidebar. The booking deeplink
+      // still goes to the hotel's own channels (siteFor), never to Ixigo.
+      seller: "Ixigo",
       sellerUrl: site.url,
       location: { city: String(h.city || city) },
       attributes: {
@@ -15036,10 +15042,12 @@ async function uberSsrFallback(ctx, rt, reason) {
     fares = [];
   }
   let best = null;
+  const guideCityRe = new RegExp(`\\b${cityInfo.city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+  const intraCity = guideCityRe.test(rt.from) && guideCityRe.test(rt.to);
   const altCity = cityFromRouteText(rt.to).toLowerCase();
-  const altAllowed = altCity !== cityInfo.city.toLowerCase();
+  const altAllowed = !intraCity && altCity !== cityInfo.city.toLowerCase();
   for (const fare of fares) {
-    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), altAllowed ? uberDestMatchScore(altCity, fare.dest) : 0);
+    const score = intraCity ? 0 : Math.max(uberDestMatchScore(rt.to, fare.dest), altAllowed ? uberDestMatchScore(altCity, fare.dest) : 0);
     if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
   }
   if (!best) {
@@ -15432,6 +15440,9 @@ var init_cab = __esm({
             ]);
             let a = fromCity ? rapidoCityLookup(cities, fromCity) : null;
             let b = toCity ? rapidoCityLookup(cities, toCity) : null;
+            const cityInText = (place) => cities.find((c) => new RegExp(`\\b${c.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(place)) || null;
+            if (!a) a = cityInText(`${rt.from} ${fromCity || ""}`);
+            if (!b) b = cityInText(`${rt.to} ${toCity || ""}`);
             const namesCity = (place, city) => cityFromRouteText(place).toLowerCase().includes(city.toLowerCase()) || place.toLowerCase().includes(city.toLowerCase());
             if (!a && b && b.name && namesCity(rt.from, b.name)) a = b;
             if (!b && a && a.name && namesCity(rt.to, a.name)) b = a;
@@ -20204,6 +20215,8 @@ function brandImageFor(o) {
     if (ld) return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(ld)}&sz=128`;
   }
   const label = `${o.seller || ""} ${o.vendor || ""}`;
+  const hd = HD_LOGO.find(([re]) => re.test(label))?.[1];
+  if (hd) return hd;
   let dom = BRAND_DOMAIN.find(([re]) => re.test(label))?.[1];
   if (!dom) {
     const h = hostOf(o.sellerUrl);
@@ -20245,7 +20258,7 @@ async function withLenderLogos(offers) {
   }
   return offers;
 }
-var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, LENDER_VERTICAL_IDS;
+var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, LENDER_VERTICAL_IDS;
 var init_brandImage = __esm({
   "server/pipeline/brandImage.ts"() {
     init_lenderLogo();
@@ -20282,7 +20295,7 @@ var init_brandImage = __esm({
       [/srs travels/i, "srsbooking.com"],
       [/savaari/i, "savaari.com"],
       [/quick ?ride/i, "quickride.in"],
-      [/ola\b/i, "olacabs.com"],
+      [/ola\b/i, "book.olacabs.com"],
       [/uber/i, "uber.com"],
       [/rapido/i, "rapido.bike"],
       [/cleartrip/i, "cleartrip.com"],
@@ -20394,6 +20407,10 @@ var init_brandImage = __esm({
     ];
     LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "banking"]);
     DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
+    HD_LOGO = [
+      [/redbus/i, "/brand-logos/redbus.svg"],
+      [/big ?basket|bb ?now/i, "/brand-logos/bigbasket.png"]
+    ];
     LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards"]);
   }
 });
@@ -21145,6 +21162,18 @@ var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
   runSearch: () => runSearch
 });
+function parseCatalogueAttributes(raw) {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw);
+      return p && typeof p === "object" ? p : {};
+    } catch {
+      return {};
+    }
+  }
+  return raw && typeof raw === "object" ? raw : {};
+}
 function rowToOffer(row, isLiveNow) {
   const status = row.freshness_status === "LIVE_VERIFIED" ? "CACHED_VERIFIED" : row.freshness_status;
   return {
@@ -21154,7 +21183,10 @@ function rowToOffer(row, isLiveNow) {
     vertical: row.vertical,
     title: row.title,
     identifiers: {},
-    attributes: {},
+    // Catalogue rows persist their full attribute set (image_url, rating, city, gallery...).
+    // Hydrate it — dropping it left every replayed hotel/flight row image-less, which
+    // surfaced as the recurring "photo not published by source" placeholder bug.
+    attributes: parseCatalogueAttributes(row.attributes),
     vendor: row.vendor,
     seller: row.seller,
     location: { pincode: row.location_pincode || void 0, city: row.location_city || void 0 },
@@ -24340,9 +24372,9 @@ var init_quickAppsData = __esm({
       { id: "qapp-easemytrip", name: "EaseMyTrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=easemytrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "easemytrip://open?utm_source=try1second", webUrl: "https://www.easemytrip.com", description: "Flight fares and hotel rates scanned live across our Flights and Hotels verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "50M+ Downloads", badge: "Live Source", bgColor: "bg-sky-600", createdAt: "2026-10-17" },
       { id: "qapp-yatra", name: "Yatra Flights Hotels & Bus", iconUrl: "https://www.google.com/s2/favicons?domain=yatra.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "yatra://open?utm_source=try1second", webUrl: "https://www.yatra.com", description: "Live flight, hotel and bus inventory powering three Try1Second verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Downloads", badge: "3 Verticals", bgColor: "bg-indigo-600", createdAt: "2026-10-17" },
       { id: "qapp-cleartrip", name: "Cleartrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=cleartrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "cleartrip://open?utm_source=try1second", webUrl: "https://www.cleartrip.com", description: "Flight and hotel prices scanned live into our travel comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Downloads", badge: "Live Source", bgColor: "bg-teal-600", createdAt: "2026-10-17" },
-      { id: "qapp-redbus", name: "redBus InterCity Tickets", iconUrl: "https://www.google.com/s2/favicons?domain=redbus.in&sz=128", category: "Bus & Travel", type: "Vertical Source", deepLink: "redbus://open?utm_source=try1second", webUrl: "https://www.redbus.in", description: "India-wide bus inventory with boarding points compared in our Bus vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "50M+ Downloads", badge: "Bus Vertical", bgColor: "bg-rose-600", createdAt: "2026-10-17" },
+      { id: "qapp-redbus", name: "redBus InterCity Tickets", iconUrl: "/brand-logos/redbus.svg", category: "Bus & Travel", type: "Vertical Source", deepLink: "redbus://open?utm_source=try1second", webUrl: "https://www.redbus.in", description: "India-wide bus inventory with boarding points compared in our Bus vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "50M+ Downloads", badge: "Bus Vertical", bgColor: "bg-rose-600", createdAt: "2026-10-17" },
       { id: "qapp-dominos", name: "Dominos Pizza Order Online", iconUrl: "https://www.google.com/s2/favicons?domain=dominos.co.in&sz=128", category: "Food Delivery & Dining", type: "Vertical Source", deepLink: "dominos://open?utm_source=try1second", webUrl: "https://www.dominos.co.in", description: "Menu prices from our Food vertical, cooked by live web acquisition.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "50M+ Downloads", badge: "Food Vertical", bgColor: "bg-blue-600", createdAt: "2026-10-17" },
-      { id: "qapp-bigbasket", name: "BigBasket & BB Now", iconUrl: "https://www.google.com/s2/favicons?domain=bigbasket.com&sz=128", category: "10-Min Quick Grocery", type: "Vertical Source", deepLink: "bigbasket://open?utm_source=try1second", webUrl: "https://www.bigbasket.com", description: "Grocery prices from BigBasket and BB Now inside our Grocery vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "50M+ Downloads", badge: "Grocery Vertical", bgColor: "bg-emerald-600", createdAt: "2026-10-17" },
+      { id: "qapp-bigbasket", name: "BigBasket & BB Now", iconUrl: "/brand-logos/bigbasket.png", category: "10-Min Quick Grocery", type: "Vertical Source", deepLink: "bigbasket://open?utm_source=try1second", webUrl: "https://www.bigbasket.com", description: "Grocery prices from BigBasket and BB Now inside our Grocery vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "50M+ Downloads", badge: "Grocery Vertical", bgColor: "bg-emerald-600", createdAt: "2026-10-17" },
       { id: "qapp-nykaa", name: "Nykaa Beauty & Fashion", iconUrl: "https://www.google.com/s2/favicons?domain=nykaa.com&sz=128", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "nykaa://open?utm_source=try1second", webUrl: "https://www.nykaa.com", description: "Beauty and fashion prices scanned live into our E-Commerce vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-pink-600", createdAt: "2026-10-17" },
       { id: "qapp-myntra", name: "Myntra Fashion Store", iconUrl: "https://www.google.com/s2/favicons?domain=myntra.com&sz=128", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "myntra://open?utm_source=try1second", webUrl: "https://www.myntra.com", description: "Live fashion prices powering our E-Commerce comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-fuchsia-600", createdAt: "2026-10-17" },
       { id: "qapp-paisabazaar", name: "Paisabazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=paisabazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "paisabazaar://open?utm_source=try1second", webUrl: "https://www.paisabazaar.com", description: "Personal loan rates compared live in our Loans vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-orange-600", createdAt: "2026-10-17" },
@@ -24474,12 +24506,29 @@ __export(routes_exports, {
   apiRouter: () => apiRouter,
   bootstrapBackend: () => bootstrapBackend
 });
+function hotelSellerLabel(o, rawSeller) {
+  if (!o || String(o.vertical) !== "hotels") return rawSeller;
+  const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  const s = rawSeller.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t || !s || s.length < 8) return rawSeller;
+  const same = s === t || (t.includes(s) || s.includes(t));
+  if (!same) return rawSeller;
+  const sid = String(o?.provenance?.sourceId || o?.source_id || o?.sourceId || "");
+  return HOTEL_SOURCE_LABEL[sid] || hostOfPublic(String(o?.sellerUrl || "")) || "Verified source";
+}
+function hostOfPublic(u) {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
 function offerToComparisonItem(o) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
   const rawDest = o.sellerUrl || "";
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || "") }) : "";
-  const seller = String(o.seller || o.vendor || "Verified source");
+  const seller = hotelSellerLabel(o, String(o.seller || o.vendor || "Verified source"));
   const attrs = o.attributes || {};
   const specs = {};
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, " ")] = String(v);
@@ -24535,6 +24584,7 @@ function offerToComparisonItem(o) {
     ...attrs["operator"] ? [attrs["operator"]] : []
   ].slice(0, 3);
   const sellerLabel = seller === "Verified source" ? String(o.vendor || seller) : seller;
+  const images = attrs["image_urls"] ? String(attrs["image_urls"]).split("|").filter((u) => /^https:\/\//.test(u)) : void 0;
   return {
     id: o.id,
     canonicalEntityId: o.canonicalEntityId ?? o.canonical_entity_id ?? null,
@@ -24544,8 +24594,12 @@ function offerToComparisonItem(o) {
     category: o.vertical,
     provider: o.vendor,
     providerLogo: "",
-    imageUrl: /^https:\/\//.test(attrs["image_url"] || "") ? attrs["image_url"] : void 0,
-    images: attrs["image_urls"] ? String(attrs["image_urls"]).split("|").filter((u) => /^https:\/\//.test(u)) : void 0,
+    images,
+    // Hero image fallback chain: image_url -> first gallery shot -> raw image attr.
+    // Parsers key their hero shot differently (Agoda: image_url, Ixigo/OYO: image,
+    // galleries in image_urls) — without the chain a real photo was lost and the card
+    // fell back to the "photo not published" placeholder.
+    imageUrl: [/^https:\/\//.test(attrs["image_url"] || "") ? attrs["image_url"] : "", (images || [])[0] || "", /^https:\/\//.test(attrs["image"] || "") ? attrs["image"] : ""].find((u) => u) || void 0,
     rating: Number(attrs["rating"]) || 0,
     reviewCount: Number(attrs["review_count"]) || 0,
     description,
@@ -24628,7 +24682,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto25, apiRouter, hotelLocationCache, busLocationCache;
+var import_express, import_crypto25, apiRouter, hotelLocationCache, busLocationCache, HOTEL_SOURCE_LABEL;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -24856,6 +24910,23 @@ var init_routes = __esm({
       const response = await runSearch(input);
       res.json({ success: response.results.length > 0 || response.state.servedFrom !== "unavailable", ...response });
     });
+    HOTEL_SOURCE_LABEL = {
+      w_hotels_ixigo: "Ixigo",
+      w_hotels_agoda: "Agoda",
+      w_hotels_booking: "Booking.com",
+      w_hotels_cleartrip: "Cleartrip",
+      w_hotels_airbnb: "Airbnb",
+      w_hotels_oyo: "OYO Rooms",
+      w_hotels_yatra: "Yatra",
+      w_hotels_emt: "EaseMyTrip",
+      w_hotels_saffronstays: "SaffronStays",
+      w_hotels_goibibo: "Goibibo",
+      w_hotels_mmt: "MakeMyTrip",
+      w_hotels_expedia: "Expedia",
+      w_hotels_hotelscom: "Hotels.com",
+      w_hotels_osm: "OpenStreetMap (ODbL)",
+      w_hotels_wikidata: "Wikidata (CC0)"
+    };
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
@@ -24924,12 +24995,13 @@ var init_routes = __esm({
           return;
         }
       }
-      if (kept.some((x) => x.priced) && !["movie", "movies"].includes(String(input.vertical))) kept = kept.filter((x) => x.priced);
+      const keepUnpriced = ["movie", "movies", "cab"].includes(String(input.vertical));
+      if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced);
       if (String(input.vertical) === "bus") {
         const live = kept.filter((x) => x.o.attributes?.fare_type !== "indicative_estimate");
         if (live.length) kept = live;
       }
-      kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
+      kept.sort((a, b) => b.hit - a.hit || Number(b.priced) - Number(a.priced) || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
       response.results = kept.map((x) => x.o);
       const mappedItems = response.results.map((o) => {
         const item = offerToComparisonItem(o);
@@ -24978,7 +25050,7 @@ var init_routes = __esm({
       };
       const sellerQuotes = cheapestFirst.map((x, i) => ({
         id: `sq-${x.o.id || i}`,
-        sellerName: String(x.o.seller || x.o.vendor || hostOf2(String(x.o.sellerUrl || "")) || "Verified source"),
+        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf2(String(x.o.sellerUrl || "")) || "Verified source")),
         price: x.price,
         currency: "\u20B9",
         url: String(x.o.sellerUrl || "") ? createMaskingPointer(String(x.o.sellerUrl), { offerId: String(x.o.id || "") }) : "",

@@ -107,7 +107,10 @@ export function parseIxigoHotels(html: string, source: SourceConfig, pageUrl: st
       brand: name.slice(0, 200),
       price: Math.round(fare),
       currency: 'INR',
-      seller: name.slice(0, 120),
+      // Owner rule (17 Oct): the seller is the PLATFORM whose price is shown — a hotel's
+      // NAME must never appear in the Platforms & Sellers sidebar. The booking deeplink
+      // still goes to the hotel's own channels (siteFor), never to Ixigo.
+      seller: 'Ixigo',
       sellerUrl: site.url,
       location: { city: String(h.city || city) },
       attributes: {

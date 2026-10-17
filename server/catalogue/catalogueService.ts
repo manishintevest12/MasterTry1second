@@ -82,6 +82,8 @@ export interface CatalogueRow {
   fetched_at: string;
   source_id: string;
   canonical_entity_id?: number | null;
+  /** Persisted attribute JSON (image_url, rating, gallery...) — hydrate, never discard. */
+  attributes?: unknown;
 }
 
 /** L3 catalogue lookup: eligible fresh offers for a vertical/location. */

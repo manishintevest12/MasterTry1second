@@ -44,6 +44,12 @@ export interface SearchInput {
   guests?: number;
 }
 
+function parseCatalogueAttributes(raw: unknown): Record<string, string> {
+  if (!raw) return {};
+  if (typeof raw === 'string') { try { const p = JSON.parse(raw); return p && typeof p === 'object' ? p : {}; } catch { return {}; } }
+  return raw && typeof raw === 'object' ? (raw as Record<string, string>) : {};
+}
+
 function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
   // Catalogue rows are re-validated for freshness; a stored LIVE_VERIFIED label is
   // downgraded to CACHED_VERIFIED when served from storage (Section 9 rule).
@@ -55,7 +61,10 @@ function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
     vertical: row.vertical as any,
     title: row.title,
     identifiers: {},
-    attributes: {},
+    // Catalogue rows persist their full attribute set (image_url, rating, city, gallery...).
+    // Hydrate it — dropping it left every replayed hotel/flight row image-less, which
+    // surfaced as the recurring "photo not published by source" placeholder bug.
+    attributes: parseCatalogueAttributes(row.attributes),
     vendor: row.vendor,
     seller: row.seller,
     location: { pincode: row.location_pincode || undefined, city: row.location_city || undefined },

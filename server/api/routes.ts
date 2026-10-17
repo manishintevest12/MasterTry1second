@@ -275,6 +275,35 @@ apiRouter.post('/search', async (req, res) => {
  * exposes no price (e.g. airline-route data), price is 0 and priceAvailable=false:
  * the UI shows "Price on seller site" instead of an invented fare.
  */
+
+/** Platform label for a hotel acquisition source — used when a stale/persisted offer
+ *  carried the hotel's NAME in the seller slot (pre-rule rows or discovery rows). */
+const HOTEL_SOURCE_LABEL: Record<string, string> = {
+  w_hotels_ixigo: 'Ixigo', w_hotels_agoda: 'Agoda', w_hotels_booking: 'Booking.com', w_hotels_cleartrip: 'Cleartrip',
+  w_hotels_airbnb: 'Airbnb', w_hotels_oyo: 'OYO Rooms', w_hotels_yatra: 'Yatra', w_hotels_emt: 'EaseMyTrip',
+  w_hotels_saffronstays: 'SaffronStays', w_hotels_goibibo: 'Goibibo', w_hotels_mmt: 'MakeMyTrip',
+  w_hotels_expedia: 'Expedia', w_hotels_hotelscom: 'Hotels.com',
+  w_hotels_osm: 'OpenStreetMap (ODbL)', w_hotels_wikidata: 'Wikidata (CC0)',
+};
+
+/** Owner 17 Oct: the Platforms & Sellers sidebar must never list a hotel's NAME as a
+ *  seller. Persisted offers from before the platform-seller rule still carry the hotel
+ *  name there; at serve time those fall back to the acquisition source's platform label. */
+function hotelSellerLabel(o: any, rawSeller: string): string {
+  if (!o || String(o.vertical) !== 'hotels') return rawSeller;
+  const t = String(o.title || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const s = rawSeller.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || !s || s.length < 8) return rawSeller;
+  const same = s === t || (t.includes(s) || s.includes(t));
+  if (!same) return rawSeller;
+  const sid = String(o?.provenance?.sourceId || o?.source_id || o?.sourceId || '');
+  return HOTEL_SOURCE_LABEL[sid] || hostOfPublic(String(o?.sellerUrl || '')) || 'Verified source';
+}
+
+function hostOfPublic(u: string): string {
+  try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
 function offerToComparisonItem(o: any) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
@@ -282,7 +311,7 @@ function offerToComparisonItem(o: any) {
   // time and NEVER appear in API responses or the page source.
   const rawDest = o.sellerUrl || '';
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || '') }) : '';
-  const seller = String(o.seller || o.vendor || 'Verified source');
+  const seller = hotelSellerLabel(o, String(o.seller || o.vendor || 'Verified source'));
   const attrs: Record<string, string> = o.attributes || {};
   const specs: Record<string, string> = {};
   for (const [k, v] of Object.entries(attrs)) specs[k.replace(/_/g, ' ')] = String(v);
@@ -342,6 +371,7 @@ function offerToComparisonItem(o: any) {
     ...(attrs['operator'] ? [attrs['operator']] : []),
   ].slice(0, 3);
   const sellerLabel = seller === 'Verified source' ? String(o.vendor || seller) : seller;
+  const images = attrs['image_urls'] ? String(attrs['image_urls']).split('|').filter((u) => /^https:\/\//.test(u)) : undefined;
   return {
     id: o.id,
     canonicalEntityId: o.canonicalEntityId ?? o.canonical_entity_id ?? null,
@@ -351,8 +381,13 @@ function offerToComparisonItem(o: any) {
     category: o.vertical,
     provider: o.vendor,
     providerLogo: '',
-    imageUrl: /^https:\/\//.test(attrs['image_url'] || '') ? attrs['image_url'] : undefined,
-    images: attrs['image_urls'] ? String(attrs['image_urls']).split('|').filter((u) => /^https:\/\//.test(u)) : undefined,
+    images,
+    // Hero image fallback chain: image_url -> first gallery shot -> raw image attr.
+    // Parsers key their hero shot differently (Agoda: image_url, Ixigo/OYO: image,
+    // galleries in image_urls) — without the chain a real photo was lost and the card
+    // fell back to the "photo not published" placeholder.
+    imageUrl: [/^https:\/\//.test(attrs['image_url'] || '') ? attrs['image_url'] : '', (images || [])[0] || '', /^https:\/\//.test(attrs['image'] || '') ? attrs['image'] : '']
+      .find((u) => u) || undefined,
     rating: Number(attrs['rating']) || 0,
     reviewCount: Number(attrs['review_count']) || 0,
     description,
@@ -483,15 +518,18 @@ apiRouter.post('/scrape/live', async (req, res) => {
   }
   // Drop price-less rows when priced alternatives exist in the same vertical —
   // EXCEPT movies: a film's card merges every ticket site, and only some sites
-  // expose seat-selection prices (the others are still real listing rows).
-  if (kept.some((x) => x.priced) && !['movie', 'movies'].includes(String(input.vertical))) kept = kept.filter((x) => x.priced);
+  // expose seat-selection prices. And EXCEPT cabs: Uber/Rapido publish app-only
+  // fares, so their real presence rows ("Fare on app") must survive alongside
+  // Ola's priced rows (owner bug report 17 Oct: only Ola was showing).
+  const keepUnpriced = ['movie', 'movies', 'cab'].includes(String(input.vertical));
+  if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced);
   // Bus: once LIVE operator fares exist, the transparent OSRM indicative estimate
   // row is redundant — show only real operator quotes.
   if (String(input.vertical) === 'bus') {
     const live = kept.filter((x) => (x.o.attributes as any)?.fare_type !== 'indicative_estimate');
     if (live.length) kept = live;
   }
-  kept.sort((a, b) => b.hit - a.hit || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
+  kept.sort((a, b) => b.hit - a.hit || Number(b.priced) - Number(a.priced) || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
   response.results = kept.map((x) => x.o) as any;
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
   const mappedItems = response.results.map((o: any) => {
@@ -545,7 +583,7 @@ apiRouter.post('/scan/url', async (req, res) => {
   const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
   const sellerQuotes: any[] = cheapestFirst.map((x, i) => ({
     id: `sq-${x.o.id || i}`,
-    sellerName: String(x.o.seller || x.o.vendor || hostOf(String(x.o.sellerUrl || '')) || 'Verified source'),
+    sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf(String(x.o.sellerUrl || '')) || 'Verified source')),
     price: x.price,
     currency: '₹',
     url: String(x.o.sellerUrl || '') ? createMaskingPointer(String(x.o.sellerUrl), { offerId: String(x.o.id || '') }) : '',

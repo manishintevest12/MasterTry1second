@@ -24,8 +24,9 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
   const attrs: Record<string, string> = typeof row.attributes === 'string'
     ? (() => { try { return JSON.parse(row.attributes) || {}; } catch { return {}; } })()
     : (row.attributes || {});
-  const imageUrl = /^https:\/\//.test(attrs.image_url || '') ? attrs.image_url : undefined;
   const images = attrs.image_urls ? String(attrs.image_urls).split('|').filter((u: string) => /^https:\/\//.test(u)) : undefined;
+  const imageUrl = [/^https:\/\//.test(attrs.image_url || '') ? attrs.image_url : '', (images || [])[0] || '', /^https:\/\//.test(attrs.image || '') ? attrs.image : '']
+    .find((u) => u) || undefined;
   // Same honest description builder as the live mapper: source-published fields only.
   const descParts: string[] = [];
   if (attrs.rating) descParts.push(`${attrs.rating}★${attrs.rating_count ? ` (${Number(attrs.rating_count).toLocaleString('en-IN')})` : ''}`);
@@ -123,18 +124,10 @@ import {
   SPIN_REWARDS,
   VERTICAL_META,
 } from '../data/mockData';
-import { INITIAL_DIRECT_PARTNERS } from '../data/partnersData';
 import {
   INITIAL_QUICK_APP_PARTNERS,
   INITIAL_REDIRECTION_LOGS,
 } from '../data/quickAppsData';
-import {
-  INITIAL_CPL_LEADS,
-  INITIAL_MERCHANT_CAMPAIGNS,
-  INITIAL_MERCHANT_METRICS,
-  INITIAL_VENDOR_ACCOUNTS,
-} from '../data/merchantData';
-import { INITIAL_RESIDENTIAL_PROXIES, parseBulkProxies } from '../data/proxyData';
 import {
   getBrowserGpsLocation,
   resolveLocationByPincode,
@@ -391,6 +384,8 @@ interface AppContextType {
   loginWithGoogle: () => Promise<boolean>;
   refreshUserPoints: () => Promise<void>;
   hydrateAdminRecords: () => Promise<void>;
+  hydratePartners: () => Promise<void>;
+  hydrateMerchantData: () => Promise<void>;
   logoutUser: () => void;
   trackQuickAppRedirection: (partnerId: string) => QuickAppRedirectionLog | null;
   clearQuickAppRedirectionLogs: () => void;
@@ -439,7 +434,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [affiliateNetworks, setAffiliateNetworks] = useState<AffiliateNetworkHubConfig[]>([]);
 
   // 100+ Direct Partners Directory & Management
-  const [directPartners, setDirectPartners] = useState<DirectPartnerItem[]>(INITIAL_DIRECT_PARTNERS);
+  const [directPartners, setDirectPartners] = useState<DirectPartnerItem[]>([]);
 
   const addDirectPartner = (partner: Omit<DirectPartnerItem, 'id' | 'clickCount'>) => {
     const newPartner: DirectPartnerItem = {
@@ -496,7 +491,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setApiIntegrations(m.INITIAL_API_INTEGRATIONS);
     setAffiliateNetworks(m.INITIAL_AFFILIATE_NETWORKS);
     setSpinWinners(m.INITIAL_SPIN_WINNERS);
+    const px = await import('../data/proxyData');
+    setProxies((prev) => (prev.length ? prev : px.INITIAL_RESIDENTIAL_PROXIES));
+    bulkParseFn = px.parseBulkProxies;
   }, [userPurchases.length, partnerPayouts.length]);
+  // Partner showcase list loads when the (already lazy) partners section mounts.
+  const hydratePartners = useCallback(async () => {
+    if (directPartners.length) return;
+    const m = await import('../data/partnersData');
+    setDirectPartners(m.INITIAL_DIRECT_PARTNERS);
+  }, [directPartners.length]);
+  // Merchant-portal data (metrics, campaigns, leads, vendor accounts) loads only on portal mount.
+  const hydrateMerchantData = useCallback(async () => {
+    const m = await import('../data/merchantData');
+    setMerchantPrepaidBalance((prev) => prev || m.INITIAL_MERCHANT_METRICS.prepaidBalance);
+    setCplLeads((prev) => (prev.length ? prev : m.INITIAL_CPL_LEADS));
+    setMerchantCampaigns((prev) => (prev.length ? prev : m.INITIAL_MERCHANT_CAMPAIGNS));
+    setVendorAccounts((prev) => {
+      const existing = new Set(prev.map((v) => v.vendorIdNumber));
+      return [...prev, ...m.INITIAL_VENDOR_ACCOUNTS.filter((v) => !existing.has(v.vendorIdNumber))];
+    });
+  }, []);
 
   // Dynamic Spin & Earn State
   const [spinCostPoints, setSpinCostPoints] = useState<number>(100);
@@ -512,7 +527,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [spinWinners, setSpinWinners] = useState<SpinWinnerLog[]>([]);
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
-  const [proxies, setProxies] = useState<ResidentialProxyConfig[]>(INITIAL_RESIDENTIAL_PROXIES);
+  const [proxies, setProxies] = useState<ResidentialProxyConfig[]>([]);
 
   const addResidentialProxy = (proxy: Omit<ResidentialProxyConfig, 'id'>) => {
     const newProxy: ResidentialProxyConfig = {
@@ -523,8 +538,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addToast('success', 'Residential Proxy Added', `Proxy ${newProxy.host}:${newProxy.port} added to pool.`);
   };
 
+  // parseBulkProxies lives in the admin-only proxyData module — resolved lazily by
+  // hydrateAdminRecords so its parser never lands in the eager bundle.
+  let bulkParseFn: ((t: string) => Omit<ResidentialProxyConfig, 'id'>[]) | null = null;
+  const parseBulkProxiesSync = (rawText: string): Omit<ResidentialProxyConfig, 'id'>[] => bulkParseFn ? bulkParseFn(rawText) : [];
   const bulkAddResidentialProxies = (rawText: string): number => {
-    const parsed = parseBulkProxies(rawText);
+    const parsed = parseBulkProxiesSync(rawText);
     if (parsed.length === 0) {
       addToast('alert', 'No Valid Proxies Found', 'Please provide proxies in host:port:user:pass or URL format.');
       return 0;
@@ -613,9 +632,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     submittedLead: null,
   });
 
-  const [cplLeads, setCplLeads] = useState<CplLead[]>(INITIAL_CPL_LEADS);
-  const [merchantCampaigns, setMerchantCampaigns] = useState<MerchantCampaign[]>(INITIAL_MERCHANT_CAMPAIGNS);
-  const [merchantPrepaidBalance, setMerchantPrepaidBalance] = useState<number>(INITIAL_MERCHANT_METRICS.prepaidBalance);
+  const [cplLeads, setCplLeads] = useState<CplLead[]>([]);
+  const [merchantCampaigns, setMerchantCampaigns] = useState<MerchantCampaign[]>([]);
+  const [merchantPrepaidBalance, setMerchantPrepaidBalance] = useState<number>(0);
   const [activeMerchantRole, setActiveMerchantRole] = useState<string>('admin_viewer');
 
   const openLeadCapture = (item: ComparisonItem, quote: SellerQuote) => {
@@ -1753,18 +1772,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const saved = localStorage.getItem('t1s_vendor_accounts');
       if (saved) {
-        const parsed: MerchantVendorAccount[] = JSON.parse(saved);
-        const existingMap = new Map(parsed.map((v) => [v.vendorIdNumber, v]));
-        // Make sure all INITIAL_VENDOR_ACCOUNTS exist in state
-        for (const initV of INITIAL_VENDOR_ACCOUNTS) {
-          if (!existingMap.has(initV.vendorIdNumber)) {
-            parsed.push(initV);
-          }
-        }
-        return parsed;
+        return JSON.parse(saved) as MerchantVendorAccount[];
       }
     } catch {}
-    return INITIAL_VENDOR_ACCOUNTS;
+    return [];
   });
 
   const [authenticatedVendor, setAuthenticatedVendor] = useState<MerchantVendorAccount | null>(() => {
@@ -2329,6 +2340,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         logoutUser,
         refreshUserPoints,
         hydrateAdminRecords,
+        hydratePartners,
+        hydrateMerchantData,
         vertical,
         setVertical: handleSetVertical,
         activeNavTab,
