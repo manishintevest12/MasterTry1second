@@ -18,10 +18,16 @@ import { AcquisitionError } from '../../common/httpClient';
 import { cityVariants, slugOf } from '../../common/cityAlias';
 
 import {
+  oyoCityPaths, parseOyoPreloadedState, parseOyoHotels, parseOyoOffers,
+} from '../parsers/oyoHotels';
+import {
   agodaCitySlugs, extractAgodaCityId, extractAgodaPageConfig, agodaGateHeaders,
   AGODA_CITY_SEARCH_QUERY, buildAgodaCitySearchVars, extractAgodaProperties,
   parseAgodaHotels, parseAgodaOffers,
 } from '../parsers/agodaHotels';
+
+const OYO_WEB_URL = 'https://www.oyorooms.com';
+const ddmmyyyy = (iso: string) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : ''; };
 
 /** city (lowercase) → Agoda CityId, learned from SEO city pages (stable ids). */
 const agodaCityIdCache = new Map<string, number>();
@@ -433,6 +439,35 @@ export const hotelsWorker: VerticalWorker = {
         const priced = hotels.filter((h) => h.pricePerNight);
         if (priced.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Agoda GraphQL returned no priced hotels');
         return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });
+      },
+    },
+    {
+      // OYO hotels — owner-mandated source (17 Oct). City SEO listing pages are full
+      // SSR: window.__PRELOADED_STATE__ carries 20 real per-night prices + images.
+      sourceId: 'w_hotels_oyo',
+      name: 'Hotels worker: OYO live per-night rates',
+      priority: 8,
+      maxPerMinute: 6,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const city = cityFromQuery(ctx);
+        if (!city || city.length < 3) return [];
+        const { checkin, checkout } = stayDates(ctx.query);
+        let lastStatus = 0; let lastBody = '';
+        for (const path of oyoCityPaths(city)) {
+          const r = await cffiFetch(`${OYO_WEB_URL}/${path}/?checkin=${ddmmyyyy(checkin)}&checkout=${ddmmyyyy(checkout)}&guests=2&rooms=1`, {
+            impersonate: 'chrome', timeoutMs: 30_000,
+            headers: { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+          });
+          lastStatus = r.status; lastBody = r.body.slice(0, 400);
+          if (r.status !== 200) continue; // unknown spelling -> try next variant
+          const state = parseOyoPreloadedState(r.body);
+          const hotels = parseOyoHotels(state || {});
+          if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path });
+        }
+        if (lastStatus === 404) throw new AcquisitionError('EMPTY_RESPONSE', `OYO has no city page for "${city}"`);
+        if (lastStatus !== 0) throw new AcquisitionError('SERVER_ERROR', `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
+        throw new AcquisitionError('EMPTY_RESPONSE', `OYO listing for "${city}" carried no parseable PRELOADED_STATE`);
       },
     },
     {

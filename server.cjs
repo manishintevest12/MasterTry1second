@@ -3477,6 +3477,134 @@ var init_cityAlias = __esm({
   }
 });
 
+// server/workers/parsers/oyoHotels.ts
+function oyoCityPaths(city) {
+  const out = [];
+  for (const v of cityVariants(city)) {
+    const p = `hotels-in-${slugOf(v)}`;
+    if (!out.includes(p)) out.push(p);
+  }
+  return out.slice(0, 6);
+}
+function parseOyoPreloadedState(html) {
+  const start2 = html.indexOf("window.__PRELOADED_STATE__");
+  if (start2 === -1) return null;
+  const eq = html.indexOf("=", start2);
+  if (eq === -1) return null;
+  let sub = html.slice(eq + 1).trim();
+  if (sub.startsWith('JSON.parse("')) {
+    const q3 = sub.indexOf('"', "JSON.parse(".length);
+    const end = sub.indexOf('")', q3);
+    const inner = sub.slice(q3 + 1, end === -1 ? Math.min(sub.length, q3 + 3e6) : end);
+    try {
+      sub = JSON.parse(`"${inner}"`);
+    } catch {
+    }
+  }
+  const tail = sub.indexOf("</script>");
+  if (tail !== -1) sub = sub.slice(0, tail);
+  sub = sub.trim().replace(/;$/, "");
+  try {
+    const d = JSON.parse(sub);
+    return typeof d === "string" ? JSON.parse(d) : d;
+  } catch {
+    return null;
+  }
+}
+function parseOyoHotels(state) {
+  const raw = state?.listing?.hotels;
+  if (!Array.isArray(raw)) return [];
+  const num3 = (x) => {
+    if (x == null || x === "") return null;
+    const n = Number(x);
+    return Number.isFinite(n) ? n : null;
+  };
+  const out = [];
+  for (const h of raw) {
+    if (!h || typeof h !== "object") continue;
+    const pricing = h.pricing || {};
+    const tax = pricing.taxInfo || {};
+    const rating = h.rating || {};
+    const geo = h.geo_location || {};
+    const images = (Array.isArray(h.hotel_images) ? h.hotel_images : []).filter((u) => typeof u === "string" && u.startsWith("http"));
+    out.push({
+      id: String(h.id ?? ""),
+      name: String(h.name ?? "").trim(),
+      url: typeof h.url === "string" && h.url.startsWith("/") ? h.url : null,
+      address: typeof h.address === "string" ? h.address : null,
+      city: typeof h.city === "string" ? h.city : null,
+      category: typeof h.category === "string" ? h.category : null,
+      oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
+      rating: num3(rating.value),
+      ratingCount: num3(rating.count),
+      pricePerNight: num3(pricing.bookingPrice),
+      tax: num3(tax.total_tax),
+      priceInclusive: num3(tax.final_price_with_tax),
+      slashedPrice: num3(pricing.slashedPrice),
+      discountPercentage: num3(pricing.discountPercentage),
+      imageUrl: images[0] || null,
+      images: images.slice(0, 6),
+      lat: num3(geo.lat ?? geo.latitude),
+      lon: num3(geo.lng ?? geo.long ?? geo.longitude),
+      soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
+    });
+  }
+  return out;
+}
+function parseOyoOffers(hotels, source, city, meta) {
+  const out = [];
+  const srpUrl = `${OYO_WEB}/${meta.path}/?checkin=${fmtDdMmYyyy(meta.checkin)}&checkout=${fmtDdMmYyyy(meta.checkout)}&guests=2&rooms=1`;
+  for (const h of hotels) {
+    if (!h.name || h.soldOut || h.pricePerNight == null || h.pricePerNight <= 0) continue;
+    const deeplink = h.url ? `${OYO_WEB}${h.url}` : srpUrl;
+    const attrs = {
+      image_url: h.imageUrl,
+      images: h.images.join("|"),
+      rating: h.rating != null ? String(h.rating) : null,
+      // already /5
+      review_count: h.ratingCount,
+      address: h.address,
+      city: h.city || city,
+      property_category: h.category,
+      latitude: h.lat,
+      longitude: h.lon,
+      property_id: h.id,
+      price_basis: h.priceInclusive != null ? `per night on OYO (\u20B9${Math.round(h.pricePerNight)} + \u20B9${Math.round(h.tax ?? 0)} tax; total \u20B9${Math.round(h.priceInclusive)})` : "per night on OYO (tax-exclusive booking price)",
+      data_note: "Live per-night rates observed on OYO city listing"
+    };
+    if (h.discountPercentage) attrs.discount = `${Math.round(h.discountPercentage)}% off`;
+    if (h.oneLiner) attrs.tagline = h.oneLiner;
+    out.push(newRawItem(source, {
+      title: h.name,
+      seller: "OYO",
+      sellerUrl: deeplink,
+      currency: "INR",
+      price: Math.round(h.pricePerNight),
+      listPrice: h.slashedPrice && h.slashedPrice > h.pricePerNight ? Math.round(h.slashedPrice) : void 0,
+      attributes: attrs,
+      travel: { date: meta.checkin, route: `${city} stay`, roomType: h.category || void 0 },
+      evidence: {
+        sourceUrl: srpUrl,
+        sourceReference: h.id,
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+      }
+    }));
+  }
+  return out;
+}
+function fmtDdMmYyyy(iso2) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+var OYO_WEB;
+var init_oyoHotels = __esm({
+  "server/workers/parsers/oyoHotels.ts"() {
+    init_contract();
+    init_cityAlias();
+    OYO_WEB = "https://www.oyorooms.com";
+  }
+});
+
 // server/workers/parsers/agodaHotels.ts
 function agodaCitySlugs(city) {
   const out = [];
@@ -3845,7 +3973,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
-var agodaCityIdCache, hotelsWorker;
+var OYO_WEB_URL, ddmmyyyy, agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -3860,7 +3988,13 @@ var init_hotels = __esm({
     init_curlCffiFetch();
     init_httpClient();
     init_cityAlias();
+    init_oyoHotels();
     init_agodaHotels();
+    OYO_WEB_URL = "https://www.oyorooms.com";
+    ddmmyyyy = (iso2) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
+      return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+    };
     agodaCityIdCache = /* @__PURE__ */ new Map();
     hotelsWorker = {
       vertical: "hotels",
@@ -4236,6 +4370,38 @@ var init_hotels = __esm({
             const priced = hotels.filter((h) => h.pricePerNight);
             if (priced.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Agoda GraphQL returned no priced hotels");
             return parseAgodaOffers(hotels, ctx.source, city, { cityId, checkin, los: los0 });
+          }
+        },
+        {
+          // OYO hotels — owner-mandated source (17 Oct). City SEO listing pages are full
+          // SSR: window.__PRELOADED_STATE__ carries 20 real per-night prices + images.
+          sourceId: "w_hotels_oyo",
+          name: "Hotels worker: OYO live per-night rates",
+          priority: 8,
+          maxPerMinute: 6,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const city = cityFromQuery(ctx);
+            if (!city || city.length < 3) return [];
+            const { checkin, checkout } = stayDates(ctx.query);
+            let lastStatus = 0;
+            let lastBody = "";
+            for (const path10 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path10}/?checkin=${ddmmyyyy(checkin)}&checkout=${ddmmyyyy(checkout)}&guests=2&rooms=1`, {
+                impersonate: "chrome",
+                timeoutMs: 3e4,
+                headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
+              });
+              lastStatus = r.status;
+              lastBody = r.body.slice(0, 400);
+              if (r.status !== 200) continue;
+              const state = parseOyoPreloadedState(r.body);
+              const hotels = parseOyoHotels(state || {});
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path10 });
+            }
+            if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
+            if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
+            throw new AcquisitionError("EMPTY_RESPONSE", `OYO listing for "${city}" carried no parseable PRELOADED_STATE`);
           }
         },
         {

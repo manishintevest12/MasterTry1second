@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 # Exact target platforms per vertical (owner-mandated list).
 # ---------------------------------------------------------------------------
 VERTICAL_TARGETS: Dict[str, List[str]] = {
-    "hotels":    ["makemytrip", "goibibo", "booking", "agoda", "yatra", "cleartrip"],
+    "hotels":    ["makemytrip", "goibibo", "booking", "agoda", "yatra", "cleartrip", "oyo", "saffronstays", "easemytrip"],
     "flights":   ["makemytrip", "easemytrip", "ixigo", "yatra", "cleartrip", "akasaair", "indigo"],
     "ecommerce": ["amazon", "flipkart", "meesho", "myntra", "ajio", "tatacliq"],
     "grocery":   ["blinkit", "zepto", "swiggy-instamart", "bigbasket", "flipkart-minutes"],
