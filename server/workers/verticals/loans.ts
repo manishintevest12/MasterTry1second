@@ -6,7 +6,7 @@
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseBankBazaarLoans } from '../parsers/bankbazaarLoans';
-import { extractRateRange, extractProcessingFee, extractLoanAmount, extractTenure, buildRateOffer } from '../parsers/publishedRates';
+import { extractRateRange, extractProcessingFee, extractLoanAmount, extractTenure, extractOgImage, buildRateOffer } from '../parsers/publishedRates';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
@@ -42,6 +42,7 @@ function lenderPageTask(cfg: (typeof LENDER_PAGES)[number]) {
         processingFee: extractProcessingFee(text),
         loanAmount: extractLoanAmount(text),
         tenure: extractTenure(text),
+        imageUrl: extractOgImage(r.body),
       };
       return [buildRateOffer(ctx.source, {
         seller: cfg.seller,

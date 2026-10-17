@@ -5,7 +5,7 @@
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseBankBazaarInsurance } from '../parsers/bankbazaarInsurance';
-import { extractRateRange, buildRateOffer } from '../parsers/publishedRates';
+import { extractRateRange, extractOgImage, buildRateOffer } from '../parsers/publishedRates';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
@@ -38,6 +38,7 @@ function insurerPageTask(cfg: (typeof INSURER_PAGES)[number]) {
       const facts: any = {
         sumInsured: sumM ? sumM[0].trim() : undefined,
         startingPremium: premM ? premM[0].trim() : undefined,
+        imageUrl: extractOgImage(r.body),
       };
       // Only publish if the page actually stated at least one plan fact.
       if (!facts.sumInsured && !facts.startingPremium) throw new AcquisitionError('EMPTY_RESPONSE', `${cfg.seller} page carried no publishable plan facts`);

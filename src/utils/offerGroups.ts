@@ -84,7 +84,7 @@ export function offerKey(it: ComparisonItem): string {
     return `b|${op}|${dep}|${type}`;
   }
   if (v === 'cab') {
-    return `c|${norm(spec(it, 'pickup'))}|${norm(spec(it, 'drop'))}|${norm(spec(it, 'vehicle type'))}|${norm(spec(it, 'trip type'))}`;
+    return `c|${norm(spec(it, 'pickup'))}|${norm(spec(it, 'drop'))}|${cabVehicleClass(spec(it, 'vehicle type') || it.title)}|${norm(spec(it, 'trip type'))}`;
   }
   if (v === 'food') {
     // Same dish from the same restaurant on different delivery apps = one card.
@@ -114,6 +114,18 @@ export function offerKey(it: ComparisonItem): string {
 
 const priced = (it: ComparisonItem) => !!it.primaryPrice && it.primaryPrice > 0 && it.priceAvailable !== false;
 
+/** Cab cards compare providers for the SAME vehicle CATEGORY (owner 17 Oct: "auto, bike,
+ * cab teeno... same card pr cheapest top pr baki neeche"). Ola Auto + Rapido Auto are one
+ * card, Ola Bike + Rapido Bike Taxi one card, and every car class (Mini/Prime/SUV/
+ * Dzire/Innova/Uber cab...) is the "cab" card — cheapest row on top, the rest listed
+ * below, app-only rows (Rapido/Uber "Fare on app") last. Display names stay per row. */
+const cabVehicleClass = (v: string): string => {
+  const s = String(v || '').toLowerCase();
+  if (/bike|scoot/.test(s)) return 'bike';
+  if (/auto|rickshaw/.test(s)) return 'auto';
+  return 'cab';
+};
+
 /** Movies carry several per-site prices inside ONE item's sellerQuotes: expand them into rows. */
 function rowsFor(it: ComparisonItem): OfferRow[] {
   if (((it.vertical as string) === 'movies' || (it.vertical as string) === 'movie') && (it.sellerQuotes?.length || 0) > 1) {
@@ -139,7 +151,9 @@ export function groupOffers(items: ComparisonItem[]): OfferGroup[] {
         continue;
       }
       // Same website listing the exact same product twice: keep the cheaper one only.
-      const dupIdx = g.rows.findIndex((r) => r.site === row.site);
+      // Cab is the exception: the same operator's vehicle VARIANTS (Ola Mini/Prime/SUV,
+      // BharatTaxi Dzire/Ertiga/Innova) all belong on the category card, so they stay.
+      const dupIdx = it.vertical === 'cab' ? -1 : g.rows.findIndex((r) => r.site === row.site);
       if (dupIdx >= 0) {
         const cur = g.rows[dupIdx];
         const better = row.priceAvailable && (!cur.priceAvailable || row.price < cur.price);

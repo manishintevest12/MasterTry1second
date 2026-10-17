@@ -2668,6 +2668,13 @@ function extractRateRange(text) {
   }
   return {};
 }
+function extractOgImage(html) {
+  const m = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+  if (!m) return void 0;
+  const url = m[1].replace(/&amp;/g, "&").trim();
+  if (url.startsWith("https://")) return url;
+  return void 0;
+}
 function extractProcessingFee(text) {
   const m = /processing fee[^<]{0,120}?((?:upto|up to)?\s*\d{1,2}(?:\.\d+)?\s*%[^<]{0,60})/i.exec(text);
   return m ? m[1].trim() : void 0;
@@ -2695,6 +2702,7 @@ function buildRateOffer(source, opts) {
     ...opts.facts.tenure ? { tenure: opts.facts.tenure } : {},
     ...opts.facts.sumInsured ? { sum_insured: opts.facts.sumInsured } : {},
     ...opts.facts.startingPremium ? { starting_premium: opts.facts.startingPremium } : {},
+    ...opts.facts.imageUrl ? { image_url: opts.facts.imageUrl } : {},
     price_basis: opts.facts.rateMin !== void 0 ? "published annual interest-rate range, indicative \u2014 never an approved offer" : "published plan information",
     data_note: opts.evidenceNote,
     ...opts.extraAttributes || {}
@@ -2742,7 +2750,8 @@ function lenderPageTask(cfg) {
         rateMax: range.max,
         processingFee: extractProcessingFee(text),
         loanAmount: extractLoanAmount(text),
-        tenure: extractTenure(text)
+        tenure: extractTenure(text),
+        imageUrl: extractOgImage(r.body)
       };
       return [buildRateOffer(ctx.source, {
         seller: cfg.seller,
@@ -15616,7 +15625,8 @@ function insurerPageTask(cfg) {
       const premM = /(?:premium[^₹₨]{0,60}?|starting\s*(?:at|from)|@)\s*[₹₨]?\s*\d[\d,]*(?:\.\d+)?\s*(?:per\s*(?:month|year|annum|day)|\/\s*(?:month|year|day)|p\.?a\.?)/i.exec(text);
       const facts = {
         sumInsured: sumM ? sumM[0].trim() : void 0,
-        startingPremium: premM ? premM[0].trim() : void 0
+        startingPremium: premM ? premM[0].trim() : void 0,
+        imageUrl: extractOgImage(r.body)
       };
       if (!facts.sumInsured && !facts.startingPremium) throw new AcquisitionError("EMPTY_RESPONSE", `${cfg.seller} page carried no publishable plan facts`);
       return [buildRateOffer(ctx.source, {

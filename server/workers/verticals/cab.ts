@@ -85,13 +85,22 @@ function normPlace(s: string): string[] {
     .map((t) => canonCity(t)); // canonical spellings: "gurgaon" matches a published "gurugram"
 }
 
-/** Match a route endpoint against an SSR destination name; returns overlap score. */
+/** Match a route endpoint against an SSR destination name. Score = fraction of
+ * the QUERIED endpoint's tokens found in the published destination name.
+ * Owner bug 17 Oct: the old hits/min(len) denominator let a 1-token destination
+ * ("Indore Jn.") score 1.0 against a locality drop ("Martand Chowk, Indore") on
+ * the shared city word alone — the fallback then priced a WRONG route
+ * ("Indore to Indore Jn."), which the route filter correctly dropped, and Uber
+ * silently vanished from intra-city results. Coverage against the queried side
+ * (hits/a.length) keeps genuine single-token drops ("Ujjain") at 1.0 while a
+ * city-word-only hit ("indore" in "Martand Chowk, Indore") scores 0.33 < 0.5
+ * and correctly falls through to the honest presence row. */
 function uberDestMatchScore(routeEnd: string, destName: string): number {
   const a = normPlace(routeEnd); const b = normPlace(destName);
   if (!a.length || !b.length) return 0;
   let hits = 0;
   for (const t of a) if (b.includes(t) || b.some((x) => (x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x))))) hits++;
-  return hits / Math.min(a.length, b.length);
+  return hits / a.length;
 }
 
 interface UberCityFare { dest: string; price: number; city: string; slug: string; fetchedUrl: string }
@@ -138,8 +147,16 @@ async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reaso
   // Only the DROP side may match a published destination — matching the pickup
   // produced absurd offers (e.g. "delhi to kanpur" -> "Delhi Cantt station").
   let best: { fare: UberCityFare; score: number; end: string } | null = null;
+  // The bare-city alternate (cityFromRouteText) exists for DECORATED intercity drops
+  // ("Ujjain, Madhya Pradesh" -> "Ujjain"), but for an INTRA-CITY query the drop's city
+  // text IS the guide's own city — matching it against the guide's own-city landmark
+  // rows ("Indore Jn.") priced a route the user never typed, and the route filter then
+  // dropped the row, silently vanishing Uber from intra-city results (owner bug 17 Oct).
+  // Suppress the alternate when it names the guide city itself; the raw drop must match.
+  const altCity = cityFromRouteText(rt.to).toLowerCase();
+  const altAllowed = altCity !== cityInfo.city.toLowerCase();
   for (const fare of fares) {
-    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), uberDestMatchScore(cityFromRouteText(rt.to), fare.dest));
+    const score = Math.max(uberDestMatchScore(rt.to, fare.dest), altAllowed ? uberDestMatchScore(altCity, fare.dest) : 0);
     if (score >= 0.5 && (!best || score > best.score)) best = { fare, score, end: rt.to };
   }
   if (!best) { pricedRows = null; } // city has fares but not for this destination -> app-only row below

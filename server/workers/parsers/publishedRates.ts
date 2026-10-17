@@ -19,6 +19,7 @@ export interface RateFacts {
   sumInsured?: string;
   startingPremium?: string;
   planName?: string;
+  imageUrl?: string;
 }
 
 /** All JSON-LD blocks in the page, parsed. Malformed blocks are skipped. */
@@ -46,8 +47,6 @@ export function flattenLd(nodes: any[]): any[] {
   return out;
 }
 
-const PCT = /(\d{1,2}(?:\.\d{1,2})?)\s*%/g;
-
 /**
  * Extract a rate range from page text/JSON-LD. A page stating
  * "10.50% - 16% p.a." yields { rateMin: 10.5, rateMax: 16 }.
@@ -62,6 +61,16 @@ export function extractRateRange(text: string): { min?: number; max?: number } {
     || /(\d{1,2}(?:\.\d{1,2})?)\s*%\s*p\.?\s?a\.?/i.exec(text);
   if (single) { const v = Number(single[1]); return { min: v, max: v }; }
   return {};
+}
+
+/** Extract real og:image URL from HTML if present and valid https. */
+export function extractOgImage(html: string): string | undefined {
+  const m = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+            html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+  if (!m) return undefined;
+  const url = m[1].replace(/&amp;/g, '&').trim();
+  if (url.startsWith('https://')) return url;
+  return undefined;
 }
 
 /** Processing fee text, e.g. "Processing Fee: Upto 2.50% of the loan amount". */
@@ -111,6 +120,7 @@ export function buildRateOffer(
     ...(opts.facts.tenure ? { tenure: opts.facts.tenure } : {}),
     ...(opts.facts.sumInsured ? { sum_insured: opts.facts.sumInsured } : {}),
     ...(opts.facts.startingPremium ? { starting_premium: opts.facts.startingPremium } : {}),
+    ...(opts.facts.imageUrl ? { image_url: opts.facts.imageUrl } : {}),
     price_basis: opts.facts.rateMin !== undefined ? 'published annual interest-rate range, indicative — never an approved offer' : 'published plan information',
     data_note: opts.evidenceNote,
     ...(opts.extraAttributes || {}),
