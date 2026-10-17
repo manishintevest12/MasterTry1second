@@ -3669,7 +3669,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA4 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA5 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -14460,7 +14460,8 @@ var init_grocery = __esm({
             if (!pool2.length) throw new AcquisitionError("EMPTY_RESPONSE", `Zepto rails had ${all.length} products, none matching "${term}" (search pages are app-side)`);
             const cityNote = cityLabel ? ` for ${cityLabel}` : "";
             return pool2.slice(0, 16).map((p) => newRawItem(ctx.source, {
-              title: `${p.brand ? p.brand + " " : ""}${p.name}`.slice(0, 140),
+              // SSR names usually already carry the brand ("Amul Gold...") — never double-prefix.
+              title: `${p.brand && !p.name.toLowerCase().startsWith(p.brand.toLowerCase()) ? p.brand + " " : ""}${p.name}`.slice(0, 140),
               price: Math.round(p.price),
               listPrice: p.mrp && p.mrp > p.price ? Math.round(p.mrp) : void 0,
               currency: "INR",
@@ -16221,7 +16222,7 @@ var init_bus = __esm({
             try {
               const getJson2 = async (url) => {
                 const s = Date.now();
-                const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 8e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
+                const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 12e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
                 steps.push(`suggest=${r2.latencyMs ?? Date.now() - s}ms/${r2.status}`);
                 if (r2.status !== 200) throw new AcquisitionError("SERVER_ERROR", `redBus suggestion HTTP ${r2.status}`, r2.status);
                 try {
@@ -19576,6 +19577,72 @@ var init_searchOrchestrator = __esm({
   }
 });
 
+// server/common/geoProxy.ts
+async function throttledNominatim(path10) {
+  const hit = cache6.get(path10);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastCallAt = Date.now();
+  try {
+    const r = await fetch(`${NOMINATIM}${path10}`, {
+      headers: { "User-Agent": UA3, Accept: "application/json" },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (!r.ok) {
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path10.slice(0, 60)}`);
+      return null;
+    }
+    const value = await r.json();
+    if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
+    cache6.set(path10, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
+    return null;
+  }
+}
+async function geoSearch(q3, limit = 6) {
+  const clean3 = q3.trim().slice(0, 120);
+  if (clean3.length < 2) return [];
+  const path10 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path10);
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
+}
+async function geoReverse(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const la = lat.toFixed(6), lo = lng.toFixed(6);
+  const path10 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path10);
+  const a = row?.address;
+  if (!row || !a) return null;
+  const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
+  const city = a.city || a.town || a.village || a.county || a.state_district || "";
+  return {
+    lat,
+    lng,
+    address: String(row.display_name || `${locality} ${city}`.trim()).slice(0, 220),
+    locality: String(locality).slice(0, 80),
+    city: String(city).slice(0, 60),
+    state: a.state ? String(a.state).slice(0, 60) : void 0,
+    pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
+  };
+}
+var UA3, NOMINATIM, cache6, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS;
+var init_geoProxy = __esm({
+  "server/common/geoProxy.ts"() {
+    init_logger();
+    UA3 = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
+    NOMINATIM = "https://nominatim.openstreetmap.org";
+    cache6 = /* @__PURE__ */ new Map();
+    CACHE_MS = 24 * 60 * 6e4;
+    CACHE_MAX = 800;
+    lastCallAt = 0;
+    MIN_INTERVAL_MS = 1100;
+  }
+});
+
 // server/pipeline/productGrouping.ts
 function sizeTokens(text) {
   const out = [];
@@ -22664,6 +22731,7 @@ var init_routes = __esm({
     init_searchOrchestrator();
     init_registry();
     init_verticalEngine();
+    init_geoProxy();
     init_productGrouping();
     init_health();
     init_authService();
@@ -22750,6 +22818,20 @@ var init_routes = __esm({
         return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
       }
     });
+    apiRouter.get("/geo/search", async (req, res) => {
+      const q3 = String(req.query.q || "").slice(0, 120);
+      if (q3.trim().length < 2) return res.json({ results: [] });
+      const results = await geoSearch(q3, 6);
+      res.json({ results });
+    });
+    apiRouter.get("/geo/reverse", async (req, res) => {
+      const lat = Number(req.query.lat), lng = Number(req.query.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        return res.status(400).json({ error: "lat and lng are required numbers" });
+      }
+      const place = await geoReverse(lat, lng);
+      res.json({ place });
+    });
     apiRouter.get("/status", (_req, res) => {
       res.json({
         success: true,
@@ -22803,7 +22885,10 @@ var init_routes = __esm({
           depart: String(req.body.travelDates.depart || "").slice(0, 10) || void 0,
           return: String(req.body.travelDates.return || "").slice(0, 10) || void 0
         } : void 0,
-        guests: Number(req.body.guests) || void 0
+        guests: Number(req.body.guests) || void 0,
+        // Exact map pin (MapPinPicker, 17 Oct): the engine gets the precise point, not just the city.
+        lat: typeof req.body.coordinates?.lat === "number" ? req.body.coordinates.lat : void 0,
+        lng: typeof req.body.coordinates?.lng === "number" ? req.body.coordinates.lng : void 0
       };
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
@@ -24170,7 +24255,7 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA3, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
+    const r = await fetch(url, { headers: { "User-Agent": UA4, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
   } catch (e) {
@@ -24410,7 +24495,7 @@ function acceptanceTotals(rows) {
   const verticalsOk = new Set(rows.filter((r) => r.status === "LIVE_VERIFIED").map((r) => r.vertical));
   return { rows: rows.length, byStatus, verticalsWithLiveVerified: [...verticalsOk].sort(), sourcesTested: new Set(rows.filter((r) => r.status !== "SOURCE_RETIRED").map((r) => r.source_id)).size, sourcesRegistered: new Set(rows.map((r) => r.source_id)).size };
 }
-var UA3, SRC, JS_SHELL_RE;
+var UA4, SRC, JS_SHELL_RE;
 var init_acceptanceRunner = __esm({
   "server/registry/acceptanceRunner.ts"() {
     init_acceptanceRegistry();
@@ -24427,7 +24512,7 @@ var init_acceptanceRunner = __esm({
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
-    UA3 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    UA4 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     SRC = {
       id: "acceptance_test",
       name: "acceptance-test",
