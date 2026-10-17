@@ -7,9 +7,11 @@ import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from 
 import { parseAmazonIn } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseBlinkit } from '../parsers/blinkit';
-import { ZEP_API_BASE, zeptoAppHeaders, zeptoStoreId, parseZeptoSearch } from '../parsers/zeptoSearch';
+import { parseZeptoSsr, zeptoSsrMatches, type ZeptoSsrProduct } from '../parsers/zeptoSsr';
+import { makeAwsWafSolver, AWS_WAF_UA } from '../../common/awsWafChallenge';
 import { parseBigbasket } from '../parsers/bigbasket';
 import { AcquisitionError } from '../../common/httpClient';
+import { newRawItem } from '../../sources/contract';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 // City coordinates for quick-commerce APIs (BlinkIt/Zepto/etc. price by delivery zone).
@@ -28,6 +30,46 @@ const GCITY_COORDS: Record<string, [number, number]> = {
   bhopal: [23.2599, 77.4126], surat: [21.1702, 72.8311], patna: [25.5941, 85.1376],
   coimbatore: [11.0168, 76.9558], guwahati: [26.1445, 91.7362],
 };
+
+// Zepto: one AWS-WAF solver per process (token cache 2.5 min inside).
+let zepSolver: ReturnType<typeof makeAwsWafSolver> | undefined;
+function zeptoSolver() {
+  if (!zepSolver) zepSolver = makeAwsWafSolver((url, opts) => cffiFetch(url, opts) as any);
+  return zepSolver;
+}
+
+/**
+ * Brand catalog routing: words in the query that look like brands map to /brand/<slug>
+ * pages (verified live: amul/nestle/britannia/dove all SSR full catalogs). Common generic
+ * grocery terms route to the dominant brand's catalog so "milk" reaches real products.
+ * This is ROUTING knowledge only — every price still comes from the live page.
+ */
+const ZEPTO_TERM_BRANDS: Record<string, string[]> = {
+  milk: ['amul', 'mother-dairy'], butter: ['amul'], curd: ['amul'], paneer: ['amul'],
+  atta: ['aashirvaad', 'fortune'], rice: ['daawat', 'india-gate'], oil: ['fortune', 'figaro'],
+  biscuit: ['britannia', 'parle'], biscuits: ['britannia', 'parle'], chips: ['lays', 'kurkure'],
+  bread: ['britannia', 'harvest'], cheese: ['amul', 'go'], cream: ['amul'], ghee: ['amul', 'mother-dairy'],
+  coffee: ['nescafe', 'tata-coffee'], tea: ['tata-tea', 'lipton'], namkeen: ['haldirams', 'bikano'],
+  icecream: ['amul', 'kwality-walls'], 'ice cream': ['amul', 'kwality-walls'], chocolate: ['amul', 'dairy-milk'],
+  juice: ['real', 'tropicana'], soap: ['dove', 'lux'], shampoo: ['head-shoulders', 'dove'],
+  detergent: ['surf-excel', 'ariel'], surf: ['surf-excel'], lays: ['lays'], amul: ['amul'],
+  nestle: ['nestle'], maggi: ['nestle'], britannia: ['britannia'], dal: ['tata-sampann'],
+  sugar: ['dhampur', 'madhur'], salt: ['tata', 'aashirvaad'], maida: ['aashirvaad'], poha: ['tata-sampann'],
+};
+function zeptoBrandCandidates(term: string): string[] {
+  const low = term.toLowerCase();
+  const slugs: string[] = [];
+  // exact keyword routing first
+  for (const [kw, brands] of Object.entries(ZEPTO_TERM_BRANDS)) {
+    if (low.includes(kw)) { for (const b of brands) if (slugs.length < 3 && !slugs.includes(b)) slugs.push(b); }
+    if (slugs.length >= 3) return slugs.slice(0, 3);
+  }
+  // single words that could BE brand slugs (e.g. "nescafe")
+  for (const w of low.split(/[^a-z0-9]+/).filter((x) => x.length >= 4)) {
+    if (!slugs.includes(w) && slugs.length < 2) slugs.push(w);
+  }
+  return slugs.slice(0, 3);
+}
 
 const q = (ctx: { query: any }) =>
   String(ctx.query.entityName || ctx.query.rawQuery || '')
@@ -188,42 +230,80 @@ export const groceryWorker: VerticalWorker = {
       },
     })),
     {
-      // Zepto (owner request 17 Oct). Recon: zeptonow.com -> zepto.com web is AWS-WAF cookie-challenged
-      // on EVERY endpoint (bff-gateway 202 even from a real browser without the challenge cookie) and web
-      // search is login-gated; the mobile app's Kong gateway route POST /api/v3/search EXISTS (429 = WAF,
-      // 404 = no-route — verified). This worker attempts it with APK-extracted app headers; the WAF's
-      // acceptance is IP-dependent (sandbox 429s — Hostinger retest pending). Honest fail otherwise.
+      // Zepto LIVE (17 Oct breakthrough): zepto.com SSR rails behind an AWS WAF "Goku" JS
+      // challenge. server/common/awsWafChallenge.ts mints the aws-waf-token browserlessly
+      // (jsdom + cffi transport, PoW posted as multipart — verified from the sandbox IP),
+      // then these pages return 200 with REAL priced product JSON in the RSC payload:
+      //   - /delivery-in-<city-slug>  city rails (68 cities; Indore verified) — preferred
+      //   - /                        homepage rails (~60 products, IP-city fallback)
+      //   - /brand/<slug>            brand catalog (amul/nestle/britannia/dove verified)
+      // Search pages are a client-side shell, so the worker filters rails client-side
+      // (same honest pattern as Instamart). Keyword->brand routing lets generic terms
+      // ("milk" -> amul/mother-dairy, "atta" -> aashirvaad/fortune) reach real catalog
+      // pages; a page with zero parsed products is skipped, never fabricated.
       sourceId: 'w_grocery_zepto',
-      name: 'Grocery worker: Zepto app search (api-gateway v3/search, APK-extracted)',
+      name: 'Grocery worker: Zepto SSR rails (zepto.com, AWS WAF PoW-solved)',
       priority: 14,
-      timeoutMs: 30_000,
+      timeoutMs: 90_000,
       run: async (ctx: any) => {
         const term = q(ctx);
         if (!term) return [];
         const loc = ctx.query.location || {};
-        const coords =
-          (typeof loc.lat === 'number' && typeof loc.lng === 'number' && loc.lat)
-            ? ([loc.lat, loc.lng] as [number, number])
-            : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
-        const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
-        const [lat, lng] = coords;
-        // 1. Serviceability (known-ungated): proves the location is served + gives the store UUID.
-        let storeId: string | null = null;
-        try {
-          const svcUrl = `${ZEP_API_BASE}/serviceability-service/api/v1/serviceability?lat=${lat}&long=${lng}`;
-          const svc = await cffiFetch(svcUrl, { impersonate: 'chrome', timeoutMs: 15_000, headers: zeptoAppHeaders() });
-          if (svc.status === 200 && svc.body) storeId = zeptoStoreId(svc.body);
-        } catch { /* store id is optional context for the search call */ }
-        // 2. App search route (WAF-dependent).
-        const body = JSON.stringify({ query: term, latitude: lat, longitude: lng, ...(storeId ? { store_id: storeId } : {}), page: 0, page_size: 30 });
-        const r = await cffiFetch(`${ZEP_API_BASE}/api/v3/search`, { impersonate: 'chrome', method: 'POST', body, timeoutMs: 22_000, headers: zeptoAppHeaders() });
-        if (r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `Zepto search WAF 429 from this IP (${ZEP_API_BASE}/api/v3/search exists but the WAF rejects this IP; Hostinger retest pending)`);
-        if (r.status === 404) throw new AcquisitionError('NOT_FOUND', 'Zepto v3/search route not found on the Kong gateway (no route matched)');
-        if (r.status === 400) throw new AcquisitionError('MALFORMED_RESPONSE', `Zepto search rejected the request body: ${(r.body || '').slice(0, 160)}`);
-        if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `Zepto search HTTP ${r.status}: ${(r.body || '').slice(0, 160)}`);
-        const items = parseZeptoSearch(r.body, ctx.source, term, cityLabel, 16);
-        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `Zepto returned no products for "${term}" at ${cityLabel} (200, body ${(r.body || '').slice(0, 120)})`);
-        return items;
+        const cityLabel = loc.city ? String(loc.city) : '';
+        const citySlug = String(cityLabel).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const solver = zeptoSolver();
+        // Page candidates: city rails (or homepage), then up to 3 brand catalog pages.
+        const pages: string[] = [];
+        pages.push(citySlug ? `https://www.zepto.com/delivery-in-${citySlug}` : 'https://www.zepto.com/');
+        const brandSlugs = zeptoBrandCandidates(term);
+        for (const b of brandSlugs) pages.push(`https://www.zepto.com/brand/${b}`);
+        const products = new Map<string, ZeptoSsrProduct>();
+        let pagesOk = 0;
+        let pages404 = 0;
+        let lastStatus = 0;
+        for (const url of pages) {
+          try {
+            const r = await solver.wafGet(url);
+            lastStatus = r.status;
+            if (r.status === 200 && r.body && !r.body.includes('gokuProps')) {
+              pagesOk++;
+              for (const prod of parseZeptoSsr(r.body)) if (!products.has(prod.variantId || prod.name)) products.set(prod.variantId || prod.name, prod);
+              if (products.size > 240) break;
+            } else if (r.status === 404) {
+              pages404++; // unknown city slug / brand slug — fall back
+              if (url.endsWith('.com/') === false && url.includes('/delivery-in-')) pages.push('https://www.zepto.com/');
+            }
+          } catch (e: any) {
+            throw new AcquisitionError('ACCESS_CHALLENGE', `Zepto AWS WAF challenge unsolved: ${String(e?.message || e).slice(0, 140)}`);
+          }
+        }
+        if (!products.size) {
+          if (pagesOk > 0) throw new AcquisitionError('EMPTY_RESPONSE', `Zepto SSR pages returned no product JSON (pages ok: ${pagesOk}, 404: ${pages404}, last HTTP ${lastStatus})`);
+          throw new AcquisitionError('ACCESS_CHALLENGE', `Zepto SSR unreachable (last HTTP ${lastStatus}, 404s ${pages404})`);
+        }
+        const all = [...products.values()];
+        const matched = all.filter((p) => zeptoSsrMatches(term, p));
+        const pool = matched.length ? matched : all.filter((p) => zeptoSsrMatches(term.split(/\s+/)[0] || '', p));
+        if (!pool.length) throw new AcquisitionError('EMPTY_RESPONSE', `Zepto rails had ${all.length} products, none matching "${term}" (search pages are app-side)`);
+        const cityNote = cityLabel ? ` for ${cityLabel}` : '';
+        return pool.slice(0, 16).map((p) => newRawItem(ctx.source, {
+          title: `${p.brand ? p.brand + ' ' : ''}${p.name}`.slice(0, 140),
+          price: Math.round(p.price),
+          listPrice: p.mrp && p.mrp > p.price ? Math.round(p.mrp) : undefined,
+          currency: 'INR',
+          seller: 'Zepto',
+          sellerUrl: `https://www.zepto.com/search?query=${encodeURIComponent(p.name)}`,
+          attributes: {
+            pack_size: p.pack || '',
+            eta_minutes: '10',
+            outlet: cityLabel || 'Zepto',
+            in_stock: p.availableQuantity === undefined ? '' : String(p.availableQuantity > 0),
+            data_note: `Zepto's own published price${cityNote}, read from zepto.com server-rendered rails (AWS WAF challenge solved browserless; no API key). Deeplink lands on Zepto's site.`,
+            ...(p.image ? { image_url: p.image } : {}),
+          },
+          identifiers: p.variantId ? { sku: `zepto-${p.variantId}` } : {},
+          evidence: { extractedFields: ['title', 'price', 'listPrice', 'image_url'], sourceReference: 'zepto.com SSR rails' },
+        }));
       },
     },
     {

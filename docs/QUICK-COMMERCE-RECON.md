@@ -10,6 +10,17 @@ Aptoide public API (ws75.aptoide.com/api/7/apps/search?query=) → direct APK fr
 pool.apk.aptoide.com (plain CDN, NO captcha, sandbox-curlable) → unzip → grep
 classes*.dex + assets/index.android.bundle (RN Hermes) for hosts/routes.
 
+# Zepto — LIVE via zepto.com SSR + browserless AWS WAF solver (17 Oct 2026)
+
+**STATUS: LIVE.** Full recipe in docs/LIVE-ENDPOINTS.md (Grocery section). Summary:
+- AWS WAF Goku JS challenge solved browserless: jsdom + cffi transport (server/common/awsWafChallenge.ts); mp_verify multipart PoW, aws-waf-token minted from sandbox IP, NOT IP-bound.
+- SSR rails carry real product JSON (paise prices, mrp, pack, images, availability): `/`, `/delivery-in-<city>` (68 cities), `/brand/<slug>`.
+- `/search` pages = client-side shell; api-gateway v3/search = 429 everywhere (shape-based WAF, not IP).
+- Worker w_grocery_zepto: city/home rails + keyword-routed brand pages, client-side filter. Verified: milk@Indore 18 offers, atta@Mumbai 13.
+- jsdom is a real dependency: deploy needs npm install.
+
+---
+
 ## Zepto (APK com.zeptoconsumerapp v26.9.2 from Aptoide — analyzed)
 - Gateway: api-gateway.zepto.co.in (AWS CloudFront + Kong) — microservices:
   user-search-service, product-assortment-service, serviceability-service, cart-service,

@@ -3669,7 +3669,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA3 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA4 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -13948,135 +13948,169 @@ var init_blinkit = __esm({
   }
 });
 
-// server/workers/parsers/zeptoSearch.ts
-function zeptoAppHeaders(extra = {}) {
-  return {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-    "x-platform": "ANDROID",
-    "app-version": "26.9.2",
-    "device-id": "a1b2c3d4-e5f6-4789-a012-3456789abcde",
-    ...extra
-  };
+// server/workers/parsers/zeptoSsr.ts
+function unescapeZeptoRsc(s) {
+  return s.replace(/\\\\u0026/g, "&").replace(/\\\\"/g, '"').replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
-function zeptoStoreId(serviceabilityJson) {
-  try {
-    const walk = (node, depth = 0) => {
-      if (!node || depth > 12) return null;
-      if (typeof node === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(node)) return node;
-      if (Array.isArray(node)) {
-        for (const v of node) {
-          const r = walk(v, depth + 1);
-          if (r) return r;
-        }
-        return null;
-      }
-      if (typeof node === "object") {
-        for (const v of Object.values(node)) {
-          const r = walk(v, depth + 1);
-          if (r) return r;
-        }
-      }
-      return null;
-    };
-    return walk(JSON.parse(serviceabilityJson));
-  } catch {
-    return null;
-  }
-}
-function rupees2(v) {
-  if (typeof v === "number" && v > 0) return v < 1e5 ? Math.round(v * 100) / 100 : void 0;
-  if (typeof v === "string" && /^\d+(\.\d+)?$/.test(v.trim())) {
-    const n = Number(v);
-    return n > 0 && n < 1e5 ? n : void 0;
-  }
-  if (v && typeof v === "object") {
-    const u = Number(v.units ?? v.unit ?? 0), n = Number(v.nanos ?? 0);
-    if (u || n) {
-      const r = u + n / 1e9;
-      return r > 0 && r < 1e5 ? Math.round(r * 100) / 100 : void 0;
-    }
-  }
-  return void 0;
-}
-function collectZeptoProducts(node, out, depth = 0) {
-  if (!node || depth > 18 || out.length > 1200) return;
-  if (Array.isArray(node)) {
-    for (const v of node) collectZeptoProducts(v, out, depth + 1);
-    return;
-  }
-  if (typeof node === "object") {
-    const name = NAME_KEYS.map((k) => node[k]).find((v) => typeof v === "string" && String(v).trim().length > 2);
-    if (name) {
-      let price;
-      let mrp;
-      for (const k of PRICE_KEYS) {
-        price = rupees2(node[k]);
-        if (price !== void 0) break;
-      }
-      for (const k of MRP_KEYS) {
-        mrp = rupees2(node[k]);
-        if (mrp !== void 0) break;
-      }
-      const pack = PACK_KEYS.map((k) => node[k]).find((v) => typeof v === "string" && String(v).trim());
-      const image = typeof node.image === "string" ? node.image : Array.isArray(node.images) && typeof node.images[0] === "string" ? node.images[0] : node.image_url ?? (Array.isArray(node.image_ids) ? node.image_ids[0] : void 0);
-      const id = typeof (node.id ?? node.pvid ?? node.product_id ?? node.sku_id) === "string" ? String(node.id ?? node.pvid ?? node.product_id ?? node.sku_id) : void 0;
-      if (price !== void 0 || mrp !== void 0) {
-        out.push({ name: String(name).trim().slice(0, 120), id, image: typeof image === "string" ? image : void 0, price, mrp: mrp && mrp > (price ?? 0) ? mrp : void 0, pack });
-      }
-    }
-    for (const v of Object.values(node)) collectZeptoProducts(v, out, depth + 1);
-  }
-}
-function parseZeptoSearch(json, source, term, cityLabel, max) {
-  let root;
-  try {
-    root = JSON.parse(json);
-  } catch {
-    return [];
-  }
-  const found = [];
-  collectZeptoProducts(root, found);
-  const items = [];
+function parseZeptoSsr(html, max = 400) {
+  const u = unescapeZeptoRsc(html);
+  if (!u.includes(PACK_ANCHOR)) return [];
+  const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const p of found) {
-    if (items.length >= max) break;
-    if (!p.price || !p.name) continue;
-    const key = `${p.name}|${p.price}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const t = p.name.toLowerCase();
-    const token = term.toLowerCase().split(/\s+/)[0];
-    if (token.length > 2 && !t.includes(token) && !t.includes(token.replace(/s$/, ""))) continue;
-    items.push(newRawItem(source, {
-      title: p.name,
-      price: Math.round(p.price),
-      listPrice: p.mrp && p.mrp > p.price ? Math.round(p.mrp) : void 0,
-      currency: "INR",
-      seller: "Zepto",
-      sellerUrl: `https://www.zepto.com/search?query=${encodeURIComponent(term)}`,
-      attributes: {
-        pack_size: p.pack || "",
-        eta_minutes: "10",
-        outlet: cityLabel,
-        data_note: `Zepto app search API (api-gateway.zepto.co.in/api/v3/search, APK-extracted route, no API key); price is Zepto's own published price for ${cityLabel}. Web search requires login \u2014 the deeplink lands on Zepto's site.`,
-        ...p.image ? { image_url: p.image } : {}
-      },
-      identifiers: p.id ? { sku: `zepto-${p.id}` } : {},
-      evidence: { extractedFields: ["title", "price", "currency"], sourceReference: "Zepto v3/search app API" }
-    }));
+  let idx = u.indexOf(PACK_ANCHOR);
+  while (idx !== -1 && out.length < max) {
+    const back = u.slice(Math.max(0, idx - 4500), idx);
+    const fwd = u.slice(idx, idx + 2200);
+    let price;
+    const pm = [...back.matchAll(/"discountedSellingPrice":(\d+)/g)].pop();
+    if (pm) price = Number(pm[1]) / 100;
+    const bm = [...back.matchAll(/"brand":"([^"]{1,60})"/g)].pop();
+    let name;
+    if (bm) {
+      const nm = back.slice(bm.index).match(/"name":"([^"]{2,160})"/);
+      if (nm) name = nm[1];
+    }
+    const pack = (fwd.match(/"formattedPacksize":"([^"]{0,80})"/) || [])[1];
+    const vid = (fwd.match(/"id":"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/) || [])[1];
+    const mrpRaw = (fwd.match(/"mrp":(\d+)/) || [])[1];
+    const imgPath = (fwd.match(/"path":"(cms\/[^"]{5,200}\.(?:jpe?g|png|webp))"/) || [])[1];
+    const availRaw = (fwd.match(/"availableQuantity":(\d+)/) || [])[1];
+    if (price && price > 0 && price < 5e5 && name && name.trim().length > 1) {
+      const key = vid || `${brandName(bm)}|${name}|${price}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        const mrp = mrpRaw ? Number(mrpRaw) / 100 : void 0;
+        out.push({
+          brand: brandName(bm),
+          name: name.trim().slice(0, 140),
+          price: Math.round(price * 100) / 100,
+          mrp: mrp && mrp >= price ? Math.round(mrp * 100) / 100 : void 0,
+          pack: pack ? pack.trim() : void 0,
+          image: imgPath ? IMG_CDN + imgPath : void 0,
+          variantId: vid,
+          availableQuantity: availRaw !== void 0 ? Number(availRaw) : void 0
+        });
+      }
+    }
+    idx = u.indexOf(PACK_ANCHOR, idx + 1);
   }
-  return items;
+  return out;
 }
-var ZEP_API_BASE, NAME_KEYS, PRICE_KEYS, MRP_KEYS, PACK_KEYS;
-var init_zeptoSearch = __esm({
-  "server/workers/parsers/zeptoSearch.ts"() {
-    init_contract();
-    ZEP_API_BASE = "https://api-gateway.zepto.co.in";
-    NAME_KEYS = ["name", "productName", "product_name", "display_name", "title"];
-    PRICE_KEYS = ["price", "selling_price", "offer_price", "effective_price", "final_price", "value", "amount"];
-    MRP_KEYS = ["mrp", "list_price", "strike_price", "marked_price"];
-    PACK_KEYS = ["pack_size", "packSize", "quantity_description", "unit", "weight", "size"];
+function brandName(m) {
+  return m ? m[1] : "";
+}
+function zeptoSsrMatches(term, product) {
+  const tokens = term.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
+  if (!tokens.length) return true;
+  const hay = `${product.brand} ${product.name} ${product.pack || ""}`.toLowerCase();
+  return tokens.every((t) => hay.includes(t) || hay.includes(t.replace(/s$/, "")));
+}
+var IMG_CDN, PACK_ANCHOR;
+var init_zeptoSsr = __esm({
+  "server/workers/parsers/zeptoSsr.ts"() {
+    IMG_CDN = "https://cdn.zeptonow.com/production/";
+    PACK_ANCHOR = '"productVariant":{"formattedPacksize"';
+  }
+});
+
+// server/common/awsWafChallenge.ts
+function makeAwsWafSolver(cffiFetch2) {
+  const serializeFormData = (fd) => {
+    const boundary = "----WebKitFormBoundary" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const parts = [];
+    for (const [k, v] of fd.entries()) parts.push(`--${boundary}\r
+Content-Disposition: form-data; name="${k}"\r
+\r
+${v}\r
+`);
+    parts.push(`--${boundary}--\r
+`);
+    return { body: parts.join(""), contentType: `multipart/form-data; boundary=${boundary}` };
+  };
+  async function mintAwsWafToken(url, opts = {}) {
+    const host = new URL(url).hostname;
+    const cached = tokenCache.get(host);
+    if (cached && Date.now() - cached.mintedAt < CACHE_TTL_MS) return cached.token;
+    const t0 = Date.now();
+    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" } });
+    const html = r.body || "";
+    if (r.status === 200 && !html.includes("gokuProps")) {
+      tokenCache.set(host, { token: "", mintedAt: Date.now() });
+      return "";
+    }
+    if (!html.includes("gokuProps")) throw new Error(`AWS WAF shell missing (HTTP ${r.status}, len ${html.length})`);
+    const m = html.match(/<script src="(https:\/\/[^"]*awswaf\.com[^"]*challenge\.js)"><\/script>/);
+    if (!m) throw new Error("challenge.js URL not found in shell");
+    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA } });
+    if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
+    const { JSDOM } = await import("jsdom");
+    const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true });
+    const w = dom.window;
+    Object.defineProperty(w, "crypto", {
+      value: { ...w.crypto || {}, subtle: import_node_crypto2.webcrypto.subtle, getRandomValues: (b) => import_node_crypto2.webcrypto.getRandomValues(b) },
+      configurable: true,
+      writable: true
+    });
+    w.TextEncoder = w.TextEncoder || TextEncoder;
+    w.TextDecoder = w.TextDecoder || TextDecoder;
+    Object.defineProperty(w.Location.prototype, "reload", { value: () => {
+    }, configurable: true });
+    Object.defineProperty(w.navigator, "userAgent", { get: () => UA, configurable: true });
+    w.fetch = async (u, init = {}) => {
+      let bodyStr;
+      let ct = "";
+      if (init.body) {
+        if (init.body instanceof w.FormData) {
+          const s = serializeFormData(init.body);
+          bodyStr = s.body;
+          ct = s.contentType;
+        } else if (typeof init.body === "string") bodyStr = init.body;
+        else if (init.body instanceof Uint8Array) bodyStr = Buffer.from(init.body).toString();
+        else bodyStr = String(init.body);
+      }
+      const hdrs = { "User-Agent": UA, ...init.headers || {} };
+      if (ct && !hdrs["Content-Type"] && !hdrs["content-type"]) hdrs["Content-Type"] = ct;
+      const res = await cffiFetch2(String(u), { impersonate: "chrome", method: init.method || "GET", body: bodyStr, timeoutMs: 25e3, headers: hdrs });
+      const body = res.body || "";
+      return { ok: res.status >= 200 && res.status < 300, status: res.status, statusText: String(res.status), text: async () => body, json: async () => JSON.parse(body || "{}") };
+    };
+    try {
+      dom.window.eval(cj.body);
+    } catch (e) {
+      throw new Error(`challenge.js eval failed: ${String(e).slice(0, 120)}`);
+    }
+    const deadline = Date.now() + (opts.maxMs ?? 6e4);
+    while (Date.now() < deadline) {
+      await new Promise((res) => setTimeout(res, 1e3));
+      const mm = (w.document.cookie || "").match(/aws-waf-token=([^;]+)/);
+      if (mm) {
+        const token = decodeURIComponent(mm[1]);
+        tokenCache.set(host, { token, mintedAt: Date.now() });
+        return token;
+      }
+    }
+    throw new Error("aws-waf-token not minted before deadline");
+  }
+  async function wafGet(url, extraHeaders = {}, opts = {}) {
+    const token = await mintAwsWafToken(url, opts);
+    const headers = { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
+    let r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 25e3, headers });
+    if (r.status === 202) {
+      tokenCache.delete(new URL(url).hostname);
+      const fresh = await mintAwsWafToken(url, opts);
+      r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 25e3, headers: { ...headers, ...fresh ? { Cookie: "aws-waf-token=" + fresh } : {} } });
+    }
+    return r;
+  }
+  return { mintAwsWafToken, wafGet, isChallenged: (status, body) => status === 202 || status === 200 && body.includes("gokuProps") };
+}
+var import_node_crypto2, UA, CACHE_TTL_MS, tokenCache;
+var init_awsWafChallenge = __esm({
+  "server/common/awsWafChallenge.ts"() {
+    import_node_crypto2 = require("node:crypto");
+    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    CACHE_TTL_MS = 15e4;
+    tokenCache = /* @__PURE__ */ new Map();
   }
 });
 
@@ -14148,6 +14182,24 @@ var init_bigbasket = __esm({
 });
 
 // server/workers/verticals/grocery.ts
+function zeptoSolver() {
+  if (!zepSolver) zepSolver = makeAwsWafSolver((url, opts) => cffiFetch(url, opts));
+  return zepSolver;
+}
+function zeptoBrandCandidates(term) {
+  const low = term.toLowerCase();
+  const slugs = [];
+  for (const [kw, brands] of Object.entries(ZEPTO_TERM_BRANDS)) {
+    if (low.includes(kw)) {
+      for (const b of brands) if (slugs.length < 3 && !slugs.includes(b)) slugs.push(b);
+    }
+    if (slugs.length >= 3) return slugs.slice(0, 3);
+  }
+  for (const w of low.split(/[^a-z0-9]+/).filter((x) => x.length >= 4)) {
+    if (!slugs.includes(w) && slugs.length < 2) slugs.push(w);
+  }
+  return slugs.slice(0, 3);
+}
 function imRupees(m) {
   if (!m || typeof m !== "object") return void 0;
   const units = Number(m.units);
@@ -14244,16 +14296,18 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
   }
   return out;
 }
-var GCITY_COORDS, q2, QUICK_FAILS, IM_BASE, IM_HEADERS, groceryWorker;
+var GCITY_COORDS, zepSolver, ZEPTO_TERM_BRANDS, q2, QUICK_FAILS, IM_BASE, IM_HEADERS, groceryWorker;
 var init_grocery = __esm({
   "server/workers/verticals/grocery.ts"() {
     init_verticalWorker();
     init_amazonIn();
     init_flipkart();
     init_blinkit();
-    init_zeptoSearch();
+    init_zeptoSsr();
+    init_awsWafChallenge();
     init_bigbasket();
     init_httpClient();
+    init_contract();
     init_curlCffiFetch();
     GCITY_COORDS = {
       "new delhi": [28.6315, 77.2167],
@@ -14285,6 +14339,43 @@ var init_grocery = __esm({
       coimbatore: [11.0168, 76.9558],
       guwahati: [26.1445, 91.7362]
     };
+    ZEPTO_TERM_BRANDS = {
+      milk: ["amul", "mother-dairy"],
+      butter: ["amul"],
+      curd: ["amul"],
+      paneer: ["amul"],
+      atta: ["aashirvaad", "fortune"],
+      rice: ["daawat", "india-gate"],
+      oil: ["fortune", "figaro"],
+      biscuit: ["britannia", "parle"],
+      biscuits: ["britannia", "parle"],
+      chips: ["lays", "kurkure"],
+      bread: ["britannia", "harvest"],
+      cheese: ["amul", "go"],
+      cream: ["amul"],
+      ghee: ["amul", "mother-dairy"],
+      coffee: ["nescafe", "tata-coffee"],
+      tea: ["tata-tea", "lipton"],
+      namkeen: ["haldirams", "bikano"],
+      icecream: ["amul", "kwality-walls"],
+      "ice cream": ["amul", "kwality-walls"],
+      chocolate: ["amul", "dairy-milk"],
+      juice: ["real", "tropicana"],
+      soap: ["dove", "lux"],
+      shampoo: ["head-shoulders", "dove"],
+      detergent: ["surf-excel", "ariel"],
+      surf: ["surf-excel"],
+      lays: ["lays"],
+      amul: ["amul"],
+      nestle: ["nestle"],
+      maggi: ["nestle"],
+      britannia: ["britannia"],
+      dal: ["tata-sampann"],
+      sugar: ["dhampur", "madhur"],
+      salt: ["tata", "aashirvaad"],
+      maida: ["aashirvaad"],
+      poha: ["tata-sampann"]
+    };
     q2 = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").replace(/\b(grocery|quick|10 min|instant|order|buy)\b/gi, " ").replace(/\s+/g, " ").trim();
     QUICK_FAILS = [
       { sourceId: "w_grocery_flipkart_minutes", url: (t) => `https://www.flipkart.com/minutes-store`, probe: "https://www.flipkart.com/minutes-store", note: "Flipkart Minutes store is a JS shell with no SSR product prices" }
@@ -14313,38 +14404,79 @@ var init_grocery = __esm({
           }
         })),
         {
-          // Zepto (owner request 17 Oct). Recon: zeptonow.com -> zepto.com web is AWS-WAF cookie-challenged
-          // on EVERY endpoint (bff-gateway 202 even from a real browser without the challenge cookie) and web
-          // search is login-gated; the mobile app's Kong gateway route POST /api/v3/search EXISTS (429 = WAF,
-          // 404 = no-route — verified). This worker attempts it with APK-extracted app headers; the WAF's
-          // acceptance is IP-dependent (sandbox 429s — Hostinger retest pending). Honest fail otherwise.
+          // Zepto LIVE (17 Oct breakthrough): zepto.com SSR rails behind an AWS WAF "Goku" JS
+          // challenge. server/common/awsWafChallenge.ts mints the aws-waf-token browserlessly
+          // (jsdom + cffi transport, PoW posted as multipart — verified from the sandbox IP),
+          // then these pages return 200 with REAL priced product JSON in the RSC payload:
+          //   - /delivery-in-<city-slug>  city rails (68 cities; Indore verified) — preferred
+          //   - /                        homepage rails (~60 products, IP-city fallback)
+          //   - /brand/<slug>            brand catalog (amul/nestle/britannia/dove verified)
+          // Search pages are a client-side shell, so the worker filters rails client-side
+          // (same honest pattern as Instamart). Keyword->brand routing lets generic terms
+          // ("milk" -> amul/mother-dairy, "atta" -> aashirvaad/fortune) reach real catalog
+          // pages; a page with zero parsed products is skipped, never fabricated.
           sourceId: "w_grocery_zepto",
-          name: "Grocery worker: Zepto app search (api-gateway v3/search, APK-extracted)",
+          name: "Grocery worker: Zepto SSR rails (zepto.com, AWS WAF PoW-solved)",
           priority: 14,
-          timeoutMs: 3e4,
+          timeoutMs: 9e4,
           run: async (ctx) => {
             const term = q2(ctx);
             if (!term) return [];
             const loc = ctx.query.location || {};
-            const coords = typeof loc.lat === "number" && typeof loc.lng === "number" && loc.lat ? [loc.lat, loc.lng] : GCITY_COORDS[String(loc.city || "").toLowerCase()] || GCITY_COORDS["mumbai"];
-            const cityLabel = loc.city ? String(loc.city) : "Mumbai";
-            const [lat, lng] = coords;
-            let storeId = null;
-            try {
-              const svcUrl = `${ZEP_API_BASE}/serviceability-service/api/v1/serviceability?lat=${lat}&long=${lng}`;
-              const svc = await cffiFetch(svcUrl, { impersonate: "chrome", timeoutMs: 15e3, headers: zeptoAppHeaders() });
-              if (svc.status === 200 && svc.body) storeId = zeptoStoreId(svc.body);
-            } catch {
+            const cityLabel = loc.city ? String(loc.city) : "";
+            const citySlug2 = String(cityLabel).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+            const solver = zeptoSolver();
+            const pages = [];
+            pages.push(citySlug2 ? `https://www.zepto.com/delivery-in-${citySlug2}` : "https://www.zepto.com/");
+            const brandSlugs = zeptoBrandCandidates(term);
+            for (const b of brandSlugs) pages.push(`https://www.zepto.com/brand/${b}`);
+            const products = /* @__PURE__ */ new Map();
+            let pagesOk = 0;
+            let pages404 = 0;
+            let lastStatus = 0;
+            for (const url of pages) {
+              try {
+                const r = await solver.wafGet(url);
+                lastStatus = r.status;
+                if (r.status === 200 && r.body && !r.body.includes("gokuProps")) {
+                  pagesOk++;
+                  for (const prod of parseZeptoSsr(r.body)) if (!products.has(prod.variantId || prod.name)) products.set(prod.variantId || prod.name, prod);
+                  if (products.size > 240) break;
+                } else if (r.status === 404) {
+                  pages404++;
+                  if (url.endsWith(".com/") === false && url.includes("/delivery-in-")) pages.push("https://www.zepto.com/");
+                }
+              } catch (e) {
+                throw new AcquisitionError("ACCESS_CHALLENGE", `Zepto AWS WAF challenge unsolved: ${String(e?.message || e).slice(0, 140)}`);
+              }
             }
-            const body = JSON.stringify({ query: term, latitude: lat, longitude: lng, ...storeId ? { store_id: storeId } : {}, page: 0, page_size: 30 });
-            const r = await cffiFetch(`${ZEP_API_BASE}/api/v3/search`, { impersonate: "chrome", method: "POST", body, timeoutMs: 22e3, headers: zeptoAppHeaders() });
-            if (r.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", `Zepto search WAF 429 from this IP (${ZEP_API_BASE}/api/v3/search exists but the WAF rejects this IP; Hostinger retest pending)`);
-            if (r.status === 404) throw new AcquisitionError("NOT_FOUND", "Zepto v3/search route not found on the Kong gateway (no route matched)");
-            if (r.status === 400) throw new AcquisitionError("MALFORMED_RESPONSE", `Zepto search rejected the request body: ${(r.body || "").slice(0, 160)}`);
-            if (r.status !== 200 || !r.body) throw new AcquisitionError("SERVER_ERROR", `Zepto search HTTP ${r.status}: ${(r.body || "").slice(0, 160)}`);
-            const items = parseZeptoSearch(r.body, ctx.source, term, cityLabel, 16);
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Zepto returned no products for "${term}" at ${cityLabel} (200, body ${(r.body || "").slice(0, 120)})`);
-            return items;
+            if (!products.size) {
+              if (pagesOk > 0) throw new AcquisitionError("EMPTY_RESPONSE", `Zepto SSR pages returned no product JSON (pages ok: ${pagesOk}, 404: ${pages404}, last HTTP ${lastStatus})`);
+              throw new AcquisitionError("ACCESS_CHALLENGE", `Zepto SSR unreachable (last HTTP ${lastStatus}, 404s ${pages404})`);
+            }
+            const all = [...products.values()];
+            const matched = all.filter((p) => zeptoSsrMatches(term, p));
+            const pool2 = matched.length ? matched : all.filter((p) => zeptoSsrMatches(term.split(/\s+/)[0] || "", p));
+            if (!pool2.length) throw new AcquisitionError("EMPTY_RESPONSE", `Zepto rails had ${all.length} products, none matching "${term}" (search pages are app-side)`);
+            const cityNote = cityLabel ? ` for ${cityLabel}` : "";
+            return pool2.slice(0, 16).map((p) => newRawItem(ctx.source, {
+              title: `${p.brand ? p.brand + " " : ""}${p.name}`.slice(0, 140),
+              price: Math.round(p.price),
+              listPrice: p.mrp && p.mrp > p.price ? Math.round(p.mrp) : void 0,
+              currency: "INR",
+              seller: "Zepto",
+              sellerUrl: `https://www.zepto.com/search?query=${encodeURIComponent(p.name)}`,
+              attributes: {
+                pack_size: p.pack || "",
+                eta_minutes: "10",
+                outlet: cityLabel || "Zepto",
+                in_stock: p.availableQuantity === void 0 ? "" : String(p.availableQuantity > 0),
+                data_note: `Zepto's own published price${cityNote}, read from zepto.com server-rendered rails (AWS WAF challenge solved browserless; no API key). Deeplink lands on Zepto's site.`,
+                ...p.image ? { image_url: p.image } : {}
+              },
+              identifiers: p.variantId ? { sku: `zepto-${p.variantId}` } : {},
+              evidence: { extractedFields: ["title", "price", "listPrice", "image_url"], sourceReference: "zepto.com SSR rails" }
+            }));
           }
         },
         {
@@ -15375,7 +15507,7 @@ async function imdbTconst(title) {
   const hit = titleCache.get(key);
   if (hit !== void 0) {
     if (hit === null) return null;
-    return Date.now() - hit.at < CACHE_TTL_MS ? hit.tt : null;
+    return Date.now() - hit.at < CACHE_TTL_MS2 ? hit.tt : null;
   }
   try {
     const s = await fetchWithTimeout(
@@ -15418,7 +15550,7 @@ async function imdbRatingFor(title) {
     const tt = await imdbTconst(title);
     if (!tt) return null;
     const row = await lookupTconst(tt);
-    if (!row || Date.now() - row.at > CACHE_TTL_MS) {
+    if (!row || Date.now() - row.at > CACHE_TTL_MS2) {
       if (row) return { tt, rating: row.rating, votes: row.votes };
     }
     if (!row) return null;
@@ -15427,7 +15559,7 @@ async function imdbRatingFor(title) {
     return null;
   }
 }
-var import_node_zlib, import_node_fs3, import_node_os, import_node_path3, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
+var import_node_zlib, import_node_fs3, import_node_os, import_node_path3, import_promises, import_node_readline, RATINGS_URL, RATINGS_FILE, RATINGS_TTL_MS, CACHE_TTL_MS2, ratingCache, titleCache, tconstIndex, datasetReady, normTitle;
 var init_imdbRatings = __esm({
   "server/workers/parsers/imdbRatings.ts"() {
     import_node_zlib = require("node:zlib");
@@ -15439,7 +15571,7 @@ var init_imdbRatings = __esm({
     RATINGS_URL = "https://datasets.imdbws.com/title.ratings.tsv.gz";
     RATINGS_FILE = (0, import_node_path3.join)((0, import_node_os.tmpdir)(), "imdb-title-ratings.tsv.gz");
     RATINGS_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
-    CACHE_TTL_MS = 24 * 60 * 60 * 1e3;
+    CACHE_TTL_MS2 = 24 * 60 * 60 * 1e3;
     ratingCache = /* @__PURE__ */ new Map();
     titleCache = /* @__PURE__ */ new Map();
     tconstIndex = null;
@@ -15501,7 +15633,7 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
   }
 }
-var import_node_crypto2, bmsLastPrice, moviesWorker;
+var import_node_crypto3, bmsLastPrice, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -15514,7 +15646,7 @@ var init_movies = __esm({
     init_district();
     init_districtGw();
     init_imdbRatings();
-    import_node_crypto2 = require("node:crypto");
+    import_node_crypto3 = require("node:crypto");
     bmsLastPrice = /* @__PURE__ */ new Map();
     moviesWorker = {
       vertical: "movies",
@@ -15550,7 +15682,7 @@ var init_movies = __esm({
             const payload = JSON.parse(res.body);
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : "";
-            const fingerprint = (0, import_node_crypto2.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
+            const fingerprint = (0, import_node_crypto3.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
             const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
             const gwCity = gwCitySlug(typedCity || region.regionName || "");
             const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
@@ -18147,7 +18279,7 @@ async function getJson(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA2, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -18186,12 +18318,12 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs4, import_node_path4, UA, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS;
+var import_node_fs4, import_node_path4, UA2, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
     import_node_fs4 = __toESM(require("node:fs"), 1);
     import_node_path4 = __toESM(require("node:path"), 1);
-    UA = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    UA2 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
     CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
@@ -24038,7 +24170,7 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
+    const r = await fetch(url, { headers: { "User-Agent": UA3, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
   } catch (e) {
@@ -24278,7 +24410,7 @@ function acceptanceTotals(rows) {
   const verticalsOk = new Set(rows.filter((r) => r.status === "LIVE_VERIFIED").map((r) => r.vertical));
   return { rows: rows.length, byStatus, verticalsWithLiveVerified: [...verticalsOk].sort(), sourcesTested: new Set(rows.filter((r) => r.status !== "SOURCE_RETIRED").map((r) => r.source_id)).size, sourcesRegistered: new Set(rows.map((r) => r.source_id)).size };
 }
-var UA2, SRC, JS_SHELL_RE;
+var UA3, SRC, JS_SHELL_RE;
 var init_acceptanceRunner = __esm({
   "server/registry/acceptanceRunner.ts"() {
     init_acceptanceRegistry();
@@ -24295,7 +24427,7 @@ var init_acceptanceRunner = __esm({
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
-    UA2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    UA3 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     SRC = {
       id: "acceptance_test",
       name: "acceptance-test",
