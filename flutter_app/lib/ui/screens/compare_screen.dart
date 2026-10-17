@@ -11,6 +11,7 @@ import '../../core/compare.dart';
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../widgets/compare_cards.dart';
+import '../widgets/location_hint_field.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/kit.dart';
 import '../widgets/typeahead_field.dart';
@@ -757,46 +758,29 @@ class _SearchCard extends StatelessWidget {
         body = Column(
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: InkWell(
-                    onTap: () => onOpenCityPicker(from, 'Select Pickup City'),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: border(context)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.location_on_outlined, size: 16, color: T1SColors.red),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              from.text.isNotEmpty ? from.text : 'Pickup City',
-                              style: tx(context, 12, w: FontWeight.w800),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                InkWell(
-                  onTap: () => onPickOnMap(true),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                  child: LocationHintField(
+                    controller: from,
+                    label: 'Pickup Location',
+                    placeholder: 'Enter pickup point (e.g. Chappan Dukan)...',
+                    mode: 'pickup',
+                    onSelect: (_, __) => onSearch(),
+                    onSubmitted: (_) => onSearch(),
+                    trailing: InkWell(
+                      onTap: () => onPickOnMap(true),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: border(context)),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: border(context)),
+                        ),
+                        child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
+                      ),
                     ),
-                    child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -814,44 +798,26 @@ class _SearchCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Expanded(
-                  child: InkWell(
-                    onTap: () => onOpenCityPicker(to, 'Select Drop City'),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: border(context)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.navigation_outlined, size: 16, color: T1SColors.red),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              to.text.isNotEmpty ? to.text : 'Drop City',
-                              style: tx(context, 12, w: FontWeight.w800),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                InkWell(
-                  onTap: () => onPickOnMap(false),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                  child: LocationHintField(
+                    controller: to,
+                    label: 'Drop Destination',
+                    placeholder: 'Enter drop destination (e.g. Martand Chowk, Airport)...',
+                    mode: 'drop',
+                    onSelect: (_, __) => onSearch(),
+                    onSubmitted: (_) => onSearch(),
+                    trailing: InkWell(
+                      onTap: () => onPickOnMap(false),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: border(context)),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: border(context)),
+                        ),
+                        child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
+                      ),
                     ),
-                    child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
                   ),
                 ),
               ],
