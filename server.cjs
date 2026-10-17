@@ -2064,6 +2064,87 @@ var init_nykaa = __esm({
   }
 });
 
+// server/workers/parsers/jiomart.ts
+function parseJiomart(body, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  let items = Array.isArray(root?.items) ? root.items : [];
+  if (!items.length) {
+    const walk = (o, depth) => {
+      if (depth > 8 || !o || typeof o !== "object") return [];
+      if (Array.isArray(o)) {
+        if (o.length && typeof o[0] === "object" && o[0] && "name" in o[0] && (o[0]?.price?.effective || o[0]?.price?.marked)) {
+          return o;
+        }
+        for (const v of o) {
+          const r = walk(v, depth + 1);
+          if (r.length) return r;
+        }
+        return [];
+      }
+      for (const v of Object.values(o)) {
+        const r = walk(v, depth + 1);
+        if (r.length) return r;
+      }
+      return [];
+    };
+    items = walk(root, 0);
+  }
+  if (!items.length) return [];
+  const out = [];
+  for (const it of items.slice(0, 40)) {
+    const name = String(it.name || "").trim();
+    if (!name) continue;
+    const eff = Number(it.price?.effective?.min ?? it.price?.effective?.max);
+    const marked = Number(it.price?.marked?.min ?? it.price?.marked?.max);
+    const price = Number.isFinite(eff) && eff > 0 ? eff : marked;
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const brand = String(it.brand?.name || "").trim();
+    const slug = String(it.slug || "").trim();
+    const pdp = slug ? `https://www.jiomart.com/p/${slug}` : "https://www.jiomart.com";
+    const imgs = [...new Set(
+      (it.medias || []).filter((m) => m?.type === "image" && typeof m.url === "string").map((m) => String(m.url).replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u))
+    )].slice(0, 6);
+    const hero = imgs[0] || "";
+    const discount = Number.isFinite(marked) && marked > price ? Math.round((marked - price) / marked * 100) : 0;
+    const sku = String(it.sku_code || it.item_code || "").trim();
+    out.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      brand: brand || void 0,
+      model: sku || (it.uid != null ? String(it.uid) : void 0),
+      price,
+      listPrice: Number.isFinite(marked) && marked > price ? marked : void 0,
+      currency: it.price?.currency_code || "INR",
+      seller: "JioMart",
+      sellerUrl: pdp,
+      availability: it.sellable === false ? "out_of_stock" : "in_stock",
+      attributes: {
+        brand,
+        product: name,
+        ...discount ? { discount: String(discount) } : {},
+        image: hero,
+        ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
+        data_note: `Product as listed on JioMart catalog search, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: sku ? { sku, ...it.uid != null ? { vendorProductId: String(it.uid) } : {} } : void 0,
+      evidence: {
+        sourceUrl: pageUrl,
+        extractedFields: ["name", "slug", "uid", "item_code", "brand.name", "price.effective.min", "price.marked.min", "medias[].url", "sellable"]
+      }
+    }));
+  }
+  return out;
+}
+var init_jiomart = __esm({
+  "server/workers/parsers/jiomart.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/relianceDigital.ts
 function extractRelianceState(html) {
   const i = html.indexOf("window.__INITIAL_STATE__");
@@ -2151,6 +2232,10 @@ var init_relianceDigital = __esm({
 });
 
 // server/workers/verticals/ecommerce.ts
+function jmCityForPin(pincode) {
+  if (!/^\d{6}$/.test(pincode)) return void 0;
+  return JM_PIN_CITY[pincode.slice(0, 2)];
+}
 async function enrichAmazonGalleries(items, jar) {
   const targets = items.filter((it) => it.identifiers?.vendorProductId).slice(0, 3);
   for (const it of targets) {
@@ -2172,7 +2257,7 @@ async function enrichAmazonGalleries(items, jar) {
   }
   return items;
 }
-var import_node_crypto, q, ecommerceWorker;
+var import_node_crypto, q, JM_PIN_CITY, ecommerceWorker;
 var init_ecommerce = __esm({
   "server/workers/verticals/ecommerce.ts"() {
     init_verticalWorker();
@@ -2182,11 +2267,34 @@ var init_ecommerce = __esm({
     init_ajio();
     init_tatacliq();
     init_nykaa();
+    init_jiomart();
     init_relianceDigital();
     import_node_crypto = require("node:crypto");
     init_httpClient();
     init_curlCffiFetch();
     q = (ctx) => String(ctx.query.entityName || ctx.query.rawQuery || "").trim();
+    JM_PIN_CITY = {
+      "11": "Delhi",
+      "40": "Mumbai",
+      "56": "Bengaluru",
+      "60": "Chennai",
+      "70": "Kolkata",
+      "50": "Hyderabad",
+      "45": "Indore",
+      "30": "Jaipur",
+      "41": "Pune",
+      "38": "Ahmedabad",
+      "46": "Bhopal",
+      "80": "Patna",
+      "68": "Kochi",
+      "32": "Lucknow",
+      "22": "Mumbai",
+      "14": "Chandigarh",
+      "44": "Nagpur",
+      "25": "Surat",
+      "78": "Siliguri",
+      "58": "Jabalpur"
+    };
     ecommerceWorker = {
       vertical: "ecommerce",
       tasks: [
@@ -2391,18 +2499,64 @@ var init_ecommerce = __esm({
         },
         // ---- Owner-requested additions (17 Oct 2026): attempted live every search, honestly reported ----
         {
-          // JioMart (Fynd/JCP platform): search runs on a guest-JWT-gated catalog API
-          // (/api/service/application/catalog/v2.0/...). The SSR search page embeds only
-          // generic category carousels (not query results), and the anonymous-JWT
-          // mint is not exposed browserless. APK recon queued; honest fail until then.
+          // JioMart (Fynd/JCP platform) LIVE (17 Oct 2026): the catalog API
+          // /api/service/application/catalog/v1.0/products/ is guest-accessible with two
+          // headers lifted from the web theme bundle (themeBundle.umd.js):
+          //   Authorization: Bearer base64(applicationID:applicationToken)
+          //   x-location-detail: {"pincode","city","country_code"} (pincode+city must match)
+          // No guest-JWT mint is needed; the application bearer itself authenticates.
           sourceId: "w_ecom_jiomart",
-          name: "Ecom worker: JioMart (probe)",
-          priority: 18,
+          name: "Ecom worker: JioMart (Fynd catalog v1.0)",
+          priority: 17,
+          maxPerMinute: 8,
+          timeoutMs: 3e4,
           run: async (ctx) => {
-            const term = q(ctx) || "products";
-            const r = await cffiFetch(`https://www.jiomart.com/search/${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
-            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `JioMart HTTP ${r.status}`, r.status);
-            throw new AcquisitionError("EMPTY_RESPONSE", "JioMart search results are gated behind a guest-JWT catalog API (Fynd platform auth); SSR page carries only generic category carousels, no query-matched products.");
+            const term = q(ctx);
+            if (!term) return [];
+            const JM_APP_ID = "685945f46c8c7aee3f3af605";
+            const JM_APP_TOKEN = "TpKw7wD9h";
+            const auth = "Bearer " + Buffer.from(`${JM_APP_ID}:${JM_APP_TOKEN}`).toString("base64");
+            const api = (pin, city) => `https://www.jiomart.com/api/service/application/catalog/v1.0/products/?q=${encodeURIComponent(term)}&page_no=1&page_size=40&pincode=${encodeURIComponent(pin)}`;
+            const headers = (pin, city) => ({
+              Accept: "application/json",
+              Authorization: auth,
+              "x-location-detail": JSON.stringify({ pincode: pin, city, country_code: "91" }),
+              Referer: "https://www.jiomart.com/"
+            });
+            const userPin = String(ctx.query.location?.pincode || "").trim();
+            const userCity = String(ctx.query.location?.city || "").trim();
+            const attempts = [];
+            if (userPin && userCity) attempts.push({ pin: userPin, city: userCity });
+            else if (userPin) {
+              const c = jmCityForPin(userPin);
+              if (c) attempts.push({ pin: userPin, city: c });
+            }
+            attempts.push({ pin: "400070", city: "Mumbai" });
+            let lastStatus = 0;
+            let lastBody = "";
+            for (const a of attempts) {
+              const r = await cffiFetch(api(a.pin, a.city), { impersonate: "chrome", timeoutMs: 25e3, headers: headers(a.pin, a.city) });
+              if (r.status === 200) {
+                const items = parseJiomart(r.body, ctx.source, api(a.pin, a.city));
+                if (items.length) return items;
+                lastStatus = 200;
+                lastBody = r.body;
+                continue;
+              }
+              if (r.status === 400 && r.body.includes("invalid pincode")) {
+                lastStatus = 400;
+                lastBody = r.body;
+                continue;
+              }
+              if (r.status === 401 || r.status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `JioMart auth rejected: HTTP ${r.status}`, r.status);
+              if (r.status === 429) throw new AcquisitionError("RATE_LIMITED", `JioMart throttled: HTTP ${r.status}`, r.status);
+              lastStatus = r.status;
+              lastBody = r.body;
+            }
+            if (lastStatus === 200 || lastStatus === 400 && lastBody.includes("invalid pincode")) {
+              throw new AcquisitionError("EMPTY_RESPONSE", "JioMart catalog returned no parseable products for this query");
+            }
+            throw new AcquisitionError("SERVER_ERROR", `JioMart HTTP ${lastStatus}`, lastStatus);
           }
         },
         {

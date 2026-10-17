@@ -187,19 +187,20 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   Worker w_ecom_nykaa, priority 17. Verified live: nike shoes 36 offers, e.g.
   Nike Men's Downshifter 14 Rs 2,937 (MRP 4,895) with PDP link + 6-photo gallery.
 
-### Ecommerce blocked verdicts (17 Oct 2026, owner-requested sources)
-- **JioMart** — guest-JWT GATED: web = Fynd/JCP platform (stelios SDK). Search
-  results come from /api/service/application/catalog/v2.0/products/?q=... which
-  needs a runtime-minted guest JWT (auth/v1.0/* all 401 'Invalid authorization
-  token' with every header variant of APP_DATA.applicationToken). The catalog
-  v1.0 twin is auth-open but only answers 'invalid pincode' for every param
-  shape (pincode/pin_code, valid pincodes, session cookie flow). SSR search
-  page embeds window.APP_DATA (861KB, ': undefined' must be patched to null
-  before JSON.parse) but reduxData carries ONLY generic category carousels
-  (ssrSectionProducts 'product-carousel|i:<category-ids>' + 'popular-top-deals'),
-  never query-matched products — cannot be used (relevance rule). Probe
-  w_ecom_jiomart fetches the live search URL each search. NEXT ANGLE: JioMart
-  APK (Fynd app) Hermes/bundle recon for the guest-token mint.
+### Ecommerce source verdicts (17 Oct 2026, owner-requested sources)
+- **JioMart** [jiomart.ts] — LIVE (17 Oct): Fynd/JCP catalog
+  GET www.jiomart.com/api/service/application/catalog/v1.0/products/?q=<term>&page_no=1&page_size=40&pincode=<pin>
+  browserless, NO guest-JWT mint needed. Two headers discovered in the web theme bundle
+  (themeBundle.umd.js FDK ApplicationConfig.execute): Authorization: Bearer
+  base64(applicationID:applicationToken) = base64('685945f46c8c7aee3f3af605:TpKw7wD9h'),
+  plus x-location-detail {"pincode","city","country_code":"91"} — pincode+city MUST be a
+  valid matching pair (else 400 'invalid pincode'; auth itself needs no JWT). Items:
+  name, slug (PDP = /p/<slug>), uid, item_code, brand.name, price.effective.min (selling,
+  rupees), price.marked.min (MRP), medias[].url (https-only deduped gallery, owner
+  multi-image rule), sellable (stock flag). Worker w_ecom_jiomart, priority 17, tries
+  user pincode+city (or pin-prefix->city map) then verified default 400070/Mumbai.
+  Verified live: nike shoes (NIKE Air Max 270 Rs 13,995, 5-photo gallery), aashirvaad
+  atta (Rs 249), Indore 452010 + Bengaluru 560001.
 - **Snapdeal** — WAF 403 on ALL TLS fingerprints (chrome110/120/123/124, edge99/101,
   safari15_5/17_0/18_0, safari iOS) for www.snapdeal.com/search and all API paths;
   m.snapdeal.com returns 200 but a 73KB client-rendered shell (JS from

@@ -10,12 +10,29 @@ import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
 import { parseTataCliq } from '../parsers/tatacliq';
 import { parseNykaa } from '../parsers/nykaa';
+import { parseJiomart } from '../parsers/jiomart';
 import { parseRelianceDigital } from '../parsers/relianceDigital';
 import { createCipheriv } from 'node:crypto';
 import { AcquisitionError } from '../../common/httpClient';
 import { cffiFetch } from '../../common/curlCffiFetch';
 
 const q = (ctx: { query: any }) => String(ctx.query.entityName || ctx.query.rawQuery || '').trim();
+
+/**
+ * JioMart catalog auth requires a MATCHING (pincode, city) pair in x-location-detail.
+ * When the user gave only a pincode, map its first two digits to the city; unknown
+ * prefixes fall back to the verified default pair (400070/Mumbai) at the call site.
+ */
+const JM_PIN_CITY: Record<string, string> = {
+  '11': 'Delhi', '40': 'Mumbai', '56': 'Bengaluru', '60': 'Chennai', '70': 'Kolkata',
+  '50': 'Hyderabad', '45': 'Indore', '30': 'Jaipur', '41': 'Pune', '38': 'Ahmedabad',
+  '46': 'Bhopal', '80': 'Patna', '68': 'Kochi', '32': 'Lucknow', '22': 'Mumbai',
+  '14': 'Chandigarh', '44': 'Nagpur', '25': 'Surat', '78': 'Siliguri', '58': 'Jabalpur',
+};
+function jmCityForPin(pincode: string): string | undefined {
+  if (!/^\d{6}$/.test(pincode)) return undefined;
+  return JM_PIN_CITY[pincode.slice(0, 2)];
+}
 
 
 /**
@@ -251,18 +268,62 @@ export const ecommerceWorker: VerticalWorker = {
     },
     // ---- Owner-requested additions (17 Oct 2026): attempted live every search, honestly reported ----
     {
-      // JioMart (Fynd/JCP platform): search runs on a guest-JWT-gated catalog API
-      // (/api/service/application/catalog/v2.0/...). The SSR search page embeds only
-      // generic category carousels (not query results), and the anonymous-JWT
-      // mint is not exposed browserless. APK recon queued; honest fail until then.
+      // JioMart (Fynd/JCP platform) LIVE (17 Oct 2026): the catalog API
+      // /api/service/application/catalog/v1.0/products/ is guest-accessible with two
+      // headers lifted from the web theme bundle (themeBundle.umd.js):
+      //   Authorization: Bearer base64(applicationID:applicationToken)
+      //   x-location-detail: {"pincode","city","country_code"} (pincode+city must match)
+      // No guest-JWT mint is needed; the application bearer itself authenticates.
       sourceId: 'w_ecom_jiomart',
-      name: 'Ecom worker: JioMart (probe)',
-      priority: 18,
+      name: 'Ecom worker: JioMart (Fynd catalog v1.0)',
+      priority: 17,
+      maxPerMinute: 8,
+      timeoutMs: 30_000,
       run: async (ctx) => {
-        const term = q(ctx) || 'products';
-        const r = await cffiFetch(`https://www.jiomart.com/search/${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
-        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `JioMart HTTP ${r.status}`, r.status);
-        throw new AcquisitionError('EMPTY_RESPONSE', 'JioMart search results are gated behind a guest-JWT catalog API (Fynd platform auth); SSR page carries only generic category carousels, no query-matched products.');
+        const term = q(ctx);
+        if (!term) return [];
+        const JM_APP_ID = '685945f46c8c7aee3f3af605';
+        const JM_APP_TOKEN = 'TpKw7wD9h';
+        const auth = 'Bearer ' + Buffer.from(`${JM_APP_ID}:${JM_APP_TOKEN}`).toString('base64');
+        const api = (pin: string, city: string) =>
+          `https://www.jiomart.com/api/service/application/catalog/v1.0/products/?q=${encodeURIComponent(term)}&page_no=1&page_size=40&pincode=${encodeURIComponent(pin)}`;
+        const headers = (pin: string, city: string) => ({
+          Accept: 'application/json',
+          Authorization: auth,
+          'x-location-detail': JSON.stringify({ pincode: pin, city, country_code: '91' }),
+          Referer: 'https://www.jiomart.com/',
+        });
+
+        // Candidate (pincode, city) pairs: user-provided first (they must match),
+        // then a verified serviceable default (Mumbai 400070).
+        const userPin = String(ctx.query.location?.pincode || '').trim();
+        const userCity = String(ctx.query.location?.city || '').trim();
+        const attempts: Array<{ pin: string; city: string }> = [];
+        if (userPin && userCity) attempts.push({ pin: userPin, city: userCity });
+        else if (userPin) {
+          const c = jmCityForPin(userPin);
+          if (c) attempts.push({ pin: userPin, city: c });
+        }
+        attempts.push({ pin: '400070', city: 'Mumbai' });
+
+        let lastStatus = 0; let lastBody = '';
+        for (const a of attempts) {
+          const r = await cffiFetch(api(a.pin, a.city), { impersonate: 'chrome', timeoutMs: 25_000, headers: headers(a.pin, a.city) });
+          if (r.status === 200) {
+            const items = parseJiomart(r.body, ctx.source, api(a.pin, a.city));
+            if (items.length) return items;
+            lastStatus = 200; lastBody = r.body;
+            continue; // empty page for this pincode: try the next pair honestly
+          }
+          if (r.status === 400 && r.body.includes('invalid pincode')) { lastStatus = 400; lastBody = r.body; continue; }
+          if (r.status === 401 || r.status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', `JioMart auth rejected: HTTP ${r.status}`, r.status);
+          if (r.status === 429) throw new AcquisitionError('RATE_LIMITED', `JioMart throttled: HTTP ${r.status}`, r.status);
+          lastStatus = r.status; lastBody = r.body;
+        }
+        if (lastStatus === 200 || (lastStatus === 400 && lastBody.includes('invalid pincode'))) {
+          throw new AcquisitionError('EMPTY_RESPONSE', 'JioMart catalog returned no parseable products for this query');
+        }
+        throw new AcquisitionError('SERVER_ERROR', `JioMart HTTP ${lastStatus}`, lastStatus);
       },
     },
     {
