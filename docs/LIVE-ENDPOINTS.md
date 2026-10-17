@@ -170,6 +170,43 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   **Myntra** [myntra.ts] (__myx brace-matching), **TataCLiQ** [tatacliq.ts] —
   searchbff.tatacliq.com/v2/products/mpl/search; X-ACCESS-TOKEN = AES-192-CBC
   of epoch-seconds, key in client js module 72124, zero IV, Node auto-PKCS7.
+- **Nykaa** [nykaa.ts] — LIVE (17 Oct): GET www.nykaa.com/search/result/?q=<term>
+  (cffi chrome) serves SSR with the full result set in
+  <script id="__PRELOADED_STATE__" type="application/json"> at
+  listingV2.products[]: title (brand only) + subTitle (product name) joined,
+  discountedPrice = selling price, price = MRP, discount, imageUrl,
+  plp_pdp_bridge.images[] gallery, isOutOfStock. PDP deeplinks come from the
+  rendered anchors (/slug/p/<id>, query string stripped) matched by product id;
+  identifiers sku=<nykaa sku> + vendorProductId=<id> (identity rule accepts both).
+  Worker w_ecom_nykaa, priority 17. Verified live: nike shoes 36 offers, e.g.
+  Nike Men's Downshifter 14 Rs 2,937 (MRP 4,895) with PDP link + 6-photo gallery.
+
+### Ecommerce blocked verdicts (17 Oct 2026, owner-requested sources)
+- **JioMart** — guest-JWT GATED: web = Fynd/JCP platform (stelios SDK). Search
+  results come from /api/service/application/catalog/v2.0/products/?q=... which
+  needs a runtime-minted guest JWT (auth/v1.0/* all 401 'Invalid authorization
+  token' with every header variant of APP_DATA.applicationToken). The catalog
+  v1.0 twin is auth-open but only answers 'invalid pincode' for every param
+  shape (pincode/pin_code, valid pincodes, session cookie flow). SSR search
+  page embeds window.APP_DATA (861KB, ': undefined' must be patched to null
+  before JSON.parse) but reduxData carries ONLY generic category carousels
+  (ssrSectionProducts 'product-carousel|i:<category-ids>' + 'popular-top-deals'),
+  never query-matched products — cannot be used (relevance rule). Probe
+  w_ecom_jiomart fetches the live search URL each search. NEXT ANGLE: JioMart
+  APK (Fynd app) Hermes/bundle recon for the guest-token mint.
+- **Snapdeal** — WAF 403 on ALL TLS fingerprints (chrome110/120/123/124, edge99/101,
+  safari15_5/17_0/18_0, safari iOS) for www.snapdeal.com/search and all API paths;
+  m.snapdeal.com returns 200 but a 73KB client-rendered shell (JS from
+  i*.sdlcdn.com, no product JSON). Probe w_ecom_snapdeal attempts live each
+  search. NEXT ANGLE: Snapdeal APK recon for app API host.
+- **Tata Neu** — app-only commerce: tataneu.com is a 13KB marketing shell with
+  no web search/pricing; neu.tatadigital.com / shop.tatadigital.com do not
+  resolve; tata.com/shop is 404. Tata Neu's web storefront arm IS Tata CLiQ
+  (already a live source, w_ecom_tatacliq). Probe w_ecom_tataneu reports
+  'available only on app' per owner deeplink policy. NEXT ANGLE: UCP app-API
+  recon only if owner wants in-app Tata Neu prices surfaced as app-only rows.
+- **Meesho** — unchanged (client-rendered shell; prices only via session-gated
+  app APIs). Probe w_ecom_meesho attempts live each search.
 
 ## Movies
 - **District/Paytm gateway mesh** [district.ts, districtGw.ts] — REAL seat

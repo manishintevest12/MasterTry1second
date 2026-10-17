@@ -1964,6 +1964,95 @@ var init_tatacliq = __esm({
   }
 });
 
+// server/workers/parsers/nykaa.ts
+function parseNykaa(html, source, pageUrl) {
+  const tag = '<script id="__PRELOADED_STATE__" type="application/json">';
+  const i = html.indexOf(tag);
+  if (i < 0) return [];
+  const from = i + tag.length;
+  const end = html.indexOf("</script>", from);
+  if (end < 0) return [];
+  let root;
+  try {
+    root = JSON.parse(html.slice(from, end));
+  } catch {
+    return [];
+  }
+  let products = [];
+  const direct = root?.listingV2?.products;
+  if (Array.isArray(direct) && direct.length && "discountedPrice" in (direct[0] || {})) {
+    products = direct;
+  } else {
+    const walk = (o, depth) => {
+      if (depth > 10 || !o || typeof o !== "object") return [];
+      if (Array.isArray(o)) {
+        if (o.length && typeof o[0] === "object" && o[0] && ("discountedPrice" in o[0] || "price" in o[0]) && ("title" in o[0] || "subTitle" in o[0])) {
+          return o;
+        }
+        for (const v of o) {
+          const r = walk(v, depth + 1);
+          if (r.length) return r;
+        }
+        return [];
+      }
+      for (const v of Object.values(o)) {
+        const r = walk(v, depth + 1);
+        if (r.length) return r;
+      }
+      return [];
+    };
+    products = walk(root, 0);
+  }
+  if (!products.length) return [];
+  const hrefs = /* @__PURE__ */ new Map();
+  const re = /href="(\/[a-z0-9][a-z0-9-]*\/p\/(\d+)[^"]*)"/g;
+  let m;
+  while ((m = re.exec(html)) && hrefs.size < 200) hrefs.set(m[2], m[1].split("?")[0]);
+  const items = [];
+  for (const p of products.slice(0, 40)) {
+    const brand = String(p.title || "").trim();
+    const name = String(p.subTitle || "").trim();
+    const full = [brand, name].filter(Boolean).join(" ");
+    if (!full) continue;
+    const sell = Number(p.discountedPrice);
+    const mrp = Number(p.price);
+    const price = Number.isFinite(sell) && sell > 0 ? sell : mrp;
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const id = p.id != null ? String(p.id) : "";
+    const pdp = id && hrefs.get(id) ? `https://www.nykaa.com${hrefs.get(id)}` : "https://www.nykaa.com";
+    const https = (u) => u.replace(/^http:/, "https:");
+    const img = p.imageUrl ? https(String(p.imageUrl)) : "";
+    const imgs = [...new Set((p.plp_pdp_bridge?.images || []).map((x) => x?.url ? https(String(x.url)) : "").filter((u) => /^https:\/\//.test(u)))].slice(0, 6);
+    items.push(newRawItem(source, {
+      title: full.slice(0, 200),
+      brand: brand || void 0,
+      model: p.sku ? String(p.sku) : id || void 0,
+      price,
+      listPrice: mrp > price ? mrp : void 0,
+      currency: "INR",
+      seller: "Nykaa",
+      sellerUrl: pdp,
+      availability: p.isOutOfStock ? "out_of_stock" : "in_stock",
+      attributes: {
+        brand,
+        product: name,
+        discount: p.discount != null ? String(p.discount).replace(/[()%]/g, "") : "",
+        image: img,
+        ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
+        data_note: `Product as listed on Nykaa search, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: p.sku ? { sku: String(p.sku), ...id ? { vendorProductId: id } : {} } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "subTitle", "price", "discountedPrice", "discount", "imageUrl", "pdp_url", "sku"] }
+    }));
+  }
+  return items;
+}
+var init_nykaa = __esm({
+  "server/workers/parsers/nykaa.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/relianceDigital.ts
 function extractRelianceState(html) {
   const i = html.indexOf("window.__INITIAL_STATE__");
@@ -2060,6 +2149,7 @@ var init_ecommerce = __esm({
     init_myntra();
     init_ajio();
     init_tatacliq();
+    init_nykaa();
     init_relianceDigital();
     import_node_crypto = require("node:crypto");
     init_httpClient();
@@ -2237,6 +2327,74 @@ var init_ecommerce = __esm({
             const items = parseTataCliq(r.body, ctx.source, url);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Tata CLiQ search BFF returned no parseable products");
             return items;
+          }
+        },
+        {
+          // Nykaa: SSR search page embeds the full result set in
+          // <script id="__PRELOADED_STATE__"> -> listingV2.products[] (17 Oct 2026).
+          sourceId: "w_ecom_nykaa",
+          name: "Ecom worker: Nykaa (SSR preloaded state)",
+          priority: 17,
+          maxPerMinute: 8,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = `https://www.nykaa.com/search/result/?q=${encodeURIComponent(term)}`;
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3 });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Nykaa blocked: HTTP ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Nykaa HTTP ${r.status}`, r.status);
+            const items = parseNykaa(r.body, ctx.source, url);
+            if (!items.length) {
+              if (looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Nykaa presented a challenge page");
+              throw new AcquisitionError("EMPTY_RESPONSE", "Nykaa carried no parseable products for this query");
+            }
+            return items;
+          }
+        },
+        // ---- Owner-requested additions (17 Oct 2026): attempted live every search, honestly reported ----
+        {
+          // JioMart (Fynd/JCP platform): search runs on a guest-JWT-gated catalog API
+          // (/api/service/application/catalog/v2.0/...). The SSR search page embeds only
+          // generic category carousels (not query results), and the anonymous-JWT
+          // mint is not exposed browserless. APK recon queued; honest fail until then.
+          sourceId: "w_ecom_jiomart",
+          name: "Ecom worker: JioMart (probe)",
+          priority: 18,
+          run: async (ctx) => {
+            const term = q(ctx) || "products";
+            const r = await cffiFetch(`https://www.jiomart.com/search/${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `JioMart HTTP ${r.status}`, r.status);
+            throw new AcquisitionError("EMPTY_RESPONSE", "JioMart search results are gated behind a guest-JWT catalog API (Fynd platform auth); SSR page carries only generic category carousels, no query-matched products.");
+          }
+        },
+        {
+          // Snapdeal: WAF 403 on every TLS fingerprint (chrome110-124, edge, safari, iOS);
+          // m.snapdeal.com serves a client-rendered shell. APK recon queued.
+          sourceId: "w_ecom_snapdeal",
+          name: "Ecom worker: Snapdeal (probe)",
+          priority: 18,
+          run: async (ctx) => {
+            const term = q(ctx) || "products";
+            const r = await cffiFetch(`https://www.snapdeal.com/search?keyword=${encodeURIComponent(term)}`, { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError(
+              "ACCESS_CHALLENGE",
+              r.status === 403 ? "Snapdeal WAF denies datacenter/browserless fingerprints on all TLS profiles; mobile web is a client-rendered shell." : `Snapdeal acquisition failed (HTTP ${r.status}); no browserless product API known.`,
+              r.status || 403
+            );
+          }
+        },
+        {
+          // Tata Neu: the web (tataneu.com) is an app-marketing shell; all commerce
+          // (CLiQ/Croma/1mg/BigBasket) happens in the app. Tata CLiQ — its web
+          // storefront arm — is already a live source (w_ecom_tatacliq).
+          sourceId: "w_ecom_tataneu",
+          name: "Ecom worker: Tata Neu (probe)",
+          priority: 18,
+          run: async (_ctx) => {
+            throw new AcquisitionError("EMPTY_RESPONSE", 'Tata Neu commerce is app-only (tataneu.com is a marketing shell with no web search/pricing); its web storefront arm Tata CLiQ is a live source. Tata Neu offers, when surfaced, will state "available only on app".');
           }
         }
       ]

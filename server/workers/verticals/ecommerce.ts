@@ -9,6 +9,7 @@ import { parseFlipkart } from '../parsers/flipkart';
 import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
 import { parseTataCliq } from '../parsers/tatacliq';
+import { parseNykaa } from '../parsers/nykaa';
 import { parseRelianceDigital } from '../parsers/relianceDigital';
 import { createCipheriv } from 'node:crypto';
 import { AcquisitionError } from '../../common/httpClient';
@@ -190,6 +191,76 @@ export const ecommerceWorker: VerticalWorker = {
         const items = parseTataCliq(r.body, ctx.source, url);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Tata CLiQ search BFF returned no parseable products');
         return items;
+      },
+    },
+    {
+      // Nykaa: SSR search page embeds the full result set in
+      // <script id="__PRELOADED_STATE__"> -> listingV2.products[] (17 Oct 2026).
+      sourceId: 'w_ecom_nykaa',
+      name: 'Ecom worker: Nykaa (SSR preloaded state)',
+      priority: 17,
+      maxPerMinute: 8,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url = `https://www.nykaa.com/search/result/?q=${encodeURIComponent(term)}`;
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000 });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Nykaa blocked: HTTP ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Nykaa HTTP ${r.status}`, r.status);
+        const items = parseNykaa(r.body, ctx.source, url);
+        if (!items.length) {
+          if (looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Nykaa presented a challenge page');
+          throw new AcquisitionError('EMPTY_RESPONSE', 'Nykaa carried no parseable products for this query');
+        }
+        return items;
+      },
+    },
+    // ---- Owner-requested additions (17 Oct 2026): attempted live every search, honestly reported ----
+    {
+      // JioMart (Fynd/JCP platform): search runs on a guest-JWT-gated catalog API
+      // (/api/service/application/catalog/v2.0/...). The SSR search page embeds only
+      // generic category carousels (not query results), and the anonymous-JWT
+      // mint is not exposed browserless. APK recon queued; honest fail until then.
+      sourceId: 'w_ecom_jiomart',
+      name: 'Ecom worker: JioMart (probe)',
+      priority: 18,
+      run: async (ctx) => {
+        const term = q(ctx) || 'products';
+        const r = await cffiFetch(`https://www.jiomart.com/search/${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `JioMart HTTP ${r.status}`, r.status);
+        throw new AcquisitionError('EMPTY_RESPONSE', 'JioMart search results are gated behind a guest-JWT catalog API (Fynd platform auth); SSR page carries only generic category carousels, no query-matched products.');
+      },
+    },
+    {
+      // Snapdeal: WAF 403 on every TLS fingerprint (chrome110-124, edge, safari, iOS);
+      // m.snapdeal.com serves a client-rendered shell. APK recon queued.
+      sourceId: 'w_ecom_snapdeal',
+      name: 'Ecom worker: Snapdeal (probe)',
+      priority: 18,
+      run: async (ctx) => {
+        const term = q(ctx) || 'products';
+        const r = await cffiFetch(`https://www.snapdeal.com/search?keyword=${encodeURIComponent(term)}`, { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(
+          'ACCESS_CHALLENGE',
+          r.status === 403
+            ? 'Snapdeal WAF denies datacenter/browserless fingerprints on all TLS profiles; mobile web is a client-rendered shell.'
+            : `Snapdeal acquisition failed (HTTP ${r.status}); no browserless product API known.`,
+          r.status || 403
+        );
+      },
+    },
+    {
+      // Tata Neu: the web (tataneu.com) is an app-marketing shell; all commerce
+      // (CLiQ/Croma/1mg/BigBasket) happens in the app. Tata CLiQ — its web
+      // storefront arm — is already a live source (w_ecom_tatacliq).
+      sourceId: 'w_ecom_tataneu',
+      name: 'Ecom worker: Tata Neu (probe)',
+      priority: 18,
+      run: async (_ctx) => {
+        throw new AcquisitionError('EMPTY_RESPONSE', 'Tata Neu commerce is app-only (tataneu.com is a marketing shell with no web search/pricing); its web storefront arm Tata CLiQ is a live source. Tata Neu offers, when surfaced, will state "available only on app".');
       },
     },
   ],
