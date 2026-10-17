@@ -229,39 +229,21 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
 
 ## Known-blocked (honest probes, do NOT re-recon without new angle)
 ### Flights deep-recon verdicts (14 Oct 2026, after Expedia flights went live)
-- MakeMyTrip flights — BLOCKED from datacenter IPs: /flight/search?itinerary=...
-  serves a 6-byte "200-OK" application/json stub from AkamaiGHost; Googlebot UA
-  gets HTTP/2 reset; SEO pages (cheap-flights-*.html) are static marketing, no
-  live fares; the SPA shell (fetchable via POST /api/search/flight/search)
-  contains only the client app, no SSR fare data; app host
-  flights-cb.makemytrip.com exposes ONLY GET /api/pre-search-validation
-  (Go validator oracle, 'FlightSearchRequest.Itinerary required'; all other
-  paths default 400 {"Response":"Bad Request"}); PWA chunk sets on
-  jsak.mmtcdn.com are open but the federated search widget contains no fare
-  API. Probe w_flights_makemytrip attempts the live SRP URL each search.
-- **Via.com** [viaFlights.ts] — LIVE (17 Oct). in.via.com is an old jQuery B2C
-  site; per-flight results (/itinerary, /flight/search) 502/500 for browserless
-  HTTP, but the search-box fare-calendar API is fully OPEN: POST
-  /apiv2/flight/fare-calendar?authToken=553f5767-... (authToken ships verbatim
-  in their public JS bundles, used by their own pages) with JSON body
-  {"src","dest","startDate","endDate"(yyyy-mm-dd),"fareType":"b2c","oneWay":true}
-  -> { cd: [ { dt, pr(INR), prType: LOW/MEDIUM/HIGH } ] }, ~267-day window.
-  w_flights_via emits ONE honest offer (exact requested date, else cheapest
-  upcoming), seller Via.com, deeplink to their own /flight/search URL.
-  Live-verified: DEL-BOM 2026-10-25 = Rs6114. NEXT ANGLE for per-flight data:
-  /apiv2/flight/search accepts sectorInfoList but wants a nested "sectors"
-  shape we have not mapped; /itinerary needs their result-page JS bundle.
-- HappyEasyGo flights — probe w_flights_happyeasygo: flight.happyeasygo.com
-  no longer resolves (DNS dead); www.happyeasygo.com/flight/ is a Vue/Nuxt
-  client-rendered shell; apiproxy/apipro hosts do not resolve. No browserless
-  API — no real prices to acquire.
-- Paytm flights — probe w_flights_paytm: travel.paytm.com is Akamai-403 from
-  datacenter IPs on all TLS fingerprints (chrome/safari); paytm.com/
-  flight-tickets is a client-rendered marketing shell with no SSR fares.
-- Amazon India flights — probe w_flights_amazon: Amazon.in has NO flight
-  booking product (verified 17 Oct: /flights generic page, /flight-search and
-  /gp/flight-search 404, no booking widget on the domain). Honest no-product
-  verdict, never fabricated.
+- MakeMyTrip flights — recipe CRACKED (17 Oct browser recon), IP-gated: the flow is
+  GET www.makemytrip.com/flight/search?itinerary=DEL-BOM-25/10/2026... (SSR HTML embeds
+  window.__PRE_AUTH__=<token>) then GET flights-cb.makemytrip.com/api/search-stream-dt
+  ?apiCallTimestamp&cc=E&crId=<uuid>&cur=INR&it=DEL-BOM-20261025&pax=A-1_C-0_I-0
+  &pfm=DESKTOP&region=in&sortBy=rhino&src=desktop with headers app-ver 1.0.0,
+  X-Cb-Preauth <token>, device-id/mcid <uuid>, entity-name india, domain in,
+  user-country IN, currency INR, pfm DESKTOP, region in, src desktop,
+  accept text/event-stream. SSE events: "response-headers" + "response" (chunked JSON,
+  possibly compressed). flights-cb ALSO serves /api/client-config and
+  /api/pre-search-validation browserless (Go validator oracles for payload fuzzing:
+  FlightSearchRequest.Itinerary, FareCalendarRequest.CrID/Itinerary).
+  From burned datacenter IPs (sandbox, Browserbase) the SRP HTML is a 6-byte stub
+  and the stream 403s — probe w_flights_makemytrip now runs the FULL flow each
+  search (preauth extract -> stream call) so a clean production Hostinger IP is
+  detected; the stream sample it logs then maps the SSE shape for the real parser.
 - **Yatra flights** [yatraFlights.ts] — LIVE FULL PER-FLIGHT (17 Oct): the
   air-service JSON API behind the Angular SRP is OPEN browserless (no cookies,
   no sensor, no guest token; verified from datacenter IPs). Flow: GET

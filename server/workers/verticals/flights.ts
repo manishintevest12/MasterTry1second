@@ -306,22 +306,49 @@ export const flightsWorker: VerticalWorker = {
     },
     // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
     {
+      // MMT (17 Oct browser recon): the real flow is GET SRP HTML (SSR embeds
+      // window.__PRE_AUTH__=<32-hex token>) then GET
+      // flights-cb.makemytrip.com/api/search-stream-dt?it=DEL-BOM-20261025&...
+      // with headers app-ver 1.0.0, X-Cb-Preauth <token>, device-id/mcid uuid,
+      // entity-name india, domain in, user-country IN, currency INR, pfm DESKTOP,
+      // region in, src desktop, accept text/event-stream (SSE chunks, event
+      // "response"). flights-cb also serves /api/client-config and /api/pre-search-validation
+      // browserless (Go validator oracles). From burned datacenter IPs the SRP HTML
+      // is a 6-byte stub and the stream 403s; this probe runs the FULL flow live
+      // every search so a clean production Hostinger IP is detected immediately
+      // (then the SSE sample logged here maps the shape for the real parser).
       sourceId: 'w_flights_makemytrip',
-      name: 'Flights worker: MakeMyTrip flights (probe)',
+      name: 'Flights worker: MakeMyTrip flights (full-flow probe)',
       priority: 15,
-      run: async () => {
-        // Attempt the real SRP URL live (dynamic date) so a gate lift is detected on any IP.
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        const fromCode = rt?.fromCode || 'DEL';
+        const toCode = rt?.toCode || 'BOM';
         const dd = new Date(Date.now() + 7 * 86400_000);
         const dmy = `${String(dd.getUTCDate()).padStart(2, '0')}/${String(dd.getUTCMonth() + 1).padStart(2, '0')}/${dd.getUTCFullYear()}`;
-        const iso = dd.toISOString().slice(0, 10);
-        const r = await cffiFetch(
-          `https://www.makemytrip.com/flight/search?itinerary=IDR-DEL-${dmy}&tripType=O&pax=1-0-0&cabinClass=E`,
-          { impersonate: 'chrome', timeoutMs: 12_000 },
-        );
-        if (r.status === 200 && (r.body || '').length > 50_000) {
-          throw new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip SRP unexpectedly returned content from this IP; parse path not yet built (recon snapshot 14 Oct 2026: AkamaiGHost stub).');
+        const iso = dd.toISOString().slice(0, 10).replace(/-/g, '');
+        const srpUrl = `https://www.makemytrip.com/flight/search?itinerary=${fromCode}-${toCode}-${dmy}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E&lang=eng`;
+        const h = await cffiFetch(srpUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
+        const preauthM = (h.body || '').match(/__PRE_AUTH__\s*=\s*["']([0-9a-f]{16,64})["']/);
+        if (h.status !== 200 || !preauthM) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', `MMT SRP HTML did not serve the SSR preauth from this IP (HTTP ${h.status}, ${String(h.body || '').length}B; stub expected on burned IPs). Stream recipe ready: search-stream-dt + X-Cb-Preauth (17 Oct recon).`, h.status);
         }
-        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip flight SRP serves a 6-byte "200-OK" application/json stub from AkamaiGHost to browserless datacenter HTTP; Googlebot UA gets HTTP/2 reset; the app API host flights-cb.makemytrip.com exposes only a GET pre-search-validation route (Go validator, no fares); SEO pages carry no live fares (recon 14 Oct 2026). Retest from production IP after deploy.');
+        // SRP HTML served: try the SSE stream with the lifted token.
+        const did = '94338e88-73de-4bc6-b77c-b1baf7fdb58f';
+        const stUrl = `https://flights-cb.makemytrip.com/api/search-stream-dt?apiCallTimestamp=${Date.now()}&cc=E&cmpId=&crId=${did}&creditShellInfo=&cur=INR&currency=INR&dfs=0&forwardFlowRequired=true&it=${fromCode}-${toCode}-${iso}&language=eng&pax=A-1_C-0_I-0&pfm=DESKTOP&region=in&shd=true&sortBy=rhino&src=desktop`;
+        const r = await cffiFetch(stUrl, { impersonate: 'chrome', timeoutMs: 25_000, headers: {
+          Accept: 'text/event-stream', 'app-ver': '1.0.0', 'X-Cb-Preauth': preauthM[1],
+          'device-id': did, 'entity-name': 'india', os: 'Windows', auuid: '', domain: 'in',
+          'Cache-Control': 'no-cache', 'user-country': 'IN', currency: 'INR', mcid: did,
+          region: 'in', pfm: 'DESKTOP', src: 'desktop', 'profile-type': 'b2c',
+          Origin: 'https://www.makemytrip.com', Referer: srpUrl,
+        } });
+        if (r.status === 200) {
+          const sample = (r.body || '').replace(/\s+/g, ' ').slice(0, 400);
+          throw new AcquisitionError('EMPTY_RESPONSE', `MMT stream OPENED from this IP (200, ${String(r.body || '').length}B) but the SSE shape is not mapped yet — sample for the real parser: ${sample}`);
+        }
+        throw new AcquisitionError('ACCESS_CHALLENGE', `MMT SRP served SSR preauth from this IP but the search stream was edge-blocked (HTTP ${r.status}).`, r.status);
       },
     },
     {
