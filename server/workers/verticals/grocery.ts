@@ -223,7 +223,7 @@ export const groceryWorker: VerticalWorker = {
       // Blinkit LIVE: /v1/layout/search answers real JSON to browserless HTTP when sent with the
       // web-app headers (app_client=consumer_web + lat/lon). Server-side search, location-aware prices.
       sourceId: 'w_grocery_blinkit',
-      name: 'Grocery worker: Blinkit search API',
+      name: 'Grocery worker: Blinkit search API (app gateway + web fallback)',
       priority: 14,
       timeoutMs: 30_000,
       run: async (ctx: any) => {
@@ -236,6 +236,27 @@ export const groceryWorker: VerticalWorker = {
             : GCITY_COORDS[String(loc.city || '').toLowerCase()] || GCITY_COORDS['mumbai'];
         const cityLabel = loc.city ? String(loc.city) : 'Mumbai';
         const [lat, lng] = coords;
+        // PRIMARY (17 Oct, APK-extracted XAPK v17.65 via APKFab): the Android app's Kong gateway
+        // api3.blinkit.com (config/domains rollout target for api2.grofers.com) is NOT behind the
+        // website's Cloudflare edge. POST /v1/layout/search with app headers (lat/lon + Grofers UA)
+        // returns the SAME product_card_snippet_type_2 widgets as the web endpoint — verified live
+        // from the sandbox datacenter IP where blinkit.com 403s. No auth, no cookies.
+        const appUrl = `https://api3.blinkit.com/v1/layout/search?q=${encodeURIComponent(term)}&search_type=type_to_search`;
+        const appHeaders: Record<string, string> = {
+          lat: String(lat),
+          lon: String(lng),
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Grofers/17.65.0 (Android 13; com.grofers.customerapp)',
+          platform: 'android',
+          app_version: '17.65.0',
+        };
+        let r: { status: number; body: string } = { status: 0, body: '' };
+        let usedAppGateway = false;
+        try {
+          r = await cffiFetch(appUrl, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 22_000, headers: appHeaders });
+          if (r.status === 200 && r.body) usedAppGateway = true;
+        } catch { /* fall through to the web endpoint */ }
         const url = `https://blinkit.com/v1/layout/search?q=${encodeURIComponent(term)}&search_type=type_to_search`;
         // Some egress IPs (shared hosting) get a 403 on the first fingerprint; a second
         // TLS profile often passes. Honest-fail only after both attempts.
@@ -248,15 +269,16 @@ export const groceryWorker: VerticalWorker = {
           Origin: 'https://blinkit.com',
           Referer: `https://blinkit.com/s/?q=${encodeURIComponent(term)}`,
         };
-        let r: { status: number; body: string } = { status: 0, body: '' };
-        for (const profile of ['chrome', 'safari17_0', 'chrome110']) {
-          r = await cffiFetch(url, { impersonate: profile, method: 'POST', body: '{}', timeoutMs: 22_000, headers: blHeaders });
-          if (r.status === 200 && r.body) break;
-          // Cloudflare samples per-request: a short cooldown between TLS profiles
-          // materially raises the odds the next profile passes.
-          if (r.status === 403 || r.status === 429) await new Promise((res) => setTimeout(res, 1500));
+        if (!usedAppGateway) {
+          for (const profile of ['chrome', 'safari17_0', 'chrome110']) {
+            r = await cffiFetch(url, { impersonate: profile, method: 'POST', body: '{}', timeoutMs: 22_000, headers: blHeaders });
+            if (r.status === 200 && r.body) break;
+            // Cloudflare samples per-request: a short cooldown between TLS profiles
+            // materially raises the odds the next profile passes.
+            if (r.status === 403 || r.status === 429) await new Promise((res) => setTimeout(res, 1500));
+          }
         }
-        if (r.status === 403 || r.status === 202) throw new AcquisitionError('ACCESS_CHALLENGE', `Blinkit search API HTTP ${r.status} (tried 3 TLS fingerprints)`);
+        if (!usedAppGateway && (r.status === 403 || r.status === 202)) throw new AcquisitionError('ACCESS_CHALLENGE', `Blinkit search API HTTP ${r.status} (app gateway + 3 TLS web fingerprints all blocked)`);
         if (r.status !== 200 || !r.body) throw new AcquisitionError('SERVER_ERROR', `Blinkit search API HTTP ${r.status}`, r.status);
         const items = parseBlinkit(r.body, ctx.source, url, cityLabel, 16);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `Blinkit returned no products for "${term}" at ${cityLabel} (not serviceable or no match)`);

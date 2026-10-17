@@ -44,7 +44,7 @@ test('parseZeptoSearch: honest offers only (price required, query-relevant, no d
   assert.equal(items[0].listPrice, 75);
   assert.equal(items[0].seller, 'Zepto');
   assert.ok(String(items[0].sellerUrl).startsWith('https://www.zepto.com/search'));
-  assert.equal(items[0].identifiers.sku, 'zepto-p1');
+  assert.equal(items[0].identifiers!.sku, 'zepto-p1');
 });
 
 test('grocery worker: Zepto is a real v3/search task with honest WAF reporting', () => {
