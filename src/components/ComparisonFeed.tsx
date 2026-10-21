@@ -285,6 +285,21 @@ export const ComparisonFeed: React.FC = () => {
         </div>
       )}
 
+      {/* Live-scanning banner (owner 21 Oct): renders ABOVE the sidebar so it is the
+          FIRST thing visible on mobile too. KEY FIX: the pendingRefresh lookup used
+          selectedCategory (default 'All'), which never matched the vertical-keyed
+          sourcesReport, so the banner only flashed during the instant catalogue hop
+          and vanished before the eye could see it. Gate on the vertical key instead:
+          it stays visible for the whole background live-price acquisition. */}
+      {(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3.5 py-2.5 text-[12px] font-semibold text-orange-700">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+          <span>
+            Scanning thousands of deals and seconds in real time. The lowest price is loading right now.
+          </span>
+        </div>
+      )}
+
       {/* Main 2-Column Comparison Layout (Sidebar + Feed) */}
       <div className="flex flex-col lg:flex-row items-start gap-6">
         {/* Left: Price Prediction & Filters Sidebar */}
@@ -293,14 +308,6 @@ export const ComparisonFeed: React.FC = () => {
         {/* Right: Summary Tabs & Cards */}
         <main className="flex-1 w-full min-w-0">
           <SortAndSummaryTabs />
-          {(isScrapingLive || sourcesReport?.[selectedCategory as string]?.pendingRefresh) && (
-            <div className="mb-3 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3.5 py-2.5 text-[12px] font-semibold text-orange-700">
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-              <span>
-                Scanning thousands of deals and seconds in real time. The lowest price is loading right now.
-              </span>
-            </div>
-          )}
 
           {sorted.length === 0 ? (
             isScrapingLive ? (

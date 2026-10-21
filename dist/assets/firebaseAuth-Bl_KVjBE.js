@@ -1,0 +1,1 @@
+import{n as e,r as t,t as n}from"./firebase-mXfuxI8r.js";import{t as r}from"./firebaseApp-B7Szh7Sc.js";function i(){return e(r())}async function a(){let e=i(),r=new n;return(await t(e,r)).user.getIdToken()}export{a as signInWithGoogleAndGetToken};
