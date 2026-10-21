@@ -132,7 +132,7 @@ export const Navbar: React.FC = () => {
           </button>
 
           {/* ZONE 2: Middle Meta Stats / Engine Status (Quiet) */}
-          <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-xs">
+          <div className="hidden xl:flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-200 rounded-full text-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-bold text-slate-800">TRY1SECOND ENGINE ACTIVE</span>
             <span className="text-slate-300">·</span>
@@ -213,7 +213,7 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* ZONE 3 (>=sm): Compare 10 Verticals, Alerts, Profile Avatar */}
-          <div className="hidden sm:flex items-center gap-2.5 sm:gap-3">
+          <div className="hidden sm:flex items-center gap-2.5 sm:gap-3 min-w-0 shrink">
             {/* Compare 10 Verticals Red Pill Button (Exact to screenshot) */}
             <div className="relative" ref={menuRef}>
               <button
@@ -223,7 +223,7 @@ export const Navbar: React.FC = () => {
               >
                 <Clock className="w-4 h-4 text-white" />
                 <span className="tracking-wide">Compare</span>
-                <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+                <span className="hidden md:inline text-[10px] font-bold bg-white/20 text-white px-1.5 py-0.2 rounded-full uppercase tracking-wider">
                   10 Verticals
                 </span>
                 <ChevronDown
@@ -293,7 +293,7 @@ export const Navbar: React.FC = () => {
               title="Spend Lens — which website did you spend how much on"
             >
               <Wallet className="w-3.5 h-3.5 text-[#E7000B]" />
-              <span className="hidden sm:inline">Spend Lens</span>
+              <span className="hidden lg:inline">Spend Lens</span>
             </button>
 
             {/* My Price Tracker Hub Button */}
@@ -308,7 +308,7 @@ export const Navbar: React.FC = () => {
               title="My Price Tracker & Multi-SKU Watchlist Hub"
             >
               <Heart className="w-3.5 h-3.5 text-rose-600 fill-rose-500" />
-              <span className="hidden sm:inline">Price Tracker</span>
+              <span className="hidden lg:inline">Price Tracker</span>
               {trackedItemIds.length > 0 && (
                 <span className="px-1.5 py-0.2 bg-red-600 text-white text-[10px] rounded-full font-mono font-bold leading-none">
                   {trackedItemIds.length}
@@ -347,7 +347,7 @@ export const Navbar: React.FC = () => {
                 <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-slate-200 overflow-hidden flex items-center justify-center text-white text-xs font-bold shrink-0">
                   <span className="text-amber-400 font-mono">1S</span>
                 </div>
-                <div className="text-left hidden sm:block">
+                <div className="text-left hidden xl:block">
                   {authUser ? (
                     <>
                       <span className="text-xs font-bold text-slate-900 block leading-tight max-w-24 truncate">
