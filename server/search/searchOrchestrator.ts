@@ -222,7 +222,10 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Prom
   let liveOffers: NormalizedOffer[] = [];
   if (enabledSources.length > 0) {
     // 5. PARALLEL INDEPENDENT SOURCE ACQUISITION (Section 5)
-    const outcome = await acquireParallel(parsed, { maxSources: 20 });
+    // 42s acquisition budget: Hostinger's nginx proxy returns 504 at ~55s. Cutting
+    // acquisition at 42s leaves time for normalize/rank/respond + proxy headroom.
+    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42_000);
+    const outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
@@ -288,10 +291,16 @@ async function processAdapterResults(results: AdapterResult[], parsed: ParsedQue
   const { getSource } = await import('../sources/registry');
   const out: NormalizedOffer[] = [];
 
+  let processed = 0;
   for (const result of results) {
     const source = getSource(result.sourceId);
     if (!source) continue;
     for (const raw of result.rawItems) {
+      // HTTP-PRIORITY YIELD (owner self-healing rule, 21 Oct): parsing/normalizing
+      // hundreds of offers is synchronous CPU; on a throttled shared core that starved
+      // every request (the "server up but 504s" wedge). Every 50 items hand the event
+      // loop a full macrotask turn so pending HTTP is served while a search runs.
+      if (++processed % 50 === 0) await new Promise((r) => setImmediate(r));
       try {
         // NORMALIZE
         const offer = normalizeOffer(raw, source, (parsed.vertical || 'ecommerce') as any);

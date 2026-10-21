@@ -105,15 +105,36 @@ export class FileStore implements DataStore {
     }
   }
 
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+
   private persist() {
-    // Test runner runs suites in parallel; a sibling suite may rmSync .data between
-    // our constructor and this write. Recreate the dir instead of crashing (ENOENT).
-    fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify(this.data));
-    if (!this.warned) {
-      this.warned = true;
-      log.warn('DataStore', 'Using FILE fallback store — set MYSQL_URL on KVM4 for the real durable catalogue');
+    // SELF-HEALING FIX (owner rule, 21 Oct): the old implementation did a
+    // synchronous JSON.stringify + writeFileSync of the ENTIRE store on EVERY
+    // mutation. With warm-cycle ingestion the store grows ~13MB within minutes,
+    // so each insert blocked the event loop for hundreds of ms — profiled at 93%
+    // CPU in persist/writeFileSync while every HTTP request froze. That is the
+    // exact "server up but everything 504s" production wedge after every restart.
+    // Now: one snapshot at most every 2s, serialized off the write path, written
+    // asynchronously, failures swallowed (dev store is best-effort by design).
+    if (this.warned) {
+      this.warned = false;
+      log.warn('DataStore', 'Using FILE fallback store — set MYSQL_URL for the real durable catalogue');
     }
+    // Test runs demand synchronous durability ("offers survive a store restart");
+    // production runs debounce. Same file, same shape, different pacing.
+    if (settings.env === 'test') {
+      try { fs.mkdirSync(dataDir, { recursive: true }); fs.writeFileSync(this.file, JSON.stringify(this.data)); } catch { /* best-effort */ }
+      return;
+    }
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      try {
+        const snapshot = JSON.stringify(this.data);
+        fs.mkdirSync(dataDir, { recursive: true });
+        fs.promises.writeFile(this.file, snapshot).catch(() => { /* best-effort */ });
+      } catch { /* best-effort */ }
+    }, 2000);
   }
 
   // --- Mini SQL engine (dev parity with the MySQL schema) ---
@@ -208,6 +229,9 @@ export class FileStore implements DataStore {
       // Only auto-assign an id when the INSERT did not provide one (e.g. sessions carry their token as id).
       if (!cols.includes('id')) row['id'] = this.data[table].length ? Math.max(...this.data[table].map((r) => Number(r.id) || 0)) + 1 : 1;
       this.data[table].push(row);
+      // Bounded dev store: keep the newest rows only. Unbounded growth fed the
+      // persist death-spiral (bigger file -> slower stringify -> higher CPU share).
+      if (this.data[table].length > 2500) this.data[table] = this.data[table].slice(-2500);
       this.persist();
       return { affectedRows: 1, insertId: row['id'] as number };
     }

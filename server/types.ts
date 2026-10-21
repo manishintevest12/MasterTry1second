@@ -158,6 +158,7 @@ export type FailureClass =
   | 'EMPTY_RESPONSE'
   | 'MISSING_REQUIRED_FIELD'
   | 'PARSER_FAILURE'
+  | 'DEADLINE_CUT' // total search budget exhausted before this source answered (proxy-window protection)
   | 'SCHEMA_DRIFT'
   | 'EXPIRED_CREDENTIALS'
   | 'CAPABILITY_UNAVAILABLE' // optional runtime dependency (e.g. Playwright) missing

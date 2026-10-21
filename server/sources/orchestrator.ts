@@ -45,7 +45,7 @@ export interface AcquisitionOutcome {
  * Runs acquisition across selected sources in parallel (each with its own timeout).
  * Returns as soon as all bounded-parallel promises settle — no source waits on another.
  */
-export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: number } = {}): Promise<AcquisitionOutcome> {
+export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: number; deadlineAt?: number } = {}): Promise<AcquisitionOutcome> {
   const sources = selectSources(query).slice(0, opts.maxSources ?? 6);
   const outcome: AcquisitionOutcome = { results: [], attempted: sources.map((s) => s.id), succeeded: [], failed: [] };
 
@@ -106,7 +106,29 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
     }
   };
 
-  const settled = await Promise.allSettled(sources.map((source) => runSource(source)));
+  // TOTAL SEARCH DEADLINE (owner self-healing rule, 21 Oct): shared hosting's proxy
+  // cuts the connection at ~55s. The search must return honest partial results
+  // BEFORE that wall — a source that has not answered by the deadline is cut and
+  // reported as DEADLINE_CUT (its own adapter budget still ends the background
+  // fetch shortly after). No 504s, no gateway wedge: the user always gets a response.
+  const runWithDeadline = async (source: SourceConfig): Promise<TaskOutcome> => {
+    const remaining = opts.deadlineAt ? opts.deadlineAt - Date.now() : Infinity;
+    if (remaining <= 0) {
+      recordFailure(source.id, 'DEADLINE_CUT', 'Total search deadline reached before this source started');
+      return { kind: 'fail', sourceId: source.id, failureClass: 'DEADLINE_CUT', error: 'Total search deadline reached' };
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<TaskOutcome>((resolve) => {
+      timer = setTimeout(() => resolve({ kind: 'fail', sourceId: source.id, failureClass: 'DEADLINE_CUT', error: `Cut at total deadline (+${Math.round(remaining / 1000)}s budget)` }), remaining);
+    });
+    try {
+      return await Promise.race([runSource(source), watchdog]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const settled = await Promise.allSettled(sources.map((source) => runWithDeadline(source)));
   for (const s of settled) {
     if (s.status !== 'fulfilled') continue;
     const r = s.value;

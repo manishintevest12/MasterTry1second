@@ -780,6 +780,7 @@ var init_db = __esm({
         this.file = import_path2.default.join(dataDir, "devstore.json");
         this.data = {};
         this.warned = false;
+        this.saveTimer = null;
         import_fs.default.mkdirSync(dataDir, { recursive: true });
         if (import_fs.default.existsSync(this.file)) {
           try {
@@ -790,12 +791,29 @@ var init_db = __esm({
         }
       }
       persist() {
-        import_fs.default.mkdirSync(dataDir, { recursive: true });
-        import_fs.default.writeFileSync(this.file, JSON.stringify(this.data));
-        if (!this.warned) {
-          this.warned = true;
-          log.warn("DataStore", "Using FILE fallback store \u2014 set MYSQL_URL on KVM4 for the real durable catalogue");
+        if (this.warned) {
+          this.warned = false;
+          log.warn("DataStore", "Using FILE fallback store \u2014 set MYSQL_URL for the real durable catalogue");
         }
+        if (settings.env === "test") {
+          try {
+            import_fs.default.mkdirSync(dataDir, { recursive: true });
+            import_fs.default.writeFileSync(this.file, JSON.stringify(this.data));
+          } catch {
+          }
+          return;
+        }
+        if (this.saveTimer) return;
+        this.saveTimer = setTimeout(() => {
+          this.saveTimer = null;
+          try {
+            const snapshot = JSON.stringify(this.data);
+            import_fs.default.mkdirSync(dataDir, { recursive: true });
+            import_fs.default.promises.writeFile(this.file, snapshot).catch(() => {
+            });
+          } catch {
+          }
+        }, 2e3);
       }
       // --- Mini SQL engine (dev parity with the MySQL schema) ---
       tableOf(sql) {
@@ -883,6 +901,7 @@ var init_db = __esm({
           const row = this.valuesOf(s, cols, params);
           if (!cols.includes("id")) row["id"] = this.data[table].length ? Math.max(...this.data[table].map((r) => Number(r.id) || 0)) + 1 : 1;
           this.data[table].push(row);
+          if (this.data[table].length > 2500) this.data[table] = this.data[table].slice(-2500);
           this.persist();
           return { affectedRows: 1, insertId: row["id"] };
         }
@@ -1482,7 +1501,7 @@ function looksLikeChallenge(body) {
   return markers.test(head) && !/application\/ld\+json/i.test(head) || shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
-  const started = Date.now();
+  const started2 = Date.now();
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
   const ctx = {
     query,
@@ -1509,18 +1528,18 @@ async function runTask(worker, task, source, query) {
       new Promise((_, rej) => setTimeout(() => rej(new AcquisitionError("TIMEOUT", `worker task exceeded ${(task.timeoutMs ?? 18e3) / 1e3}s`)), task.timeoutMs ?? 18e3))
     ]);
     if (!rawItems.length) {
-      return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started);
+      return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started2);
     }
-    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started, fetchedAt };
+    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started2, fetchedAt };
   } catch (e) {
     const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
     log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });
     const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ""));
     if (fixtures.length) {
       log.warn("VerticalWorker", `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
-      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started, fetchedAt };
+      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started2, fetchedAt };
     }
-    return failedResult(source, fc, String(e?.message || e).slice(0, 200), Date.now() - started, e?.httpStatus);
+    return failedResult(source, fc, String(e?.message || e).slice(0, 200), Date.now() - started2, e?.httpStatus);
   }
 }
 function registerVerticalWorker(worker) {
@@ -19652,7 +19671,7 @@ var init_browserRenderAdapter = __esm({
       }
       async search(ctx) {
         const { source, query } = ctx;
-        const started = Date.now();
+        const started2 = Date.now();
         let playwright;
         try {
           playwright = await import(
@@ -19664,12 +19683,12 @@ var init_browserRenderAdapter = __esm({
             source,
             "CAPABILITY_UNAVAILABLE",
             "Headless browser fallback unavailable: Playwright/Chromium not installed on this runtime",
-            Date.now() - started
+            Date.now() - started2
           );
         }
         const url = String(source.config.url || source.config.baseUrl || "");
         if (!/^https:\/\//i.test(url)) {
-          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started);
+          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started2);
         }
         let browser = null;
         try {
@@ -19682,7 +19701,7 @@ var init_browserRenderAdapter = __esm({
               source,
               res && res.status() === 429 ? "QUOTA_EXHAUSTED" : "SERVER_ERROR",
               `Rendered page HTTP ${res ? res.status() : "unknown"}`,
-              Date.now() - started,
+              Date.now() - started2,
               res && res.status ? res.status() : void 0
             );
           }
@@ -19698,13 +19717,13 @@ var init_browserRenderAdapter = __esm({
             const title = document.title || "";
             return { jsonLd: out, title, htmlLen: document.documentElement.outerHTML.length, html: document.documentElement.outerHTML.slice(0, maxLen) };
           }, MAX_HTML);
-          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started);
+          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started2);
           if (rawItems.length === 0) {
             return failedResult(
               source,
               "EMPTY_RESPONSE",
               "Page rendered but exposed no public structured product data",
-              Date.now() - started,
+              Date.now() - started2,
               res.status()
             );
           }
@@ -19714,13 +19733,13 @@ var init_browserRenderAdapter = __esm({
             sourceMethod: this.method,
             rawItems,
             httpStatus: res.status(),
-            latencyMs: Date.now() - started,
+            latencyMs: Date.now() - started2,
             fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
           };
         } catch (e) {
           const msg = String(e?.message || e).slice(0, 160);
           const klass = /Timeout|timed out/i.test(msg) ? "TIMEOUT" : /net::|ERR_/.test(msg) ? "CONNECTION_FAILURE" : "PARSER_FAILURE";
-          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started);
+          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started2);
         } finally {
           if (browser) {
             try {
@@ -19731,7 +19750,7 @@ var init_browserRenderAdapter = __esm({
         }
       }
       /** JSON-LD → RawSourceItem. Only evidence-backed fields are extracted. */
-      mapJsonLd(blocks, source, url, started) {
+      mapJsonLd(blocks, source, url, started2) {
         const items = [];
         const push = (node) => {
           if (!node || typeof node !== "object") return;
@@ -19823,7 +19842,23 @@ async function acquireParallel(query, opts = {}) {
       return { kind: "fail", sourceId: source.id, failureClass: "UNKNOWN", error: String(e?.message || e).slice(0, 200) };
     }
   };
-  const settled = await Promise.allSettled(sources2.map((source) => runSource(source)));
+  const runWithDeadline = async (source) => {
+    const remaining = opts.deadlineAt ? opts.deadlineAt - Date.now() : Infinity;
+    if (remaining <= 0) {
+      recordFailure(source.id, "DEADLINE_CUT", "Total search deadline reached before this source started");
+      return { kind: "fail", sourceId: source.id, failureClass: "DEADLINE_CUT", error: "Total search deadline reached" };
+    }
+    let timer;
+    const watchdog = new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ kind: "fail", sourceId: source.id, failureClass: "DEADLINE_CUT", error: `Cut at total deadline (+${Math.round(remaining / 1e3)}s budget)` }), remaining);
+    });
+    try {
+      return await Promise.race([runSource(source), watchdog]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+  const settled = await Promise.allSettled(sources2.map((source) => runWithDeadline(source)));
   for (const s of settled) {
     if (s.status !== "fulfilled") continue;
     const r = s.value;
@@ -21486,7 +21521,8 @@ async function runLivePipeline(input, parsedIn) {
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
   let liveOffers = [];
   if (enabledSources.length > 0) {
-    const outcome = await acquireParallel(parsed, { maxSources: 20 });
+    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42e3);
+    const outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
@@ -21527,10 +21563,12 @@ async function runLivePipeline(input, parsedIn) {
 async function processAdapterResults(results, parsed) {
   const { getSource: getSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
   const out = [];
+  let processed = 0;
   for (const result of results) {
     const source = getSource2(result.sourceId);
     if (!source) continue;
     for (const raw of result.rawItems) {
+      if (++processed % 50 === 0) await new Promise((r) => setImmediate(r));
       try {
         const offer = normalizeOffer(raw, source, parsed.vertical || "ecommerce");
         const parsedLoc = Object.fromEntries(
@@ -27399,6 +27437,7 @@ async function warmRows(rows, tag) {
     } catch (e) {
       log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
     }
+    await new Promise((r2) => setImmediate(r2));
   }
   log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
 }
@@ -28309,6 +28348,51 @@ var init_api = __esm({
   }
 });
 
+// server/common/loopWatchdog.ts
+var loopWatchdog_exports = {};
+__export(loopWatchdog_exports, {
+  startLoopWatchdog: () => startLoopWatchdog
+});
+function tick() {
+  const now = Date.now();
+  const late = Math.max(0, now - lastTick - TICK_MS);
+  lastTick = now;
+  windowBlockedMs += Math.min(late, TICK_MS * 8);
+  if (now - windowStart >= WINDOW_MS) {
+    const busy = windowBlockedMs / (now - windowStart);
+    if (busy >= WINDOW_BUSY_RATIO) {
+      log.error("Watchdog", `Event loop starved: ${Math.round(busy * 100)}% blocked over last ${WINDOW_MS / 1e3}s \u2014 exiting for hPanel auto-restart (self-heal)`);
+      process.exit(1);
+    }
+    windowStart = now;
+    windowBlockedMs = 0;
+  }
+  if (late >= SINGLE_STALL_MS) {
+    log.error("Watchdog", `Single event-loop stall of ${(late / 1e3).toFixed(1)}s \u2014 exiting for hPanel auto-restart (self-heal)`);
+    process.exit(1);
+  }
+}
+function startLoopWatchdog() {
+  if (started) return;
+  started = true;
+  setInterval(tick, TICK_MS).unref();
+  log.info("Watchdog", `Event-loop watchdog armed (stall >${SINGLE_STALL_MS / 1e3}s or ${WINDOW_BUSY_RATIO * 100}% over ${WINDOW_MS / 1e3}s -> self-restart)`);
+}
+var TICK_MS, SINGLE_STALL_MS, WINDOW_MS, WINDOW_BUSY_RATIO, lastTick, windowStart, windowBlockedMs, started;
+var init_loopWatchdog = __esm({
+  "server/common/loopWatchdog.ts"() {
+    init_logger();
+    TICK_MS = 500;
+    SINGLE_STALL_MS = 3e4;
+    WINDOW_MS = 18e4;
+    WINDOW_BUSY_RATIO = 0.95;
+    lastTick = Date.now();
+    windowStart = Date.now();
+    windowBlockedMs = 0;
+    started = false;
+  }
+});
+
 // server/common/singleton.ts
 var singleton_exports = {};
 __export(singleton_exports, {
@@ -28401,6 +28485,105 @@ var init_singleton = __esm({
   }
 });
 
+// server/catalogue/prune.ts
+var prune_exports = {};
+__export(prune_exports, {
+  compactCatalogue: () => compactCatalogue,
+  pruneCatalogue: () => pruneCatalogue,
+  startCatalogueRetention: () => startCatalogueRetention
+});
+async function batchedDelete(sql, params) {
+  const store2 = getStore();
+  let total = 0;
+  for (let i = 0; i < 60; i++) {
+    const res = await store2.execute(`${sql} LIMIT ${BATCH}`, params);
+    const n = res.affectedRows || 0;
+    total += n;
+    if (n < BATCH) break;
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  return total;
+}
+async function pruneCatalogue() {
+  const store2 = getStore();
+  if (store2.kind !== "mysql") return 0;
+  let removed = 0;
+  const steps = [
+    ["offers", "DELETE FROM offers WHERE fetched_at < ?", [daysAgo(RETENTION.offersDays)]],
+    ["source_evidence", "DELETE FROM source_evidence WHERE fetched_at < ?", [daysAgo(RETENTION.evidenceDays)]],
+    ["price_history", "DELETE FROM price_history WHERE created_at < ?", [daysAgo(RETENTION.priceHistoryDays)]],
+    ["source_health", "DELETE FROM source_health WHERE created_at < ?", [daysAgo(RETENTION.sourceHealthDays)]],
+    ["searches", "DELETE FROM searches WHERE created_at < ?", [daysAgo(RETENTION.searchesDays)]],
+    [
+      "canonical_entities",
+      `DELETE ce FROM canonical_entities ce
+        LEFT JOIN offers o ON o.canonical_entity_id = ce.id
+        LEFT JOIN offers ov ON ov.canonical_variant_id = ce.id
+        WHERE o.id IS NULL AND ov.id IS NULL AND ce.created_at < ?`,
+      [daysAgo(RETENTION.orphanEntityDays)]
+    ]
+  ];
+  for (const [name, sql, params] of steps) {
+    try {
+      const n = await batchedDelete(sql, params);
+      removed += n;
+      if (n > 0) log.info("Prune", `Deleted ${n} stale rows from ${name}`);
+    } catch (e) {
+      log.warn("Prune", `${name} prune skipped`, { error: String(e?.message || e).slice(0, 140) });
+    }
+  }
+  if (removed > 0) log.info("Prune", `Catalogue pruned: ${removed} dead rows removed`);
+  return removed;
+}
+async function compactCatalogue() {
+  const store2 = getStore();
+  if (store2.kind !== "mysql") return;
+  for (const table of ["offers", "source_evidence", "price_history", "source_health"]) {
+    try {
+      await store2.query(`OPTIMIZE TABLE ${table}`);
+      log.info("Prune", `Compacted ${table}`);
+    } catch (e) {
+      log.warn("Prune", `${table} compaction skipped`, { error: String(e?.message || e).slice(0, 140) });
+    }
+  }
+}
+async function startCatalogueRetention() {
+  const runOnce = async (compact) => {
+    const removed = await pruneCatalogue();
+    if (compact && removed >= 5e3) await compactCatalogue();
+  };
+  await runOnce(true).catch((e) => log.warn("Prune", "Initial prune failed", { error: String(e?.message || e).slice(0, 140) }));
+  const timer = setInterval(() => {
+    void runOnce(false).catch(() => void 0);
+  }, 60 * 6e4);
+  if (timer.unref) timer.unref();
+  log.info("Prune", "Catalogue retention armed (hourly, compacted at boot)");
+}
+var BATCH, DAY, RETENTION, daysAgo;
+var init_prune = __esm({
+  "server/catalogue/prune.ts"() {
+    init_db();
+    init_logger();
+    BATCH = 2e3;
+    DAY = 864e5;
+    RETENTION = {
+      offersDays: 2,
+      // catalogue rows older than this can never be served
+      evidenceDays: 2,
+      // mirrors offers
+      priceHistoryDays: 2,
+      // historical snapshots; 2 days is ample for trend display
+      sourceHealthDays: 2,
+      // health probes fire constantly, tiny rows but millions of them
+      searchesDays: 8,
+      // warm seeds read a 7-day window
+      orphanEntityDays: 15
+      // canonical entities with no live offer and no recent use
+    };
+    daysAgo = (d) => new Date(Date.now() - d * DAY);
+  }
+});
+
 // server.prod.ts
 var import_path5 = __toESM(require("path"), 1);
 var import_fs4 = __toESM(require("fs"), 1);
@@ -28431,6 +28614,8 @@ async function createApp() {
   const { startWorkers: startWorkers2 } = await Promise.resolve().then(() => (init_refreshWorker(), refreshWorker_exports));
   const { affiliateRouter: affiliateRouter2, bootstrapAffiliateSync: bootstrapAffiliateSync2 } = await Promise.resolve().then(() => (init_api(), api_exports));
   const { log: log2 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
+  const { startLoopWatchdog: startLoopWatchdog2 } = await Promise.resolve().then(() => (init_loopWatchdog(), loopWatchdog_exports));
+  startLoopWatchdog2();
   app.use("/api", apiRouter2);
   app.use("/api/admin", adminRouter2);
   bootstrapDealsSync2();
@@ -28441,6 +28626,7 @@ async function createApp() {
     await runSingleton2("background", async () => {
       startWorkers2();
       bootstrapAffiliateSync2();
+      Promise.resolve().then(() => (init_prune(), prune_exports)).then(({ startCatalogueRetention: startCatalogueRetention2 }) => startCatalogueRetention2()).catch(() => void 0);
       Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
     });
   }

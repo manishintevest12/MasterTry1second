@@ -54,6 +54,9 @@ async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<
     } catch (e: any) {
       log.warn(tag, 'Warm pass failed (continuing)', { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
     }
+    // HTTP-PRIORITY YIELD: a full event-loop turn between warm queries keeps the
+    // shared-hosting process serving users while the warmer works through its list.
+    await new Promise((r) => setImmediate(r));
   }
   log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
 }

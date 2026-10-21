@@ -42,6 +42,11 @@ export async function createApp(): Promise<express.Express> {
   const { log } = await import('./common/logger');
 
   // Core API
+  // SELF-HEALING WATCHDOG (owner rule, 21 Oct): if the event loop gets starved
+  // (the "site up but everything hangs" production wedge), exit cleanly once and
+  // let the hPanel supervisor restart the app — a 10s blip beats a wedged server.
+  const { startLoopWatchdog } = await import('./common/loopWatchdog');
+  startLoopWatchdog();
   app.use('/api', apiRouter);
   app.use('/api/admin', adminRouter);
   bootstrapDealsSync();
@@ -57,6 +62,10 @@ export async function createApp(): Promise<express.Express> {
     await runSingleton('background', async () => {
       startWorkers();
       bootstrapAffiliateSync();
+      // CATALOGUE RETENTION (owner fix, 21 Oct — "database size limit reached"):
+      // hourly bounded pruning + boot-time compaction keeps the shared-hosting
+      // database from filling with dead offers/evidence/health rows again.
+      import('./catalogue/prune').then(({ startCatalogueRetention }) => startCatalogueRetention()).catch(() => undefined);
       // Instant first paint: pre-warm the most popular searches in the background
       // so page-load searches hit warm cache (Section 8 cron-warmer).
       import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
