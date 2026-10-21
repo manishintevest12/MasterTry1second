@@ -78,6 +78,17 @@ export function validateLead(i: LeadInput): { ok: boolean; error?: string; clean
       if (!Number.isFinite(salary) || salary < 0) return { ok: false, error: 'Salary must be zero or more' };
     }
     if (!str(i.location, 120)) return { ok: false, error: 'Location is required' };
+    // Owner 21 Oct: ALL form fields are mandatory. Phone is required but only
+    // FORMAT-checked (10-digit Indian mobile) — explicit owner decision: NO OTP
+    // / verification step. Email is required and format-checked.
+    let digits = String(i.phone || '').replace(/\D/g, '');
+    if (!digits) return { ok: false, error: 'Mobile number is required' };
+    if (/^(91|0)/.test(digits) && digits.length === 12 || /^0/.test(digits) && digits.length === 11) digits = digits.replace(/^(91|0)/, '');
+    if (!/^[6-9]\d{9}$/.test(digits))
+      return { ok: false, error: 'Enter a valid 10-digit Indian mobile number' };
+    const email = str(i.email, 160);
+    if (!email) return { ok: false, error: 'Email is required' };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Enter a valid email address' };
     if (i.vertical && !VERTICALS.includes(i.vertical as LeadVertical)) return { ok: false, error: 'Unsupported vertical' };
     if (i.accountType && !['savings', 'current', 'demat'].includes(String(i.accountType))) return { ok: false, error: 'Account type must be savings, current or demat' };
   }

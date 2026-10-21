@@ -76,8 +76,28 @@ export const CplLeadCaptureModal: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Owner 21 Oct: ALL fields mandatory. Phone: 10-digit Indian mobile, NO OTP
+    // verification (owner decision) — format check only. City/pincode validated
+    // so the partner network gets a complete, honest lead every time.
+    const phoneDigits = phone.replace(/\D/g, '').replace(/^(91|0)/, '');
     if (!fullName.trim() || !phone.trim() || !email.trim() || !age) {
-      addToast('alert', 'Contact Details Required', 'Please provide your full name, mobile number, and email.');
+      addToast('alert', 'All Details Required', 'Please fill in every field — full name, mobile number, email and age are mandatory.');
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(phoneDigits)) {
+      addToast('alert', 'Invalid Mobile Number', 'Enter a valid 10-digit Indian mobile number (no OTP verification needed).');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      addToast('alert', 'Invalid Email', 'Enter a valid email address so partners can reach you.');
+      return;
+    }
+    if (!city.trim() || !/^\d{6}$/.test(pincode.trim())) {
+      addToast('alert', 'Location Required', 'Enter your city and a valid 6-digit pincode.');
+      return;
+    }
+    if (!monthlySalary || monthlySalary < 0 || !requestedAmount || requestedAmount <= 0) {
+      addToast('alert', 'Income & Amount Required', 'Monthly income and the amount you need are mandatory.');
       return;
     }
 
@@ -355,7 +375,7 @@ export const CplLeadCaptureModal: React.FC = () => {
                 <div className="space-y-1">
                   <label className="font-semibold text-slate-700 flex items-center justify-between">
                     <span>Mobile Number *</span>
-                    <span className="text-[10px] text-emerald-600 font-bold">✓ Verified</span>
+                    <span className="text-[10px] text-slate-500 font-bold">No OTP needed</span>
                   </label>
                   <div className="relative">
                     <span className="text-xs font-bold text-slate-500 absolute left-3 top-1/2 -translate-y-1/2">

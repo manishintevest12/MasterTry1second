@@ -158,6 +158,14 @@ export const Footer: React.FC = () => {
                 <Handshake className="w-3.5 h-3.5 text-orange-400" />
                 <span>Partner Portal</span>
               </button>
+              <a
+                href="mailto:info@try1second.com"
+                className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 hover:text-orange-600 transition-colors cursor-pointer"
+                title="Email Try1Second"
+              >
+                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                <span>info@try1second.com</span>
+              </a>
             </div>
           </div>
 

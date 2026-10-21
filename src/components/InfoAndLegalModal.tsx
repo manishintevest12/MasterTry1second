@@ -233,7 +233,7 @@ export const InfoAndLegalModal: React.FC = () => {
                     <li><strong>Hyper-Local Location (GPS / Pincode):</strong> When you enable location permissions, your latitude/longitude or 6-digit postal code is used strictly to query hyper-local dark stores (Blinkit, Zepto), restaurant menus (Zomato, Swiggy), and cab pickup ETAs (Uber, Ola). Location data is never stored on permanent third-party servers.</li>
                     <li><strong>Redirection & Referral Tracking:</strong> When you click "Select Deal" or "Book & Earn", a referral tag is appended to the merchant URL to verify click attribution and credit your 1 Point towards the Spin & Win wheel.</li>
                     <li><strong>Price Alerts & Watchlist:</strong> Desired target prices and notifications are cached locally in your browser storage.</li>
-                    <li><strong>Finance Enquiry Forms (Loans, Insurance, Credit Cards, Bank Accounts):</strong> When you submit an enquiry (name, age, salary, location and contact details), it is stored on our own servers in a MySQL database and shared ONLY with the specific partner bank, insurer or lender whose offer you selected, so they can contact you about that product. We never sell or rent this data, and you can request deletion anytime at support@try1second.in.</li>
+                    <li><strong>Finance Enquiry Forms (Loans, Insurance, Credit Cards, Bank Accounts):</strong> When you submit an enquiry (name, age, salary, location and contact details), it is stored on our own servers in a MySQL database and shared ONLY with the specific partner bank, insurer or lender whose offer you selected, so they can contact you about that product. We never sell or rent this data, and you can request deletion anytime at info@try1second.com.</li>
                   </ul>
                 </div>
 
@@ -432,7 +432,7 @@ export const InfoAndLegalModal: React.FC = () => {
                   <div className="flex items-center justify-between pt-2">
                     <div className="flex items-center gap-2 text-slate-500 text-xs">
                       <Mail className="w-4 h-4 text-orange-600" />
-                      <span>Direct: support@try1second.com</span>
+                      <span>Direct: info@try1second.com</span>
                     </div>
 
                     <button

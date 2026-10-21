@@ -77,6 +77,16 @@ export const MERCHANT_VERTICAL: Record<string, string> = {
   axis: 'creditcards',
   icici: 'creditcards',
   cardinsider: 'creditcards',
+
+  // Owner 21 Oct: Account vertical (Savings / Current / Demat) merchants, so
+  // admin-added account offers auto-map correctly.
+  groww: 'account',
+  zerodha: 'account',
+  upstox: 'account',
+  angelone: 'account',
+  paytmmoney: 'account',
+  fi: 'account',
+  jupiter: 'account',
 };
 
 export interface DealInput {

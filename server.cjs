@@ -21258,7 +21258,16 @@ var init_deals = __esm({
       hdfc: "creditcards",
       axis: "creditcards",
       icici: "creditcards",
-      cardinsider: "creditcards"
+      cardinsider: "creditcards",
+      // Owner 21 Oct: Account vertical (Savings / Current / Demat) merchants, so
+      // admin-added account offers auto-map correctly.
+      groww: "account",
+      zerodha: "account",
+      upstox: "account",
+      angelone: "account",
+      paytmmoney: "account",
+      fi: "account",
+      jupiter: "account"
     };
     isLive = (r, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) => (Number(r.is_active) === 1 || r.is_active === true) && (!r.valid_till || String(r.valid_till).slice(0, 10) >= today2);
     schemaChecked = false;
@@ -25184,6 +25193,14 @@ function validateLead(i) {
       if (!Number.isFinite(salary) || salary < 0) return { ok: false, error: "Salary must be zero or more" };
     }
     if (!str2(i.location, 120)) return { ok: false, error: "Location is required" };
+    let digits = String(i.phone || "").replace(/\D/g, "");
+    if (!digits) return { ok: false, error: "Mobile number is required" };
+    if (/^(91|0)/.test(digits) && digits.length === 12 || /^0/.test(digits) && digits.length === 11) digits = digits.replace(/^(91|0)/, "");
+    if (!/^[6-9]\d{9}$/.test(digits))
+      return { ok: false, error: "Enter a valid 10-digit Indian mobile number" };
+    const email = str2(i.email, 160);
+    if (!email) return { ok: false, error: "Email is required" };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email address" };
     if (i.vertical && !VERTICALS.includes(i.vertical)) return { ok: false, error: "Unsupported vertical" };
     if (i.accountType && !["savings", "current", "demat"].includes(String(i.accountType))) return { ok: false, error: "Account type must be savings, current or demat" };
   }

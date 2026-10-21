@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
-import '../../core/theme.dart';
 import 'kit.dart';
 
 /// Lead capture (owner 21 Oct): Loans / Insurance / Credit Cards / Accounts cards
@@ -62,12 +61,41 @@ class _LeadSheetState extends State<_LeadSheet> {
     final name = _name.text.trim();
     final age = int.tryParse(_age.text.trim()) ?? 0;
     final salary = double.tryParse(_salary.text.trim().replaceAll(RegExp(r'[^0-9.]'), ''));
-    if (name.split(' ').where((w) => w.isNotEmpty).length < 1 || name.isEmpty) {
+    final location = _location.text.trim();
+    final email = _email.text.trim();
+    // Owner 21 Oct: ALL fields are mandatory. Phone is format-checked only —
+    // deliberately NO OTP verification (owner decision), mirroring web/server.
+    final phoneDigits = _phone.text.replaceAll(RegExp(r'\D'), '');
+    if (name.isEmpty) {
       setState(() => _error = 'Please enter your full name');
       return;
     }
     if (age < 18 || age > 100) {
       setState(() => _error = 'Age must be between 18 and 100');
+      return;
+    }
+    if (salary == null || salary < 0) {
+      setState(() => _error = 'Monthly income is required');
+      return;
+    }
+    if (location.isEmpty) {
+      setState(() => _error = 'City / location is required');
+      return;
+    }
+    if (phoneDigits.isEmpty) {
+      setState(() => _error = 'Mobile number is required');
+      return;
+    }
+    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(phoneDigits)) {
+      setState(() => _error = 'Enter a valid 10-digit Indian mobile number (no OTP needed)');
+      return;
+    }
+    if (email.isEmpty) {
+      setState(() => _error = 'Email is required');
+      return;
+    }
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      setState(() => _error = 'Enter a valid email address');
       return;
     }
     setState(() { _busy = true; _error = null; });
@@ -165,15 +193,15 @@ class _LeadSheetState extends State<_LeadSheet> {
                   Row(children: [
                     Expanded(child: TextField(controller: _age, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Age *', isDense: true))),
                     const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: _salary, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Monthly salary (₹)', isDense: true))),
+                    Expanded(child: TextField(controller: _salary, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Monthly salary (₹) *', isDense: true))),
                   ]),
                   const SizedBox(height: 8),
-                  TextField(controller: _location, decoration: const InputDecoration(labelText: 'City / location', isDense: true)),
+                  TextField(controller: _location, decoration: const InputDecoration(labelText: 'City / location *', isDense: true)),
                   const SizedBox(height: 8),
                   Row(children: [
-                    Expanded(child: TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile', isDense: true))),
+                    Expanded(child: TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile *', isDense: true))),
                     const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email', isDense: true))),
+                    Expanded(child: TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email *', isDense: true))),
                   ]),
                   if (_error != null)
                     Padding(

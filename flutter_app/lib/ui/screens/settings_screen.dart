@@ -146,6 +146,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 6),
+                      // Owner 21 Oct: official contact email, mirrors the site footer.
+                      GestureDetector(
+                        onTap: () => launchUrl(
+                          Uri.parse('mailto:info@try1second.com'),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        child: const Text(
+                          'info@try1second.com',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: T1SColors.red,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),

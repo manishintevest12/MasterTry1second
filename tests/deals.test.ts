@@ -143,3 +143,21 @@ test('acquisition: extractAmazonBankOffers pulls deduped bank-offer blocks from 
   }
   assert.equal(new Set(deals.map((d) => d.title)).size, deals.length);
 });
+
+// Owner 21 Oct: admin can add finance offers (loan/credit/insurance/account)
+// with an explicit vertical override; account merchants auto-map to 'account'.
+test('deals: account merchants auto-map to the account vertical', () => {
+  const v = validateDeal({ merchant_name: 'Groww', merchant_key: 'groww', kind: 'account', title: 'Groww Savings Account 3.5% p.a.', dest_url: 'https://groww.in/savings-account' });
+  if (!v.ok) throw new Error(v.error);
+  if (v.clean.vertical !== 'account') throw new Error('groww must auto-map to account, got ' + v.clean.vertical);
+  const z = validateDeal({ merchant_name: 'Zerodha', merchant_key: 'zerodha', kind: 'account', title: 'Zerodha Demat ₹0 account opening', dest_url: 'https://zerodha.com/open-account' });
+  if (!z.ok || z.clean.vertical !== 'account') throw new Error('zerodha must map to account');
+});
+
+test('deals: explicit vertical override wins over merchant auto-map', () => {
+  const v = validateDeal({ merchant_name: 'SBI', merchant_key: 'sbi', kind: 'account', vertical: 'account', title: 'SBI Savings Account 2.5% p.a.', dest_url: 'https://sbi.co.in' });
+  if (!v.ok) throw new Error(v.error);
+  if (v.clean.vertical !== 'account') throw new Error('override lost, got ' + v.clean.vertical);
+  const l = validateDeal({ merchant_name: 'SBI', merchant_key: 'sbi', kind: 'loan', vertical: 'loans', title: 'SBI Personal Loan from 10.5%', dest_url: 'https://sbi.co.in/loans' });
+  if (!l.ok || l.clean.vertical !== 'loans') throw new Error('loan override lost');
+});

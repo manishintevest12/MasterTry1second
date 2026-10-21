@@ -9,7 +9,7 @@ import { AffiliateProfilesPanel } from './AffiliateProfilesPanel';
  * server-side /api/out pointer and the affiliate profile (Admin → Affiliate) is attached there.
  */
 interface DealRow {
-  id: number; merchant_key: string; merchant_name: string; kind: string; title: string;
+  id: number; merchant_key: string; merchant_name: string; kind: string; title: string; vertical?: string | null;
   description: string | null; code: string | null; discount_text: string | null; min_order: number | null;
   terms: string | null; dest_url: string; valid_till: string | null; sort_weight: number; is_active: number | boolean;
   source?: string;
@@ -19,8 +19,13 @@ const KIND_LABEL: Record<string, string> = {
   coupon: 'Coupon code', bank_offer: 'Bank offer', credit_card: 'Credit card', gift_card: 'Gift card',
   loan: 'Loan', insurance: 'Insurance', account: 'Bank account (Savings/Current/Demat)', movie: 'Movie offer', cashback: 'Cashback', sale: 'Sale / event',
 };
-const MERCHANTS = ['Flipkart', 'Amazon', 'Myntra', 'Ajio', 'Tata CLiQ', 'Meesho', 'BookMyShow', 'District', 'TicketNew', 'PVR INOX', 'Cinepolis', 'SBI', 'HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Kotak', 'Bank of Maharashtra', 'BankBazaar', 'Paisabazaar', 'Policybazaar', 'Money View', 'KreditBee', 'Navi'];
-const empty = { id: 0, merchant_name: '', kind: 'coupon', title: '', code: '', discount_text: '', min_order: '', description: '', terms: '', dest_url: '', valid_till: '', sort_weight: '0', is_active: true };
+const MERCHANTS = ['Flipkart', 'Amazon', 'Myntra', 'Ajio', 'Tata CLiQ', 'Meesho', 'BookMyShow', 'District', 'TicketNew', 'PVR INOX', 'Cinepolis', 'SBI', 'HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Kotak', 'Bank of Maharashtra', 'BankBazaar', 'Paisabazaar', 'Policybazaar', 'Money View', 'KreditBee', 'Navi', 'Groww', 'Zerodha', 'Upstox', 'Angel One', 'Acko', 'Digit', 'Insurance Dekho'];
+const empty = { id: 0, merchant_name: '', kind: 'coupon', title: '', code: '', discount_text: '', min_order: '', description: '', terms: '', dest_url: '', valid_till: '', sort_weight: '0', is_active: true, vertical: '' };
+// Owner 21 Oct: admin can explicitly assign a deal to Loans / Insurance / Credit Cards /
+// Account (or any vertical) so bank names that would auto-map wrongly (e.g. SBI -> credit
+// cards for a savings-account offer) land on the right vertical. Empty = auto by merchant.
+const VERTICAL_OPTS = ['', 'loans', 'insurance', 'creditcards', 'account', 'ecommerce', 'flights', 'hotels', 'bus', 'cab', 'food', 'grocery', 'movies'];
+const VERTICAL_LABEL: Record<string, string> = { '': 'Auto (by merchant)', loans: 'Loans', insurance: 'Insurance', creditcards: 'Credit Cards', account: 'Bank Account (Savings/Current/Demat)', ecommerce: 'E-Commerce', flights: 'Flights', hotels: 'Hotels', bus: 'Bus', cab: 'Cab & Ride', food: 'Food', grocery: 'Grocery', movies: 'Movies' };
 
 const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10';
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
@@ -54,7 +59,7 @@ export const DealsTab: React.FC = () => {
   const save = async () => {
     setBusy(true); setMsg(null);
     try {
-      const body = { ...form, id: form.id || undefined, merchant_key: form.merchant_name, min_order: form.min_order === '' ? null : Number(form.min_order), sort_weight: Number(form.sort_weight) || 0 };
+      const body = { ...form, id: form.id || undefined, merchant_key: form.merchant_name, vertical: form.vertical || null, min_order: form.min_order === '' ? null : Number(form.min_order), sort_weight: Number(form.sort_weight) || 0 };
       const res = await fetch('/api/admin/deals', { method: 'POST', headers, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Could not save deal');
@@ -71,7 +76,7 @@ export const DealsTab: React.FC = () => {
   };
 
   const edit = (r: DealRow) => setForm({
-    id: r.id, merchant_name: r.merchant_name, kind: r.kind, title: r.title, code: r.code || '', discount_text: r.discount_text || '',
+    id: r.id, merchant_name: r.merchant_name, kind: r.kind, vertical: r.vertical || '', title: r.title, code: r.code || '', discount_text: r.discount_text || '',
     min_order: r.min_order ?? '', description: r.description || '', terms: r.terms || '', dest_url: r.dest_url,
     valid_till: r.valid_till ? String(r.valid_till).slice(0, 10) : '', sort_weight: String(r.sort_weight ?? 0), is_active: Number(r.is_active) === 1 || r.is_active === true,
   });
@@ -110,6 +115,8 @@ export const DealsTab: React.FC = () => {
             <datalist id="deal-merchants">{MERCHANTS.map((m) => <option key={m} value={m} />)}</datalist></div>
           <div><label className={labelCls}>Type</label>
             <select className={inputCls} value={form.kind} onChange={(e) => set('kind', e.target.value)}>{kinds.map((k) => <option key={k} value={k}>{KIND_LABEL[k] || k}</option>)}</select></div>
+          <div><label className={labelCls}>Vertical</label>
+            <select className={inputCls} value={form.vertical ?? ''} onChange={(e) => set('vertical', e.target.value)}>{VERTICAL_OPTS.map((v) => <option key={v} value={v}>{VERTICAL_LABEL[v] || v}</option>)}</select></div>
           <div><label className={labelCls}>Coupon code {form.kind === 'coupon' ? '(required)' : '(optional)'}</label>
             <input className={inputCls} value={form.code} onChange={(e) => set('code', e.target.value)} placeholder="SAVE10" /></div>
           <div className="md:col-span-2"><label className={labelCls}>Title</label>
