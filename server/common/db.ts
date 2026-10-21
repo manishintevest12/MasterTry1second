@@ -437,6 +437,52 @@ export function getStore(): DataStore {
 }
 
 /**
+ * SELF-HEALING MySQL access recovery (owner 21 Oct, ER_ACCESS_DENIED_ERROR):
+ * on Hostinger shared hosting the Node.js app is co-located with MySQL. hPanel's
+ * database page shows a server hostname / IP as "Database host", but the DB user
+ * is typically granted for localhost connections only — putting that hostname
+ * into DB_HOST yields ER_ACCESS_DENIED_ERROR even with the correct password.
+ * Before degrading to the non-durable file store, retry the connection with
+ * localhost / 127.0.0.1; if one connects it becomes the active store immediately
+ * (fix DB_HOST in hPanel env to make it permanent). Returns true when recovered.
+ */
+/** Co-located hosts to try when the configured one denies access: the Hostinger
+ *  Node.js app and MySQL share a server, so localhost / 127.0.0.1 are the grants.
+ *  The configured host itself is never retried (it just failed). Exported for tests. */
+export function localHostCandidates(configuredHost: string): string[] {
+  return ['localhost', '127.0.0.1'].filter((h) => h !== configuredHost.toLowerCase());
+}
+
+export async function recoverMysqlWithLocalHost(url: string | null | undefined = settings.mysqlUrl): Promise<boolean> {
+  const original = url || '';
+  if (!original) return false;
+  const originalHost = (() => { try { return new URL(original).hostname; } catch { return ''; } })();
+  for (const host of localHostCandidates(originalHost)) {
+    let candidate: ReturnType<typeof mysql.createPool> | null = null;
+    try {
+      const uri = new URL(original);
+      uri.hostname = host;
+      candidate = mysql.createPool({
+        uri: uri.toString(),
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 8000,
+        timezone: 'Z',
+      });
+      const probe = new MysqlStore(candidate);
+      await probe.query('SELECT 1 AS ok');
+      store = probe;
+      log.warn('DataStore', `MySQL access denied on host '${originalHost}' — SELF-HEALED via co-located host '${host}'. Set DB_HOST=${host} in hPanel env vars to make it permanent.`);
+      return true;
+    } catch {
+      candidate?.end?.().catch?.(() => undefined);
+    }
+  }
+  return false;
+}
+
+/**
  * Switch the process to the file store after a live MySQL failure (bad credentials,
  * DB down, privileges missing). Keeps the site serving instead of crashing with 503;
  * data becomes non-durable until the env vars are fixed and the app is restarted.

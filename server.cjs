@@ -612,7 +612,9 @@ var db_exports = {};
 __export(db_exports, {
   FileStore: () => FileStore,
   getStore: () => getStore,
+  localHostCandidates: () => localHostCandidates,
   normalizeSqlValue: () => normalizeSqlValue,
+  recoverMysqlWithLocalHost: () => recoverMysqlWithLocalHost,
   resetToFileStore: () => resetToFileStore,
   runMigrations: () => runMigrations,
   sanitizeBindParams: () => sanitizeBindParams,
@@ -662,6 +664,43 @@ function getStore() {
     store = new FileStore();
   }
   return store;
+}
+function localHostCandidates(configuredHost) {
+  return ["localhost", "127.0.0.1"].filter((h) => h !== configuredHost.toLowerCase());
+}
+async function recoverMysqlWithLocalHost(url = settings.mysqlUrl) {
+  const original = url || "";
+  if (!original) return false;
+  const originalHost = (() => {
+    try {
+      return new URL(original).hostname;
+    } catch {
+      return "";
+    }
+  })();
+  for (const host of localHostCandidates(originalHost)) {
+    let candidate = null;
+    try {
+      const uri = new URL(original);
+      uri.hostname = host;
+      candidate = import_promise.default.createPool({
+        uri: uri.toString(),
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 8e3,
+        timezone: "Z"
+      });
+      const probe = new MysqlStore(candidate);
+      await probe.query("SELECT 1 AS ok");
+      store = probe;
+      log.warn("DataStore", `MySQL access denied on host '${originalHost}' \u2014 SELF-HEALED via co-located host '${host}'. Set DB_HOST=${host} in hPanel env vars to make it permanent.`);
+      return true;
+    } catch {
+      candidate?.end?.().catch?.(() => void 0);
+    }
+  }
+  return false;
 }
 function resetToFileStore() {
   store = new FileStore();
@@ -19402,7 +19441,11 @@ function seedSources() {
       id: "affiliate_cuelinks",
       name: "Cuelinks Affiliate Feed",
       method: "affiliate_feed",
-      verticals: ["ecommerce", "coupons", "banking", "giftcards"],
+      // LEAK FIX (owner bug, 21 Oct): affiliate feed campaigns must NEVER serve the
+      // banking/account vertical — a VCommission poll on 'sbi savings account' injected
+      // 405 coupon rows into the account results. Affiliate offers live in coupons/
+      // ecommerce/giftcards only.
+      verticals: ["ecommerce", "coupons", "giftcards"],
       priority: 20,
       config: { apiKey: settings.cuelinks.apiKey, campaignId: settings.cuelinks.campaignId, subId: settings.cuelinks.subId },
       requiresAuthorization: true,
@@ -19417,7 +19460,7 @@ function seedSources() {
       id: "affiliate_vcommission",
       name: "VCommission Affiliate Feed",
       method: "affiliate_feed",
-      verticals: ["ecommerce", "coupons", "banking", "giftcards"],
+      verticals: ["ecommerce", "coupons", "giftcards"],
       priority: 21,
       config: { apiKey: settings.vcommission.apiKey, baseUrl: settings.vcommission.baseUrl, schema: "vcommission_campaigns" },
       requiresAuthorization: true,
@@ -26472,7 +26515,24 @@ async function bootstrapBackend() {
     if (migrations.applied.length > 0) log.info("Bootstrap", `Applied migrations: ${migrations.applied.join(", ")}`);
     Promise.resolve().then(() => (init_fileImport(), fileImport_exports)).then(({ importFileStoreIntoMysql: importFileStoreIntoMysql2 }) => importFileStoreIntoMysql2()).catch((e) => log.error("Bootstrap", `file-store import failed: ${e && e.message}`));
   } catch (err) {
-    log.error("Bootstrap", `MySQL migrations failed \u2014 falling back to file store until DB env vars are fixed: ${err.code || ""} ${err.message}`);
+    log.error("Bootstrap", `MySQL migrations failed: ${err.code || ""} ${err.message}`);
+    if (String(err.code || "").includes("ER_ACCESS_DENIED") || /access denied/i.test(String(err.message || ""))) {
+      const recovered = await recoverMysqlWithLocalHost().catch(() => false);
+      if (recovered) {
+        try {
+          const retry = await runMigrations();
+          if (retry.applied.length > 0) log.info("Bootstrap", `Applied migrations after localhost self-heal: ${retry.applied.join(", ")}`);
+          log.info("Bootstrap", "MySQL recovered \u2014 durable source of truth restored");
+          const loaded2 = await loadSourcesFromDb();
+          log.info("Bootstrap", `Sources loaded (db: ${loaded2.dbKind}, overlay rows: ${loaded2.loaded})`);
+          return;
+        } catch (e2) {
+          log.error("Bootstrap", `MySQL still failing after localhost self-heal: ${e2.code || ""} ${e2.message}`);
+        }
+      }
+      log.warn("Bootstrap", "MySQL ACCESS DENIED checklist: 1) hPanel > Databases > your DB > check the user is ASSIGNED to this database with ALL PRIVILEGES; 2) re-enter the DB_PASSWORD in the Node.js app env (DB_USER/DB_PASSWORD must match the DB user, not the hPanel login); 3) set DB_HOST=localhost \u2014 the app runs on the same server as MySQL; 4) after fixing, restart the Node.js app.");
+    }
+    log.error("Bootstrap", "Falling back to file store until DB env vars are fixed and the app is restarted.");
     resetToFileStore();
   }
   const loaded = await loadSourcesFromDb();

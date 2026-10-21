@@ -27,7 +27,7 @@ import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetw
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
 import { getStore } from '../common/db';
-import { runMigrations, resetToFileStore } from '../common/db';
+import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
@@ -1338,7 +1338,28 @@ export async function bootstrapBackend(): Promise<void> {
       log.error('Bootstrap', `file-store import failed: ${e && e.message}`));
   } catch (err: any) {
     // Bad credentials / DB down must not 503 the whole site: degrade to the file store.
-    log.error('Bootstrap', `MySQL migrations failed — falling back to file store until DB env vars are fixed: ${err.code || ''} ${err.message}`);
+    log.error('Bootstrap', `MySQL migrations failed: ${err.code || ''} ${err.message}`);
+    // SELF-HEAL (owner 21 Oct, ER_ACCESS_DENIED_ERROR): a co-located Hostinger app
+    // is usually granted localhost access only; hPanel's shown hostname/IP in DB_HOST
+    // gets denied. Retry with localhost / 127.0.0.1 before giving up on durability.
+    if (String(err.code || '').includes('ER_ACCESS_DENIED') || /access denied/i.test(String(err.message || ''))) {
+      const recovered = await recoverMysqlWithLocalHost().catch(() => false);
+      if (recovered) {
+        try {
+          const retry = await runMigrations();
+          if (retry.applied.length > 0) log.info('Bootstrap', `Applied migrations after localhost self-heal: ${retry.applied.join(', ')}`);
+          log.info('Bootstrap', 'MySQL recovered — durable source of truth restored');
+          const loaded = await loadSourcesFromDb();
+          log.info('Bootstrap', `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
+          return;
+        } catch (e2: any) {
+          log.error('Bootstrap', `MySQL still failing after localhost self-heal: ${e2.code || ''} ${e2.message}`);
+        }
+      }
+      // Honest checklist for the owner — exact hPanel steps, no guessing.
+      log.warn('Bootstrap', 'MySQL ACCESS DENIED checklist: 1) hPanel > Databases > your DB > check the user is ASSIGNED to this database with ALL PRIVILEGES; 2) re-enter the DB_PASSWORD in the Node.js app env (DB_USER/DB_PASSWORD must match the DB user, not the hPanel login); 3) set DB_HOST=localhost — the app runs on the same server as MySQL; 4) after fixing, restart the Node.js app.');
+    }
+    log.error('Bootstrap', 'Falling back to file store until DB env vars are fixed and the app is restarted.');
     resetToFileStore();
   }
   const loaded = await loadSourcesFromDb();
