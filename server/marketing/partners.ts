@@ -87,8 +87,11 @@ export async function approvePartnerFromLead(lead: {
      VALUES (?, ?, ?, ?, ?, 'Verified Partner', 'active', ?)`,
     [name, website, category, lead.email || null, lead.phone || null, lead.leadId],
   );
-  const rows = await store.query<any>('SELECT * FROM approved_partners WHERE id = LAST_INSERT_ID()');
-  return { ok: true, partner: rowToPartner(rows?.[0] || { id: (ins as any)?.insertId }) };
+  // Same-connection insertId (pool-safe); LAST_INSERT_ID() in a separate query can
+  // run on a different pooled connection and return 0.
+  const id = Number((ins as any)?.insertId ?? 0);
+  const rows = id ? await store.query<any>('SELECT * FROM approved_partners WHERE id = ?', [id]) : [];
+  return { ok: true, partner: rowToPartner(rows?.[0] || { id }) };
 }
 
 /** Public directory: active partners only. */

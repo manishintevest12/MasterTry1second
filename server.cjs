@@ -612,13 +612,30 @@ var db_exports = {};
 __export(db_exports, {
   FileStore: () => FileStore,
   getStore: () => getStore,
+  normalizeSqlValue: () => normalizeSqlValue,
   resetToFileStore: () => resetToFileStore,
   runMigrations: () => runMigrations,
   sanitizeBindParams: () => sanitizeBindParams,
   splitSqlStatements: () => splitSqlStatements
 });
+function normalizeSqlValue(p) {
+  if (p === void 0 || typeof p === "number" && Number.isNaN(p)) return null;
+  if (typeof p === "string") {
+    const t = p.trim();
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(t)) {
+      return t.replace("T", " ").slice(0, -1);
+    }
+    const off = t.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?([+\-]\d{2}:?\d{2})$/);
+    if (off) {
+      const d = new Date(t.replace(" ", "T"));
+      if (!Number.isNaN(d.getTime())) return d.toISOString().replace("T", " ").slice(0, -1);
+    }
+    if (ISO_DT.test(t)) return t.replace("T", " ");
+  }
+  return p;
+}
 function sanitizeBindParams(params) {
-  return (params || []).map((p) => p === void 0 || typeof p === "number" && Number.isNaN(p) ? null : p);
+  return (params || []).map(normalizeSqlValue);
 }
 function getStore() {
   if (store) return store;
@@ -727,7 +744,7 @@ async function runMigrations() {
   }
   return { applied: appliedNow, skipped: "mysql" };
 }
-var import_fs, import_path2, import_promise, MysqlStore, FileStore, store;
+var import_fs, import_path2, import_promise, ISO_DT, MysqlStore, FileStore, store;
 var init_db = __esm({
   "server/common/db.ts"() {
     import_fs = __toESM(require("fs"), 1);
@@ -735,6 +752,7 @@ var init_db = __esm({
     import_promise = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();
+    ISO_DT = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/;
     MysqlStore = class _MysqlStore {
       constructor(pool2) {
         this.kind = "mysql";
@@ -5102,8 +5120,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path11 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path11}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
+            for (const path12 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path12}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -5113,7 +5131,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path11 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path12 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -5133,8 +5151,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path11 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path11}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path12 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path12}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -5145,7 +5163,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path11 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path12 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -12733,9 +12751,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path11 = m[1];
-    if (!path11 || path11.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path11).replace(/[_%20]/g, " ").trim(), mainPagePath: path11 });
+    const path12 = m[1];
+    if (!path12 || path12.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path12).replace(/[_%20]/g, " ").trim(), mainPagePath: path12 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -17317,9 +17335,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path11, timeoutMs = 12e3) {
+async function gwJson(host, path12, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path11}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path12}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -22940,24 +22958,24 @@ var init_basket = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path11) {
-  const hit = cache6.get(path11);
+async function throttledNominatim(path12) {
+  const hit = cache6.get(path12);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path11}`, {
+    const r = await fetch(`${NOMINATIM}${path12}`, {
       headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path11.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path12.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(path11, { at: Date.now(), value });
+    cache6.set(path12, { at: Date.now(), value });
     return value;
   } catch (e) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
@@ -22967,16 +22985,16 @@ async function throttledNominatim(path11) {
 async function geoSearch(q3, limit = 6) {
   const clean3 = q3.trim().slice(0, 120);
   if (clean3.length < 2) return [];
-  const path11 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path11);
+  const path12 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path12);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path11 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path11);
+  const path12 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path12);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -25140,8 +25158,9 @@ async function approvePartnerFromLead(lead) {
      VALUES (?, ?, ?, ?, ?, 'Verified Partner', 'active', ?)`,
     [name, website, category, lead.email || null, lead.phone || null, lead.leadId]
   );
-  const rows = await store2.query("SELECT * FROM approved_partners WHERE id = LAST_INSERT_ID()");
-  return { ok: true, partner: rowToPartner(rows?.[0] || { id: ins?.insertId }) };
+  const id = Number(ins?.insertId ?? 0);
+  const rows = id ? await store2.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
+  return { ok: true, partner: rowToPartner(rows?.[0] || { id }) };
 }
 async function listPartners(activeOnly = true) {
   await ensurePartnersTable();
@@ -25233,7 +25252,7 @@ async function saveLead(i) {
   const v = validateLead(i);
   if (!v.ok || !v.clean) throw new Error(v.error || "Invalid lead");
   const c = v.clean;
-  await getStore().execute(
+  const result = await getStore().execute(
     `INSERT INTO leads (source, vertical, service_type, account_type, first_name, last_name, age, salary, location, phone, email, business, website, category, message, dest_url, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
     [
@@ -25255,9 +25274,8 @@ async function saveLead(i) {
       str2(c.destUrl, 600)
     ]
   );
-  const rows = await getStore().query("SELECT LAST_INSERT() AS id");
-  const r = rows[0] || rows?.rows?.[0];
-  return Number(r?.id ?? 0) || 0;
+  const r = result;
+  return Number(r?.insertId ?? 0) || 0;
 }
 async function listLeads(opts = {}) {
   await ensureLeadsTable();
@@ -25788,6 +25806,110 @@ var init_quickAppsData = __esm({
   }
 });
 
+// server/common/fileImport.ts
+var fileImport_exports = {};
+__export(fileImport_exports, {
+  importFileStoreIntoMysql: () => importFileStoreIntoMysql
+});
+async function tableColumns(store2, table) {
+  try {
+    const rows = await store2.query(`DESCRIBE \`${table}\``);
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return rows.map((r) => String(r.Field));
+  } catch {
+    return null;
+  }
+}
+async function importRows(store2, table, cols, rows) {
+  let ok = 0;
+  let skipped = 0;
+  const chunk = 100;
+  for (let i = 0; i < rows.length; i += chunk) {
+    const batch = rows.slice(i, i + chunk).filter((r) => r && typeof r === "object");
+    if (batch.length === 0) continue;
+    const useCols = cols.filter((c) => batch.every((r) => Object.prototype.hasOwnProperty.call(r, c)));
+    if (useCols.length === 0) {
+      skipped += batch.length;
+      continue;
+    }
+    const placeholders = batch.map(() => `(${useCols.map(() => "?").join(",")})`).join(",");
+    const params = [];
+    for (const r of batch) for (const c of useCols) {
+      const v = r[c];
+      params.push(typeof v === "object" && v !== null ? JSON.stringify(v) : v);
+    }
+    try {
+      const r = await store2.execute(
+        `INSERT IGNORE INTO \`${table}\` (${useCols.map((c) => `\`${c}\``).join(",")}) VALUES ${placeholders}`,
+        params
+      );
+      ok += typeof r.affectedRows === "number" ? r.affectedRows : batch.length;
+    } catch {
+      for (const r of batch) {
+        try {
+          const rc = cols.filter((c) => Object.prototype.hasOwnProperty.call(r, c));
+          if (rc.length === 0) {
+            skipped++;
+            continue;
+          }
+          const rr = await store2.execute(
+            `INSERT IGNORE INTO \`${table}\` (${rc.map((c) => `\`${c}\``).join(",")}) VALUES (${rc.map(() => "?").join(",")})`,
+            rc.map((c) => typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : r[c])
+          );
+          ok += typeof rr.affectedRows === "number" ? rr.affectedRows : 1;
+        } catch {
+          skipped++;
+        }
+      }
+    }
+  }
+  return { ok, skipped };
+}
+async function importFileStoreIntoMysql() {
+  const store2 = getStore();
+  if (store2.kind !== "mysql") return;
+  const src2 = import_path5.default.join(dataDir, "devstore.json");
+  const lock = import_path5.default.join(dataDir, LOCK);
+  if (!import_fs4.default.existsSync(src2) && !import_fs4.default.existsSync(lock)) return;
+  let claimed = false;
+  try {
+    if (import_fs4.default.existsSync(src2)) import_fs4.default.renameSync(src2, lock);
+    claimed = true;
+    const data = JSON.parse(import_fs4.default.readFileSync(lock, "utf8"));
+    const tables = Object.keys(data).filter((t) => Array.isArray(data[t]) && data[t].length > 0).sort((a, b) => {
+      const ai = TABLE_ORDER.indexOf(a), bi = TABLE_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs4.default.existsSync(lock) && claimed})`);
+    for (const table of tables) {
+      const cols = await tableColumns(store2, table);
+      if (!cols) {
+        log.warn("FileImport", `Skipping '${table}' (${data[table].length} rows) \u2014 no such MySQL table`);
+        continue;
+      }
+      const { ok, skipped } = await importRows(store2, table, cols, data[table]);
+      log.info("FileImport", `'${table}': imported ${ok}, skipped ${skipped} of ${data[table].length}`);
+    }
+    const done = import_path5.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
+    import_fs4.default.renameSync(lock, done);
+    log.info("FileImport", `File-store history import complete \u2014 snapshot kept at ${import_path5.default.basename(done)}`);
+  } catch (err) {
+    log.error("FileImport", `Import failed (will resume next boot): ${err && err.message}`);
+  }
+}
+var import_fs4, import_path5, LOCK, TABLE_ORDER;
+var init_fileImport = __esm({
+  "server/common/fileImport.ts"() {
+    import_fs4 = __toESM(require("fs"), 1);
+    import_path5 = __toESM(require("path"), 1);
+    init_db();
+    init_settings();
+    init_logger();
+    LOCK = "devstore.import.lock";
+    TABLE_ORDER = ["canonical_entities", "offers", "source_evidence", "price_history"];
+  }
+});
+
 // server/api/routes.ts
 var routes_exports = {};
 __export(routes_exports, {
@@ -25984,6 +26106,7 @@ async function bootstrapBackend() {
   try {
     const migrations = await runMigrations();
     if (migrations.applied.length > 0) log.info("Bootstrap", `Applied migrations: ${migrations.applied.join(", ")}`);
+    Promise.resolve().then(() => (init_fileImport(), fileImport_exports)).then(({ importFileStoreIntoMysql: importFileStoreIntoMysql2 }) => importFileStoreIntoMysql2()).catch((e) => log.error("Bootstrap", `file-store import failed: ${e && e.message}`));
   } catch (err) {
     log.error("Bootstrap", `MySQL migrations failed \u2014 falling back to file store until DB env vars are fixed: ${err.code || ""} ${err.message}`);
     resetToFileStore();
@@ -29026,7 +29149,7 @@ function startWorkers() {
         const { runSearch: runSearch2 } = await Promise.resolve().then(() => (init_searchOrchestrator(), searchOrchestrator_exports));
         const { isSameProduct: isSameProduct2 } = await Promise.resolve().then(() => (init_sameProduct(), sameProduct_exports));
         const { createMaskingPointer: createMaskingPointer2 } = await Promise.resolve().then(() => (init_deeplink(), deeplink_exports));
-        const { settings: settings2 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
+        const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const r = await checkAlertsOnce2(async (query) => {
           const resp = await runSearch2({ query, vertical: "ecommerce" });
           const best = (resp.results || []).map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0 && isSameProduct2(query, String(x.o.title || ""))).sort((a, b) => a.price - b.price)[0];
@@ -29034,9 +29157,9 @@ function startWorkers() {
           return {
             price: best.price,
             seller: String(best.o.seller || best.o.vendor || "a seller"),
-            url: best.o.sellerUrl ? createMaskingPointer2(best.o.sellerUrl, { offerId: String(best.o.id || "") }) : settings2.appUrl || "https://www.try1second.com"
+            url: best.o.sellerUrl ? createMaskingPointer2(best.o.sellerUrl, { offerId: String(best.o.id || "") }) : settings3.appUrl || "https://www.try1second.com"
           };
-        }, settings2.appUrl || "https://www.try1second.com");
+        }, settings3.appUrl || "https://www.try1second.com");
         if (r.checked) log.info("Worker", `Price alerts: ${r.checked} checked, ${r.notified} e-mailed`);
       } catch (e) {
         log.warn("Worker", "Price-alert pass failed (will retry)", { error: String(e?.message || e).slice(0, 120) });
@@ -29366,18 +29489,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path11, params = {}) {
+      async apiGet(path12, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path11}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path12}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path11, params);
+          return this.apiGet(path12, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path11} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path12} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -29400,9 +29523,9 @@ var init_admitad = __esm({
             warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
           }
         }
-        const path11 = websiteId ? `/coupons/website/${encodeURIComponent(websiteId)}/` : "/coupons/";
+        const path12 = websiteId ? `/coupons/website/${encodeURIComponent(websiteId)}/` : "/coupons/";
         for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-          const j = await this.apiGet(path11, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+          const j = await this.apiGet(path12, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
           const results = j?.results || [];
           if (results.length === 0) break;
           for (const c of results) {
@@ -29576,12 +29699,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path11, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path11}`, {
+      async api(path12, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path12}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path11} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path12} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -30153,13 +30276,13 @@ var init_prune = __esm({
 });
 
 // server.prod.ts
-var import_path6 = __toESM(require("path"), 1);
-var import_fs5 = __toESM(require("fs"), 1);
+var import_path7 = __toESM(require("path"), 1);
+var import_fs6 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 
 // server/index.ts
-var import_path5 = __toESM(require("path"), 1);
-var import_fs4 = __toESM(require("fs"), 1);
+var import_path6 = __toESM(require("path"), 1);
+var import_fs5 = __toESM(require("fs"), 1);
 var import_express4 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
 var __dirname2 = process.cwd();
@@ -30175,7 +30298,7 @@ async function createApp() {
     }
     next();
   });
-  const { settings: settings2 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
+  const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
   const { apiRouter: apiRouter2, bootstrapBackend: bootstrapBackend2 } = await Promise.resolve().then(() => (init_routes(), routes_exports));
   const { adminRouter: adminRouter2 } = await Promise.resolve().then(() => (init_adminRoutes(), adminRoutes_exports));
   const { bootstrapDealsSync: bootstrapDealsSync2 } = await Promise.resolve().then(() => (init_bootstrap(), bootstrap_exports));
@@ -30189,7 +30312,7 @@ async function createApp() {
   bootstrapDealsSync2();
   app.use("/api/v1", affiliateRouter2);
   await bootstrapBackend2();
-  if (settings2.env !== "test") {
+  if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
     await runSingleton2("background", async () => {
       startWorkers2();
@@ -30198,8 +30321,8 @@ async function createApp() {
       Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
     });
   }
-  const dist = import_path5.default.resolve(__dirname2, "dist");
-  if (import_fs4.default.existsSync(dist)) {
+  const dist = import_path6.default.resolve(__dirname2, "dist");
+  if (import_fs5.default.existsSync(dist)) {
     app.use(import_express4.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -30210,9 +30333,9 @@ async function createApp() {
     }));
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path5.default.join(dist, "index.html"));
+      res.sendFile(import_path6.default.join(dist, "index.html"));
     });
-  } else if (settings2.isProduction) {
+  } else if (settings3.isProduction) {
     log2.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
   }
   return app;
@@ -30221,8 +30344,8 @@ async function createApp() {
 // server.prod.ts
 async function start() {
   const app = await createApp();
-  const dist = import_path6.default.resolve(process.cwd(), "dist");
-  if (import_fs5.default.existsSync(dist)) {
+  const dist = import_path7.default.resolve(process.cwd(), "dist");
+  if (import_fs6.default.existsSync(dist)) {
     app.use(import_express5.default.static(dist, {
       // index.html must never be cached (it names the current hashed bundle);
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -30233,7 +30356,7 @@ async function start() {
     }));
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path6.default.join(dist, "index.html"));
+      res.sendFile(import_path7.default.join(dist, "index.html"));
     });
   }
   const PORT = Number(process.env.PORT || 3e3);

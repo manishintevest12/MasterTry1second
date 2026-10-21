@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 -- ============ Catalogue (Section 7) ============
 CREATE TABLE IF NOT EXISTS canonical_entities (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  vertical ENUM('food','grocery','ecommerce','flights','hotels','cab','loans','insurance','movies','bus','coupons','giftcards','banking') NOT NULL,
+  vertical VARCHAR(30) NOT NULL, -- dynamic registry (13+ verticals incl. creditcards/account); ENUM retired 21 Oct after 'Data truncated' rejections
   name VARCHAR(500) NOT NULL,
   brand VARCHAR(160),
   model VARCHAR(160),
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS offers (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   canonical_entity_id BIGINT UNSIGNED NULL,
   canonical_variant_id BIGINT UNSIGNED NULL,
-  vertical ENUM('food','grocery','ecommerce','flights','hotels','cab','loans','insurance','movies','bus','coupons','giftcards','banking') NOT NULL,
+  vertical VARCHAR(30) NOT NULL, -- dynamic registry (13+ verticals incl. creditcards/account); ENUM retired 21 Oct after 'Data truncated' rejections
   title VARCHAR(500) NOT NULL,
   brand VARCHAR(160),
   model VARCHAR(160),

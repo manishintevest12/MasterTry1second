@@ -25,9 +25,38 @@ export interface DataStore {
 }
 
 // ---------------- MySQL implementation ----------------
-/** Normalizes SQL bind params: undefined/NaN → null (exported for tests). */
+/**
+ * Normalizes SQL bind params: undefined/NaN → null (exported for tests).
+ *
+ * DATETIME normalization (21 Oct, caught E2E against MariaDB 10.11): the
+ * pipeline produces ISO-8601 strings with a 'T' separator and trailing 'Z'
+ * ("2026-10-21T16:40:15.631Z"). MariaDB rejects the trailing timezone marker
+ * outright ("Incorrect datetime value") and MySQL coerces it unpredictably —
+ * either way the offer row is LOST from the durable store. Any bind value that
+ * looks like an ISO datetime is converted to a plain UTC 'YYYY-MM-DD HH:MM:SS'
+ * (fractional seconds kept) that both engines accept and round-trip identically
+ * with the pool's timezone:'Z'.
+ */
+const ISO_DT = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/;
+export function normalizeSqlValue(p: unknown): unknown {
+  if (p === undefined || (typeof p === 'number' && Number.isNaN(p))) return null;
+  if (typeof p === 'string') {
+    const t = p.trim();
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(t)) {
+      return t.replace('T', ' ').slice(0, -1); // 'T'→space, drop trailing 'Z'
+    }
+    // ISO with explicit numeric offset (+05:30 / -0400): convert to UTC, then strip.
+    const off = t.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?([+\-]\d{2}:?\d{2})$/);
+    if (off) {
+      const d = new Date(t.replace(' ', 'T'));
+      if (!Number.isNaN(d.getTime())) return d.toISOString().replace('T', ' ').slice(0, -1);
+    }
+    if (ISO_DT.test(t)) return t.replace('T', ' '); // T separator, no zone: keep as-is with space
+  }
+  return p;
+}
 export function sanitizeBindParams(params: unknown[]): unknown[] {
-  return (params || []).map((p) => (p === undefined || (typeof p === 'number' && Number.isNaN(p))) ? null : p);
+  return (params || []).map(normalizeSqlValue);
 }
 
 class MysqlStore implements DataStore {

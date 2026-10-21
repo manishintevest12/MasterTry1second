@@ -100,16 +100,17 @@ export async function saveLead(i: LeadInput): Promise<number> {
   const v = validateLead(i);
   if (!v.ok || !v.clean) throw new Error(v.error || 'Invalid lead');
   const c = v.clean;
-  await getStore().execute(
+  const result = await getStore().execute(
     `INSERT INTO leads (source, vertical, service_type, account_type, first_name, last_name, age, salary, location, phone, email, business, website, category, message, dest_url, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
     [c.source || 'lead_form', str(c.vertical, 20), str(c.serviceType, 160), str(c.accountType, 20),
      str(c.firstName, 80), str(c.lastName, 80), c.age ?? null, c.salary ?? null, str(c.location, 120),
      str(c.phone, 20), str(c.email, 160), str(c.business, 160), str(c.website, 200), str(c.category, 60),
      str(c.message, 1000), str(c.destUrl, 600)]);
-  const rows = await getStore().query('SELECT LAST_INSERT() AS id');
-  const r: any = (rows as any[])[0] || (rows as any)?.rows?.[0];
-  return Number(r?.id ?? 0) || 0;
+  // insertId comes from the SAME execute() (its pool connection) — a separate
+  // SELECT LAST_INSERT_ID() could land on a different pooled connection and read 0.
+  const r: any = result as any;
+  return Number(r?.insertId ?? 0) || 0;
 }
 
 export async function listLeads(opts: { source?: string; vertical?: string; status?: string; limit?: number } = {}): Promise<LeadRow[]> {

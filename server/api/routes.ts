@@ -1330,6 +1330,12 @@ export async function bootstrapBackend(): Promise<void> {
   try {
     const migrations = await runMigrations();
     if (migrations.applied.length > 0) log.info('Bootstrap', `Applied migrations: ${migrations.applied.join(', ')}`);
+    // FILE → MYSQL AUTO-IMPORT (self-healing, 21 Oct): production history that
+    // accumulated in the file-fallback store (leads, logos, admin users) is
+    // imported into MySQL on the first durable boot. Background — never blocks
+    // HTTP serving; resumes after a crash (INSERT IGNORE is idempotent).
+    import('../common/fileImport').then(({ importFileStoreIntoMysql }) => importFileStoreIntoMysql()).catch((e: any) =>
+      log.error('Bootstrap', `file-store import failed: ${e && e.message}`));
   } catch (err: any) {
     // Bad credentials / DB down must not 503 the whole site: degrade to the file store.
     log.error('Bootstrap', `MySQL migrations failed — falling back to file store until DB env vars are fixed: ${err.code || ''} ${err.message}`);
