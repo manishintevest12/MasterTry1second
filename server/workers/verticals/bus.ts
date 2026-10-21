@@ -115,7 +115,7 @@ export const busWorker: VerticalWorker = {
         const rp = Date.now();
         let r: { status: number; body: string };
         try {
-          r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 25_000 });
+          r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
         } catch (e: any) {
           // Whole redbus.in domain not answering from this egress IP (Akamai tarpit):
           // every step hangs until its own timeout. Report honestly, never guess.
@@ -171,6 +171,7 @@ export const busWorker: VerticalWorker = {
       name: 'Bus worker: AbhiBus live services (real fares, timings, seats)',
       priority: 1,
       maxPerMinute: 24,
+      timeoutMs: 40_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || '');
         const rt = routeFromQuery(raw);

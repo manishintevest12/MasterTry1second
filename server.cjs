@@ -18122,7 +18122,7 @@ var init_bus = __esm({
             const rp = Date.now();
             let r;
             try {
-              r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 25e3 });
+              r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
             } catch (e) {
               throw new AcquisitionError("ACCESS_CHALLENGE", `redBus domain unresponsive from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
             }
@@ -18176,6 +18176,7 @@ var init_bus = __esm({
           name: "Bus worker: AbhiBus live services (real fares, timings, seats)",
           priority: 1,
           maxPerMinute: 24,
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
