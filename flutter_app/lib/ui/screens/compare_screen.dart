@@ -1434,13 +1434,14 @@ class _StatusStrip extends StatelessWidget {
         child: Row(children: [
           const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2.2, color: T1SColors.red)),
           const SizedBox(width: 12),
-          Expanded(child: Text('Scanning thousands of deals in real time… the lowest price is loading right now.', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)))),
+          Expanded(child: Text('Scanning thousands of deals and seconds in real time… The lowest price is loading right now.', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)))),
         ]),
       );
     }
-    // Progressive cold-start: real rows are on screen while live prices are still
-    // being acquired in the background — tell the user, never leave them guessing.
-    if (res != null && res!.pendingRefresh) {
+    // Progressive cold-start OR any live load/price refresh (owner 21 Oct): real
+    // rows are on screen while live prices are still being acquired in the
+    // background — tell the user, never leave them guessing.
+    if ((loading && res != null) || (res != null && res!.pendingRefresh)) {
       return Box(
         padding: const EdgeInsets.all(11),
         radius: 16,
@@ -1449,7 +1450,7 @@ class _StatusStrip extends StatelessWidget {
         child: Row(children: [
           const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.amber400)),
           const SizedBox(width: 11),
-          Expanded(child: Text('Scanning thousands of deals in real time — the lowest price is loading right now. Live prices replace this list automatically.', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
+          Expanded(child: Text('Scanning thousands of deals and seconds in real time. The lowest price is loading right now.', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
         ]),
       );
     }
