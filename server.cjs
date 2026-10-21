@@ -146,6 +146,18 @@ var init_settings = __esm({
   }
 });
 
+// server/search/verticalAlias.ts
+function normalizeVerticalId(raw) {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v === "movie") return "movies";
+  if (v === "account") return "banking";
+  return v;
+}
+var init_verticalAlias = __esm({
+  "server/search/verticalAlias.ts"() {
+  }
+});
+
 // server/common/lastPrice.ts
 function load() {
   if (cache) return cache;
@@ -21985,7 +21997,7 @@ function travelFilter(offers, query) {
   return offers.filter((o) => !o.travel?.date || o.travel.date === query.travelDates.depart);
 }
 function getVerticalEngine(vertical) {
-  return ENGINES[vertical];
+  return ENGINES[vertical] ?? new UnknownVerticalEngine(String(vertical));
 }
 function verticalStatusReport() {
   return Object.values(ENGINES).map((e) => ({
@@ -21995,7 +22007,7 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var NON_COMPARISON_VERTICALS, CATEGORICAL_ATTR_KEYS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES;
+var NON_COMPARISON_VERTICALS, CATEGORICAL_ATTR_KEYS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES, UnknownVerticalEngine;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
     NON_COMPARISON_VERTICALS = [
@@ -22195,6 +22207,16 @@ var init_verticalEngine = __esm({
       coupons: new CouponEngine(),
       giftcards: new GiftCardEngine(),
       banking: new BankingOfferEngine()
+    };
+    UnknownVerticalEngine = class extends VerticalEngine {
+      constructor(vertical) {
+        super({ vertical, displayName: "Unknown Vertical" });
+      }
+      // Unknown ids pass offers through untouched (honest ranking still applies) —
+      // a bad vertical id must degrade gracefully, never crash the process.
+      async execute(offers) {
+        return offers;
+      }
     };
   }
 });
@@ -25974,6 +25996,7 @@ var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationC
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
+    init_verticalAlias();
     init_searchOrchestrator();
     init_basket();
     init_registry();
@@ -26182,7 +26205,7 @@ var init_routes = __esm({
     apiRouter.post("/search", async (req, res) => {
       const input = {
         query: String(req.body.query || "").slice(0, 300),
-        vertical: req.body.vertical,
+        vertical: normalizeVerticalId(req.body.vertical),
         pincode: req.body.pincode,
         city: req.body.city,
         locality: req.body.locality,
@@ -26224,8 +26247,7 @@ var init_routes = __esm({
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
-        // the UI tab ids are 'movie'/'account'; the engine's vertical ids are 'movies'/'banking'
-        vertical: req.body.vertical === "movie" ? "movies" : req.body.vertical === "account" ? "banking" : req.body.vertical,
+        vertical: normalizeVerticalId(req.body.vertical),
         pincode: req.body.pincode,
         city: req.body.city,
         locality: req.body.locality,

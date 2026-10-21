@@ -6,6 +6,7 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
+import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
 import { bestUnitPricesPerStore, computeStoreTotals, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
@@ -251,7 +252,7 @@ apiRouter.get('/history', async (req, res) => {
 apiRouter.post('/search', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || '').slice(0, 300),
-    vertical: req.body.vertical,
+    vertical: normalizeVerticalId(req.body.vertical) as SearchInput['vertical'],
     pincode: req.body.pincode,
     city: req.body.city,
     locality: req.body.locality,
@@ -463,10 +464,7 @@ function offerToComparisonItem(o: any) {
 apiRouter.post('/scrape/live', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || ''),
-    // the UI tab ids are 'movie'/'account'; the engine's vertical ids are 'movies'/'banking'
-    vertical: req.body.vertical === 'movie' ? 'movies'
-      : req.body.vertical === 'account' ? 'banking'
-      : req.body.vertical,
+    vertical: normalizeVerticalId(req.body.vertical) as SearchInput['vertical'],
     pincode: req.body.pincode,
     city: req.body.city,
     locality: req.body.locality,

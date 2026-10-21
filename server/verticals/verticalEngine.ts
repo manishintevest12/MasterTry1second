@@ -315,8 +315,19 @@ const ENGINES: Record<VerticalId, VerticalEngine> = {
   banking: new BankingOfferEngine(),
 };
 
+class UnknownVerticalEngine extends VerticalEngine {
+  constructor(vertical: string) {
+    super({ vertical: vertical as VerticalId, displayName: 'Unknown Vertical' });
+  }
+  // Unknown ids pass offers through untouched (honest ranking still applies) —
+  // a bad vertical id must degrade gracefully, never crash the process.
+  async execute(offers: NormalizedOffer[]): Promise<NormalizedOffer[]> {
+    return offers;
+  }
+}
+
 export function getVerticalEngine(vertical: VerticalId): VerticalEngine {
-  return ENGINES[vertical];
+  return ENGINES[vertical] ?? new UnknownVerticalEngine(String(vertical));
 }
 
 export function verticalStatusReport(): Array<{ vertical: VerticalId; displayName: string; engineImplemented: true; note: string }> {
