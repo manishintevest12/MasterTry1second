@@ -1026,7 +1026,9 @@ function recordFailure(sourceId, failureClass, error) {
   h.state = h.consecutiveFailures >= CIRCUIT_THRESHOLD ? "CIRCUIT_OPEN" : "DEGRADED";
   if (h.state === "CIRCUIT_OPEN" && !wasOpen) {
     let cooldownMs = CIRCUIT_COOLDOWN_MS;
-    if (failureClass === "ACCESS_CHALLENGE") {
+    if (PROBE_SOURCES.has(sourceId)) {
+      cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[0];
+    } else if (failureClass === "ACCESS_CHALLENGE") {
       const n = (challengeOpenings.get(sourceId) ?? 0) + 1;
       challengeOpenings.set(sourceId, n);
       cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[Math.min(n - 1, CHALLENGE_COOLDOWN_STEPS_MS.length - 1)];
@@ -1056,7 +1058,7 @@ async function persist(h) {
     log.debug("Health", "Persist failed (file store / no table)", { error: String(e).slice(0, 120) });
   }
 }
-var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, challengeOpenings, health;
+var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, challengeOpenings, PROBE_SOURCES, health;
 var init_health = __esm({
   "server/sources/health.ts"() {
     init_logger();
@@ -1064,6 +1066,7 @@ var init_health = __esm({
     CIRCUIT_COOLDOWN_MS = 6e4;
     CHALLENGE_COOLDOWN_STEPS_MS = [6e4, 5 * 6e4, 25 * 6e4, 60 * 6e4];
     challengeOpenings = /* @__PURE__ */ new Map();
+    PROBE_SOURCES = /* @__PURE__ */ new Set(["w_hotels_goibibo", "w_hotels_mmt", "w_flights_makemytrip"]);
     health = /* @__PURE__ */ new Map();
   }
 });

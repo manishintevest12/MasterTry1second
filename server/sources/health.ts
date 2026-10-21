@@ -17,6 +17,14 @@ const CIRCUIT_COOLDOWN_MS = 60_000;
 // exponentially: 1min -> 5min -> 25min -> 60min (cap), resetting on the first success.
 const CHALLENGE_COOLDOWN_STEPS_MS = [60_000, 5 * 60_000, 25 * 60_000, 60 * 60_000];
 const challengeOpenings = new Map<string, number>();
+// SELF-DETECTING PROBES (owner rule 21 Oct: strictly-mandated sources must stay
+// visible and self-heal). These sources attempt the real acquisition flow by
+// design — a gated response IS their honest per-search result. The escalating
+// challenge ladder would silence them for up to 60 minutes after 3 openings,
+// hiding owner-mandated sources (Goibibo/MMT hotels were invisible on production
+// exactly this way). Probes stay on the flat 60s rung: attempted nearly every
+// search, succeeding the moment the IP gate lifts.
+const PROBE_SOURCES = new Set(['w_hotels_goibibo', 'w_hotels_mmt', 'w_flights_makemytrip']);
 
 const health = new Map<string, SourceHealth>();
 
@@ -103,7 +111,10 @@ export function recordFailure(sourceId: string, failureClass: FailureClass, erro
     // Fresh opening only: extra failures while already open never extend or
     // shorten the existing cooldown window.
     let cooldownMs = CIRCUIT_COOLDOWN_MS;
-    if (failureClass === 'ACCESS_CHALLENGE') {
+    if (PROBE_SOURCES.has(sourceId)) {
+      // Probes never climb the ladder: flat 60s so each new search re-attempts them.
+      cooldownMs = CHALLENGE_COOLDOWN_STEPS_MS[0];
+    } else if (failureClass === 'ACCESS_CHALLENGE') {
       // Step the ladder once per circuit OPENING (not per failure).
       const n = (challengeOpenings.get(sourceId) ?? 0) + 1;
       challengeOpenings.set(sourceId, n);
