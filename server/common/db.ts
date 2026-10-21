@@ -475,9 +475,14 @@ export async function recoverMysqlWithLocalHost(url: string | null | undefined =
       store = probe;
       log.warn('DataStore', `MySQL access denied on host '${originalHost}' — SELF-HEALED via co-located host '${host}'. Set DB_HOST=${host} in hPanel env vars to make it permanent.`);
       return true;
-    } catch {
+    } catch (e: any) {
       candidate?.end?.().catch?.(() => undefined);
+      // Owner-visible diagnosis: WHICH candidate failed and WHY (no password ever logged).
+      log.warn('DataStore', `Self-heal candidate '${host}' rejected: ${e.code || ''} ${String(e.message || '')}`);
     }
+  }
+  if (['localhost', '127.0.0.1', '::1'].includes(originalHost)) {
+    log.error('DataStore', `DB_HOST is already local ('${originalHost}') — the denial is a CREDENTIALS problem (wrong DB_USER or DB_PASSWORD for '${(() => { try { return decodeURIComponent(new URL(original).username); } catch { return '?'; } })()}'), not a host problem. Fix in hPanel > Databases.`);
   }
   return false;
 }

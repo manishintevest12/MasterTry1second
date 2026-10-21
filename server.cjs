@@ -696,9 +696,19 @@ async function recoverMysqlWithLocalHost(url = settings.mysqlUrl) {
       store = probe;
       log.warn("DataStore", `MySQL access denied on host '${originalHost}' \u2014 SELF-HEALED via co-located host '${host}'. Set DB_HOST=${host} in hPanel env vars to make it permanent.`);
       return true;
-    } catch {
+    } catch (e) {
       candidate?.end?.().catch?.(() => void 0);
+      log.warn("DataStore", `Self-heal candidate '${host}' rejected: ${e.code || ""} ${String(e.message || "")}`);
     }
+  }
+  if (["localhost", "127.0.0.1", "::1"].includes(originalHost)) {
+    log.error("DataStore", `DB_HOST is already local ('${originalHost}') \u2014 the denial is a CREDENTIALS problem (wrong DB_USER or DB_PASSWORD for '${(() => {
+      try {
+        return decodeURIComponent(new URL(original).username);
+      } catch {
+        return "?";
+      }
+    })()}'), not a host problem. Fix in hPanel > Databases.`);
   }
   return false;
 }
