@@ -20,6 +20,7 @@ import { listAppLinks, upsertAppLink, deleteAppLink } from '../marketing/appLink
 import { listAllDeals, saveDeal, deleteDeal, DEAL_KINDS } from '../marketing/deals';
 import { listProfiles, saveProfile, deleteProfile, AFFILIATE_NETWORKS } from '../affiliate/profiles';
 import { syncAutoDeals } from '../deals/acquisition';
+import { latestScores, runSpeedTest, scoreHistory } from './speedtest';
 import { listAllNotifications, createNotification, deactivateNotification, validateNotification } from '../notifications/notifications';
 import { log } from '../common/logger';
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
@@ -554,4 +555,23 @@ adminRouter.delete('/merchant-logos/:key', async (req, res) => {
     audit(req, 'merchant_logo_delete', String(req.params.key));
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete logo' }); }
+});
+
+// ---- Site speed test (owner 21 Oct): Lighthouse desktop + mobile via PageSpeed Insights ----
+adminRouter.get('/speedtest', async (_req, res) => {
+  try { res.json({ success: true, scores: await latestScores() }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load speed scores' }); }
+});
+
+adminRouter.get('/speedtest/history', async (req, res) => {
+  try { res.json({ success: true, history: await scoreHistory(String(req.query.strategy || 'mobile')) }); }
+  catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load speed history' }); }
+});
+
+adminRouter.post('/speedtest/run', async (req, res) => {
+  try {
+    const scores = await runSpeedTest(req.body?.url || 'https://www.try1second.com');
+    audit(req, 'speedtest.run', 'pagespeed', scores.map((s) => `${s.strategy}=${s.score ?? 'err'}`).join(' '));
+    res.json({ success: true, scores });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Speed test failed' }); }
 });

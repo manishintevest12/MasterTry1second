@@ -27407,6 +27407,151 @@ var init_acquisition = __esm({
   }
 });
 
+// server/admin/speedtest.ts
+function parsePsiResponse(json, strategy) {
+  const scanned_at = (/* @__PURE__ */ new Date()).toISOString();
+  try {
+    const lr = json?.lighthouseResult;
+    const scoreRaw = lr?.categories?.performance?.score;
+    const num6 = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : null;
+    };
+    if (scoreRaw == null || !lr) {
+      const g = json?.error?.message ? `PageSpeed: ${String(json.error.message).slice(0, 200)}` : "PageSpeed returned no Lighthouse result (quota or internal error)";
+      return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url: String(json?.id || ""), scanned_at, error: g };
+    }
+    return {
+      strategy,
+      score: Math.round(Number(scoreRaw) * 100),
+      lcp_ms: num6(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num6(lr.audits?.["total-blocking-time"]?.numericValue),
+      cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
+      url: String(lr.finalDisplayedUrl || json?.id || ""),
+      scanned_at,
+      error: null
+    };
+  } catch (e) {
+    return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url: "", scanned_at, error: e?.message || "Could not parse PageSpeed response" };
+  }
+}
+async function ensureTable2() {
+  if (ensured5) return;
+  const store2 = await getStore();
+  await store2.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    strategy VARCHAR(10) NOT NULL,
+    score INT DEFAULT NULL,
+    lcp_ms INT DEFAULT NULL,
+    tbt_ms INT DEFAULT NULL,
+    cls DOUBLE DEFAULT NULL,
+    url VARCHAR(500) DEFAULT NULL,
+    error VARCHAR(500) DEFAULT NULL,
+    scanned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_strategy_time (strategy, scanned_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  ensured5 = true;
+}
+async function latestScores() {
+  await ensureTable2();
+  const store2 = await getStore();
+  const out = [];
+  for (const strategy of STRATEGIES) {
+    const rows = await store2.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+    if (rows.length) out.push(rowToScore(rows[0]));
+  }
+  return out;
+}
+function rowToScore(r) {
+  return {
+    strategy: r.strategy,
+    score: r.score == null ? null : Number(r.score),
+    lcp_ms: r.lcp_ms == null ? null : Number(r.lcp_ms),
+    tbt_ms: r.tbt_ms == null ? null : Number(r.tbt_ms),
+    cls: r.cls == null ? null : Number(r.cls),
+    url: r.url || "",
+    scanned_at: r.scanned_at instanceof Date ? r.scanned_at.toISOString() : String(r.scanned_at),
+    error: r.error || null
+  };
+}
+async function scoreHistory(strategy, limit = 20) {
+  await ensureTable2();
+  const store2 = await getStore();
+  const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
+  const rows = await store2.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
+  return rows.map(rowToScore);
+}
+async function persistScore(s) {
+  await ensureTable2();
+  const store2 = await getStore();
+  await store2.execute(
+    "INSERT INTO speed_scores (strategy, score, lcp_ms, tbt_ms, cls, url, error, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    [s.strategy, s.score, s.lcp_ms, s.tbt_ms, s.cls, s.url.slice(0, 500), s.error ? String(s.error).slice(0, 500) : null, s.scanned_at]
+  );
+  await pruneScoreHistory(s.strategy);
+}
+async function pruneScoreHistory(strategy) {
+  await ensureTable2();
+  const store2 = await getStore();
+  const rows = await store2.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
+  const drop = rows.slice(MAX_ROWS_PER_STRATEGY).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
+  for (const id of drop) await store2.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
+}
+async function fetchWithTimeout2(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), PSI_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "try1second-admin-speedtest" } });
+    return await res.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+async function runSpeedTest(siteUrl) {
+  const url = String(siteUrl || "https://www.try1second.com").trim().slice(0, 300);
+  await ensureTable2();
+  const store2 = await getStore();
+  const now = Date.now();
+  const gaps = await Promise.all(STRATEGIES.map(async (strategy) => {
+    const last = await store2.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+    if (!last.length || !last[0].scanned_at) return 0;
+    const ts = new Date(last[0].scanned_at).getTime();
+    return Number.isFinite(ts) ? now - ts : 0;
+  }));
+  const runs = await Promise.all(STRATEGIES.map(async (strategy, i) => {
+    const strategyKey = strategy === "desktop" ? "desktop" : "mobile";
+    if (gaps[i] !== 0 && gaps[i] < MIN_RUN_GAP_MS) {
+      const existing = await store2.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+      if (existing.length) return rowToScore(existing[0]);
+    }
+    try {
+      const key = (process.env.PAGESPEED_API_KEY || "").trim();
+      const psi = await fetchWithTimeout2(`${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategyKey}&category=performance${key ? `&key=${encodeURIComponent(key)}` : ""}`);
+      const parsed = parsePsiResponse(psi, strategyKey);
+      const s = { ...parsed, url: parsed.url || url };
+      await persistScore(s);
+      return s;
+    } catch (e) {
+      const s = { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: (e?.name === "AbortError" ? "PageSpeed run timed out (45s)" : e?.message) || "PageSpeed request failed" };
+      await persistScore(s);
+      return s;
+    }
+  }));
+  return runs;
+}
+var STRATEGIES, PSI_ENDPOINT, PSI_TIMEOUT_MS, MIN_RUN_GAP_MS, MAX_ROWS_PER_STRATEGY, ensured5;
+var init_speedtest = __esm({
+  "server/admin/speedtest.ts"() {
+    init_db();
+    STRATEGIES = ["desktop", "mobile"];
+    PSI_ENDPOINT = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
+    PSI_TIMEOUT_MS = 45e3;
+    MIN_RUN_GAP_MS = 6e4;
+    MAX_ROWS_PER_STRATEGY = 50;
+    ensured5 = false;
+  }
+});
+
 // server/registry/acceptanceRegistry.ts
 var CI, CO, ACCEPTANCE_TARGETS;
 var init_acceptanceRegistry = __esm({
@@ -28106,6 +28251,7 @@ var init_adminRoutes = __esm({
     init_deals();
     init_profiles();
     init_acquisition();
+    init_speedtest();
     init_notifications();
     init_logger();
     init_acceptanceRunner();
@@ -28648,6 +28794,29 @@ var init_adminRoutes = __esm({
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not delete logo" });
+      }
+    });
+    adminRouter.get("/speedtest", async (_req, res) => {
+      try {
+        res.json({ success: true, scores: await latestScores() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load speed scores" });
+      }
+    });
+    adminRouter.get("/speedtest/history", async (req, res) => {
+      try {
+        res.json({ success: true, history: await scoreHistory(String(req.query.strategy || "mobile")) });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load speed history" });
+      }
+    });
+    adminRouter.post("/speedtest/run", async (req, res) => {
+      try {
+        const scores = await runSpeedTest(req.body?.url || "https://www.try1second.com");
+        audit(req, "speedtest.run", "pagespeed", scores.map((s) => `${s.strategy}=${s.score ?? "err"}`).join(" "));
+        res.json({ success: true, scores });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Speed test failed" });
       }
     });
   }

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "49438102645",
+    "project_id": "try1second-66273",
+    "storage_bucket": "try1second-66273.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:49438102645:android:c15cb15a8963280606543c",
+        "android_client_info": {
+          "package_name": "com.try1second.try1second"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCEse02g44_QUZoc-SV23PrTD751jrxRuk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

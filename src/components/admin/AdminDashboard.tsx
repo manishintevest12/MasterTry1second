@@ -32,8 +32,7 @@ import {
   Building2,
   KeyRound,
   LogOut,
-  Link2,
-} from 'lucide-react';
+  Link2,Gauge } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
   VerticalId,
@@ -57,6 +56,7 @@ import { NotificationsTab } from './NotificationsTab';
 import { DealsTab } from './DealsTab';
 import { LeadsTab } from './LeadsTab';
 import { MerchantLogosTab } from './MerchantLogosTab';
+import { SpeedTestTab } from './SpeedTestTab';
 
 export type AdminTab =
   | 'app_links'
@@ -64,6 +64,7 @@ export type AdminTab =
   | 'deals'
   | 'leads'
   | 'merchant_logos'
+  | 'site_speed'
   | 'traffic_performance'
   | 'quick_apps'
   | 'merchant_vendors'
@@ -337,6 +338,19 @@ export const AdminDashboard: React.FC = () => {
 
         {/* Navigation Tabs (White Theme) */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 overflow-x-auto scrollbar-none border-t border-slate-100 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveTab('site_speed')}
+            className={`py-3 px-3.5 border-b-2 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${
+              activeTab === 'site_speed'
+                ? 'border-emerald-600 text-emerald-700 font-bold bg-emerald-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Gauge className="w-4 h-4 text-emerald-600" />
+            <span>Site Speed</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('traffic_performance')}
@@ -1306,6 +1320,7 @@ export const AdminDashboard: React.FC = () => {
 
         {/* ================= TAB 10: 100+ DIRECT PARTNERS DIRECTORY MANAGEMENT ================= */}
         {activeTab === 'direct_partners' && <DirectPartnersTab />}
+        {activeTab === 'site_speed' && <SpeedTestTab />}
         {activeTab === 'leads' && <LeadsTab />}
         {activeTab === 'merchant_logos' && <MerchantLogosTab />}
         {activeTab === 'placements' && <PlacementsTab />}
