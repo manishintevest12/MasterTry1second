@@ -14,6 +14,104 @@ document.querySelectorAll('.t1s-tab').forEach((btn) => {
   });
 });
 
+// ---------- product-comparison view (owner 21 Oct, image-1 design) ----------
+const SVG_SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/></svg>';
+const SVG_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const SVG_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+
+const faviconOf = (u) => {
+  const d = String(u || '').replace(/^https:\/\//, '').split('/')[0];
+  return d ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64` : '';
+};
+
+/** Footer "Open Try1Second" deep-links to the PRODUCT COMPARISON page when we
+ *  know the product (owner 21 Oct) — never the bare home page for a product. */
+async function setFooterToProduct(title) {
+  const link = $('#open-t1s');
+  if (!link) return;
+  try { link.href = title ? (await try1secondProductUrl(title)) : 'https://www.try1second.com'; }
+  catch { link.href = 'https://www.try1second.com'; }
+}
+
+/**
+ * Image-1 comparison view: a product card (merchant pill, name, big price,
+ * share/copy) and a "Compare N Available Prices" card with one row per
+ * price-owning site, a green "Lowest price" badge on the cheapest and a
+ * chevron. Every number comes from the real backend — nothing invented.
+ * rows: [{ seller, subtitle, price, logo, goUrl?, sellerUrl?, offerId? }]
+ */
+async function renderCompareView(box, { title, seller, price, image = '', save = 0, rows }) {
+  const sorted = rows.filter((r) => Number(r.price) > 0).sort((a, b) => Number(a.price) - Number(b.price));
+  if (!sorted.length) return;
+  const lowest = sorted[0];
+  let pageUrl = 'https://www.try1second.com';
+  try { pageUrl = await try1secondProductUrl(title); } catch { /* keep home */ }
+  const pillLogo = faviconOf(sorted.find((r) => r.sellerUrl)?.sellerUrl || '') || lowest.logo;
+  const cmp = document.createElement('div');
+  cmp.className = 't1s-cmp';
+  cmp.innerHTML = `
+    <div class="t1s-pcard">
+      <div class="t1s-pill">${pillLogo ? `<img src="${esc(pillLogo)}" alt="" onerror="this.style.display='none'" />` : ''}<span>${esc(seller || lowest.seller || 'Best price')}</span></div>
+      <div class="t1s-pcard-main">
+        ${image ? `<img class="t1s-thumb" src="${esc(image)}" alt="" onerror="this.style.display='none'" />` : ''}
+        <div class="t1s-pcard-txt">
+          <div class="t1s-pcard-name">${esc(title)}</div>
+          <div class="t1s-pcard-price">${inr(Number(price) || Number(lowest.price))}</div>
+        </div>
+      </div>
+      ${save > 0 ? `<div class="t1s-pcard-save">Saves ${inr(save)} vs this page</div>` : ''}
+      <div class="t1s-pcard-actions">
+        <button class="t1s-iconbtn" data-act="share" title="Share this comparison">${SVG_SHARE}</button>
+        <button class="t1s-iconbtn" data-act="copy" title="Copy comparison link">${SVG_COPY}</button>
+      </div>
+    </div>
+    <div class="t1s-ccard">
+      <div class="t1s-ccard-head">Compare ${sorted.length} Available Price${sorted.length > 1 ? 's' : ''}</div>
+      ${sorted.map((r, i) => `
+      <div class="t1s-crow" data-i="${i}">
+        <img class="t1s-clogo" src="${esc(r.logo || '')}" alt="" onerror="this.style.visibility='hidden'" />
+        <div class="t1s-cmid">
+          <div class="t1s-csite">${esc(r.seller || 'Verified source')}</div>
+          <div class="t1s-csub">${esc(String(r.subtitle || title || '').slice(0, 36))}</div>
+        </div>
+        <div class="t1s-cright">
+          <span class="t1s-cprice">${inr(Number(r.price))}</span>
+          ${r === lowest && sorted.length > 1 ? '<span class="t1s-lowest">Lowest price</span>' : ''}
+        </div>
+        <svg class="t1s-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+      </div>`).join('')}
+    </div>`;
+  // Row click → THAT site's own listing via the safe /api/go redirect.
+  cmp.querySelectorAll('.t1s-crow').forEach((rowEl) => {
+    const r = sorted[Number(rowEl.dataset.i)];
+    rowEl.addEventListener('click', async () => {
+      try {
+        if (r.goUrl) return chrome.tabs.create({ url: new URL(r.goUrl, 'https://www.try1second.com').href });
+        if (r.sellerUrl) return chrome.tabs.create({ url: await apiGo(r.sellerUrl, r.offerId) });
+        chrome.tabs.create({ url: pageUrl });
+      } catch { chrome.tabs.create({ url: pageUrl }); }
+    });
+  });
+  // Share / copy both hand out the website's product-comparison deep link.
+  const actBtn = (which, fn) => {
+    const btn = cmp.querySelector(`[data-act="${which}"]`);
+    if (!btn) return;
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await fn();
+      const orig = btn.innerHTML;
+      btn.innerHTML = SVG_CHECK;
+      setTimeout(() => { btn.innerHTML = orig; }, 1400);
+    });
+  };
+  actBtn('share', async () => {
+    if (navigator.share) { try { await navigator.share({ title: title || 'Try1Second', url: pageUrl }); return; } catch { /* cancelled → copy */ } }
+    await navigator.clipboard.writeText(pageUrl);
+  });
+  actBtn('copy', async () => { await navigator.clipboard.writeText(pageUrl); });
+  box.appendChild(cmp);
+}
+
 // ---------- search ----------
 async function doLens(input) {
   const box = $('#results');
@@ -29,37 +127,18 @@ async function doLens(input) {
       box.innerHTML = `<div class="t1s-status t1s-muted">${esc(res.message || 'No verified listing of this exact product right now.')}</div>`;
       return;
     }
-    const best = rows[0];
-    const saving = res.pageVsCheapest && res.pageVsCheapest.saving > 0 ? `<div class="t1s-lens-save">Saves ${inr(res.pageVsCheapest.saving)} vs this page</div>` : '';
-    const bestImg = imgOf(best);
-    box.innerHTML = `
-      <div class="t1s-lens-best">
-        <div class="t1s-lens-head">Cheapest we found</div>
-        <div class="t1s-item-title">${esc(res.product?.title || '')}</div>
-        <div class="t1s-item-row">
-          ${bestImg ? `<img class="t1s-thumb" src="${esc(bestImg)}" alt="" />` : ''}
-          <div>
-            <span class="t1s-item-price">${inr(best.price)}</span>
-            <div class="t1s-item-site">${esc(best.seller)}</div>
-            ${saving}
-          </div>
-          <button class="t1s-btn t1s-item-open" data-go="0">Buy</button>
-        </div>
-      </div>`;
-    box.querySelector('[data-go="0"]').addEventListener('click', () => { if (best.goUrl) chrome.tabs.create({ url: (new URL(best.goUrl, 'https://www.try1second.com')).href }); });
-    for (const [i, r] of rows.slice(1, 8).entries()) {
-      const div = document.createElement('div');
-      div.className = 't1s-item';
-      const img = imgOf(r);
-      div.innerHTML = `
-        <div class="t1s-item-row">
-          ${img ? `<img class="t1s-thumb" src="${esc(img)}" alt="" />` : ''}
-          <div><div class="t1s-item-site"><strong>${esc(r.seller)}</strong></div><div class="t1s-item-more">${esc((r.title || '').slice(0, 60))}</div></div>
-          <div style="text-align:right"><span class="t1s-item-price">${inr(r.price)}</span><br/><button class="t1s-btn t1s-item-open" data-go="${i + 1}">Open</button></div>
-        </div>`;
-      div.querySelector('[data-go]').addEventListener('click', () => { if (r.goUrl) chrome.tabs.create({ url: (new URL(r.goUrl, 'https://www.try1second.com')).href }); });
-      box.appendChild(div);
-    }
+    const title = res.product?.title || rows[0]?.title || '';
+    const save = res.pageVsCheapest && res.pageVsCheapest.saving > 0 ? res.pageVsCheapest.saving : 0;
+    box.innerHTML = '';
+    await renderCompareView(box, {
+      title,
+      seller: rows[0].seller,
+      price: rows[0].price,
+      image: imgOf(rows[0]),
+      save,
+      rows: rows.map((r) => ({ seller: r.seller, subtitle: r.title, price: Number(r.price) || 0, logo: faviconOf(r.sellerUrl), goUrl: r.goUrl })),
+    });
+    setFooterToProduct(title);
   } catch (err) {
     box.innerHTML = `<div class="t1s-status t1s-muted">Try1Second unreachable (${esc(err.message || 'error')}). No prices were invented.</div>`;
   }
@@ -194,28 +273,22 @@ async function doVerticalSearch(query, vertical) {
     box.innerHTML = '';
     for (const g of groups.slice(0, 8)) {
       const best = g.best;
-      const div = document.createElement('div');
-      div.className = 't1s-item';
-      const gimg = imgOf(best);
-      div.innerHTML = `
-        <div class="t1s-item-title">${esc(best.title)}</div>
-        <div class="t1s-item-row">
-          ${gimg ? `<img class="t1s-thumb" src="${esc(gimg)}" alt="" />` : ''}
-          <div>
-            <span class="t1s-item-price">${inr(priceOf(best))}</span>
-            <div class="t1s-item-site">${esc(best.seller || best.vendor || '')}</div>
-            <div class="t1s-item-more">+${g.offers.length - 1} more site${g.offers.length > 2 ? 's' : ''} compared</div>
-          </div>
-          <button class="t1s-btn t1s-item-open">Open</button>
-        </div>`;
-      div.querySelector('.t1s-item-open').addEventListener('click', async () => {
-        try {
-          const url = await apiGo(best.sellerUrl, best.id);
-          chrome.tabs.create({ url });
-        } catch { chrome.tabs.create({ url: await try1secondSearchUrl(query) }); }
+      await renderCompareView(box, {
+        title: best.title,
+        seller: best.seller || best.vendor,
+        price: priceOf(best),
+        image: imgOf(best),
+        rows: g.offers.map((o) => ({
+          seller: o.seller || o.vendor || 'Verified source',
+          subtitle: o.title,
+          price: priceOf(o),
+          logo: faviconOf(o.sellerUrl),
+          sellerUrl: o.sellerUrl,
+          offerId: o.id,
+        })),
       });
-      box.appendChild(div);
     }
+    setFooterToProduct(query);
   } catch (err) {
     box.innerHTML = `<div class="t1s-status t1s-muted">Try1Second unreachable (${esc(err.message || 'error')}). No prices were invented.</div>`;
   }

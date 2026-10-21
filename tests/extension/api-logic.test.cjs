@@ -174,7 +174,7 @@ if (classifyMatch) {
   const popupCode = fs.readFileSync('chrome-extension/popup/popup.js', 'utf8');
   // images are real offer images, https-only
   t('popup imgOf only accepts https offer images', popupCode.includes("/^https:/.test(a.image_url || '')") && popupCode.includes("/^https:/.test(x)"));
-  t('popup lens best card shows a real thumbnail', popupCode.includes('bestImg') && popupCode.includes('t1s-thumb'));
+  t('popup compare view shows a real thumbnail (product image)', popupCode.includes('imgOf(rows[0])') && popupCode.includes('imgOf(best)') && popupCode.includes('t1s-thumb'));
   // host-aware vertical routing (a Blinkit search is grocery, not ecommerce)
   const hvMatch = popupCode.match(/const HOST_VERTICALS = \{[\s\S]*?\};/);
   t('HOST_VERTICALS map present', !!hvMatch);
@@ -261,6 +261,29 @@ if (classifyMatch) {
   t('light wordmark converts navy text to white', navyKept === 0 && navyWhitened > 50, `whitened=${navyWhitened} kept=${navyKept}`);
 }
 
+  // ---------- owner 21 Oct: image-1 compare view + product deep links ----------
+  {
+    const myApi = fs.readFileSync('chrome-extension/lib/api.js', 'utf8');
+    const myPopup = fs.readFileSync('chrome-extension/popup/popup.js', 'utf8');
+    const myContent = fs.readFileSync('chrome-extension/content/content.js', 'utf8');
+    const myApp = fs.readFileSync('src/context/AppContext.tsx', 'utf8');
+    t('api.js exposes try1secondProductUrl (product comparison deep link)', /async function try1secondProductUrl/.test(myApi));
+    t('product deep link uses the #product= hash route (not ?q=)', /#product=\$\{encodeURIComponent/.test(myApi));
+
+    // Web app handles the same #product= hash -> product page.
+    t('web AppContext handles #product= hash -> in-site product page', /#product=([^&]+)/.test(myApp) && /setProductPageRequest\(\{ query: title/.test(myApp));
+
+    // Popup renders the image-1 comparison view.
+    t('popup renderCompareView shows "Compare N Available Prices" card', /Compare \$\{sorted\.length\} Available Price/.test(myPopup));
+    t('popup compare rows carry green "Lowest price" badge on cheapest', /t1s-lowest">Lowest price</.test(myPopup));
+    t('popup footer deep-links to product page (setFooterToProduct)', /setFooterToProduct/.test(myPopup) && /try1secondProductUrl\(title\)/.test(myPopup));
+    t('popup vertical search renders compare views (no old card-list)', !/more site\$\{g\.offers\.length > 2/.test(myPopup));
+    t('popup row opens the price-owning site via /api/go or its own goUrl', /apiGo\(r\.sellerUrl, r\.offerId\)/.test(myPopup));
+
+    // Content script hops to the product comparison page too.
+    t('content panel hops use try1secondProductUrl (product page)', /try1secondProductUrl\(product\.title\)/.test(myContent));
+    t('TRY1SECOND badge is a clickable button to the product comparison page', /type="button" class="t1s-bar-badge"/.test(myContent));
+  }
     console.log(`pass ${pass} / fail ${fail}`);
   process.exit(fail ? 1 : 0);
 })();

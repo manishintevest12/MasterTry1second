@@ -1928,6 +1928,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCurrentSecretRoute('/');
       }
 
+      // Shareable/deep-linkable PRODUCT COMPARISON page (owner request 21 Oct):
+      // #product=<title> opens the in-site product page ("Compare N Available
+      // Prices") for that title — extension "Open Try1Second" uses this.
+      const pMatch = /#product=([^&]+)/.exec(hash);
+      if (pMatch) {
+        const title = decodeURIComponent(pMatch[1]).trim();
+        if (title) {
+          setProductPageRequest({ query: title, nonce: Date.now() });
+          setActiveNavTab('product');
+          window.scrollTo({ top: 0 });
+          setCurrentSecretRoute('/');
+        }
+      }
+
       if (
         path.includes('merchantinstab2b') ||
         hash.includes('merchantinstab2b') ||

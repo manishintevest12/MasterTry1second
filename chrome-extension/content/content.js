@@ -45,11 +45,19 @@
     bar.id = BAR_ID;
     bar.className = 't1s-bar';
     bar.innerHTML = `
-      <span class="t1s-bar-badge">TRY1SECOND</span>
+      <button type="button" class="t1s-bar-badge" title="Open this product's price comparison on Try1Second">TRY1SECOND</button>
       <span class="t1s-bar-atl" title="All-time low verified by Try1Second (real recorded prices only)">ATL: <b>…</b></span>
       <button type="button" class="t1s-bar-coupon">Auto-Test Coupons</button>
       <button type="button" class="t1s-bar-toggle" title="Open the Try1Second panel">&#9432;</button>
       <div class="t1s-bar-coupons" hidden></div>`;
+    // Owner 21 Oct: badge click opens the WEBSITE's product comparison page
+    // for the product on this page (deep link), else the Try1Second home.
+    bar.querySelector('.t1s-bar-badge').addEventListener('click', async () => {
+      try {
+        const t = state.product && state.product.title;
+        window.open(await try1secondProductUrl(t || ''), '_blank', 'noopener');
+      } catch { window.open('https://www.try1second.com', '_blank', 'noopener'); }
+    });
     document.documentElement.appendChild(bar);
     return bar;
   }
@@ -283,7 +291,8 @@
     body.appendChild(list);
     const openRow = el('div', 't1s-openweb');
     openRow.innerHTML = `<a class="t1s-link" target="_blank" rel="noopener">Compare more on Try1Second →</a>`;
-    openRow.querySelector('a').href = await try1secondSearchUrl(product.title);
+    // Owner 21 Oct: hop to the in-site PRODUCT COMPARISON page, not a raw search.
+    openRow.querySelector('a').href = await try1secondProductUrl(product.title);
     body.appendChild(openRow);
     panel.querySelector('.t1s-btn-track').style.display = 'none';
   }
@@ -408,7 +417,8 @@
     // 5) Open in Try1Second
     const openRow = el('div', 't1s-openweb');
     openRow.innerHTML = `<a class="t1s-link" target="_blank" rel="noopener">Compare more sites on Try1Second →</a>`;
-    openRow.querySelector('a').href = await try1secondSearchUrl(product.title);
+    // Owner 21 Oct: hop to the in-site PRODUCT COMPARISON page, not a raw search.
+    openRow.querySelector('a').href = await try1secondProductUrl(product.title);
     body.appendChild(openRow);
 
     // 6) Wire tracking

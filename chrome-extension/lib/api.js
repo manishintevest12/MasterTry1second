@@ -97,6 +97,16 @@ async function try1secondSearchUrl(query) {
 }
 
 /**
+ * Deep link to the website's IN-SITE PRODUCT PAGE (the "Compare N Available
+ * Prices" view) for a product title. Owner request 21 Oct: extension buttons
+ * must open the product comparison page, not the bare home page.
+ */
+async function try1secondProductUrl(title) {
+  const base = await getApiBase();
+  return `${base}/#product=${encodeURIComponent(String(title || '').slice(0, 160))}`;
+}
+
+/**
  * Pick the backend result that matches the on-page product best.
  * Match by canonical entity id when available, else by title token overlap.
  * Returns null when nothing overlaps honestly.
