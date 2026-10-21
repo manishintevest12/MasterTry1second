@@ -1,7 +1,7 @@
 /** GET /api/v1/offers — unified frontend serving layer. */
 import { Router } from 'express';
 import { listOffers } from './store';
-import { registeredProviders, syncAllAffiliates, startAffiliateScheduler } from './aggregator';
+import { registeredProviders, syncAllAffiliates, startAffiliateScheduler, startAffiliateWatchdog } from './aggregator';
 
 export const affiliateRouter = Router();
 
@@ -26,6 +26,7 @@ affiliateRouter.get('/offers', async (req: any, res: any) => {
 /** In-process scheduler bootstrap (every 6h) + an initial sync shortly after boot. */
 export async function bootstrapAffiliateSync(): Promise<void> {
   startAffiliateScheduler();
+  startAffiliateWatchdog();
   setTimeout(() => { syncAllAffiliates().catch(() => undefined); }, 30_000).unref?.();
 }
 

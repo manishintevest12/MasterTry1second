@@ -7,7 +7,7 @@ import { sanitizeBindParams } from '../common/db';
 import type { UnifiedAffiliateOffer } from './types';
 import { linkinrCampaignFor } from './linkinr';
 
-const COLS = 'network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note';
+const COLS = 'network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, last_seen_at';
 
 function iso(d?: Date | null): string | null { return d ? new Date(d).toISOString().slice(0, 19).replace('T', ' ') : null; }
 
@@ -27,7 +27,7 @@ export async function upsertOffers(offers: UnifiedAffiliateOffer[]): Promise<num
           o.status, o.merchant_logo ?? null, o.commission_note ?? null, o.network_source, o.network_offer_id]));
     } else {
       await store.execute(
-        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         sanitizeBindParams([o.network_source, o.network_offer_id, o.merchant_name, o.merchant_logo ?? null, o.title, o.description ?? null,
           o.coupon_code ?? null, o.discount_value ?? null, o.discount_type ?? null, o.affiliate_url ?? null, o.original_url ?? null,
           (o.categories || []).join(','), iso(o.starts_at), iso(o.expires_at), o.status, o.commission_note ?? null]));

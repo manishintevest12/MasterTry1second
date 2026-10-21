@@ -48,7 +48,10 @@ export function dedupOffers(offers: UnifiedAffiliateOffer[]): UnifiedAffiliateOf
 }
 
 export async function syncAllAffiliates(opts: { limit?: number } = {}): Promise<ProviderSyncOutcome[]> {
-  await runMigrations();
+  // SELF-HEAL (owner rule, 21 Oct): a failed DB migration must never block
+  // coupon acquisition — the store self-selects file/mysql, so sync can safely
+  // proceed even if the migration bootstrap is unhealthy.
+  try { await runMigrations(); } catch { /* isolated: sync anyway */ }
   const outcomes: ProviderSyncOutcome[] = await Promise.all(PROVIDERS.map(async (p) => {
     try {
       if (!p.isConfigured()) return { provider: p.id, ok: true, offers: 0, error: 'not configured (skipped)' };
@@ -70,6 +73,36 @@ export async function syncAllAffiliates(opts: { limit?: number } = {}): Promise<
 /** Shared-hosting-friendly scheduler: called from the server bootstrap. */
 export function startAffiliateScheduler(intervalMs = 6 * 60 * 60 * 1000): NodeJS.Timeout {
   const t = setInterval(() => { syncAllAffiliates().catch(() => undefined); }, intervalMs);
+  t.unref?.();
+  return t;
+}
+
+/**
+ * SELF-HEALING COUPON WATCHDOG (owner rule, 21 Oct: the Coupons tab went empty
+ * for days before anyone noticed). Every 30 min the lock-holder checks the
+ * ACTIVE offer count; if the table is empty/thin while at least one provider
+ * is configured, it re-runs the full affiliate sync (at most once per hour so
+ * network rate limits are respected).
+ */
+let lastWatchdogSync = 0;
+export function startAffiliateWatchdog(intervalMs = 30 * 60 * 1000): NodeJS.Timeout {
+  const t = setInterval(async () => {
+    try {
+      const { listOffers } = await import('./store');
+      const store = (await import('../common/db')).getStore();
+      const rows = await store.query<any>("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
+      const fresh = await listOffers({ limit: 1 });
+      if (rows.length === 0 && fresh.length === 0) {
+        const { registeredProviders: rp } = await import('./aggregator');
+        const anyConfigured = PROVIDERS.some((p) => p.isConfigured());
+        if (anyConfigured && Date.now() - lastWatchdogSync > 60 * 60 * 1000) {
+          lastWatchdogSync = Date.now();
+          log.warn('Affiliate', 'Watchdog: active offers empty — self-healing with a full sync');
+          await syncAllAffiliates();
+        }
+      }
+    } catch { /* watchdog is best-effort */ }
+  }, intervalMs);
   t.unref?.();
   return t;
 }

@@ -172,37 +172,115 @@ export class FileStore implements DataStore {
     return m ? m[1] : 'default';
   }
 
-  /** Parse WHERE clauses: supports "col = ?", "col IS [NOT] NULL", "col > n" joined by AND. */
+/**
+   * Compare two SQL values the way MySQL would: datetimes as instants, numbers
+   * numerically, everything else as strings. Prune/expiry compares ISO strings
+   * ('2026-10-14T...') against space-format datetimes ('2026-10-21 ...'), so a
+   * naive string compare silently mis-orders rows it must keep.
+   */
+  private static cmp(l: unknown, r: unknown): number | null {
+    if (l === null || l === undefined || r === null || r === undefined) return null;
+    const ls = String(l).trim(); const rs = String(r).trim();
+    if (!ls || !rs) return null;
+    const looksDate = (v: string) => /\d{4}-\d{2}-\d{2}/.test(v);
+    const toDate = (v: string) => {
+      let x = v.replace(' ', 'T');
+      if (!/[zZ+]/.test(x)) x = x + 'Z';
+      return Date.parse(x);
+    };
+    if (looksDate(ls) && looksDate(rs)) {
+      const ld = toDate(ls); const rd = toDate(rs);
+      if (Number.isFinite(ld) && Number.isFinite(rd)) return ld < rd ? -1 : ld > rd ? 1 : 0;
+    }
+    const ln = Number(ls); const rn = Number(rs);
+    if (!Number.isNaN(ln) && !Number.isNaN(rn)) return ln < rn ? -1 : ln > rn ? 1 : 0;
+    const a = ls.toLowerCase(); const b = rs.toLowerCase();
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+
+  /**
+   * Parse WHERE clauses. Operator support (owner bug, 21 Oct): the old parser only
+   * understood "= ?", "IS [NOT] NULL" and "< literal-number"; every other shape —
+   * crucially `col < ?` used by the retention PRUNE and `col < NOW()` used by
+   * affiliate expiry — fell through to a permissive `true`, so on file-fallback
+   * storage the hourly prune deleted ENTIRE tables (coupons wiped every cycle)
+   * and expirePastOffers expired every active row. Unknown conditions are now
+   * CONSERVATIVE (match nothing) so a parse gap can never mass-delete again.
+   */
   private whereOf(sql: string, params: unknown[]): ((row: any) => boolean) | null {
     const m = sql.match(/where\s+([\s\S]+?)(?:order by|limit|$)/i);
     if (!m) return null;
     const conditions = m[1].split(/\s+and\s+/i).map((c) => c.trim()).filter(Boolean);
     if (conditions.length === 0) return null;
     let p = 0;
-    const preds = conditions.map((c) => {
+    /** Single-condition parser shared by AND chains and OR groups. */
+    const parseCond = (c: string): ((row: any) => boolean) => {
       let cm: RegExpMatchArray | null;
+      // Parenthesized OR group: "(a = ? OR b = ?)" — supported at the top level
+      // (admin deeplink lookup shape). Nested groups fall through conservative.
+      const orGroup = c.match(/^\((.+)\)$/);
+      if (orGroup && /\s+or\s+/i.test(orGroup[1])) {
+        const subs = orGroup[1].split(/\s+or\s+/i).map((x) => x.trim()).filter(Boolean).map(parseCond);
+        return (row: any) => subs.some((fn) => fn(row));
+      }
+      if ((cm = c.match(/^`?(\w+)`?\s*=\s*'([^']*)'$/i))) {
+        const col = cm[1]; const lit = cm[2];
+        return (row: any) => String(row[col]) === lit;
+      }
+      if ((cm = c.match(/^`?(\w+)`?\s*=\s*(\d+(?:\.\d+)?)$/i))) {
+        const col = cm[1]; const lit = Number(cm[2]);
+        return (row: any) => Number(row[col]) === lit;
+      }
       if ((cm = c.match(/^`?(\w+)`?\s*=\s*\?$/i))) {
         const col = cm[1];
         const expected = params[p++];
-        return (row: any) => String(row[col]) === String(expected);
+        return (row: any) => {
+          const cmp = FileStore.cmp(row[col], expected);
+          return cmp !== null ? cmp === 0 : String(row[col]) === String(expected);
+        };
       }
-      if ((cm = c.match(/^`?(\w+)`?\s+is\s+null$/i))) {
+      if ((cm = c.match(/^`?(\w+)`?\s*(!=|<>)\s*\?$/i))) {
+        const col = cm[1];
+        const expected = params[p++];
+        return (row: any) => {
+          if (row[col] === null || row[col] === undefined) return false;
+          const cmp = FileStore.cmp(row[col], expected);
+          return cmp !== null ? cmp !== 0 : String(row[col]) !== String(expected);
+        };
+      }
+      if ((cm = c.match(/^`?(\w+)`?\s+like\s+\?$/i))) {
+        const col = cm[1];
+        const pat = String(params[p++] ?? '').toLowerCase();
+        const rx = new RegExp('^' + pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$');
+        return (row: any) => rx.test(String(row[col] ?? '').toLowerCase());
+      }
+      if ((cm = c.match(/^`?(\w+)`?\s+in\s*\(([^)]+)\)$/i))) {
+        const col = cm[1];
+        const toks = cm[2].split(',').map((t) => t.trim());
+        const vals = toks.map((t) => (t === '?' ? params[p++] : /^null$/i.test(t) ? null : /^'.*'$/.test(t) ? t.slice(1, -1) : Number(t)));
+        return (row: any) => vals.some((v) => (v === null ? row[col] === null : String(row[col]) === String(v)));
+      }
+      if ((cm = c.match(/^`?(\w+)`?\s*is\s*null$/i))) {
         const col = cm[1];
         return (row: any) => row[col] === null || row[col] === undefined;
       }
-      if ((cm = c.match(/^`?(\w+)`?\s+is\s+not\s+null$/i))) {
+      if ((cm = c.match(/^`?(\w+)`?\s*is\s*not\s*null$/i))) {
         const col = cm[1];
         return (row: any) => !(row[col] === null || row[col] === undefined);
       }
-      if ((cm = c.match(/^`?(\w+)`?\s*(>|>=|<|<=)\s*(\d+)$/i))) {
-        const col = cm[1], op = cm[2], v = Number(cm[3]);
+      // Ordering comparisons: against a bound PARAM (?), NOW(), or a numeric literal.
+      if ((cm = c.match(/^`?(\w+)`?\s*(>|>=|<|<=)\s*(\?|now\(\)|-?\d+(?:\.\d+)?)$/i))) {
+        const col = cm[1]; const op = cm[2];
+        const rhs = /^now\(\)$/i.test(cm[3]) ? new Date().toISOString() : (cm[3] === '?' ? params[p++] : Number(cm[3]));
         return (row: any) => {
-          const rv = Number(row[col]);
-          return op === '>' ? rv > v : op === '>=' ? rv >= v : op === '<' ? rv < v : rv <= v;
+          const cmp = FileStore.cmp(row[col], rhs);
+          if (cmp === null) return false;
+          return op === '>' ? cmp > 0 : op === '>=' ? cmp >= 0 : op === '<' ? cmp < 0 : cmp <= 0;
         };
       }
-      return (_row: any) => true; // unknown condition — dev store errs permissive
-    });
+      return (_row: any) => false; // unknown condition — CONSERVATIVE: never mass-match again
+    };
+    const preds = conditions.map(parseCond);
     const pred = (row: any) => preds.every((fn) => fn(row));
     (pred as any).takesParams = true;
     return pred;
@@ -293,6 +371,7 @@ export class FileStore implements DataStore {
           if (/^now\(\)$/i.test(expr)) row[col] = new Date().toISOString();
           else if (/^null$/i.test(expr)) row[col] = null;
           else if (expr === '?') row[col] = params[paramIdx >= 0 ? paramIdx : 0];
+          else if (/^'([^']*)'$/.test(expr)) row[col] = expr.slice(1, -1); // quoted string literal (status = 'expired')
           else if (/^-?\d+(\.\d+)?$/.test(expr)) row[col] = Number(expr); // numeric literal (is_active=1), NOT a column name
           else if (/^`?(\w+)`?\s*[-+]\s*(\d+)$/i.test(expr)) {
             const am = expr.match(/^`?(\w+)`?\s*([-+])\s*(\d+)$/i)!;

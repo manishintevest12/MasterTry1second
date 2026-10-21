@@ -803,7 +803,7 @@ var init_db = __esm({
         }
       }
     };
-    FileStore = class {
+    FileStore = class _FileStore {
       constructor() {
         this.kind = "file";
         // Generic table emulation: { tableName: [rows] }
@@ -850,37 +850,117 @@ var init_db = __esm({
         const m = sql.match(/(?:from|into|update)\s+`?(\w+)`?/i);
         return m ? m[1] : "default";
       }
-      /** Parse WHERE clauses: supports "col = ?", "col IS [NOT] NULL", "col > n" joined by AND. */
+      /**
+         * Compare two SQL values the way MySQL would: datetimes as instants, numbers
+         * numerically, everything else as strings. Prune/expiry compares ISO strings
+         * ('2026-10-14T...') against space-format datetimes ('2026-10-21 ...'), so a
+         * naive string compare silently mis-orders rows it must keep.
+         */
+      static cmp(l, r) {
+        if (l === null || l === void 0 || r === null || r === void 0) return null;
+        const ls = String(l).trim();
+        const rs = String(r).trim();
+        if (!ls || !rs) return null;
+        const looksDate = (v) => /\d{4}-\d{2}-\d{2}/.test(v);
+        const toDate = (v) => {
+          let x = v.replace(" ", "T");
+          if (!/[zZ+]/.test(x)) x = x + "Z";
+          return Date.parse(x);
+        };
+        if (looksDate(ls) && looksDate(rs)) {
+          const ld = toDate(ls);
+          const rd = toDate(rs);
+          if (Number.isFinite(ld) && Number.isFinite(rd)) return ld < rd ? -1 : ld > rd ? 1 : 0;
+        }
+        const ln = Number(ls);
+        const rn = Number(rs);
+        if (!Number.isNaN(ln) && !Number.isNaN(rn)) return ln < rn ? -1 : ln > rn ? 1 : 0;
+        const a = ls.toLowerCase();
+        const b = rs.toLowerCase();
+        return a < b ? -1 : a > b ? 1 : 0;
+      }
+      /**
+       * Parse WHERE clauses. Operator support (owner bug, 21 Oct): the old parser only
+       * understood "= ?", "IS [NOT] NULL" and "< literal-number"; every other shape —
+       * crucially `col < ?` used by the retention PRUNE and `col < NOW()` used by
+       * affiliate expiry — fell through to a permissive `true`, so on file-fallback
+       * storage the hourly prune deleted ENTIRE tables (coupons wiped every cycle)
+       * and expirePastOffers expired every active row. Unknown conditions are now
+       * CONSERVATIVE (match nothing) so a parse gap can never mass-delete again.
+       */
       whereOf(sql, params) {
         const m = sql.match(/where\s+([\s\S]+?)(?:order by|limit|$)/i);
         if (!m) return null;
         const conditions = m[1].split(/\s+and\s+/i).map((c) => c.trim()).filter(Boolean);
         if (conditions.length === 0) return null;
         let p = 0;
-        const preds = conditions.map((c) => {
+        const parseCond = (c) => {
           let cm;
+          const orGroup = c.match(/^\((.+)\)$/);
+          if (orGroup && /\s+or\s+/i.test(orGroup[1])) {
+            const subs = orGroup[1].split(/\s+or\s+/i).map((x) => x.trim()).filter(Boolean).map(parseCond);
+            return (row) => subs.some((fn) => fn(row));
+          }
+          if (cm = c.match(/^`?(\w+)`?\s*=\s*'([^']*)'$/i)) {
+            const col = cm[1];
+            const lit = cm[2];
+            return (row) => String(row[col]) === lit;
+          }
+          if (cm = c.match(/^`?(\w+)`?\s*=\s*(\d+(?:\.\d+)?)$/i)) {
+            const col = cm[1];
+            const lit = Number(cm[2]);
+            return (row) => Number(row[col]) === lit;
+          }
           if (cm = c.match(/^`?(\w+)`?\s*=\s*\?$/i)) {
             const col = cm[1];
             const expected = params[p++];
-            return (row) => String(row[col]) === String(expected);
+            return (row) => {
+              const cmp = _FileStore.cmp(row[col], expected);
+              return cmp !== null ? cmp === 0 : String(row[col]) === String(expected);
+            };
           }
-          if (cm = c.match(/^`?(\w+)`?\s+is\s+null$/i)) {
+          if (cm = c.match(/^`?(\w+)`?\s*(!=|<>)\s*\?$/i)) {
+            const col = cm[1];
+            const expected = params[p++];
+            return (row) => {
+              if (row[col] === null || row[col] === void 0) return false;
+              const cmp = _FileStore.cmp(row[col], expected);
+              return cmp !== null ? cmp !== 0 : String(row[col]) !== String(expected);
+            };
+          }
+          if (cm = c.match(/^`?(\w+)`?\s+like\s+\?$/i)) {
+            const col = cm[1];
+            const pat = String(params[p++] ?? "").toLowerCase();
+            const rx = new RegExp("^" + pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".") + "$");
+            return (row) => rx.test(String(row[col] ?? "").toLowerCase());
+          }
+          if (cm = c.match(/^`?(\w+)`?\s+in\s*\(([^)]+)\)$/i)) {
+            const col = cm[1];
+            const toks2 = cm[2].split(",").map((t) => t.trim());
+            const vals = toks2.map((t) => t === "?" ? params[p++] : /^null$/i.test(t) ? null : /^'.*'$/.test(t) ? t.slice(1, -1) : Number(t));
+            return (row) => vals.some((v) => v === null ? row[col] === null : String(row[col]) === String(v));
+          }
+          if (cm = c.match(/^`?(\w+)`?\s*is\s*null$/i)) {
             const col = cm[1];
             return (row) => row[col] === null || row[col] === void 0;
           }
-          if (cm = c.match(/^`?(\w+)`?\s+is\s+not\s+null$/i)) {
+          if (cm = c.match(/^`?(\w+)`?\s*is\s*not\s*null$/i)) {
             const col = cm[1];
             return (row) => !(row[col] === null || row[col] === void 0);
           }
-          if (cm = c.match(/^`?(\w+)`?\s*(>|>=|<|<=)\s*(\d+)$/i)) {
-            const col = cm[1], op = cm[2], v = Number(cm[3]);
+          if (cm = c.match(/^`?(\w+)`?\s*(>|>=|<|<=)\s*(\?|now\(\)|-?\d+(?:\.\d+)?)$/i)) {
+            const col = cm[1];
+            const op = cm[2];
+            const rhs = /^now\(\)$/i.test(cm[3]) ? (/* @__PURE__ */ new Date()).toISOString() : cm[3] === "?" ? params[p++] : Number(cm[3]);
             return (row) => {
-              const rv = Number(row[col]);
-              return op === ">" ? rv > v : op === ">=" ? rv >= v : op === "<" ? rv < v : rv <= v;
+              const cmp = _FileStore.cmp(row[col], rhs);
+              if (cmp === null) return false;
+              return op === ">" ? cmp > 0 : op === ">=" ? cmp >= 0 : op === "<" ? cmp < 0 : cmp <= 0;
             };
           }
-          return (_row) => true;
-        });
+          return (_row) => false;
+        };
+        const preds = conditions.map(parseCond);
         const pred = (row) => preds.every((fn) => fn(row));
         pred.takesParams = true;
         return pred;
@@ -961,6 +1041,7 @@ var init_db = __esm({
               if (/^now\(\)$/i.test(expr)) row[col] = (/* @__PURE__ */ new Date()).toISOString();
               else if (/^null$/i.test(expr)) row[col] = null;
               else if (expr === "?") row[col] = params[paramIdx >= 0 ? paramIdx : 0];
+              else if (/^'([^']*)'$/.test(expr)) row[col] = expr.slice(1, -1);
               else if (/^-?\d+(\.\d+)?$/.test(expr)) row[col] = Number(expr);
               else if (/^`?(\w+)`?\s*[-+]\s*(\d+)$/i.test(expr)) {
                 const am = expr.match(/^`?(\w+)`?\s*([-+])\s*(\d+)$/i);
@@ -21055,7 +21136,7 @@ async function upsertOffers(offers) {
       );
     } else {
       await store2.execute(
-        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         sanitizeBindParams([
           o.network_source,
           o.network_offer_id,
@@ -21165,7 +21246,7 @@ var init_store = __esm({
     init_db();
     init_db();
     init_linkinr();
-    COLS = "network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note";
+    COLS = "network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, last_seen_at";
     NETWORK_BASE = {
       linkinr: 100,
       cuelinks: 40,
@@ -29963,6 +30044,14 @@ var init_directMerchant = __esm({
 });
 
 // server/affiliate/aggregator.ts
+var aggregator_exports = {};
+__export(aggregator_exports, {
+  dedupOffers: () => dedupOffers,
+  registeredProviders: () => registeredProviders,
+  startAffiliateScheduler: () => startAffiliateScheduler,
+  startAffiliateWatchdog: () => startAffiliateWatchdog,
+  syncAllAffiliates: () => syncAllAffiliates
+});
 function registeredProviders() {
   return PROVIDERS.map((p) => ({ id: p.id, label: p.label, configured: p.isConfigured() }));
 }
@@ -29986,7 +30075,10 @@ function dedupOffers(offers) {
   });
 }
 async function syncAllAffiliates(opts = {}) {
-  await runMigrations();
+  try {
+    await runMigrations();
+  } catch {
+  }
   const outcomes = await Promise.all(PROVIDERS.map(async (p) => {
     try {
       if (!p.isConfigured()) return { provider: p.id, ok: true, offers: 0, error: "not configured (skipped)" };
@@ -30010,7 +30102,29 @@ function startAffiliateScheduler(intervalMs = 6 * 60 * 60 * 1e3) {
   t.unref?.();
   return t;
 }
-var PROVIDERS;
+function startAffiliateWatchdog(intervalMs = 30 * 60 * 1e3) {
+  const t = setInterval(async () => {
+    try {
+      const { listOffers: listOffers2 } = await Promise.resolve().then(() => (init_store(), store_exports));
+      const store2 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
+      const rows = await store2.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
+      const fresh = await listOffers2({ limit: 1 });
+      if (rows.length === 0 && fresh.length === 0) {
+        const { registeredProviders: rp } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
+        const anyConfigured = PROVIDERS.some((p) => p.isConfigured());
+        if (anyConfigured && Date.now() - lastWatchdogSync > 60 * 60 * 1e3) {
+          lastWatchdogSync = Date.now();
+          log.warn("Affiliate", "Watchdog: active offers empty \u2014 self-healing with a full sync");
+          await syncAllAffiliates();
+        }
+      }
+    } catch {
+    }
+  }, intervalMs);
+  t.unref?.();
+  return t;
+}
+var PROVIDERS, lastWatchdogSync;
 var init_aggregator = __esm({
   "server/affiliate/aggregator.ts"() {
     init_db();
@@ -30030,6 +30144,7 @@ var init_aggregator = __esm({
       new OptimiseProvider(),
       new DirectMerchantProvider()
     ];
+    lastWatchdogSync = 0;
   }
 });
 
@@ -30041,6 +30156,7 @@ __export(api_exports, {
 });
 async function bootstrapAffiliateSync() {
   startAffiliateScheduler();
+  startAffiliateWatchdog();
   setTimeout(() => {
     syncAllAffiliates().catch(() => void 0);
   }, 3e4).unref?.();
