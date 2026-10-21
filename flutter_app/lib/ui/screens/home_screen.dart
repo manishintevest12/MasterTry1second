@@ -137,7 +137,7 @@ class _VerticalGrid extends StatelessWidget {
         Container(width: 9, height: 9, decoration: const BoxDecoration(color: T1SColors.red, shape: BoxShape.circle)),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('11 INSTANT LAUNCH VERTICALS · 1-CLICK SEARCH',
+          child: Text('${kVerticals.length} INSTANT LAUNCH VERTICALS · 1-CLICK SEARCH',
               style: tx(context, 12, w: FontWeight.w900, ls: 0.6)),
         ),
       ]),

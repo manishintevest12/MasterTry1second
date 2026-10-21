@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Try1Second Price Tracker & Auto Coupon",
   "short_name": "Try1Second",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "Auto-grabs the page you are on, compares prices across sites, 365-day price history, price-drop alerts and 1-click Auto Coupon Tester for every major store.",
   "permissions": [
     "storage",

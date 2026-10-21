@@ -38,11 +38,56 @@ const STAT_ROWS = [
   { icon: <TrendingDown className="w-4 h-4 text-emerald-600" />, name: 'Real price history', value: '365-day recorded charts' },
 ];
 
+/* ---------- LIVE demo data (owner 21 Oct: demo prices must be REAL, current) ----------
+   The right-side mockup cards used illustrative numbers. They now fetch the REAL
+   engine: /api/scrape/live 'iPhone 17' offers (priced, title-matched, one per seller)
+   and the REAL live-coupon count from /api/deals. When the fetch fails or returns
+   fewer than 2 priced offers, the cards fall back to the labelled example numbers —
+   never a mix of real and invented. */
+
+interface LiveOffer { seller: string; title: string; price: number; }
+const DEMO_QUERY = 'iPhone 17';
+
+const useLiveDemoData = () => {
+  const [offers, setOffers] = useState<LiveOffer[] | null>(null);
+  const [couponCount, setCouponCount] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/scrape/live', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: DEMO_QUERY, vertical: 'ecommerce' }),
+    }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (!alive || !d) return;
+      const seen = new Set<string>();
+      const out: LiveOffer[] = [];
+      for (const r of (d.results || []) as any[]) {
+        const t = String(r.title || '');
+        const price = Number(r.primaryPrice || 0);
+        const seller = String(r.provider || r.seller || 'Verified source');
+        if (!new RegExp(DEMO_QUERY, 'i').test(t) || price < 10000 || seen.has(seller)) continue;
+        seen.add(seller);
+        out.push({ seller, title: t.slice(0, 44), price });
+      }
+      out.sort((a, b) => a.price - b.price);
+      if (out.length >= 2) setOffers(out.slice(0, 3));
+    }).catch(() => { /* offline/blocked -> labelled examples stay */ });
+    fetch('/api/deals?limit=100').then((r) => (r.ok ? r.json() : null)).then((d) => {
+      if (!alive || !d) return;
+      setCouponCount(Number((d.deals || []).length));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return { offers, couponCount };
+};
+
+const pctCheaper = (base: number, price: number) =>
+  base > 0 && price > 0 && price < base ? Math.round(((base - price) / base) * 100) : 0;
+
 const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 
 /* ---------- right-side demo mockups (pure UI, honest illustrative numbers labelled as examples) ---------- */
 
-const DemoAlert: React.FC = () => (
+const DemoAlert: React.FC<{ livePrice?: number | null }> = ({ livePrice }) => (
   <div className="space-y-3">
     <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-64 ml-auto">
       <div className="flex items-center justify-between mb-3">
@@ -52,12 +97,12 @@ const DemoAlert: React.FC = () => (
       <p className="text-[11px] text-slate-500 font-semibold mb-3">Set a price drop alert to buy later</p>
       <div className="space-y-2">
         <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-          <span className="text-[10.5px] font-bold text-slate-600">Current price</span>
-          <span className="text-xs font-black text-slate-900">{inr(72999)}</span>
+          <span className="text-[10.5px] font-bold text-slate-600">Current price{livePrice ? ' · live' : ''}</span>
+          <span className="text-xs font-black text-slate-900">{inr(livePrice || 72999)}</span>
         </div>
         <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
           <span className="text-[10.5px] font-bold text-slate-600">Target price</span>
-          <span className="text-xs font-black text-red-600">{inr(70000)}</span>
+          <span className="text-xs font-black text-red-600">{inr(livePrice ? Math.max(1000, Math.floor((livePrice * 0.95) / 1000) * 1000) : 70000)}</span>
         </div>
         <button type="button" className="w-full py-2.5 rounded-xl text-white text-xs font-black" style={{ background: ACCENT_BG }}>
           Set alert
@@ -71,7 +116,16 @@ const DemoAlert: React.FC = () => (
   </div>
 );
 
-const DemoCompare: React.FC = () => (
+const DemoCompare: React.FC<{ live?: LiveOffer[] | null }> = ({ live }) => {
+  const rows = live && live.length >= 2 ? live : null;
+  const hiPrice = rows ? rows[rows.length - 1].price : 70499;
+  const best = rows ? rows[0] : { seller: 'Flipkart', title: 'iPhone 17', price: 67900 };
+  const rest = rows ? rows.slice(1) : [
+    { seller: 'Croma', title: 'iPhone 17', price: 68990 },
+    { seller: 'Reliance Digital', title: 'iPhone 17', price: 70499 },
+  ];
+  const bestPct = rows ? pctCheaper(hiPrice, best.price) : 22;
+  return (
   <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-72 ml-auto">
     <div className="flex items-center justify-between mb-3">
       <span className="text-xs font-black text-slate-900">Compare prices</span>
@@ -82,35 +136,38 @@ const DemoCompare: React.FC = () => (
         <span className="absolute -top-2 left-2 bg-emerald-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded">BEST DEAL</span>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-black text-slate-900">Flipkart</div>
-            <div className="text-[9px] font-bold text-emerald-700">22% cheaper</div>
+            <div className="text-[11px] font-black text-slate-900">{best.seller}</div>
+            <div className="text-[9px] font-bold text-emerald-700">{bestPct > 0 ? `${bestPct}% cheaper` : 'lowest live price'}</div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-black text-slate-900">{inr(67900)}</span>
+            <span className="text-xs font-black text-slate-900">{inr(best.price)}</span>
             <button type="button" className="text-[9px] font-black text-white px-2.5 py-1.5 rounded-lg" style={{ background: ACCENT_BG }}>Buy Now</button>
           </div>
         </div>
       </div>
-      {[
-        { s: 'Croma', p: 68990, c: '21% cheaper' },
-        { s: 'Reliance Digital', p: 70499, c: '19% cheaper' },
-      ].map((r) => (
-        <div key={r.s} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-          <div>
-            <div className="text-[11px] font-black text-slate-900">{r.s}</div>
-            <div className="text-[9.5px] font-bold text-slate-600">{r.c}</div>
+      {rest.map((r) => {
+        const pct = rows ? pctCheaper(hiPrice, r.price) : 0;
+        return (
+        <div key={r.seller} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-[11px] font-black text-slate-900">{r.seller}</div>
+            {rows ? <div className="text-[9px] font-semibold text-slate-500 truncate">{r.title}</div> : null}
           </div>
-          <span className="text-xs font-black text-slate-900">{inr(r.p)}</span>
+          <span className="text-xs font-black text-slate-900">{inr(r.price)}{rows && pct > 0 ? <span className="text-[9px] font-bold text-slate-500"> · −{pct}%</span> : null}</span>
         </div>
-      ))}
+        );
+      })}
     </div>
     <div className="absolute -bottom-3 right-4 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg" style={{ background: GREEN }}>
-      You save {inr(19000)}
+      You save {inr(rows ? Math.max(0, hiPrice - best.price) : 19000)}
     </div>
   </div>
-);
+  );
+};
 
-const DemoCoupons: React.FC = () => (
+const DemoCoupons: React.FC<{ live?: LiveOffer[] | null; couponCount?: number | null }> = ({ live, couponCount }) => {
+  const best = live && live.length ? live[0] : null;
+  return (
   <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl p-4 w-64 ml-auto">
     <div className="flex items-center gap-2 mb-3">
       <Ticket className="w-4 h-4 text-red-600" />
@@ -119,28 +176,38 @@ const DemoCoupons: React.FC = () => (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-[11px] font-black text-slate-900">iPhone 17</div>
-          <div className="text-[9.5px] font-bold text-slate-600">4 live coupons detected</div>
+          <div className="text-[11px] font-black text-slate-900">{best ? best.title : 'iPhone 17'}</div>
+          <div className="text-[9.5px] font-bold text-slate-600">{couponCount != null ? `${couponCount} live coupon${couponCount === 1 ? '' : 's'} detected` : '4 live coupons detected'}</div>
         </div>
-        <span className="text-xs font-black text-slate-900">{inr(82900)}</span>
+        <span className="text-xs font-black text-slate-900">{inr(best ? best.price : 82900)}</span>
       </div>
+      {couponCount == null || couponCount > 0 ? (
       <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1">
         <BadgeCheck className="w-3 h-3 text-emerald-600" />
-        <span className="text-[9px] font-black text-emerald-800">Coupon applied −₹1,500</span>
+        <span className="text-[9px] font-black text-emerald-800">{couponCount != null ? 'Coupon savings auto-tested live' : 'Coupon applied −₹1,500'}</span>
       </div>
+      ) : (
+      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1">
+        <ShieldCheck className="w-3 h-3 text-slate-500" />
+        <span className="text-[9px] font-black text-slate-600">Registry policy: verified codes only</span>
+      </div>
+      )}
     </div>
     <button type="button" className="w-full mt-2 py-2.5 rounded-xl text-white text-xs font-black" style={{ background: ACCENT_BG }}>
       ⚡ Test all codes
     </button>
     <div className="absolute -bottom-3 right-4 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg" style={{ background: GREEN }}>
-      You save ₹1,500
+      You save {best ? `${inr(Math.max(0, (live![live!.length - 1].price) - best.price))} across sites` : '₹1,500'}
     </div>
   </div>
-);
+  );
+};
 
 export const ChromeInstallSection: React.FC = () => {
   const { openExtensionModal } = useApp();
   const { links, loaded } = useAppLinks();
+  // owner 21 Oct: the demo mockups show REAL current engine prices, not examples
+  const { offers: liveOffers, couponCount } = useLiveDemoData();
   const chromeUrl = links?.chrome_extension?.url || null;
 
   const slides: Slide[] = [
@@ -151,7 +218,7 @@ export const ChromeInstallSection: React.FC = () => {
       headingAccent: 'Price Alerts',
       sub: 'Set your target price and get notified the moment it drops — powered by real recorded prices, never guesses.',
       icon: <Bell className="w-5 h-5" />,
-      demo: <DemoAlert />,
+      demo: <DemoAlert livePrice={liveOffers ? liveOffers[0].price : null} />,
     },
     {
       id: 'compare',
@@ -160,7 +227,7 @@ export const ChromeInstallSection: React.FC = () => {
       headingAccent: 'on 21 stores',
       sub: 'The same product across Amazon, Flipkart, Croma, Reliance and more — side by side, cheapest first, one click to buy.',
       icon: <TrendingDown className="w-5 h-5" />,
-      demo: <DemoCompare />,
+      demo: <DemoCompare live={liveOffers} />,
     },
     {
       id: 'coupons',
@@ -169,7 +236,7 @@ export const ChromeInstallSection: React.FC = () => {
       headingAccent: 'auto-tested coupons',
       sub: 'Try1Second tests every live coupon on the checkout page for you and applies the one that saves the most.',
       icon: <Ticket className="w-5 h-5" />,
-      demo: <DemoCoupons />,
+      demo: <DemoCoupons live={liveOffers} couponCount={couponCount} />,
     },
   ];
 

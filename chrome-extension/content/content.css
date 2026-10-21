@@ -75,15 +75,40 @@
   font-size: 11px; font-weight: 800; padding: 6px 10px; border-radius: 999px; white-space: nowrap;
 }
 
+/* ---------- Compare-prices rows (owner 21 Oct: colourful reference design) ----------
+   Retailer logo sits on a WHITE chip so every dark/light store logo stays visible
+   (never hunt for recoloured logos — flip the surface). BEST DEAL = green badge +
+   light-green tint; Buy Now = brand red; savings pills stay green. */
 .t1s-offers { display: flex; flex-direction: column; gap: 6px; }
 .t1s-offer {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  border: 1px solid #f1f5f9; border-radius: 12px; padding: 8px 10px;
-  font-size: 12px;
+  border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 10px;
+  font-size: 12px; background: #fff;
 }
-.t1s-offer.t1s-best { border-color: #fecdd3; background: #fff1f2; }
-.t1s-offer-site { font-weight: 700; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.t1s-offer-price { font-weight: 800; color: #334155; margin-left: auto; }
+.t1s-offer.t1s-best { border-color: #bbf7d0; background: #f0fdf4; box-shadow: 0 1px 2px rgba(0,168,107,.12); }
+.t1s-offer-logo {
+  width: 26px; height: 26px; border-radius: 8px; background: #fff;
+  border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center;
+  flex: none; overflow: hidden;
+}
+.t1s-offer-logo img { width: 16px; height: 16px; display: block; }
+.t1s-offer-info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.t1s-offer-site { font-weight: 700; color: #0a1626; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.t1s-offer-cheap { font-size: 10.5px; font-weight: 700; color: #64748b; line-height: 1.2; }
+.t1s-best .t1s-offer-cheap { color: #00A86B; }
+.t1s-offer-badge {
+  font-size: 9px; font-weight: 800; letter-spacing: .05em; color: #fff;
+  background: #00A86B; padding: 2px 7px; border-radius: 999px; margin-left: 6px;
+  vertical-align: 1px; text-transform: uppercase;
+}
+.t1s-offer-right { display: flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
+.t1s-offer-price { font-weight: 800; color: #0a1626; font-size: 13px; }
+.t1s-btn-buy {
+  background: #E11D48; color: #fff; border: none; border-radius: 10px;
+  font-size: 11.5px; font-weight: 800; padding: 6px 12px; cursor: pointer;
+  text-decoration: none; white-space: nowrap; font-family: inherit;
+}
+.t1s-btn-buy:hover { background: #c81040; }
 
 .t1s-hist { border: 1px solid #f1f5f9; border-radius: 12px; padding: 10px; }
 .t1s-hist-title { font-size: 11px; font-weight: 800; color: #0f172a; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em; }
@@ -149,8 +174,8 @@
 .t1s-bar-atl{font-weight:700;font-size:13px;color:#0f172a}
 .t1s-bar-atl b{font-size:14px}
 .t1s-bar-muted{color:#64748b}
-.t1s-bar-coupon{background:#0f172a;color:#fff;border:none;border-radius:12px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:12px}
-.t1s-bar-coupon:hover{background:#1e293b}
+.t1s-bar-coupon{background:#E11D48;color:#fff;border:none;border-radius:12px;padding:6px 12px;cursor:pointer;font-weight:800;font-size:12px;box-shadow:0 2px 6px rgba(225,29,72,.35)}
+.t1s-bar-coupon:hover{background:#c81040}
 .t1s-bar-toggle{background:#fff;color:#0f172a;border:1.5px solid #e2e8f0;border-radius:12px;padding:5px 10px;cursor:pointer;font-weight:700;font-size:13px}
 .t1s-bar-toggle:hover{border-color:#ef4444;color:#ef4444}
 .t1s-bar-coupons{flex-basis:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto}
@@ -245,7 +270,7 @@
 }
 .t1s-dock-brand img { width: 26px; height: 28px; object-fit: contain; display: block; }
 .t1s-dots { display: grid; grid-template-columns: repeat(3, 4px); gap: 3px; }
-.t1s-dots i { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.75); }
+.t1s-dots i { width: 4px; height: 4px; border-radius: 50%; background: rgba(15,23,42,.35); }
 .t1s-dock-x {
   position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%;
   background: #758596; color: #fff; display: flex; align-items: center; justify-content: center;
@@ -268,7 +293,9 @@
 .t1s-sb.t1s-sb-open { transform: translateX(0); visibility: visible; }
 .t1s-sb-head {
   display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  background: #151922; color: #fff; flex: none;
+  /* owner 21 Oct: light surface so the original dark logo lockup is clearly visible */
+  background: #ffffff; color: #0f172a; flex: none;
+  border-bottom: 1px solid #e2e8f0;
 }
 .t1s-sb-logo img { height: 26px; width: auto; display: block; }
 .t1s-sb-logo .t1s-ic img { width: 27px; height: 26px; }

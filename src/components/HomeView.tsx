@@ -215,13 +215,13 @@ export const HomeView: React.FC = () => {
         </div>
       </section>
 
-      {/* 2. 10 INSTANT LAUNCH VERTICALS GRID (Matches bottom label in screenshot) */}
+      {/* 2. INSTANT LAUNCH VERTICALS GRID — heading count derives from VERTICAL_META (auto-grows) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 bg-red-600 rounded-full animate-ping" />
             <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">
-              10 Instant Launch Verticals · 1-Click Search
+              {Object.keys(VERTICAL_META).length} Instant Launch Verticals · 1-Click Search
             </h2>
           </div>
           <span className="text-[11px] text-slate-500 hidden sm:block">

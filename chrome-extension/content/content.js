@@ -312,12 +312,28 @@
 
     // 2) All sites list (price-owning sellers only, via /api/go safe redirect)
     const list = el('div', 't1s-offers');
+    const pagePrice = product.price || 0;
     for (const o of offers.slice(0, 6)) {
+      const oPrice = priceOf(o) || 0;
+      // % cheaper than THIS page (never invented: only when the page price is real)
+      const pct = pagePrice > 0 && oPrice > 0 && oPrice < pagePrice
+        ? Math.round(((pagePrice - oPrice) / pagePrice) * 100) : 0;
+      const siteName = String(o.seller || o.vendor || 'Verified source');
+      const domainHint = String((o.sellerUrl || '')).replace(/^https?:\/\//, '').split('/')[0];
+      const logo = domainHint
+        ? `<img src="https://www.google.com/s2/favicons?domain=${esc(domainHint)}&sz=64" alt="" />`
+        : '';
       const row = el('div', 't1s-offer' + (o === best ? ' t1s-best' : ''));
       row.innerHTML = `
-        <span class="t1s-offer-site">${esc(o.seller || o.vendor || 'Verified source')}</span>
-        <span class="t1s-offer-price">${inr(priceOf(o))}</span>
-        <a class="t1s-btn t1s-btn-open" target="_blank" rel="noopener">Open</a>`;
+        <span class="t1s-offer-logo">${logo}</span>
+        <span class="t1s-offer-info">
+          <span class="t1s-offer-site">${esc(siteName)}${o === best ? '<span class="t1s-offer-badge">Best deal</span>' : ''}</span>
+          ${pct > 0 ? `<span class="t1s-offer-cheap">${pct}% cheaper than this page</span>` : ''}
+        </span>
+        <span class="t1s-offer-right">
+          <span class="t1s-offer-price">${inr(oPrice)}</span>
+          <a class="t1s-btn-buy" target="_blank" rel="noopener">Buy Now</a>
+        </span>`;
       const open = row.querySelector('a');
       if (o.sellerUrl) {
         open.href = '#';
