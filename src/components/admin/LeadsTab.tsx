@@ -21,6 +21,7 @@ export const LeadsTab: React.FC = () => {
   const [src, setSrc] = useState('');
   const [vert, setVert] = useState('');
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState('');
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
   const load = useCallback(async () => {
@@ -43,6 +44,18 @@ export const LeadsTab: React.FC = () => {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
   };
 
+  // Owner 21 Oct: approving a partner inquiry makes it a LIVE partner in the
+  // public Direct Partner Directory (approved_partners, MySQL-backed).
+  const approveAsPartner = async (id: number) => {
+    try {
+      const res = await fetch(`/api/admin/leads/${id}/approve-partner`, { method: 'POST', headers });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not approve');
+      setRows((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'converted' } : r)));
+      setNotice(`Partner "${data.partner?.name}" is now live in the directory.`);
+    } catch (e: any) { setNotice(e?.message || 'Could not approve'); }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -61,18 +74,19 @@ export const LeadsTab: React.FC = () => {
           <option value="account">Accounts</option>
         </select>
       </div>
+      {notice && <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">{notice}</div>}
       <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
-              {['Date', 'Source', 'Vertical', 'Name', 'Age', 'Salary', 'Location', 'Contact', 'Service / business', 'Status'].map((h) => (
+              {['Date', 'Source', 'Vertical', 'Name', 'Age', 'Salary', 'Location', 'Contact', 'Service / business', 'Status', 'Actions'].map((h) => (
                 <th key={h} className="px-2.5 py-2 text-left font-bold whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {loading ? <tr><td colSpan={10} className="px-3 py-4 text-slate-500">Loading…</td></tr> :
-             !rows.length ? <tr><td colSpan={10} className="px-3 py-4 text-slate-500">No leads yet.</td></tr> :
+            {loading ? <tr><td colSpan={11} className="px-3 py-4 text-slate-500">Loading…</td></tr> :
+             !rows.length ? <tr><td colSpan={11} className="px-3 py-4 text-slate-500">No leads yet.</td></tr> :
              rows.map((r) => (
               <tr key={r.id} className="border-t border-slate-100">
                 <td className="px-2.5 py-2 whitespace-nowrap text-slate-500">{String(r.created_at || '').slice(0, 16).replace('T', ' ')}</td>
@@ -88,6 +102,20 @@ export const LeadsTab: React.FC = () => {
                   <select className={inputCls} value={r.status} onChange={(e) => setStatus(r.id, e.target.value)}>
                     {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
+                </td>
+                <td className="px-2.5 py-2">
+                  {r.source === 'partner_inquiry' && r.status !== 'converted' ? (
+                    <button
+                      type="button"
+                      onClick={() => approveAsPartner(r.id)}
+                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] whitespace-nowrap"
+                      title="Approve this inquiry as a live partner in the public directory"
+                    >
+                      Approve as Partner
+                    </button>
+                  ) : r.source === 'partner_inquiry' && r.status === 'converted' ? (
+                    <span className="text-emerald-700 font-bold text-[10px] whitespace-nowrap">✓ In directory</span>
+                  ) : '—'}
                 </td>
               </tr>
             ))}

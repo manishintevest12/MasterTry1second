@@ -501,7 +501,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const hydratePartners = useCallback(async () => {
     if (directPartners.length) return;
     const m = await import('../data/partnersData');
-    setDirectPartners(m.INITIAL_DIRECT_PARTNERS);
+    const base = [...m.INITIAL_DIRECT_PARTNERS];
+    // Owner 21 Oct: admin-APPROVED partner inquiries (approved_partners, MySQL)
+    // merge into the directory next to the built-in partners. Server list wins
+    // on the same website so an approved partner is never duplicated.
+    try {
+      const res = await fetch('/api/partners');
+      const data = await res.json();
+      const approved = ((data?.partners || []) as Array<{
+        id: number; name: string; websiteUrl: string; category: string; badge: string; status: string;
+      }>).filter((p) => p.status === 'active' && p.websiteUrl);
+      const labels: Record<string, string> = { travel: 'Travel & Hotels', retail: 'Retail & Shopping', food: 'Food Delivery', finance: 'Banking & Finance', cabs: 'Cabs & Ride-Hailing' };
+      const palette = ['bg-[#0F4C81]', 'bg-[#1B5E20]', 'bg-[#4A148C]', 'bg-[#B71C1C]', 'bg-[#00695C]', 'bg-[#E65100]', 'bg-[#283593]'];
+      for (const p of approved) {
+        const cat = (['travel', 'retail', 'food', 'finance', 'cabs'].includes(p.category) ? p.category : 'retail') as DirectPartnerItem['category'];
+        const website = p.websiteUrl.includes('://') ? p.websiteUrl : `https://${p.websiteUrl}`;
+        const dupe = base.some((b) => b.websiteUrl.replace(/\/$/, '') === website.replace(/\/$/, ''));
+        if (dupe) continue;
+        base.push({
+          id: `srv-${p.id}`,
+          name: p.name,
+          category: cat,
+          categoryLabel: labels[cat],
+          badge: p.badge || 'Verified Partner',
+          logoBg: palette[p.id % palette.length],
+          logoText: p.name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase(),
+          description: 'Admin-approved partner of the Try1Second metasearch network.',
+          websiteUrl: website,
+          status: 'active',
+        });
+      }
+    } catch { /* directory stays on built-ins when the API is unreachable */ }
+    setDirectPartners(base);
   }, [directPartners.length]);
   // Merchant-portal data (metrics, campaigns, leads, vendor accounts) loads only on portal mount.
   const hydrateMerchantData = useCallback(async () => {

@@ -15,13 +15,14 @@
  */
 import crypto from 'crypto';
 import { settings } from '../common/settings';
+import { linkinrTrackingUrl } from './linkinr';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
 
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -151,6 +152,13 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   //    deeplink for every joined merchant — makemytrip.com today.
   const cuelinks = cuelinksMerchantUrl(targetUrl);
   if (cuelinks) return { trackingUrl: cuelinks, network: 'cuelinks', matchedProfile: 'cuelinks_fallback' };
+  // 3.5 LinkInR campaigns (owner sheet, 21 Oct 2026): monetize every merchant
+  //     that has an active campaign but NO direct partner. Direct partners
+  //     resolved above (admin configs, Amazon Associates, Cuelinks-joined
+  //     MMT/Goibibo) always win; this layer only catches the rest, so every
+  //     remaining exit earns affiliate revenue instead of a bare hop.
+  const linkinr = linkinrTrackingUrl(targetUrl);
+  if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
   // 4. Direct — honest, no invented parameters
   return { trackingUrl: targetUrl, network: null, matchedProfile: 'direct' };
 }

@@ -484,6 +484,42 @@ adminRouter.get('/leads', async (req, res) => {
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load leads' }); }
 });
 
+// Owner 21 Oct: approving a partner inquiry from Admin > Leads creates a live
+// entry in the public Direct Partner Directory (approved_partners table).
+adminRouter.get('/partners', async (_req, res) => {
+  try {
+    const { listPartners } = await import('../marketing/partners');
+    res.json({ success: true, partners: await listPartners(false) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load partners' }); }
+});
+adminRouter.patch('/partners/:id', async (req, res) => {
+  try {
+    const { updatePartnerStatus } = await import('../marketing/partners');
+    const status = String((req.body || {}).status || '') === 'paused' ? 'paused' : 'active';
+    await updatePartnerStatus(Number(req.params.id), status);
+    audit(req, 'partner_status_update', `partner:${req.params.id}`, req.body);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not update partner' }); }
+});
+adminRouter.post('/leads/:id/approve-partner', async (req, res) => {
+  try {
+    const { getLead } = await import('../marketing/leads');
+    const { approvePartnerFromLead } = await import('../marketing/partners');
+    const lead = await getLead(Number(req.params.id));
+    if (!lead) return res.status(404).json({ success: false, error: 'Lead not found' });
+    const r = await approvePartnerFromLead({
+      business: lead.business, website: lead.website, category: lead.category,
+      email: lead.email, phone: lead.phone, leadId: Number(req.params.id),
+    });
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    // Mark the inquiry converted so it stops appearing as pending work.
+    const { updateLeadStatus } = await import('../marketing/leads');
+    await updateLeadStatus(Number(req.params.id), 'converted');
+    audit(req, 'partner_approved', `lead:${req.params.id}`, { partnerId: r.partner.id });
+    res.json({ success: true, partner: r.partner });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not approve partner' }); }
+});
+
 adminRouter.patch('/leads/:id', async (req, res) => {
   try {
     const { updateLeadStatus } = await import('../marketing/leads');

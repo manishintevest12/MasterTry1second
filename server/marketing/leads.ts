@@ -113,6 +113,12 @@ export async function listLeads(opts: { source?: string; vertical?: string; stat
   return (await getStore().query(sql, args)) as LeadRow[];
 }
 
+export async function getLead(id: number): Promise<LeadRow | null> {
+  await ensureLeadsTable();
+  const rows = await getStore().query<LeadRow>('SELECT * FROM leads WHERE id = ? LIMIT 1', [id]);
+  return rows?.[0] || null;
+}
+
 export async function updateLeadStatus(id: number, status: string): Promise<void> {
   await ensureLeadsTable();
   const s = ['new', 'contacted', 'converted', 'closed'].includes(status) ? status : 'new';

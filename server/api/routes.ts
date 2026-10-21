@@ -928,6 +928,14 @@ apiRouter.get('/deals', async (req, res) => {
   } catch { res.json({ success: true, deals: [], counts: {} }); }
 });
 
+// GET /api/partners -> approved partner directory (admin-approved inquiries)
+apiRouter.get('/partners', async (_req, res) => {
+  try {
+    const { listPartners } = await import('../marketing/partners');
+    res.json({ success: true, partners: await listPartners(true) });
+  } catch { res.json({ success: true, partners: [] }); }
+});
+
 // GET /api/deals/for-seller?seller=Flipkart -> the seller's best offers + coupons for the redirect page
 apiRouter.get('/deals/for-seller', async (req, res) => {
   try {
