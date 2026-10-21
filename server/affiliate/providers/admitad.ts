@@ -79,33 +79,50 @@ export class AdmitadProvider extends BaseAffiliateProvider {
     const warnings: string[] = [];
     // Website-scoped coupons (coupons_for_website scope) are the only ones our
     // credential can read; the network-wide /coupons/ needs a broader scope (403).
-    // ADMITAD_WEBSITE_ID may be unset on the host (prod 15 Oct: token OK but
-    // /coupons/ 403) — discover the publisher's own ad space via GET /websites/
-    // (scope 'websites' is granted with the default credential) and cache it.
-    let websiteId = settings.admitad.websiteId || this.discoveredWebsiteId;
-    if (!websiteId) {
-      try {
-        const wj = await this.apiGet('/websites/', { limit: 10 });
-        const site = (wj?.results || []).find((s: any) => String(s?.status).toLowerCase() === 'active')
-          || wj?.results?.[0];
-        if (site?.id) {
-          this.discoveredWebsiteId = String(site.id);
-          websiteId = this.discoveredWebsiteId;
-          log.info('Affiliate', `Admitad website auto-discovered (id ${websiteId}, "${site.name}") — set ADMITAD_WEBSITE_ID to pin it`);
+    // SELF-HEALING (owner rule, 21 Oct: "admitad ke liye join hai already" — the
+    // owner had joined programs, but coupons stayed 0 because the provider read
+    // only ONE ad space and the joins could live on any of the publisher's
+    // active sites). We now read coupons from EVERY active ad space discovered
+    // via GET /websites/ (plus the env-pinned one) and merge — coupons flow
+    // regardless of which site the owner applied from.
+    const websiteIds: string[] = [];
+    if (settings.admitad.websiteId) websiteIds.push(String(settings.admitad.websiteId));
+    try {
+      const wj = await this.apiGet('/websites/', { limit: 20 });
+      const actives = (wj?.results || []).filter((s: any) => String(s?.status).toLowerCase() === 'active');
+      if (!actives.length && wj?.results?.length) actives.push(wj.results[0]);
+      for (const site of actives) {
+        const id = String(site?.id || '');
+        if (id && !websiteIds.includes(id)) {
+          websiteIds.push(id);
+          if (!this.discoveredWebsiteId) {
+            this.discoveredWebsiteId = id;
+            log.info('Affiliate', `Admitad ad space discovered (id ${id}, "${site.name}")`);
+          }
         }
-      } catch (e: any) {
-        warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
       }
+    } catch (e: any) {
+      warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
     }
-    const path = websiteId
-      ? `/coupons/website/${encodeURIComponent(websiteId)}/`
-      : '/coupons/';
-    for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-      const j = await this.apiGet(path, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
-      const results: any[] = j?.results || [];
-      if (results.length === 0) break;
-      for (const c of results) {
-        try { offers.push(this.normalize(c)); } catch (e: any) { warnings.push(`admitad: offer ${c?.id} skipped (${String(e).slice(0, 60)})`); }
+    if (websiteIds.length === 0) {
+      // No ad space readable — fall back to the network-wide path (403 under our
+      // scopes, but the shape stays honest if the credential is ever widened).
+      const j = await this.apiGet('/coupons/', { limit: 100 });
+      for (const c of (j?.results || [])) {
+        try { offers.push(this.normalize(c)); } catch { /* skip */ }
+      }
+      return { offers, count: offers.length, warnings };
+    }
+    for (const wid of websiteIds) {
+      if (offers.length >= maxOffers) break;
+      const path = `/coupons/website/${encodeURIComponent(wid)}/`;
+      for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
+        const j = await this.apiGet(path, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+        const results: any[] = j?.results || [];
+        if (results.length === 0) break;
+        for (const c of results) {
+          try { offers.push(this.normalize(c)); } catch (e: any) { warnings.push(`admitad: offer ${c?.id} skipped (${String(e).slice(0, 60)})`); }
+        }
       }
     }
     return { offers, count: offers.length, warnings };

@@ -29694,30 +29694,48 @@ var init_admitad = __esm({
         const maxPages = opts.pages ?? 5;
         const offers = [];
         const warnings = [];
-        let websiteId = settings.admitad.websiteId || this.discoveredWebsiteId;
-        if (!websiteId) {
-          try {
-            const wj = await this.apiGet("/websites/", { limit: 10 });
-            const site = (wj?.results || []).find((s) => String(s?.status).toLowerCase() === "active") || wj?.results?.[0];
-            if (site?.id) {
-              this.discoveredWebsiteId = String(site.id);
-              websiteId = this.discoveredWebsiteId;
-              log.info("Affiliate", `Admitad website auto-discovered (id ${websiteId}, "${site.name}") \u2014 set ADMITAD_WEBSITE_ID to pin it`);
+        const websiteIds = [];
+        if (settings.admitad.websiteId) websiteIds.push(String(settings.admitad.websiteId));
+        try {
+          const wj = await this.apiGet("/websites/", { limit: 20 });
+          const actives = (wj?.results || []).filter((s) => String(s?.status).toLowerCase() === "active");
+          if (!actives.length && wj?.results?.length) actives.push(wj.results[0]);
+          for (const site of actives) {
+            const id = String(site?.id || "");
+            if (id && !websiteIds.includes(id)) {
+              websiteIds.push(id);
+              if (!this.discoveredWebsiteId) {
+                this.discoveredWebsiteId = id;
+                log.info("Affiliate", `Admitad ad space discovered (id ${id}, "${site.name}")`);
+              }
             }
-          } catch (e) {
-            warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
           }
+        } catch (e) {
+          warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
         }
-        const path12 = websiteId ? `/coupons/website/${encodeURIComponent(websiteId)}/` : "/coupons/";
-        for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-          const j = await this.apiGet(path12, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
-          const results = j?.results || [];
-          if (results.length === 0) break;
-          for (const c of results) {
+        if (websiteIds.length === 0) {
+          const j = await this.apiGet("/coupons/", { limit: 100 });
+          for (const c of j?.results || []) {
             try {
               offers.push(this.normalize(c));
-            } catch (e) {
-              warnings.push(`admitad: offer ${c?.id} skipped (${String(e).slice(0, 60)})`);
+            } catch {
+            }
+          }
+          return { offers, count: offers.length, warnings };
+        }
+        for (const wid of websiteIds) {
+          if (offers.length >= maxOffers) break;
+          const path12 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
+            const j = await this.apiGet(path12, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const results = j?.results || [];
+            if (results.length === 0) break;
+            for (const c of results) {
+              try {
+                offers.push(this.normalize(c));
+              } catch (e) {
+                warnings.push(`admitad: offer ${c?.id} skipped (${String(e).slice(0, 60)})`);
+              }
             }
           }
         }
