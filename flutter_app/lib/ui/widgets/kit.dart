@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
+import '../screens/in_app_browser_screen.dart';
 
 /// Shared building blocks that match the website's Tailwind look.
 
@@ -220,12 +221,23 @@ class SectionTitle extends StatelessWidget {
 
 /// Opens a masking-pointer / external URL. `/api/out?t=` is relative to the API base, so the
 /// server (not the app) adds affiliate parameters and records the click.
-Future<bool> openDeal(String url) async {
+///
+/// Owner request (21 Oct): offer redirections open INSIDE the app in the
+/// embedded browser (dark header + favicon/seller pill, hidden URL, bottom
+/// Back/Forward/Refresh/Share/More toolbar) instead of leaving to Chrome.
+Future<bool> openDeal(String url, {String? sellerName}) async {
   if (url.isEmpty) return false;
   final base = AppState.instance.api.baseUrl;
   final full = url.startsWith('http') ? url : '$base$url';
   final uri = Uri.tryParse(full);
   if (uri == null) return false;
+  final nav = AppState.instance.navigator.currentState;
+  if (nav != null) {
+    await nav.push(MaterialPageRoute<void>(
+      builder: (_) => InAppBrowserScreen(url: full, sellerName: sellerName),
+    ));
+    return true;
+  }
   return launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 

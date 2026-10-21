@@ -1,3 +1,4 @@
+import 'kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -116,7 +117,7 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
   Future<void> _open(String goUrl) async {
     if (goUrl.isEmpty) return;
     try {
-      await launchUrl(Uri.parse(goUrl), mode: LaunchMode.externalApplication);
+      await openDeal(goUrl); // 21 Oct: offer links open in the embedded browser
     } catch (_) {}
   }
 

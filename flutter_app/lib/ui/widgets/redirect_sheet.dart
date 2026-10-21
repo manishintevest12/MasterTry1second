@@ -93,7 +93,7 @@ class _RedirectSheetState extends State<_RedirectSheet> {
     HapticFeedback.selectionClick();
     if (!mounted) return;
     Navigator.of(context).pop();
-    await openDeal(widget.goUrl);
+    await openDeal(widget.goUrl, sellerName: widget.sellerName);
   }
 
   @override
