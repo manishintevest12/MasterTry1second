@@ -229,7 +229,20 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
 
 ## Known-blocked (honest probes, do NOT re-recon without new angle)
 ### Flights deep-recon verdicts (14 Oct 2026, after Expedia flights went live)
-- MakeMyTrip flights — recipe CRACKED (17 Oct browser recon), IP-gated: the flow is
+- MakeMyTrip flights — LIVE CALENDAR (21 Oct): flights-cb.makemytrip.com/api/fareCalendar
+  ?apiCallTimestamp&crId=<uuid>&it=BOM-DEL-20261028&tripType=O&pfm=DESKTOP&src=desktop&region=in
+  &cur=INR&currency=INR&language=eng&pax=A-1_C-0_I-0&cc=E&cmpId=&dfs=0&forwardFlowRequired=true
+  &shd=true&sortBy=rhino with the standard flights-cb app headers (app-ver 1.0.0, device-id,
+  entity-name india, domain in, user-country IN, region in, pfm DESSKTOP, src desktop,
+  profile-type b2c, Origin www.makemytrip.com) is OPEN browserless from datacenter IPs:
+  364 per-date lowest fares in one GET, each with the cheapest airline named
+  (fares["281026"] = DDMMYY -> "Wed, Oct 28", "fr":"6,638", airlineInfo.name "IndiGo").
+  Parser mmtFareCalendar.ts; worker w_flights_makemytrip emits the exact depart-date fare
+  (honest cheapest-upcoming fallback), redirect to MMT's own SRP. NOTE: the calendar needs
+  crId as a QUERY PARAM (Kong rejects without it).
+  The per-flight SSE flow remains IP-gated (below) — full-flight MMT listing still needs
+  the SRP preauth from a clean IP.
+- MakeMyTrip flights per-flight SSE — recipe CRACKED (17 Oct browser recon), IP-gated: the flow is
   GET www.makemytrip.com/flight/search?itinerary=DEL-BOM-25/10/2026... (SSR HTML embeds
   window.__PRE_AUTH__=<token>) then GET flights-cb.makemytrip.com/api/search-stream-dt
   ?apiCallTimestamp&cc=E&crId=<uuid>&cur=INR&it=DEL-BOM-20261025&pax=A-1_C-0_I-0
