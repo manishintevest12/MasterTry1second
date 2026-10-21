@@ -69,8 +69,11 @@ export async function pruneCatalogue(scale = 1): Promise<number> {
   const steps: Array<[string, string, unknown[]]> = [
     ['offers', 'DELETE FROM offers WHERE fetched_at < ?', [daysAgo(RETENTION.offersDays, scale)]],
     ['source_evidence', 'DELETE FROM source_evidence WHERE fetched_at < ?', [daysAgo(RETENTION.evidenceDays, scale)]],
-    ['price_history', 'DELETE FROM price_history WHERE created_at < ?', [daysAgo(RETENTION.priceHistoryDays, scale)]],
-    ['source_health', 'DELETE FROM source_health WHERE created_at < ?', [daysAgo(RETENTION.sourceHealthDays, scale)]],
+    ['price_history', 'DELETE FROM price_history WHERE captured_at < ?', [daysAgo(RETENTION.priceHistoryDays, scale)]], // 21 Oct prod log: column is captured_at, not created_at
+    // source_health: REMOVED 21 Oct — it is a bounded one-row-per-source state table
+    // (PK source_id, updated_at ON UPDATE), not an append log. The old
+    // created_at prune failed every pass ("Unknown column") and would have
+    // deleted live circuit-breaker state had the column existed.
     ['searches', 'DELETE FROM searches WHERE created_at < ?', [daysAgo(RETENTION.searchesDays, scale)]],
     ['affiliate_offers', 'DELETE FROM affiliate_offers WHERE last_seen_at < ?', [daysAgo(RETENTION.affiliateSeenDays, scale)]],
     ['deals (auto)', 'DELETE FROM deals WHERE source = ? AND last_seen_at < ?', ['auto', daysAgo(RETENTION.autoDealsSeenDays, scale)]],
