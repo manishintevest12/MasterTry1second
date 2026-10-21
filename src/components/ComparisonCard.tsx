@@ -125,23 +125,39 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
 
   const isTracked = trackedItemIds.includes(item.id);
   const bestQuote = item.sellerQuotes.find((q) => q.isLowest) || item.sellerQuotes[0];
-  // Loans & insurance carry no product photo: show the provider's real logo tile
-  // (same idea as the flight rows' carrier logos) instead of a placeholder image.
-  const isImageVertical = !['loans', 'insurance'].includes(item.vertical);
+  // Loans, insurance & bank accounts carry no product photo: show the provider's
+  // real logo tile (same idea as the flight rows' carrier logos) instead of a
+  // placeholder image. Owner 21 Oct: the Account vertical must render exactly like
+  // Loans/Insurance — a bank logo tile, never the 'photo not published' placeholder.
+  const isAccountVertical = item.vertical === 'account';
+  const isImageVertical = !['loans', 'insurance', 'account'].includes(item.vertical);
   // Bank-account savings rows carry the rate IN the unit ('% p.a. (highest slab)') —
   // a percentage, never rupees. Demat/current rows carry a rupee charge instead.
   const isAccountRate = String(item.unit || '').startsWith('%');
-  // Loans / insurance: a RATE (% p.a.), never rupees, and the logo is the LENDER's, not the listing site's.
-  const isRateVertical = !isImageVertical || isAccountRate;
-  const lenderName = String(item.title || '').replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|used car|property|loan|loans|insurance|health|term|life|motor|travel)\b/gi, ' ').replace(/\s+/g, ' ').trim() || item.provider;
+  // Loans / insurance / savings-account rows: a RATE (% p.a.), never rupees, and the
+  // logo is the LENDER's/BANK's, not the listing site's.
+  const isRateVertical = ['loans', 'insurance'].includes(item.vertical) || isAccountRate;
+  // White lender-logo tile style for every finance vertical (incl. account demat rows).
+  const isRateTile = isRateVertical || isAccountVertical;
+  const lenderName = String(item.title || '').replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|used car|property|loan|loans|insurance|health|term|life|motor|travel|savings|current|demat|trading|zero[- ]balance|account)s?\b/gi, ' ').replace(/\s+/g, ' ').trim() || item.provider;
   const lenderLogo = item.imageUrl && !/bankbazaar|paisabazaar|policybazaar/i.test(item.imageUrl) ? item.imageUrl : undefined;
+  // Account rows name the bank in the title ('State Bank of India Savings Account'
+  // -> 'State Bank of India'); its real favicon comes from the brand-domain map,
+  // honestly falling back to initials when the brand is unknown (never a fake logo).
+  const accountBrandName = isAccountVertical
+    ? (String(item.title || '').replace(/\b(savings|current|demat|trading|zero[- ]?balance|account)s?\b/gi, ' ').replace(/\s+/g, ' ').trim() || undefined)
+    : undefined;
+  const accountBrandLogo = accountBrandName ? brandLogoUrl({ vertical: 'account', provider: accountBrandName, subtitle: '' } as Parameters<typeof brandLogoUrl>[0]) : undefined;
+  // The tile's logo: the LENDER for loans/insurance, the BANK for accounts, the
+  // carrier/site logo for flights/bus/cab.
+  const tileLogoUrl = isAccountVertical ? accountBrandLogo : (isRateVertical ? lenderLogo : brandLogoUrl(item));
   const logoStyle = getLogoStyle(item);
 
   const handleShare = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (navigator.clipboard) {
       navigator.clipboard.writeText(
-        `Check out ${item.title} on OmniCompare for ₹${(item.primaryPrice || 0).toLocaleString('en-IN')}: ${window.location.href}`
+        `Check out ${item.title} on OmniCompare for ${isRateVertical ? `${item.primaryPrice}% p.a.` : `₹${(item.primaryPrice || 0).toLocaleString('en-IN')}`}: ${window.location.href}`
       );
     }
   };
@@ -391,33 +407,27 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
               {/* LOGO SECTION */}
               <div className="flex flex-col items-center justify-center shrink-0">
                 <div
-                  className={`${isRateVertical ? 'w-20 h-20 sm:w-24 sm:h-24 bg-white text-slate-800' : `w-16 h-16 sm:w-20 sm:h-20 ${logoStyle.bg} ${logoStyle.color}`} rounded-2xl flex flex-col items-center justify-center font-black text-center shadow-2xs border border-slate-200/80 relative overflow-hidden transition-transform`}
+                  className={`${isRateTile ? 'w-20 h-20 sm:w-24 sm:h-24 bg-white text-slate-800' : `w-16 h-16 sm:w-20 sm:h-20 ${logoStyle.bg} ${logoStyle.color}`} rounded-2xl flex flex-col items-center justify-center font-black text-center shadow-2xs border border-slate-200/80 relative overflow-hidden transition-transform`}
                 >
-                  {isRateVertical && lenderLogo && logoImgOk ? (
+                  {tileLogoUrl && logoImgOk ? (
                     <img
-                      src={lenderLogo}
-                      alt={lenderName}
-                      className="w-[88%] h-[70%] object-contain"
+                      src={tileLogoUrl}
+                      alt={isAccountVertical ? (accountBrandName || item.title) : (isRateVertical ? lenderName : item.provider)}
+                      className={isRateTile ? 'w-[88%] h-[70%] object-contain' : 'w-9 h-9 sm:w-10 sm:h-10 object-contain'}
                       referrerPolicy="no-referrer"
                       loading="lazy"
                       onError={() => setLogoImgOk(false)}
                     />
-                  ) : isRateVertical ? (
-                    <span className="text-xl sm:text-2xl font-black tracking-tight leading-none text-slate-700">{initials(lenderName)}</span>
-                  ) : brandLogoUrl(item) && logoImgOk ? (
-                    <img
-                      src={brandLogoUrl(item)}
-                      alt={item.provider}
-                      className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
-                      referrerPolicy="no-referrer"
-                      onError={() => setLogoImgOk(false)}
-                    />
+                  ) : isRateTile ? (
+                    <span className="text-xl sm:text-2xl font-black tracking-tight leading-none text-slate-700">
+                      {initials(isAccountVertical ? (accountBrandName || item.title) : lenderName)}
+                    </span>
                   ) : (
                   <span className="text-sm sm:text-base font-black tracking-tight leading-none px-1">
                     {item.logoText || item.providerLogo || item.provider.substring(0, 3).toUpperCase()}
                   </span>
                   )}
-                  {!isRateVertical && (
+                  {!isRateTile && (
                     <span className="text-[9px] uppercase tracking-wider opacity-85 mt-1 font-semibold truncate max-w-[65px] px-1">
                       {item.provider}
                     </span>
@@ -974,7 +984,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
           >
             <span>
               Compare {siteRows.length} websites
-              {group?.highest && group.highest > group.best.price && !['loans', 'insurance'].includes(item.vertical)
+              {group?.highest && group.highest > group.best.price && !isRateVertical
                 ? ` · save up to ₹${(group.highest - group.best.price).toLocaleString('en-IN')}`
                 : ''}
             </span>
@@ -984,7 +994,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
             <div className="border-t border-slate-100 divide-y divide-slate-100">
               {siteRows.map((r, i) => {
                 const q = r.item.sellerQuotes.find((x) => x.isLowest) || r.item.sellerQuotes[0];
-                const isRate = ['loans', 'insurance'].includes(item.vertical);
+                // Savings-account rates are percentages (unit starts with '%'); demat/current rows are rupees.
+                const isRate = isRateVertical;
                 return (
                   <div key={r.item.id + i} className="flex items-center gap-3 px-4 sm:px-5 py-3">
                     <div className="min-w-0 flex-1">

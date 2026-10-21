@@ -21008,11 +21008,181 @@ var init_deeplink = __esm({
   }
 });
 
+// server/affiliate/store.ts
+var store_exports = {};
+__export(store_exports, {
+  dedupBestOffers: () => dedupBestOffers,
+  expirePastOffers: () => expirePastOffers,
+  listOffers: () => listOffers,
+  normKey: () => normKey,
+  offerCommissionScore: () => offerCommissionScore,
+  parsePayoutText: () => parsePayoutText,
+  upsertOffers: () => upsertOffers
+});
+function iso(d) {
+  return d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null;
+}
+async function upsertOffers(offers) {
+  const store2 = getStore();
+  let n = 0;
+  for (const o of offers) {
+    const existing = await store2.query(
+      "SELECT id FROM affiliate_offers WHERE network_source = ? AND network_offer_id = ?",
+      [o.network_source, o.network_offer_id]
+    );
+    if (existing.length > 0) {
+      await store2.execute(
+        `UPDATE affiliate_offers SET title = ?, description = ?, coupon_code = ?, discount_value = ?, discount_type = ?,
+         affiliate_url = ?, original_url = ?, categories = ?, starts_at = ?, expires_at = ?, status = ?, merchant_logo = ?, commission_note = ?, last_seen_at = NOW()
+         WHERE network_source = ? AND network_offer_id = ?`,
+        sanitizeBindParams([
+          o.title,
+          o.description ?? null,
+          o.coupon_code ?? null,
+          o.discount_value ?? null,
+          o.discount_type ?? null,
+          o.affiliate_url ?? null,
+          o.original_url ?? null,
+          (o.categories || []).join(","),
+          iso(o.starts_at),
+          iso(o.expires_at),
+          o.status,
+          o.merchant_logo ?? null,
+          o.commission_note ?? null,
+          o.network_source,
+          o.network_offer_id
+        ])
+      );
+    } else {
+      await store2.execute(
+        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        sanitizeBindParams([
+          o.network_source,
+          o.network_offer_id,
+          o.merchant_name,
+          o.merchant_logo ?? null,
+          o.title,
+          o.description ?? null,
+          o.coupon_code ?? null,
+          o.discount_value ?? null,
+          o.discount_type ?? null,
+          o.affiliate_url ?? null,
+          o.original_url ?? null,
+          (o.categories || []).join(","),
+          iso(o.starts_at),
+          iso(o.expires_at),
+          o.status,
+          o.commission_note ?? null
+        ])
+      );
+    }
+    n += 1;
+  }
+  return n;
+}
+async function expirePastOffers() {
+  const store2 = getStore();
+  const r = await store2.execute(
+    `UPDATE affiliate_offers SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()`,
+    []
+  );
+  return r.affectedRows || 0;
+}
+function parsePayoutText(text) {
+  if (!text) return 0;
+  const pct = /([\d.]+)\s*%/.exec(text);
+  if (pct) return Number(pct[1]) * 10;
+  const rs = /₹\s*([\d,.]+)/.exec(text);
+  if (rs) return Number(rs[1].replace(/,/g, ""));
+  const any = /([\d.]+)/.exec(text);
+  return any ? Number(any[1]) : 0;
+}
+function normKey(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function offerCommissionScore(o) {
+  const hop = String(o.original_url || o.affiliate_url || "");
+  const lir = linkinrCampaignFor(hop);
+  return Math.max(
+    parsePayoutText(o.commission_note),
+    lir ? lir.payoutScore : 0,
+    NETWORK_BASE[String(o.network_source || "").toLowerCase()] ?? 10
+  );
+}
+function dedupBestOffers(rows) {
+  const best = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const code = normKey(r.coupon_code);
+    const key = `${normKey(r.merchant_name)}|${code || normKey(r.title).slice(0, 60)}`;
+    const cur = best.get(key);
+    if (!cur) {
+      best.set(key, r);
+      continue;
+    }
+    const a = offerCommissionScore(r) - offerCommissionScore(cur);
+    const b = String(r.updated_at || r.created_at || "").localeCompare(String(cur.updated_at || cur.created_at || ""));
+    if (a > 0 || a === 0 && b > 0) best.set(key, r);
+  }
+  return Array.from(best.values());
+}
+async function listOffers(q3) {
+  const store2 = getStore();
+  const where = ["status = 'active'"];
+  const params = [];
+  if (q3.source) {
+    where.push("network_source = ?");
+    params.push(q3.source);
+  }
+  if (q3.merchant) {
+    where.push("merchant_name LIKE ?");
+    params.push(`%${q3.merchant}%`);
+  }
+  if (q3.category) {
+    where.push("categories LIKE ?");
+    params.push(`%${q3.category}%`);
+  }
+  if (q3.hasCoupon) {
+    where.push("coupon_code IS NOT NULL AND coupon_code != ?");
+    params.push("");
+  }
+  if (q3.search) {
+    where.push("(title LIKE ? OR merchant_name LIKE ?)");
+    params.push(`%${q3.search}%`, `%${q3.search}%`);
+  }
+  const order = q3.sort === "expiry_soon" ? "expires_at ASC" : q3.sort === "discount_high_to_low" ? "discount_value DESC" : "updated_at DESC";
+  const limit = Math.min(Math.max(q3.limit ?? 20, 1), 100);
+  const offset = Math.max(q3.offset ?? 0, 0);
+  const pool2 = Math.max(limit * 4, 200);
+  const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
+               discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
+               FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${pool2} OFFSET ${offset}`;
+  const rows = await store2.query(sql, params);
+  return dedupBestOffers(rows).slice(0, limit);
+}
+var COLS, NETWORK_BASE;
+var init_store = __esm({
+  "server/affiliate/store.ts"() {
+    init_db();
+    init_db();
+    init_linkinr();
+    COLS = "network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note";
+    NETWORK_BASE = {
+      linkinr: 100,
+      cuelinks: 40,
+      admitad: 30,
+      vcommission: 25,
+      earnkaro: 20,
+      inrdeals: 18
+    };
+  }
+});
+
 // server/marketing/deals.ts
 var deals_exports = {};
 __export(deals_exports, {
   DEAL_KINDS: () => DEAL_KINDS,
   MERCHANT_VERTICAL: () => MERCHANT_VERTICAL,
+  allDealsForSeller: () => allDealsForSeller,
   dealsForSeller: () => dealsForSeller,
   deleteDeal: () => deleteDeal,
   ensureDealsSchema: () => ensureDealsSchema,
@@ -21153,9 +21323,51 @@ async function listPublicDeals(opts = {}) {
   const { deals } = await getDealsWithCounts(opts);
   return deals;
 }
+async function affiliateDealsForSeller(seller, limit = 100) {
+  if (!seller || !seller.trim()) return [];
+  try {
+    const { listOffers: listOffers2 } = await Promise.resolve().then(() => (init_store(), store_exports));
+    const rows = await listOffers2({ limit: 100 });
+    const needle = seller.trim().toLowerCase();
+    const matched = rows.filter((r) => {
+      const m = String(r.merchant_name || "").trim().toLowerCase();
+      return m && (m.includes(needle) || needle.includes(m));
+    });
+    return matched.slice(0, limit).map((r) => ({
+      id: 1e6 + Number(r.id || 0),
+      merchantKey: merchantKeyOf(String(r.merchant_name || "")),
+      merchantName: r.merchant_name,
+      kind: r.coupon_code ? "coupon" : "sale",
+      title: String(r.title || `${r.merchant_name} offer`),
+      description: r.description || null,
+      code: r.coupon_code || null,
+      discountText: Number(r.discount_value) > 0 ? `${r.discount_value}${String(r.discount_type || "") === "percentage" ? "% OFF" : " OFF"}` : null,
+      minOrder: null,
+      terms: null,
+      validTill: r.expires_at ? String(r.expires_at).slice(0, 10) : null,
+      imageUrl: r.merchant_logo || null,
+      goUrl: createMaskingPointer(String(r.affiliate_url || r.original_url || ""), { offerId: `aff-${r.id}` })
+    }));
+  } catch {
+    return [];
+  }
+}
+async function allDealsForSeller(seller) {
+  const registry = await listPublicDeals({ merchant: seller, limit: 100 });
+  const affiliate = await affiliateDealsForSeller(seller, 100);
+  const seen = /* @__PURE__ */ new Set();
+  const merged = [];
+  for (const d of [...registry, ...affiliate]) {
+    const key = `${String(d.merchantKey || d.merchantName || "").toLowerCase()}|${String(d.code || d.title || "").toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(d);
+  }
+  return merged;
+}
 async function dealsForSeller(seller, limit = 6) {
   const rank = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
-  const all = await listPublicDeals({ merchant: seller, limit: 100 });
+  const all = await allDealsForSeller(seller);
   return all.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)).slice(0, limit);
 }
 function extractDiscountScore(d) {
@@ -21195,8 +21407,11 @@ function findBestOffer(deals) {
   return sorted[0];
 }
 async function forSellerWithBest(seller, limit = 6) {
-  const all = await listPublicDeals({ merchant: seller, limit: 100 });
-  const deals = await dealsForSeller(seller, limit);
+  const all = await allDealsForSeller(seller);
+  const deals = all.slice().sort((a, b) => {
+    const rank = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
+    return (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9);
+  }).slice(0, limit);
   const coupon = findBestCoupon(all);
   const offer = findBestOffer(all);
   return { deals, best: { offer, coupon } };
@@ -21923,8 +22138,19 @@ var init_ranking = __esm({
 });
 
 // server/verticals/verticalEngine.ts
+function filterByNamedProviders(offers, entityName) {
+  if (!entityName) return offers;
+  const requiredProviders = PROVIDER_QUERY_PATTERNS.filter(([qRe]) => qRe.test(String(entityName))).map(([, oRe]) => oRe);
+  if (requiredProviders.length === 0) return offers;
+  return offers.filter((o) => {
+    const text = `${o.title} ${o.vendor || ""}`.toLowerCase();
+    return requiredProviders.some((re) => re.test(text));
+  });
+}
 function filterByQueryEntity(offers, query) {
   if (!query.entityName) return offers;
+  const providerFiltered = filterByNamedProviders(offers, query.entityName);
+  if (providerFiltered.length !== offers.length) return providerFiltered;
   const tokens = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
   if (tokens.length === 0) return offers;
   if ((query.intent === "browse" || tokens.length > 2) && offers.length > 0 && offers.every((o) => NON_COMPARISON_VERTICALS.includes(o.vertical))) {
@@ -22025,7 +22251,7 @@ function verticalStatusReport() {
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
 }
-var NON_COMPARISON_VERTICALS, CATEGORICAL_ATTR_KEYS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES, UnknownVerticalEngine;
+var NON_COMPARISON_VERTICALS, CATEGORICAL_ATTR_KEYS, PROVIDER_QUERY_PATTERNS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES, UnknownVerticalEngine;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
     NON_COMPARISON_VERTICALS = [
@@ -22053,6 +22279,41 @@ var init_verticalEngine = __esm({
       "service_type",
       "category",
       "provider_type"
+    ];
+    PROVIDER_QUERY_PATTERNS = [
+      [/\bsbi\b|state bank of india/i, /state bank of india|\bsbi\b/i],
+      [/\bpnb\b|punjab national bank/i, /punjab national bank|\bpnb\b/i],
+      [/\bbob\b|bank of baroda/i, /bank of baroda|\bbob\b/i],
+      [/\bhdfc\b/i, /hdfc/i],
+      [/\bicici\b/i, /icici/i],
+      [/\baxis\b/i, /axis/i],
+      [/\bkotak\b/i, /kotak/i],
+      [/\bcanara\w*/i, /canara/i],
+      [/\bidfc\b/i, /idfc/i],
+      [/\bindusind\b/i, /indusind/i],
+      [/\brbl\b/i, /rbl/i],
+      [/\byes bank\b/i, /yes bank/i],
+      [/\bau bank\b|au small finance/i, /au small finance/i],
+      [/\bequitas\b/i, /equitas/i],
+      [/\bdbs\b/i, /dbs/i],
+      [/\bfederal bank\b/i, /federal bank/i],
+      [/\bunion bank\b/i, /union bank/i],
+      [/\bbank of india\b/i, /bank of india/i],
+      [/\bbank of maharashtra\b/i, /bank of maharashtra/i],
+      [/\bkarnataka bank\b/i, /karnataka bank/i],
+      [/\bsouth indian bank\b/i, /south indian bank/i],
+      [/\bcatholic syrian\b|\bcsb bank\b/i, /catholic syrian|\bcsb\b/i],
+      [/\bcity union bank\b/i, /city union bank/i],
+      [/\btamilnad mercantile\b/i, /tamilnad mercantile/i],
+      [/\bpaytm payments bank\b|\bpaytm bank\b/i, /paytm/i],
+      [/\bairtel payments bank\b|\bairtel bank\b/i, /airtel/i],
+      [/\bfino\b/i, /fino/i],
+      [/\bujjivan\b/i, /ujjivan/i],
+      [/\bzerodha\b/i, /zerodha/i],
+      [/\bgroww\b/i, /groww/i],
+      [/\bupstox\b/i, /upstox/i],
+      [/\bangel one\b|angel broking/i, /angel/i],
+      [/\b5paisa\b/i, /5paisa/i]
     ];
     PLACE_ALIASES = {
       "new delhi": "delhi",
@@ -22610,10 +22871,11 @@ function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pend
     totalSearchLatencyMs: Date.now() - start2
   };
 }
-async function freshCatalogueOffers(vertical, input) {
+async function freshCatalogueOffers(vertical, input, parsed) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  const offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  return filterByNamedProviders(offers, parsed?.entityName);
 }
 async function runSearch(input) {
   const totalStart = Date.now();
@@ -22668,12 +22930,12 @@ async function runSearch(input) {
   }
   const running2 = inflightPipelines.get(cacheKey);
   if (running2) {
-    const offers = await freshCatalogueOffers(vertical, input);
+    const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running2;
   }
   {
-    const offers = await freshCatalogueOffers(vertical, input);
+    const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) {
       const pipeline2 = runLivePipeline(input, parsed).then((response2) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
@@ -22869,6 +23131,7 @@ var init_searchOrchestrator = __esm({
     init_ranking();
     init_verticalEngine();
     init_catalogueService();
+    init_verticalEngine();
     init_affiliateNetwork();
     inflightPipelines = /* @__PURE__ */ new Map();
   }
@@ -29259,165 +29522,6 @@ var init_refreshWorker = __esm({
     init_freshness();
     timers = [];
     running = false;
-  }
-});
-
-// server/affiliate/store.ts
-function iso(d) {
-  return d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null;
-}
-async function upsertOffers(offers) {
-  const store2 = getStore();
-  let n = 0;
-  for (const o of offers) {
-    const existing = await store2.query(
-      "SELECT id FROM affiliate_offers WHERE network_source = ? AND network_offer_id = ?",
-      [o.network_source, o.network_offer_id]
-    );
-    if (existing.length > 0) {
-      await store2.execute(
-        `UPDATE affiliate_offers SET title = ?, description = ?, coupon_code = ?, discount_value = ?, discount_type = ?,
-         affiliate_url = ?, original_url = ?, categories = ?, starts_at = ?, expires_at = ?, status = ?, merchant_logo = ?, commission_note = ?, last_seen_at = NOW()
-         WHERE network_source = ? AND network_offer_id = ?`,
-        sanitizeBindParams([
-          o.title,
-          o.description ?? null,
-          o.coupon_code ?? null,
-          o.discount_value ?? null,
-          o.discount_type ?? null,
-          o.affiliate_url ?? null,
-          o.original_url ?? null,
-          (o.categories || []).join(","),
-          iso(o.starts_at),
-          iso(o.expires_at),
-          o.status,
-          o.merchant_logo ?? null,
-          o.commission_note ?? null,
-          o.network_source,
-          o.network_offer_id
-        ])
-      );
-    } else {
-      await store2.execute(
-        `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        sanitizeBindParams([
-          o.network_source,
-          o.network_offer_id,
-          o.merchant_name,
-          o.merchant_logo ?? null,
-          o.title,
-          o.description ?? null,
-          o.coupon_code ?? null,
-          o.discount_value ?? null,
-          o.discount_type ?? null,
-          o.affiliate_url ?? null,
-          o.original_url ?? null,
-          (o.categories || []).join(","),
-          iso(o.starts_at),
-          iso(o.expires_at),
-          o.status,
-          o.commission_note ?? null
-        ])
-      );
-    }
-    n += 1;
-  }
-  return n;
-}
-async function expirePastOffers() {
-  const store2 = getStore();
-  const r = await store2.execute(
-    `UPDATE affiliate_offers SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()`,
-    []
-  );
-  return r.affectedRows || 0;
-}
-function parsePayoutText(text) {
-  if (!text) return 0;
-  const pct = /([\d.]+)\s*%/.exec(text);
-  if (pct) return Number(pct[1]) * 10;
-  const rs = /₹\s*([\d,.]+)/.exec(text);
-  if (rs) return Number(rs[1].replace(/,/g, ""));
-  const any = /([\d.]+)/.exec(text);
-  return any ? Number(any[1]) : 0;
-}
-function normKey(s) {
-  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
-function offerCommissionScore(o) {
-  const hop = String(o.original_url || o.affiliate_url || "");
-  const lir = linkinrCampaignFor(hop);
-  return Math.max(
-    parsePayoutText(o.commission_note),
-    lir ? lir.payoutScore : 0,
-    NETWORK_BASE[String(o.network_source || "").toLowerCase()] ?? 10
-  );
-}
-function dedupBestOffers(rows) {
-  const best = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    const code = normKey(r.coupon_code);
-    const key = `${normKey(r.merchant_name)}|${code || normKey(r.title).slice(0, 60)}`;
-    const cur = best.get(key);
-    if (!cur) {
-      best.set(key, r);
-      continue;
-    }
-    const a = offerCommissionScore(r) - offerCommissionScore(cur);
-    const b = String(r.updated_at || r.created_at || "").localeCompare(String(cur.updated_at || cur.created_at || ""));
-    if (a > 0 || a === 0 && b > 0) best.set(key, r);
-  }
-  return Array.from(best.values());
-}
-async function listOffers(q3) {
-  const store2 = getStore();
-  const where = ["status = 'active'"];
-  const params = [];
-  if (q3.source) {
-    where.push("network_source = ?");
-    params.push(q3.source);
-  }
-  if (q3.merchant) {
-    where.push("merchant_name LIKE ?");
-    params.push(`%${q3.merchant}%`);
-  }
-  if (q3.category) {
-    where.push("categories LIKE ?");
-    params.push(`%${q3.category}%`);
-  }
-  if (q3.hasCoupon) {
-    where.push("coupon_code IS NOT NULL AND coupon_code != ?");
-    params.push("");
-  }
-  if (q3.search) {
-    where.push("(title LIKE ? OR merchant_name LIKE ?)");
-    params.push(`%${q3.search}%`, `%${q3.search}%`);
-  }
-  const order = q3.sort === "expiry_soon" ? "expires_at ASC" : q3.sort === "discount_high_to_low" ? "discount_value DESC" : "updated_at DESC";
-  const limit = Math.min(Math.max(q3.limit ?? 20, 1), 100);
-  const offset = Math.max(q3.offset ?? 0, 0);
-  const pool2 = Math.max(limit * 4, 200);
-  const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
-               discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
-               FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${pool2} OFFSET ${offset}`;
-  const rows = await store2.query(sql, params);
-  return dedupBestOffers(rows).slice(0, limit);
-}
-var COLS, NETWORK_BASE;
-var init_store = __esm({
-  "server/affiliate/store.ts"() {
-    init_db();
-    init_db();
-    init_linkinr();
-    COLS = "network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note";
-    NETWORK_BASE = {
-      linkinr: 100,
-      cuelinks: 40,
-      admitad: 30,
-      vcommission: 25,
-      earnkaro: 20,
-      inrdeals: 18
-    };
   }
 });
 

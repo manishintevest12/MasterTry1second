@@ -29,8 +29,73 @@ const CATEGORICAL_ATTR_KEYS = [
   'product_type', 'service_type', 'category', 'provider_type',
 ] as const;
 
+// Provider-named finance queries (owner 21 Oct: Account bank search bar). When the
+// user types a BANK/BROKER name ("sbi savings account", "hdfc demat account",
+// "axis personal loan"), that is a product lookup, not a browse request: only the
+// named provider's rows may return. Works on title+vendor so both short codes
+// ('sbi') and full names ('State Bank of India') match the same rows.
+const PROVIDER_QUERY_PATTERNS: Array<[RegExp, RegExp]> = [
+  [/\bsbi\b|state bank of india/i, /state bank of india|\bsbi\b/i],
+  [/\bpnb\b|punjab national bank/i, /punjab national bank|\bpnb\b/i],
+  [/\bbob\b|bank of baroda/i, /bank of baroda|\bbob\b/i],
+  [/\bhdfc\b/i, /hdfc/i],
+  [/\bicici\b/i, /icici/i],
+  [/\baxis\b/i, /axis/i],
+  [/\bkotak\b/i, /kotak/i],
+  [/\bcanara\w*/i, /canara/i],
+  [/\bidfc\b/i, /idfc/i],
+  [/\bindusind\b/i, /indusind/i],
+  [/\brbl\b/i, /rbl/i],
+  [/\byes bank\b/i, /yes bank/i],
+  [/\bau bank\b|au small finance/i, /au small finance/i],
+  [/\bequitas\b/i, /equitas/i],
+  [/\bdbs\b/i, /dbs/i],
+  [/\bfederal bank\b/i, /federal bank/i],
+  [/\bunion bank\b/i, /union bank/i],
+  [/\bbank of india\b/i, /bank of india/i],
+  [/\bbank of maharashtra\b/i, /bank of maharashtra/i],
+  [/\bkarnataka bank\b/i, /karnataka bank/i],
+  [/\bsouth indian bank\b/i, /south indian bank/i],
+  [/\bcatholic syrian\b|\bcsb bank\b/i, /catholic syrian|\bcsb\b/i],
+  [/\bcity union bank\b/i, /city union bank/i],
+  [/\btamilnad mercantile\b/i, /tamilnad mercantile/i],
+  [/\bpaytm payments bank\b|\bpaytm bank\b/i, /paytm/i],
+  [/\bairtel payments bank\b|\bairtel bank\b/i, /airtel/i],
+  [/\bfino\b/i, /fino/i],
+  [/\bujjivan\b/i, /ujjivan/i],
+  [/\bzerodha\b/i, /zerodha/i],
+  [/\bgroww\b/i, /groww/i],
+  [/\bupstox\b/i, /upstox/i],
+  [/\bangel one\b|angel broking/i, /angel/i],
+  [/\b5paisa\b/i, /5paisa/i],
+];
+
+/**
+ * Provider-named finance queries (owner 21 Oct bank search bar): when the query
+ * names a bank/broker ("sbi savings account", "zerodha demat account"), only that
+ * provider's rows survive. Exported so the progressive-catalogue cold-start path can
+ * apply the SAME rule to instantly-served catalogue rows (otherwise a cold search
+ * briefly shows every bank before the live refresh lands).
+ */
+export function filterByNamedProviders<T>(offers: T[], entityName?: string | null): T[] {
+  if (!entityName) return offers;
+  const requiredProviders = PROVIDER_QUERY_PATTERNS
+    .filter(([qRe]) => qRe.test(String(entityName)))
+    .map(([, oRe]) => oRe);
+  if (requiredProviders.length === 0) return offers;
+  return offers.filter((o: any) => {
+    const text = `${o.title} ${o.vendor || ''}`.toLowerCase();
+    return requiredProviders.some((re) => re.test(text));
+  });
+}
+
 function filterByQueryEntity(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   if (!query.entityName) return offers;
+  // A named provider is a HARD requirement: only that bank/broker's rows survive,
+  // even though finance is a non-comparison vertical with more than 2 tokens
+  // (the browse shortcut below must not swallow bank-specific searches).
+  const providerFiltered = filterByNamedProviders(offers, query.entityName);
+  if (providerFiltered.length !== offers.length) return providerFiltered;
   const tokens = query.entityName.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
   if (tokens.length === 0) return offers;
   // Browse intent on a non-comparison vertical = "show me offers", not a product lookup.

@@ -6,6 +6,8 @@ import {
   X,
   ArrowRight,
   Wallet,
+  Tag,
+  Copy,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { buildAffiliateDeepLink } from '../utils/deepLinkHelper';
@@ -15,19 +17,40 @@ import { DealCard, type PublicDeal } from './DealCard';
 export const RedirectionModal: React.FC = () => {
   const { redirectionState, closeRedirection, userPoints, userLocation, affiliateIds, openSpendLens } = useApp();
   const [sellerDeals, setSellerDeals] = useState<PublicDeal[]>([]);
+  const [bestCoupon, setBestCoupon] = useState<PublicDeal | null>(null);
+  const [couponCopied, setCouponCopied] = useState(false);
   const sellerName = redirectionState.quote?.sellerName || '';
   const open = redirectionState.isOpen;
 
-  // The seller's own live coupons / bank offers, so the customer knows what to apply at checkout.
+  // The seller's own live coupons / bank offers (registry + affiliate rows), so the
+  // customer knows what to apply at checkout. The endpoint also returns the single
+  // BEST coupon — the owner rule (21 Oct): show it prominently with copy-to-clipboard.
   useEffect(() => {
-    if (!open || !sellerName) { setSellerDeals([]); return; }
+    if (!open || !sellerName) { setSellerDeals([]); setBestCoupon(null); return; }
     let cancelled = false;
     fetch(`/api/deals/for-seller?seller=${encodeURIComponent(sellerName)}&limit=4`)
       .then((r) => r.json())
-      .then((d) => { if (!cancelled) setSellerDeals(d.deals || []); })
-      .catch(() => { if (!cancelled) setSellerDeals([]); });
+      .then((d) => {
+        if (cancelled) return;
+        setSellerDeals(d.deals || []);
+        setBestCoupon((d.best && d.best.coupon) || null);
+      })
+      .catch(() => { if (!cancelled) { setSellerDeals([]); setBestCoupon(null); } });
     return () => { cancelled = true; };
   }, [open, sellerName]);
+
+  useEffect(() => { setCouponCopied(false); }, [bestCoupon]);
+
+  const copyCoupon = async (code: string) => {
+    try { await navigator.clipboard.writeText(code); }
+    catch {
+      const ta = document.createElement('textarea');
+      ta.value = code; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    setCouponCopied(true);
+    setTimeout(() => setCouponCopied(false), 2000);
+  };
 
   if (!redirectionState.isOpen || !redirectionState.item || !redirectionState.quote) {
     return null;
@@ -117,13 +140,44 @@ export const RedirectionModal: React.FC = () => {
             </div>
 
             <h3 className="text-xl font-extrabold text-slate-900 mb-1">
-              Deep-Link Ready!
+              Your Best Offer is Ready!
             </h3>
             <p className="text-xs text-slate-600 mb-4 max-w-xs mx-auto leading-relaxed">
               {isRateVertical(item.vertical)
                 ? <>Opening <strong>{item.title}</strong> on the lender's page, starting at <strong>{formatPrice(item.vertical, quote.price)} p.a.</strong> (indicative; the final rate is set by the lender).</>
                 : <>Your deal for <strong>{item.title}</strong> at <strong>{formatPrice(item.vertical, quote.price)}</strong> is locked with zero extra fees.</>}
             </p>
+
+            {bestCoupon && (
+              <div className="mb-4 p-3 rounded-xl border-2 border-dashed border-emerald-400 bg-emerald-50 text-left">
+              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700 mb-1.5 flex items-center gap-1">
+                  <Tag className="w-3 h-3" />
+                  Your best coupon for {quote.sellerName}
+                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-base font-extrabold text-slate-900 tracking-wide truncate">
+                      {bestCoupon.code || bestCoupon.title}
+                    </p>
+                    <p className="text-[11px] text-slate-600 leading-snug line-clamp-2">
+                      {bestCoupon.discountText || bestCoupon.title}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => bestCoupon.code && copyCoupon(bestCoupon.code)}
+                    className={`shrink-0 px-3 py-2 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      couponCopied
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    {couponCopied ? 'Copied!' : 'Copy code'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {sellerDeals.length > 0 ? (
               <div className="text-left mb-5">

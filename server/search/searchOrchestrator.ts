@@ -30,6 +30,7 @@ import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
+import { filterByNamedProviders } from '../verticals/verticalEngine';
 import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
 
 export interface SearchInput {
@@ -143,12 +144,16 @@ function progressiveCatalogueResponse(
   } as SearchResponse;
 }
 
-async function freshCatalogueOffers(vertical: string, input: SearchInput): Promise<any[]> {
+async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery): Promise<any[]> {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  return rows
+  const offers = rows
     .filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < 3600 && r.validation_status !== 'INVALID')
     .map((r) => rowToOffer(r, false));
+  // Bank search bar (owner 21 Oct): a query that NAMES a provider must not serve every
+  // other bank's catalogue rows during the instant cold-start window. Apply the SAME
+  // provider rule the live pipeline's engine filter uses.
+  return filterByNamedProviders(offers, parsed?.entityName);
 }
 
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {
@@ -215,13 +220,13 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // honestly with pendingRefresh so clients keep polling instead of spawning work.
   const running = inflightPipelines.get(cacheKey);
   if (running) {
-    const offers = await freshCatalogueOffers(vertical, input);
+    const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running; // nothing to show yet — this caller becomes the one that waits
   }
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
   {
-    const offers = await freshCatalogueOffers(vertical, input);
+    const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) {
       const pipeline = runLivePipeline(input, parsed)
         .then((response) => {

@@ -239,10 +239,62 @@ export async function listPublicDeals(opts: {
   return deals;
 }
 
+/**
+ * Affiliate coupons/offers for this merchant (LinkInR / Cuelinks / Admitad rows in
+ * affiliate_offers), mapped into the public deal shape. Redirect page (owner 21 Oct):
+ * the admin deals registry alone has no Ajio/LinkInR merchants, so the redirect modal
+ * showed NO coupon for sellers whose offers only exist in the affiliate table.
+ */
+async function affiliateDealsForSeller(seller: string, limit = 100): Promise<any[]> {
+  if (!seller || !seller.trim()) return [];
+  try {
+    const { listOffers } = await import('../affiliate/store');
+    const rows = await listOffers({ limit: 100 });
+    const needle = seller.trim().toLowerCase();
+    const matched = (rows as any[]).filter((r) => {
+      const m = String(r.merchant_name || '').trim().toLowerCase();
+      return m && (m.includes(needle) || needle.includes(m));
+    });
+    return matched.slice(0, limit).map((r) => ({
+      id: 1_000_000 + Number(r.id || 0),
+      merchantKey: merchantKeyOf(String(r.merchant_name || '')),
+      merchantName: r.merchant_name,
+      kind: r.coupon_code ? 'coupon' : 'sale',
+      title: String(r.title || `${r.merchant_name} offer`),
+      description: r.description || null,
+      code: r.coupon_code || null,
+      discountText: Number(r.discount_value) > 0
+        ? `${r.discount_value}${String(r.discount_type || '') === 'percentage' ? '% OFF' : ' OFF'}`
+        : null,
+      minOrder: null,
+      terms: null,
+      validTill: r.expires_at ? String(r.expires_at).slice(0, 10) : null,
+      imageUrl: r.merchant_logo || null,
+      goUrl: createMaskingPointer(String(r.affiliate_url || r.original_url || ''), { offerId: `aff-${r.id}` }),
+    }));
+  } catch { return []; }
+}
+
+/** Registry + affiliate offers for one seller, deduped by merchant+code/title. */
+export async function allDealsForSeller(seller: string): Promise<any[]> {
+  const registry = await listPublicDeals({ merchant: seller, limit: 100 });
+  const affiliate = await affiliateDealsForSeller(seller, 100);
+  // Owner rule: auto-deduplicate by merchant/code — the registry copy wins.
+  const seen = new Set<string>();
+  const merged: any[] = [];
+  for (const d of [...registry, ...affiliate]) {
+    const key = `${String(d.merchantKey || d.merchantName || '').toLowerCase()}|${String(d.code || d.title || '').toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(d);
+  }
+  return merged;
+}
+
 /** Redirect-page helper: the seller's own live deals first (coupons ahead of plain sales). */
 export async function dealsForSeller(seller: string, limit = 6): Promise<any[]> {
   const rank: Record<string, number> = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
-  const all = await listPublicDeals({ merchant: seller, limit: 100 });
+  const all = await allDealsForSeller(seller);
   return all.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)).slice(0, limit);
 }
 
@@ -286,8 +338,11 @@ export function findBestOffer(deals: any[]): any | null {
 }
 
 export async function forSellerWithBest(seller: string, limit = 6): Promise<{ deals: any[]; best: { offer: any | null; coupon: any | null } }> {
-  const all = await listPublicDeals({ merchant: seller, limit: 100 });
-  const deals = await dealsForSeller(seller, limit);
+  const all = await allDealsForSeller(seller);
+  const deals = all.slice().sort((a: any, b: any) => {
+    const rank: Record<string, number> = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
+    return (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9);
+  }).slice(0, limit);
   const coupon = findBestCoupon(all);
   const offer = findBestOffer(all);
   return { deals, best: { offer, coupon } };

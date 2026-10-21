@@ -185,7 +185,19 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   const [insuranceType, setInsuranceType] = useState<string>('1 Crore Health Cover');
   const [eldestAge, setEldestAge] = useState<number>(30);
 
-  // 9. Cab
+  // 9. Account (owner 21 Oct): bank-name search bar + account-type chips.
+  const [accountType, setAccountType] = useState<string>('Savings');
+  // Builds the engine query from what the user typed. A named bank + the picked
+  // account type become "sbi savings account"; a blank bank box browses all banks
+  // for the picked type. If the typed text already names the type, it is not appended.
+  const accountSearchQuery = (bankText?: string, type?: string) => {
+    const bank = (bankText ?? searchQuery).trim();
+    const t = (type ?? accountType).toLowerCase();
+    if (/savings|current|demat|trading/i.test(bank)) return bank;
+    return bank ? `${bank} ${t} account` : `${t} account`;
+  };
+
+  // 9b. Cab
   const [cabDrop, setCabDrop] = useState<string>('DLF Cyber City, Gurugram (122002)');
   // Uber-style editable pickup (owner request 17 Oct): null = follow the profile/GPS location.
   const [cabPickup, setCabPickup] = useState<string | null>(null);
@@ -1551,6 +1563,72 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors shadow-md cursor-pointer"
                 >
                   View Quotes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          9a. ACCOUNT SEARCH (owner 21 Oct): bank-name search bar so the user can
+          search WHICH BANK to open a Savings / Current / Demat account with.
+          ======================================================== */}
+      {vertical === 'account' && (
+        <div className="bg-gradient-to-r from-slate-900 to-red-950 py-5 px-4 sm:px-6 lg:px-8 text-white shadow-inner">
+          <div className="max-w-7xl mx-auto space-y-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-red-300">Account Type:</span>
+              {['Savings', 'Current', 'Demat'].map((t) => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    setAccountType(t);
+                    // Chip tap = immediate comparison for that account type (bank box keeps its text).
+                    triggerLiveLocationScrape(accountSearchQuery(undefined, t));
+                  }}
+                  className={`px-3 py-1 rounded-lg font-bold text-xs transition-colors ${
+                    accountType === t ? 'bg-red-500 text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+              <span className="text-slate-300 text-[11px] ml-1">
+                Search a bank to see only its accounts — leave blank to compare every bank.
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch gap-2.5">
+              <div className="flex-1 bg-white rounded-xl px-4 py-2 flex items-center shadow-md">
+                <VoiceSearchButton
+                  onTranscript={(text) => {
+                    setSearchQuery(text);
+                    triggerLiveLocationScrape(accountSearchQuery(text));
+                  }}
+                  accent="red"
+                />
+                <AutocompleteInput
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  onSelect={(val) => {
+                    setSearchQuery(val);
+                    triggerLiveLocationScrape(accountSearchQuery(val));
+                  }}
+                  presetList={AUTOCOMPLETE_CATEGORIES.banks}
+                  placeholder="Search bank (e.g. SBI, HDFC, Kotak, Zerodha...) — leave blank to compare all"
+                  className="w-full"
+                  inputClassName="text-xs font-medium text-slate-900 placeholder:text-slate-400"
+                  icon={<Search className="w-4 h-4 text-red-500" />}
+                />
+                <button
+                  type="button"
+                  onClick={() => triggerLiveLocationScrape(accountSearchQuery())}
+                  className="ml-2 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0 shadow-xs flex items-center gap-1"
+                  title="Compare bank accounts"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Compare</span>
                 </button>
               </div>
             </div>
