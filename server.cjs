@@ -28495,7 +28495,7 @@ __export(prune_exports, {
 async function batchedDelete(sql, params) {
   const store2 = getStore();
   let total = 0;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < MAX_BATCHES; i++) {
     const res = await store2.execute(`${sql} LIMIT ${BATCH}`, params);
     const n = res.affectedRows || 0;
     total += n;
@@ -28514,12 +28514,18 @@ async function pruneCatalogue() {
     ["price_history", "DELETE FROM price_history WHERE created_at < ?", [daysAgo(RETENTION.priceHistoryDays)]],
     ["source_health", "DELETE FROM source_health WHERE created_at < ?", [daysAgo(RETENTION.sourceHealthDays)]],
     ["searches", "DELETE FROM searches WHERE created_at < ?", [daysAgo(RETENTION.searchesDays)]],
+    ["affiliate_offers", "DELETE FROM affiliate_offers WHERE last_seen_at < ?", [daysAgo(RETENTION.affiliateSeenDays)]],
+    ["deals (auto)", "DELETE FROM deals WHERE source = ? AND last_seen_at < ?", ["auto", daysAgo(RETENTION.autoDealsSeenDays)]],
+    ["source_acceptance_tests", "DELETE FROM source_acceptance_tests WHERE tested_at < ?", [daysAgo(RETENTION.acceptanceDays)]],
+    ["ai_outputs", "DELETE FROM ai_outputs WHERE created_at < ?", [daysAgo(RETENTION.aiOutputsDays)]],
+    ["audit_logs", "DELETE FROM audit_logs WHERE created_at < ?", [daysAgo(RETENTION.auditDays)]],
+    ["sessions", "DELETE FROM sessions WHERE expires_at < ?", [/* @__PURE__ */ new Date()]],
+    ["otp_codes", "DELETE FROM otp_codes WHERE expires_at < ?", [/* @__PURE__ */ new Date()]],
     [
       "canonical_entities",
       `DELETE ce FROM canonical_entities ce
         LEFT JOIN offers o ON o.canonical_entity_id = ce.id
-        LEFT JOIN offers ov ON ov.canonical_variant_id = ce.id
-        WHERE o.id IS NULL AND ov.id IS NULL AND ce.created_at < ?`,
+        WHERE o.id IS NULL AND ce.created_at < ?`,
       [daysAgo(RETENTION.orphanEntityDays)]
     ]
   ];
@@ -28538,7 +28544,7 @@ async function pruneCatalogue() {
 async function compactCatalogue() {
   const store2 = getStore();
   if (store2.kind !== "mysql") return;
-  for (const table of ["offers", "source_evidence", "price_history", "source_health"]) {
+  for (const table of ["offers", "source_evidence", "price_history", "source_health", "affiliate_offers", "deals"]) {
     try {
       await store2.query(`OPTIMIZE TABLE ${table}`);
       log.info("Prune", `Compacted ${table}`);
@@ -28548,23 +28554,26 @@ async function compactCatalogue() {
   }
 }
 async function startCatalogueRetention() {
+  let runs = 0;
   const runOnce = async (compact) => {
     const removed = await pruneCatalogue();
-    if (compact && removed >= 5e3) await compactCatalogue();
+    if (compact && removed >= 1e3) await compactCatalogue();
   };
   await runOnce(true).catch((e) => log.warn("Prune", "Initial prune failed", { error: String(e?.message || e).slice(0, 140) }));
   const timer = setInterval(() => {
-    void runOnce(false).catch(() => void 0);
+    runs++;
+    void runOnce(runs % 24 === 0).catch(() => void 0);
   }, 60 * 6e4);
   if (timer.unref) timer.unref();
-  log.info("Prune", "Catalogue retention armed (hourly, compacted at boot)");
+  log.info("Prune", "Catalogue retention armed (hourly prunes, compaction boot + daily retry)");
 }
-var BATCH, DAY, RETENTION, daysAgo;
+var BATCH, MAX_BATCHES, DAY, RETENTION, daysAgo;
 var init_prune = __esm({
   "server/catalogue/prune.ts"() {
     init_db();
     init_logger();
     BATCH = 2e3;
+    MAX_BATCHES = 500;
     DAY = 864e5;
     RETENTION = {
       offersDays: 2,
@@ -28577,6 +28586,16 @@ var init_prune = __esm({
       // health probes fire constantly, tiny rows but millions of them
       searchesDays: 8,
       // warm seeds read a 7-day window
+      affiliateSeenDays: 7,
+      // affiliate offer not seen by any sync in 7d is dead
+      autoDealsSeenDays: 7,
+      // auto deals churn every sync; curated deals are kept forever
+      acceptanceDays: 7,
+      // source acceptance test rows
+      aiOutputsDays: 7,
+      // generated text outputs
+      auditDays: 30,
+      // admin audit trail
       orphanEntityDays: 15
       // canonical entities with no live offer and no recent use
     };

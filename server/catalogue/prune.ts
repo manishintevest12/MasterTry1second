@@ -1,17 +1,15 @@
 /**
- * Catalogue retention (owner fix, 21 Oct — "Database size limit reached").
+ * Catalogue retention (owner fix, 21 Oct — "database size limit reached").
  *
  * Root cause: every accepted offer wrote rows into offers + source_evidence +
  * price_history, plus source_health on every probe, and NOTHING ever deleted
  * them. The catalogue is only eligible for ~1h, so days of dead rows piled up
- * until Hostinger's database size cap was hit. Measured in the dev store:
- * ~13MB written in 5 minutes of warming — the same write volume with no
- * retention fills a capped shared-hosting database.
+ * until Hostinger's database size cap (3GB) was hit: 3131/3072 MB.
  *
- * Fix: bounded retention, enforced by the singleton background owner
- * (pruneCatalogue) — dead rows are deleted in small batches so locks stay
- * short, and the tables are compacted once at boot so the disk space actually
- * returns to the host (DELETE alone never shrinks InnoDB files).
+ * Fix: bounded retention over EVERY high-churn table, enforced by the singleton
+ * background owner — dead rows deleted in small batches so locks stay short,
+ * tables compacted at boot and retried daily so the disk space actually
+ * returns to the host quota (DELETE alone never shrinks InnoDB files).
  *
  * MySQL-only by design: the dev file store is already row-capped in db.ts.
  */
@@ -19,22 +17,28 @@ import { getStore } from '../common/db';
 import { log } from '../common/logger';
 
 const BATCH = 2000;
+const MAX_BATCHES = 500; // up to 1M rows/table/hour — enough to catch up from an over-cap state
 const DAY = 86_400_000;
 
 /** Retention windows — generous vs the 1h catalogue eligibility, tight vs the cap. */
 const RETENTION = {
-  offersDays: 2,        // catalogue rows older than this can never be served
-  evidenceDays: 2,      // mirrors offers
-  priceHistoryDays: 2,  // historical snapshots; 2 days is ample for trend display
-  sourceHealthDays: 2,  // health probes fire constantly, tiny rows but millions of them
-  searchesDays: 8,      // warm seeds read a 7-day window
-  orphanEntityDays: 15, // canonical entities with no live offer and no recent use
+  offersDays: 2,          // catalogue rows older than this can never be served
+  evidenceDays: 2,        // mirrors offers
+  priceHistoryDays: 2,    // historical snapshots; 2 days is ample for trend display
+  sourceHealthDays: 2,    // health probes fire constantly, tiny rows but millions of them
+  searchesDays: 8,        // warm seeds read a 7-day window
+  affiliateSeenDays: 7,   // affiliate offer not seen by any sync in 7d is dead
+  autoDealsSeenDays: 7,   // auto deals churn every sync; curated deals are kept forever
+  acceptanceDays: 7,      // source acceptance test rows
+  aiOutputsDays: 7,       // generated text outputs
+  auditDays: 30,          // admin audit trail
+  orphanEntityDays: 15,   // canonical entities with no live offer and no recent use
 } as const;
 
 async function batchedDelete(sql: string, params: unknown[]): Promise<number> {
   const store = getStore();
   let total = 0;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < MAX_BATCHES; i++) {
     const res = await store.execute(`${sql} LIMIT ${BATCH}`, params);
     const n = res.affectedRows || 0;
     total += n;
@@ -49,8 +53,8 @@ async function batchedDelete(sql: string, params: unknown[]): Promise<number> {
 const daysAgo = (d: number): Date => new Date(Date.now() - d * DAY);
 
 /**
- * Delete dead catalogue rows. Returns the number of rows removed so the caller
- * can decide whether a compaction (OPTIMIZE) is worthwhile.
+ * Delete dead rows across every high-churn table. Returns the number of rows
+ * removed so the caller can decide whether a compaction (OPTIMIZE) is due.
  */
 export async function pruneCatalogue(): Promise<number> {
   const store = getStore();
@@ -63,12 +67,18 @@ export async function pruneCatalogue(): Promise<number> {
     ['price_history', 'DELETE FROM price_history WHERE created_at < ?', [daysAgo(RETENTION.priceHistoryDays)]],
     ['source_health', 'DELETE FROM source_health WHERE created_at < ?', [daysAgo(RETENTION.sourceHealthDays)]],
     ['searches', 'DELETE FROM searches WHERE created_at < ?', [daysAgo(RETENTION.searchesDays)]],
+    ['affiliate_offers', 'DELETE FROM affiliate_offers WHERE last_seen_at < ?', [daysAgo(RETENTION.affiliateSeenDays)]],
+    ['deals (auto)', 'DELETE FROM deals WHERE source = ? AND last_seen_at < ?', ['auto', daysAgo(RETENTION.autoDealsSeenDays)]],
+    ['source_acceptance_tests', 'DELETE FROM source_acceptance_tests WHERE tested_at < ?', [daysAgo(RETENTION.acceptanceDays)]],
+    ['ai_outputs', 'DELETE FROM ai_outputs WHERE created_at < ?', [daysAgo(RETENTION.aiOutputsDays)]],
+    ['audit_logs', 'DELETE FROM audit_logs WHERE created_at < ?', [daysAgo(RETENTION.auditDays)]],
+    ['sessions', 'DELETE FROM sessions WHERE expires_at < ?', [new Date()]],
+    ['otp_codes', 'DELETE FROM otp_codes WHERE expires_at < ?', [new Date()]],
     [
       'canonical_entities',
       `DELETE ce FROM canonical_entities ce
         LEFT JOIN offers o ON o.canonical_entity_id = ce.id
-        LEFT JOIN offers ov ON ov.canonical_variant_id = ce.id
-        WHERE o.id IS NULL AND ov.id IS NULL AND ce.created_at < ?`,
+        WHERE o.id IS NULL AND ce.created_at < ?`,
       [daysAgo(RETENTION.orphanEntityDays)],
     ],
   ];
@@ -90,13 +100,14 @@ export async function pruneCatalogue(): Promise<number> {
 /**
  * Reclaim disk space for the pruned tables. DELETE marks rows free inside the
  * InnoDB files; only a rebuild returns the bytes to the host's quota — which is
- * what the "database size limit reached" banner measures. Run once at boot,
- * after pruning, and only when a real amount of data was removed.
+ * what the "database size limit reached" banner measures. Compaction is retried
+ * daily (not only at boot) because an OPTIMIZE attempt can fail while the quota
+ * is still exceeded, then succeed once enough rows are gone.
  */
 export async function compactCatalogue(): Promise<void> {
   const store = getStore();
   if (store.kind !== 'mysql') return;
-  for (const table of ['offers', 'source_evidence', 'price_history', 'source_health']) {
+  for (const table of ['offers', 'source_evidence', 'price_history', 'source_health', 'affiliate_offers', 'deals']) {
     try {
       await store.query(`OPTIMIZE TABLE ${table}`);
       log.info('Prune', `Compacted ${table}`);
@@ -106,16 +117,22 @@ export async function compactCatalogue(): Promise<void> {
   }
 }
 
-/** Boot entry: prune immediately (the DB may already be at the cap), compact, then repeat hourly. */
+/**
+ * Boot entry: prune immediately (the DB may already be over the cap), compact,
+ * then repeat hourly; compaction is retried every 24 runs (~daily).
+ */
 export async function startCatalogueRetention(): Promise<void> {
+  let runs = 0;
   const runOnce = async (compact: boolean) => {
     const removed = await pruneCatalogue();
-    if (compact && removed >= 5000) await compactCatalogue();
+    if (compact && removed >= 1000) await compactCatalogue();
   };
   await runOnce(true).catch((e: any) => log.warn('Prune', 'Initial prune failed', { error: String(e?.message || e).slice(0, 140) }));
   const timer = setInterval(() => {
-    void runOnce(false).catch(() => undefined);
+    runs++;
+    // Every 24th hourly run (or whenever a huge prune happened) retry compaction.
+    void runOnce(runs % 24 === 0).catch(() => undefined);
   }, 60 * 60_000);
   if (timer.unref) timer.unref();
-  log.info('Prune', 'Catalogue retention armed (hourly, compacted at boot)');
+  log.info('Prune', 'Catalogue retention armed (hourly prunes, compaction boot + daily retry)');
 }
