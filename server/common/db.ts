@@ -123,15 +123,45 @@ export class FileStore implements DataStore {
   private data: Record<string, any[]> = {};
   private warned = false;
 
+  private lastMtimeMs = 0;
+  private lastReloadAt = 0;
+
   constructor() {
     fs.mkdirSync(dataDir, { recursive: true });
     if (fs.existsSync(this.file)) {
       try {
         this.data = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+        this.lastMtimeMs = fs.statSync(this.file).mtimeMs;
       } catch {
         this.data = {};
       }
     }
+  }
+
+  /**
+   * MULTI-INSTANCE COHERENCE (owner 21 Oct coupon wipe): hPanel/Passenger runs
+   * SEVERAL instances of this app behind port 3000. The singleton instance
+   * performs background work (affiliate syncs wrote 600 coupon offers at
+   * 13:08:46) and persists devstore.json, but every other instance loaded its
+   * snapshot ONCE at boot and never re-read the file — so they kept answering
+   * /api/v1/offers with stale tables (0 coupons) and their own whole-file
+   * persists clobbered the singleton's rows. Before every query/execute we now
+   * stat the file: if another instance changed it, reload. Throttled to one
+   * reload per 5s in production so a busy writer can't burn CPU on this side;
+   * test env skips the throttle (single-process, synchronous durability).
+   */
+  private maybeReload() {
+    const now = Date.now();
+    if (settings.env !== 'test' && now - this.lastReloadAt < 5000) return;
+    this.lastReloadAt = now;
+    try {
+      const st = fs.statSync(this.file);
+      if (st.mtimeMs > this.lastMtimeMs + 1) {
+        this.data = JSON.parse(fs.readFileSync(this.file, 'utf8'));
+        this.lastMtimeMs = st.mtimeMs;
+        log.info('DataStore', 'devstore.json changed by another instance — state reloaded');
+      }
+    } catch { /* best-effort: file may not exist yet */ }
   }
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,7 +191,9 @@ export class FileStore implements DataStore {
       try {
         const snapshot = JSON.stringify(this.data);
         fs.mkdirSync(dataDir, { recursive: true });
-        fs.promises.writeFile(this.file, snapshot).catch(() => { /* best-effort */ });
+        fs.promises.writeFile(this.file, snapshot).then(() => {
+          try { this.lastMtimeMs = fs.statSync(this.file).mtimeMs; } catch { /* best-effort */ }
+        }).catch(() => { /* best-effort */ });
       } catch { /* best-effort */ }
     }, 2000);
   }
@@ -287,6 +319,7 @@ export class FileStore implements DataStore {
   }
 
   async query<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
+    this.maybeReload();
     const s = sql.trim();
     const table = this.tableOf(s);
     if (!/^select/i.test(s)) return [];
@@ -326,6 +359,7 @@ export class FileStore implements DataStore {
   }
 
   async execute(sql: string, params: unknown[] = []): Promise<{ affectedRows: number; insertId: number }> {
+    this.maybeReload();
     const s = sql.trim();
     const table = this.tableOf(s);
     if (!this.data[table]) this.data[table] = [];

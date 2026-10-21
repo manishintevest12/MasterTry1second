@@ -859,14 +859,43 @@ var init_db = __esm({
         this.file = import_path2.default.join(dataDir, "devstore.json");
         this.data = {};
         this.warned = false;
+        this.lastMtimeMs = 0;
+        this.lastReloadAt = 0;
         this.saveTimer = null;
         import_fs.default.mkdirSync(dataDir, { recursive: true });
         if (import_fs.default.existsSync(this.file)) {
           try {
             this.data = JSON.parse(import_fs.default.readFileSync(this.file, "utf8"));
+            this.lastMtimeMs = import_fs.default.statSync(this.file).mtimeMs;
           } catch {
             this.data = {};
           }
+        }
+      }
+      /**
+       * MULTI-INSTANCE COHERENCE (owner 21 Oct coupon wipe): hPanel/Passenger runs
+       * SEVERAL instances of this app behind port 3000. The singleton instance
+       * performs background work (affiliate syncs wrote 600 coupon offers at
+       * 13:08:46) and persists devstore.json, but every other instance loaded its
+       * snapshot ONCE at boot and never re-read the file — so they kept answering
+       * /api/v1/offers with stale tables (0 coupons) and their own whole-file
+       * persists clobbered the singleton's rows. Before every query/execute we now
+       * stat the file: if another instance changed it, reload. Throttled to one
+       * reload per 5s in production so a busy writer can't burn CPU on this side;
+       * test env skips the throttle (single-process, synchronous durability).
+       */
+      maybeReload() {
+        const now = Date.now();
+        if (settings.env !== "test" && now - this.lastReloadAt < 5e3) return;
+        this.lastReloadAt = now;
+        try {
+          const st = import_fs.default.statSync(this.file);
+          if (st.mtimeMs > this.lastMtimeMs + 1) {
+            this.data = JSON.parse(import_fs.default.readFileSync(this.file, "utf8"));
+            this.lastMtimeMs = st.mtimeMs;
+            log.info("DataStore", "devstore.json changed by another instance \u2014 state reloaded");
+          }
+        } catch {
         }
       }
       persist() {
@@ -888,7 +917,12 @@ var init_db = __esm({
           try {
             const snapshot = JSON.stringify(this.data);
             import_fs.default.mkdirSync(dataDir, { recursive: true });
-            import_fs.default.promises.writeFile(this.file, snapshot).catch(() => {
+            import_fs.default.promises.writeFile(this.file, snapshot).then(() => {
+              try {
+                this.lastMtimeMs = import_fs.default.statSync(this.file).mtimeMs;
+              } catch {
+              }
+            }).catch(() => {
             });
           } catch {
           }
@@ -1015,6 +1049,7 @@ var init_db = __esm({
         return pred;
       }
       async query(sql, params = []) {
+        this.maybeReload();
         const s = sql.trim();
         const table = this.tableOf(s);
         if (!/^select/i.test(s)) return [];
@@ -1052,6 +1087,7 @@ var init_db = __esm({
         return row;
       }
       async execute(sql, params = []) {
+        this.maybeReload();
         const s = sql.trim();
         const table = this.tableOf(s);
         if (!this.data[table]) this.data[table] = [];
