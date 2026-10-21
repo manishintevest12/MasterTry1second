@@ -16,6 +16,7 @@ import '../widgets/filter_panel.dart';
 import '../widgets/kit.dart';
 import '../widgets/typeahead_field.dart';
 import 'hotel_picker_screen.dart';
+import 'smart_cart_screen.dart';
 import 'place_picker_screen.dart';
 import 'map_pin_picker_screen.dart';
 
@@ -371,7 +372,9 @@ class _CompareScreenState extends State<CompareScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final app = AppState.instance;
+    return Stack(children: [
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _VerticalTabs(
         current: _meta.id,
         onPick: (id) {
@@ -436,6 +439,30 @@ class _CompareScreenState extends State<CompareScreen> {
           ),
         ),
       ),
+      ]),
+      // Smart Cart (owner rule): floating basket on the grocery vertical.
+      if (_meta.id == 'grocery' && app.smartCart.isNotEmpty)
+        Positioned(
+          right: 16,
+          bottom: 18,
+          child: ListenableBuilder(
+            listenable: app,
+            builder: (c, _) => GestureDetector(
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (c) => const SmartCartScreen())),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12, offset: const Offset(0, 4))]),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.shopping_cart_outlined, size: 17, color: Colors.white),
+                  const SizedBox(width: 7),
+                  Text('${app.smartCart.length} item${app.smartCart.length > 1 ? 's' : ''}', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
+                  const SizedBox(width: 6),
+                  Text('Smart Cart', style: tx(context, 9, w: FontWeight.w800, color: Colors.white70)),
+                ]),
+              ),
+            ),
+          ),
+        ),
     ]);
   }
 

@@ -673,6 +673,22 @@ class Try1SecondApi {
 
   Future<AppLinks> appLinks() async => AppLinks.fromJson(await _get('/api/app-links'));
 
+  /// Smart Cart (owner rule): server totals the basket at every grocery store
+  /// and ranks by FULL-basket cost; exits route through /api/out pointers.
+  Future<Map<String, dynamic>> smartCartCompare(
+    List<({String name, int qty})> items, {
+    String? pincode,
+    String? city,
+  }) async {
+    final res = await _post('/api/smart-cart/compare', {
+      'items': items.map((x) => {'name': x.name, 'qty': x.qty}).toList(),
+      if (pincode != null && pincode.isNotEmpty) 'pincode': pincode,
+      if (city != null && city.isNotEmpty) 'city': city,
+    });
+    if (res['success'] != true) throw Exception('Comparison failed');
+    return res['comparison'] as Map<String, dynamic>;
+  }
+
   Future<List<QuickApp>> quickApps() async {
     final res = await _get('/api/quick-apps');
     return ((res['apps'] as List?) ?? const [])

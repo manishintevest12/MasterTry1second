@@ -23,6 +23,7 @@ const PriceAlertsView = lazy(() => import('./components/PriceAlertsView').then((
 const SpendLensView = lazy(() => import('./components/SpendLensView').then((m) => ({ default: m.SpendLensView })));
 const BrowserExtensionModal = lazy(() => import('./components/BrowserExtensionModal').then((m) => ({ default: m.BrowserExtensionModal })));
 const NotificationsDrawer = lazy(() => import('./components/NotificationsDrawer').then((m) => ({ default: m.NotificationsDrawer })));
+const SmartCartDrawer = lazy(() => import('./components/SmartCartDrawer').then((m) => ({ default: m.SmartCartDrawer })));
 const ProfileModal = lazy(() => import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal })));
 import { ToastContainer } from './components/ToastContainer';
 const Footer = lazy(() => import('./components/Footer').then((m) => ({ default: m.Footer })));
@@ -50,6 +51,7 @@ const MainContent: React.FC = () => {
     isProfileOpen,
     infoModalTab,
     isPartnerModalOpen,
+    isSmartCartOpen,
   } = useApp();
 
   const isFullDashboard = activeNavTab === 'admin' || activeNavTab === 'merchant';
@@ -101,6 +103,7 @@ const MainContent: React.FC = () => {
       {priceAlertModalItem && <PriceAlertModal />}
       {isExtensionModalOpen && <BrowserExtensionModal isOpen onClose={closeExtensionModal} />}
       {isNotificationsOpen && <NotificationsDrawer />}
+      {isSmartCartOpen && <SmartCartDrawer />}
       {isProfileOpen && <ProfileModal />}
       <ToastContainer />
       {infoModalTab && <InfoAndLegalModal />}

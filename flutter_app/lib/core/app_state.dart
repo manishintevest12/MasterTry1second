@@ -40,6 +40,50 @@ class AppState extends ChangeNotifier {
   double? pickLng;
   PendingSearch? pending;
 
+  /// Smart Cart (owner rule): grocery basket totals compared across stores.
+  /// Basket lives in app state; comparison runs server-side (/api/smart-cart/compare).
+  final List<({String name, int qty})> smartCart = [];
+  bool smartCartOpen = false;
+
+  void addToSmartCart(String name, {int qty = 1}) {
+    final n = name.trim();
+    if (n.isEmpty) return;
+    final i = smartCart.indexWhere((x) => x.name.toLowerCase() == n.toLowerCase());
+    if (i >= 0) {
+      smartCart[i] = (name: smartCart[i].name, qty: (smartCart[i].qty + qty).clamp(1, 20));
+    } else {
+      smartCart.add((name: n, qty: 1));
+      if (smartCart.length > 12) smartCart.removeAt(0);
+    }
+    smartCartOpen = true;
+    notifyListeners();
+  }
+
+  void updateSmartCartQty(String name, int qty) {
+    if (qty <= 0) {
+      smartCart.removeWhere((x) => x.name == name);
+    } else {
+      final i = smartCart.indexWhere((x) => x.name == name);
+      if (i >= 0) smartCart[i] = (name: smartCart[i].name, qty: qty.clamp(1, 20));
+    }
+    notifyListeners();
+  }
+
+  void removeFromSmartCart(String name) {
+    smartCart.removeWhere((x) => x.name == name);
+    notifyListeners();
+  }
+
+  void clearSmartCart() {
+    smartCart.clear();
+    notifyListeners();
+  }
+
+  void setSmartCartOpen(bool open) {
+    smartCartOpen = open;
+    notifyListeners();
+  }
+
   int unread = 0;
   int trackedCount = 0;
   int points = 0;

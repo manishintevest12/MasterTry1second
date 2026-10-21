@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_state.dart';
 import '../../core/compare.dart';
 import '../../core/theme.dart';
 import 'lead_sheet.dart';
@@ -974,6 +975,28 @@ class GroupCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    // Smart Cart (owner rule): add this product to the basket.
+                    if (vertical == 'grocery') ...[
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: () => AppState.instance.addToSmartCart(it.title),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: ink(context), width: 1.4),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add_shopping_cart_rounded, size: 13, color: ink(context)),
+                              const SizedBox(width: 4),
+                              Text('Cart', style: tx(context, 10, w: FontWeight.w900, color: ink(context))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

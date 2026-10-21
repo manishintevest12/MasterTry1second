@@ -13,7 +13,7 @@ import { NativeAdCard } from './NativeAdCard';
 import { CreditCardCard } from './CreditCardCard';
 import { CreditCardsCompareModal } from './CreditCardsCompareModal';
 import { VERTICAL_META } from '../data/mockData';
-import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X } from 'lucide-react';
+import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X, ShoppingCart } from 'lucide-react';
 
 export const ComparisonFeed: React.FC = () => {
   const {
@@ -30,6 +30,8 @@ export const ComparisonFeed: React.FC = () => {
     isScrapingLive,
     userLocation,
     sourcesReport,
+    smartCart,
+    setIsSmartCartOpen,
   } = useApp();
 
   const meta = VERTICAL_META[vertical] || VERTICAL_META.flights;
@@ -469,6 +471,18 @@ export const ComparisonFeed: React.FC = () => {
           )}
         </main>
       </div>
+      {/* Smart Cart floating badge: reopen the basket while shopping groceries. */}
+      {vertical === 'grocery' && smartCart.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setIsSmartCartOpen(true)}
+          className="fixed bottom-5 right-5 z-40 px-4 py-3 rounded-full bg-slate-900 hover:bg-slate-800 text-white shadow-xl flex items-center gap-2 text-xs font-black cursor-pointer"
+        >
+          <ShoppingCart className="w-4 h-4 text-orange-400" />
+          {smartCart.length} item{smartCart.length > 1 ? 's' : ''}
+          <span className="text-[9px] font-bold text-white/60">Smart Cart</span>
+        </button>
+      )}
     </div>
   );
 };

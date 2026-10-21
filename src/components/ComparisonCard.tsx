@@ -106,6 +106,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
     openPriceAlertModal,
     openProductPage,
     userLocation,
+    addToSmartCart,
   } = useApp();
 
   const [expanded, setExpanded] = useState<boolean>(false);
@@ -494,6 +495,18 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
               </span>
             )}
           </div>
+
+          {/* Smart Cart (grocery): add this product to the multi-store basket */}
+          {item.vertical === 'grocery' && (
+            <button
+              type="button"
+              onClick={() => addToSmartCart(item.title)}
+              className="shrink-0 px-3 py-2.5 rounded-xl border-2 border-slate-900 text-[11px] font-extrabold text-slate-900 hover:bg-slate-900 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Add to Smart Cart — compare the whole basket across stores"
+            >
+              + Cart
+            </button>
+          )}
 
           {/* Primary CTA (Kayak Orange Select Button) */}
           <div className="w-full mt-3 flex items-center gap-2">

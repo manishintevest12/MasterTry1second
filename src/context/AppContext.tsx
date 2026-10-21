@@ -176,8 +176,26 @@ export interface NotificationItem {
   read: boolean;
 }
 
+/** Smart Cart (owner rule): grocery basket totals compared across stores. */
+export interface SmartCartItem { name: string; qty: number; }
+export type SmartCartCompare = {
+  items: { name: string; qty: number; found: boolean; unitPrices: { seller: string; price: number; title: string; url: string | null }[] }[];
+  stores: { seller: string; total: number; itemsCovered: number; itemsMissing: number; missing: string[]; complete: boolean; itemized: { name: string; qty: number; price: number; unitPrice: number; url: string | null }[] }[];
+  best?: { seller: string; total: number; itemsCovered: number; itemsMissing: number; missing: string[]; complete: boolean; itemized: { name: string; qty: number; price: number; unitPrice: number; url: string | null }[] };
+  savingsVsWorst?: number;
+  notFound: string[];
+};
+
 interface AppContextType {
   vertical: VerticalId;
+  /** Smart Cart basket (grocery multi-store total comparison). */
+  smartCart: SmartCartItem[];
+  addToSmartCart: (name: string, qty?: number) => void;
+  updateSmartCartQty: (name: string, qty: number) => void;
+  removeFromSmartCart: (name: string) => void;
+  clearSmartCart: () => void;
+  isSmartCartOpen: boolean;
+  setIsSmartCartOpen: (open: boolean) => void;
   setVertical: (v: VerticalId) => void;
   activeNavTab: MainNavTab;
   setActiveNavTab: (tab: MainNavTab) => void;
@@ -1228,6 +1246,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     quote: null,
     step: 'redirecting',
   });
+  // Smart Cart basket lives in app state; comparison itself is server-side.
+  const [smartCart, setSmartCart] = useState<SmartCartItem[]>([]);
+  const [isSmartCartOpen, setIsSmartCartOpen] = useState(false);
+  const addToSmartCart = useCallback((name: string, qty = 1) => {
+    const n = String(name || '').trim();
+    if (!n) return;
+    setSmartCart((c) => {
+      const ex = c.find((x) => x.name.toLowerCase() === n.toLowerCase());
+      if (ex) return c.map((x) => (x === ex ? { ...x, qty: Math.min(x.qty + qty, 20) } : x));
+      return [...c, { name: n, qty: 1 }].slice(0, 12);
+    });
+    setIsSmartCartOpen(true);
+  }, []);
+  const updateSmartCartQty = useCallback((name: string, qty: number) => {
+    setSmartCart((c) => (qty <= 0 ? c.filter((x) => x.name !== name) : c.map((x) => (x.name === name ? { ...x, qty: Math.min(qty, 20) } : x))));
+  }, []);
+  const removeFromSmartCart = useCallback((name: string) => setSmartCart((c) => c.filter((x) => x.name !== name)), []);
+  const clearSmartCart = useCallback(() => setSmartCart([]), []);
   const [reviewModalItem, setReviewModalItem] = useState<ComparisonItem | null>(null);
   const [priceAlertModalItem, setPriceAlertModalItem] = useState<ComparisonItem | null>(null);
 
@@ -2397,6 +2433,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
+        smartCart,
+        addToSmartCart,
+        updateSmartCartQty,
+        removeFromSmartCart,
+        clearSmartCart,
+        isSmartCartOpen,
+        setIsSmartCartOpen,
         authUser,
         authBusy,
         authError,

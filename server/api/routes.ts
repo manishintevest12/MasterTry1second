@@ -7,6 +7,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
+import { bestUnitPricesPerStore, computeStoreTotals, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
 import { geoSearch, geoReverse } from '../common/geoProxy';
@@ -926,6 +927,42 @@ apiRouter.get('/deals', async (req, res) => {
     });
     res.json({ success: true, deals, counts });
   } catch { res.json({ success: true, deals: [], counts: {} }); }
+});
+
+// POST /api/smart-cart/compare — Smart Cart (owner rule): total the basket at
+// every store and rank by FULL-basket cost; 'Shop at <store>' exits route
+// through /api/out like every other deal link.
+apiRouter.post('/smart-cart/compare', async (req, res) => {
+  try {
+    const rawItems = Array.isArray((req.body || {}).items) ? (req.body as any).items : [];
+    const items: BasketItemIn[] = rawItems
+      .slice(0, 12) // shared-hosting budget: 12 parallel grocery searches
+      .map((x: any) => ({ name: String(x?.name || '').slice(0, 120).trim(), qty: Math.min(Math.max(Number(x?.qty) || 1, 1), 20) }))
+      .filter((x: BasketItemIn) => x.name);
+    if (!items.length) return res.status(400).json({ success: false, error: 'Add at least one product to the Smart Cart.' });
+
+    const searches = await Promise.all(items.map(async (it) => {
+      try {
+        const response = await runSearch({ query: it.name, vertical: 'grocery', pincode: (req.body as any).pincode, city: (req.body as any).city, locality: (req.body as any).locality } as SearchInput);
+        const offers: StoreOfferIn[] = (response.results as any[])
+          .filter((o: any) => Number(o?.prices?.price) > 0 && o?.seller)
+          .map((o: any) => ({
+            seller: String(o.seller).slice(0, 80),
+            price: Number(o.prices.price),
+            title: String(o.title || it.name),
+            url: o.sellerUrl ? createMaskingPointer(String(o.sellerUrl), { offerId: String(o.id || '') }) : null,
+          }));
+        const { unitPrices } = bestUnitPricesPerStore(it.name, offers);
+        return { name: it.name, qty: it.qty, unitPrices, found: unitPrices.length > 0 } as ItemCompare;
+      } catch { return { name: it.name, qty: it.qty, unitPrices: [], found: false } as ItemCompare; }
+    }));
+
+    const comparison = computeStoreTotals(searches);
+    // Exits always route through /api/out for server-side affiliate injection.
+    res.json({ success: true, comparison });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 160) });
+  }
 });
 
 // GET /api/partners -> approved partner directory (admin-approved inquiries)
