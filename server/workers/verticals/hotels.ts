@@ -11,6 +11,7 @@ import { parseExpediaGroup, EXPEDIA_GRAPHQL_QUERY } from '../parsers/expediaGrou
 import { usdToInrRate } from '../../common/fxRates';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
+import { parseHermesHotels } from '../parsers/goibiboHermes';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
 import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
 import { parseGoibiboHotelsSsr } from '../parsers/goibiboHotels';
@@ -139,6 +140,32 @@ export const hotelsWorker: VerticalWorker = {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
         const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
+
+        // RECIPE 1 (21 Oct): hermes.goibibo.com/hotels/v12/search/data/v3 — Goibibo's
+        // own hotel search API. Akamai denies datacenter IPs (sandbox tarpit,
+        // Browserbase 403) but the production Hostinger IP passes other goibibo
+        // surfaces (flights SSR). Self-detecting: works wherever the IP is clean.
+        const tomorrow = new Date(Date.now() + 86400000);
+        const dayAfter = new Date(Date.now() + 2 * 86400000);
+        const fmt = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+        const checkIn = fmt(tomorrow), checkOut = fmt(dayAfter);
+        let lastHermesErr: AcquisitionError | null = null;
+        const sq = encodeURIComponent(JSON.stringify({ Companion: { TA: '1DA' }, Pax: { A: '2' }, RoomCnt: '1', City: base, CheckIn: checkIn, CheckOut: checkOut }));
+        const hermesUrl = `https://hermes.goibibo.com/hotels/v12/search/data/v3?searchQuery=${sq}`;
+        try {
+          const hr = await cffiFetch(hermesUrl, { impersonate: 'chrome', timeoutMs: 10_000, headers: { Accept: 'application/json', Referer: 'https://www.goibibo.com/hotels/' } });
+          if (hr.status === 200 && hr.body.length > 100) {
+            const offers = parseHermesHotels(hr.body, ctx.source, city, checkIn, checkOut, hermesUrl);
+            if (offers.length) return offers;
+            // shape mismatch or empty result — surface a snippet for the next iteration
+            lastHermesErr = new AcquisitionError('EMPTY_RESPONSE', `Goibibo hermes 200 (${hr.body.length}B) carried no parseable hotel rows; snippet=${JSON.stringify(hr.body.slice(0, 160))}`);
+          } else if (hr.status !== 200) {
+            lastHermesErr = new AcquisitionError(hr.status === 403 || hr.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `Goibibo hermes HTTP ${hr.status}`);
+          }
+        } catch (e: any) {
+          lastHermesErr = new AcquisitionError('TIMEOUT', `Goibibo hermes unreachable: ${String(e?.message || e).slice(0, 60)}`);
+        }
+
         const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
         let lastErr: AcquisitionError | null = null;
         for (const slug of attempts) {
@@ -186,7 +213,7 @@ export const hotelsWorker: VerticalWorker = {
           }
           return offers;
         }
-        throw lastErr || new AcquisitionError('NOT_FOUND', `Goibibo has no hotels page for "${city}"`, 404);
+        throw lastErr || lastHermesErr || new AcquisitionError('NOT_FOUND', `Goibibo has no hotels page for "${city}"`, 404);
       },
     },
     {

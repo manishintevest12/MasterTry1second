@@ -3246,6 +3246,131 @@ var init_cleartripHotels = __esm({
   }
 });
 
+// server/workers/parsers/goibiboHermes.ts
+function collectHermesHotels(node, out, depth = 0) {
+  if (!node || depth > 8 || out.length >= 60) return;
+  if (Array.isArray(node)) {
+    const candidates = node.filter(isHotelish);
+    if (candidates.length >= 3) {
+      for (const c of candidates) {
+        const price = toPrice(pick(c, PRICE_KEYS) ?? c.pricing ?? c.priceDetails ?? c.fareDetails);
+        if (price <= 0) continue;
+        out.push({
+          name: String(pick(c, NAME_KEYS)).trim().slice(0, 160),
+          price,
+          rating: (() => {
+            const r = Number(pick(c, RATING_KEYS));
+            return Number.isFinite(r) && r > 0 && r <= 5 ? r : void 0;
+          })(),
+          image: (() => {
+            const i = pick(c, IMAGE_KEYS);
+            return typeof i === "string" && /^https?:\/\//.test(i) ? i : void 0;
+          })(),
+          locality: (() => {
+            const l = pick(c, LOCALITY_KEYS);
+            return typeof l === "string" ? l.slice(0, 80) : void 0;
+          })(),
+          url: (() => {
+            const u = pick(c, URL_KEYS);
+            return typeof u === "string" && /^https?:\/\//.test(u) ? u : void 0;
+          })()
+        });
+        if (out.length >= 60) return;
+      }
+      return;
+    }
+    for (const x of node) collectHermesHotels(x, out, depth + 1);
+    return;
+  }
+  if (typeof node === "object") {
+    for (const v of Object.values(node)) collectHermesHotels(v, out, depth + 1);
+  }
+}
+function parseHermesHotels(body, source, city, checkIn, checkOut, sourceUrl) {
+  let json;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const rows = [];
+  collectHermesHotels(json, rows);
+  if (!rows.length) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const items = [];
+  for (const h of rows) {
+    if (seen.has(h.name)) continue;
+    seen.add(h.name);
+    items.push(newRawItem(source, {
+      title: h.name,
+      seller: "Goibibo",
+      sellerUrl: h.url || sourceUrl,
+      currency: "INR",
+      price: h.price,
+      attributes: {
+        ...h.image ? { image_url: h.image } : {},
+        ...h.rating !== void 0 ? { rating: String(h.rating) } : {},
+        ...h.locality ? { locality: h.locality } : {},
+        city,
+        check_in: checkIn,
+        check_out: checkOut,
+        price_basis: `per night for 1 room (${checkIn} \u2192 ${checkOut}, engine-chosen dates)`,
+        data_note: "Live nightly fares from Goibibo hotel search API (hermes v12)"
+      },
+      evidence: {
+        sourceUrl,
+        extractedFields: ["title", "price", ...h.rating !== void 0 ? ["rating"] : [], ...h.locality ? ["locality"] : []]
+      }
+    }));
+  }
+  return items.slice(0, 40);
+}
+var NAME_KEYS, PRICE_KEYS, RATING_KEYS, IMAGE_KEYS, LOCALITY_KEYS, URL_KEYS, pick, toPrice, isHotelish;
+var init_goibiboHermes = __esm({
+  "server/workers/parsers/goibiboHermes.ts"() {
+    init_contract();
+    NAME_KEYS = ["hotelName", "hotel_name", "hn", "name", "nm", "title", "hotelTitle"];
+    PRICE_KEYS = ["fare", "Fare", "price", "Price", "op", "Op", "amount", "totalToPay", "totalPrice", "baseFare", "minrate", "minRate", "Minrate", "displayPrice", "discAmount"];
+    RATING_KEYS = ["hotelRating", "rating", "starRating", "userRating", "gr"];
+    IMAGE_KEYS = ["hotelImage", "image", "img", "thumbnail", "hc", "imageUrl"];
+    LOCALITY_KEYS = ["locality", "area", "address", "location", "hotelLoc"];
+    URL_KEYS = ["hotelUrl", "url", "deeplink", "link", "hotelCodeUrl"];
+    pick = (o, keys) => {
+      for (const k of keys) {
+        const v = o[k];
+        if (v !== void 0 && v !== null && String(v).trim() !== "") return v;
+      }
+      return void 0;
+    };
+    toPrice = (v) => {
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.round(v);
+      if (typeof v === "string") {
+        const m = /(\d[\d,]{2,})/.exec(v);
+        if (m) {
+          const n = Number(m[1].replace(/,/g, ""));
+          if (Number.isFinite(n) && n > 0) return Math.round(n);
+        }
+      }
+      if (v && typeof v === "object") {
+        let min;
+        const walk2 = (x) => {
+          if (typeof x === "number" && Number.isFinite(x) && x > 50 && x < 1e7) min = min === void 0 ? x : Math.min(min, x);
+          else if (x && typeof x === "object") for (const vv of Object.values(x)) walk2(vv);
+        };
+        walk2(v);
+        if (min !== void 0) return Math.round(min);
+      }
+      return 0;
+    };
+    isHotelish = (o) => {
+      if (!o || typeof o !== "object" || Array.isArray(o)) return false;
+      const name = pick(o, NAME_KEYS);
+      if (typeof name !== "string" || name.trim().length < 3) return false;
+      return true;
+    };
+  }
+});
+
 // server/workers/parsers/airbnbHotels.ts
 function extractAirbnbSearchResults(deferred) {
   try {
@@ -3487,9 +3612,9 @@ function scoreHotelLike(o) {
   let score = 0;
   const flat = flatten(o, 0, 3);
   for (const k of Object.keys(flat)) {
-    if (keyMatches(k, NAME_KEYS)) score += 2;
-    if (keyMatches(k, PRICE_KEYS)) score += 3;
-    if (keyMatches(k, RATING_KEYS)) score += 1;
+    if (keyMatches(k, NAME_KEYS2)) score += 2;
+    if (keyMatches(k, PRICE_KEYS2)) score += 3;
+    if (keyMatches(k, RATING_KEYS2)) score += 1;
     if (keyMatches(k, IMG_KEYS)) score += 1;
   }
   return { obj: flat, score };
@@ -3529,14 +3654,14 @@ function parseGoibiboHotelsSsr(body) {
   const seen = /* @__PURE__ */ new Set();
   for (const h of hits) {
     if (h.score < 5) continue;
-    const name = String(pickFirst(h.obj, NAME_KEYS) || "").trim();
-    let price = Number(pickFirst(h.obj, PRICE_KEYS)) || 0;
-    if (Array.isArray(pickFirst(h.obj, PRICE_KEYS))) price = Number(pickFirst(h.obj, PRICE_KEYS)[0]) || 0;
+    const name = String(pickFirst(h.obj, NAME_KEYS2) || "").trim();
+    let price = Number(pickFirst(h.obj, PRICE_KEYS2)) || 0;
+    if (Array.isArray(pickFirst(h.obj, PRICE_KEYS2))) price = Number(pickFirst(h.obj, PRICE_KEYS2)[0]) || 0;
     if (!name || !Number.isFinite(price) || price < 100 || price > 1e7) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const rating = Number(pickFirst(h.obj, RATING_KEYS)) || void 0;
+    const rating = Number(pickFirst(h.obj, RATING_KEYS2)) || void 0;
     let image = String(pickFirst(h.obj, IMG_KEYS) || "");
     if (image && image.startsWith("//")) image = "https:" + image;
     const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
@@ -3546,12 +3671,12 @@ function parseGoibiboHotelsSsr(body) {
   }
   return out;
 }
-var NAME_KEYS, PRICE_KEYS, RATING_KEYS, IMG_KEYS;
+var NAME_KEYS2, PRICE_KEYS2, RATING_KEYS2, IMG_KEYS;
 var init_goibiboHotels = __esm({
   "server/workers/parsers/goibiboHotels.ts"() {
-    NAME_KEYS = ["name", "displayName", "hotelName", "hotel_name", "propertyName", "title"];
-    PRICE_KEYS = ["price", "fare", "total", "totalPrice", "sellingPrice", "amount", "perNight", "baseFare", "finalPrice"];
-    RATING_KEYS = ["rating", "hotelRating", "userRating", "starRating", "goibiboRating"];
+    NAME_KEYS2 = ["name", "displayName", "hotelName", "hotel_name", "propertyName", "title"];
+    PRICE_KEYS2 = ["price", "fare", "total", "totalPrice", "sellingPrice", "amount", "perNight", "baseFare", "finalPrice"];
+    RATING_KEYS2 = ["rating", "hotelRating", "userRating", "starRating", "goibiboRating"];
     IMG_KEYS = ["image", "imgUrl", "imageUrl", "thumbnail", "hotelImage", "mainImage", "imageURL"];
   }
 });
@@ -4426,6 +4551,7 @@ var init_hotels = __esm({
     init_fxRates();
     init_wikidataHotels();
     init_cleartripHotels();
+    init_goibiboHermes();
     init_airbnbHotels();
     init_ixigoHotels();
     init_goibiboHotels();
@@ -4480,6 +4606,25 @@ var init_hotels = __esm({
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
             const base = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const tomorrow = new Date(Date.now() + 864e5);
+            const dayAfter = new Date(Date.now() + 2 * 864e5);
+            const fmt = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+            const checkIn = fmt(tomorrow), checkOut = fmt(dayAfter);
+            let lastHermesErr = null;
+            const sq = encodeURIComponent(JSON.stringify({ Companion: { TA: "1DA" }, Pax: { A: "2" }, RoomCnt: "1", City: base, CheckIn: checkIn, CheckOut: checkOut }));
+            const hermesUrl = `https://hermes.goibibo.com/hotels/v12/search/data/v3?searchQuery=${sq}`;
+            try {
+              const hr = await cffiFetch(hermesUrl, { impersonate: "chrome", timeoutMs: 1e4, headers: { Accept: "application/json", Referer: "https://www.goibibo.com/hotels/" } });
+              if (hr.status === 200 && hr.body.length > 100) {
+                const offers = parseHermesHotels(hr.body, ctx.source, city, checkIn, checkOut, hermesUrl);
+                if (offers.length) return offers;
+                lastHermesErr = new AcquisitionError("EMPTY_RESPONSE", `Goibibo hermes 200 (${hr.body.length}B) carried no parseable hotel rows; snippet=${JSON.stringify(hr.body.slice(0, 160))}`);
+              } else if (hr.status !== 200) {
+                lastHermesErr = new AcquisitionError(hr.status === 403 || hr.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `Goibibo hermes HTTP ${hr.status}`);
+              }
+            } catch (e) {
+              lastHermesErr = new AcquisitionError("TIMEOUT", `Goibibo hermes unreachable: ${String(e?.message || e).slice(0, 60)}`);
+            }
             const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
             let lastErr = null;
             for (const slug of attempts) {
@@ -4537,7 +4682,7 @@ var init_hotels = __esm({
               }
               return offers;
             }
-            throw lastErr || new AcquisitionError("NOT_FOUND", `Goibibo has no hotels page for "${city}"`, 404);
+            throw lastErr || lastHermesErr || new AcquisitionError("NOT_FOUND", `Goibibo has no hotels page for "${city}"`, 404);
           }
         },
         {
@@ -5900,12 +6045,12 @@ var init_kiwiFlights = __esm({
 });
 
 // server/workers/parsers/indigoFlights.ts
-function pick(o, keys) {
+function pick2(o, keys) {
   for (const k of keys) if (o[k] !== void 0 && o[k] !== null && o[k] !== "") return o[k];
   return void 0;
 }
 function flightNo(o) {
-  const direct = pick(o, NO_KEYS);
+  const direct = pick2(o, NO_KEYS);
   if (typeof direct === "string" && FLIGHT_NO.test(direct)) return direct.toUpperCase().replace(/\s+/, "-");
   for (const k of FLIGHT_DETAIL_KEYS) {
     const v = o[k];
@@ -5918,7 +6063,7 @@ function flightNo(o) {
 }
 function fillMeta(o, f) {
   const grab = (keys, assign) => {
-    const v = pick(o, keys);
+    const v = pick2(o, keys);
     if (v !== void 0) assign(v);
   };
   if (!f.depTime) grab(DEP_KEYS, (v) => {
@@ -5950,7 +6095,7 @@ function fillMeta(o, f) {
   if (!f.depStation) f.depStation = stat(["origin", "from", "originStation", "fromStation", "departureStation", "originStationCode"]);
   if (!f.arrStation) f.arrStation = stat(["destination", "to", "destinationStation", "toStation", "arrivalStation", "destinationStationCode"]);
   if (!f.fareCurrency) {
-    const c = pick(o, ["currencyCode", "currency"]);
+    const c = pick2(o, ["currencyCode", "currency"]);
     if (typeof c === "string" && c.trim()) f.fareCurrency = c;
   }
 }
@@ -5979,13 +6124,13 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num4(pick(o, FARE_KEYS));
+    const fare = num4(pick2(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
         first.fare = fare;
         if (!first.fareCurrency) {
-          const c = pick(o, ["currencyCode", "currency"]);
+          const c = pick2(o, ["currencyCode", "currency"]);
           if (typeof c === "string" && c.trim()) first.fareCurrency = c;
         }
       }
@@ -12474,8 +12619,8 @@ async function indriveCityLookup(term) {
     throw new AcquisitionError("MALFORMED_RESPONSE", "InDrive city search non-JSON");
   }
   if (!Array.isArray(cities) || !cities.length) return null;
-  const pick2 = indrivePickCity(cities, q3);
-  return pick2 || cities[0];
+  const pick3 = indrivePickCity(cities, q3);
+  return pick3 || cities[0];
 }
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
@@ -17367,13 +17512,13 @@ async function imdbTconst(title) {
     const sj = await s.json();
     const candidates = sj?.search || [];
     const filmish = candidates.filter((c) => /film|movie|motion picture/i.test(String(c?.description || "")));
-    const pick2 = (filmish[0] || candidates[0])?.id;
-    if (!pick2) {
+    const pick3 = (filmish[0] || candidates[0])?.id;
+    if (!pick3) {
       titleCache.set(key, null);
       return null;
     }
     const e = await fetchWithTimeout(
-      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids=${encodeURIComponent(pick2)}&props=claims`,
+      `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids=${encodeURIComponent(pick3)}&props=claims`,
       1e4
     );
     if (!e.ok) {
@@ -17381,7 +17526,7 @@ async function imdbTconst(title) {
       return null;
     }
     const ej = await e.json();
-    const claims = ej?.entities?.[pick2]?.claims || {};
+    const claims = ej?.entities?.[pick3]?.claims || {};
     const p345 = claims?.P345?.[0]?.mainsnak?.datavalue?.value;
     const tt = typeof p345 === "string" && /^tt\d+$/.test(p345) ? p345 : null;
     titleCache.set(key, tt ? { tt, at: Date.now() } : null);
