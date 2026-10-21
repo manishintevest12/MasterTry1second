@@ -28540,6 +28540,7 @@ var init_singleton = __esm({
 var prune_exports = {};
 __export(prune_exports, {
   compactCatalogue: () => compactCatalogue,
+  databaseSizeMb: () => databaseSizeMb,
   pruneCatalogue: () => pruneCatalogue,
   startCatalogueRetention: () => startCatalogueRetention
 });
@@ -28555,21 +28556,21 @@ async function batchedDelete(sql, params) {
   }
   return total;
 }
-async function pruneCatalogue() {
+async function pruneCatalogue(scale = 1) {
   const store2 = getStore();
   if (store2.kind !== "mysql") return 0;
   let removed = 0;
   const steps = [
-    ["offers", "DELETE FROM offers WHERE fetched_at < ?", [daysAgo(RETENTION.offersDays)]],
-    ["source_evidence", "DELETE FROM source_evidence WHERE fetched_at < ?", [daysAgo(RETENTION.evidenceDays)]],
-    ["price_history", "DELETE FROM price_history WHERE created_at < ?", [daysAgo(RETENTION.priceHistoryDays)]],
-    ["source_health", "DELETE FROM source_health WHERE created_at < ?", [daysAgo(RETENTION.sourceHealthDays)]],
-    ["searches", "DELETE FROM searches WHERE created_at < ?", [daysAgo(RETENTION.searchesDays)]],
-    ["affiliate_offers", "DELETE FROM affiliate_offers WHERE last_seen_at < ?", [daysAgo(RETENTION.affiliateSeenDays)]],
-    ["deals (auto)", "DELETE FROM deals WHERE source = ? AND last_seen_at < ?", ["auto", daysAgo(RETENTION.autoDealsSeenDays)]],
-    ["source_acceptance_tests", "DELETE FROM source_acceptance_tests WHERE tested_at < ?", [daysAgo(RETENTION.acceptanceDays)]],
-    ["ai_outputs", "DELETE FROM ai_outputs WHERE created_at < ?", [daysAgo(RETENTION.aiOutputsDays)]],
-    ["audit_logs", "DELETE FROM audit_logs WHERE created_at < ?", [daysAgo(RETENTION.auditDays)]],
+    ["offers", "DELETE FROM offers WHERE fetched_at < ?", [daysAgo(RETENTION.offersDays, scale)]],
+    ["source_evidence", "DELETE FROM source_evidence WHERE fetched_at < ?", [daysAgo(RETENTION.evidenceDays, scale)]],
+    ["price_history", "DELETE FROM price_history WHERE created_at < ?", [daysAgo(RETENTION.priceHistoryDays, scale)]],
+    ["source_health", "DELETE FROM source_health WHERE created_at < ?", [daysAgo(RETENTION.sourceHealthDays, scale)]],
+    ["searches", "DELETE FROM searches WHERE created_at < ?", [daysAgo(RETENTION.searchesDays, scale)]],
+    ["affiliate_offers", "DELETE FROM affiliate_offers WHERE last_seen_at < ?", [daysAgo(RETENTION.affiliateSeenDays, scale)]],
+    ["deals (auto)", "DELETE FROM deals WHERE source = ? AND last_seen_at < ?", ["auto", daysAgo(RETENTION.autoDealsSeenDays, scale)]],
+    ["source_acceptance_tests", "DELETE FROM source_acceptance_tests WHERE tested_at < ?", [daysAgo(RETENTION.acceptanceDays, scale)]],
+    ["ai_outputs", "DELETE FROM ai_outputs WHERE created_at < ?", [daysAgo(RETENTION.aiOutputsDays, scale)]],
+    ["audit_logs", "DELETE FROM audit_logs WHERE created_at < ?", [daysAgo(RETENTION.auditDays, scale)]],
     ["sessions", "DELETE FROM sessions WHERE expires_at < ?", [/* @__PURE__ */ new Date()]],
     ["otp_codes", "DELETE FROM otp_codes WHERE expires_at < ?", [/* @__PURE__ */ new Date()]],
     [
@@ -28577,7 +28578,7 @@ async function pruneCatalogue() {
       `DELETE ce FROM canonical_entities ce
         LEFT JOIN offers o ON o.canonical_entity_id = ce.id
         WHERE o.id IS NULL AND ce.created_at < ?`,
-      [daysAgo(RETENTION.orphanEntityDays)]
+      [daysAgo(RETENTION.orphanEntityDays, scale)]
     ]
   ];
   for (const [name, sql, params] of steps) {
@@ -28604,21 +28605,64 @@ async function compactCatalogue() {
     }
   }
 }
+async function databaseSizeMb() {
+  const store2 = getStore();
+  if (store2.kind !== "mysql") return 0;
+  try {
+    const rows = await store2.query(
+      `SELECT COALESCE(SUM(data_length + index_length) / 1048576, 0) AS mb
+         FROM information_schema.tables WHERE table_schema = DATABASE()`
+    );
+    const first = Array.isArray(rows) ? rows[0] : rows?.[0];
+    return Number(first?.mb ?? 0);
+  } catch {
+    return 0;
+  }
+}
+async function compactLargestTable() {
+  const store2 = getStore();
+  if (store2.kind !== "mysql") return null;
+  try {
+    const rows = await store2.query(
+      `SELECT table_name AS tbl, (data_length + index_length) / 1048576 AS mb
+         FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name IN (${COMPACTABLE.map(() => "?").join(",")})
+        ORDER BY (data_length + index_length) DESC
+        LIMIT 1`,
+      COMPACTABLE
+    );
+    const first = Array.isArray(rows) ? rows[0] : rows?.[0];
+    if (!first?.tbl) return null;
+    await store2.query(`OPTIMIZE TABLE \`${first.tbl}\``);
+    log.info("Prune", `Compacted ${first.tbl} (${Number(first.mb ?? 0).toFixed(0)} MB)`);
+    return String(first.tbl);
+  } catch (e) {
+    log.warn("Prune", "size-gated compaction skipped", { error: String(e?.message || e).slice(0, 140) });
+    return null;
+  }
+}
 async function startCatalogueRetention() {
-  let runs = 0;
-  const runOnce = async (compact) => {
-    const removed = await pruneCatalogue();
-    if (compact && removed >= 1e3) await compactCatalogue();
+  const runOnce = async () => {
+    const sizeMb = await databaseSizeMb();
+    const emergency = sizeMb > HARD_CAP_MB;
+    const removed = await pruneCatalogue(emergency ? 0.5 : 1);
+    if (sizeMb > SOFT_CAP_MB || removed >= 1e5) {
+      const done = await compactLargestTable();
+      if (done && sizeMb > HARD_CAP_MB) {
+        await compactLargestTable();
+      }
+    }
+    if (sizeMb > 0) log.info("Prune", `Retention pass done (DB ${sizeMb.toFixed(0)} MB${emergency ? " EMERGENCY" : ""}, ${removed} rows removed)`);
   };
-  await runOnce(true).catch((e) => log.warn("Prune", "Initial prune failed", { error: String(e?.message || e).slice(0, 140) }));
+  await runOnce().catch((e) => log.warn("Prune", "Initial retention pass failed", { error: String(e?.message || e).slice(0, 140) }));
   const timer = setInterval(() => {
-    runs++;
-    void runOnce(runs % 24 === 0).catch(() => void 0);
+    void runOnce().catch(() => void 0);
   }, 60 * 6e4);
   if (timer.unref) timer.unref();
-  log.info("Prune", "Catalogue retention armed (hourly prunes, compaction boot + daily retry)");
+  log.info("Prune", `Size-aware retention armed (SOFT ${SOFT_CAP_MB} MB / HARD ${HARD_CAP_MB} MB, hourly passes, one-table compaction)`);
 }
-var BATCH, MAX_BATCHES, DAY, RETENTION, daysAgo;
+var BATCH, MAX_BATCHES, DAY, RETENTION, daysAgo, SOFT_CAP_MB, HARD_CAP_MB, COMPACTABLE;
 var init_prune = __esm({
   "server/catalogue/prune.ts"() {
     init_db();
@@ -28650,7 +28694,10 @@ var init_prune = __esm({
       orphanEntityDays: 15
       // canonical entities with no live offer and no recent use
     };
-    daysAgo = (d) => new Date(Date.now() - d * DAY);
+    daysAgo = (d, scale = 1) => new Date(Date.now() - d * DAY * Math.max(scale, 0.25));
+    SOFT_CAP_MB = 2300;
+    HARD_CAP_MB = 2850;
+    COMPACTABLE = ["offers", "source_evidence", "price_history", "source_health", "affiliate_offers", "deals"];
   }
 });
 
