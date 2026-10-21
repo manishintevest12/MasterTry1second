@@ -64,7 +64,11 @@ function seedSources(): SourceConfig[] {
     // ---- Affiliate feed (Cuelinks) ----
     src({
       id: 'affiliate_cuelinks', name: 'Cuelinks Affiliate Feed', method: 'affiliate_feed',
-      verticals: ['ecommerce', 'coupons', 'banking', 'giftcards'], priority: 20,
+      // LEAK FIX (owner bug, 21 Oct): affiliate feed campaigns must NEVER serve the
+      // banking/account vertical — a VCommission poll on 'sbi savings account' injected
+      // 405 coupon rows into the account results. Affiliate offers live in coupons/
+      // ecommerce/giftcards only.
+      verticals: ['ecommerce', 'coupons', 'giftcards'], priority: 20,
       config: { apiKey: settings.cuelinks.apiKey, campaignId: settings.cuelinks.campaignId, subId: settings.cuelinks.subId },
       requiresAuthorization: true,
       // DISABLED 15 Oct: this registry feed source never had a feedUrl configured, so every
@@ -78,7 +82,7 @@ function seedSources(): SourceConfig[] {
       id: 'affiliate_vcommission',
       name: 'VCommission Affiliate Feed',
       method: 'affiliate_feed',
-      verticals: ['ecommerce', 'coupons', 'banking', 'giftcards'],
+      verticals: ['ecommerce', 'coupons', 'giftcards'],
       priority: 21,
       config: { apiKey: settings.vcommission.apiKey, baseUrl: settings.vcommission.baseUrl, schema: 'vcommission_campaigns' },
       requiresAuthorization: true,

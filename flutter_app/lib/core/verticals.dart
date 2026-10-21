@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
 
 /// How a vertical's search form looks (mirrors SearchAndFilterHeader.tsx).
-enum SearchKind { route, dateRoute, hotel, text, movie, cab }
+enum SearchKind { route, dateRoute, hotel, text, movie, cab, account }
+
+/// Mirror of the web accountSearchQuery (owner 21 Oct): a typed bank narrows to
+/// that provider ("<bank> <type> account"); a blank bank box compares every bank
+/// ("<type> account"). Type is lowercased to match the server's account parser.
+String accountSearchQuery(String bank, String type) {
+  final b = bank.trim();
+  final t = type.toLowerCase();
+  return b.isEmpty ? '$t account' : '$b $t account';
+}
 
 /// Vertical metadata mirrored 1:1 from the website's VERTICAL_META + VerticalNav
 /// (11 verticals, same ids and order). `movie` is the site's id; the backend
@@ -156,9 +165,9 @@ const kVerticals = <VerticalMeta>[
     name: 'Bank Accounts',
     tagline: 'Savings • Current • Demat',
     description: 'Compare Savings, Current and Demat accounts across top Indian banks',
-    placeholder: 'Savings, Current or Demat account offers',
+    placeholder: 'Search bank (e.g. SBI, HDFC) — leave blank to compare all',
     icon: Icons.account_balance_wallet_rounded,
-    kind: SearchKind.text,
+    kind: SearchKind.account,
     cover: 'https://images.unsplash.com/photo-1601597111158-2fceff292fb9?w=600&auto=format&fit=crop&q=80',
     samples: ['zero balance savings account', 'Demat account with lowest AMC', 'current account for small business'],
   ),

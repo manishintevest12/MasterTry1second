@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:try1second/core/compare.dart';
+import 'package:try1second/core/verticals.dart';
 
 CompareItem mk({
   String id = 'a',
@@ -141,4 +142,22 @@ void main() {
     expect(it.bestQuote!.sourceDomain, 'hdfcbank.com');
     expect(it.site, 'HDFC Bank');
   });
+
+  // Account search bar mirror (owner 21 Oct): Flutter must compose the exact same
+  // query the web Accounts header sends for the same bank box + account-type chip.
+// Account search bar mirror (owner 21 Oct): Flutter must compose the exact same
+// query the web Accounts header sends for the same bank box + account-type chip.
+group('accountSearchQuery', () {
+  test('typed bank narrows to that provider', () {
+    expect(accountSearchQuery('SBI', 'Savings'), 'SBI savings account');
+    expect(accountSearchQuery('HDFC Bank', 'Demat'), 'HDFC Bank demat account');
+  });
+  test('blank bank box compares every bank', () {
+    expect(accountSearchQuery('', 'Savings'), 'savings account');
+    expect(accountSearchQuery('   ', 'Current'), 'current account');
+  });
+  test('account vertical uses the dedicated SearchKind', () {
+    expect(verticalById('account').kind, SearchKind.account);
+  });
+});
 }

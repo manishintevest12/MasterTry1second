@@ -103,6 +103,8 @@ class _CompareScreenState extends State<CompareScreen> {
   String? _error;
   SortMode _sort = SortMode.best;
   FilterOptions _filterOpts = const FilterOptions();
+  // Account vertical (owner 21 Oct): Savings/Current/Demat chip + bank search box.
+  String _accountType = 'Savings';
 
   @override
   void initState() {
@@ -159,6 +161,10 @@ class _CompareScreenState extends State<CompareScreen> {
         return routeQuery(_from.text, _to.text);
       case SearchKind.hotel:
         return _to.text.trim().isNotEmpty ? _to.text.trim() : _state.city;
+      case SearchKind.account:
+        // Mirror of web accountSearchQuery: "<bank> <type> account"; a blank
+        // bank box browses/compares every bank for the selected account type.
+        return accountSearchQuery(_q.text, _accountType);
       default:
         return _q.text.trim();
     }
@@ -408,6 +414,12 @@ class _CompareScreenState extends State<CompareScreen> {
                 onOpenHotelPicker: _openHotelPicker,
                 foodAddr: _foodAddr,
                 onPickFoodAddress: _pickFoodAddress,
+                accountType: _accountType,
+                onAccountType: (t) {
+                  // Chip tap = immediate comparison for that account type (bank box keeps its text).
+                  setState(() => _accountType = t);
+                  _runSearch(force: true);
+                },
               ),
               const SizedBox(height: 12),
               _StatusStrip(res: _res, loading: _loading, error: _error, onRetry: () => _runSearch(force: true)),
@@ -788,6 +800,8 @@ class _SearchCard extends StatelessWidget {
     required this.onOpenHotelPicker,
     this.foodAddr,
     this.onPickFoodAddress,
+    this.accountType = 'Savings',
+    this.onAccountType,
   });
 
   final VoidCallback onSwap;
@@ -809,6 +823,8 @@ class _SearchCard extends StatelessWidget {
   final VoidCallback onOpenHotelPicker;
   final TextEditingController? foodAddr;
   final void Function(Map<String, dynamic>)? onPickFoodAddress;
+  final String accountType;
+  final void Function(String)? onAccountType;
 
   @override
   Widget build(BuildContext context) {
@@ -1141,6 +1157,74 @@ class _SearchCard extends StatelessWidget {
                   ],
                 ),
               ),
+            ),
+          ],
+        );
+
+      case SearchKind.account:
+        // Mirror of the web Accounts header (21 Oct): account-type chips +
+        // bank-name search. The q controller holds the BANK name; the query
+        // composed for the server is "<bank> <type> account" (blank bank =
+        // compare every bank).
+        body = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text('Account Type:', style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),
+                const SizedBox(width: 6),
+                for (final t in const ['Savings', 'Current', 'Demat'])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: GestureDetector(
+                      onTap: () => onAccountType?.call(t),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: accountType == t ? T1SColors.red : (isDark(context) ? T1SColors.slate800 : T1SColors.slate50),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: accountType == t ? T1SColors.red : border(context)),
+                        ),
+                        child: Text(
+                          t,
+                          style: tx(context, 10, w: FontWeight.w900,
+                              color: accountType == t ? Colors.white : ink(context)),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Search a bank to see only its accounts — leave blank to compare every bank.',
+              style: tx(context, 9, color: muted(context)),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TypeaheadField(
+                    controller: q,
+                    hint: 'Search bank (e.g. SBI, HDFC, Kotak, Zerodha...)',
+                    cities: false,
+                    presets: presets,
+                    icon: Icons.search,
+                    onSubmitted: (_) => onSearch(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: onSearch,
+                  child: Container(
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(10)),
+                    alignment: Alignment.center,
+                    child: Text('Compare', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
+                  ),
+                ),
+              ],
             ),
           ],
         );

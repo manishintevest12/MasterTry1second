@@ -141,8 +141,10 @@ export const PriceAdviceSidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Kayak-Style "Smart Filters" AI Box */}
-      <div className="bg-white rounded-xl border border-orange-200/90 p-4 shadow-xs relative overflow-hidden">
+      {/* 2. Kayak-Style "Smart Filters" AI Box — hidden on mobile (owner 21 Oct):
+          natural-language AI filters are desktop-only; mobile keeps the compact
+          filter panel instead to save screen real estate. */}
+      <div className="hidden md:block bg-white rounded-xl border border-orange-200/90 p-4 shadow-xs relative overflow-hidden">
         <div className="flex items-center justify-between cursor-pointer" onClick={() => setSmartFilterExpanded(!smartFilterExpanded)}>
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-orange-600" />
