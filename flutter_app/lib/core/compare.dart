@@ -132,7 +132,8 @@ class CompareItem {
   }
 
   bool get priced => primaryPrice > 0 && priceAvailable;
-  bool get isRate => vertical == 'loans' || vertical == 'insurance';
+  // Website parity (21 Oct): account savings rows carry the rate in unit ('% p.a. ...').
+  bool get isRate => vertical == 'loans' || vertical == 'insurance' || unit.startsWith('%');
   bool get isMovie => vertical == 'movie' || vertical == 'movies';
 
   SellerQuote? get bestQuote {
@@ -200,7 +201,7 @@ String inrAmount(num n) {
 /// Loans/insurance publish a RATE (% p.a.), everything else rupees.
 String formatPrice(String vertical, num value) {
   if (value <= 0) return '—';
-  if (vertical == 'loans' || vertical == 'insurance') {
+  if (vertical == 'loans' || vertical == 'insurance' || vertical == 'account') {
     final r = (value * 100).round() / 100;
     return '${r == r.roundToDouble() ? r.toInt() : r}%';
   }

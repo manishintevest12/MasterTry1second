@@ -887,7 +887,10 @@ class GroupCard extends StatelessWidget {
                               if (it.isRate) ...[
                                 Text('from', style: tx(context, 9, color: muted(context))),
                                 Text(formatPrice(vertical, g.best.price), style: tx(context, 16.5, w: FontWeight.w900, mono: true)),
-                                Text('interest p.a. (starting)', style: tx(context, 8.5, color: muted(context))),
+                                Text(
+                                  it.unit.isNotEmpty && it.vertical == 'account' ? it.unit : 'interest p.a. (starting)',
+                                  style: tx(context, 8.5, color: muted(context)),
+                                ),
                               ] else ...[
                                 Row(
                                   children: [

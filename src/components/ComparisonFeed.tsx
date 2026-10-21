@@ -108,7 +108,15 @@ export const ComparisonFeed: React.FC = () => {
   }, [vertical]);
 
   // Filter by vertical
-  let filtered = vertical === 'account' ? accountItems : items.filter((it) => it.vertical === vertical);
+  let filtered = vertical === 'account'
+    ? (() => {
+        const seen = new Set<string>();
+        const live = items.filter((it: any) => it.vertical === 'account');
+        for (const it of live) seen.add(`${String(it.title || '').toLowerCase()}|${it.primaryPrice || 0}`);
+        const registry = accountItems.filter((it: any) => !seen.has(`${String(it.title || '').toLowerCase()}|${it.primaryPrice || 0}`));
+        return [...live, ...registry];
+      })()
+    : items.filter((it) => it.vertical === vertical);
 
   // Filter by selected category
   if (selectedCategory && selectedCategory !== 'All' && !selectedCategory.toLowerCase().includes('all')) {
@@ -149,7 +157,13 @@ export const ComparisonFeed: React.FC = () => {
 
   // Sort (prompt sort hint wins only when the tab is still on 'best')
   const effectiveSort = (sortOption === 'best' && smartFilter?.sortHint) ? smartFilter.sortHint : sortOption;
+  // Savings-account rows carry '%' units: the BEST row is the HIGHEST rate,
+  // so cheapest/best flip to descending for them (never for rupee rows).
+  const rateUp = (it: any) => vertical === 'account' && String(it.unit || '').startsWith('%');
   const sorted = [...filtered].sort((a, b) => {
+    if (rateUp(a) && rateUp(b) && (effectiveSort === 'cheapest' || effectiveSort === 'best')) {
+      return (b.primaryPrice || 0) - (a.primaryPrice || 0);
+    }
     if (effectiveSort === 'cheapest') {
       // price-less items sort last, never first
       return (a.primaryPrice || Infinity) === (b.primaryPrice || Infinity) ? 0 : (a.primaryPrice || Infinity) < (b.primaryPrice || Infinity) ? -1 : 1;

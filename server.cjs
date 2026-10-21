@@ -2123,8 +2123,8 @@ function parseJiomart(body, source, pageUrl) {
     const price = Number.isFinite(eff) && eff > 0 ? eff : marked;
     if (!Number.isFinite(price) || price <= 0) continue;
     const brand = String(it.brand?.name || "").trim();
-    const slug = String(it.slug || "").trim();
-    const pdp = slug ? `https://www.jiomart.com/p/${slug}` : "https://www.jiomart.com";
+    const slug2 = String(it.slug || "").trim();
+    const pdp = slug2 ? `https://www.jiomart.com/p/${slug2}` : "https://www.jiomart.com";
     const imgs = [...new Set(
       (it.medias || []).filter((m) => m?.type === "image" && typeof m.url === "string").map((m) => String(m.url).replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u))
     )].slice(0, 6);
@@ -2200,7 +2200,7 @@ function parseRelianceDigital(html, source, pageUrl) {
   const state = extractRelianceState(html);
   const list = state?.productListingPage?.productlists?.items;
   if (!Array.isArray(list)) return [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const it of list.slice(0, 40)) {
@@ -2208,9 +2208,9 @@ function parseRelianceDigital(html, source, pageUrl) {
     const price = Number(it?.price?.effective?.min);
     if (!name || !Number.isFinite(price) || price <= 0) continue;
     if (it?.sellable === false) continue;
-    const slug = String(it?.slug || "").trim();
-    if (!slug || seen.has(slug)) continue;
-    seen.add(slug);
+    const slug2 = String(it?.slug || "").trim();
+    if (!slug2 || seen.has(slug2)) continue;
+    seen.add(slug2);
     const marked = Number(it?.price?.marked?.min);
     const mrp = Number.isFinite(marked) && marked > price ? marked : void 0;
     const brand = it?.brand?.name ? String(it.brand.name) : void 0;
@@ -2218,7 +2218,7 @@ function parseRelianceDigital(html, source, pageUrl) {
     const ean = Array.isArray(it?.attributes?.identifier?.ean) ? String(it.attributes.identifier.ean[0] || "") : "";
     const sku = Array.isArray(it?.attributes?.identifier?.sku_code) ? String(it.attributes.identifier.sku_code[0] || "") : "";
     const rating = Number(it?.rating);
-    const url = `${RELIANCE_WEB}/product/${slug}`;
+    const url = `${RELIANCE_WEB}/product/${slug2}`;
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand,
@@ -2234,7 +2234,7 @@ function parseRelianceDigital(html, source, pageUrl) {
         image: medias[0] || "",
         ...medias.length > 1 ? { image_urls: medias.slice(0, 6).join("|") } : {},
         ...Number.isFinite(rating) && rating > 0 ? { rating: String(rating) } : {},
-        data_note: `Price as listed on reliancedigital.in search, observed ${today}`
+        data_note: `Price as listed on reliancedigital.in search, observed ${today2}`
       },
       identifiers: ean || sku ? { ...ean ? { gtin: ean } : {}, ...sku ? { sku } : {} } : void 0,
       evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "image", "url"] }
@@ -2401,8 +2401,8 @@ var init_ecommerce = __esm({
           run: async (ctx) => {
             const term = q(ctx);
             if (!term) return [];
-            const slug = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
-            const url = `https://www.myntra.com/${encodeURIComponent(slug)}`;
+            const slug2 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+            const url = `https://www.myntra.com/${encodeURIComponent(slug2)}`;
             const r = await ctx.fetch(url);
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Myntra HTTP ${r.status}`, r.status);
             const items = parseMyntra(r.body, ctx.source, url);
@@ -3028,7 +3028,7 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
   const origin = `https://www.${site}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const L of listings.slice(0, 60)) {
     if (L?.__typename !== "LodgingCard") continue;
     const name = String(L?.headingSection?.heading || "").trim();
@@ -3041,11 +3041,11 @@ function parseExpediaGroup(body, source, site, checkin, checkout, fx) {
     const url = rel ? `${origin}${rel.startsWith("/") ? rel : `/${rel}`}` : origin;
     const sellerUrl = `${url}${url.includes("?") ? "&" : "?"}chkin=${checkin}&chkout=${checkout}`;
     let finalPrice = price, finalCurrency = currency;
-    let note = `Nightly rate observed on ${site} live listing API, ${today}`;
+    let note = `Nightly rate observed on ${site} live listing API, ${today2}`;
     if (fx && currency === "USD" && price > 0) {
       finalPrice = Math.round(price * fx.rate);
       finalCurrency = "INR";
-      note = `$${price} nightly listed on ${site}, converted to INR at live USD/INR ${fx.rate.toFixed(2)} (${fx.source}), ${today}`;
+      note = `$${price} nightly listed on ${site}, converted to INR at live USD/INR ${fx.rate.toFixed(2)} (${fx.source}), ${today2}`;
     }
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
@@ -3526,7 +3526,7 @@ function parseIxigoHotels(html, source, pageUrl, city) {
   const results = root?.props?.pageProps?.hotelsData?.result?.searchResults;
   if (!Array.isArray(results)) return [];
   const items = [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const h of results.slice(0, 60)) {
     const name = String(h.name || "").trim();
     const fare = Number(h.fareDetail?.displayedBaseFare);
@@ -3558,7 +3558,7 @@ function parseIxigoHotels(html, source, pageUrl, city) {
         ...imgs.length > 1 ? { image_urls: imgs.join("|") } : {},
         price_basis: "per night, base fare as published by Ixigo",
         chain_site: site.chain ? "brand official website" : "web search for official site",
-        data_note: `Price observed on Ixigo (metasearch) on ${today}; booking is via the hotel's own channels, never via Ixigo`
+        data_note: `Price observed on Ixigo (metasearch) on ${today2}; booking is via the hotel's own channels, never via Ixigo`
       },
       identifiers: h.hotelId ? { sku: String(h.hotelId) } : void 0,
       evidence: { sourceUrl: pageUrl, extractedFields: ["name", "displayedBaseFare", "locality", "city", "ratings", "image"] }
@@ -3681,8 +3681,8 @@ function parseGoibiboHotelsSsr(body) {
     let image = String(pickFirst(h.obj, IMG_KEYS) || "");
     if (image && image.startsWith("//")) image = "https:" + image;
     const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
-    const slug = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
-    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug || void 0 });
+    const slug2 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
+    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug2 || void 0 });
     if (out.length >= 60) break;
   }
   return out;
@@ -4193,8 +4193,8 @@ var init_saffronStays = __esm({
 function agodaCitySlugs(city) {
   const out = [];
   for (const v of cityVariants(city)) {
-    const slug = `${slugOf(v)}-in`;
-    if (!out.includes(slug)) out.push(slug);
+    const slug2 = `${slugOf(v)}-in`;
+    if (!out.includes(slug2)) out.push(slug2);
   }
   return out.slice(0, 6);
 }
@@ -4599,8 +4599,8 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
-            const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const r = await cffiFetch(`https://www.makemytrip.com/hotels/hotels-in-${slug}/`, { impersonate: "chrome", timeoutMs: 25e3 });
+            const slug2 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const r = await cffiFetch(`https://www.makemytrip.com/hotels/hotels-in-${slug2}/`, { impersonate: "chrome", timeoutMs: 25e3 });
             if (r.status === 302 || r.status === 301) throw new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip redirected to Akamai geo-challenge (makemytrip.global) from this IP");
             if (r.status !== 200) throw new AcquisitionError("ACCESS_CHALLENGE", `MakeMyTrip HTTP ${r.status}`);
             if (r.body.length < 500) throw new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip returned an empty Akamai edge body (no sensor cookie)");
@@ -4643,8 +4643,8 @@ var init_hotels = __esm({
             }
             const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
             let lastErr = null;
-            for (const slug of attempts) {
-              const url = `https://www.goibibo.com/hotels/${slug}/`;
+            for (const slug2 of attempts) {
+              const url = `https://www.goibibo.com/hotels/${slug2}/`;
               let r;
               try {
                 r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: {
@@ -4959,8 +4959,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let cityId = agodaCityIdCache.get(city.toLowerCase());
             if (!cityId) {
-              for (const slug of agodaCitySlugs(city)) {
-                const r = await cffiFetch(`https://www.agoda.com/city/${slug}.html`, {
+              for (const slug2 of agodaCitySlugs(city)) {
+                const r = await cffiFetch(`https://www.agoda.com/city/${slug2}.html`, {
                   impersonate: "chrome",
                   timeoutMs: 2e4,
                   headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
@@ -5090,8 +5090,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path10 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path10}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
+            for (const path11 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path11}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -5101,7 +5101,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path10 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path11 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -5121,8 +5121,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path10 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path10}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path11 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path11}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -5133,7 +5133,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path10 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path11 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -5361,13 +5361,13 @@ var init_openflights = __esm({
 // server/workers/parsers/ixigoFlights.ts
 function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
   const iataOf = (city, code) => code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null;
-  const slug = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
-  const fromTok = iataOf(from, fromCode) || slug(from);
-  const toTok = iataOf(to, toCode) || slug(to);
+  const slug2 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
+  const fromTok = iataOf(from, fromCode) || slug2(from);
+  const toTok = iataOf(to, toCode) || slug2(to);
   const alts = [];
   const altIata = iataOf(from, fromCode);
   if (altIata && altIata !== fromTok) alts.push(altIata);
-  if (altIata) alts.push(slug(from));
+  if (altIata) alts.push(slug2(from));
   if (fromTok.includes("_")) alts.push(fromTok.replace(/_/g, "-"));
   return { fromTok, toTok, alts };
 }
@@ -5476,7 +5476,7 @@ function parseEmtFareCalendar(jsonText, wantDate) {
   return fares;
 }
 function emtFareItems(fares, source, route, wantDate, fromCode = "", toCode = "") {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const airline = (code) => code && EMT_AIRLINES[code] ? EMT_AIRLINES[code] : null;
   const exact = fares.find((f) => f.date === wantDate && airline(f.airlineCode));
   const upcoming = fares.filter((f) => airline(f.airlineCode)).sort((a, b) => a.fare - b.fare);
@@ -5499,8 +5499,8 @@ function emtFareItems(fares, source, route, wantDate, fromCode = "", toCode = ""
       travel_date: chosen.date,
       fare: String(chosen.fare),
       airline_code: chosen.airlineCode || "",
-      price_basis: `cheapest ${al.name} fare observed on EaseMyTrip's live fare calendar on ${today} (EaseMyTrip is the selling website)`,
-      data_note: `Fare acquired via EaseMyTrip fare calendar on ${today}; the ticket is SOLD by EaseMyTrip (seller). Cheapest carrier fare for this route/date; may change at checkout.`,
+      price_basis: `cheapest ${al.name} fare observed on EaseMyTrip's live fare calendar on ${today2} (EaseMyTrip is the selling website)`,
+      data_note: `Fare acquired via EaseMyTrip fare calendar on ${today2}; the ticket is SOLD by EaseMyTrip (seller). Cheapest carrier fare for this route/date; may change at checkout.`,
       image: ""
     },
     identifiers: { sku: `emt-${chosen.airlineCode}-${route.from}-${route.to}-${chosen.date.replace(/\//g, "-")}` },
@@ -5648,7 +5648,7 @@ function parseEmtAirbus(jsonText) {
   return out;
 }
 function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, fromCountry = "India", toCountry = "India", cap = 60) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const routeLabel = `${route.from} \u2192 ${route.to}`;
   const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-${encodeURIComponent(fromCountry || "India")}%7C${toCode}-${encodeURIComponent(route.to)}-${encodeURIComponent(toCountry || "India")}%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
   const seen = /* @__PURE__ */ new Set();
@@ -5677,8 +5677,8 @@ function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, fromC
         stops: f.stops,
         seats: f.seats ? `${f.seats} seats left` : "",
         fare_basis: f.fareName ? `${f.fareName} fare` : "",
-        price_basis: `live ${f.fareName || alName} fare observed on EaseMyTrip's flight search on ${today} (EaseMyTrip is the selling website)`,
-        data_note: `Fare acquired via EaseMyTrip flight search API on ${today}; the ticket is SOLD by EaseMyTrip (seller), operating carrier ${alName}. Fare may change at checkout.`,
+        price_basis: `live ${f.fareName || alName} fare observed on EaseMyTrip's flight search on ${today2} (EaseMyTrip is the selling website)`,
+        data_note: `Fare acquired via EaseMyTrip flight search API on ${today2}; the ticket is SOLD by EaseMyTrip (seller), operating carrier ${alName}. Fare may change at checkout.`,
         deep_link_ref: emtListing
       },
       identifiers: { sku: `emt-airbus-${f.airlineCode}-${f.flightNo}-${dateIso}` },
@@ -5968,7 +5968,7 @@ async function kiwiSearch(fromIata, toIata, dateIso) {
   return { itineraries, total: root.metadata?.itinerariesCount ?? itineraries.length };
 }
 function kiwiItems(itineraries, source, route, fromCode, toCode, dateIso, cap = 60) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const it of itineraries) {
@@ -6010,8 +6010,8 @@ function kiwiItems(itineraries, source, route, fromCode, toCode, dateIso, cap = 
         departure: depTime,
         arrival: arrTime,
         stops: String(stops),
-        price_basis: `live ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on Kiwi.com's flight search on ${today} (Kiwi.com is the selling website)`,
-        data_note: `Fare acquired via Kiwi.com's search API on ${today}; the ticket is SOLD by Kiwi.com (seller), operating carrier ${alNames || al0.name}. Price may change at checkout.`
+        price_basis: `live ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on Kiwi.com's flight search on ${today2} (Kiwi.com is the selling website)`,
+        data_note: `Fare acquired via Kiwi.com's search API on ${today2}; the ticket is SOLD by Kiwi.com (seller), operating carrier ${alNames || al0.name}. Price may change at checkout.`
       },
       identifiers: { sku: `kiwi-${flightNoKey}-${dateIso}-${depTime}`.slice(0, 120) },
       evidence: {
@@ -6280,7 +6280,7 @@ async function indigoWebFareCalendar(cffiFetch2, fromCode, toCode, depIso) {
 function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
   const exact = fares.find((f) => f.date === depIso);
   if (!exact || exact.price <= 0) return [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const route = `${fromCity} to ${toCity}`.toLowerCase();
   const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${depIso}&pax=A1`;
   return [newRawItem(source, {
@@ -6295,7 +6295,7 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
       route: `${fromCity} \u2192 ${toCity}`,
       travel_date: depIso,
       fare_class: exact.category ? `${exact.category}-category fare` : "",
-      price_basis: `cheapest economy fare returned by IndiGo's own fare-calendar API on ${today} for this route and date`
+      price_basis: `cheapest economy fare returned by IndiGo's own fare-calendar API on ${today2} for this route and date`
     },
     identifiers: { sku: `indigo-farecal-${fromCode}-${toCode}-${depIso}` },
     evidence: {
@@ -6354,7 +6354,7 @@ function parseAkasaFareCalendar(xml) {
   return out;
 }
 function akasaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const bookable = fares.filter((f) => f.price > 0 && !f.noFlights && !f.soldOut);
   const exact = bookable.find((f) => f.date === depIso);
   const upcoming = [...bookable].sort((a, b) => a.price - b.price);
@@ -6375,8 +6375,8 @@ function akasaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, de
       route: routeLabel,
       travel_date: chosen.date,
       fare_class: "lowest economy fare (taxes included) from Akasa Air's own fare calendar",
-      price_basis: `lowest Akasa Air fare returned by Akasa's own booking API on ${today} for this route${isExact ? " and date" : " within the next 60 days"}`,
-      data_note: `Fare acquired from Akasa Air's official low-fare calendar on ${today}; booking is on Akasa Air's own website.`,
+      price_basis: `lowest Akasa Air fare returned by Akasa's own booking API on ${today2} for this route${isExact ? " and date" : " within the next 60 days"}`,
+      data_note: `Fare acquired from Akasa Air's official low-fare calendar on ${today2}; booking is on Akasa Air's own website.`,
       image: ""
     },
     identifiers: { sku: `akasa-${fromCode}-${toCode}-${chosen.date}` },
@@ -6424,7 +6424,7 @@ function parseViaFareCalendar(body) {
   return out;
 }
 function viaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const exact = fares.find((f) => f.dt === depIso);
   const upcoming = [...fares].sort((a, b) => a.pr - b.pr);
   const chosen = exact || upcoming[0];
@@ -6443,8 +6443,8 @@ function viaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depI
       route: routeLabel,
       travel_date: chosen.dt,
       fare_class: `lowest economy fare (${chosen.prType || "LOW"} bucket) from Via.com's own fare calendar`,
-      price_basis: `lowest Via.com fare returned by via.com's fare-calendar API on ${today} for this route${isExact ? " and date" : " within the returned calendar window"}`,
-      data_note: `Fare acquired from Via.com's official fare calendar on ${today}; booking continues on Via.com's own website.`,
+      price_basis: `lowest Via.com fare returned by via.com's fare-calendar API on ${today2} for this route${isExact ? " and date" : " within the returned calendar window"}`,
+      data_note: `Fare acquired from Via.com's official fare calendar on ${today2}; booking continues on Via.com's own website.`,
       image: ""
     },
     identifiers: { sku: `via-${fromCode}-${toCode}-${chosen.dt}` },
@@ -6642,11 +6642,11 @@ var init_yatraFlights = __esm({
 
 // server/workers/parsers/goibiboFlights.ts
 function goibiboRouteUrl(fromCity, toCity) {
-  const slug = (c) => {
+  const slug2 = (c) => {
     const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").trim();
     return (SLUG_ALIASES[k] || k).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   };
-  return `https://www.goibibo.com/flights/${slug(fromCity)}-to-${slug(toCity)}-flights/`;
+  return `https://www.goibibo.com/flights/${slug2(fromCity)}-to-${slug2(toCity)}-flights/`;
 }
 function stripTags(s) {
   return String(s).replace(/<[^>]*>/g, "").trim();
@@ -10715,7 +10715,7 @@ function parseExpediaFlights(body, source, route, dateIso, srpUrl, fx, cap = 40)
     return [];
   }
   const listings = d?.data?.flightsSearch?.listingResult?.listings || [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const routeLabel = `${route.from} \u2192 ${route.to}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -10744,11 +10744,11 @@ function parseExpediaFlights(body, source, route, dateIso, srpUrl, fx, cap = 40)
     const { price, currency, dataNote } = fx && fx.rate > 0 ? {
       price: Math.round(usd2 * fx.rate),
       currency: "INR",
-      dataNote: `$${usd2} listed on expedia.com, converted to INR at live USD/INR ${fx.rate} (${fx.source}); live fare observed on Expedia flight search on ${today}. Fare may change at checkout.`
+      dataNote: `$${usd2} listed on expedia.com, converted to INR at live USD/INR ${fx.rate} (${fx.source}); live fare observed on Expedia flight search on ${today2}. Fare may change at checkout.`
     } : {
       price: usd2,
       currency: "USD",
-      dataNote: `Live fare observed on Expedia flight search on ${today}; listed in USD on expedia.com (FX rate unavailable, price unconverted). Fare may change at checkout.`
+      dataNote: `Live fare observed on Expedia flight search on ${today2}; listed in USD on expedia.com (FX rate unavailable, price unconverted). Fare may change at checkout.`
     };
     const logo = listingLogo(L);
     out.push(newRawItem(source, {
@@ -11880,7 +11880,7 @@ function dominosItems(products, source, query) {
   return top.map((x) => buildItem(x.p, source, "menu item matched to your search"));
 }
 function buildItem(p, source, matchNote) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   return newRawItem(source, {
     title: `Domino's ${p.displayName} (${p.family})`,
     brand: "Domino's",
@@ -11895,8 +11895,8 @@ function buildItem(p, source, matchNote) {
       regular_price: String(p.regularPrice),
       saving: p.regularPrice > p.currentPrice ? String(p.regularPrice - p.currentPrice) : "",
       image: "",
-      price_basis: `dominos.co.in web menu price (${matchNote}), scraped ${today}`,
-      data_note: `Price from Domino's India national web menu on ${today}; final price at checkout may vary by city/store`
+      price_basis: `dominos.co.in web menu price (${matchNote}), scraped ${today2}`,
+      data_note: `Price from Domino's India national web menu on ${today2}; final price at checkout may vary by city/store`
     },
     identifiers: { sku: `dominos-${p.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` },
     evidence: { sourceUrl: "https://www.dominos.co.in/menu", extractedFields: ["displayName", "family", "currentPrice", "regularPrice", "description"] }
@@ -12281,10 +12281,10 @@ var init_food = __esm({
           priority: 10,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || "");
-            const slug = citySlug(ctx.query.location?.city, raw);
-            if (!slug) return [];
+            const slug2 = citySlug(ctx.query.location?.city, raw);
+            if (!slug2) return [];
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
-            const url = `https://www.zomato.com/${slug}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
+            const url = `https://www.zomato.com/${slug2}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
             let r = await ctx.fetch(url);
             if (r.status === 403 || r.status === 202 || r.status === 429) {
               await new Promise((res) => setTimeout(res, 1500));
@@ -12461,7 +12461,7 @@ function parseSavaariCabs(html, source, pageUrl, from, to) {
     }
   }
   if (!seenFares.length) return [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const lo = Math.min(...seenFares.map((f) => f.fare));
   const hi = Math.max(...seenFares.map((f) => f.fare));
   const loLabel = seenFares.find((f) => f.fare === lo)?.label || "one-way";
@@ -12484,9 +12484,9 @@ function parseSavaariCabs(html, source, pageUrl, from, to) {
         vehicle_class: label,
         trip_type: "one-way",
         fare_range: `Rs ${lo} (base) - Rs ${hi}`,
-        price_basis: `route fare as published by savaari.com on ${today}`,
+        price_basis: `route fare as published by savaari.com on ${today2}`,
         image: "",
-        data_note: `Route fare scraped from savaari.com route page on ${today}`
+        data_note: `Route fare scraped from savaari.com route page on ${today2}`
       },
       identifiers: { sku: `savaari-${from}-${to}-${label}`.toLowerCase().replace(/\s+/g, "-") },
       evidence: { sourceUrl: pageUrl, extractedFields: ["FAQPage ld+json fare text"] }
@@ -12525,7 +12525,7 @@ function parseBharatTaxiCabs(html, source, pageUrl, from, to) {
   }
   const seen = flat.filter((f) => f.fare > 0 && f.car).slice(0, 8);
   if (!seen.length) return [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const lo = Math.min(...seen.map((f) => f.fare));
   const hi = Math.max(...seen.map((f) => f.fare));
   return seen.map((f) => newRawItem(source, {
@@ -12544,8 +12544,8 @@ function parseBharatTaxiCabs(html, source, pageUrl, from, to) {
       vehicle_type: f.car,
       trip_type: "one-way",
       fare_range: `Rs ${lo} (base) - Rs ${hi}`,
-      price_basis: `one-way route fare as published by bharattaxi.com on ${today}`,
-      data_note: `Route fare scraped from bharattaxi.com route page on ${today}`
+      price_basis: `one-way route fare as published by bharattaxi.com on ${today2}`,
+      data_note: `Route fare scraped from bharattaxi.com route page on ${today2}`
     },
     identifiers: { sku: `bharattaxi-${from}-${to}-${f.car}`.toLowerCase().replace(/\s+/g, "-") },
     evidence: { sourceUrl: pageUrl, extractedFields: ["SSR HTML fare table (flat one-way)"] }
@@ -12576,7 +12576,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
     const m = /([\d,]{3,7})/.exec(norm3(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
@@ -12604,9 +12604,9 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
-          price_basis: `route fare as published on quickride.in on ${today}`,
+          price_basis: `route fare as published on quickride.in on ${today2}`,
           image: "",
-          data_note: `Route fare scraped from quickride.in outstation fare table on ${today}`
+          data_note: `Route fare scraped from quickride.in outstation fare table on ${today2}`
         },
         identifiers: { sku: `quickride-${rf}-${rt}-ow`.replace(/\s+/g, "-") },
         evidence: { sourceUrl: pageUrl, extractedFields: ["fare table row"] }
@@ -12659,7 +12659,7 @@ async function indrivePrices(fromId, toId) {
   return Array.isArray(rows) ? rows : [];
 }
 function buildIndriveOffers(source, fromCity, toCity, from, to, rows) {
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const items = [];
   for (const row of rows) {
     const vehicle = ORDER_LABELS[row.order_type];
@@ -12678,7 +12678,7 @@ function buildIndriveOffers(source, fromCity, toCity, from, to, rows) {
         route: `${fromCity} to ${toCity}`,
         vehicle_type: `InDrive Intercity (${vehicle})`,
         trip_type: "one-way",
-        price_basis: `InDrive's own published intercity ${rangeNote} for ${from.name} \u2192 ${to.name}, retrieved ${today}`,
+        price_basis: `InDrive's own published intercity ${rangeNote} for ${from.name} \u2192 ${to.name}, retrieved ${today2}`,
         data_note: `InDrive rides are passenger-name-your-price; this is InDrive's published indicative band from its intercity web app (guest API), not a fixed fare. City pair resolved via InDrive's own city registry: ${from.name} (id ${from.id}) \u2192 ${to.name} (id ${to.id}).`
       },
       sellerUrl: WEB,
@@ -12721,9 +12721,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path10 = m[1];
-    if (!path10 || path10.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path10).replace(/[_%20]/g, " ").trim(), mainPagePath: path10 });
+    const path11 = m[1];
+    if (!path11 || path11.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path11).replace(/[_%20]/g, " ").trim(), mainPagePath: path11 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -15116,13 +15116,13 @@ var init_uberIndiaCities = __esm({
       "zamania-uttar-pradesh-in",
       "zira-punjab-in"
     ];
-    PARSED = SLUGS.map((slug) => {
-      let rest = slug.endsWith("-in") ? slug.slice(0, -3).split("-") : slug.split("-");
+    PARSED = SLUGS.map((slug2) => {
+      let rest = slug2.endsWith("-in") ? slug2.slice(0, -3).split("-") : slug2.split("-");
       const tail2 = rest.length > 2 ? `${rest[rest.length - 2]}-${rest[rest.length - 1]}` : "";
       const tail1 = rest[rest.length - 1];
       if (UBER_IN_STATE_SUFFIXES.has(tail2)) rest = rest.slice(0, -2);
       else if (UBER_IN_STATE_SUFFIXES.has(tail1)) rest = rest.slice(0, -1);
-      return { slug, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
+      return { slug: slug2, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
     });
     BY_CANON = /* @__PURE__ */ new Map();
     for (const e of PARSED) {
@@ -15177,8 +15177,8 @@ function uberDestMatchScore(routeEnd, destName) {
   for (const t of a) if (b.includes(t) || b.some((x) => x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x)))) hits++;
   return hits / a.length;
 }
-async function uberCityFares(slug, city) {
-  const url = `https://www.uber.com/global/en/r/cities/${slug}/`;
+async function uberCityFares(slug2, city) {
+  const url = `https://www.uber.com/global/en/r/cities/${slug2}/`;
   const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
   if (r.status !== 200 || !(r.body || "").includes("Average price with UberX")) throw new AcquisitionError("EMPTY_RESPONSE", `Uber city guide page unavailable (HTTP ${r.status}) for ${city}`);
   const out = [];
@@ -15190,7 +15190,7 @@ async function uberCityFares(slug, city) {
     const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
     if (priceM && !/^\s*[₹]/.test(txts[i])) {
       const price = Number(priceM[1].replace(/,/g, ""));
-      if (price > 0) out.push({ dest: txts[i], price, city, slug, fetchedUrl: url });
+      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug2, fetchedUrl: url });
     }
   }
   return out;
@@ -15223,7 +15223,7 @@ async function uberSsrFallback(ctx, rt, reason) {
   if (best) {
     const dropName = best.fare.dest;
     const drop = await photonGeocode(`${dropName}, ${cityInfo.city}`) || await geocodePlace(rt.to);
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
     const ul = new URL("https://m.uber.com/ul/");
     ul.searchParams.set("client_id", uberClientId);
@@ -15247,7 +15247,7 @@ async function uberSsrFallback(ctx, rt, reason) {
         route: `${cityInfo.city} to ${dropName}`,
         vehicle_type: "UberX",
         trip_type: "one-way",
-        price_basis: `Uber-published ${cityInfo.city} average for ${dropName} (UberX) on ${today}`,
+        price_basis: `Uber-published ${cityInfo.city} average for ${dropName} (UberX) on ${today2}`,
         data_note: `Fare is Uber's own published city-guide average (SSR table on uber.com), not a live route quote; live quotes need official API credentials (${reason}). Deeplink is the Uber universal link with our client_id, routed via /api/out so an affiliate campaign (direct or network) attaches when available.`
       },
       sellerUrl: ul.toString(),
@@ -15357,7 +15357,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
   const km = Number(route.distance) / 1e3;
   const mins = Number(route.duration) / 60;
   const best = olaPickCards(cards);
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const items = [];
   for (const { cat, label } of OLA_CATEGORY_LABELS) {
     const card = best[cat];
@@ -15380,7 +15380,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
         route: `${rt.from} to ${rt.to}`,
         vehicle_type: label,
         trip_type: "one-way",
-        price_basis: `Estimate computed from Ola's own published ${city.name} rate card (${label}) + OSRM road distance (${km.toFixed(1)} km), retrieved ${today}`,
+        price_basis: `Estimate computed from Ola's own published ${city.name} rate card (${label}) + OSRM road distance (${km.toFixed(1)} km), retrieved ${today2}`,
         data_note: `Ola has no public guest fare API without OLA_API_KEY (${reason}). This estimate applies Ola's official BPD rate-card formula (base + distance slabs + per-minute) to the real OSRM road distance; it is not a live surge-adjusted quote. Deeplink opens Ola web booking with pickup set; complete the ride in the app.`
       },
       sellerUrl: ul.toString(),
@@ -15472,7 +15472,7 @@ var init_cab = __esm({
             }
             const cats = Array.isArray(j?.categories) ? j.categories : [];
             const items = [];
-            const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
             for (const c of cats.slice(0, 4)) {
               const fares = c?.ride_estimate?.fare_breakup;
               const total = Array.isArray(fares) ? fares.find((f) => String(f?.type || "").includes("total")) : null;
@@ -15493,7 +15493,7 @@ var init_cab = __esm({
                   route: `${rt.from} to ${rt.to}`,
                   vehicle_type: vehicle,
                   trip_type: "one-way",
-                  price_basis: `Ola API fare estimate on ${today}`,
+                  price_basis: `Ola API fare estimate on ${today2}`,
                   data_note: "Fare estimate from the official Ola Cabs API (developers.olacabs.com)"
                 },
                 identifiers: { sku: `ola-${rt.from}-${rt.to}-${vehicle}`.toLowerCase().replace(/\s+/g, "-") },
@@ -15541,7 +15541,7 @@ var init_cab = __esm({
             }
             const prices = Array.isArray(j?.prices) ? j.prices : [];
             const items = [];
-            const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
             for (const p of prices.slice(0, 5)) {
               const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
               if (!price) continue;
@@ -15570,7 +15570,7 @@ var init_cab = __esm({
                   distance_km: p.distance != null ? String(Math.round(p.distance * 10) / 10) : "",
                   duration_minutes: p.duration != null ? String(Math.round(p.duration / 60)) : "",
                   fare_range: p.low_estimate && p.high_estimate ? `Rs ${p.low_estimate} - Rs ${p.high_estimate}` : "",
-                  price_basis: `Uber API price estimate on ${today}`,
+                  price_basis: `Uber API price estimate on ${today2}`,
                   data_note: `Fare estimate from the official Uber API (${apiHost} /v1.2/estimates/price); deeplink is the Uber universal link with our client_id, routed via /api/out so an affiliate campaign (direct or network) attaches when available`
                 },
                 sellerUrl: ul.toString(),
@@ -17082,9 +17082,9 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     const title = String(mv.name || "").trim();
     if (!title) continue;
     if (queryTerm && !matchesQuery(title, queryTerm)) continue;
-    const slug = ticketnewSlug(title);
-    if (seen.has(slug)) continue;
-    seen.add(slug);
+    const slug2 = ticketnewSlug(title);
+    if (seen.has(slug2)) continue;
+    seen.add(slug2);
     const attrs = {
       image_url: mv.appImgPath ? String(mv.appImgPath) : null,
       language: mv.lang || null,
@@ -17097,7 +17097,7 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     out.push(newRawItem(source, {
       title,
       seller: "TicketNew",
-      sellerUrl: slug ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
+      sellerUrl: slug2 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug2}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
       currency: "INR",
       attributes: attrs,
       evidence: {
@@ -17305,9 +17305,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path10, timeoutMs = 12e3) {
+async function gwJson(host, path11, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path10}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path11}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -17980,7 +17980,7 @@ function parseRedBusRoute(html, source, pageUrl) {
   const fareM = /([\d,]+(?:\.\d{1,2})?)/.exec(info.minFare);
   const fare = fareM ? Math.round(Number(fareM[1].replace(/,/g, ""))) : null;
   if (!fare || fare <= 0) return [];
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const route = `${info.source} to ${info.destination}`.toLowerCase();
   return [newRawItem(source, {
     title: `${info.source} to ${info.destination} bus (lowest fare across ${info.servicecount || "all"} services)`,
@@ -17999,8 +17999,8 @@ function parseRedBusRoute(html, source, pageUrl) {
       first_departure: info.firstBus,
       last_departure: info.lastBus,
       image: "",
-      price_basis: `minimum route fare as published by redbus.in on ${today}`,
-      data_note: `Route-level fare summary (min fare across ${info.servicecount} services from ${info.operators} operators) scraped from redbus.in on ${today}`
+      price_basis: `minimum route fare as published by redbus.in on ${today2}`,
+      data_note: `Route-level fare summary (min fare across ${info.servicecount} services from ${info.operators} operators) scraped from redbus.in on ${today2}`
     },
     identifiers: { sku: `redbus-${route.replace(/\s+/g, "-")}` },
     evidence: { sourceUrl: pageUrl, extractedFields: ["dataInfo minFare", "servicecount", "operators", "avgDuration"] }
@@ -18037,8 +18037,8 @@ function parseRedBusSearch(json, source, route) {
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
   const fingerprint = (0, import_crypto12.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
-  const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-  const searchUrl = `https://www.redbus.in/bus-tickets/${slug(route.fromName)}-to-${slug(route.toName)}.aspx`;
+  const slug2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+  const searchUrl = `https://www.redbus.in/bus-tickets/${slug2(route.fromName)}-to-${slug2(route.toName)}.aspx`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const inv of inventories) {
@@ -18144,7 +18144,7 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
   if (!Number.isFinite(fare) || fare <= 0) return [];
   const from = String(pTable.fromCityName || fromCity);
   const to = String(pTable.toCityName || toCity);
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const route = `${from} to ${to}`.toLowerCase();
   const busTypes = Array.isArray(pTable.busTypeArr) ? pTable.busTypeArr.slice(0, 4).join("; ") : "";
   return [newRawItem(source, {
@@ -18164,8 +18164,8 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
       first_departure: String(pTable.firstBusTime ?? ""),
       last_departure: String(pTable.lastBusTime ?? ""),
       image: "",
-      price_basis: `minimum route fare as published by zingbus.com on ${today}`,
-      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pTable.maxFare ?? "?"} across ${pTable.busCount ?? "?"} services) scraped from zingbus.com on ${today}`
+      price_basis: `minimum route fare as published by zingbus.com on ${today2}`,
+      data_note: `Route-level fare summary (min Rs${fare}/max Rs${pTable.maxFare ?? "?"} across ${pTable.busCount ?? "?"} services) scraped from zingbus.com on ${today2}`
     },
     identifiers: { sku: `zingbus-${route.replace(/\s+/g, "-")}` },
     evidence: { sourceUrl: pageUrl, extractedFields: ["pTableData minFare", "maxFare", "busCount", "travelTime", "firstBusTime"] }
@@ -18228,8 +18228,8 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const slug = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const pageUrl = `https://www.redbus.in/bus-tickets/${slug(rt.from)}-to-${slug(rt.to)}.aspx`;
+            const slug2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const pageUrl = `https://www.redbus.in/bus-tickets/${slug2(rt.from)}-to-${slug2(rt.to)}.aspx`;
             const steps = [];
             const t0 = Date.now();
             let resolved = {};
@@ -18502,9 +18502,9 @@ function parseIssuerIndex(html, bankSlug) {
   const re = new RegExp(`https://cardinsider\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi");
   const out = /* @__PURE__ */ new Set();
   for (const m of html.matchAll(re)) {
-    const slug = m[1];
-    if (!/credit-card$/.test(slug)) continue;
-    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug)) continue;
+    const slug2 = m[1];
+    if (!/credit-card$/.test(slug2)) continue;
+    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug2)) continue;
     out.add(m[0]);
   }
   return [...out];
@@ -18690,11 +18690,11 @@ async function bankCardIndex(bankSlug) {
       let h = raw;
       if (h.startsWith(hub.base)) h = h.slice(hub.base.length);
       if (!h.startsWith("/") || !hub.pathRe.test(h)) continue;
-      const slug = h.split("/").pop().replace(/\.page$/, "");
-      if (NOISE.test(slug)) continue;
-      seen.set(hub.base + h, slug);
+      const slug2 = h.split("/").pop().replace(/\.page$/, "");
+      if (NOISE.test(slug2)) continue;
+      seen.set(hub.base + h, slug2);
     }
-    const links = [...seen].map(([url, slug]) => ({ url, slug }));
+    const links = [...seen].map(([url, slug2]) => ({ url, slug: slug2 }));
     CACHE.set(bankSlug, { at: Date.now(), links });
     return links;
   } catch {
@@ -18891,6 +18891,324 @@ var init_creditcards = __esm({
   }
 });
 
+// server/workers/parsers/bankbazaarAccounts.ts
+function rateSlabs(text) {
+  const nums = [...text.matchAll(/(\d{1,2}(?:\.\d{1,2})?)\s*%/g)].map((m) => Number(m[1])).filter((n) => n > 0 && n < 15);
+  if (!nums.length) return {};
+  return { min: Math.min(...nums), max: Math.max(...nums) };
+}
+function rupees2(text) {
+  const lakh = /(\d+(?:\.\d+)?)\s*(?:lakh|lac)/i.exec(text);
+  if (lakh) return Math.round(Number(lakh[1]) * 1e5);
+  const m = /(?:₹|rs\.?\s*)\s*([\d,]+(?:\.\d+)?)/i.exec(text.replace(/&#8377;/g, "\u20B9"));
+  if (!m) return void 0;
+  const n = Number(m[1].replace(/,/g, ""));
+  return Number.isFinite(n) ? n : void 0;
+}
+function parseBankBazaarSavings(html, source, pageUrl) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+    if (cells.length < 2) continue;
+    const name = cells[0];
+    if (!name || !/bank/i.test(name) || name.length > 60) continue;
+    const { min, max } = rateSlabs(cells[1]);
+    if (max === void 0) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const href = /<a[^>]+href="([^"]+)"[^>]*>/i.exec(row)?.[1];
+    const sellerUrl = href ? href.startsWith("http") ? href : `https://www.bankbazaar.com${href}` : pageUrl;
+    out.push(newRawItem(source, {
+      title: `${name} Savings Account`.slice(0, 120),
+      price: max,
+      // highest published slab — the number a saver compares on
+      currency: "INR",
+      seller: "BankBazaar",
+      sellerUrl,
+      availability: "in_stock",
+      attributes: {
+        account_type: "savings",
+        interest_rate: String(max),
+        interest_rate_min: String(min),
+        interest_rate_max: String(max),
+        price_unit: "% p.a. (highest slab)",
+        rate_type: "indicative",
+        price_basis: "published savings interest-rate slabs, indicative \u2014 never a guaranteed rate",
+        data_note: `Rates published on BankBazaar's savings-account rate table, observed ${today()}`
+      },
+      evidence: { sourceUrl: pageUrl, extractedFields: ["interest_rate_min", "interest_rate_max", "account_type"] }
+    }));
+  }
+  return out;
+}
+function parseBankBazaarCurrent(html, source, pageUrl) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+    if (cells.length < 2) continue;
+    const name = cells[0];
+    if (!name || !/bank/i.test(name) || name.length > 60) continue;
+    const mab = rupees2(cells[1]);
+    if (mab === void 0) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(newRawItem(source, {
+      title: `${name} Current Account`.slice(0, 120),
+      price: mab,
+      // monthly average balance requirement (₹)
+      currency: "INR",
+      seller: "BankBazaar",
+      sellerUrl: pageUrl,
+      availability: "in_stock",
+      attributes: {
+        account_type: "current",
+        min_balance: String(mab),
+        price_unit: "monthly average balance",
+        ...cells[2] ? { deposit_limit: cells[2].slice(0, 100) } : {},
+        price_basis: "published monthly-average-balance requirement, indicative",
+        data_note: `MAB published on BankBazaar's current-account table, observed ${today()}`
+      },
+      evidence: { sourceUrl: pageUrl, extractedFields: ["min_balance", "account_type"] }
+    }));
+  }
+  return out;
+}
+function parseBankBazaarDemat(html, source, pageUrl) {
+  const out = [];
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  const attrs = {
+    account_type: "demat",
+    price_basis: "published general demat charges, indicative",
+    data_note: `Charges published on BankBazaar's demat-account guide, observed ${today()}`
+  };
+  let sawChargeTable = false;
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim());
+    if (cells.length < 2) continue;
+    const label = cells[0];
+    if (/^charge type/i.test(label)) {
+      sawChargeTable = true;
+      continue;
+    }
+    if (!sawChargeTable) continue;
+    if (/account opening/i.test(label)) attrs.account_opening_fee = cells[1].slice(0, 80);
+    else if (/annual maintenance|\bAMC\b/i.test(label)) attrs.amc = cells[1].slice(0, 80);
+    else if (/transaction charge/i.test(label)) attrs.transaction_charge = cells[1].slice(0, 80);
+    else if (/pledge/i.test(label)) attrs.pledge_charge = cells[1].slice(0, 80);
+    else if (/delivery instruction/i.test(label)) attrs.dis_charge = cells[1].slice(0, 80);
+    if (cells[2] && /BSDA/i.test(cells[2])) attrs.bsda_note = cells[2].slice(0, 160);
+  }
+  if (!attrs.account_opening_fee && !attrs.amc) return [];
+  return [newRawItem(source, {
+    title: "Basic Demat Account (across brokers)",
+    currency: "INR",
+    seller: "BankBazaar",
+    sellerUrl: pageUrl,
+    availability: "in_stock",
+    attributes: attrs,
+    evidence: { sourceUrl: pageUrl, extractedFields: Object.keys(attrs) }
+  })];
+}
+function parsePaisabazaarSavings(html, source, pageUrl) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim());
+    if (cells.length < 2) continue;
+    const name = cells[0];
+    if (!name || !/bank/i.test(name) || name.length > 60) continue;
+    const { max } = rateSlabs(cells[1]);
+    if (max === void 0) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const href = /<a[^>]+href="([^"]+)"[^>]*>/i.exec(row)?.[1];
+    const sellerUrl = href ? href.startsWith("http") ? href : `https://www.paisabazaar.com${href}` : pageUrl;
+    out.push(newRawItem(source, {
+      title: `${name} Savings Account`.slice(0, 120),
+      price: max,
+      currency: "INR",
+      seller: "Paisabazaar",
+      sellerUrl,
+      availability: "in_stock",
+      attributes: {
+        account_type: "savings",
+        interest_rate: String(max),
+        interest_rate_max: String(max),
+        price_unit: "% p.a. (highest slab)",
+        rate_type: "indicative",
+        ...cells[2] ? { balance_requirement: cells[2].slice(0, 100) } : {},
+        price_basis: "published highest savings interest slab, indicative \u2014 never a guaranteed rate",
+        data_note: `Highest rate published on Paisabazaar's savings-account table, observed ${today()}`
+      },
+      evidence: { sourceUrl: pageUrl, extractedFields: ["interest_rate_max", "account_type"] }
+    }));
+  }
+  return out;
+}
+function parseZerodhaCharges(html, source, pageUrl) {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&#8377;/g, "\u20B9").replace(/\s+/g, " ");
+  const m = /₹\s*(\d{2,5})[^₹]{0,80}Demat AMC/i.exec(text) || /Demat AMC[^₹]{0,80}₹\s*(\d{2,5})/i.exec(text);
+  const amc = m ? Number(m[1]) : void 0;
+  const freeFirstYear = /free for first year/i.test(text);
+  if (amc === void 0 && !freeFirstYear) return [];
+  return [newRawItem(source, {
+    title: "Zerodha Demat Account",
+    price: amc,
+    // AMC per year from the second year (₹ per year, lower is better)
+    currency: "INR",
+    seller: "Zerodha",
+    sellerUrl: pageUrl,
+    availability: "in_stock",
+    attributes: {
+      account_type: "demat",
+      ...amc !== void 0 ? { amc: `\u20B9${amc} per year${freeFirstYear ? " (free first year)" : ""}` } : {},
+      account_opening_fee: "\u20B90 (equity account)",
+      price_unit: "demat AMC per year",
+      price_basis: "published on Zerodha's own charges page, indicative",
+      data_note: `Demat charges published on Zerodha's charges page, observed ${today()}`
+    },
+    evidence: { sourceUrl: pageUrl, extractedFields: ["amc", "account_type"] }
+  })];
+}
+function parseGrowwCharges(html, source, pageUrl) {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/&#8377;/g, "\u20B9").replace(/\s+/g, " ");
+  const m = /Account Maintenance Charges[^₹0-9]{0,30}(₹|Rs\.?\s*)\s*([\d,]+)/i.exec(text) || /Account Maintenance Charges[^"]{0,10}"amount":"(\d+)"/i.exec(text);
+  const amount = m ? Number((m[2] ?? m[1]).replace(/,/g, "")) : void 0;
+  const brokerage = /equity brokerage[^₹]{0,10}₹\s*([\d.]+)/i.exec(text);
+  if (amount === void 0 && !brokerage) return [];
+  return [newRawItem(source, {
+    title: "Groww Demat Account",
+    price: amount,
+    // ₹0 AMC means genuinely zero — price stays 0/undefined, honest
+    currency: "INR",
+    seller: "Groww",
+    sellerUrl: pageUrl,
+    availability: "in_stock",
+    attributes: {
+      account_type: "demat",
+      amc: `\u20B9${amount ?? 0} per year`,
+      account_opening_fee: "\u20B90",
+      ...brokerage ? { brokerage: `\u20B9${brokerage[1]} or 0.1% per executed order, whichever is lower` } : {},
+      price_unit: "demat AMC per year",
+      price_basis: "published on Groww's own pricing page, indicative",
+      data_note: `Demat charges published on Groww's pricing page, observed ${today()}`
+    },
+    evidence: { sourceUrl: pageUrl, extractedFields: ["amc", "account_type"] }
+  })];
+}
+var today;
+var init_bankbazaarAccounts = __esm({
+  "server/workers/parsers/bankbazaarAccounts.ts"() {
+    init_contract();
+    today = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  }
+});
+
+// server/workers/verticals/account.ts
+function accountTypeOf(ctx) {
+  const q3 = `${ctx.query.rawQuery || ""} ${ctx.query.entityName || ""}`.toLowerCase();
+  if (/demat|trading|share market|stock|broker|invest/.test(q3)) return "demat";
+  if (/current|business account|msme|firm account/.test(q3)) return "current";
+  return "savings";
+}
+async function acquire(ctx, url, parse, label) {
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = await ctx.fetch(url, { timeoutMs: 2e4 });
+      if (r.status !== 200) {
+        if (looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", `${label} presented a challenge page`);
+        if (r.status >= 500 || r.status === 429) {
+          lastErr = new AcquisitionError("SERVER_ERROR", `${label} HTTP ${r.status}${attempt === 0 ? " (will retry)" : ""}`, r.status);
+          await new Promise((res) => setTimeout(res, 2500));
+          continue;
+        }
+        throw new AcquisitionError("FORBIDDEN", `${label} HTTP ${r.status}`, r.status);
+      }
+      const items = parse(r.body);
+      if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${label} page carried no publishable account data`);
+      return items;
+    } catch (e) {
+      if (e instanceof AcquisitionError && ["ACCESS_CHALLENGE", "FORBIDDEN", "EMPTY_RESPONSE"].includes(e.failureClass)) throw e;
+      lastErr = e;
+      await new Promise((res) => setTimeout(res, 2500));
+    }
+  }
+  throw lastErr instanceof AcquisitionError ? lastErr : new AcquisitionError("SERVER_ERROR", `${label} failed after retry: ${String(lastErr).slice(0, 120)}`);
+}
+var SAVINGS_URL, CURRENT_URL, DEMAT_URL, PAISA_URL, ZERODHA_URL, GROWW_URL, accountWorker;
+var init_account = __esm({
+  "server/workers/verticals/account.ts"() {
+    init_verticalWorker();
+    init_bankbazaarAccounts();
+    init_httpClient();
+    SAVINGS_URL = "https://www.bankbazaar.com/savings-account.html";
+    CURRENT_URL = "https://www.bankbazaar.com/current-account.html";
+    DEMAT_URL = "https://www.bankbazaar.com/demat-account.html";
+    PAISA_URL = "https://www.paisabazaar.com/savings-account/";
+    ZERODHA_URL = "https://zerodha.com/charges";
+    GROWW_URL = "https://groww.in/pricing";
+    accountWorker = {
+      vertical: "banking",
+      tasks: [
+        {
+          sourceId: "w_account_bankbazaar",
+          name: "Account worker: BankBazaar bank-wise account tables",
+          priority: 10,
+          run: async (ctx) => {
+            const type = accountTypeOf(ctx);
+            const url = type === "demat" ? DEMAT_URL : type === "current" ? CURRENT_URL : SAVINGS_URL;
+            const parse = (body) => type === "demat" ? parseBankBazaarDemat(body, ctx.source, url) : type === "current" ? parseBankBazaarCurrent(body, ctx.source, url) : parseBankBazaarSavings(body, ctx.source, url);
+            return acquire(ctx, url, parse, "BankBazaar");
+          }
+        },
+        {
+          sourceId: "w_account_paisabazaar",
+          name: "Account worker: Paisabazaar savings highest-rate table",
+          priority: 12,
+          run: async (ctx) => acquire(
+            ctx,
+            PAISA_URL,
+            (body) => parsePaisabazaarSavings(body, ctx.source, PAISA_URL),
+            "Paisabazaar"
+          )
+        },
+        {
+          sourceId: "w_account_zerodha",
+          name: "Account worker: Zerodha published demat charges",
+          priority: 14,
+          run: async (ctx) => acquire(
+            ctx,
+            ZERODHA_URL,
+            (body) => parseZerodhaCharges(body, ctx.source, ZERODHA_URL),
+            "Zerodha"
+          )
+        },
+        {
+          sourceId: "w_account_groww",
+          name: "Account worker: Groww published demat charges",
+          priority: 16,
+          run: async (ctx) => acquire(
+            ctx,
+            GROWW_URL,
+            (body) => parseGrowwCharges(body, ctx.source, GROWW_URL),
+            "Groww"
+          )
+        }
+      ]
+    };
+    registerVerticalWorker(accountWorker);
+  }
+});
+
 // server/workers/verticals/index.ts
 var init_verticals = __esm({
   "server/workers/verticals/index.ts"() {
@@ -18905,6 +19223,7 @@ var init_verticals = __esm({
     init_movies();
     init_bus();
     init_creditcards();
+    init_account();
     init_verticalWorker();
   }
 });
@@ -20007,7 +20326,9 @@ function offerDedupKey(o) {
     const price = String(o.prices?.effectivePrice ?? "");
     return `${o.vertical}|${identity}|${o.seller.toLowerCase()}|${o.travel?.date || ""}|${o.travel?.route || ""}|${svc}|${o.vertical === "hotels" ? "" : price}`;
   }
-  return `${identity}|${o.seller.toLowerCase()}|${o.location?.pincode || ""}|${o.attributes && Object.keys(o.attributes).length ? JSON.stringify(o.attributes) : ""}`;
+  const stableAttrs = o.attributes && Object.keys(o.attributes).length ? JSON.stringify(Object.fromEntries(Object.entries(o.attributes).filter(([k]) => k !== "data_note"))) : "";
+  const pin = ["loans", "insurance", "creditcards", "banking"].includes(String(o.vertical)) ? "" : o.location?.pincode || "";
+  return `${identity}|${o.seller.toLowerCase()}|${pin}|${stableAttrs}`;
 }
 function dedupeOffers(offers) {
   const seen = /* @__PURE__ */ new Map();
@@ -20389,6 +20710,623 @@ var init_lenderLogo = __esm({
   }
 });
 
+// server/affiliate/linkinr/index.ts
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else inQuotes = false;
+      } else cell += ch;
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else if (ch === "\r") {
+    } else cell += ch;
+  }
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+function payoutScore(raw) {
+  const pct = /([\d.]+)\s*%/.exec(raw);
+  if (pct) return Number(pct[1]) * 10;
+  const rs = /₹\s*([\d,.]+)/.exec(raw);
+  if (rs) return Number(rs[1].replace(/,/g, ""));
+  const any = /([\d.]+)/.exec(raw);
+  return any ? Number(any[1]) : 0;
+}
+function domainOf(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+function loadRegistry() {
+  if (campaignByDomain) return campaignByDomain;
+  const map = /* @__PURE__ */ new Map();
+  try {
+    const dir = typeof globalThis.__dirname === "string" ? globalThis.__dirname : import_path3.default.dirname((0, import_url.fileURLToPath)(import_meta2.url));
+    const csvPath = import_path3.default.join(dir, "campaigns.csv");
+    const text = import_fs2.default.readFileSync(csvPath, "utf8");
+    const rows = parseCsv(text);
+    if (!rows.length) return campaignByDomain = map;
+    const header = rows[0].map((h) => h.trim().toLowerCase());
+    const col = (name) => header.indexOf(name);
+    for (const r of rows.slice(1)) {
+      const get = (i) => i >= 0 && i < r.length ? r[i].trim() : "";
+      const id = get(col("id"));
+      const status = get(col("status")).toLowerCase();
+      const access = get(col("campaign access")).toLowerCase();
+      const dest = get(col("destination url"));
+      if (!id || status !== "active" || access !== "yes" || !/^https?:\/\//.test(dest)) continue;
+      const tracking = get(col("tracking link"));
+      const inv = /inventory_id=([A-Za-z0-9_-]+)/.exec(tracking)?.[1] || "";
+      const domain = domainOf(dest);
+      if (!domain) continue;
+      const c = {
+        id,
+        name: get(col("name")),
+        type: get(col("type")),
+        payout: get(col("payout")),
+        payoutScore: payoutScore(get(col("payout"))),
+        inventoryId: inv,
+        destination: dest,
+        domain,
+        categories: get(col("categories"))
+      };
+      const prev = map.get(domain);
+      if (!prev || c.payoutScore > prev.payoutScore) map.set(domain, c);
+    }
+  } catch {
+  }
+  return campaignByDomain = map;
+}
+function linkinrEnabled() {
+  return process.env.LINKINR_ENABLED !== "0";
+}
+function linkinrCampaignFor(dest) {
+  const domain = domainOf(dest);
+  if (!domain) return null;
+  const m = loadRegistry();
+  return m.get(domain) || m.get(domain.replace(/^[a-z0-9-]+\./, "")) || null;
+}
+function linkinrTrackingUrl(dest) {
+  if (!linkinrEnabled()) return null;
+  const c = linkinrCampaignFor(dest);
+  if (!c) return null;
+  const sub = process.env.LINKINR_SUB_ID || "try1second";
+  const click = import_crypto19.default.randomBytes(4).toString("hex");
+  return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
+}
+var import_fs2, import_path3, import_crypto19, import_url, import_meta2, campaignByDomain;
+var init_linkinr = __esm({
+  "server/affiliate/linkinr/index.ts"() {
+    import_fs2 = __toESM(require("fs"), 1);
+    import_path3 = __toESM(require("path"), 1);
+    import_crypto19 = __toESM(require("crypto"), 1);
+    import_url = require("url");
+    import_meta2 = {};
+    campaignByDomain = null;
+  }
+});
+
+// server/affiliate/deeplink.ts
+var deeplink_exports = {};
+__export(deeplink_exports, {
+  amazonAssociatesUrl: () => amazonAssociatesUrl,
+  buildSecureDeeplink: () => buildSecureDeeplink,
+  createMaskingPointer: () => createMaskingPointer,
+  cuelinksMerchantUrl: () => cuelinksMerchantUrl,
+  recordPointerClick: () => recordPointerClick,
+  resolveMaskingPointer: () => resolveMaskingPointer,
+  safeDomain: () => safeDomain
+});
+function secret() {
+  return process.env.AFFILIATE_SECRET || import_crypto20.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+}
+function b64url(s) {
+  return Buffer.from(s, "utf8").toString("base64url");
+}
+function unb64url(s) {
+  return Buffer.from(s, "base64url").toString("utf8");
+}
+function createMaskingPointer(destination, opts = {}) {
+  const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
+  const sig = import_crypto20.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  return `/api/out?t=${payload}.${sig}`;
+}
+function resolveMaskingPointer(token) {
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m) return null;
+  const [payload, sig] = [m[1], m[2]];
+  const expect = import_crypto20.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto20.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  try {
+    const j = JSON.parse(unb64url(payload));
+    if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
+    return { destination: String(j.d), offerId: j.o ? String(j.o) : void 0 };
+  } catch {
+    return null;
+  }
+}
+function safeDomain(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+function cuelinksMerchantUrl(dest) {
+  const c = settings.cuelinks;
+  if (!c.publisherId) return null;
+  let domain;
+  try {
+    domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+  if (!CUELINKS_MERCHANTS.has(domain)) return null;
+  return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
+}
+function amazonAssociatesUrl(dest) {
+  const tag = settings.amazonAssociates?.tag;
+  if (!tag) return null;
+  let u;
+  try {
+    u = new URL(dest);
+  } catch {
+    return null;
+  }
+  if (!AMAZON_DOMAINS.test(u.hostname.toLowerCase())) return null;
+  u.searchParams.set("tag", tag);
+  return u.toString();
+}
+async function buildSecureDeeplink(targetUrl, opts = {}) {
+  const domain = safeDomain(targetUrl);
+  const store2 = getStore();
+  try {
+    const slug2 = (opts.companySlug || "").toLowerCase().slice(0, 64);
+    const rows = await store2.query(
+      `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
+       WHERE active = 1 AND (slug = ? OR company_domain = ?) LIMIT 1`,
+      [slug2, domain]
+    );
+    const r = rows?.[0];
+    if (r?.template) {
+      const extra = parseJsonObj(r.extra_params);
+      const url = renderTemplate(String(r.template), targetUrl, extra, String(r.subid_param || "subid"));
+      return { trackingUrl: url, network: String(r.network || "direct"), matchedProfile: "affiliate_configs" };
+    }
+  } catch {
+  }
+  const amz = amazonAssociatesUrl(targetUrl);
+  if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
+  try {
+    const rows = await store2.query(
+      `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
+       WHERE vendor_domain = ? LIMIT 1`,
+      [domain]
+    );
+    const r = rows?.[0];
+    if (r?.deep_link_template) {
+      const url = renderTemplate(String(r.deep_link_template), targetUrl, { campaign: r.campaign_id || "", subid: r.sub_id || "" }, "subid");
+      return { trackingUrl: url, network: String(r.network_id || "direct"), matchedProfile: "affiliate_links" };
+    }
+  } catch {
+  }
+  const cuelinks = cuelinksMerchantUrl(targetUrl);
+  if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
+  const linkinr = linkinrTrackingUrl(targetUrl);
+  if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
+  return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
+}
+function renderTemplate(tpl, dest, extra, subidParam) {
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto20.default.randomBytes(6).toString("hex"));
+  return out.replace(/\{[a-z0-9_]+\}/gi, "");
+}
+function parseJsonObj(v) {
+  if (!v) return {};
+  try {
+    const j = typeof v === "string" ? JSON.parse(v) : v;
+    return j && typeof j === "object" ? j : {};
+  } catch {
+    return {};
+  }
+}
+async function recordPointerClick(dest, offerId, network) {
+  const clickId = import_crypto20.default.randomUUID();
+  try {
+    const store2 = getStore();
+    await store2.execute(
+      `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
+       VALUES (?, ?, ?, ?, ?, NULL)`,
+      [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain(dest), dest.slice(0, 2e3), clickId]
+    );
+  } catch (e) {
+    log.debug("Affiliate", "click recording skipped", {});
+  }
+  return clickId;
+}
+var import_crypto20, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
+var init_deeplink = __esm({
+  "server/affiliate/deeplink.ts"() {
+    import_crypto20 = __toESM(require("crypto"), 1);
+    init_settings();
+    init_linkinr();
+    init_logger();
+    init_db();
+    AFFILIATE_TTL_SEC = 24 * 60 * 60;
+    CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com"]);
+    AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
+  }
+});
+
+// server/marketing/deals.ts
+var deals_exports = {};
+__export(deals_exports, {
+  DEAL_KINDS: () => DEAL_KINDS,
+  MERCHANT_VERTICAL: () => MERCHANT_VERTICAL,
+  dealsForSeller: () => dealsForSeller,
+  deleteDeal: () => deleteDeal,
+  ensureDealsSchema: () => ensureDealsSchema,
+  findBestCoupon: () => findBestCoupon,
+  findBestOffer: () => findBestOffer,
+  forSellerWithBest: () => forSellerWithBest,
+  getDealsWithCounts: () => getDealsWithCounts,
+  listAllDeals: () => listAllDeals,
+  listPublicDeals: () => listPublicDeals,
+  merchantKeyOf: () => merchantKeyOf,
+  saveDeal: () => saveDeal,
+  toPublicDeal: () => toPublicDeal,
+  validateDeal: () => validateDeal
+});
+function merchantKeyOf(name) {
+  const s = String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const first = s.split(" ")[0] || "";
+  const alias = { amzn: "amazon", "tata": "tatacliq", bms: "bookmyshow", book: "bookmyshow", paytm: "district" };
+  return alias[first] || first;
+}
+function httpsUrl(raw) {
+  try {
+    const u = new URL(String(raw || "").trim());
+    if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return null;
+    return u.toString().slice(0, 1e3);
+  } catch {
+    return null;
+  }
+}
+function validateDeal(i) {
+  const merchant_name = String(i.merchant_name || "").trim().slice(0, 120);
+  const title = String(i.title || "").trim().slice(0, 200);
+  const kind = String(i.kind || "").trim();
+  if (!merchant_name) return { ok: false, error: "Merchant name is required" };
+  if (!title) return { ok: false, error: "Title is required" };
+  if (!DEAL_KINDS.includes(kind)) return { ok: false, error: "Unknown deal type" };
+  const dest = httpsUrl(i.dest_url);
+  if (!dest) return { ok: false, error: "Destination must be a full https:// URL" };
+  const code = String(i.code ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 60) || null;
+  if (kind === "coupon" && !code) return { ok: false, error: "A coupon deal needs its code" };
+  const till = String(i.valid_till ?? "").trim();
+  if (till && !/^\d{4}-\d{2}-\d{2}$/.test(till)) return { ok: false, error: "Valid-till must be YYYY-MM-DD" };
+  const mo = i.min_order == null || i.min_order === "" ? null : Math.max(0, Math.round(Number(i.min_order)));
+  const mk = merchantKeyOf(i.merchant_key || merchant_name);
+  const vertical = String(i.vertical || MERCHANT_VERTICAL[mk] || "").trim() || null;
+  return {
+    ok: true,
+    clean: {
+      merchant_key: mk,
+      merchant_name,
+      kind,
+      vertical,
+      title,
+      description: String(i.description ?? "").trim().slice(0, 600) || null,
+      code,
+      discount_text: String(i.discount_text ?? "").trim().slice(0, 80) || null,
+      min_order: Number.isFinite(mo) ? mo : null,
+      terms: String(i.terms ?? "").trim().slice(0, 600) || null,
+      dest_url: dest,
+      valid_till: till || null,
+      sort_weight: Math.max(-100, Math.min(100, Math.round(Number(i.sort_weight) || 0))),
+      is_active: i.is_active === false ? 0 : 1
+    }
+  };
+}
+function toPublicDeal(r) {
+  const mk = r.merchant_key;
+  const vert2 = r.vertical || MERCHANT_VERTICAL[mk] || null;
+  return {
+    id: Number(r.id),
+    merchantKey: mk,
+    merchantName: r.merchant_name,
+    kind: r.kind,
+    vertical: vert2,
+    title: r.title,
+    description: r.description || null,
+    code: r.code || null,
+    discountText: r.discount_text || null,
+    minOrder: r.min_order == null ? null : Number(r.min_order),
+    terms: r.terms || null,
+    imageUrl: r.image_url || null,
+    validTill: r.valid_till ? String(r.valid_till).slice(0, 10) : null,
+    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}` })
+  };
+}
+async function ensureDealsSchema() {
+  if (schemaChecked) return;
+  schemaChecked = true;
+  const store2 = getStore();
+  try {
+    if (store2.kind === "mysql") {
+      try {
+        await store2.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
+      } catch {
+      }
+    }
+    const rows = await store2.query("SELECT id, merchant_key, vertical FROM deals");
+    for (const r of rows) {
+      if (!r.vertical || r.vertical === "") {
+        const v = MERCHANT_VERTICAL[r.merchant_key];
+        if (v) {
+          await store2.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
+        }
+      }
+    }
+  } catch {
+  }
+}
+async function listAllDeals() {
+  await ensureDealsSchema();
+  return getStore().query("SELECT * FROM deals ORDER BY id DESC LIMIT 500").catch(() => []);
+}
+async function getDealsWithCounts(opts = {}) {
+  await ensureDealsSchema();
+  const rows = await getStore().query("SELECT * FROM deals WHERE is_active = ? ORDER BY sort_weight DESC, id DESC LIMIT 500", [1]).catch(() => []);
+  const live = rows.filter((r) => isLive(r));
+  const counts = {};
+  for (const r of live) {
+    const v = r.vertical || MERCHANT_VERTICAL[r.merchant_key];
+    if (v) {
+      counts[v] = (counts[v] || 0) + 1;
+    }
+  }
+  const mk = opts.merchant ? merchantKeyOf(opts.merchant) : "";
+  const filterHasImage = opts.hasImage === "1" || opts.hasImage === 1 || opts.hasImage === true || opts.hasImage === "true";
+  const filtered = live.filter((r) => {
+    if (mk && r.merchant_key !== mk) return false;
+    if (opts.kind && r.kind !== opts.kind) return false;
+    const v = r.vertical || MERCHANT_VERTICAL[r.merchant_key];
+    if (opts.vertical && v !== opts.vertical) return false;
+    if (filterHasImage && !Boolean(r.image_url && String(r.image_url).trim())) return false;
+    return true;
+  });
+  const deals = filtered.slice(0, Math.min(200, opts.limit || 100)).map(toPublicDeal);
+  return { deals, counts };
+}
+async function listPublicDeals(opts = {}) {
+  const { deals } = await getDealsWithCounts(opts);
+  return deals;
+}
+async function dealsForSeller(seller, limit = 6) {
+  const rank = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
+  const all = await listPublicDeals({ merchant: seller, limit: 100 });
+  return all.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)).slice(0, limit);
+}
+function extractDiscountScore(d) {
+  const text = String(d.discountText || d.discount_text || "");
+  const pctMatch = text.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (pctMatch) return Number(pctMatch[1]);
+  const amtMatch = text.match(/(?:rs\.?|₹|\$)\s*([\d,]+)/i) || text.match(/([\d,]+)\s*(?:off|cashback|discount)/i);
+  if (amtMatch) {
+    const val = Number(amtMatch[1].replace(/,/g, ""));
+    if (!Number.isNaN(val) && val > 0) return val >= 100 ? val / 10 : val;
+  }
+  return 0;
+}
+function findBestCoupon(deals) {
+  const candidates = deals.filter((d) => d.kind === "coupon" || Boolean(d.code));
+  if (!candidates.length) return null;
+  const sorted = [...candidates].sort((a, b) => {
+    const scoreA = extractDiscountScore(a);
+    const scoreB = extractDiscountScore(b);
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    return (b.id || 0) - (a.id || 0);
+  });
+  return sorted[0];
+}
+function findBestOffer(deals) {
+  const candidates = deals.filter((d) => d.kind !== "coupon" && !d.code);
+  if (!candidates.length) return null;
+  const preferredKinds = /* @__PURE__ */ new Set(["bank_offer", "sale", "cashback"]);
+  const sorted = [...candidates].sort((a, b) => {
+    const prefA = preferredKinds.has(a.kind) ? 1e3 : 0;
+    const prefB = preferredKinds.has(b.kind) ? 1e3 : 0;
+    const scoreA = prefA + extractDiscountScore(a);
+    const scoreB = prefB + extractDiscountScore(b);
+    if (scoreA !== scoreB) return scoreB - scoreA;
+    return (b.id || 0) - (a.id || 0);
+  });
+  return sorted[0];
+}
+async function forSellerWithBest(seller, limit = 6) {
+  const all = await listPublicDeals({ merchant: seller, limit: 100 });
+  const deals = await dealsForSeller(seller, limit);
+  const coupon = findBestCoupon(all);
+  const offer = findBestOffer(all);
+  return { deals, best: { offer, coupon } };
+}
+async function saveDeal(i) {
+  await ensureDealsSchema();
+  const v = validateDeal(i);
+  if (!v.ok) return { ok: false, error: v.error };
+  const c = v.clean;
+  const store2 = getStore();
+  const vals = [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
+  if (i.id) {
+    const ex = await store2.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
+    if (!ex.length) return { ok: false, error: "Deal not found" };
+    await store2.execute(
+      "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, vertical=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
+      [...vals, Number(i.id)]
+    );
+    return { ok: true, id: Number(i.id) };
+  }
+  await store2.execute(
+    "INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    vals
+  );
+  const row = await store2.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
+  return { ok: true, id: row[0] ? Number(row[0].id) : void 0 };
+}
+async function deleteDeal(id) {
+  await getStore().execute("DELETE FROM deals WHERE id = ?", [Number(id)]);
+}
+var DEAL_KINDS, MERCHANT_VERTICAL, isLive, schemaChecked;
+var init_deals = __esm({
+  "server/marketing/deals.ts"() {
+    init_db();
+    init_deeplink();
+    DEAL_KINDS = ["bank_offer", "coupon", "gift_card", "credit_card", "loan", "insurance", "account", "movie", "cashback", "sale"];
+    MERCHANT_VERTICAL = {
+      amazon: "ecommerce",
+      flipkart: "ecommerce",
+      myntra: "ecommerce",
+      ajio: "ecommerce",
+      tatacliq: "ecommerce",
+      meesho: "ecommerce",
+      croma: "ecommerce",
+      nykaa: "ecommerce",
+      makemytrip: "flights",
+      goibibo: "hotels",
+      easemytrip: "hotels",
+      ixigo: "hotels",
+      yatra: "hotels",
+      cleartrip: "hotels",
+      goindigo: "flights",
+      akasaair: "flights",
+      booking: "hotels",
+      agoda: "hotels",
+      airbnb: "hotels",
+      redbus: "bus",
+      abhibus: "bus",
+      zingbus: "bus",
+      ola: "cab",
+      uber: "cab",
+      rapido: "cab",
+      savaari: "cab",
+      swiggy: "food",
+      zomato: "food",
+      dominos: "food",
+      pizzahut: "food",
+      eatsure: "food",
+      blinkit: "grocery",
+      zepto: "grocery",
+      instamart: "grocery",
+      bigbasket: "grocery",
+      bookmyshow: "movies",
+      district: "movies",
+      paytm: "movies",
+      pvr: "movies",
+      paisabazaar: "loans",
+      bankbazaar: "loans",
+      policybazaar: "loans",
+      moneyview: "loans",
+      kreditbee: "loans",
+      navi: "loans",
+      acko: "insurance",
+      digit: "insurance",
+      insurancedekho: "insurance",
+      ditto: "insurance",
+      coverfox: "insurance",
+      sbi: "creditcards",
+      hdfc: "creditcards",
+      axis: "creditcards",
+      icici: "creditcards",
+      cardinsider: "creditcards"
+    };
+    isLive = (r, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) => (Number(r.is_active) === 1 || r.is_active === true) && (!r.valid_till || String(r.valid_till).slice(0, 10) >= today2);
+    schemaChecked = false;
+  }
+});
+
+// server/marketing/merchantLogos.ts
+var merchantLogos_exports = {};
+__export(merchantLogos_exports, {
+  deleteMerchantLogo: () => deleteMerchantLogo,
+  ensureMerchantLogosTable: () => ensureMerchantLogosTable,
+  listMerchantLogos: () => listMerchantLogos,
+  merchantLogoMap: () => merchantLogoMap,
+  upsertMerchantLogo: () => upsertMerchantLogo,
+  validateLogoPayload: () => validateLogoPayload
+});
+async function ensureMerchantLogosTable() {
+  if (ensured) return;
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS merchant_logos (
+    name_key VARCHAR(80) PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    logo MEDIUMTEXT NOT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  ensured = true;
+}
+function validateLogoPayload(p) {
+  const name = String(p.name || "").trim().slice(0, 120);
+  const logo = String(p.logo || "").trim();
+  if (!name) return { ok: false, error: "Merchant name is required" };
+  if (!logo || !DATA_URL_RE.test(logo)) return { ok: false, error: "Logo must be a base64 PNG/JPEG/WebP data URL" };
+  if (logo.length > 4e5) return { ok: false, error: "Logo too large (resize to \u2264256px before upload)" };
+  return { ok: true, clean: { name_key: merchantKeyOf(name).slice(0, 80) || "brand", name, logo } };
+}
+async function listMerchantLogos() {
+  await ensureMerchantLogosTable();
+  return await getStore().query("SELECT name_key, name, logo, updated_at FROM merchant_logos ORDER BY name");
+}
+async function merchantLogoMap() {
+  const rows = await listMerchantLogos();
+  const out = {};
+  for (const r of rows) out[r.name_key] = r.logo;
+  return out;
+}
+async function upsertMerchantLogo(p) {
+  const v = validateLogoPayload(p);
+  if (!v.ok || !v.clean) return v;
+  await ensureMerchantLogosTable();
+  await getStore().execute(
+    "INSERT INTO merchant_logos (name_key, name, logo, updated_at) VALUES (?, ?, ?, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE name=VALUES(name), logo=VALUES(logo), updated_at=UTC_TIMESTAMP()",
+    [v.clean.name_key, v.clean.name, v.clean.logo]
+  );
+  return { ok: true, name_key: v.clean.name_key };
+}
+async function deleteMerchantLogo(nameKey) {
+  await ensureMerchantLogosTable();
+  await getStore().execute("DELETE FROM merchant_logos WHERE name_key = ?", [String(nameKey || "").slice(0, 80)]);
+}
+var ensured, DATA_URL_RE;
+var init_merchantLogos = __esm({
+  "server/marketing/merchantLogos.ts"() {
+    init_db();
+    init_deals();
+    ensured = false;
+    DATA_URL_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+  }
+});
+
 // server/pipeline/brandImage.ts
 function hostOf(u) {
   try {
@@ -20453,7 +21391,41 @@ async function withLenderLogos(offers) {
   }
   return offers;
 }
-var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, LENDER_VERTICAL_IDS;
+async function uploadedLogoMap() {
+  if (uploadedLogosCache && Date.now() - uploadedLogosCache.at < 3e5) return uploadedLogosCache.map;
+  try {
+    const { merchantLogoMap: merchantLogoMap2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+    const map = await merchantLogoMap2();
+    uploadedLogosCache = { at: Date.now(), map };
+    return map;
+  } catch {
+    return (uploadedLogosCache = { at: Date.now(), map: {} }).map;
+  }
+}
+function logoKeyOf(name) {
+  return String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0] || "";
+}
+async function withMerchantLogos(offers) {
+  const map = await uploadedLogoMap();
+  if (!Object.keys(map).length) return offers;
+  for (const o of offers) {
+    const a = o.attributes || {};
+    if (a.image_url && a.image_is_brand_logo !== "true") continue;
+    const attrs = o.attributes || {};
+    const label = [o.seller, o.vendor, o.title, attrs.bank, attrs.lender, attrs.insurer, attrs.provider].filter(Boolean).join(" ");
+    const keys = [logoKeyOf(String(o.seller || "")), logoKeyOf(String(attrs.bank || "")), logoKeyOf(String(attrs.lender || "")), logoKeyOf(String(attrs.provider || ""))];
+    for (const k of keys) {
+      if (k && map[k]) {
+        a.image_url = map[k];
+        a.image_is_brand_logo = "true";
+        break;
+      }
+    }
+    void label;
+  }
+  return offers;
+}
+var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, LENDER_VERTICAL_IDS, uploadedLogosCache;
 var init_brandImage = __esm({
   "server/pipeline/brandImage.ts"() {
     init_lenderLogo();
@@ -20607,6 +21579,141 @@ var init_brandImage = __esm({
       [/big ?basket|bb ?now/i, "/brand-logos/bigbasket.png"]
     ];
     LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards"]);
+    uploadedLogosCache = null;
+  }
+});
+
+// server/pipeline/productImages.ts
+async function ensureTable() {
+  if (ensured2) return;
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS product_images (
+    img_key VARCHAR(160) PRIMARY KEY,
+    url VARCHAR(600) NOT NULL,
+    source VARCHAR(40) NOT NULL DEFAULT 'bing-images',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  ensured2 = true;
+}
+function slug(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 150);
+}
+function parseBingItems(html) {
+  const out = [];
+  const re = /class="iusc"[^>]*m="({[^"]+})"/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const j = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&"));
+      if (j.murl) out.push({ murl: String(j.murl), t: String(j.t || "") });
+    } catch {
+    }
+  }
+  return out;
+}
+function scoreItem(it, tokens, brandTok) {
+  const url = String(it.murl || "");
+  const hay = `${url} ${it.t || ""}`.toLowerCase();
+  if (!/^https:\/\//.test(url)) return -1;
+  if (!/\.(jpg|jpeg|webp)(\?|$)/i.test(url) && !/(zmtcdn|swiggy|media-assets|instacdn)/i.test(url)) return -1;
+  if (STOP_RE.test(hay)) return -1;
+  let sc = 0;
+  for (const tk of tokens) if (hay.includes(tk)) sc += 3;
+  if (hay.includes(brandTok)) sc += 4;
+  if (GOOD_PATH_RE.test(url)) sc += 2;
+  return sc;
+}
+async function verifyImage(url) {
+  try {
+    const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 8e3, headers: { Range: "bytes=0-63" } });
+    if (r.status !== 200 && r.status !== 206) return false;
+    const head = String(r.body || "").slice(0, 64);
+    if (/^\x89PNG|\xff\xd8\xff/.test(head)) return true;
+    if (/^(RIFF)/.test(head) && head.slice(8, 12) === "WEBP") return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+async function lookupProductImage(seller, dish) {
+  if (Date.now() < breakerUntil) return null;
+  const brand = seller.toLowerCase().includes("domino") ? "domino's" : String(seller || "").trim();
+  const q3 = encodeURIComponent(`${brand} ${dish} menu`.replace(/\s+/g, " ").trim());
+  let html = "";
+  try {
+    const r = await cffiFetch(`https://www.bing.com/images/async?q=${q3}&first=0&count=25&mmasync=1`, { impersonate: "chrome", timeoutMs: 1e4 });
+    if (r.status !== 200) throw new Error(`bing HTTP ${r.status}`);
+    html = String(r.body || "");
+  } catch (e) {
+    breakerUntil = Date.now() + BREAKER_MS;
+    return null;
+  }
+  const items = parseBingItems(html);
+  if (items.length < 3) {
+    breakerUntil = Date.now() + BREAKER_MS;
+    return null;
+  }
+  const brandTok = slug(brand).split("-")[0] || "pizza";
+  const tokens = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
+  const ranked = items.map((it) => ({ it, sc: scoreItem(it, tokens, brandTok) })).filter((x) => x.sc > 2).sort((a, b) => b.sc - a.sc).slice(0, 3);
+  for (const cand of ranked) {
+    if (await verifyImage(cand.it.murl)) return String(cand.it.murl);
+  }
+  return null;
+}
+async function cachedImage(key) {
+  await ensureTable();
+  const rows = await getStore().query("SELECT url FROM product_images WHERE img_key = ?", [key]);
+  const row = rows?.[0] || rows?.rows?.[0];
+  return row?.url ? String(row.url) : null;
+}
+async function rememberImage(key, url) {
+  await ensureTable();
+  await getStore().execute("INSERT IGNORE INTO product_images (img_key, url, source) VALUES (?, ?, ?)", [key, url, "bing-images"]);
+}
+async function withProductImages(offers, budget = 5) {
+  const food = offers.filter((o) => String(o.vertical) === "food");
+  if (!food.length) return offers;
+  let spent = 0;
+  const tasks = [];
+  for (const o of food) {
+    const a = o.attributes || {};
+    if (a.image_url && a.image_is_brand_logo !== "true") continue;
+    const dish = String(a.dish || o.title || "").replace(/\s*\([^)]*\)\s*/g, " ").trim();
+    if (!dish) continue;
+    const seller = String(o.seller || a.restaurant || "");
+    const key = slug(`${seller}|${dish}`).slice(0, 160);
+    tasks.push((async () => {
+      try {
+        let url = await cachedImage(key);
+        if (!url) {
+          if (spent >= budget) return;
+          spent += 1;
+          url = await lookupProductImage(seller, dish);
+          if (url) await rememberImage(key, url);
+        }
+        if (url) {
+          a.image_url = url;
+          a.image_is_brand_logo = "false";
+          a.image_is_product_image = "true";
+          a.image_source = "bing-images (cached per dish)";
+        }
+      } catch {
+      }
+    })());
+  }
+  await Promise.allSettled(tasks);
+  return offers;
+}
+var BREAKER_MS, breakerUntil, ensured2, STOP_RE, GOOD_PATH_RE;
+var init_productImages = __esm({
+  "server/pipeline/productImages.ts"() {
+    init_db();
+    init_curlCffiFetch();
+    BREAKER_MS = 10 * 6e4;
+    breakerUntil = 0;
+    ensured2 = false;
+    STOP_RE = /logo|icon|store_|building|office|career|jobs?|realestate|furniture|coupon|banner|app-?store|flickr.*people|facebook/i;
+    GOOD_PATH_RE = /menu|pizza|product|food|dish|media|photo|uploads?\b|zmtcdn|swiggy|dominos/i;
   }
 });
 
@@ -21089,6 +22196,7 @@ __export(catalogueService_exports, {
   findCatalogueOffers: () => findCatalogueOffers,
   persistOffer: () => persistOffer,
   priceHistoryForEntity: () => priceHistoryForEntity,
+  purgeStaleBankingOffers: () => purgeStaleBankingOffers,
   recordPriceSnapshot: () => recordPriceSnapshot,
   refreshCandidates: () => refreshCandidates,
   updateVolatileFields: () => updateVolatileFields
@@ -21256,6 +22364,16 @@ async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
     return [];
   }
 }
+async function purgeStaleBankingOffers() {
+  const store2 = getStore();
+  try {
+    await store2.execute(
+      `DELETE FROM offers WHERE vertical = 'banking' AND (attributes IS NULL OR attributes NOT LIKE '%"account_type"%')`
+    );
+  } catch (e) {
+    log.debug("Catalogue", "Stale banking purge failed", { error: String(e).slice(0, 100) });
+  }
+}
 var init_catalogueService = __esm({
   "server/catalogue/catalogueService.ts"() {
     init_db();
@@ -21269,7 +22387,7 @@ async function attachAffiliateDeepLinks(offers) {
   return offers.map((o) => {
     const dest = o.sellerUrl || o.provenance.sourceUrl || null;
     if (!dest) return o;
-    const domain = safeDomain(dest);
+    const domain = safeDomain2(dest);
     for (const network of NETWORKS) {
       const link = network.buildDeepLink(dest, domain);
       if (link) {
@@ -21280,7 +22398,7 @@ async function attachAffiliateDeepLinks(offers) {
     return o;
   });
 }
-function safeDomain(url) {
+function safeDomain2(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
@@ -21313,11 +22431,11 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto19.default.randomUUID();
+  const clickId = import_crypto21.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
-    const link = net.buildDeepLink(dest, safeDomain(dest));
+    const link = net.buildDeepLink(dest, safeDomain2(dest));
     if (link) {
       network = net.id;
       finalUrl = link;
@@ -21329,7 +22447,7 @@ async function resolveRedirect(dest, opts = {}) {
     await store2.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [opts.offerId ? extractNumericId(opts.offerId) : null, network || "direct", safeDomain(dest), dest, clickId, opts.userId || null]
+      [opts.offerId ? extractNumericId(opts.offerId) : null, network || "direct", safeDomain2(dest), dest, clickId, opts.userId || null]
     );
   } catch {
   }
@@ -21339,10 +22457,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto19, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto21, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto19 = __toESM(require("crypto"), 1);
+    import_crypto21 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -21586,7 +22704,7 @@ async function runLivePipeline(input, parsedIn) {
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
-  const ranked = rankOffers(await withLenderLogos(withBrandImages(combined)), { userPincode: input.pincode, userCity: input.city });
+  const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(withBrandImages(combined)))), { userPincode: input.pincode, userCity: input.city });
   if (ranked.length === 0) {
     state.servedFrom = "unavailable";
     state.honestNotice = enabledSources.length === 0 ? "No data sources are enabled and verified for this vertical yet. Real results appear once a source is configured and passes validation \u2014 we never show invented prices." : "All configured sources were attempted but returned no verified offers for this query. Partial or cached data appears only when it passes freshness rules.";
@@ -21697,6 +22815,7 @@ var init_searchOrchestrator = __esm({
     init_pricing();
     init_freshness();
     init_brandImage();
+    init_productImages();
     init_entityMatching();
     init_ranking();
     init_verticalEngine();
@@ -21706,25 +22825,108 @@ var init_searchOrchestrator = __esm({
   }
 });
 
+// server/smartcart/basket.ts
+function groceryProductKey(title) {
+  return String(title || "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/&/g, " and ").replace(/(\d)\s*(g|gm|gram|grams|kg|ml|l|ltr|litre|liter|litre|pc|pcs|piece|pieces|pack|pk)\b/g, "$1$2").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function queryTokens(name) {
+  const stop = /* @__PURE__ */ new Set(["the", "a", "an", "of", "for", "best", "cheap", "price", "buy", "order", "online"]);
+  return groceryProductKey(name).split(" ").filter((t) => t && !stop.has(t));
+}
+function bestUnitPricesPerStore(name, offers) {
+  const want = queryTokens(name);
+  const groups = /* @__PURE__ */ new Map();
+  for (const o of offers) {
+    const key = groceryProductKey(o.title);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  }
+  let bestKey = null;
+  let bestScore = -1;
+  const scored = [];
+  for (const [key, rows] of groups) {
+    const words2 = new Set(key.split(" "));
+    const match = want.filter((t) => words2.has(t)).length;
+    if (match === 0 && want.length > 0) continue;
+    const sellers = new Set(rows.map((r) => r.seller)).size;
+    const min = Math.min(...rows.filter((r) => r.price > 0).map((r) => r.price), Infinity);
+    scored.push({ key, match, sellers, min });
+  }
+  if (scored.length) {
+    scored.sort((a, b) => b.match - a.match || b.sellers - a.sellers || (a.min === Infinity ? 1e12 : a.min) - (b.min === Infinity ? 1e12 : b.min));
+    bestKey = scored[0].key;
+    bestScore = scored[0].match;
+  }
+  if (!bestKey) return { unitPrices: [], foundTitle: null };
+  const perStore = /* @__PURE__ */ new Map();
+  for (const o of groups.get(bestKey)) {
+    if (!(o.price > 0)) continue;
+    const cur = perStore.get(o.seller);
+    if (!cur || o.price < cur.price) perStore.set(o.seller, { price: o.price, title: o.title, url: o.url });
+  }
+  const unitPrices = Array.from(perStore.entries()).map(([seller, v]) => ({ seller, price: v.price, title: v.title, url: v.url })).sort((a, b) => a.price - b.price);
+  return { unitPrices, foundTitle: bestKey ? groups.get(bestKey)[0]?.title || null : null };
+}
+function computeStoreTotals(items) {
+  const notFound = items.filter((i) => !i.found).map((i) => i.name);
+  const storeNames = /* @__PURE__ */ new Set();
+  for (const it of items) for (const u of it.unitPrices) storeNames.add(u.seller);
+  const stores = [];
+  for (const seller of storeNames) {
+    let total = 0;
+    let itemsCovered = 0;
+    const missing = [];
+    const itemized = [];
+    for (const it of items) {
+      const q3 = it.qty > 0 ? it.qty : 1;
+      const match = it.unitPrices.find((u) => u.seller === seller);
+      if (match) {
+        total += match.price * q3;
+        itemsCovered += 1;
+        itemized.push({ name: it.name, qty: q3, price: match.price * q3, unitPrice: match.price, url: match.url });
+      } else {
+        missing.push(it.name);
+      }
+    }
+    stores.push({ seller, total, itemsCovered, itemsMissing: missing.length, missing, complete: missing.length === 0, itemized });
+  }
+  const complete = stores.filter((s) => s.complete).sort((a, b) => a.total - b.total);
+  const partial = stores.filter((s) => !s.complete).sort((a, b) => b.itemsCovered - a.itemsCovered || a.total - b.total);
+  const best = complete[0];
+  const worst = complete.length > 1 ? complete[complete.length - 1] : void 0;
+  return {
+    items,
+    stores: [...complete, ...partial],
+    best,
+    savingsVsWorst: best && worst ? Math.max(0, Math.round((worst.total - best.total) * 100) / 100) : void 0,
+    notFound
+  };
+}
+var init_basket = __esm({
+  "server/smartcart/basket.ts"() {
+  }
+});
+
 // server/common/geoProxy.ts
-async function throttledNominatim(path10) {
-  const hit = cache6.get(path10);
+async function throttledNominatim(path11) {
+  const hit = cache6.get(path11);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path10}`, {
+    const r = await fetch(`${NOMINATIM}${path11}`, {
       headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path10.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path11.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(path10, { at: Date.now(), value });
+    cache6.set(path11, { at: Date.now(), value });
     return value;
   } catch (e) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
@@ -21734,16 +22936,16 @@ async function throttledNominatim(path10) {
 async function geoSearch(q3, limit = 6) {
   const clean3 = q3.trim().slice(0, 120);
   if (clean3.length < 2) return [];
-  const path10 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path10);
+  const path11 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path11);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path10 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path10);
+  const path11 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path11);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -21924,12 +23126,12 @@ function groupSameProduct(items, extra = () => ({})) {
       "cast",
       "starring"
     ];
-    const normKey = (k) => k.replace(/_/g, " ").toLowerCase();
-    const have = new Set(Object.keys(mergedSpecs).map(normKey));
+    const normKey2 = (k) => k.replace(/_/g, " ").toLowerCase();
+    const have = new Set(Object.keys(mergedSpecs).map(normKey2));
     for (const m of members) {
       if (m === head) continue;
       for (const [k, v] of Object.entries(m.specs || {})) {
-        const nk = normKey(k);
+        const nk = normKey2(k);
         const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk) || members[0].vertical === "creditcards";
         if (!wanted) continue;
         if (!have.has(nk) && v != null && String(v).trim() !== "") {
@@ -22005,16 +23207,16 @@ var init_productGrouping = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto20.default.randomBytes(16).toString("hex");
-  const hash = import_crypto20.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto22.default.randomBytes(16).toString("hex");
+  const hash = import_crypto22.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto20.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto20.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto22.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto22.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -22037,7 +23239,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto20.default.randomBytes(32).toString("hex");
+  const token = import_crypto22.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -22077,10 +23279,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto20, SESSION_TTL_SEC;
+var import_crypto22, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto20 = __toESM(require("crypto"), 1);
+    import_crypto22 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -22122,16 +23324,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto21.default.randomBytes(8).toString("hex");
-  const hash = import_crypto21.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto23.default.randomBytes(8).toString("hex");
+  const hash = import_crypto23.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto21.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto23.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto21.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto23.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -22164,7 +23366,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
-  const code = String(import_crypto21.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto23.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -22221,10 +23423,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean3}`);
   return { ok: true, email: clean3 };
 }
-var import_crypto21, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto23, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto21 = __toESM(require("crypto"), 1);
+    import_crypto23 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -22273,8 +23475,8 @@ async function verifyFirebaseIdTokenDetailed(idToken, opts = {}) {
     }
     const certPem = certs[header.kid];
     if (!certPem) return { reason: "unknown_signing_key", detail: `kid=${header.kid}` };
-    const publicKey = new import_crypto22.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto22.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto24.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto24.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return { reason: "bad_signature" };
     return {
@@ -22319,8 +23521,8 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const certs = certsOverride || await getGoogleCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto22.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto22.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto24.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto24.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
     return {
@@ -22335,10 +23537,10 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto22, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
+var import_crypto24, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto22 = __toESM(require("crypto"), 1);
+    import_crypto24 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -22413,7 +23615,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto23.default.randomUUID();
+  const key = idempotencyKey || import_crypto25.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -22528,10 +23730,10 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto23, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+var import_crypto25, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto23 = __toESM(require("crypto"), 1);
+    import_crypto25 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -22628,166 +23830,18 @@ var init_spendLens = __esm({
   }
 });
 
-// server/affiliate/deeplink.ts
-var deeplink_exports = {};
-__export(deeplink_exports, {
-  amazonAssociatesUrl: () => amazonAssociatesUrl,
-  buildSecureDeeplink: () => buildSecureDeeplink,
-  createMaskingPointer: () => createMaskingPointer,
-  cuelinksMerchantUrl: () => cuelinksMerchantUrl,
-  recordPointerClick: () => recordPointerClick,
-  resolveMaskingPointer: () => resolveMaskingPointer,
-  safeDomain: () => safeDomain2
-});
-function secret() {
-  return process.env.AFFILIATE_SECRET || import_crypto24.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
-}
-function b64url(s) {
-  return Buffer.from(s, "utf8").toString("base64url");
-}
-function unb64url(s) {
-  return Buffer.from(s, "base64url").toString("utf8");
-}
-function createMaskingPointer(destination, opts = {}) {
-  const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
-  const sig = import_crypto24.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  return `/api/out?t=${payload}.${sig}`;
-}
-function resolveMaskingPointer(token) {
-  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
-  if (!m) return null;
-  const [payload, sig] = [m[1], m[2]];
-  const expect = import_crypto24.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  if (sig.length !== expect.length || !import_crypto24.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
-  try {
-    const j = JSON.parse(unb64url(payload));
-    if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
-    return { destination: String(j.d), offerId: j.o ? String(j.o) : void 0 };
-  } catch {
-    return null;
-  }
-}
-function safeDomain2(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-function cuelinksMerchantUrl(dest) {
-  const c = settings.cuelinks;
-  if (!c.publisherId) return null;
-  let domain;
-  try {
-    domain = new URL(dest).hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-  if (!CUELINKS_MERCHANTS.has(domain)) return null;
-  return `https://linksredirect.com/?cid=${encodeURIComponent(c.cid)}&subid=${encodeURIComponent(c.publisherId)}&source=api&url=${encodeURIComponent(dest)}`;
-}
-function amazonAssociatesUrl(dest) {
-  const tag = settings.amazonAssociates?.tag;
-  if (!tag) return null;
-  let u;
-  try {
-    u = new URL(dest);
-  } catch {
-    return null;
-  }
-  if (!AMAZON_DOMAINS.test(u.hostname.toLowerCase())) return null;
-  u.searchParams.set("tag", tag);
-  return u.toString();
-}
-async function buildSecureDeeplink(targetUrl, opts = {}) {
-  const domain = safeDomain2(targetUrl);
-  const store2 = getStore();
-  try {
-    const slug = (opts.companySlug || "").toLowerCase().slice(0, 64);
-    const rows = await store2.query(
-      `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
-       WHERE active = 1 AND (slug = ? OR company_domain = ?) LIMIT 1`,
-      [slug, domain]
-    );
-    const r = rows?.[0];
-    if (r?.template) {
-      const extra = parseJsonObj(r.extra_params);
-      const url = renderTemplate(String(r.template), targetUrl, extra, String(r.subid_param || "subid"));
-      return { trackingUrl: url, network: String(r.network || "direct"), matchedProfile: "affiliate_configs" };
-    }
-  } catch {
-  }
-  const amz = amazonAssociatesUrl(targetUrl);
-  if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
-  try {
-    const rows = await store2.query(
-      `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
-       WHERE vendor_domain = ? LIMIT 1`,
-      [domain]
-    );
-    const r = rows?.[0];
-    if (r?.deep_link_template) {
-      const url = renderTemplate(String(r.deep_link_template), targetUrl, { campaign: r.campaign_id || "", subid: r.sub_id || "" }, "subid");
-      return { trackingUrl: url, network: String(r.network_id || "direct"), matchedProfile: "affiliate_links" };
-    }
-  } catch {
-  }
-  const cuelinks = cuelinksMerchantUrl(targetUrl);
-  if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
-  return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
-}
-function renderTemplate(tpl, dest, extra, subidParam) {
-  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto24.default.randomBytes(6).toString("hex"));
-  return out.replace(/\{[a-z0-9_]+\}/gi, "");
-}
-function parseJsonObj(v) {
-  if (!v) return {};
-  try {
-    const j = typeof v === "string" ? JSON.parse(v) : v;
-    return j && typeof j === "object" ? j : {};
-  } catch {
-    return {};
-  }
-}
-async function recordPointerClick(dest, offerId, network) {
-  const clickId = import_crypto24.default.randomUUID();
-  try {
-    const store2 = getStore();
-    await store2.execute(
-      `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
-       VALUES (?, ?, ?, ?, ?, NULL)`,
-      [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain2(dest), dest.slice(0, 2e3), clickId]
-    );
-  } catch (e) {
-    log.debug("Affiliate", "click recording skipped", {});
-  }
-  return clickId;
-}
-var import_crypto24, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
-var init_deeplink = __esm({
-  "server/affiliate/deeplink.ts"() {
-    import_crypto24 = __toESM(require("crypto"), 1);
-    init_settings();
-    init_logger();
-    init_db();
-    AFFILIATE_TTL_SEC = 24 * 60 * 60;
-    CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com"]);
-    AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
-  }
-});
-
 // src/server/catalogueStore.ts
 function saveCatalogueStore(state) {
   try {
-    if (!import_fs2.default.existsSync(DATA_DIR)) {
-      import_fs2.default.mkdirSync(DATA_DIR, { recursive: true });
+    if (!import_fs3.default.existsSync(DATA_DIR)) {
+      import_fs3.default.mkdirSync(DATA_DIR, { recursive: true });
     }
     memoryState = {
       ...memoryState,
       ...state,
       lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    import_fs2.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
+    import_fs3.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
   } catch (err) {
     console.error("[CatalogueStore] Error saving persistent catalogue to disk:", err.message);
   }
@@ -22814,14 +23868,14 @@ function recordProvenance(log2) {
   }
   saveCatalogueStore({ provenanceLogs: memoryState.provenanceLogs });
 }
-var import_fs2, import_path3, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
+var import_fs3, import_path4, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
 var init_catalogueStore = __esm({
   "src/server/catalogueStore.ts"() {
-    import_fs2 = __toESM(require("fs"), 1);
-    import_path3 = __toESM(require("path"), 1);
+    import_fs3 = __toESM(require("fs"), 1);
+    import_path4 = __toESM(require("path"), 1);
     import_promise2 = __toESM(require("mysql2/promise"), 1);
-    DATA_DIR = import_path3.default.resolve(process.cwd(), ".data");
-    CATALOGUE_FILE = import_path3.default.join(DATA_DIR, "catalogue.json");
+    DATA_DIR = import_path4.default.resolve(process.cwd(), ".data");
+    CATALOGUE_FILE = import_path4.default.join(DATA_DIR, "catalogue.json");
     memoryState = {
       items: [],
       leads: [],
@@ -23988,290 +25042,224 @@ var init_placements = __esm({
   }
 });
 
-// server/marketing/deals.ts
-var deals_exports = {};
-__export(deals_exports, {
-  DEAL_KINDS: () => DEAL_KINDS,
-  MERCHANT_VERTICAL: () => MERCHANT_VERTICAL,
-  dealsForSeller: () => dealsForSeller,
-  deleteDeal: () => deleteDeal,
-  ensureDealsSchema: () => ensureDealsSchema,
-  findBestCoupon: () => findBestCoupon,
-  findBestOffer: () => findBestOffer,
-  forSellerWithBest: () => forSellerWithBest,
-  getDealsWithCounts: () => getDealsWithCounts,
-  listAllDeals: () => listAllDeals,
-  listPublicDeals: () => listPublicDeals,
-  merchantKeyOf: () => merchantKeyOf,
-  saveDeal: () => saveDeal,
-  toPublicDeal: () => toPublicDeal,
-  validateDeal: () => validateDeal
+// server/marketing/partners.ts
+var partners_exports = {};
+__export(partners_exports, {
+  approvePartnerFromLead: () => approvePartnerFromLead,
+  bucketCategory: () => bucketCategory,
+  ensurePartnersTable: () => ensurePartnersTable,
+  listPartners: () => listPartners,
+  updatePartnerStatus: () => updatePartnerStatus
 });
-function merchantKeyOf(name) {
-  const s = String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-  const first = s.split(" ")[0] || "";
-  const alias = { amzn: "amazon", "tata": "tatacliq", bms: "bookmyshow", book: "bookmyshow", paytm: "district" };
-  return alias[first] || first;
+async function ensurePartnersTable() {
+  if (ensured3) return;
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS approved_partners (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(160) NOT NULL,
+    website_url VARCHAR(300) NOT NULL,
+    category VARCHAR(30) NOT NULL DEFAULT 'retail',
+    email VARCHAR(160) NULL,
+    phone VARCHAR(30) NULL,
+    badge VARCHAR(40) NOT NULL DEFAULT 'Verified Partner',
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    source_lead_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_website (website_url)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  ensured3 = true;
 }
-function httpsUrl(raw) {
-  try {
-    const u = new URL(String(raw || "").trim());
-    if (u.protocol !== "https:" || u.username || u.password || !u.hostname.includes(".")) return null;
-    return u.toString().slice(0, 1e3);
-  } catch {
-    return null;
-  }
+function bucketCategory(raw) {
+  const c = (raw || "").toLowerCase();
+  if (/(travel|hotel|flight|bus|train|holiday|tour)/.test(c)) return "travel";
+  if (/(food|restaurant|delivery|kitchen|catering|bakery)/.test(c)) return "food";
+  if (/(cab|taxi|ride|bike|auto|transport|logistic)/.test(c)) return "cabs";
+  if (/(bank|loan|insur|credit|card|finance|invest|demat|account|payment)/.test(c)) return "finance";
+  return "retail";
 }
-function validateDeal(i) {
-  const merchant_name = String(i.merchant_name || "").trim().slice(0, 120);
-  const title = String(i.title || "").trim().slice(0, 200);
-  const kind = String(i.kind || "").trim();
-  if (!merchant_name) return { ok: false, error: "Merchant name is required" };
-  if (!title) return { ok: false, error: "Title is required" };
-  if (!DEAL_KINDS.includes(kind)) return { ok: false, error: "Unknown deal type" };
-  const dest = httpsUrl(i.dest_url);
-  if (!dest) return { ok: false, error: "Destination must be a full https:// URL" };
-  const code = String(i.code ?? "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 60) || null;
-  if (kind === "coupon" && !code) return { ok: false, error: "A coupon deal needs its code" };
-  const till = String(i.valid_till ?? "").trim();
-  if (till && !/^\d{4}-\d{2}-\d{2}$/.test(till)) return { ok: false, error: "Valid-till must be YYYY-MM-DD" };
-  const mo = i.min_order == null || i.min_order === "" ? null : Math.max(0, Math.round(Number(i.min_order)));
-  const mk = merchantKeyOf(i.merchant_key || merchant_name);
-  const vertical = String(i.vertical || MERCHANT_VERTICAL[mk] || "").trim() || null;
-  return {
-    ok: true,
-    clean: {
-      merchant_key: mk,
-      merchant_name,
-      kind,
-      vertical,
-      title,
-      description: String(i.description ?? "").trim().slice(0, 600) || null,
-      code,
-      discount_text: String(i.discount_text ?? "").trim().slice(0, 80) || null,
-      min_order: Number.isFinite(mo) ? mo : null,
-      terms: String(i.terms ?? "").trim().slice(0, 600) || null,
-      dest_url: dest,
-      valid_till: till || null,
-      sort_weight: Math.max(-100, Math.min(100, Math.round(Number(i.sort_weight) || 0))),
-      is_active: i.is_active === false ? 0 : 1
-    }
-  };
-}
-function toPublicDeal(r) {
-  const mk = r.merchant_key;
-  const vert2 = r.vertical || MERCHANT_VERTICAL[mk] || null;
+function rowToPartner(r) {
   return {
     id: Number(r.id),
-    merchantKey: mk,
-    merchantName: r.merchant_name,
-    kind: r.kind,
-    vertical: vert2,
-    title: r.title,
-    description: r.description || null,
-    code: r.code || null,
-    discountText: r.discount_text || null,
-    minOrder: r.min_order == null ? null : Number(r.min_order),
-    terms: r.terms || null,
-    imageUrl: r.image_url || null,
-    validTill: r.valid_till ? String(r.valid_till).slice(0, 10) : null,
-    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}` })
+    name: String(r.name || ""),
+    websiteUrl: String(r.website_url || ""),
+    category: String(r.category || "retail"),
+    email: r.email ? String(r.email) : null,
+    phone: r.phone ? String(r.phone) : null,
+    badge: String(r.badge || "Verified Partner"),
+    status: String(r.status || "active"),
+    sourceLeadId: r.source_lead_id ? Number(r.source_lead_id) : null,
+    createdAt: String(r.created_at || "")
   };
 }
-async function ensureDealsSchema() {
-  if (schemaChecked) return;
-  schemaChecked = true;
+async function approvePartnerFromLead(lead) {
+  await ensurePartnersTable();
+  const name = String(lead.business || "").trim().slice(0, 160);
+  let website = String(lead.website || "").trim().slice(0, 300);
+  if (!name) return { ok: false, error: "Inquiry has no business name" };
+  if (!website) return { ok: false, error: "Inquiry has no website to link" };
+  if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
+  const category = bucketCategory(String(lead.category || ""));
   const store2 = getStore();
-  try {
-    if (store2.kind === "mysql") {
-      try {
-        await store2.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
-      } catch {
-      }
-    }
-    const rows = await store2.query("SELECT id, merchant_key, vertical FROM deals");
-    for (const r of rows) {
-      if (!r.vertical || r.vertical === "") {
-        const v = MERCHANT_VERTICAL[r.merchant_key];
-        if (v) {
-          await store2.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
-        }
-      }
-    }
-  } catch {
+  const existing = await store2.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
+  if (existing?.length) {
+    await store2.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
+    return { ok: true, partner: rowToPartner({ ...existing[0], status: "active" }) };
   }
-}
-async function listAllDeals() {
-  await ensureDealsSchema();
-  return getStore().query("SELECT * FROM deals ORDER BY id DESC LIMIT 500").catch(() => []);
-}
-async function getDealsWithCounts(opts = {}) {
-  await ensureDealsSchema();
-  const rows = await getStore().query("SELECT * FROM deals WHERE is_active = ? ORDER BY sort_weight DESC, id DESC LIMIT 500", [1]).catch(() => []);
-  const live = rows.filter((r) => isLive(r));
-  const counts = {};
-  for (const r of live) {
-    const v = r.vertical || MERCHANT_VERTICAL[r.merchant_key];
-    if (v) {
-      counts[v] = (counts[v] || 0) + 1;
-    }
-  }
-  const mk = opts.merchant ? merchantKeyOf(opts.merchant) : "";
-  const filterHasImage = opts.hasImage === "1" || opts.hasImage === 1 || opts.hasImage === true || opts.hasImage === "true";
-  const filtered = live.filter((r) => {
-    if (mk && r.merchant_key !== mk) return false;
-    if (opts.kind && r.kind !== opts.kind) return false;
-    const v = r.vertical || MERCHANT_VERTICAL[r.merchant_key];
-    if (opts.vertical && v !== opts.vertical) return false;
-    if (filterHasImage && !Boolean(r.image_url && String(r.image_url).trim())) return false;
-    return true;
-  });
-  const deals = filtered.slice(0, Math.min(200, opts.limit || 100)).map(toPublicDeal);
-  return { deals, counts };
-}
-async function listPublicDeals(opts = {}) {
-  const { deals } = await getDealsWithCounts(opts);
-  return deals;
-}
-async function dealsForSeller(seller, limit = 6) {
-  const rank = { coupon: 0, bank_offer: 1, cashback: 2, gift_card: 3, sale: 4 };
-  const all = await listPublicDeals({ merchant: seller, limit: 100 });
-  return all.sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9)).slice(0, limit);
-}
-function extractDiscountScore(d) {
-  const text = String(d.discountText || d.discount_text || "");
-  const pctMatch = text.match(/(\d+(?:\.\d+)?)\s*%/);
-  if (pctMatch) return Number(pctMatch[1]);
-  const amtMatch = text.match(/(?:rs\.?|₹|\$)\s*([\d,]+)/i) || text.match(/([\d,]+)\s*(?:off|cashback|discount)/i);
-  if (amtMatch) {
-    const val = Number(amtMatch[1].replace(/,/g, ""));
-    if (!Number.isNaN(val) && val > 0) return val >= 100 ? val / 10 : val;
-  }
-  return 0;
-}
-function findBestCoupon(deals) {
-  const candidates = deals.filter((d) => d.kind === "coupon" || Boolean(d.code));
-  if (!candidates.length) return null;
-  const sorted = [...candidates].sort((a, b) => {
-    const scoreA = extractDiscountScore(a);
-    const scoreB = extractDiscountScore(b);
-    if (scoreA !== scoreB) return scoreB - scoreA;
-    return (b.id || 0) - (a.id || 0);
-  });
-  return sorted[0];
-}
-function findBestOffer(deals) {
-  const candidates = deals.filter((d) => d.kind !== "coupon" && !d.code);
-  if (!candidates.length) return null;
-  const preferredKinds = /* @__PURE__ */ new Set(["bank_offer", "sale", "cashback"]);
-  const sorted = [...candidates].sort((a, b) => {
-    const prefA = preferredKinds.has(a.kind) ? 1e3 : 0;
-    const prefB = preferredKinds.has(b.kind) ? 1e3 : 0;
-    const scoreA = prefA + extractDiscountScore(a);
-    const scoreB = prefB + extractDiscountScore(b);
-    if (scoreA !== scoreB) return scoreB - scoreA;
-    return (b.id || 0) - (a.id || 0);
-  });
-  return sorted[0];
-}
-async function forSellerWithBest(seller, limit = 6) {
-  const all = await listPublicDeals({ merchant: seller, limit: 100 });
-  const deals = await dealsForSeller(seller, limit);
-  const coupon = findBestCoupon(all);
-  const offer = findBestOffer(all);
-  return { deals, best: { offer, coupon } };
-}
-async function saveDeal(i) {
-  await ensureDealsSchema();
-  const v = validateDeal(i);
-  if (!v.ok) return { ok: false, error: v.error };
-  const c = v.clean;
-  const store2 = getStore();
-  const vals = [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
-  if (i.id) {
-    const ex = await store2.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
-    if (!ex.length) return { ok: false, error: "Deal not found" };
-    await store2.execute(
-      "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, vertical=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
-      [...vals, Number(i.id)]
-    );
-    return { ok: true, id: Number(i.id) };
-  }
-  await store2.execute(
-    "INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    vals
+  const ins = await store2.execute(
+    `INSERT INTO approved_partners (name, website_url, category, email, phone, badge, status, source_lead_id)
+     VALUES (?, ?, ?, ?, ?, 'Verified Partner', 'active', ?)`,
+    [name, website, category, lead.email || null, lead.phone || null, lead.leadId]
   );
-  const row = await store2.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
-  return { ok: true, id: row[0] ? Number(row[0].id) : void 0 };
+  const rows = await store2.query("SELECT * FROM approved_partners WHERE id = LAST_INSERT_ID()");
+  return { ok: true, partner: rowToPartner(rows?.[0] || { id: ins?.insertId }) };
 }
-async function deleteDeal(id) {
-  await getStore().execute("DELETE FROM deals WHERE id = ?", [Number(id)]);
+async function listPartners(activeOnly = true) {
+  await ensurePartnersTable();
+  const rows = await getStore().query(
+    `SELECT * FROM approved_partners ${activeOnly ? "WHERE status = 'active'" : ""} ORDER BY created_at DESC LIMIT 500`
+  );
+  return (rows || []).map(rowToPartner);
 }
-var DEAL_KINDS, MERCHANT_VERTICAL, isLive, schemaChecked;
-var init_deals = __esm({
-  "server/marketing/deals.ts"() {
+async function updatePartnerStatus(id, status) {
+  await ensurePartnersTable();
+  await getStore().execute("UPDATE approved_partners SET status = ? WHERE id = ?", [status, id]);
+  return true;
+}
+var ensured3;
+var init_partners = __esm({
+  "server/marketing/partners.ts"() {
     init_db();
-    init_deeplink();
-    DEAL_KINDS = ["bank_offer", "coupon", "gift_card", "credit_card", "loan", "insurance", "movie", "cashback", "sale"];
-    MERCHANT_VERTICAL = {
-      amazon: "ecommerce",
-      flipkart: "ecommerce",
-      myntra: "ecommerce",
-      ajio: "ecommerce",
-      tatacliq: "ecommerce",
-      meesho: "ecommerce",
-      croma: "ecommerce",
-      nykaa: "ecommerce",
-      makemytrip: "flights",
-      goibibo: "hotels",
-      easemytrip: "hotels",
-      ixigo: "hotels",
-      yatra: "hotels",
-      cleartrip: "hotels",
-      goindigo: "flights",
-      akasaair: "flights",
-      booking: "hotels",
-      agoda: "hotels",
-      airbnb: "hotels",
-      redbus: "bus",
-      abhibus: "bus",
-      zingbus: "bus",
-      ola: "cab",
-      uber: "cab",
-      rapido: "cab",
-      savaari: "cab",
-      swiggy: "food",
-      zomato: "food",
-      dominos: "food",
-      pizzahut: "food",
-      eatsure: "food",
-      blinkit: "grocery",
-      zepto: "grocery",
-      instamart: "grocery",
-      bigbasket: "grocery",
-      bookmyshow: "movies",
-      district: "movies",
-      paytm: "movies",
-      pvr: "movies",
-      paisabazaar: "loans",
-      bankbazaar: "loans",
-      policybazaar: "loans",
-      moneyview: "loans",
-      kreditbee: "loans",
-      navi: "loans",
-      acko: "insurance",
-      digit: "insurance",
-      insurancedekho: "insurance",
-      ditto: "insurance",
-      coverfox: "insurance",
-      sbi: "creditcards",
-      hdfc: "creditcards",
-      axis: "creditcards",
-      icici: "creditcards",
-      cardinsider: "creditcards"
+    ensured3 = false;
+  }
+});
+
+// server/marketing/leads.ts
+var leads_exports = {};
+__export(leads_exports, {
+  ensureLeadsTable: () => ensureLeadsTable,
+  getLead: () => getLead,
+  listLeads: () => listLeads,
+  saveLead: () => saveLead,
+  updateLeadStatus: () => updateLeadStatus,
+  validateLead: () => validateLead
+});
+async function ensureLeadsTable() {
+  if (ensured4) return;
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS leads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    source VARCHAR(30) NOT NULL DEFAULT 'lead_form',
+    vertical VARCHAR(20) NULL,
+    service_type VARCHAR(160) NULL,
+    account_type VARCHAR(20) NULL,
+    first_name VARCHAR(80) NOT NULL,
+    last_name VARCHAR(80) NOT NULL,
+    age INT NULL,
+    salary DECIMAL(14,2) NULL,
+    location VARCHAR(120) NULL,
+    phone VARCHAR(20) NULL,
+    email VARCHAR(160) NULL,
+    business VARCHAR(160) NULL,
+    website VARCHAR(200) NULL,
+    category VARCHAR(60) NULL,
+    message VARCHAR(1000) NULL,
+    dest_url VARCHAR(600) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'new',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  ensured4 = true;
+}
+function validateLead(i) {
+  const firstName = str2(i.firstName, 80);
+  const lastName = str2(i.lastName, 80);
+  const source = ["lead_form", "partner_inquiry", "cpl"].includes(i.source) ? i.source : "lead_form";
+  if (source === "partner_inquiry") {
+    if (!str2(i.business, 160)) return { ok: false, error: "Business name is required" };
+    if (!str2(i.email, 160) && !str2(i.phone, 20)) return { ok: false, error: "Email or phone is required" };
+  } else {
+    if (!firstName) return { ok: false, error: "First name is required" };
+    if (!lastName) return { ok: false, error: "Last name is required" };
+    const age = Number(i.age);
+    if (!Number.isFinite(age) || age < 18 || age > 100) return { ok: false, error: "Age must be between 18 and 100" };
+    if (i.salary !== void 0 && i.salary !== null && String(i.salary).trim() !== "") {
+      const salary = Number(i.salary);
+      if (!Number.isFinite(salary) || salary < 0) return { ok: false, error: "Salary must be zero or more" };
+    }
+    if (!str2(i.location, 120)) return { ok: false, error: "Location is required" };
+    if (i.vertical && !VERTICALS.includes(i.vertical)) return { ok: false, error: "Unsupported vertical" };
+    if (i.accountType && !["savings", "current", "demat"].includes(String(i.accountType))) return { ok: false, error: "Account type must be savings, current or demat" };
+  }
+  return { ok: true, clean: { ...i, firstName: firstName || void 0, lastName: lastName || void 0 } };
+}
+async function saveLead(i) {
+  await ensureLeadsTable();
+  const v = validateLead(i);
+  if (!v.ok || !v.clean) throw new Error(v.error || "Invalid lead");
+  const c = v.clean;
+  await getStore().execute(
+    `INSERT INTO leads (source, vertical, service_type, account_type, first_name, last_name, age, salary, location, phone, email, business, website, category, message, dest_url, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
+    [
+      c.source || "lead_form",
+      str2(c.vertical, 20),
+      str2(c.serviceType, 160),
+      str2(c.accountType, 20),
+      str2(c.firstName, 80),
+      str2(c.lastName, 80),
+      c.age ?? null,
+      c.salary ?? null,
+      str2(c.location, 120),
+      str2(c.phone, 20),
+      str2(c.email, 160),
+      str2(c.business, 160),
+      str2(c.website, 200),
+      str2(c.category, 60),
+      str2(c.message, 1e3),
+      str2(c.destUrl, 600)
+    ]
+  );
+  const rows = await getStore().query("SELECT LAST_INSERT() AS id");
+  const r = rows[0] || rows?.rows?.[0];
+  return Number(r?.id ?? 0) || 0;
+}
+async function listLeads(opts = {}) {
+  await ensureLeadsTable();
+  const limit = Math.min(Math.max(Number(opts.limit) || 500, 1), 1e3);
+  const where = [];
+  const args = [];
+  if (opts.source) {
+    where.push("source = ?");
+    args.push(opts.source);
+  }
+  if (opts.vertical) {
+    where.push("vertical = ?");
+    args.push(opts.vertical);
+  }
+  if (opts.status) {
+    where.push("status = ?");
+    args.push(opts.status);
+  }
+  const sql = `SELECT * FROM leads ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC, id DESC LIMIT ${limit}`;
+  return await getStore().query(sql, args);
+}
+async function getLead(id) {
+  await ensureLeadsTable();
+  const rows = await getStore().query("SELECT * FROM leads WHERE id = ? LIMIT 1", [id]);
+  return rows?.[0] || null;
+}
+async function updateLeadStatus(id, status) {
+  await ensureLeadsTable();
+  const s = ["new", "contacted", "converted", "closed"].includes(status) ? status : "new";
+  await getStore().execute("UPDATE leads SET status = ? WHERE id = ?", [s, Number(id) || 0]);
+}
+var ensured4, VERTICALS, str2;
+var init_leads = __esm({
+  "server/marketing/leads.ts"() {
+    init_db();
+    ensured4 = false;
+    VERTICALS = ["loans", "insurance", "creditcards", "account"];
+    str2 = (v, max) => {
+      const s = String(v ?? "").trim();
+      return s ? s.slice(0, max) : null;
     };
-    isLive = (r, today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) => (Number(r.is_active) === 1 || r.is_active === true) && (!r.valid_till || String(r.valid_till).slice(0, 10) >= today);
-    schemaChecked = false;
   }
 });
 
@@ -24816,13 +25804,24 @@ function offerToComparisonItem(o) {
   if (attrs["departure"]) parts.push(`Departs ${attrs["departure"]}`);
   if (attrs["prime"] === "true") parts.push("Prime eligible");
   if (attrs["loan_type"]) parts.push(String(attrs["loan_type"]));
-  if (attrs["interest_rate_min"] && attrs["interest_rate_max"]) parts.push(`${attrs["interest_rate_min"]}\u2013${attrs["interest_rate_max"]}% p.a.`);
-  else if (attrs["interest_rate_min"]) parts.push(`from ${attrs["interest_rate_min"]}% p.a.`);
+  if (!attrs["account_type"]) {
+    if (attrs["interest_rate_min"] && attrs["interest_rate_max"]) parts.push(`${attrs["interest_rate_min"]}\u2013${attrs["interest_rate_max"]}% p.a.`);
+    else if (attrs["interest_rate_min"]) parts.push(`from ${attrs["interest_rate_min"]}% p.a.`);
+  }
   if (attrs["sum_insured"]) parts.push(`Cover ${attrs["sum_insured"]}`);
   if (attrs["theatre"]) parts.push(String(attrs["theatre"]));
   if (attrs["showtime"]) parts.push(String(attrs["showtime"]));
   if (o.location?.city) parts.push(`${o.location.city}`);
   if (attrs["in_stock"] === "false" || o.availability === "out_of_stock") parts.push("Currently out of stock");
+  if (String(o.vertical) === "banking") {
+    const rMin = attrs["interest_rate_min"] || attrs["interest_rate"];
+    const rMax = attrs["interest_rate_max"] || rMin;
+    if (rMin) parts.push(`${rMin}${rMax !== rMin ? `\u2013${rMax}` : ""}% p.a. savings`);
+    if (attrs["amc"]) parts.push(`AMC ${attrs["amc"]}`);
+    if (attrs["min_balance"]) parts.push(`Min balance \u20B9${Number(String(attrs["min_balance"]).replace(/[^\d.]/g, "") || 0).toLocaleString("en-IN")}`);
+    if (attrs["account_opening_fee"]) parts.push(`Opening ${attrs["account_opening_fee"]}`);
+    if (attrs["balance_requirement"]) parts.push(String(attrs["balance_requirement"]));
+  }
   if (o.vertical === "creditcards") {
     if (attrs["joining_fee"]) parts.push(`Joining ${attrs["joining_fee"]}`);
     if (attrs["annual_fee"]) parts.push(`Renewal ${attrs["annual_fee"]}`);
@@ -24869,7 +25868,7 @@ function offerToComparisonItem(o) {
     primaryPrice: price,
     originalPrice: list > price ? list : 0,
     priceAvailable: price > 0,
-    unit: o.vertical === "creditcards" ? "per year" : "per unit",
+    unit: o.vertical === "creditcards" ? "per year" : String(o.vertical) === "banking" ? String(attrs["price_unit"] || "per account") : "per unit",
     currency: o.prices?.currency || "INR",
     features: featurePills,
     specs,
@@ -24910,6 +25909,17 @@ function offerToComparisonItem(o) {
     }
   };
 }
+function leadRateOk(ip) {
+  const now = Date.now();
+  const h = leadHits.get(ip);
+  if (!h || now > h.reset) {
+    leadHits.set(ip, { n: 1, reset: now + 6e4 });
+    return true;
+  }
+  if (h.n >= 20) return false;
+  h.n += 1;
+  return true;
+}
 async function signInGoogleUser(claims) {
   const store2 = getStore();
   let rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
@@ -24923,7 +25933,7 @@ async function signInGoogleUser(claims) {
     rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
-  const token = import_crypto25.default.randomBytes(32).toString("hex");
+  const token = import_crypto26.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -24943,11 +25953,12 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto25, apiRouter, hotelLocationCache, busLocationCache, HOTEL_SOURCE_LABEL;
+var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationCache, HOTEL_SOURCE_LABEL, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
     init_searchOrchestrator();
+    init_basket();
     init_registry();
     init_verticalEngine();
     init_geoProxy();
@@ -24956,7 +25967,7 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto25 = __toESM(require("crypto"), 1);
+    import_crypto26 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
@@ -25196,8 +26207,8 @@ var init_routes = __esm({
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
-        // the UI tab id is 'movie'; the engine's vertical id is 'movies'
-        vertical: req.body.vertical === "movie" ? "movies" : req.body.vertical,
+        // the UI tab ids are 'movie'/'account'; the engine's vertical ids are 'movies'/'banking'
+        vertical: req.body.vertical === "movie" ? "movies" : req.body.vertical === "account" ? "banking" : req.body.vertical,
         pincode: req.body.pincode,
         city: req.body.city,
         locality: req.body.locality,
@@ -25240,7 +26251,7 @@ var init_routes = __esm({
       const scored = response.results.map((o) => {
         const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
         const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
-        const financeAttrValued = ["loans", "insurance", "creditcards"].includes(String(o.vertical)) && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null || o.attributes?.annual_fee != null || o.attributes?.sum_insured != null);
+        const financeAttrValued = ["loans", "insurance", "creditcards", "banking"].includes(String(o.vertical)) && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null || o.attributes?.amc != null || o.attributes?.min_balance != null || o.attributes?.annual_fee != null || o.attributes?.sum_insured != null);
         return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 || financeAttrValued };
       });
       const verticalsNeedingTitleMatch = /* @__PURE__ */ new Set(["food", "grocery", "ecommerce"]);
@@ -25263,7 +26274,7 @@ var init_routes = __esm({
           return;
         }
       }
-      const keepUnpriced = ["movie", "movies", "cab"].includes(String(input.vertical));
+      const keepUnpriced = ["movie", "movies", "cab", "banking"].includes(String(input.vertical));
       if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced);
       if (String(input.vertical) === "bus") {
         const live = kept.filter((x) => x.o.attributes?.fare_type !== "indicative_estimate");
@@ -25273,7 +26284,7 @@ var init_routes = __esm({
       response.results = kept.map((x) => x.o);
       const mappedItems = response.results.map((o) => {
         const item = offerToComparisonItem(o);
-        return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : item;
+        return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : req.body.vertical === "account" ? { ...item, vertical: "account", category: "account" } : item;
       });
       const brandById = /* @__PURE__ */ new Map();
       for (const o of response.results) {
@@ -25622,6 +26633,40 @@ var init_routes = __esm({
         res.json({ success: true, deals: [], counts: {} });
       }
     });
+    apiRouter.post("/smart-cart/compare", async (req, res) => {
+      try {
+        const rawItems = Array.isArray((req.body || {}).items) ? req.body.items : [];
+        const items = rawItems.slice(0, 12).map((x) => ({ name: String(x?.name || "").slice(0, 120).trim(), qty: Math.min(Math.max(Number(x?.qty) || 1, 1), 20) })).filter((x) => x.name);
+        if (!items.length) return res.status(400).json({ success: false, error: "Add at least one product to the Smart Cart." });
+        const searches = await Promise.all(items.map(async (it) => {
+          try {
+            const response = await runSearch({ query: it.name, vertical: "grocery", pincode: req.body.pincode, city: req.body.city, locality: req.body.locality });
+            const offers = response.results.filter((o) => Number(o?.prices?.price) > 0 && o?.seller).map((o) => ({
+              seller: String(o.seller).slice(0, 80),
+              price: Number(o.prices.price),
+              title: String(o.title || it.name),
+              url: o.sellerUrl ? createMaskingPointer(String(o.sellerUrl), { offerId: String(o.id || "") }) : null
+            }));
+            const { unitPrices } = bestUnitPricesPerStore(it.name, offers);
+            return { name: it.name, qty: it.qty, unitPrices, found: unitPrices.length > 0 };
+          } catch {
+            return { name: it.name, qty: it.qty, unitPrices: [], found: false };
+          }
+        }));
+        const comparison = computeStoreTotals(searches);
+        res.json({ success: true, comparison });
+      } catch (e) {
+        res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 160) });
+      }
+    });
+    apiRouter.get("/partners", async (_req, res) => {
+      try {
+        const { listPartners: listPartners2 } = await Promise.resolve().then(() => (init_partners(), partners_exports));
+        res.json({ success: true, partners: await listPartners2(true) });
+      } catch {
+        res.json({ success: true, partners: [] });
+      }
+    });
     apiRouter.get("/deals/for-seller", async (req, res) => {
       try {
         const { forSellerWithBest: forSellerWithBest2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
@@ -25629,6 +26674,57 @@ var init_routes = __esm({
         res.json({ success: true, deals: result.deals, best: result.best });
       } catch {
         res.json({ success: true, deals: [], best: { offer: null, coupon: null } });
+      }
+    });
+    leadHits = /* @__PURE__ */ new Map();
+    apiRouter.post("/leads", async (req, res) => {
+      try {
+        if (!leadRateOk(String(req.ip || req.socket?.remoteAddress || "anon"))) {
+          return res.status(429).json({ success: false, error: "Too many submissions. Please try again in a minute." });
+        }
+        const { saveLead: saveLead2, validateLead: validateLead2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        const v = validateLead2(req.body || {});
+        if (!v.ok) return res.status(400).json({ success: false, error: v.error });
+        const id = await saveLead2(req.body || {});
+        const destUrl = String((req.body || {}).destUrl || "").trim();
+        let redirectUrl = null;
+        if (destUrl && /^https:\/\//.test(destUrl)) redirectUrl = createMaskingPointer(destUrl, { offerId: `lead-${id}` });
+        res.json({ success: true, id, redirectUrl });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save your enquiry" });
+      }
+    });
+    apiRouter.post("/partner-inquiry", async (req, res) => {
+      try {
+        if (!leadRateOk(String(req.ip || req.socket?.remoteAddress || "anon"))) {
+          return res.status(429).json({ success: false, error: "Too many submissions. Please try again in a minute." });
+        }
+        const { saveLead: saveLead2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        const id = await saveLead2({ ...req.body || {}, source: "partner_inquiry" });
+        res.json({ success: true, id });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save your inquiry" });
+      }
+    });
+    apiRouter.get("/merchant/leads", async (req, res) => {
+      try {
+        const vendorId = String(req.query.vendorId || "").trim();
+        if (!vendorId) return res.status(400).json({ success: false, error: "vendorId required" });
+        const { listLeads: listLeads2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        const all = await listLeads2({ limit: 300 });
+        const finance = all.filter((l) => ["loans", "insurance", "creditcards", "account"].includes(String(l.vertical || "")));
+        res.json({ success: true, leads: finance });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load leads" });
+      }
+    });
+    apiRouter.get("/merchant-logos", async (_req, res) => {
+      try {
+        const { merchantLogoMap: merchantLogoMap2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+        res.set("Cache-Control", "public, max-age=300");
+        res.json({ success: true, logos: await merchantLogoMap2() });
+      } catch {
+        res.json({ success: true, logos: {} });
       }
     });
     apiRouter.get("/app-links", async (_req, res) => {
@@ -25764,7 +26860,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto25.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto26.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -25772,7 +26868,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto25.default.randomBytes(32).toString("hex");
+      const token = import_crypto26.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -25848,11 +26944,11 @@ var init_routes = __esm({
 
 // server/affiliate/profiles.ts
 function validateProfile(i) {
-  const slug = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
+  const slug2 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   const network = String(i.network || "").trim().toLowerCase();
   const template = String(i.template || "").trim();
-  if (!slug) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
+  if (!slug2) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
   if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
@@ -25867,7 +26963,7 @@ function validateProfile(i) {
   return {
     ok: true,
     clean: {
-      slug,
+      slug: slug2,
       company_domain: domain,
       network,
       template,
@@ -25899,8 +26995,8 @@ async function saveProfile(i) {
   }
   return { ok: true };
 }
-async function deleteProfile(slug) {
-  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug || "").trim().toLowerCase()]);
+async function deleteProfile(slug2) {
+  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug2 || "").trim().toLowerCase()]);
 }
 var AFFILIATE_NETWORKS;
 var init_profiles = __esm({
@@ -25986,7 +27082,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto26.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto27.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -26280,10 +27376,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto26, strip, clip, COUPON_TXT;
+var import_crypto27, strip, clip, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto26 = require("crypto");
+    import_crypto27 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();
@@ -27442,6 +28538,101 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e?.message || "failed" });
       }
     });
+    adminRouter.get("/leads", async (req, res) => {
+      try {
+        const { listLeads: listLeads2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        const leads = await listLeads2({
+          source: req.query.source || void 0,
+          vertical: req.query.vertical || void 0,
+          status: req.query.status || void 0,
+          limit: Number(req.query.limit) || 500
+        });
+        res.json({ success: true, leads });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load leads" });
+      }
+    });
+    adminRouter.get("/partners", async (_req, res) => {
+      try {
+        const { listPartners: listPartners2 } = await Promise.resolve().then(() => (init_partners(), partners_exports));
+        res.json({ success: true, partners: await listPartners2(false) });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load partners" });
+      }
+    });
+    adminRouter.patch("/partners/:id", async (req, res) => {
+      try {
+        const { updatePartnerStatus: updatePartnerStatus2 } = await Promise.resolve().then(() => (init_partners(), partners_exports));
+        const status = String((req.body || {}).status || "") === "paused" ? "paused" : "active";
+        await updatePartnerStatus2(Number(req.params.id), status);
+        audit(req, "partner_status_update", `partner:${req.params.id}`, req.body);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not update partner" });
+      }
+    });
+    adminRouter.post("/leads/:id/approve-partner", async (req, res) => {
+      try {
+        const { getLead: getLead2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        const { approvePartnerFromLead: approvePartnerFromLead2 } = await Promise.resolve().then(() => (init_partners(), partners_exports));
+        const lead = await getLead2(Number(req.params.id));
+        if (!lead) return res.status(404).json({ success: false, error: "Lead not found" });
+        const r = await approvePartnerFromLead2({
+          business: lead.business,
+          website: lead.website,
+          category: lead.category,
+          email: lead.email,
+          phone: lead.phone,
+          leadId: Number(req.params.id)
+        });
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        const { updateLeadStatus: updateLeadStatus2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        await updateLeadStatus2(Number(req.params.id), "converted");
+        audit(req, "partner_approved", `lead:${req.params.id}`, { partnerId: r.partner.id });
+        res.json({ success: true, partner: r.partner });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not approve partner" });
+      }
+    });
+    adminRouter.patch("/leads/:id", async (req, res) => {
+      try {
+        const { updateLeadStatus: updateLeadStatus2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
+        await updateLeadStatus2(Number(req.params.id), String((req.body || {}).status || "new"));
+        audit(req, "lead_status_update", `lead:${req.params.id}`, req.body);
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not update lead" });
+      }
+    });
+    adminRouter.get("/merchant-logos", async (_req, res) => {
+      try {
+        const { listMerchantLogos: listMerchantLogos2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+        res.json({ success: true, logos: await listMerchantLogos2() });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load logos" });
+      }
+    });
+    adminRouter.post("/merchant-logos", async (req, res) => {
+      try {
+        const { upsertMerchantLogo: upsertMerchantLogo2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+        const r = await upsertMerchantLogo2(req.body || {});
+        if (!r.ok) return res.status(400).json(r);
+        audit(req, "merchant_logo_upsert", r.name_key, { name: (req.body || {}).name });
+        res.json(r);
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save logo" });
+      }
+    });
+    adminRouter.delete("/merchant-logos/:key", async (req, res) => {
+      try {
+        const { deleteMerchantLogo: deleteMerchantLogo2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+        await deleteMerchantLogo2(String(req.params.key));
+        audit(req, "merchant_logo_delete", String(req.params.key));
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete logo" });
+      }
+    });
   }
 });
 
@@ -27494,6 +28685,7 @@ async function warmRows(rows, tag) {
 }
 async function bootWarm() {
   try {
+    await purgeStaleBankingOffers();
     const store2 = getStore();
     const rows = await store2.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
@@ -27567,6 +28759,7 @@ var init_warm = __esm({
     init_db();
     init_searchOrchestrator();
     init_logger();
+    init_catalogueService();
     SEED_QUERIES = [
       { query: "mobile phone", vertical: "ecommerce" },
       { query: "milk", vertical: "grocery", city: "Indore" },
@@ -27583,7 +28776,9 @@ var init_warm = __esm({
       { query: "iphone", vertical: "ecommerce" },
       { query: "pizza", vertical: "food", city: "Indore" },
       { query: "delhi to jaipur", vertical: "bus" },
-      { query: "goa", vertical: "hotels" }
+      { query: "goa", vertical: "hotels" },
+      { query: "savings account", vertical: "banking" },
+      { query: "demat account", vertical: "banking" }
     ];
     invokedAsScript = /cron/.test(String(process.argv[1] || ""));
     if (invokedAsScript) {
@@ -27806,6 +29001,43 @@ async function expirePastOffers() {
   );
   return r.affectedRows || 0;
 }
+function parsePayoutText(text) {
+  if (!text) return 0;
+  const pct = /([\d.]+)\s*%/.exec(text);
+  if (pct) return Number(pct[1]) * 10;
+  const rs = /₹\s*([\d,.]+)/.exec(text);
+  if (rs) return Number(rs[1].replace(/,/g, ""));
+  const any = /([\d.]+)/.exec(text);
+  return any ? Number(any[1]) : 0;
+}
+function normKey(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function offerCommissionScore(o) {
+  const hop = String(o.original_url || o.affiliate_url || "");
+  const lir = linkinrCampaignFor(hop);
+  return Math.max(
+    parsePayoutText(o.commission_note),
+    lir ? lir.payoutScore : 0,
+    NETWORK_BASE[String(o.network_source || "").toLowerCase()] ?? 10
+  );
+}
+function dedupBestOffers(rows) {
+  const best = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const code = normKey(r.coupon_code);
+    const key = `${normKey(r.merchant_name)}|${code || normKey(r.title).slice(0, 60)}`;
+    const cur = best.get(key);
+    if (!cur) {
+      best.set(key, r);
+      continue;
+    }
+    const a = offerCommissionScore(r) - offerCommissionScore(cur);
+    const b = String(r.updated_at || r.created_at || "").localeCompare(String(cur.updated_at || cur.created_at || ""));
+    if (a > 0 || a === 0 && b > 0) best.set(key, r);
+  }
+  return Array.from(best.values());
+}
 async function listOffers(q3) {
   const store2 = getStore();
   const where = ["status = 'active'"];
@@ -27833,17 +29065,28 @@ async function listOffers(q3) {
   const order = q3.sort === "expiry_soon" ? "expires_at ASC" : q3.sort === "discount_high_to_low" ? "discount_value DESC" : "updated_at DESC";
   const limit = Math.min(Math.max(q3.limit ?? 20, 1), 100);
   const offset = Math.max(q3.offset ?? 0, 0);
+  const pool2 = Math.max(limit * 4, 200);
   const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
                discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
-               FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`;
-  return store2.query(sql, params);
+               FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${pool2} OFFSET ${offset}`;
+  const rows = await store2.query(sql, params);
+  return dedupBestOffers(rows).slice(0, limit);
 }
-var COLS;
+var COLS, NETWORK_BASE;
 var init_store = __esm({
   "server/affiliate/store.ts"() {
     init_db();
     init_db();
+    init_linkinr();
     COLS = "network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note";
+    NETWORK_BASE = {
+      linkinr: 100,
+      cuelinks: 40,
+      admitad: 30,
+      vcommission: 25,
+      earnkaro: 20,
+      inrdeals: 18
+    };
   }
 });
 
@@ -27915,18 +29158,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path10, params = {}) {
+      async apiGet(path11, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path10}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path11}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path10, params);
+          return this.apiGet(path11, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path10} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path11} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -27949,9 +29192,9 @@ var init_admitad = __esm({
             warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
           }
         }
-        const path10 = websiteId ? `/coupons/website/${encodeURIComponent(websiteId)}/` : "/coupons/";
+        const path11 = websiteId ? `/coupons/website/${encodeURIComponent(websiteId)}/` : "/coupons/";
         for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-          const j = await this.apiGet(path10, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+          const j = await this.apiGet(path11, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
           const results = j?.results || [];
           if (results.length === 0) break;
           for (const c of results) {
@@ -28125,12 +29368,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path10, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path10}`, {
+      async api(path11, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path11}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path10} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path11} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -28702,13 +29945,13 @@ var init_prune = __esm({
 });
 
 // server.prod.ts
-var import_path5 = __toESM(require("path"), 1);
-var import_fs4 = __toESM(require("fs"), 1);
+var import_path6 = __toESM(require("path"), 1);
+var import_fs5 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 
 // server/index.ts
-var import_path4 = __toESM(require("path"), 1);
-var import_fs3 = __toESM(require("fs"), 1);
+var import_path5 = __toESM(require("path"), 1);
+var import_fs4 = __toESM(require("fs"), 1);
 var import_express4 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
 var __dirname2 = process.cwd();
@@ -28747,8 +29990,8 @@ async function createApp() {
       Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
     });
   }
-  const dist = import_path4.default.resolve(__dirname2, "dist");
-  if (import_fs3.default.existsSync(dist)) {
+  const dist = import_path5.default.resolve(__dirname2, "dist");
+  if (import_fs4.default.existsSync(dist)) {
     app.use(import_express4.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -28759,7 +30002,7 @@ async function createApp() {
     }));
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path4.default.join(dist, "index.html"));
+      res.sendFile(import_path5.default.join(dist, "index.html"));
     });
   } else if (settings2.isProduction) {
     log2.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
@@ -28770,8 +30013,8 @@ async function createApp() {
 // server.prod.ts
 async function start() {
   const app = await createApp();
-  const dist = import_path5.default.resolve(process.cwd(), "dist");
-  if (import_fs4.default.existsSync(dist)) {
+  const dist = import_path6.default.resolve(process.cwd(), "dist");
+  if (import_fs5.default.existsSync(dist)) {
     app.use(import_express5.default.static(dist, {
       // index.html must never be cached (it names the current hashed bundle);
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -28782,7 +30025,7 @@ async function start() {
     }));
     app.get("*", (_req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path5.default.join(dist, "index.html"));
+      res.sendFile(import_path6.default.join(dist, "index.html"));
     });
   }
   const PORT = Number(process.env.PORT || 3e3);

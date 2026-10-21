@@ -119,7 +119,15 @@ export function offerDedupKey(o: NormalizedOffer): string {
     const price = String(o.prices?.effectivePrice ?? '');
     return `${o.vertical}|${identity}|${o.seller.toLowerCase()}|${o.travel?.date || ''}|${o.travel?.route || ''}|${svc}|${o.vertical === 'hotels' ? '' : price}`;
   }
-  return `${identity}|${o.seller.toLowerCase()}|${o.location?.pincode || ''}|${o.attributes && Object.keys(o.attributes).length ? JSON.stringify(o.attributes) : ''}`;
+  // data_note carries the observation DATE — two fetches of the same published-rate table
+  // would otherwise differ in the key and survive as duplicate rows (owner bug 21 Oct).
+  const stableAttrs = o.attributes && Object.keys(o.attributes).length
+    ? JSON.stringify(Object.fromEntries(Object.entries(o.attributes).filter(([k]) => k !== 'data_note')))
+    : '';
+  // Finance rows are NATIONAL published rates — a pincode only reflects which search
+  // happened to carry one, so it must never split the identity (owner bug 21 Oct).
+  const pin = ['loans', 'insurance', 'creditcards', 'banking'].includes(String(o.vertical)) ? '' : (o.location?.pincode || '');
+  return `${identity}|${o.seller.toLowerCase()}|${pin}|${stableAttrs}`;
 }
 
 export function dedupeOffers(offers: NormalizedOffer[]): NormalizedOffer[] {

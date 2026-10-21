@@ -10,4 +10,5 @@ import './grocery';
 import './movies';
 import './bus';
 import './creditcards';
+import './account';
 export { allVerticalWorkers, getVerticalWorker } from '../verticalWorker';

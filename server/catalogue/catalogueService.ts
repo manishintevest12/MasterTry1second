@@ -177,3 +177,21 @@ export async function priceHistoryForEntity(canonicalEntityId: number, limit = 6
     return [];
   }
 }
+
+/**
+ * One-time hygiene (21 Oct): purge stale-shape banking rows persisted by the
+ * pre-worker account implementation (they carry mis-captured charge text and
+ * lack the account_type marker every current parser emits). Old rows age out
+ * via the row cap eventually, but wrong published rates must never surface
+ * beside the verified ones — so boot clears them once, best-effort.
+ */
+export async function purgeStaleBankingOffers(): Promise<void> {
+  const store = getStore();
+  try {
+    await store.execute(
+      `DELETE FROM offers WHERE vertical = 'banking' AND (attributes IS NULL OR attributes NOT LIKE '%"account_type"%')`,
+    );
+  } catch (e: any) {
+    log.debug('Catalogue', 'Stale banking purge failed', { error: String(e).slice(0, 100) });
+  }
+}

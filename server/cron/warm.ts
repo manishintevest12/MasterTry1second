@@ -13,6 +13,7 @@
 import { getStore, runMigrations } from '../common/db';
 import { runSearch } from '../search/searchOrchestrator';
 import { log } from '../common/logger';
+import { purgeStaleBankingOffers } from '../catalogue/catalogueService';
 
 /**
  * Seed queries (Section 8): when the searches table has no history yet (fresh
@@ -37,6 +38,8 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string }> = 
   { query: 'pizza', vertical: 'food', city: 'Indore' },
   { query: 'delhi to jaipur', vertical: 'bus' },
   { query: 'goa', vertical: 'hotels' },
+  { query: 'savings account', vertical: 'banking' },
+  { query: 'demat account', vertical: 'banking' },
 ];
 
 async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<void> {
@@ -68,6 +71,8 @@ async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<
  */
 export async function bootWarm(): Promise<void> {
   try {
+    // Hygiene (21 Oct): drop stale-shape banking rows from the pre-worker account impl.
+    await purgeStaleBankingOffers();
     const store = getStore();
     const rows: Array<Record<string, any>> = await store.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city

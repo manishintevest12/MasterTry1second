@@ -347,14 +347,27 @@ function offerToComparisonItem(o: any) {
   if (attrs['departure']) parts.push(`Departs ${attrs['departure']}`);
   if (attrs['prime'] === 'true') parts.push('Prime eligible');
   if (attrs['loan_type']) parts.push(String(attrs['loan_type']));
-  if (attrs['interest_rate_min'] && attrs['interest_rate_max']) parts.push(`${attrs['interest_rate_min']}–${attrs['interest_rate_max']}% p.a.`);
-  else if (attrs['interest_rate_min']) parts.push(`from ${attrs['interest_rate_min']}% p.a.`);
+  // Bank-account rows: the banking block below builds the rate part (avoid a duplicate '2.5–2.5%' here)
+  if (!attrs['account_type']) {
+    if (attrs['interest_rate_min'] && attrs['interest_rate_max']) parts.push(`${attrs['interest_rate_min']}–${attrs['interest_rate_max']}% p.a.`);
+    else if (attrs['interest_rate_min']) parts.push(`from ${attrs['interest_rate_min']}% p.a.`);
+  }
   if (attrs['sum_insured']) parts.push(`Cover ${attrs['sum_insured']}`);
   if (attrs['theatre']) parts.push(String(attrs['theatre']));
   if (attrs['showtime']) parts.push(String(attrs['showtime']));
   if (o.location?.city) parts.push(`${o.location.city}`);
   if (attrs['in_stock'] === 'false' || o.availability === 'out_of_stock') parts.push('Currently out of stock');
   // Credit cards: the comparable facts the issuer published (fees, rewards, APR).
+  // Bank accounts: the published savings rate / demat AMC / minimum balance.
+  if (String(o.vertical) === 'banking') {
+    const rMin = attrs['interest_rate_min'] || attrs['interest_rate'];
+    const rMax = attrs['interest_rate_max'] || rMin;
+    if (rMin) parts.push(`${rMin}${rMax !== rMin ? `–${rMax}` : ''}% p.a. savings`);
+    if (attrs['amc']) parts.push(`AMC ${attrs['amc']}`);
+    if (attrs['min_balance']) parts.push(`Min balance ₹${Number(String(attrs['min_balance']).replace(/[^\d.]/g, '') || 0).toLocaleString('en-IN')}`);
+    if (attrs['account_opening_fee']) parts.push(`Opening ${attrs['account_opening_fee']}`);
+    if (attrs['balance_requirement']) parts.push(String(attrs['balance_requirement']));
+  }
   if (o.vertical === 'creditcards') {
     if (attrs['joining_fee']) parts.push(`Joining ${attrs['joining_fee']}`);
     if (attrs['annual_fee']) parts.push(`Renewal ${attrs['annual_fee']}`);
@@ -402,7 +415,9 @@ function offerToComparisonItem(o: any) {
     primaryPrice: price,
     originalPrice: list > price ? list : 0,
     priceAvailable: price > 0,
-    unit: o.vertical === 'creditcards' ? 'per year' : 'per unit',
+    unit: o.vertical === 'creditcards' ? 'per year'
+      : String(o.vertical) === 'banking' ? String(attrs['price_unit'] || 'per account')
+      : 'per unit',
     currency: o.prices?.currency || 'INR',
     features: featurePills,
     specs,
@@ -448,8 +463,10 @@ function offerToComparisonItem(o: any) {
 apiRouter.post('/scrape/live', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || ''),
-    // the UI tab id is 'movie'; the engine's vertical id is 'movies'
-    vertical: req.body.vertical === 'movie' ? 'movies' : req.body.vertical,
+    // the UI tab ids are 'movie'/'account'; the engine's vertical ids are 'movies'/'banking'
+    vertical: req.body.vertical === 'movie' ? 'movies'
+      : req.body.vertical === 'account' ? 'banking'
+      : req.body.vertical,
     pincode: req.body.pincode,
     city: req.body.city,
     locality: req.body.locality,
@@ -498,8 +515,8 @@ apiRouter.post('/scrape/live', async (req, res) => {
     const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
     // Finance rows carry their comparable value in attributes when the page publishes
     // a rate/premium schedule rather than one purchasable price — those are valued.
-    const financeAttrValued = ['loans', 'insurance', 'creditcards'].includes(String((o as any).vertical))
-      && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null
+    const financeAttrValued = ['loans', 'insurance', 'creditcards', 'banking'].includes(String((o as any).vertical))
+      && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null || o.attributes?.amc != null || o.attributes?.min_balance != null
         || o.attributes?.annual_fee != null || o.attributes?.sum_insured != null);
     return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 || financeAttrValued };
   });
@@ -533,7 +550,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // expose seat-selection prices. And EXCEPT cabs: Uber/Rapido publish app-only
   // fares, so their real presence rows ("Fare on app") must survive alongside
   // Ola's priced rows (owner bug report 17 Oct: only Ola was showing).
-  const keepUnpriced = ['movie', 'movies', 'cab'].includes(String(input.vertical));
+  const keepUnpriced = ['movie', 'movies', 'cab', 'banking'].includes(String(input.vertical));
   if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced);
   // Bus: once LIVE operator fares exist, the transparent OSRM indicative estimate
   // row is redundant — show only real operator quotes.
@@ -546,7 +563,9 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
   const mappedItems = response.results.map((o: any) => {
     const item = offerToComparisonItem(o);
-    return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' } : item;
+    return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' }
+      : req.body.vertical === 'account' ? { ...item, vertical: 'account', category: 'account' }
+      : item;
   });
   // Same product sold by several sellers -> ONE card with every seller's price (conservative matching).
   const brandById = new Map<string, { brand?: string; gtin?: string }>();

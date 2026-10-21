@@ -12,7 +12,7 @@ const signInWithGoogleAndGetToken = async (): Promise<string | null> => {
 
 /** Map a persisted catalogue row (real acquisition) to the feed item shape.
  *  Honesty rules: rating/history stay empty when unverified — never fabricated. */
-const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab','creditcards'] as const;
+const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab','creditcards','banking'] as const;
 function catalogueRowToItem(row: any): ComparisonItem | null {
   if (!COMPARISON_VERTICALS.includes(row?.vertical)) return null; // unsupported verticals are not forced in
   const price = Number(row.effective_price ?? row.mandatory_total ?? 0);
@@ -34,6 +34,9 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
   if (attrs.address) descParts.push(attrs.address);
   if (attrs.interest_rate_min) descParts.push(`${attrs.interest_rate_min}${attrs.interest_rate_max ? `–${attrs.interest_rate_max}` : ''}% p.a.`);
   if (attrs.loan_type) descParts.push(String(attrs.loan_type));
+  if (attrs.account_type === 'savings' && attrs.interest_rate_max) descParts.push(`${attrs.interest_rate_min || ''}${attrs.interest_rate_min ? '–' : ''}${attrs.interest_rate_max}% p.a. savings`);
+  if (attrs.amc) descParts.push(`AMC ${attrs.amc}`);
+  if (attrs.min_balance) descParts.push(`Min balance ₹${Number(String(attrs.min_balance).replace(/[^\d.]/g, '') || 0).toLocaleString('en-IN')}`);
   if (attrs.operator) descParts.push(String(attrs.operator));
   if (row.location_city) descParts.push(String(row.location_city));
   const description = descParts.join(' · ').slice(0, 300);
@@ -42,7 +45,7 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
     imageUrl,
     images,
     description,
-    vertical: row.vertical,
+    vertical: row.vertical === 'banking' ? 'account' : row.vertical,
     title: String(row.title || 'Untitled offer'),
     subtitle: String(row.seller || row.vendor || 'Verified source').slice(0, 80),
     category: row.vertical,
@@ -79,6 +82,8 @@ function catalogueRowToItem(row: any): ComparisonItem | null {
     features: [],
     specs: {},
     reviews: [],
+    // Bank-account rows carry a comparable-unit label ('% p.a. (highest slab)' etc.)
+    unit: row.vertical === 'banking' ? String(attrs.price_unit || 'per account') : undefined,
     availability: row.availability,
     isLiveScraped: false,
   } as ComparisonItem;
@@ -1049,6 +1054,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       loans: 'personal loan',
       insurance: 'health insurance',
       creditcards: 'best credit card',
+      account: 'savings account',
     };
     const rawQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
     const targetQuery = rawQuery && rawQuery.trim() ? rawQuery : (DEFAULT_QUERY[vertical] || '');

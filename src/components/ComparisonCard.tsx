@@ -128,8 +128,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   // Loans & insurance carry no product photo: show the provider's real logo tile
   // (same idea as the flight rows' carrier logos) instead of a placeholder image.
   const isImageVertical = !['loans', 'insurance'].includes(item.vertical);
+  // Bank-account savings rows carry the rate IN the unit ('% p.a. (highest slab)') —
+  // a percentage, never rupees. Demat/current rows carry a rupee charge instead.
+  const isAccountRate = String(item.unit || '').startsWith('%');
   // Loans / insurance: a RATE (% p.a.), never rupees, and the logo is the LENDER's, not the listing site's.
-  const isRateVertical = !isImageVertical;
+  const isRateVertical = !isImageVertical || isAccountRate;
   const lenderName = String(item.title || '').replace(/\b(personal|home|car|auto|business|gold|education|two[- ]wheeler|used car|property|loan|loans|insurance|health|term|life|motor|travel)\b/gi, ' ').replace(/\s+/g, ' ').trim() || item.provider;
   const lenderLogo = item.imageUrl && !/bankbazaar|paisabazaar|policybazaar/i.test(item.imageUrl) ? item.imageUrl : undefined;
   const logoStyle = getLogoStyle(item);
@@ -484,7 +487,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 )}
               </div>
               <span className="text-[11px] text-slate-500 font-medium block md:text-right">
-                {isRateVertical ? (item.vertical === 'loans' ? 'interest p.a. (starting)' : 'indicative rate') : (item.unit || 'inclusive of taxes')}
+                {isRateVertical ? (item.vertical === 'loans' ? 'interest p.a. (starting)' : (item.unit || 'indicative rate')) : (item.unit || 'inclusive of taxes')}
               </span>
             </div>
 
