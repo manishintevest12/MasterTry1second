@@ -80,11 +80,22 @@ function loadRegistry(): Map<string, LinkInRCampaign> {
   if (campaignByDomain) return campaignByDomain;
   const map = new Map<string, LinkInRCampaign>();
   try {
-    // Works under CJS (__dirname) AND ESM test runners (import.meta.url).
-    const dir: string = (typeof (globalThis as any).__dirname === 'string')
-      ? (globalThis as any).__dirname
-      : path.dirname(fileURLToPath(import.meta.url));
-    const csvPath = path.join(dir, 'campaigns.csv');
+    // BUNDLE BUG (owner rule, 21 Oct): esbuild's CJS output stubs import.meta
+    // as `{}`, so fileURLToPath throws and the registry silently loaded 0
+    // campaigns IN PRODUCTION (LinkInR monetization was dead while tests —
+    // which run under tsx ESM — stayed green). Try every plausible location:
+    // the module dir (tsx/ESM), __dirname (CJS), then cwd-relative paths that
+    // hold when server.cjs sits at the repo root on Hostinger.
+    const candidates: string[] = [];
+    try { candidates.push(path.join(path.dirname(fileURLToPath(import.meta.url)), 'campaigns.csv')); } catch { /* ESM shim absent in bundle */ }
+    try {
+      const d = (typeof (globalThis as any).__dirname === 'string') ? (globalThis as any).__dirname : null;
+      if (d) candidates.push(path.join(d, 'campaigns.csv'));
+    } catch { /* no CJS dirname */ }
+    candidates.push(path.join(process.cwd(), 'server', 'affiliate', 'linkinr', 'campaigns.csv'));
+    candidates.push(path.join(process.cwd(), 'campaigns.csv'));
+    const csvPath = candidates.find((c) => { try { fs.accessSync(c); return true; } catch { return false; } });
+    if (!csvPath) throw new Error(`campaigns.csv not found (tried ${candidates.length} paths)`);
     const text = fs.readFileSync(csvPath, 'utf8');
     const rows = parseCsv(text);
     if (!rows.length) return (campaignByDomain = map);
@@ -115,7 +126,12 @@ function loadRegistry(): Map<string, LinkInRCampaign> {
       const prev = map.get(domain);
       if (!prev || c.payoutScore > prev.payoutScore) map.set(domain, c);
     }
-  } catch { /* unreadable sheet -> empty registry, direct links stay honest */ }
+  } catch (e: any) {
+    // SELF-HEAL (owner standing rule): a silent 0-campaign registry would turn
+    // every LinkInR hop into a direct link with zero revenue. Log loudly so the
+    // failure surfaces in Hostinger logs; direct links stay honest meanwhile.
+    console.error('[linkinr] campaign sheet UNREADABLE — monetization OFF for this process:', String(e?.message || e));
+  }
   return (campaignByDomain = map);
 }
 

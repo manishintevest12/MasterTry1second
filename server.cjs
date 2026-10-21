@@ -20873,8 +20873,27 @@ function loadRegistry() {
   if (campaignByDomain) return campaignByDomain;
   const map = /* @__PURE__ */ new Map();
   try {
-    const dir = typeof globalThis.__dirname === "string" ? globalThis.__dirname : import_path3.default.dirname((0, import_url.fileURLToPath)(import_meta2.url));
-    const csvPath = import_path3.default.join(dir, "campaigns.csv");
+    const candidates = [];
+    try {
+      candidates.push(import_path3.default.join(import_path3.default.dirname((0, import_url.fileURLToPath)(import_meta2.url)), "campaigns.csv"));
+    } catch {
+    }
+    try {
+      const d = typeof globalThis.__dirname === "string" ? globalThis.__dirname : null;
+      if (d) candidates.push(import_path3.default.join(d, "campaigns.csv"));
+    } catch {
+    }
+    candidates.push(import_path3.default.join(process.cwd(), "server", "affiliate", "linkinr", "campaigns.csv"));
+    candidates.push(import_path3.default.join(process.cwd(), "campaigns.csv"));
+    const csvPath = candidates.find((c) => {
+      try {
+        import_fs2.default.accessSync(c);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!csvPath) throw new Error(`campaigns.csv not found (tried ${candidates.length} paths)`);
     const text = import_fs2.default.readFileSync(csvPath, "utf8");
     const rows = parseCsv(text);
     if (!rows.length) return campaignByDomain = map;
@@ -20905,7 +20924,8 @@ function loadRegistry() {
       const prev = map.get(domain);
       if (!prev || c.payoutScore > prev.payoutScore) map.set(domain, c);
     }
-  } catch {
+  } catch (e) {
+    console.error("[linkinr] campaign sheet UNREADABLE \u2014 monetization OFF for this process:", String(e?.message || e));
   }
   return campaignByDomain = map;
 }
