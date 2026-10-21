@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   CreditCard,
   Car,
+  Wallet,
 } from 'lucide-react';
 import { VerticalId } from '../types';
 import { useApp } from '../context/AppContext';
@@ -35,6 +36,7 @@ const VERTICALS: VerticalTabItem[] = [
   { id: 'loans', name: 'Loans', icon: Landmark, tagline: 'Lowest APR & EMI' },
   { id: 'insurance', name: 'Insurance', icon: ShieldCheck, tagline: '1 Cr Health & Car' },
   { id: 'creditcards', name: 'Credit Cards', icon: CreditCard, tagline: 'Fees, Rewards, APR' },
+  { id: 'account', name: 'Accounts', icon: Wallet, tagline: 'Savings • Current • Demat' },
 ];
 
 export const VerticalNav: React.FC = () => {

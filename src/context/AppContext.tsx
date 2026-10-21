@@ -12,7 +12,7 @@ const signInWithGoogleAndGetToken = async (): Promise<string | null> => {
 
 /** Map a persisted catalogue row (real acquisition) to the feed item shape.
  *  Honesty rules: rating/history stay empty when unverified — never fabricated. */
-const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab','creditcards','banking'] as const;
+const COMPARISON_VERTICALS = ['flights','hotels','bus','ecommerce','grocery','food','movie','loans','insurance','cab','creditcards','account','banking'] as const;
 function catalogueRowToItem(row: any): ComparisonItem | null {
   if (!COMPARISON_VERTICALS.includes(row?.vertical)) return null; // unsupported verticals are not forced in
   const price = Number(row.effective_price ?? row.mandatory_total ?? 0);

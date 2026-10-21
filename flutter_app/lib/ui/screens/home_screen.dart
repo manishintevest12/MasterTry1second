@@ -194,6 +194,7 @@ const kLaunchCards = <_LaunchCardData>[
   _LaunchCardData('Loans', 'real rate ranges', Icons.account_balance_rounded, vertical: 'loans'),
   _LaunchCardData('Insurance', 'premium quotes', Icons.verified_user_rounded, vertical: 'insurance'),
   _LaunchCardData('Credit Cards', 'fees & rewards', Icons.credit_card_rounded, vertical: 'creditcards'),
+  _LaunchCardData('Accounts', 'savings, current & demat', Icons.account_balance_wallet_rounded, vertical: 'account'),
   _LaunchCardData('Coupons', 'auto-tested on checkout', Icons.local_activity_rounded, rewardsTab: 0),
   _LaunchCardData('Rewards', 'points & daily spin', Icons.card_giftcard_rounded, rewardsTab: 1),
 ];

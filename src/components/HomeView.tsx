@@ -19,7 +19,7 @@ import {
   ShoppingBasket,
   Ticket,
   CreditCard,
-} from 'lucide-react';
+  Wallet } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId } from '../types';
@@ -240,7 +240,7 @@ export const HomeView: React.FC = () => {
 
         {/* Owner reference design (21 Oct): 13 compact action cards — icon + bold
             title + one-line description, white surface, light-grey border, red icons.
-            11 verticals (heading count stays registry-driven) + Coupons + Rewards. */}
+            12 verticals (heading count stays registry-driven) + Coupons + Rewards. */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3">
           {([
             { id: 'ecommerce', icon: ShoppingBag, title: 'Shopping', desc: '6 stores, side by side', action: () => handleLaunch('ecommerce') },
@@ -254,6 +254,7 @@ export const HomeView: React.FC = () => {
             { id: 'loans', icon: Landmark, title: 'Loans', desc: 'real rate ranges', action: () => handleLaunch('loans') },
             { id: 'insurance', icon: ShieldCheck, title: 'Insurance', desc: 'premium quotes', action: () => handleLaunch('insurance') },
             { id: 'creditcards', icon: CreditCard, title: 'Credit Cards', desc: 'fees & rewards', action: () => handleLaunch('creditcards') },
+            { id: 'account', icon: Wallet, title: 'Accounts', desc: 'savings, current & demat', action: () => handleLaunch('account') },
             { id: 'coupons', icon: Ticket, title: 'Coupons', desc: 'auto-tested on checkout', action: () => { setRewardsSubTab('coupons'); setActiveNavTab('rewards'); } },
             { id: 'rewards', icon: Gift, title: 'Rewards', desc: 'points & daily spin', action: () => { setRewardsSubTab('spin'); setActiveNavTab('rewards'); } },
           ] as const).map((card) => {
