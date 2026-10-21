@@ -350,6 +350,30 @@ tracked as future work, no mock substitutes.
 - **SaffronStays villas** [saffronStays.ts] — LIVE (17 Oct): POST https://ecapi4.saffronstays.com/api/search-advance (no auth), body {location:'<City>',page:1,no_of_guest:2,no_of_room:1,suitables:[],amenities:[],sort_by:'',signature:'',min_price:0,max_price:2500000,pocket:false,same_day:false,non_shared:false,new_home:false,top_rated:false,lat:null,long:null,mint_fresh:false,is_agent:'',distance:125}. Response {data[],total}: title, price_per_night, per_night_price_after_discount, total_amount_with_tax, rating, total_reviews, location, lat/lon, images (ids), seo_url, max_capacity, bedrooms, signature, is_available. Images: https://ik.imagekit.io/5tgxhsqev/saffronstays-media/<id>?tr=w-640,q-75. Deeplink /villas/<seo_url> (verified 200). Captured via Playwright CDP, replayed browserless curl_cffi. Verified live: Goa 9 villas/page of 62 (Araqila 28800/night), Karjat 9 (9363), Alibaug 9 (8024). Worker w_hotels_saffronstays priority 10.
 - **OYO hotels** [oyoHotels.ts] — LIVE (17 Oct): city SEO listing pages https://www.oyorooms.com/hotels-in-<city>/?checkin=DD/MM/YYYY&checkout=DD/MM/YYYY&guests=2&rooms=1 are FULL SSR — window.__PRELOADED_STATE__ JSON carries listing.hotels[] with real per-night bookingPrice (tax-exclusive; taxInfo.final_price_with_tax = inclusive total), slashedPrice, discount %, rating {value,count}, hotel_images[] CDN gallery, /<id>/ property deeplink. No auth, no WAF, curl_cffi chrome. Sold-out (isSoldOut) and price-less rows never published. Verified live: Goa 20 offers (cheapest ₹1084, Sand Castles Miramar ₹1410+₹149 tax), Indore 20 (₹721), New Delhi 20 (₹612). Worker w_hotels_oyo priority 8.
 
+## Hotels — Goibibo SEO city pages LIVE BROWSERLESS (21 Oct, supersedes the gated-SSR verdict)
+- `GET https://www.goibibo.com/hotels/hotels-in-<city>[-ct]/` with the FULL real-Chrome
+  header set (sec-ch-ua v130, Sec-Fetch-Site none/Mode navigate/User ?1/Dest document,
+  Upgrade-Insecure-Requests, avif Accept, Accept-Language en-US) — the page is Gatsby-style
+  SSR carrying the whole listing in `window.__initial_state__` (NOT __NEXT_DATA__ — the
+  legacy walker parsed 0 rows even on the big page):
+  srpUnif.srpData.personalizedSections.RECOMMENDED_HOTELS.hotels[] → priceDetail.discountedPrice
+  (per-night INR, tax-exclusive), priceWithTax/totalTax, reviewSummaryUgc.hotelRating,
+  media[].url (//rNimghtlak.ibcdn.com → https:), locationPersuasion[0], detailDeeplinkUrl,
+  soldOut/showCallToBook (skip honestly). common.checkin/checkout = the page's OWN service
+  dates (labelled on offers). Parser `server/workers/parsers/goibiboHotelSsr.ts` (balanced-brace
+  extractor + new Date()/:undefined sanitization; fixed slice-position bug).
+- CRITICAL: Akamai SAMPLES this path from datacenter IPs — alternating 8-byte "200 - OK"
+  stubs and the real 1.3MB page. Worker ladder: up to 3 attempts per slug with short
+  backoff, -ct spelling second. Verified live: Goa 20 hotels Rs 1,891-6,156.
+- hermes.goibibo.com/hotels/v12/search/data/v3 remains FIRST attempt (gives requested
+  dates when the IP is clean); it tarpits datacenter IPs but self-detects on Hostinger.
+- MMT hotels stay IP-gated everywhere (hotel-listing 6B stub even with the full Chrome
+  header set; hotels.makemytrip.com tarpit; mapi has NO hotel search routes; detail pages
+  0-byte stub; real browser gets "Uh Oh! Looks like our servers took too long").
+  w_hotels_mmt is a self-detecting probe: both landing spellings with the Chrome header
+  set + `server/workers/parsers/mmtHotelLanding.ts` shape-tolerant $hotelReducerResponse
+  walker — hotels appear automatically the day the gate lifts for the production IP.
+
 ## Hotels — Goibibo hermes v12 (self-detecting recipe, 21 Oct)
 - `GET https://hermes.goibibo.com/hotels/v12/search/data/v3?searchQuery={"Companion":{"TA":"1DA"},"Pax":{"A":"2"},"RoomCnt":"1","City":"<slug>","CheckIn":"YYYYMMDD","CheckOut":"YYYYMMDD"}`
 - parser: `server/workers/parsers/goibiboHermes.ts` (shape-tolerant walker; unpriced hotels skipped)
