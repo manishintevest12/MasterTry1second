@@ -74,6 +74,14 @@ export function parseAbhiBusServices(
         ...(Number.isFinite(seats) ? { seats_available: String(seats) } : {}),
         ...(busType ? { bus_type: busType.slice(0, 80) } : {}),
         ...(t.startTime ? { departure_time: String(t.startTime).slice(0, 5) } : {}),
+        // Normalized timing keys (owner bug 21 Oct: bus timings not showing) — web and
+        // Flutter both read arrival_time + duration_minutes; derive them from AbhiBus's
+        // own arriveTime/travelTime fields, never invented.
+        ...(t.arriveTime ? { arrival_time: String(t.arriveTime).slice(0, 5) } : {}),
+        ...(t.travelTime ? (() => {
+          const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(t.travelTime).trim());
+          return m ? { duration_minutes: String(Number(m[1]) * 60 + Number(m[2])) } : {};
+        })() : {}),
         // structured facets from AbhiBus's own bus-type string (no invention)
         ac: /non[- ]?a\/?c/i.test(busType) ? 'no' : (/a\/?c|air conditioned/i.test(busType) ? 'yes' : ''),
         sleeper: /sleeper/i.test(busType) ? 'yes' : (/seater/i.test(busType) ? 'no' : ''),

@@ -17751,6 +17751,14 @@ function parseAbhiBusServices(json, source, route) {
         ...Number.isFinite(seats) ? { seats_available: String(seats) } : {},
         ...busType ? { bus_type: busType.slice(0, 80) } : {},
         ...t.startTime ? { departure_time: String(t.startTime).slice(0, 5) } : {},
+        // Normalized timing keys (owner bug 21 Oct: bus timings not showing) — web and
+        // Flutter both read arrival_time + duration_minutes; derive them from AbhiBus's
+        // own arriveTime/travelTime fields, never invented.
+        ...t.arriveTime ? { arrival_time: String(t.arriveTime).slice(0, 5) } : {},
+        ...t.travelTime ? (() => {
+          const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(t.travelTime).trim());
+          return m ? { duration_minutes: String(Number(m[1]) * 60 + Number(m[2])) } : {};
+        })() : {},
         // structured facets from AbhiBus's own bus-type string (no invention)
         ac: /non[- ]?a\/?c/i.test(busType) ? "no" : /a\/?c|air conditioned/i.test(busType) ? "yes" : "",
         sleeper: /sleeper/i.test(busType) ? "yes" : /seater/i.test(busType) ? "no" : "",
@@ -18086,22 +18094,25 @@ var init_bus = __esm({
             if (resolved.from && resolved.to) {
               const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
               const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
-              const sr = Date.now();
-              let r2;
-              try {
-                r2 = await ctx.fetch(u, {
-                  method: "POST",
-                  expectJson: true,
-                  maxBytes: 6e6,
-                  timeoutMs: 2e4,
-                  headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
-                  body: "{}"
-                });
-              } catch (e) {
-                steps.push(`searchResults=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
-                r2 = { status: 0, body: "" };
+              let r2 = { status: 0, body: "" };
+              for (let attempt = 1; attempt <= 2; attempt++) {
+                const sr = Date.now();
+                try {
+                  r2 = await ctx.fetch(u, {
+                    method: "POST",
+                    expectJson: true,
+                    maxBytes: 6e6,
+                    timeoutMs: 12e3,
+                    headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
+                    body: "{}"
+                  });
+                } catch (e) {
+                  steps.push(`searchResults#${attempt}=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
+                  continue;
+                }
+                steps.push(`searchResults#${attempt}=${r2.latencyMs ?? Date.now() - sr}ms/${r2.status}`);
+                break;
               }
-              steps.push(`searchResults=${r2.latencyMs ?? Date.now() - sr}ms/${r2.status}`);
               if (r2.status === 200) {
                 const items2 = parseRedBusSearch(r2.body, ctx.source, route);
                 if (items2.length) return items2;

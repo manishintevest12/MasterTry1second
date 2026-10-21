@@ -238,7 +238,30 @@ class TravelTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCab = meta.id == 'cab' || it.vertical == 'cab';
-    final durMin = (double.tryParse(it.spec('duration minutes')) ?? 0).round();
+    var durMin = (double.tryParse(it.spec('duration minutes')) ?? 0).round();
+    // Owner bug 21 Oct (bus timings missing): mirror the web's fallbacks —
+    // 1) '~06:00:00 h' style duration strings parse into minutes;
+    final durStr = it.spec('duration');
+    if (durMin == 0 && durStr.isNotEmpty) {
+      final m = RegExp(r'(\d{1,2}):(\d{2})(?::(\d{2}))?').firstMatch(durStr);
+      if (m != null) durMin = (int.tryParse(m.group(1)!) ?? 0) * 60 + (int.tryParse(m.group(2)!) ?? 0);
+    }
+    // 2) 'departure time' missing an arrival falls back to the 'departure' range
+    //    ('02:30 AM → 08:30 AM' → dep 02:30, arr 08:30) exactly like the web card.
+    var depTime = it.spec('departure time');
+    var arrTime = it.spec('arrival time');
+    if (depTime.isNotEmpty && arrTime.isEmpty) {
+      final range = it.spec('departure');
+      final arrow = range.contains('→') ? range.split('→') : null;
+      if (arrow != null && arrow.length == 2) {
+        String hhmm(String v) {
+          final m = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(v);
+          return m == null ? v : '${m.group(1)!.padLeft(2, '0')}:${m.group(2)}';
+        }
+        depTime = hhmm(arrow[0]);
+        arrTime = hhmm(arrow[1]);
+      }
+    }
 
     // Spec pills for cab and general travel
     final vehicleType = it.spec('vehicle type').isNotEmpty ? it.spec('vehicle type') : it.spec('vehicle_type');
@@ -251,7 +274,7 @@ class TravelTile extends StatelessWidget {
       if (airline.isNotEmpty) airline,
       if (it.spec('flight number').isNotEmpty) it.spec('flight number'),
       if (durMin > 0) durMin < 60 ? '$durMin m' : '${durMin ~/ 60}h ${durMin % 60}m',
-      if (it.spec('departure time').isNotEmpty) '${it.spec('departure time')} → ${it.spec('arrival time')}',
+      if (depTime.isNotEmpty) '$depTime → $arrTime',
       if (it.spec('stops').isNotEmpty) (it.spec('stops') == '0' ? 'Non-stop' : '${it.spec('stops')} stop'),
       if (it.spec('operator').isNotEmpty) it.spec('operator'),
       if (vehicleType.isNotEmpty) vehicleType,

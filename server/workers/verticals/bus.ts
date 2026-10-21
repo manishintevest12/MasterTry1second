@@ -77,24 +77,31 @@ export const busWorker: VerticalWorker = {
         if (resolved.from && resolved.to) {
           const route: RedBusRoute = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
           const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
-          const sr = Date.now();
-          let r: { status: number; body: string; latencyMs?: number };
-          try {
-            r = await ctx.fetch(u, {
-              method: 'POST',
-              expectJson: true,
-              maxBytes: 6_000_000,
-              timeoutMs: 20_000,
-              headers: { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.redbus.in', Referer: pageUrl },
-              body: '{}',
-            });
-          } catch (e: any) {
-            // searchResults POST tarpits from this egress IP (city resolution works,
-            // the heavy search POST does not answer). Record and fall to the route page.
-            steps.push(`searchResults=${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr}ms`);
-            r = { status: 0, body: '' };
+          // The searchResults POST tarpits INTERMITTENTLY from datacenter IPs (owner bug
+          // 21 Oct: redBus showing only route summaries). A healthy answer lands in ~2-4s;
+          // when it tarpits it hangs to the timeout. So: two short attempts (12s each) —
+          // a second attempt catches a good window twice as often as one long hang.
+          let r: { status: number; body: string; latencyMs?: number } = { status: 0, body: '' };
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const sr = Date.now();
+            try {
+              r = await ctx.fetch(u, {
+                method: 'POST',
+                expectJson: true,
+                maxBytes: 6_000_000,
+                timeoutMs: 12_000,
+                headers: { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.redbus.in', Referer: pageUrl },
+                body: '{}',
+              });
+            } catch (e: any) {
+              // city resolution works, the heavy search POST does not answer — record and
+              // either retry or fall to the route page below.
+              steps.push(`searchResults#${attempt}=${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr}ms`);
+              continue;
+            }
+            steps.push(`searchResults#${attempt}=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
+            break; // got an HTTP response — success or gate, do not blind-retry a 403/429
           }
-          steps.push(`searchResults=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
           if (r.status === 200) {
             const items = parseRedBusSearch(r.body, ctx.source, route);
             if (items.length) return items;
