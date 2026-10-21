@@ -89,3 +89,8 @@
   .t1s-logo-anim .t1s-logo-word { animation: none !important; }
   .t1s-logo-spark { opacity: .9; }
 }
+
+/* PageSpeed round-3 (21 Oct): Deferred wrappers — below-fold sections skip
+   layout/paint entirely until the user nears them. contain-intrinsic-size
+   reserves a rough box so scroll height stays stable (no CLS). */
+.t1s-deferred { content-visibility: auto; contain-intrinsic-size: auto 320px; }

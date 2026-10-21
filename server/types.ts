@@ -248,6 +248,9 @@ export interface SearchStateFlags {
   /** True when this response was replayed from the response cache (L1/L2). */
   reusedCache?: boolean;
   triggeredRefresh: boolean;
+  /** Progressive cold-start: fresh catalogue rows were served instantly and the
+   *  live pipeline is still acquiring in the background — clients re-poll. */
+  pendingRefresh?: boolean;
   honestNotice?: string; // user-facing honest limitation, e.g. no sources configured
 }
 

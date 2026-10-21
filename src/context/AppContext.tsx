@@ -157,6 +157,7 @@ export interface SourcesReport {
   failed: Array<{ sourceId: string; failureClass?: string; error?: string; lastPrice?: { price: number; query: string; at: number } }>;
   resultsCount: number;
   servedFrom?: string;
+  pendingRefresh?: boolean;
 }
 
 export interface NotificationItem {
@@ -1028,8 +1029,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             failed: data.sourcesFailed || [],
             resultsCount: data.resultsCount ?? (data.results?.length || 0),
             servedFrom: data.servedFrom,
+            pendingRefresh: !!data.pendingRefresh,
           },
         }));
+        // PROGRESSIVE COLD-START (21 Oct): the server served fresh catalogue rows
+        // instantly and is still acquiring live prices in the background. Re-post
+        // the same search a few seconds later; the finished pipeline lands in cache
+        // and this poll replaces the partial rows with the full live set.
+        if (data.pendingRefresh) {
+          setTimeout(() => { void triggerLiveLocationScrape(); }, 4500);
+        }
         if (!data.results || data.results.length === 0) {
           // A search shows ONLY what was searched: drop stale rows of an earlier query for this vertical.
           setItems((prev) => prev.filter((it) => it.vertical !== vertical));

@@ -520,6 +520,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
         sourcesSucceeded: response.state.sourcesSucceeded,
         sourcesFailed: response.state.sourcesFailed,
         servedFrom: response.state.servedFrom,
+        pendingRefresh: !!response.state.pendingRefresh,
         resultsCount: 0,
         latencyMs: response.latencyMs,
       });
@@ -560,6 +561,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
     sourcesSucceeded: response.state.sourcesSucceeded,
     sourcesFailed: response.state.sourcesFailed,
     servedFrom: response.state.servedFrom,
+        pendingRefresh: !!response.state.pendingRefresh,
     resultsCount: grouped.length,
     latencyMs: response.latencyMs,
   });

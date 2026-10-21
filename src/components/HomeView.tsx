@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import {
   Zap,
   TrendingDown,
@@ -24,7 +24,10 @@ import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
 import { VerticalId } from '../types';
 import { PriceLens, PriceLensAndAssistant } from './PriceLensAndAssistant';
-import { ChromeInstallSection } from './ChromeInstallSection';
+// PageSpeed round-3: the install section's code + live-price fetches leave the
+// eager bundle; the Deferred wrapper mounts it only near the viewport.
+const ChromeInstallSection = lazy(() => import('./ChromeInstallSection').then((m) => ({ default: m.ChromeInstallSection })));
+import { Deferred } from './Deferred';
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -77,7 +80,7 @@ export const HomeView: React.FC = () => {
 
         <div className="max-w-6xl mx-auto relative z-10">
           {/* Engine Active Pill Banner */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-red-950/70 border border-red-800/60 text-xs font-bold text-red-300 mb-6">
+          <div className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-red-950/70 border border-red-800/60 text-xs font-bold text-red-300 sm:mb-6">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span>TRY1SECOND ENGINE ACTIVE</span>
             <span className="text-red-700">·</span>
@@ -85,7 +88,7 @@ export const HomeView: React.FC = () => {
           </div>
 
           {/* Metric Bar Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 mb-8">
+          <div className="hidden sm:grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 sm:mb-8">
             <div className="bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 backdrop-blur-xs flex items-center gap-2.5">
               <span className="text-red-400 text-sm">(((•)))</span>
               <div>
@@ -162,7 +165,8 @@ export const HomeView: React.FC = () => {
       {/* AI ASSISTANT (text/voice) */}
       <PriceLensAndAssistant />
 
-      {/* QUICK APPS SECTION - COMPANY LOGOS ONLY */}
+      {/* QUICK APPS SECTION - COMPANY LOGOS ONLY (deferred: below fold) */}
+      <Deferred minHeight={180}>
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-3xl border border-slate-200/90 p-4 sm:p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3 px-1">
@@ -218,6 +222,7 @@ export const HomeView: React.FC = () => {
           </div>
         </div>
       </section>
+      </Deferred>
 
       {/* 2. INSTANT LAUNCH VERTICALS GRID — heading count derives from VERTICAL_META (auto-grows) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -274,10 +279,15 @@ export const HomeView: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. CHROME EXTENSION INSTALL SECTION (reference design, honest startup copy) */}
+      {/* 3. CHROME EXTENSION INSTALL SECTION (deferred: fetches start only near viewport) */}
+      <Deferred minHeight={620}>
+      <Suspense fallback={null}>
       <ChromeInstallSection />
+      </Suspense>
+      </Deferred>
 
-      {/* 4. LIVE RADAR SNIPPET */}
+      {/* 4. LIVE RADAR SNIPPET (deferred) */}
+      <Deferred minHeight={240}>
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6 shadow-md">
           <div className="space-y-2">
@@ -305,6 +315,7 @@ export const HomeView: React.FC = () => {
           </div>
         </div>
       </section>
+      </Deferred>
     </div>
   );
 };

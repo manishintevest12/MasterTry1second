@@ -96,6 +96,8 @@ class _CompareScreenState extends State<CompareScreen> {
   String _hotelGuests = '2 Adults · 1 Room';
 
   bool _loading = false;
+  Timer? _bgPoll;
+  int _bgPollCount = 0;
   LiveResponse? _res;
   String? _error;
   SortMode _sort = SortMode.best;
@@ -112,6 +114,7 @@ class _CompareScreenState extends State<CompareScreen> {
 
   @override
   void dispose() {
+    _bgPoll?.cancel();
     _state.removeListener(_onState);
     _q.dispose();
     _from.dispose();
@@ -167,8 +170,21 @@ class _CompareScreenState extends State<CompareScreen> {
       _loading = true;
       _error = null;
     });
+    _bgPoll?.cancel();
     try {
       _res = await _state.live(_meta.id, q, depart: _iso(_date), force: force);
+      // Progressive cold-start: real catalogue rows arrived instantly and the
+      // server is still scanning live sources. Poll the same search quietly
+      // until the full live set replaces the partial rows (max ~25s of polls).
+      if (mounted && _res?.pendingRefresh == true && _bgPollCount < 5) {
+        _bgPoll = Timer(const Duration(milliseconds: 4500), () {
+          if (!mounted) return;
+          _bgPollCount += 1;
+          _runSearch(query: q, auto: true);
+        });
+      } else {
+        _bgPollCount = 0;
+      }
     } catch (e) {
       _error = '$e'.replaceFirst(RegExp(r'^Exception: ?'), '');
     } finally {
@@ -1307,7 +1323,22 @@ class _StatusStrip extends StatelessWidget {
         child: Row(children: [
           const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2.2, color: T1SColors.red)),
           const SizedBox(width: 12),
-          Expanded(child: Text('Scanning live sources… real prices only, nothing invented.', style: tx(context, 11.5, color: muted(context)))),
+          Expanded(child: Text('Scanning thousands of deals in real time… the lowest price is loading right now.', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)))),
+        ]),
+      );
+    }
+    // Progressive cold-start: real rows are on screen while live prices are still
+    // being acquired in the background — tell the user, never leave them guessing.
+    if (res != null && res!.pendingRefresh) {
+      return Box(
+        padding: const EdgeInsets.all(11),
+        radius: 16,
+        borderColor: T1SColors.amber400.withValues(alpha: 0.45),
+        color: isDark(context) ? T1SColors.slate900 : const Color(0xFFFEF7E6),
+        child: Row(children: [
+          const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.amber400)),
+          const SizedBox(width: 11),
+          Expanded(child: Text('Scanning thousands of deals in real time — the lowest price is loading right now. Live prices replace this list automatically.', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
         ]),
       );
     }

@@ -44,44 +44,6 @@ class _HomeHeroState extends State<HomeHero> {
         border: Border(bottom: BorderSide(color: Color(0x663B0764))),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Engine pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-          decoration: BoxDecoration(
-            color: T1SColors.redPillBg,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: T1SColors.redPillBorder),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const _PulseDot(color: T1SColors.red500, size: 7),
-            const SizedBox(width: 8),
-            Text('TRY1SECOND ENGINE ACTIVE', style: tx(context, 10.5, w: FontWeight.w800, color: T1SColors.red300)),
-            const SizedBox(width: 8),
-            Text('·', style: tx(context, 10.5, color: const Color(0xFFB91C1C))),
-            const SizedBox(width: 8),
-            Text('14.2M+ SCANNER RADAR', style: tx(context, 10.5, w: FontWeight.w800, color: T1SColors.amber400, mono: true)),
-          ]),
-        ),
-        const SizedBox(height: 20),
-
-        // 4 stat tiles
-        const Column(
-          children: [
-            Row(children: [
-              Expanded(child: _StatTile(icon: Icons.radar_rounded, iconColor: T1SColors.red400, label: 'Live Scans', value: '1,42,85,557+', valueColor: Colors.white)),
-              SizedBox(width: 10),
-              Expanded(child: _StatTile(icon: Icons.grid_view_rounded, iconColor: T1SColors.amber400, label: 'Connected', value: '150+ Platforms', valueColor: T1SColors.amber300)),
-            ]),
-            SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: _StatTile(icon: Icons.schedule_rounded, iconColor: T1SColors.emerald400, label: 'Latency', value: '0.4s Metasearch', valueColor: T1SColors.emerald400)),
-              SizedBox(width: 10),
-              Expanded(child: _StatTile(icon: Icons.shield_outlined, iconColor: T1SColors.sky400, label: 'Markup', value: '0% Direct Pay', valueColor: T1SColors.sky300)),
-            ]),
-          ],
-        ),
-        const SizedBox(height: 22),
-
         // Sub-header badge
         Row(children: [
           const Icon(Icons.auto_awesome_rounded, size: 15, color: T1SColors.amber400),

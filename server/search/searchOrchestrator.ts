@@ -102,6 +102,54 @@ function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } 
   return { ttlSec: 900, staleSec: 2700 };
 }
 
+/**
+ * PROGRESSIVE COLD-START (21 Oct, owner request): a cold cache must never block
+ * the UI for 6-40s while live sources acquire. If the L3 catalogue holds fresh
+ * (<1h) validated rows for the vertical, they are returned IMMEDIATELY as real
+ * (honest) partial results and the full live pipeline continues in the
+ * background (deduped per cacheKey). Clients re-post the same search a few
+ * seconds later and pick up the completed live response from cache; the
+ * response's state.pendingRefresh tells them a refresh is still running.
+ */
+const inflightPipelines = new Map<string, Promise<SearchResponse>>();
+
+function progressiveCatalogueResponse(
+  vertical: string,
+  inputQuery: ParsedQuery,
+  offers: any[],
+  start: number,
+  pending: boolean
+): SearchResponse {
+  const anyOffers = offers as any[];
+  for (const o of anyOffers) {
+    if (o.freshnessStatus === 'LIVE_VERIFIED') o.freshnessStatus = 'CACHED_VERIFIED';
+    if (o.provenance) o.provenance.replayedFromCache = true;
+  }
+  return {
+    query: inputQuery,
+    results: anyOffers,
+    state: {
+      servedFrom: 'catalogue',
+      sourcesAttempted: [],
+      sourcesSucceeded: [],
+      sourcesFailed: [],
+      reusedCatalogue: true,
+      triggeredRefresh: true,
+      pendingRefresh: pending,
+    },
+    latencyMs: Date.now() - start,
+    totalSearchLatencyMs: Date.now() - start,
+  } as SearchResponse;
+}
+
+async function freshCatalogueOffers(vertical: string, input: SearchInput): Promise<any[]> {
+  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  const now = Date.now();
+  return rows
+    .filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < 3600 && r.validation_status !== 'INVALID')
+    .map((r) => rowToOffer(r, false));
+}
+
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   const totalStart = Date.now();
 
@@ -160,6 +208,32 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
     }
     return v;
+  }
+
+  // PROGRESSIVE COLD-START: same query already acquiring? Serve catalogue rows
+  // honestly with pendingRefresh so clients keep polling instead of spawning work.
+  const running = inflightPipelines.get(cacheKey);
+  if (running) {
+    const offers = await freshCatalogueOffers(vertical, input);
+    if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    return running; // nothing to show yet — this caller becomes the one that waits
+  }
+  // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
+  {
+    const offers = await freshCatalogueOffers(vertical, input);
+    if (offers.length >= 4) {
+      const pipeline = runLivePipeline(input, parsed)
+        .then((response) => {
+          const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
+          if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
+          else cachePut(cacheKey, response, t, st);
+          return response;
+        })
+        .finally(() => { inflightPipelines.delete(cacheKey); });
+      inflightPipelines.set(cacheKey, pipeline);
+      pipeline.catch(() => {}); // never crash the caller on a background failure
+      return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    }
   }
 
   const response = await runLivePipeline(input, parsed);

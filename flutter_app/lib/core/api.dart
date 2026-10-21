@@ -352,7 +352,10 @@ class LiveResponse {
   final List<String> failed;
   final String servedFrom;
   final int latencyMs;
-  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed, this.servedFrom, this.latencyMs);
+  /// Progressive cold-start: fresh catalogue rows were served instantly and live
+  /// prices are still being acquired in the background — poll the same search again.
+  final bool pendingRefresh;
+  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed, this.servedFrom, this.latencyMs, {this.pendingRefresh = false});
 
   factory LiveResponse.fromJson(Map<String, dynamic> j) => LiveResponse(
         [
@@ -364,6 +367,7 @@ class LiveResponse {
         [for (final x in (j['sourcesFailed'] as List? ?? const [])) x is Map ? '${x['sourceId'] ?? x['id'] ?? x}' : '$x'],
         '${j['servedFrom'] ?? ''}',
         (j['latencyMs'] is num) ? (j['latencyMs'] as num).round() : 0,
+        pendingRefresh: j['pendingRefresh'] == true,
       );
 }
 

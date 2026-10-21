@@ -21421,6 +21421,33 @@ function searchCacheTtl(vertical) {
   if (["flights", "hotels", "bus", "cab", "movies"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   return { ttlSec: 900, staleSec: 2700 };
 }
+function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
+  const anyOffers = offers;
+  for (const o of anyOffers) {
+    if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
+    if (o.provenance) o.provenance.replayedFromCache = true;
+  }
+  return {
+    query: inputQuery,
+    results: anyOffers,
+    state: {
+      servedFrom: "catalogue",
+      sourcesAttempted: [],
+      sourcesSucceeded: [],
+      sourcesFailed: [],
+      reusedCatalogue: true,
+      triggeredRefresh: true,
+      pendingRefresh: pending
+    },
+    latencyMs: Date.now() - start2,
+    totalSearchLatencyMs: Date.now() - start2
+  };
+}
+async function freshCatalogueOffers(vertical, input) {
+  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  const now = Date.now();
+  return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+}
 async function runSearch(input) {
   const totalStart = Date.now();
   let parsed = understandQuery(input.query, {
@@ -21471,6 +21498,29 @@ async function runSearch(input) {
       revalidateInBackground(cacheKey, ttlSec, () => runLivePipeline(input, parsed));
     }
     return v;
+  }
+  const running2 = inflightPipelines.get(cacheKey);
+  if (running2) {
+    const offers = await freshCatalogueOffers(vertical, input);
+    if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    return running2;
+  }
+  {
+    const offers = await freshCatalogueOffers(vertical, input);
+    if (offers.length >= 4) {
+      const pipeline2 = runLivePipeline(input, parsed).then((response2) => {
+        const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
+        if (response2.results.length === 0) cachePut(cacheKey, response2, 45, 45);
+        else cachePut(cacheKey, response2, t, st);
+        return response2;
+      }).finally(() => {
+        inflightPipelines.delete(cacheKey);
+      });
+      inflightPipelines.set(cacheKey, pipeline2);
+      pipeline2.catch(() => {
+      });
+      return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    }
   }
   const response = await runLivePipeline(input, parsed);
   if (response.results.length === 0) {
@@ -21633,6 +21683,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
+var inflightPipelines;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -21651,6 +21702,7 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_catalogueService();
     init_affiliateNetwork();
+    inflightPipelines = /* @__PURE__ */ new Map();
   }
 });
 
@@ -25204,6 +25256,7 @@ var init_routes = __esm({
             sourcesSucceeded: response.state.sourcesSucceeded,
             sourcesFailed: response.state.sourcesFailed,
             servedFrom: response.state.servedFrom,
+            pendingRefresh: !!response.state.pendingRefresh,
             resultsCount: 0,
             latencyMs: response.latencyMs
           });
@@ -25235,6 +25288,7 @@ var init_routes = __esm({
         sourcesSucceeded: response.state.sourcesSucceeded,
         sourcesFailed: response.state.sourcesFailed,
         servedFrom: response.state.servedFrom,
+        pendingRefresh: !!response.state.pendingRefresh,
         resultsCount: grouped.length,
         latencyMs: response.latencyMs
       });
