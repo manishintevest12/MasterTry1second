@@ -76,6 +76,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Website `setRewardsSubTab + setActiveNavTab('rewards')` mirror.
+  /// pendingRewardsTab: 0 = Deals & Coupons, 1 = Spin & Earn, 2 = Refer & Earn.
+  int pendingRewardsTab = 0;
+
+  void goRewards({int tab = 0}) {
+    pendingRewardsTab = tab;
+    go(NavTab.rewards);
+  }
+
   /// Website `setVertical(v) + setActiveNavTab('compare')`.
   void openVertical(String v, {PendingSearch? search}) {
     vertical = v == 'movies' ? 'movie' : v;

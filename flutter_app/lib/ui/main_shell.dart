@@ -60,7 +60,7 @@ class _MainShellState extends State<MainShell> {
       case NavTab.compare:
         return const CompareScreen();
       case NavTab.rewards:
-        return const RewardsScreen();
+        return RewardsScreen(initialTab: _state.pendingRewardsTab);
     }
   }
 

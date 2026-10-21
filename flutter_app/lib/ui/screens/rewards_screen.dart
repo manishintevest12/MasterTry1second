@@ -15,7 +15,11 @@ import 'profile_screen.dart';
 /// Coupons hub with per-store tiles (UP TO X% OFF) and live deal cards.
 /// Every deal routes through the server (affiliate injection stays server-side).
 class RewardsScreen extends StatefulWidget {
-  const RewardsScreen({super.key});
+  const RewardsScreen({super.key, this.initialTab = 0});
+
+  /// Website parity (21 Oct): home Coupons card lands on Deals & Coupons,
+  /// Rewards card lands on Spin & Earn. 0/1/2 like the TabBar.
+  final int initialTab;
 
   @override
   State<RewardsScreen> createState() => _RewardsScreenState();
@@ -24,11 +28,18 @@ class RewardsScreen extends StatefulWidget {
 class _RewardsScreenState extends State<RewardsScreen> {
   final _state = AppState.instance;
   final _auth = AuthService.instance;
-  int _tab = 0;
+  late int _tab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = widget.initialTab.clamp(0, 2);
+  }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
+      initialIndex: widget.initialTab.clamp(0, 2),
       length: 3,
       child: Column(children: [
         Container(

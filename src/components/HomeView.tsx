@@ -16,6 +16,9 @@ import {
   ArrowRight,
   Radar,
   Gift,
+  ShoppingBasket,
+  Ticket,
+  CreditCard,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VERTICAL_META } from '../data/mockData';
@@ -53,6 +56,7 @@ export const HomeView: React.FC = () => {
   const {
     setVertical,
     setActiveNavTab,
+    setRewardsSubTab,
     items,
     quickAppPartners,
     trackQuickAppRedirection,
@@ -229,65 +233,41 @@ export const HomeView: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-          {Object.entries(VERTICAL_META).map(([vKey, meta]) => {
-            const Icon = VERTICAL_ICONS[vKey] || Zap;
-            const coverImg = VERTICAL_COVER_IMAGES[vKey] || 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600&auto=format&fit=crop&q=80';
-            const verticalItems = items.filter((it) => it.vertical === vKey);
-            const lowestPrice = Math.min(...verticalItems.map((i) => i.primaryPrice));
-
+        {/* Owner reference design (21 Oct): 13 compact action cards — icon + bold
+            title + one-line description, white surface, light-grey border, red icons.
+            11 verticals (heading count stays registry-driven) + Coupons + Rewards. */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+          {([
+            { id: 'ecommerce', icon: ShoppingBag, title: 'Shopping', desc: '6 stores, side by side', action: () => handleLaunch('ecommerce') },
+            { id: 'grocery', icon: ShoppingBasket, title: '10-min Grocery', desc: 'quick-commerce live', action: () => handleLaunch('grocery') },
+            { id: 'food', icon: Utensils, title: 'Food Delivery', desc: 'same dish, live prices', action: () => handleLaunch('food') },
+            { id: 'flights', icon: Plane, title: 'Flights', desc: 'live fares, real dates', action: () => handleLaunch('flights') },
+            { id: 'hotels', icon: Building2, title: 'Hotels', desc: 'real per-night rates', action: () => handleLaunch('hotels') },
+            { id: 'bus', icon: Bus, title: 'Bus', desc: 'tier-1 to tier-3 towns', action: () => handleLaunch('bus') },
+            { id: 'cab', icon: Car, title: 'Cab & Ride', desc: 'live fare estimates', action: () => handleLaunch('cab') },
+            { id: 'movie', icon: Film, title: 'Movies', desc: 'seats & showtimes', action: () => handleLaunch('movie') },
+            { id: 'loans', icon: Landmark, title: 'Loans', desc: 'real rate ranges', action: () => handleLaunch('loans') },
+            { id: 'insurance', icon: ShieldCheck, title: 'Insurance', desc: 'premium quotes', action: () => handleLaunch('insurance') },
+            { id: 'creditcards', icon: CreditCard, title: 'Credit Cards', desc: 'fees & rewards', action: () => handleLaunch('creditcards') },
+            { id: 'coupons', icon: Ticket, title: 'Coupons', desc: 'auto-tested on checkout', action: () => { setRewardsSubTab('coupons'); setActiveNavTab('rewards'); } },
+            { id: 'rewards', icon: Gift, title: 'Rewards', desc: 'points & daily spin', action: () => { setRewardsSubTab('spin'); setActiveNavTab('rewards'); } },
+          ] as const).map((card) => {
+            const Icon = card.icon;
             return (
               <button
-                key={vKey}
-                onClick={() => handleLaunch(vKey as VerticalId)}
-                className="bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 text-left group cursor-pointer flex flex-col justify-between overflow-hidden shadow-2xs"
+                key={card.id}
+                onClick={card.action}
+                className="bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 text-left cursor-pointer group p-3.5 flex items-start gap-3 shadow-2xs"
               >
-                {/* Photo Header */}
-                <div className="relative h-28 w-full overflow-hidden bg-slate-900">
-                  <img
-                    src={coverImg}
-                    alt={meta.name}
-                    width={600}
-                    height={112}
-                    loading="lazy"
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=600&auto=format&fit=crop&q=80';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent pointer-events-none" />
-
-                  {/* Icon badge */}
-                  <div className="absolute top-2.5 left-2.5 w-7 h-7 rounded-lg bg-slate-900/80 backdrop-blur-md border border-white/20 text-white flex items-center justify-center shadow-xs">
-                    <Icon className="w-4 h-4 text-amber-400" />
-                  </div>
-
-                  {/* Lowest Price tag on image */}
-                  <div className="absolute bottom-2 right-2.5 bg-black/60 backdrop-blur-md text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-white/20">
-                    From ₹{lowestPrice.toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                {/* Card Body */}
-                <div className="p-3.5 flex flex-col justify-between flex-1">
-                  <div>
-                    <h3 className="text-sm font-extrabold text-slate-900 group-hover:text-red-600 transition-colors">
-                      {meta.name}
-                    </h3>
-                    <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
-                      {meta.description}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Instant Sync</span>
-                    <span className="font-extrabold text-red-600 group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                      <span>Compare</span>
-                      <span>→</span>
-                    </span>
-                  </div>
-                </div>
+                <Icon className="w-5 h-5 text-red-600 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-extrabold text-slate-900 group-hover:text-red-600 transition-colors leading-tight">
+                    {card.title}
+                  </span>
+                  <span className="block text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    {card.desc}
+                  </span>
+                </span>
               </button>
             );
           })}

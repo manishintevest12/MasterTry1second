@@ -143,21 +143,64 @@ class _VerticalGrid extends StatelessWidget {
       ]),
       const SizedBox(height: 12),
       LayoutBuilder(builder: (c, cons) {
-        final cols = cons.maxWidth > 640 ? 4 : (cons.maxWidth > 420 ? 3 : 2);
+        // Owner reference design (21 Oct): 13 compact action cards (7+6 on wide
+        // screens) — icon + bold title + one-line description. 11 verticals plus
+        // Coupons (rewards tab 0) and Rewards (rewards tab 1).
+        final cols = cons.maxWidth > 1100 ? 7 : cons.maxWidth > 820 ? 5 : cons.maxWidth > 640 ? 4 : (cons.maxWidth > 420 ? 3 : 2);
         final w = (cons.maxWidth - 10 * (cols - 1)) / cols;
         return Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: [for (final v in kVerticals) _VerticalCard(meta: v, width: w, onTap: () => state.openVertical(v.id))],
+          children: [
+            for (final card in kLaunchCards)
+              _LaunchCard(
+                card: card,
+                width: w,
+                onTap: () {
+                  if (card.vertical != null) {
+                    state.openVertical(card.vertical!);
+                  } else {
+                    state.goRewards(tab: card.rewardsTab!);
+                  }
+                },
+              ),
+          ],
         );
       }),
     ]);
   }
 }
 
-class _VerticalCard extends StatelessWidget {
-  const _VerticalCard({required this.meta, required this.width, required this.onTap});
-  final VerticalMeta meta;
+/// Compact launch card from the owner's reference image: icon left, bold title,
+/// small one-line description. White surface, light border, red icon.
+class _LaunchCardData {
+  const _LaunchCardData(this.title, this.desc, this.icon, {this.vertical, this.rewardsTab});
+  final String title;
+  final String desc;
+  final IconData icon;
+  final String? vertical; // non-null: launches the vertical's compare engine
+  final int? rewardsTab; // non-null: opens the Rewards screen on this tab
+}
+
+const kLaunchCards = <_LaunchCardData>[
+  _LaunchCardData('Shopping', '6 stores, side by side', Icons.shopping_bag_rounded, vertical: 'ecommerce'),
+  _LaunchCardData('10-min Grocery', 'quick-commerce live', Icons.shopping_basket_rounded, vertical: 'grocery'),
+  _LaunchCardData('Food Delivery', 'same dish, live prices', Icons.restaurant_rounded, vertical: 'food'),
+  _LaunchCardData('Flights', 'live fares, real dates', Icons.flight_takeoff_rounded, vertical: 'flights'),
+  _LaunchCardData('Hotels', 'real per-night rates', Icons.apartment_rounded, vertical: 'hotels'),
+  _LaunchCardData('Bus', 'tier-1 to tier-3 towns', Icons.directions_bus_rounded, vertical: 'bus'),
+  _LaunchCardData('Cab & Ride', 'live fare estimates', Icons.local_taxi_rounded, vertical: 'cab'),
+  _LaunchCardData('Movies', 'seats & showtimes', Icons.movie_rounded, vertical: 'movie'),
+  _LaunchCardData('Loans', 'real rate ranges', Icons.account_balance_rounded, vertical: 'loans'),
+  _LaunchCardData('Insurance', 'premium quotes', Icons.verified_user_rounded, vertical: 'insurance'),
+  _LaunchCardData('Credit Cards', 'fees & rewards', Icons.credit_card_rounded, vertical: 'creditcards'),
+  _LaunchCardData('Coupons', 'auto-tested on checkout', Icons.local_activity_rounded, rewardsTab: 0),
+  _LaunchCardData('Rewards', 'points & daily spin', Icons.card_giftcard_rounded, rewardsTab: 1),
+];
+
+class _LaunchCard extends StatelessWidget {
+  const _LaunchCard({required this.card, required this.width, required this.onTap});
+  final _LaunchCardData card;
   final double width;
   final VoidCallback onTap;
 
@@ -167,50 +210,35 @@ class _VerticalCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: width,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isDark(context) ? T1SColors.slate900 : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: border(context)),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // photo header
-          SizedBox(
-            height: 76,
-            child: Stack(fit: StackFit.expand, children: [
-              NetImage(meta.cover, height: 76),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0x3320627b), Color(0xCC0F172A)]),
-                ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(card.icon, size: 20, color: T1SColors.red),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(card.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tx(context, 12.5, w: FontWeight.w900, h: 1.15)),
+                  const SizedBox(height: 3),
+                  Text(card.desc,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: tx(context, 10.5, color: muted(context), h: 1.2)),
+                ],
               ),
-              Positioned(top: 8, left: 8, child: _IconBadge(icon: meta.icon)),
-              Positioned(
-                bottom: 6,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.white24)),
-                  child: Text('1-Click', style: tx(context, 9, w: FontWeight.w800, color: Colors.white, mono: true)),
-                ),
-              ),
-            ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(meta.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 13, w: FontWeight.w800)),
-              const SizedBox(height: 3),
-              Text(meta.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 10, color: muted(context), h: 1.25)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Text('Instant Sync', style: tx(context, 9, w: FontWeight.w800, color: muted(context), ls: 0.5)),
-                const Spacer(),
-                Text('Compare →', style: tx(context, 10.5, w: FontWeight.w800, color: T1SColors.red)),
-              ]),
-            ]),
-          ),
-        ]),
+            ),
+          ],
+        ),
       ),
     );
   }
