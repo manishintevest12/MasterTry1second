@@ -17,9 +17,9 @@ interface DealRow {
 
 const KIND_LABEL: Record<string, string> = {
   coupon: 'Coupon code', bank_offer: 'Bank offer', credit_card: 'Credit card', gift_card: 'Gift card',
-  loan: 'Loan', insurance: 'Insurance', movie: 'Movie offer', cashback: 'Cashback', sale: 'Sale / event',
+  loan: 'Loan', insurance: 'Insurance', account: 'Bank account (Savings/Current/Demat)', movie: 'Movie offer', cashback: 'Cashback', sale: 'Sale / event',
 };
-const MERCHANTS = ['Flipkart', 'Amazon', 'Myntra', 'Ajio', 'Tata CLiQ', 'Meesho', 'BookMyShow', 'District', 'TicketNew', 'PVR INOX', 'Cinepolis'];
+const MERCHANTS = ['Flipkart', 'Amazon', 'Myntra', 'Ajio', 'Tata CLiQ', 'Meesho', 'BookMyShow', 'District', 'TicketNew', 'PVR INOX', 'Cinepolis', 'SBI', 'HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Kotak', 'Bank of Maharashtra', 'BankBazaar', 'Paisabazaar', 'Policybazaar', 'Money View', 'KreditBee', 'Navi'];
 const empty = { id: 0, merchant_name: '', kind: 'coupon', title: '', code: '', discount_text: '', min_order: '', description: '', terms: '', dest_url: '', valid_till: '', sort_weight: '0', is_active: true };
 
 const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10';

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'api.dart';
+import 'compare.dart';
 import 'auth.dart';
 import 'storage.dart';
 import 'verticals.dart';
@@ -136,6 +137,18 @@ class AppState extends ChangeNotifier {
     if (!force && cache[key] != null && cacheQuery[key] == cacheKey) return cache[key]!;
     final flying = _inFlight[cacheKey];
     if (flying != null) return flying;
+    // Account vertical: real bank-account offers come from the admin-managed deals
+    // registry (/api/deals?kind=account) — same shape as the web feed, no scraping.
+    if (key == 'account') {
+      final f = _accountFeed().then((res) {
+        cache[key] = res;
+        cacheQuery[key] = cacheKey;
+        notifyListeners();
+        return res;
+      }).whenComplete(() => _inFlight.remove(cacheKey));
+      _inFlight[cacheKey] = f;
+      return f;
+    }
     final f = api
         .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate)
         .then((res) {
@@ -146,6 +159,33 @@ class AppState extends ChangeNotifier {
     }).whenComplete(() => _inFlight.remove(cacheKey));
     _inFlight[cacheKey] = f;
     return f;
+  }
+
+  /// Account feed: maps admin-managed account deals into the compare-card shape.
+  Future<LiveResponse> _accountFeed() async {
+    try {
+      final feed = await api.deals(kind: 'account', vertical: 'account', limit: 200).timeout(const Duration(seconds: 8));
+      final items = feed.deals.map((d) {
+        final price = 0.0;
+        return CompareItem(
+          id: 'acct-\${d.id}',
+          vertical: 'account',
+          title: d.title,
+          subtitle: d.merchantName,
+          provider: d.merchantName,
+          imageUrl: d.imageUrl,
+          description: d.description ?? '',
+          primaryPrice: price,
+          priceAvailable: false,
+          features: [if (d.discountText != null && d.discountText!.isNotEmpty) d.discountText!, if (d.code != null && d.code!.isNotEmpty) 'Code: \${d.code}'],
+          specs: {'description': d.description ?? '', 'terms': d.terms ?? ''},
+          sellerQuotes: [SellerQuote(id: 'acct-sq-\${d.id}', sellerName: d.merchantName, price: 0, url: d.goUrl, isLowest: true, badge: 'Verified Offer')],
+        );
+      }).toList();
+      return LiveResponse(items, ['deals_registry'], ['deals_registry'], [], 'deals-registry', 50);
+    } catch (_) {
+      return LiveResponse(const [], [], [], [], 'unavailable', 0);
+    }
   }
 
   /// Splash prefetch: warm every vertical's default search (plus the rewards

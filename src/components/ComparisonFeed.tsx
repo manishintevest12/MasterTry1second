@@ -52,8 +52,61 @@ export const ComparisonFeed: React.FC = () => {
   };
   const [ccCompareOpen, setCcCompareOpen] = useState(false);
 
+  // Account vertical: real bank-account offers come from the admin-managed deals
+  // registry (/api/deals?kind=account) — no scraping, no mock cards. Mapped into the
+  // same ComparisonItem shape so cards, grouping and lead capture behave normally.
+  const [accountItems, setAccountItems] = useState<any[]>([]);
+  useEffect(() => {
+    if (vertical !== 'account') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/deals?kind=account&vertical=account');
+        const data = await res.json();
+        if (cancelled || !res.ok || !data.success) return;
+        const mapped = (data.deals || []).map((d: any) => {
+          const url = String(d.dest_url || '');
+          const price = Number(d.price || 0);
+          return {
+            id: `acct-${d.id}`,
+            vertical: 'account',
+            title: String(d.title || d.merchant_name || 'Bank account'),
+            subtitle: String(d.merchant_name || 'Bank'),
+            category: 'account',
+            provider: String(d.merchant_name || 'Bank'),
+            providerLogo: d.image_url || undefined,
+            imageUrl: d.image_url || undefined,
+            rating: 0,
+            reviewCount: 0,
+            sentimentSummary: String(d.description || 'Bank account offer'),
+            criteriaRatings: [],
+            primaryPrice: price,
+            originalPrice: 0,
+            priceAvailable: price > 0,
+            sellerQuotes: [{
+              id: `acct-sq-${d.id}`,
+              sellerName: String(d.merchant_name || 'Bank'),
+              price,
+              originalPrice: 0,
+              currency: 'INR',
+              url,
+              badge: 'Verified Offer',
+              isLowest: true,
+              sourceDomain: url ? String(url).replace(/^https?:\/\//, '').split('/')[0] : undefined,
+            }],
+            features: [d.discount_text, d.code ? `Code: ${d.code}` : ''].filter(Boolean),
+            specs: { description: String(d.description || ''), terms: String(d.terms || '') },
+            pricePrediction: undefined,
+          };
+        });
+        setAccountItems(mapped);
+      } catch { /* registry unreachable — feed shows honest empty state */ }
+    })();
+    return () => { cancelled = true; };
+  }, [vertical]);
+
   // Filter by vertical
-  let filtered = items.filter((it) => it.vertical === vertical);
+  let filtered = vertical === 'account' ? accountItems : items.filter((it) => it.vertical === vertical);
 
   // Filter by selected category
   if (selectedCategory && selectedCategory !== 'All' && !selectedCategory.toLowerCase().includes('all')) {

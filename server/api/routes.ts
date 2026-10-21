@@ -937,6 +937,77 @@ apiRouter.get('/deals/for-seller', async (req, res) => {
   } catch { res.json({ success: true, deals: [], best: { offer: null, coupon: null } }); }
 });
 
+// ============ Leads (public write, owner 21 Oct: real server-side persistence) ============
+// Simple in-memory rate cap per IP: 20 submissions/minute (shared-hosting friendly).
+const leadHits = new Map<string, { n: number; reset: number }>();
+function leadRateOk(ip: string): boolean {
+  const now = Date.now();
+  const h = leadHits.get(ip);
+  if (!h || now > h.reset) { leadHits.set(ip, { n: 1, reset: now + 60_000 }); return true; }
+  if (h.n >= 20) return false;
+  h.n += 1;
+  return true;
+}
+
+// POST /api/leads -> save a finance-vertical enquiry (Loans/Insurance/Credit Cards/Accounts),
+// then hand back a /api/out masking pointer so the affiliate injection stays server-side.
+apiRouter.post('/leads', async (req, res) => {
+  try {
+    if (!leadRateOk(String(req.ip || req.socket?.remoteAddress || 'anon'))) {
+      return res.status(429).json({ success: false, error: 'Too many submissions. Please try again in a minute.' });
+    }
+    const { saveLead, validateLead } = await import('../marketing/leads');
+    const v = validateLead(req.body || {});
+    if (!v.ok) return res.status(400).json({ success: false, error: v.error });
+    const id = await saveLead(req.body || {});
+    const destUrl = String((req.body || {}).destUrl || '').trim();
+    let redirectUrl: string | null = null;
+    if (destUrl && /^https:\/\//.test(destUrl)) redirectUrl = createMaskingPointer(destUrl, { offerId: `lead-${id}` });
+    res.json({ success: true, id, redirectUrl });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save your enquiry' });
+  }
+});
+
+// POST /api/partner-inquiry -> footer "become a partner" form (E2E: now persists server-side).
+apiRouter.post('/partner-inquiry', async (req, res) => {
+  try {
+    if (!leadRateOk(String(req.ip || req.socket?.remoteAddress || 'anon'))) {
+      return res.status(429).json({ success: false, error: 'Too many submissions. Please try again in a minute.' });
+    }
+    const { saveLead } = await import('../marketing/leads');
+    const id = await saveLead({ ...(req.body || {}), source: 'partner_inquiry' });
+    res.json({ success: true, id });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save your inquiry' });
+  }
+});
+
+// GET /api/merchant/leads?vendorId=&category= -> finance leads for the merchant portal.
+apiRouter.get('/merchant/leads', async (req, res) => {
+  try {
+    const vendorId = String(req.query.vendorId || '').trim();
+    if (!vendorId) return res.status(400).json({ success: false, error: 'vendorId required' });
+    const { listLeads } = await import('../marketing/leads');
+    // Finance verticals only — merchant dashboards never see travel/ecom leads.
+    const all = await listLeads({ limit: 300 });
+    const finance = all.filter((l) => ['loans', 'insurance', 'creditcards', 'account'].includes(String(l.vertical || '')));
+    res.json({ success: true, leads: finance });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load leads' });
+  }
+});
+
+// ============ Merchant logos (owner 21 Oct: admin-uploaded brand logos) ============
+// GET /api/merchant-logos -> { logos: { key: dataUrl } } for the whole site (cached client-side).
+apiRouter.get('/merchant-logos', async (_req, res) => {
+  try {
+    const { merchantLogoMap } = await import('../marketing/merchantLogos');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ success: true, logos: await merchantLogoMap() });
+  } catch { res.json({ success: true, logos: {} }); }
+});
+
 apiRouter.get('/app-links', async (_req, res) => {
   // Public: admin-configured download links (Chrome extension / Android / iOS). Unset -> null.
   try {

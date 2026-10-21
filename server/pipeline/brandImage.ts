@@ -122,3 +122,43 @@ export async function withLenderLogos(offers: NormalizedOffer[]): Promise<Normal
   }
   return offers;
 }
+
+/**
+ * Owner 21 Oct: admin-uploaded brand logos beat every generic fallback. The
+ * merchant_logos table (admin upload, base64 data URL) is cached in-memory for
+ * 5 minutes — shared-hosting friendly — and applied to offers with no real photo
+ * of their own. This is the fix for "globe/blurry icons" (Ola, Bank of
+ * Maharashtra, small banks...): the owner uploads the right logo once in admin.
+ */
+let uploadedLogosCache: { at: number; map: Record<string, string> } | null = null;
+async function uploadedLogoMap(): Promise<Record<string, string>> {
+  if (uploadedLogosCache && Date.now() - uploadedLogosCache.at < 300_000) return uploadedLogosCache.map;
+  try {
+    const { merchantLogoMap } = await import('../marketing/merchantLogos');
+    const map = await merchantLogoMap();
+    uploadedLogosCache = { at: Date.now(), map };
+    return map;
+  } catch { return (uploadedLogosCache = { at: Date.now(), map: {} } as any).map; }
+}
+
+/** Same slug the deals registry uses so "Bank of Maharashtra" -> "bank". */
+function logoKeyOf(name: string): string {
+  return String(name || '').toLowerCase().replace(/\.(com|in|co\.in)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim().split(' ')[0] || '';
+}
+
+export async function withMerchantLogos(offers: NormalizedOffer[]): Promise<NormalizedOffer[]> {
+  const map = await uploadedLogoMap();
+  if (!Object.keys(map).length) return offers;
+  for (const o of offers) {
+    const a: any = o.attributes || {};
+    if (a.image_url && a.image_is_brand_logo !== 'true') continue; // never overwrite a real product photo
+    const attrs: any = o.attributes || {};
+    const label = [o.seller, o.vendor, o.title, attrs.bank, attrs.lender, attrs.insurer, attrs.provider].filter(Boolean).join(' ');
+    const keys = [logoKeyOf(String(o.seller || '')), logoKeyOf(String(attrs.bank || '')), logoKeyOf(String(attrs.lender || '')), logoKeyOf(String(attrs.provider || ''))];
+    for (const k of keys) {
+      if (k && map[k]) { a.image_url = map[k]; a.image_is_brand_logo = 'true'; break; }
+    }
+    void label;
+  }
+  return offers;
+}

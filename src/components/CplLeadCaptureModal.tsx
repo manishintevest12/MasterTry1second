@@ -45,6 +45,7 @@ export const CplLeadCaptureModal: React.FC = () => {
   const [fullName, setFullName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
   const [email, setEmail] = useState<string>('');
+  const [age, setAge] = useState<number>(28);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   // Sync default location and item price when modal opens
@@ -75,7 +76,7 @@ export const CplLeadCaptureModal: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim() || !phone.trim() || !email.trim()) {
+    if (!fullName.trim() || !phone.trim() || !email.trim() || !age) {
       addToast('alert', 'Contact Details Required', 'Please provide your full name, mobile number, and email.');
       return;
     }
@@ -92,8 +93,9 @@ export const CplLeadCaptureModal: React.FC = () => {
         fullName,
         phone: phone.startsWith('+91') ? phone : `+91 ${phone}`,
         email,
+        age,
         serviceType: item?.title || (isLoan ? 'Personal Loan' : 'Health Insurance'),
-        vertical: (item?.vertical as 'loans' | 'insurance') || 'loans',
+        vertical: (item?.vertical as 'loans' | 'insurance' | 'creditcards' | 'account') || 'loans',
       });
     } finally {
       setSubmitting(false);
@@ -371,6 +373,21 @@ export const CplLeadCaptureModal: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Age *</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min={18}
+                      max={100}
+                      value={age}
+                      onChange={(e) => setAge(Number(e.target.value))}
+                      placeholder="Your age"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-hidden focus:border-orange-500"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1">
                   <label className="font-semibold text-slate-700">Email Address *</label>
                   <div className="relative">

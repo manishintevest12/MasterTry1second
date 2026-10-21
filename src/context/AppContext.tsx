@@ -334,7 +334,8 @@ interface AppContextType {
     phone: string;
     email: string;
     serviceType?: string;
-    vertical?: 'loans' | 'insurance';
+    vertical?: 'loans' | 'insurance' | 'creditcards' | 'account';
+    age?: number;
   }) => Promise<CplLead>;
 
   // Merchant / B2B Partner Portal & Campaign Management
@@ -708,21 +709,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     phone: string;
     email: string;
     serviceType?: string;
-    vertical?: 'loans' | 'insurance';
+    vertical?: 'loans' | 'insurance' | 'creditcards' | 'account';
+    age?: number;
   }): Promise<CplLead> => {
     setLeadCaptureState((prev) => ({ ...prev, step: 'processing' }));
 
-    // Submit the enquiry to the partner network. NOTE (no-fabrication rule):
-    // Try1Second only forwards the lead — no underwriting, credit decision or
-    // pre-approval happens here, so we never display bank offers, odds or
-    // guaranteed callbacks. Partners decide and contact the user directly.
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    // Owner 21 Oct: leads now persist server-side (MySQL `leads` table) — visible in
+    // Admin > Leads and the matching merchant dashboard. The client record below stays
+    // for the user's own session view. No-fabrication rule unchanged: Try1Second only
+    // forwards the lead; partners decide and contact the user directly.
+    let serverLeadId = 0;
+    try {
+      const nameParts = String(data.fullName || '').trim().split(/\s+/);
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: 'cpl',
+          vertical: (data.vertical || leadCaptureState.item?.vertical || 'loans') as string,
+          serviceType: data.serviceType || leadCaptureState.item?.title || '',
+          firstName: nameParts[0] || String(data.fullName || 'User'),
+          lastName: nameParts.slice(1).join(' ') || '-',
+          age: data.age || 30,
+          salary: data.monthlySalary,
+          location: `${data.city}${data.pincode ? ' ' + data.pincode : ''}`.trim(),
+          phone: data.phone,
+          email: data.email,
+          destUrl: leadCaptureState.quote?.url && /^https:/.test(leadCaptureState.quote.url) ? leadCaptureState.quote.url : undefined,
+        }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok && j?.success) serverLeadId = Number(j.id) || 0;
+    } catch { /* server unreachable: keep local record, honest fallback */ }
 
     const isLoan = (data.vertical || leadCaptureState.item?.vertical || 'loans') === 'loans';
     const cplFee = isLoan ? 750 : 650;
 
     const newLead: CplLead = {
-      id: `lead-${Date.now().toString().slice(-4)}`,
+      id: serverLeadId ? `lead-${serverLeadId}` : `lead-${Date.now().toString().slice(-4)}`,
       vertical: isLoan ? 'loans' : 'insurance',
       serviceType: data.serviceType || (leadCaptureState.item?.title || (isLoan ? 'Personal Loan' : 'Health Insurance')),
       requestedAmount: data.requestedAmount,
@@ -1261,7 +1285,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const startRedirection = (item: ComparisonItem, quote: SellerQuote) => {
     // High-Ticket Verticals (Loans & Insurance): replace simple outbound redirect with native CPL Lead Capture & Multi-Bank Eligibility Match
-    if (item.vertical === 'loans' || item.vertical === 'insurance') {
+    if (['loans', 'insurance', 'creditcards', 'account'].includes(String(item.vertical))) {
       openLeadCapture(item, quote);
       return;
     }

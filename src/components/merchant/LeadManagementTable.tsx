@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Search,
   Download,
@@ -34,9 +34,46 @@ export const LeadManagementTable: React.FC = () => {
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
 
   const isFinancialVertical = !authenticatedVendor || authenticatedVendor.vertical === 'loans' || authenticatedVendor.vertical === 'insurance';
+  const [serverLeads, setServerLeads] = useState<any[]>([]);
+
+  // Owner 21 Oct: hydrate from the server-side leads store (MySQL) so merchants see
+  // real submitted enquiries, not just this session's client state. Client state stays
+  // as a live overlay; server rows are merged by id.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/merchant/leads', { headers: { Authorization: `Bearer ${localStorage.getItem('t1s_merchant_token') || ''}` } });
+        const data = await res.json();
+        if (cancelled || !res.ok || !data.success) return;
+        const serverLeads = (data.leads || []).map((r: any) => ({
+          id: `lead-${r.id}`,
+          vertical: r.vertical,
+          serviceType: r.service_type || 'Enquiry',
+          requestedAmount: 0,
+          monthlySalary: r.salary || 0,
+          city: r.location || '—',
+          pincode: '',
+          fullName: `${r.first_name} ${r.last_name}`,
+          phone: r.phone || '—',
+          email: r.email || '—',
+          matchedPartners: [],
+          status: r.status || 'new',
+          cplCost: 0,
+          createdAt: String(r.created_at || '').slice(0, 16).replace('T', ' '),
+          assignedMerchant: r.business || 'Partner Network',
+        }));
+        setServerLeads((prev) => {
+          const have = new Set([...prev, ...cplLeads].map((l: any) => l.id));
+          return [...prev, ...serverLeads.filter((l: any) => !have.has(l.id))];
+        });
+      } catch { /* server unreachable — session leads still shown */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Strict Filter: Lock to authenticated merchant's vertical if logged in
-  const roleFilteredLeads = cplLeads.filter((lead) => {
+  const roleFilteredLeads = [...cplLeads, ...serverLeads].filter((lead) => {
     if (authenticatedVendor) {
       // STRICT CATEGORY ISOLATION: A Food merchant sees ONLY Food leads, not loan or insurance!
       return lead.vertical === authenticatedVendor.vertical;
@@ -578,7 +615,7 @@ export const LeadManagementTable: React.FC = () => {
                                   Simultaneous Multi-Bank Pre-Approved Quotes ({lead.matchedPartners.length}):
                                 </span>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                                  {lead.matchedPartners.map((mp) => (
+                                  {lead.matchedPartners.map((mp: any) => (
                                     <div
                                       key={mp.partnerId}
                                       className="p-3 bg-white rounded-xl border border-slate-200 space-y-1 shadow-2xs"

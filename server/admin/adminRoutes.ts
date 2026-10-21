@@ -469,3 +469,53 @@ adminRouter.post('/acceptance/run', async (req, res) => {
     res.status(500).json({ success: false, error: e?.message || 'failed' });
   }
 });
+
+// ============ Leads (owner 21 Oct: real server-side lead persistence) ============
+adminRouter.get('/leads', async (req, res) => {
+  try {
+    const { listLeads } = await import('../marketing/leads');
+    const leads = await listLeads({
+      source: (req.query.source as string) || undefined,
+      vertical: (req.query.vertical as string) || undefined,
+      status: (req.query.status as string) || undefined,
+      limit: Number(req.query.limit) || 500,
+    });
+    res.json({ success: true, leads });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load leads' }); }
+});
+
+adminRouter.patch('/leads/:id', async (req, res) => {
+  try {
+    const { updateLeadStatus } = await import('../marketing/leads');
+    await updateLeadStatus(Number(req.params.id), String((req.body || {}).status || 'new'));
+    audit(req, 'lead_status_update', `lead:${req.params.id}`, req.body);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not update lead' }); }
+});
+
+// ============ Merchant logos (owner 21 Oct: admin uploads brand logos) ============
+adminRouter.get('/merchant-logos', async (_req, res) => {
+  try {
+    const { listMerchantLogos } = await import('../marketing/merchantLogos');
+    res.json({ success: true, logos: await listMerchantLogos() });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load logos' }); }
+});
+
+adminRouter.post('/merchant-logos', async (req, res) => {
+  try {
+    const { upsertMerchantLogo } = await import('../marketing/merchantLogos');
+    const r = await upsertMerchantLogo(req.body || {});
+    if (!r.ok) return res.status(400).json(r);
+    audit(req, 'merchant_logo_upsert', r.name_key, { name: (req.body || {}).name });
+    res.json(r);
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save logo' }); }
+});
+
+adminRouter.delete('/merchant-logos/:key', async (req, res) => {
+  try {
+    const { deleteMerchantLogo } = await import('../marketing/merchantLogos');
+    await deleteMerchantLogo(String(req.params.key));
+    audit(req, 'merchant_logo_delete', String(req.params.key));
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete logo' }); }
+});

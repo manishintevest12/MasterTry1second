@@ -760,6 +760,36 @@ class Try1SecondApi {
     return LiveResponse.fromJson(res);
   }
 
+  /// POST /api/leads — server-side persistence for finance enquiries
+  /// (Loans / Insurance / Credit Cards / Accounts). Returns the MySQL row id.
+  Future<int> submitLead({
+    required String vertical,
+    String? serviceType,
+    required String firstName,
+    required String lastName,
+    required int age,
+    double? salary,
+    String? location,
+    String? phone,
+    String? email,
+    String? destUrl,
+  }) async {
+    final res = await _post('/api/leads', {
+      'source': 'lead_form',
+      'vertical': vertical,
+      if (serviceType != null && serviceType.isNotEmpty) 'serviceType': serviceType,
+      'firstName': firstName,
+      'lastName': lastName,
+      'age': age,
+      if (salary != null) 'salary': salary,
+      if (location != null && location.isNotEmpty) 'location': location,
+      if (phone != null && phone.isNotEmpty) 'phone': phone,
+      if (email != null && email.isNotEmpty) 'email': email,
+      if (destUrl != null && destUrl.startsWith('https://')) 'destUrl': destUrl,
+    });
+    return (res['id'] is num) ? (res['id'] as num).toInt() : 0;
+  }
+
   Future<DealsFeed> deals({String? kind, String? merchant, String? vertical, bool hasImage = false, int limit = 200}) async {
     final q = <String>[
       'limit=$limit',

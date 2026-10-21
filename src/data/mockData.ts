@@ -93,6 +93,16 @@ export const VERTICAL_META: Record<
     criteria: ['Approval Speed', 'Transparent Foreclosure', 'Zero Processing Fee', 'Customer Service'],
     sampleQueries: ['Personal loan with lowest APR under 11%', 'Zero prepayment penalty home loan', 'Instant paperless approval in 24 hours'],
   },
+  account: {
+    name: 'Bank Accounts',
+    icon: 'Landmark',
+    description: 'Compare Savings, Current and Demat accounts across top Indian banks',
+    searchPlaceholder: 'Savings, Current or Demat account offers',
+    defaultOrigin: 'Savings Account',
+    defaultDestination: 'Demat Account',
+    criteria: ['Minimum Balance', 'Interest Rate', 'IMPS/NEFT Charges', 'Branch Network'],
+    sampleQueries: ['Zero balance savings account', 'Demat account with lowest AMC', 'Current account for small business'],
+  },
   insurance: {
     name: 'Insurance',
     icon: 'ShieldCheck',

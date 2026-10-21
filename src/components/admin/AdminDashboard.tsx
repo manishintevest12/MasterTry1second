@@ -55,11 +55,15 @@ import { PlacementsTab } from './PlacementsTab';
 import { AppLinksTab } from './AppLinksTab';
 import { NotificationsTab } from './NotificationsTab';
 import { DealsTab } from './DealsTab';
+import { LeadsTab } from './LeadsTab';
+import { MerchantLogosTab } from './MerchantLogosTab';
 
 export type AdminTab =
   | 'app_links'
   | 'notifications'
   | 'deals'
+  | 'leads'
+  | 'merchant_logos'
   | 'traffic_performance'
   | 'quick_apps'
   | 'merchant_vendors'
@@ -572,6 +576,26 @@ export const AdminDashboard: React.FC = () => {
               }`}
             >
               Deals &amp; Coupons
+            </button>
+            <button
+              onClick={() => setActiveTab('leads')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'leads'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Leads
+            </button>
+            <button
+              onClick={() => setActiveTab('merchant_logos')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'merchant_logos'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Merchant Logos
             </button>
             <button
               onClick={() => setActiveTab('notifications')}
@@ -1282,6 +1306,8 @@ export const AdminDashboard: React.FC = () => {
 
         {/* ================= TAB 10: 100+ DIRECT PARTNERS DIRECTORY MANAGEMENT ================= */}
         {activeTab === 'direct_partners' && <DirectPartnersTab />}
+        {activeTab === 'leads' && <LeadsTab />}
+        {activeTab === 'merchant_logos' && <MerchantLogosTab />}
         {activeTab === 'placements' && <PlacementsTab />}
         {activeTab === 'app_links' && <AppLinksTab />}
         {activeTab === 'notifications' && <NotificationsTab />}

@@ -24,7 +24,8 @@ import { dedupeOffers, normalizeOffer } from '../pipeline/normalization';
 import { validateOffer } from '../pipeline/validation';
 import { computeEffectivePrice } from '../pipeline/pricing';
 import { computeFreshness, isServable } from '../pipeline/freshness';
-import { withBrandImages, withLenderLogos } from '../pipeline/brandImage';
+import { withBrandImages, withLenderLogos, withMerchantLogos } from '../pipeline/brandImage';
+import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { getVerticalEngine } from '../verticals/verticalEngine';
@@ -330,7 +331,7 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Prom
   combined = await attachAffiliateDeepLinks(combined);
 
   // 10. RANKING — comparable offers only, explainable scores
-  const ranked = rankOffers(await withLenderLogos(withBrandImages(combined)), { userPincode: input.pincode, userCity: input.city });
+  const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(withBrandImages(combined)))), { userPincode: input.pincode, userCity: input.city });
 
   // State determination — honest, never overclaims
   if (ranked.length === 0) {

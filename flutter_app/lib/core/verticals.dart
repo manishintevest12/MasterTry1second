@@ -152,6 +152,17 @@ const kVerticals = <VerticalMeta>[
     samples: ['1 Crore health cover with zero co-pay', 'Term life with 99%+ claim settlement', 'Comprehensive car cover with zero depreciation'],
   ),
   VerticalMeta(
+    id: 'account',
+    name: 'Bank Accounts',
+    tagline: 'Savings • Current • Demat',
+    description: 'Compare Savings, Current and Demat accounts across top Indian banks',
+    placeholder: 'Savings, Current or Demat account offers',
+    icon: Icons.account_balance_wallet_rounded,
+    kind: SearchKind.text,
+    cover: 'https://images.unsplash.com/photo-1601597111158-2fceff292fb9?w=600&auto=format&fit=crop&q=80',
+    samples: ['zero balance savings account', 'Demat account with lowest AMC', 'current account for small business'],
+  ),
+  VerticalMeta(
     id: 'creditcards',
     name: 'Credit Cards',
     tagline: 'Fees, Rewards, APR',
@@ -197,6 +208,8 @@ String defaultQueryFor(String vertical, [String? city]) {
       return 'health insurance';
     case 'creditcards':
       return 'best credit card';
+    case 'account':
+      return 'savings account';
   }
   return '';
 }

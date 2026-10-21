@@ -7,7 +7,7 @@
 import { getStore } from '../common/db';
 import { createMaskingPointer } from '../affiliate/deeplink';
 
-export const DEAL_KINDS = ['bank_offer', 'coupon', 'gift_card', 'credit_card', 'loan', 'insurance', 'movie', 'cashback', 'sale'] as const;
+export const DEAL_KINDS = ['bank_offer', 'coupon', 'gift_card', 'credit_card', 'loan', 'insurance', 'account', 'movie', 'cashback', 'sale'] as const;
 export type DealKind = (typeof DEAL_KINDS)[number];
 
 export const MERCHANT_VERTICAL: Record<string, string> = {

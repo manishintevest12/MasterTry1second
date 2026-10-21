@@ -6,6 +6,7 @@ import { Try1SecondLogo } from './Try1SecondLogo';
 export const PartnerInquiryModal: React.FC = () => {
   const { isPartnerModalOpen, closePartnerModal } = useApp();
   const [submitted, setSubmitted] = useState<boolean>(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
   const [formData, setFormData] = useState({
     companyName: '',
     website: '',
@@ -18,8 +19,29 @@ export const PartnerInquiryModal: React.FC = () => {
 
   if (!isPartnerModalOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
+    // Owner 21 Oct: partner inquiries persist server-side (MySQL `leads` table,
+    // source='partner_inquiry') — visible in Admin > Leads. Client success state stays
+    // for feedback even if the server is briefly unreachable.
+    try {
+      const res = await fetch('/api/partner-inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName: formData.contactName,
+          lastName: '-',
+          email: formData.email,
+          business: formData.companyName,
+          website: formData.website,
+          category: formData.vertical,
+          message: `${formData.integrationType} · est. monthly volume: ${formData.estimatedMonthlyVolume}`,
+        }),
+      });
+      await res.json().catch(() => null);
+    } catch { /* server unreachable — inquiry shown locally, no fabrication */ }
+    setSubmitting(false);
     setSubmitted(true);
     setTimeout(() => {
       setSubmitted(false);

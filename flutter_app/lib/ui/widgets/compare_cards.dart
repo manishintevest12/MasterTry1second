@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/compare.dart';
 import '../../core/theme.dart';
+import 'lead_sheet.dart';
 import 'redirect_sheet.dart';
 import 'hotel_detail.dart';
 import '../../core/verticals.dart';
@@ -100,6 +101,7 @@ class _SiteRow extends StatelessWidget {
                   price: row.priceAvailable ? row.price : null,
                   image: row.item.imageUrl,
                   isLowest: isBest,
+                  vertical: row.item.vertical,
                 )
               : null,
           child: Container(
@@ -211,7 +213,20 @@ void _openRedirect(
   String? image,
   bool isLowest = false,
   bool appOnly = false,
+  String vertical = '',
 }) {
+  // Owner 21 Oct: finance verticals capture the lead FIRST (server-persisted,
+  // MySQL) and hand off to the partner after submission — website parity.
+  if (const ['loans', 'insurance', 'creditcards', 'account'].contains(vertical)) {
+    showLeadSheet(
+      context,
+      vertical: vertical,
+      serviceType: title,
+      sellerName: sellerName,
+      goUrl: goUrl,
+    );
+    return;
+  }
   showRedirectSheet(
     context,
     sellerName: sellerName,
@@ -394,6 +409,7 @@ class TravelTile extends StatelessWidget {
                     sellerName: sellerName,
                     title: g.best.item.title,
                     goUrl: g.best.item.bestQuote!.url,
+                    vertical: g.best.item.vertical,
                     price: g.best.priceAvailable ? g.best.price : null,
                     image: g.best.item.imageUrl,
                     isLowest: true,
@@ -610,6 +626,7 @@ class HotelCard extends StatelessWidget {
                     sellerName: bestSeller,
                     title: g.best.item.title,
                     goUrl: g.best.item.bestQuote!.url,
+                    vertical: g.best.item.vertical,
                     price: g.best.price > 0 ? g.best.price : null,
                     image: g.best.item.imageUrl,
                     isLowest: true,
@@ -729,6 +746,7 @@ class CreditCardTile extends StatelessWidget {
                     sellerName: sellerName,
                     title: g.best.item.title,
                     goUrl: g.best.item.bestQuote!.url,
+                    vertical: g.best.item.vertical,
                     price: g.best.price > 0 ? g.best.price : null,
                     image: g.best.item.imageUrl,
                     isLowest: true,
@@ -804,6 +822,7 @@ class GroupCard extends StatelessWidget {
               sellerName: sellerName,
               title: g.best.item.title,
               goUrl: g.best.item.bestQuote!.url,
+                    vertical: g.best.item.vertical,
               price: g.best.priceAvailable ? g.best.price : null,
               image: g.best.item.imageUrl,
               isLowest: true,
@@ -923,6 +942,7 @@ class GroupCard extends StatelessWidget {
                     sellerName: sellerName,
                     title: g.best.item.title,
                     goUrl: g.best.item.bestQuote!.url,
+                    vertical: g.best.item.vertical,
                     price: g.best.price > 0 ? g.best.price : null,
                     image: g.best.item.imageUrl,
                     isLowest: true,
