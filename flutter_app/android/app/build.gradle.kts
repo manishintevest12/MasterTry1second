@@ -31,11 +31,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // Committed shared keystore so every build machine produces the SAME
+        // SHA-1 that is registered in Firebase (D1:12:D9...AE:5A). Without this,
+        // each machine generates its own ~/.android/debug.keystore and Google
+        // login breaks with a fingerprint mismatch.
+        create("shared") {
+            storeFile = file("try1second.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // TODO: replace with a private release keystore before Play Store upload.
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 }
