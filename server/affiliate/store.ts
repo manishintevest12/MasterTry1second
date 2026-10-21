@@ -5,6 +5,7 @@
 import { getStore } from '../common/db';
 import { sanitizeBindParams } from '../common/db';
 import type { UnifiedAffiliateOffer } from './types';
+import { linkinrCampaignFor } from './linkinr';
 
 const COLS = 'network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code, discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note';
 
@@ -43,6 +44,64 @@ export async function expirePastOffers(): Promise<number> {
   return r.affectedRows || 0;
 }
 
+// ============ Dedup + best-commission selection (owner 21 Oct) ============
+// The Coupons hub must show each deal ONCE, with NO network branding, and the
+// kept copy must be the one that pays the most: the redirect hop goes through
+// the highest-commission affiliate available for that merchant (server-side
+// ladder in deeplink.ts: admin configs > Amazon > Cuelinks-joined > LinkInR).
+// Pure functions so tests can pin the behaviour without a database.
+
+/** 'Flat 4.8%' -> 48, 'Flat ₹1900' -> 1900, 'Upto 0.6%' -> 6. */
+export function parsePayoutText(text: string | null | undefined): number {
+  if (!text) return 0;
+  const pct = /([\d.]+)\s*%/.exec(text);
+  if (pct) return Number(pct[1]) * 10;
+  const rs = /₹\s*([\d,.]+)/.exec(text);
+  if (rs) return Number(rs[1].replace(/,/g, ''));
+  const any = /([\d.]+)/.exec(text);
+  return any ? Number(any[1]) : 0;
+}
+
+/** Network fallback rank when no payout is known for the merchant. */
+const NETWORK_BASE: Record<string, number> = {
+  linkinr: 100, cuelinks: 40, admitad: 30, vcommission: 25, earnkaro: 20, inrdeals: 18,
+};
+
+export function normKey(s: unknown): string {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** Highest-known-commission score for an offer row. */
+export function offerCommissionScore(o: Record<string, any>): number {
+  const hop = String(o.original_url || o.affiliate_url || '');
+  const lir = linkinrCampaignFor(hop); // owner sheet: known payout per merchant
+  return Math.max(
+    parsePayoutText(o.commission_note),
+    lir ? lir.payoutScore : 0,
+    NETWORK_BASE[String(o.network_source || '').toLowerCase()] ?? 10,
+  );
+}
+
+/**
+ * Collapse duplicates (same merchant + same code, or same merchant + same
+ * title for codeless deals) keeping the copy routed through the
+ * highest-paying affiliate. Deterministic tie-break: commission score, then
+ * later updated_at (fresher data wins).
+ */
+export function dedupBestOffers<T extends Record<string, any>>(rows: T[]): T[] {
+  const best = new Map<string, T>();
+  for (const r of rows) {
+    const code = normKey(r.coupon_code);
+    const key = `${normKey(r.merchant_name)}|${code || normKey(r.title).slice(0, 60)}`;
+    const cur = best.get(key);
+    if (!cur) { best.set(key, r); continue; }
+    const a = offerCommissionScore(r) - offerCommissionScore(cur);
+    const b = String(r.updated_at || r.created_at || '').localeCompare(String(cur.updated_at || cur.created_at || ''));
+    if (a > 0 || (a === 0 && b > 0)) best.set(key, r);
+  }
+  return Array.from(best.values());
+}
+
 export interface OfferQuery {
   source?: string; merchant?: string; category?: string;
   hasCoupon?: boolean; search?: string;
@@ -64,8 +123,12 @@ export async function listOffers(q: OfferQuery) {
     : 'updated_at DESC';
   const limit = Math.min(Math.max(q.limit ?? 20, 1), 100);
   const offset = Math.max(q.offset ?? 0, 0);
+  // Dedup pool: fetch a wider slice, collapse cross-network duplicates
+  // keeping the highest-commission copy, then apply the caller's window.
+  const pool = Math.max(limit * 4, 200);
   const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
                discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
-               FROM affiliate_offers WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`;
-  return store.query(sql, params);
+               FROM affiliate_offers WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ${pool} OFFSET ${offset}`;
+  const rows = await store.query(sql, params);
+  return dedupBestOffers(rows as Record<string, any>[] as any).slice(0, limit);
 }

@@ -4,10 +4,13 @@ import { useApp } from '../context/AppContext';
 
 /** Coupons hub — REAL coupon codes only (GET /api/v1/offers?has_coupon=true).
  *  A code is shown only when an affiliate network actually returned it.
+ *  Owner rule (21 Oct): NO network branding anywhere in the UI, duplicates
+ *  across networks are collapsed server-side, and 'Use Deal' hops through
+ *  the highest-commission affiliate (chosen server-side at redirect time).
  *  No hardcoded demo coupons; honest empty state otherwise. */
 interface RealCoupon {
   id: number;
-  network_source: string;
+  original_url: string | null;
   merchant_name: string;
   merchant_logo: string | null;
   title: string;
@@ -25,7 +28,6 @@ interface RealCoupon {
 export const CouponsHub: React.FC = () => {
   const { addPoints, setActiveNavTab } = useApp();
   const [coupons, setCoupons] = useState<RealCoupon[]>([]);
-  const [selectedSource, setSelectedSource] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,10 +47,6 @@ export const CouponsHub: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const sources = ['all', ...Array.from(new Set(coupons.map((c) => c.network_source)))];
-  const filteredCoupons =
-    selectedSource === 'all' ? coupons : coupons.filter((c) => c.network_source === selectedSource);
-
   const discountText = (c: RealCoupon) => {
     if (c.discount_value != null && c.discount_type === 'percentage') return `${c.discount_value}% OFF`;
     if (c.discount_value != null) return `₹${c.discount_value} OFF`;
@@ -65,9 +63,12 @@ export const CouponsHub: React.FC = () => {
 
   const handleUseDeal = async (coupon: RealCoupon) => {
     handleCopy(coupon);
-    if (coupon.affiliate_url) {
+    const hop = coupon.original_url || coupon.affiliate_url;
+    if (hop) {
       try {
-        const res = await fetch(`/api/go?url=${encodeURIComponent(coupon.affiliate_url)}&offerId=${coupon.id}`);
+        // Original merchant URL first: /api/go then routes through the
+        // highest-commission affiliate server-side (never a fixed network).
+        const res = await fetch(`/api/go?url=${encodeURIComponent(hop)}&offerId=${coupon.id}`);
         const data = await res.json();
         if (data.redirectUrl) window.open(data.redirectUrl, '_blank', 'noopener');
       } catch {
@@ -97,49 +98,32 @@ export const CouponsHub: React.FC = () => {
           </h2>
         </div>
         <p className="text-xs text-slate-500">
-          Only codes actually returned by connected affiliate networks are shown — nothing is invented or pre-seeded.
+          Only verified live codes are shown — nothing is invented or pre-seeded.
+          {coupons.length > 0 && <span className="font-bold text-slate-700"> {coupons.length} live right now.</span>}
         </p>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-4 mb-6 scrollbar-none">
-        {sources.map((src) => (
-          <button
-            key={src}
-            onClick={() => setSelectedSource(src)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap cursor-pointer ${
-              selectedSource === src
-                ? 'bg-slate-900 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {src === 'all' ? `All Networks (${coupons.length})` : src}
-          </button>
-        ))}
-      </div>
-
-      {filteredCoupons.length === 0 ? (
+      {coupons.length === 0 ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
           <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-4" />
           <p className="text-base font-bold text-slate-800">No verified coupon codes right now</p>
           <p className="text-xs text-slate-500 mt-2 max-w-lg mx-auto leading-relaxed">
-            Coupon codes appear here the moment a connected network (e.g. Admitad) returns them and they pass
+            Coupon codes appear here the moment a connected network returns them and they pass
             freshness checks. We never display placeholder or guessed codes. Check the Offers tab for live
             partner cashback programs.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCoupons.map((coupon) => (
+          {coupons.map((coupon) => (
             <div
               key={coupon.id}
               className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-orange-300 hover:shadow-md transition-all"
             >
-              <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 flex items-center justify-between">
+              <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 flex items-center">
                 <span className="text-white text-xs font-bold uppercase tracking-wide">
                   {coupon.merchant_name}
                 </span>
-                <span className="text-white/80 text-[10px] font-semibold uppercase">{coupon.network_source}</span>
               </div>
 
               <div className="p-4">
