@@ -95,8 +95,8 @@ export const PriceAdviceSidebar: React.FC = () => {
 
   return (
     <aside className="w-full lg:w-72 shrink-0 space-y-4">
-      {/* 1. Kayak-Style "Book Now / Price Advice" Module */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+      {/* 1. Kayak-Style "Book Now / Price Advice" Module — hidden on mobile (owner 21 Oct) */}
+      <div className="hidden md:block bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
         <div className="flex items-start gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
             <TrendingUp className="w-4 h-4" />
@@ -202,9 +202,9 @@ export const PriceAdviceSidebar: React.FC = () => {
         )}
       </div>
 
-      {/* 3. Sellers & Platforms Filter */}
+      {/* 3. Sellers & Platforms Filter — hidden on mobile (owner 21 Oct) */}
       {allVendors.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
+        <div className="hidden md:block bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
           <div className="flex items-center gap-1.5 mb-3">
             <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
             <h4 className="text-xs font-bold text-slate-900">Platforms & Sellers</h4>
