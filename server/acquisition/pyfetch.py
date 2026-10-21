@@ -77,6 +77,8 @@ def main() -> None:
     timeout = float(req.get("timeoutSec") or 20)
     impersonate = str(req.get("impersonate") or "safari17_0")
 
+    http_version = str(req.get("httpVersion") or "").strip()
+
     seed_cookies = req.get("cookies") or {}
     return_cookies = bool(req.get("returnCookies"))
 
@@ -98,10 +100,19 @@ def main() -> None:
                         s.cookies.set(str(k), str(v), domain=dom)
                     except Exception:
                         pass
+            kw = {}
+            if http_version == "1.1":
+                # Goibibo (Akamai) intermittently resets HTTP/2 streams from
+                # datacenter IPs; the same pages serve fine over HTTP/1.1.
+                try:
+                    from curl_cffi import CurlHttpVersion
+                    kw["http_version"] = CurlHttpVersion.V1_1
+                except Exception:
+                    pass
             if method == "POST":
-                r = s.post(url, headers=headers, data=body, timeout=timeout)
+                r = s.post(url, headers=headers, data=body, timeout=timeout, **kw)
             else:
-                r = s.get(url, headers=headers, timeout=timeout)
+                r = s.get(url, headers=headers, timeout=timeout, **kw)
             out = {"ok": True, "status": int(r.status_code), "body": r.text}
             if return_cookies:
                 try:

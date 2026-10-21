@@ -91,6 +91,8 @@ export async function cffiFetch(
     body?: string;
     timeoutMs?: number;
     impersonate?: string;
+    /** Force HTTP/1.1 (some Akamai edges reset HTTP/2 streams from datacenter IPs). */
+    httpVersion?: '1.1';
     /** Seed the session cookie jar with these cookies (registrable domain of the URL). */
     cookies?: Record<string, string>;
     /** Return the session cookie jar after the call (for multi-step handshakes). */
@@ -104,6 +106,7 @@ export async function cffiFetch(
     ...(opts.body ? { body: opts.body } : {}),
     ...(opts.cookies ? { cookies: opts.cookies } : {}),
     ...(opts.returnCookies ? { returnCookies: true } : {}),
+    ...(opts.httpVersion ? { httpVersion: opts.httpVersion } : {}),
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 20_000) / 1000)),
     impersonate: opts.impersonate || 'safari17_0',
   });

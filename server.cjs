@@ -1347,6 +1347,7 @@ async function cffiFetch(url, opts = {}) {
     ...opts.body ? { body: opts.body } : {},
     ...opts.cookies ? { cookies: opts.cookies } : {},
     ...opts.returnCookies ? { returnCookies: true } : {},
+    ...opts.httpVersion ? { httpVersion: opts.httpVersion } : {},
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
     impersonate: opts.impersonate || "safari17_0"
   });
@@ -6980,6 +6981,107 @@ var init_goibiboFlights = __esm({
   }
 });
 
+// server/workers/parsers/mmtFareCalendar.ts
+function mmtFareCalendarUrl(fromCode, toCode, depCompact) {
+  return `https://flights-cb.makemytrip.com/api/fareCalendar?apiCallTimestamp=${Date.now()}&crId=${mmtCrid()}&it=${fromCode}-${toCode}-${depCompact}&tripType=O&pfm=DESKTOP&src=desktop&region=in&cur=INR&currency=INR&language=eng&pax=A-1_C-0_I-0&cc=E&cmpId=&dfs=0&forwardFlowRequired=true&shd=true&sortBy=rhino`;
+}
+function mmtCrid() {
+  return "94338e88-73de-4bc6-b77c-b1baf7fdb58f";
+}
+function mmtCalendarHeaders(fromCode, toCode, depCompact) {
+  const did = mmtCrid();
+  return {
+    Accept: "application/json",
+    "app-ver": "1.0.0",
+    "device-id": did,
+    "entity-name": "india",
+    os: "Windows",
+    domain: "in",
+    "user-country": "IN",
+    currency: "INR",
+    mcid: did,
+    region: "in",
+    pfm: "DESKTOP",
+    src: "desktop",
+    "profile-type": "b2c",
+    Origin: "https://www.makemytrip.com",
+    Referer: `https://www.makemytrip.com/flight/search?itinerary=${fromCode}-${toCode}-${depCompact}`
+  };
+}
+function keyToIso(key) {
+  if (!/^\d{6}$/.test(key)) return null;
+  const dd = Number(key.slice(0, 2));
+  const mm = Number(key.slice(2, 4));
+  const yy = Number(key.slice(4, 6));
+  if (dd < 1 || dd > 31 || mm < 1 || mm > 12) return null;
+  const year = 2e3 + yy;
+  const iso2 = `${year}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  const check = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+  if (Number.isNaN(check.getTime()) || check.getUTCDate() !== dd || check.getUTCMonth() !== mm - 1) return null;
+  return iso2;
+}
+function parseMmtFareCalendar(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const fares = d?.fares;
+  if (!fares || typeof fares !== "object") return [];
+  const out = [];
+  for (const [key, fRaw] of Object.entries(fares)) {
+    const dt = keyToIso(key);
+    if (!dt) continue;
+    const pr = Number(String(fRaw?.fr ?? "").replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(pr) || pr <= 0) continue;
+    const airline = fRaw?.airlineInfo?.name ? String(fRaw.airlineInfo.name) : void 0;
+    out.push({ dt, pr, airline, label: String(fRaw?.txt || "") });
+  }
+  return out;
+}
+function mmtSearchUrl(fromCode, toCode, depIso) {
+  const [y, m, dd] = depIso.split("-");
+  return `https://www.makemytrip.com/flight/search?itinerary=${fromCode}-${toCode}-${dd}/${m}/${y}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E&lang=eng`;
+}
+function mmtDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const exact = fares.find((f) => f.dt === depIso);
+  const upcoming = [...fares].filter((f) => f.dt >= today2).sort((a, b) => a.pr - b.pr);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const airlineLabel = chosen.airline ? ` (${chosen.airline})` : "";
+  return [newRawItem(source, {
+    title: `MakeMyTrip ${routeLabel} ${isExact ? `on ${chosen.dt}` : `(cheapest upcoming, ${chosen.dt})`} from \u20B9${Math.round(chosen.pr)}${airlineLabel}`,
+    brand: "MakeMyTrip",
+    price: Math.round(chosen.pr),
+    currency: "INR",
+    seller: "MakeMyTrip",
+    sellerUrl: mmtSearchUrl(fromCode, toCode, chosen.dt),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.dt },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.dt,
+      fare_class: chosen.airline ? `lowest economy fare on MakeMyTrip's calendar, flown by ${chosen.airline}` : "lowest economy fare on MakeMyTrip's fare calendar",
+      price_basis: `lowest MakeMyTrip fare from the fare-calendar API on ${today2} for this route${isExact ? " and date" : " within the returned calendar window"}`,
+      data_note: `Fare acquired from MakeMyTrip's fare calendar on ${today2} (date label "${chosen.label}"); booking continues on MakeMyTrip's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `mmt-${fromCode}-${toCode}-${chosen.dt}` },
+    evidence: {
+      sourceUrl: mmtFareCalendarUrl(fromCode, toCode, chosen.dt.replace(/-/g, "")),
+      extractedFields: ["fares[].fr (INR)", "fares[].airlineInfo.name", "fares[].txt"]
+    }
+  })];
+}
+var init_mmtFareCalendar = __esm({
+  "server/workers/parsers/mmtFareCalendar.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -11070,6 +11172,7 @@ var init_flights = __esm({
     init_viaFlights();
     init_yatraFlights();
     init_goibiboFlights();
+    init_mmtFareCalendar();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -11314,61 +11417,39 @@ var init_flights = __esm({
         },
         // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
         {
-          // MMT (17 Oct browser recon): the real flow is GET SRP HTML (SSR embeds
-          // window.__PRE_AUTH__=<32-hex token>) then GET
-          // flights-cb.makemytrip.com/api/search-stream-dt?it=DEL-BOM-20261025&...
-          // with headers app-ver 1.0.0, X-Cb-Preauth <token>, device-id/mcid uuid,
-          // entity-name india, domain in, user-country IN, currency INR, pfm DESKTOP,
-          // region in, src desktop, accept text/event-stream (SSE chunks, event
-          // "response"). flights-cb also serves /api/client-config and /api/pre-search-validation
-          // browserless (Go validator oracles). From burned datacenter IPs the SRP HTML
-          // is a 6-byte stub and the stream 403s; this probe runs the FULL flow live
-          // every search so a clean production Hostinger IP is detected immediately
-          // (then the SSE sample logged here maps the shape for the real parser).
+          // MMT LIVE (21 Oct 2026): the SRP HTML + search-stream-dt SSE remain
+          // Akamai sensor-gated from datacenter IPs (6B stub / 403), but
+          // flights-cb.makemytrip.com/api/fareCalendar is OPEN browserless and
+          // returns a full-year per-date lowest-fare calendar with the cheapest
+          // airline named per date (verified: BOM-DEL 28 Oct 2026 "₹ 6,638" IndiGo,
+          // 364 date keys). Same honest calendar pattern as Via.com/Akasa workers.
+          // The SSE per-flight recipe (search-stream-dt + X-Cb-Preauth from SRP
+          // window.__PRE_AUTH__, 17 Oct recon) stays documented here for the day a
+          // clean IP mints the preauth; the calendar already delivers real MMT
+          // fares today. Self-healing: a 403/edge-block here is reported honestly.
           sourceId: "w_flights_makemytrip",
-          name: "Flights worker: MakeMyTrip flights (full-flow probe)",
+          name: "Flights worker: MakeMyTrip fare calendar (flights-cb API)",
           priority: 15,
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
           run: async (ctx) => {
             const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
             const rt = routeFromQuery(raw);
-            const fromCode = rt?.fromCode || "DEL";
-            const toCode = rt?.toCode || "BOM";
-            const dd = new Date(Date.now() + 7 * 864e5);
-            const dmy = `${String(dd.getUTCDate()).padStart(2, "0")}/${String(dd.getUTCMonth() + 1).padStart(2, "0")}/${dd.getUTCFullYear()}`;
-            const iso2 = dd.toISOString().slice(0, 10).replace(/-/g, "");
-            const srpUrl = `https://www.makemytrip.com/flight/search?itinerary=${fromCode}-${toCode}-${dmy}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E&lang=eng`;
-            const h = await cffiFetch(srpUrl, { impersonate: "chrome", timeoutMs: 15e3 });
-            const preauthM = (h.body || "").match(/__PRE_AUTH__\s*=\s*["']([0-9a-f]{16,64})["']/);
-            if (h.status !== 200 || !preauthM) {
-              throw new AcquisitionError("ACCESS_CHALLENGE", `MMT SRP HTML did not serve the SSR preauth from this IP (HTTP ${h.status}, ${String(h.body || "").length}B; stub expected on burned IPs). Stream recipe ready: search-stream-dt + X-Cb-Preauth (17 Oct recon).`, h.status);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const depCompact = dep.replace(/-/g, "");
+            const url = mmtFareCalendarUrl(fromA.code, toA.code, depCompact);
+            const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: mmtCalendarHeaders(fromA.code, toA.code, depCompact) });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", `MMT fare-calendar edge-blocked from this IP (HTTP ${r.status}). SRP SSE recipe ready: search-stream-dt + X-Cb-Preauth (17 Oct recon).`, r.status);
             }
-            const did = "94338e88-73de-4bc6-b77c-b1baf7fdb58f";
-            const stUrl = `https://flights-cb.makemytrip.com/api/search-stream-dt?apiCallTimestamp=${Date.now()}&cc=E&cmpId=&crId=${did}&creditShellInfo=&cur=INR&currency=INR&dfs=0&forwardFlowRequired=true&it=${fromCode}-${toCode}-${iso2}&language=eng&pax=A-1_C-0_I-0&pfm=DESKTOP&region=in&shd=true&sortBy=rhino&src=desktop`;
-            const r = await cffiFetch(stUrl, { impersonate: "chrome", timeoutMs: 25e3, headers: {
-              Accept: "text/event-stream",
-              "app-ver": "1.0.0",
-              "X-Cb-Preauth": preauthM[1],
-              "device-id": did,
-              "entity-name": "india",
-              os: "Windows",
-              auuid: "",
-              domain: "in",
-              "Cache-Control": "no-cache",
-              "user-country": "IN",
-              currency: "INR",
-              mcid: did,
-              region: "in",
-              pfm: "DESKTOP",
-              src: "desktop",
-              "profile-type": "b2c",
-              Origin: "https://www.makemytrip.com",
-              Referer: srpUrl
-            } });
-            if (r.status === 200) {
-              const sample = (r.body || "").replace(/\s+/g, " ").slice(0, 400);
-              throw new AcquisitionError("EMPTY_RESPONSE", `MMT stream OPENED from this IP (200, ${String(r.body || "").length}B) but the SSE shape is not mapped yet \u2014 sample for the real parser: ${sample}`);
-            }
-            throw new AcquisitionError("ACCESS_CHALLENGE", `MMT SRP served SSR preauth from this IP but the search stream was edge-blocked (HTTP ${r.status}).`, r.status);
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `MMT fare-calendar HTTP ${r.status}`, r.status);
+            const fares = parseMmtFareCalendar(r.body);
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `MMT fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+            return mmtDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
         {
@@ -11391,16 +11472,30 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const url = goibiboRouteUrl(rt.from, rt.to);
+            const giHeaders = {
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9",
+              Referer: "https://www.google.com/"
+            };
             let r;
-            try {
-              r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4, headers: {
-                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                Referer: "https://www.google.com/"
-              } });
-            } catch (e) {
-              throw new AcquisitionError("SERVER_ERROR", `Goibibo route page unreachable: ${String(e?.message || e)}`);
+            const lastErr = [];
+            const attempts = [
+              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 3e4, headers: giHeaders } },
+              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 25e3, headers: giHeaders, httpVersion: "1.1" } },
+              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 25e3, headers: giHeaders } }
+            ];
+            for (const a of attempts) {
+              try {
+                r = await cffiFetch(url, a.opts);
+                if (r.status < 500) break;
+                lastErr.push(`${a.label}: HTTP ${r.status}`);
+                r = void 0;
+              } catch (e) {
+                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 120)}`);
+                r = void 0;
+              }
             }
+            if (!r) throw new AcquisitionError("SERVER_ERROR", `Goibibo route page unreachable after 3 attempts (${lastErr.join(" | ")})`);
             if (r.status === 404) return [];
             if (r.status === 403 || r.status === 429) {
               throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo edge-blocked the route page (HTTP ${r.status}).`, r.status);

@@ -20,6 +20,7 @@ import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from 
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
+import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
 import { parseCleartripFlights, cleartripSearchUrl } from '../parsers/cleartripFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
@@ -307,49 +308,41 @@ export const flightsWorker: VerticalWorker = {
     },
     // ---- Owner-mandated flights sources: attempted live on every search, honestly reported ----
     {
-      // MMT (17 Oct browser recon): the real flow is GET SRP HTML (SSR embeds
-      // window.__PRE_AUTH__=<32-hex token>) then GET
-      // flights-cb.makemytrip.com/api/search-stream-dt?it=DEL-BOM-20261025&...
-      // with headers app-ver 1.0.0, X-Cb-Preauth <token>, device-id/mcid uuid,
-      // entity-name india, domain in, user-country IN, currency INR, pfm DESKTOP,
-      // region in, src desktop, accept text/event-stream (SSE chunks, event
-      // "response"). flights-cb also serves /api/client-config and /api/pre-search-validation
-      // browserless (Go validator oracles). From burned datacenter IPs the SRP HTML
-      // is a 6-byte stub and the stream 403s; this probe runs the FULL flow live
-      // every search so a clean production Hostinger IP is detected immediately
-      // (then the SSE sample logged here maps the shape for the real parser).
+      // MMT LIVE (21 Oct 2026): the SRP HTML + search-stream-dt SSE remain
+      // Akamai sensor-gated from datacenter IPs (6B stub / 403), but
+      // flights-cb.makemytrip.com/api/fareCalendar is OPEN browserless and
+      // returns a full-year per-date lowest-fare calendar with the cheapest
+      // airline named per date (verified: BOM-DEL 28 Oct 2026 "₹ 6,638" IndiGo,
+      // 364 date keys). Same honest calendar pattern as Via.com/Akasa workers.
+      // The SSE per-flight recipe (search-stream-dt + X-Cb-Preauth from SRP
+      // window.__PRE_AUTH__, 17 Oct recon) stays documented here for the day a
+      // clean IP mints the preauth; the calendar already delivers real MMT
+      // fares today. Self-healing: a 403/edge-block here is reported honestly.
       sourceId: 'w_flights_makemytrip',
-      name: 'Flights worker: MakeMyTrip flights (full-flow probe)',
+      name: 'Flights worker: MakeMyTrip fare calendar (flights-cb API)',
       priority: 15,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
       run: async (ctx) => {
         const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
         const rt = routeFromQuery(raw);
-        const fromCode = rt?.fromCode || 'DEL';
-        const toCode = rt?.toCode || 'BOM';
-        const dd = new Date(Date.now() + 7 * 86400_000);
-        const dmy = `${String(dd.getUTCDate()).padStart(2, '0')}/${String(dd.getUTCMonth() + 1).padStart(2, '0')}/${dd.getUTCFullYear()}`;
-        const iso = dd.toISOString().slice(0, 10).replace(/-/g, '');
-        const srpUrl = `https://www.makemytrip.com/flight/search?itinerary=${fromCode}-${toCode}-${dmy}&tripType=O&paxType=A-1_C-0_I-0&intl=false&cabinClass=E&lang=eng`;
-        const h = await cffiFetch(srpUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
-        const preauthM = (h.body || '').match(/__PRE_AUTH__\s*=\s*["']([0-9a-f]{16,64})["']/);
-        if (h.status !== 200 || !preauthM) {
-          throw new AcquisitionError('ACCESS_CHALLENGE', `MMT SRP HTML did not serve the SSR preauth from this IP (HTTP ${h.status}, ${String(h.body || '').length}B; stub expected on burned IPs). Stream recipe ready: search-stream-dt + X-Cb-Preauth (17 Oct recon).`, h.status);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const depCompact = dep.replace(/-/g, '');
+        const url = mmtFareCalendarUrl(fromA.code, toA.code, depCompact);
+        const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000, headers: mmtCalendarHeaders(fromA.code, toA.code, depCompact) });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', `MMT fare-calendar edge-blocked from this IP (HTTP ${r.status}). SRP SSE recipe ready: search-stream-dt + X-Cb-Preauth (17 Oct recon).`, r.status);
         }
-        // SRP HTML served: try the SSE stream with the lifted token.
-        const did = '94338e88-73de-4bc6-b77c-b1baf7fdb58f';
-        const stUrl = `https://flights-cb.makemytrip.com/api/search-stream-dt?apiCallTimestamp=${Date.now()}&cc=E&cmpId=&crId=${did}&creditShellInfo=&cur=INR&currency=INR&dfs=0&forwardFlowRequired=true&it=${fromCode}-${toCode}-${iso}&language=eng&pax=A-1_C-0_I-0&pfm=DESKTOP&region=in&shd=true&sortBy=rhino&src=desktop`;
-        const r = await cffiFetch(stUrl, { impersonate: 'chrome', timeoutMs: 25_000, headers: {
-          Accept: 'text/event-stream', 'app-ver': '1.0.0', 'X-Cb-Preauth': preauthM[1],
-          'device-id': did, 'entity-name': 'india', os: 'Windows', auuid: '', domain: 'in',
-          'Cache-Control': 'no-cache', 'user-country': 'IN', currency: 'INR', mcid: did,
-          region: 'in', pfm: 'DESKTOP', src: 'desktop', 'profile-type': 'b2c',
-          Origin: 'https://www.makemytrip.com', Referer: srpUrl,
-        } });
-        if (r.status === 200) {
-          const sample = (r.body || '').replace(/\s+/g, ' ').slice(0, 400);
-          throw new AcquisitionError('EMPTY_RESPONSE', `MMT stream OPENED from this IP (200, ${String(r.body || '').length}B) but the SSE shape is not mapped yet — sample for the real parser: ${sample}`);
-        }
-        throw new AcquisitionError('ACCESS_CHALLENGE', `MMT SRP served SSR preauth from this IP but the search stream was edge-blocked (HTTP ${r.status}).`, r.status);
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `MMT fare-calendar HTTP ${r.status}`, r.status);
+        const fares = parseMmtFareCalendar(r.body);
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `MMT fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+        return mmtDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
     {
@@ -372,16 +365,35 @@ export const flightsWorker: VerticalWorker = {
         const toA = await resolveAirport(rt.to, rt.toCode);
         if (!fromA.code || !toA.code) return [];
         const url = goibiboRouteUrl(rt.from, rt.to);
+        const giHeaders = {
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: 'https://www.google.com/',
+        };
+        // Self-healing retry ladder (owner rule 21 Oct): the Akamai edge in
+        // front of goibibo.com intermittently resets HTTP/2 streams (prod curl
+        // error 92, "stream 3 reset") or tarpits the first hit. Ladder:
+        // chrome/h2 -> chrome/HTTP1.1 -> safari, so a transient reset never
+        // loses Goibibo fares from a search.
         let r;
-        try {
-          r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000, headers: {
-            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            Referer: 'https://www.google.com/',
-          } });
-        } catch (e: any) {
-          throw new AcquisitionError('SERVER_ERROR', `Goibibo route page unreachable: ${String(e?.message || e)}`);
+        const lastErr: string[] = [];
+        const attempts: Array<{ label: string; opts: any }> = [
+          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 30_000, headers: giHeaders } },
+          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 25_000, headers: giHeaders, httpVersion: '1.1' as const } },
+          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 25_000, headers: giHeaders } },
+        ];
+        for (const a of attempts) {
+          try {
+            r = await cffiFetch(url, a.opts);
+            if (r.status < 500) break; // got a definitive answer (200/403/404/429)
+            lastErr.push(`${a.label}: HTTP ${r.status}`);
+            r = undefined;
+          } catch (e: any) {
+            lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 120)}`);
+            r = undefined;
+          }
         }
+        if (!r) throw new AcquisitionError('SERVER_ERROR', `Goibibo route page unreachable after 3 attempts (${lastErr.join(' | ')})`);
         if (r.status === 404) return []; // route page does not exist — honest "no such route page"
         if (r.status === 403 || r.status === 429) {
           throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo edge-blocked the route page (HTTP ${r.status}).`, r.status);
