@@ -15,6 +15,8 @@ import { parseHermesHotels } from '../parsers/goibiboHermes';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
 import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
 import { parseGoibiboHotelsSsr } from '../parsers/goibiboHotels';
+import { parseGoibiboHotelSsrState } from '../parsers/goibiboHotelSsr';
+import { parseMmtHotelLanding } from '../parsers/mmtHotelLanding';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem } from '../../types';
@@ -114,15 +116,78 @@ export const hotelsWorker: VerticalWorker = {
       // unavailable) and never fabricate prices.
       sourceId: 'w_hotels_mmt',
       priority: 15,
+      timeoutMs: 40_000,
       run: async (ctx) => {
         const city = cityFromQuery(ctx);
         if (!city || city.length < 3) return [];
         const slug = city.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().replace(/\s+/g, '-');
-        const r = await cffiFetch(`https://www.makemytrip.com/hotels/hotels-in-${slug}/`, { impersonate: 'chrome', timeoutMs: 25_000 });
-        if (r.status === 302 || r.status === 301) throw new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip redirected to Akamai geo-challenge (makemytrip.global) from this IP');
-        if (r.status !== 200) throw new AcquisitionError('ACCESS_CHALLENGE', `MakeMyTrip HTTP ${r.status}`);
-        if (r.body.length < 500) throw new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip returned an empty Akamai edge body (no sensor cookie)');
-        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip hotel page reached but carried no parseable SSR data');
+        // SELF-DETECTING probe (21 Oct upgrade): the city landing
+        // www.makemytrip.com/hotels-in-<city>/ is OPEN browserless but its
+        // $hotelReducerResponse is EMPTY from gated IPs. With the full
+        // real-Chrome header set (the same set that cracks Goibibo's sampled
+        // hotel SSR pages) we retry both slug spellings and parse the reducer
+        // the day MMT's gate lifts for this IP. Failures stay honest
+        // ACCESS_CHALLENGE; hermes-style: this probe runs on every search.
+        const mmtChromeHeaders = {
+          'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'Upgrade-Insecure-Requests': '1',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-User': '?1',
+          'Sec-Fetch-Dest': 'document',
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: 'https://www.google.com/',
+        };
+        let lastErr: AcquisitionError | null = null;
+        for (const url of [
+          `https://www.makemytrip.com/hotels-in-${slug}/`,
+          `https://www.makemytrip.com/hotels/hotels-in-${slug}/`,
+        ]) {
+          let bigBody: string | null = null;
+          let r;
+          try {
+            r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000, headers: mmtChromeHeaders });
+          } catch (e: any) {
+            lastErr = new AcquisitionError('SERVER_ERROR', `MakeMyTrip hotels page unreachable: ${String(e?.message || e).slice(0, 70)}`);
+            continue;
+          }
+          if (r.status === 301 || r.status === 302) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip redirected to Akamai geo-challenge (makemytrip.global) from this IP'); continue; }
+          if (r.status !== 200) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', `MakeMyTrip HTTP ${r.status}`); continue; }
+          if (r.body.length < 500) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', 'MakeMyTrip returned an empty Akamai edge body (no sensor cookie)'); continue; }
+          bigBody = r.body;
+          const st = parseMmtHotelLanding(bigBody);
+          if (st.rows.length) {
+            st.rows.sort((a, b) => a.price - b.price);
+            const offers: RawSourceItem[] = [];
+            for (const h of st.rows.slice(0, 40)) {
+              offers.push(newRawItem(ctx.source, {
+                title: h.name,
+                seller: 'MakeMyTrip',
+                sellerUrl: url, // redirect only to the site that owns the price
+                currency: 'INR',
+                price: h.price,
+                attributes: {
+                  image_url: h.image || '',
+                  rating: h.rating !== undefined ? String(h.rating) : '',
+                  locality: h.locality || '',
+                  city,
+                  price_basis: "per night for 1 room (page's own service dates picked by MakeMyTrip)",
+                  data_note: 'Live nightly rates from MakeMyTrip hotel landing page ($hotelReducerResponse)',
+                },
+                evidence: {
+                  sourceUrl: url,
+                  extractedFields: ['title', 'price', 'rating', 'locality', 'image_url'],
+                },
+              }));
+            }
+            return offers;
+          }
+          lastErr = new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip hotel page reached but $hotelReducerResponse carried no priced hotels (gate holds for this IP)');
+        }
+        throw lastErr || new AcquisitionError('NOT_FOUND', `MakeMyTrip has no hotels page for "${city}"`, 404);
       },
     },
     {
@@ -166,34 +231,63 @@ export const hotelsWorker: VerticalWorker = {
           lastHermesErr = new AcquisitionError('TIMEOUT', `Goibibo hermes unreachable: ${String(e?.message || e).slice(0, 60)}`);
         }
 
+        // RECIPE 2 (21 Oct CRACKED): the SSR city page www.goibibo.com/hotels/
+        // hotels-in-<city>[-ct]/ carries the FULL listing state in
+        // window.__initial_state__ (srpUnif.srpData...hotels[]: priceDetail
+        // per-night INR, media images, reviewSummaryUgc ratings, deeplinks).
+        // Akamai SAMPLES datacenter IPs here (~alternating 8-byte "200 - OK"
+        // stubs) — with the full real-Chrome header set (sec-ch-ua/sec-fetch)
+        // the 1.3MB page lands; verified live: Goa 20 hotels ₹1,891-6,156.
+        // Self-healing ladder: stub -> short backoff -> retry (up to 3),
+        // -ct slug variant next; legacy __NEXT_DATA__ walker kept as fallback.
+        const giChromeHeaders = {
+          'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'Upgrade-Insecure-Requests': '1',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-User': '?1',
+          'Sec-Fetch-Dest': 'document',
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: 'https://www.google.com/',
+        };
         const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
         let lastErr: AcquisitionError | null = null;
+        const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
         for (const slug of attempts) {
           const url = `https://www.goibibo.com/hotels/${slug}/`;
-          let r;
-          try {
-            r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000, headers: {
-              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-              Referer: 'https://www.google.com/',
-            } });
-          } catch (e: any) {
-            lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable: ${String(e?.message || e).slice(0, 80)}`);
-            continue;
+          let bigBody: string | null = null;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            let r;
+            try {
+              r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000, headers: giChromeHeaders });
+            } catch (e: any) {
+              lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable (attempt ${attempt}/3): ${String(e?.message || e).slice(0, 80)}`);
+              await sleep(1500);
+              continue;
+            }
+            if (r.status === 404) break; // spelling has no page: try the -ct variant
+            if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
+            if (r.status !== 200) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels HTTP ${r.status}`); await sleep(1500); continue; }
+            if (r.body.length >= 100_000) { bigBody = r.body; break; } // the real 1.3MB SSR page
+            lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/3); ladder retries next search`);
+            await sleep(2000);
           }
-          if (r.status === 404) continue; // spelling has no page: try the -ct variant
-          if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
-          if (r.status !== 200) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', `Goibibo hotels HTTP ${r.status}`); continue; }
-          if (r.body.length < 500) { lastErr = new AcquisitionError('ACCESS_CHALLENGE', 'Goibibo hotels returned the 8-byte Akamai stub ("200 - OK") for this IP — path-scoped gate; retries each search'); continue; }
-          const rows = parseGoibiboHotelsSsr(r.body);
-          if (!rows.length) { lastErr = new AcquisitionError('EMPTY_RESPONSE', `Goibibo hotel page reached (${r.body.length} bytes) but carried no parseable hotel listings`); continue; }
+          if (!bigBody) continue;
+          const st = parseGoibiboHotelSsrState(bigBody);
+          let rows = st.rows;
+          if (!rows.length) rows = parseGoibiboHotelsSsr(bigBody); // legacy __NEXT_DATA__ shape
+          if (!rows.length) { lastErr = new AcquisitionError('EMPTY_RESPONSE', `Goibibo hotel page reached (${bigBody.length} bytes) but carried no parseable hotel listings`); continue; }
           rows.sort((a, b) => a.price - b.price);
+          const dateLabel = st.checkIn ? ` for ${st.checkIn} → ${st.checkOut || ''}` : '';
           const offers: RawSourceItem[] = [];
           for (const h of rows.slice(0, 40)) {
             offers.push(newRawItem(ctx.source, {
               title: h.name,
               seller: 'Goibibo',
-              sellerUrl: url, // redirect only to the site that owns the price
+              sellerUrl: h.url || url, // redirect only to the site that owns the price
               currency: 'INR',
               price: h.price,
               attributes: {
@@ -201,8 +295,8 @@ export const hotelsWorker: VerticalWorker = {
                 rating: h.rating !== undefined ? String(h.rating) : '',
                 locality: h.locality || '',
                 city,
-                price_basis: 'per night for 1 room (page picks its own service date)',
-                data_note: 'Live nightly rates from Goibibo hotel search results (SEO page)',
+                price_basis: `per night for 1 room (page's own service date${dateLabel ? ': ' + dateLabel.trim() : ' picked by Goibibo'})`,
+                data_note: `Live nightly rates from Goibibo hotel search results (SEO page${st.hotelCount ? `, ${st.hotelCount} hotels in city` : ''})`,
               },
               evidence: {
                 sourceUrl: url,

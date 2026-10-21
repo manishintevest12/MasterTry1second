@@ -3894,6 +3894,227 @@ var init_goibiboHotels = __esm({
   }
 });
 
+// server/workers/parsers/goibiboHotelSsr.ts
+function extractInitialState(body) {
+  const marker = "window.__initial_state__=";
+  const start2 = body.indexOf(marker);
+  if (start2 < 0) return null;
+  let i = start2 + marker.length;
+  while (i < body.length && /\s/.test(body[i])) i++;
+  if (body[i] !== "{") return null;
+  const objStart = i;
+  let depth = 0, inStr = false, esc = false, end = -1;
+  for (; i < body.length; i++) {
+    const c = body[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) return null;
+  let raw = body.slice(objStart, end + 1);
+  raw = raw.replace(/new Date\("([^"]*)"\)/g, '"$1"');
+  raw = raw.replace(/:undefined/g, ":null");
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function firstUrl(h) {
+  const u = h?.detailDeeplinkUrl || h?.seoUrl || h?.sharingUrl || "";
+  return String(u || "");
+}
+function parseGoibiboHotelSsrState(body) {
+  const d = extractInitialState(body);
+  if (!d) return { rows: [] };
+  const out = { rows: [] };
+  const ci = d?.common?.checkin?.date, co = d?.common?.checkout?.date;
+  if (typeof ci === "string") out.checkIn = ci.slice(0, 10);
+  if (typeof co === "string") out.checkOut = co.slice(0, 10);
+  const hc = d?.srpUnif?.srpData?.hotelCount;
+  if (Number.isFinite(Number(hc))) out.hotelCount = Number(hc);
+  const sections = d?.srpUnif?.srpData?.personalizedSections || {};
+  const seen = /* @__PURE__ */ new Set();
+  const pushHotel = (h) => {
+    if (!h || typeof h !== "object") return;
+    const name = String(h.name || h.maskedName || "").trim();
+    const pd = h.priceDetail || {};
+    let price = Number(pd.discountedPrice ?? pd.price ?? 0) || 0;
+    if (!price) price = Number(pd.discountedPriceWithTax ?? pd.priceWithTax ?? 0) || 0;
+    if (!name || !Number.isFinite(price) || price < 100 || price > 1e7) return;
+    if (h.soldOut === true || h.showCallToBook === true) return;
+    const key = name.toLowerCase() + "|" + Math.round(price);
+    if (seen.has(key)) return;
+    seen.add(key);
+    let image = "";
+    if (Array.isArray(h.media) && h.media[0]?.url) {
+      const mu = String(h.media[0].url);
+      image = mu.startsWith("//") ? `https:${mu}` : mu;
+    }
+    let rating;
+    const rs = h?.reviewSummaryUgc;
+    if (rs) {
+      const rv = Number(rs?.hotelRating ?? rs?.rating ?? rs?.overallRating ?? rs?.avgRating);
+      if (Number.isFinite(rv) && rv > 0) rating = Math.round(rv * 10) / 10;
+    }
+    const loc = Array.isArray(h.locationPersuasion) ? String(h.locationPersuasion[0] || "") : String(h?.locationDetail?.name || "");
+    out.rows.push({
+      name,
+      price,
+      rating,
+      image,
+      locality: loc,
+      url: firstUrl(h)
+    });
+  };
+  for (const key of Object.keys(sections)) {
+    const sec = sections[key];
+    const list = Array.isArray(sec?.hotels) ? sec.hotels : Array.isArray(sec?.hotelInfoList) ? sec.hotelInfoList : null;
+    if (list) for (const h of list) pushHotel(h);
+  }
+  if (!out.rows.length) {
+    const scan = (o, depth = 0) => {
+      if (!o || typeof o !== "object" || depth > 6) return;
+      if (Array.isArray(o)) {
+        for (const x of o) {
+          if (x?.priceDetail && x?.name) pushHotel(x);
+          else scan(x, depth + 1);
+        }
+        return;
+      }
+      for (const v of Object.values(o)) scan(v, depth + 1);
+    };
+    scan(d?.srpUnif?.srpData);
+  }
+  return out;
+}
+var init_goibiboHotelSsr = __esm({
+  "server/workers/parsers/goibiboHotelSsr.ts"() {
+  }
+});
+
+// server/workers/parsers/mmtHotelLanding.ts
+function num(v) {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Number(v.replace(/[^\d.]/g, ""));
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+function pickFirst2(o, keys) {
+  for (const k of keys) {
+    const v = o?.[k];
+    if (v !== void 0 && v !== null && v !== "") return v;
+  }
+  return void 0;
+}
+function parseMmtHotelLanding(body) {
+  const marker = "$hotelReducerResponse";
+  const out = { rows: [], reducerEmpty: false };
+  let i = body.indexOf(marker);
+  if (i < 0) return out;
+  while (i >= 0 && !out.rows.length) {
+    const eq = body.indexOf("=", i);
+    if (eq < 0) break;
+    let j = eq + 1;
+    while (j < body.length && /\s/.test(body[j])) j++;
+    if (body[j] !== "{") {
+      i = body.indexOf(marker, eq);
+      continue;
+    }
+    const objStart = j;
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (; j < body.length; j++) {
+      const c = body[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === "\\") esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') {
+        inStr = true;
+        continue;
+      }
+      if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      }
+    }
+    if (end < 0) break;
+    let red;
+    try {
+      red = JSON.parse(body.slice(objStart, end + 1));
+    } catch {
+      i = body.indexOf(marker, end);
+      continue;
+    }
+    const hasContent = JSON.stringify(red).length > 50;
+    out.reducerEmpty = out.reducerEmpty || !hasContent;
+    const seen = /* @__PURE__ */ new Set();
+    const scan = (o, depth2) => {
+      if (!o || typeof o !== "object" || depth2 > 6) return;
+      if (Array.isArray(o)) {
+        for (const x of o) scan(x, depth2 + 1);
+        return;
+      }
+      const name = String(pickFirst2(o, NAME_KEYS3) || "").trim();
+      const price = num(pickFirst2(o, PRICE_KEYS3));
+      if (name && Number.isFinite(price) && price >= 100 && price <= 1e7) {
+        const key = name.toLowerCase() + "|" + Math.round(price);
+        if (!seen.has(key)) {
+          seen.add(key);
+          let image = String(pickFirst2(o, IMG_KEYS2) || "");
+          if (image.startsWith("//")) image = `https:${image}`;
+          const rating = num(pickFirst2(o, RATING_KEYS3));
+          out.rows.push({
+            name,
+            price,
+            rating: Number.isFinite(rating) && rating > 0 && rating <= 5 ? Math.round(rating * 10) / 10 : void 0,
+            image,
+            locality: String(pickFirst2(o, LOC_KEYS) || ""),
+            url: ""
+          });
+        }
+      }
+      for (const v of Object.values(o)) scan(v, depth2 + 1);
+    };
+    scan(red, 0);
+    i = body.indexOf(marker, end);
+  }
+  return out;
+}
+var PRICE_KEYS3, NAME_KEYS3, RATING_KEYS3, IMG_KEYS2, LOC_KEYS;
+var init_mmtHotelLanding = __esm({
+  "server/workers/parsers/mmtHotelLanding.ts"() {
+    PRICE_KEYS3 = ["price", "priceForOneNight", "fare", "minFare", "cheapestPrice", "startingPrice", "basePrice", "amount", "nightlyRate"];
+    NAME_KEYS3 = ["name", "hotelName", "displayName", "title", "propertyName"];
+    RATING_KEYS3 = ["rating", "starRating", "userRating", "avgRating", "hotelRating"];
+    IMG_KEYS2 = ["image", "imageUrl", "thumbUrl", "heroImage", "img", "image_url"];
+    LOC_KEYS = ["locality", "areaName", "area", "neighbourhood", "location"];
+  }
+});
+
 // server/common/cityAlias.ts
 function cityVariants(city) {
   const n = norm(city);
@@ -3970,7 +4191,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num6 = (x) => {
+  const num7 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -3991,17 +4212,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num6(rating.value),
-      ratingCount: num6(rating.count),
-      pricePerNight: num6(pricing.bookingPrice),
-      tax: num6(tax.total_tax),
-      priceInclusive: num6(tax.final_price_with_tax),
-      slashedPrice: num6(pricing.slashedPrice),
-      discountPercentage: num6(pricing.discountPercentage),
+      rating: num7(rating.value),
+      ratingCount: num7(rating.count),
+      pricePerNight: num7(pricing.bookingPrice),
+      tax: num7(tax.total_tax),
+      priceInclusive: num7(tax.final_price_with_tax),
+      slashedPrice: num7(pricing.slashedPrice),
+      discountPercentage: num7(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num6(geo.lat ?? geo.latitude),
-      lon: num6(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num7(geo.lat ?? geo.latitude),
+      lon: num7(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -4076,20 +4297,20 @@ function parseYatraHotels(body) {
       id: String(h.id ?? ""),
       name: String(h.n ?? h.orgName ?? "").trim(),
       slug: typeof h.hsk === "string" ? h.hsk : null,
-      rating: num(h?.gr?.rating),
-      reviews: num(h?.gr?.reviews),
+      rating: num2(h?.gr?.rating),
+      reviews: num2(h?.gr?.reviews),
       city: typeof h?.loc?.c === "string" ? h.loc.c : null,
       area: typeof h?.loc?.a === "string" ? h.loc.a : null,
-      lat: num(h?.loc?.la),
-      lon: num(h?.loc?.lo),
+      lat: num2(h?.loc?.la),
+      lon: num2(h?.loc?.lo),
       imageUrl: typeof h?.cldImage?.url === "string" ? h.cldImage.url : null,
       categories: Array.isArray(h.ctg) ? h.ctg.filter((x) => typeof x === "string") : [],
-      rackRate: num(h.r),
-      price: num(rate.price),
-      basePrice: num(rate.basePrice),
+      rackRate: num2(h.r),
+      price: num2(rate.price),
+      basePrice: num2(rate.basePrice),
       roomName: typeof rate.roomName === "string" ? rate.roomName : null,
       bookable: rate.bookable !== false,
-      roomsLeft: num(rate.roomsLeft),
+      roomsLeft: num2(rate.roomsLeft),
       freeCancel: Boolean(rate.freeCancel)
     });
   }
@@ -4148,14 +4369,14 @@ function ddmmyyyy(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
-var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num;
+var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num2;
 var init_yatraHotels = __esm({
   "server/workers/parsers/yatraHotels.ts"() {
     init_contract();
     YATRA_HOTELS_API = "https://hotel.yatra.com/tgapi/hotels/v1/pageSearch";
     YATRA_HOTELS_API_KEY = "JN9aWyj7hJ1ZrExC7Ozo";
     YATRA_SRP = "https://hotel.yatra.com/nextui/hotel-search/dom/search";
-    num = (x) => {
+    num2 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4210,13 +4431,13 @@ function parseEmtHotels(items, links) {
     out.push({
       id,
       name: it.name.trim(),
-      starRating: num2(it?.starRating?.ratingValue),
+      starRating: num3(it?.starRating?.ratingValue),
       area: area?.trim() || null,
       locality: localityPart?.trim() || (typeof addr.addressLocality === "string" ? addr.addressLocality : null),
       region: typeof addr.addressRegion === "string" ? addr.addressRegion : null,
-      latitude: num2(it?.geo?.latitude),
-      longitude: num2(it?.geo?.longitude),
-      price: num2(it.priceRange),
+      latitude: num3(it?.geo?.latitude),
+      longitude: num3(it?.geo?.longitude),
+      price: num3(it.priceRange),
       imageUrl: image,
       deeplink: id && links.get(id) || null,
       checkInTime: typeof it.checkInTime === "string" ? it.checkInTime : null,
@@ -4266,13 +4487,13 @@ function ddmmyyyyDash(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
-var EMT_HOTELS_WEB, num2;
+var EMT_HOTELS_WEB, num3;
 var init_emtHotels = __esm({
   "server/workers/parsers/emtHotels.ts"() {
     init_contract();
     init_cityAlias();
     EMT_HOTELS_WEB = "https://www.easemytrip.com";
-    num2 = (x) => {
+    num3 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4316,16 +4537,16 @@ function parseSaffronVillas(data) {
       id: String(v.id ?? ""),
       title: v.title.trim(),
       location: typeof v.location === "string" ? v.location : null,
-      latitude: num3(v.latitude),
-      longitude: num3(v.longitude),
-      pricePerNight: num3(v.price_per_night),
-      perNightAfterDiscount: num3(v.per_night_price_after_discount),
-      totalWithTax: num3(v.total_amount_with_tax),
-      baseWithTax: num3(v.base_price_with_tax),
-      rating: num3(v.rating),
-      reviews: num3(v.total_reviews),
-      capacity: num3(v.max_capacity ?? v.capacity),
-      bedrooms: num3(v.bedrooms),
+      latitude: num4(v.latitude),
+      longitude: num4(v.longitude),
+      pricePerNight: num4(v.price_per_night),
+      perNightAfterDiscount: num4(v.per_night_price_after_discount),
+      totalWithTax: num4(v.total_amount_with_tax),
+      baseWithTax: num4(v.base_price_with_tax),
+      rating: num4(v.rating),
+      reviews: num4(v.total_reviews),
+      capacity: num4(v.max_capacity ?? v.capacity),
+      bedrooms: num4(v.bedrooms),
       signature: typeof v.signature === "string" ? v.signature : null,
       available: v.is_available !== false,
       imageIds: Array.isArray(v.images) ? v.images.filter((x) => typeof x === "string").slice(0, 6) : [],
@@ -4371,14 +4592,14 @@ function parseSaffronOffers(villas, source, city) {
   }
   return out;
 }
-var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num3;
+var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num4;
 var init_saffronStays = __esm({
   "server/workers/parsers/saffronStays.ts"() {
     init_contract();
     SAFFRON_API = "https://ecapi4.saffronstays.com/api/search-advance";
     SAFFRON_IMG_BASE = "https://ik.imagekit.io/5tgxhsqev/saffronstays-media";
     SAFFRON_WEB = "https://www.saffronstays.com";
-    num3 = (x) => {
+    num4 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4768,6 +4989,8 @@ var init_hotels = __esm({
     init_airbnbHotels();
     init_ixigoHotels();
     init_goibiboHotels();
+    init_goibiboHotelSsr();
+    init_mmtHotelLanding();
     init_curlCffiFetch();
     init_contract();
     init_httpClient();
@@ -4793,15 +5016,81 @@ var init_hotels = __esm({
           // unavailable) and never fabricate prices.
           sourceId: "w_hotels_mmt",
           priority: 15,
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
             const slug2 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const r = await cffiFetch(`https://www.makemytrip.com/hotels/hotels-in-${slug2}/`, { impersonate: "chrome", timeoutMs: 25e3 });
-            if (r.status === 302 || r.status === 301) throw new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip redirected to Akamai geo-challenge (makemytrip.global) from this IP");
-            if (r.status !== 200) throw new AcquisitionError("ACCESS_CHALLENGE", `MakeMyTrip HTTP ${r.status}`);
-            if (r.body.length < 500) throw new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip returned an empty Akamai edge body (no sensor cookie)");
-            throw new AcquisitionError("EMPTY_RESPONSE", "MakeMyTrip hotel page reached but carried no parseable SSR data");
+            const mmtChromeHeaders = {
+              "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+              "sec-ch-ua-mobile": "?0",
+              "sec-ch-ua-platform": '"Windows"',
+              "Upgrade-Insecure-Requests": "1",
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+              "Sec-Fetch-Site": "none",
+              "Sec-Fetch-Mode": "navigate",
+              "Sec-Fetch-User": "?1",
+              "Sec-Fetch-Dest": "document",
+              "Accept-Language": "en-US,en;q=0.9",
+              Referer: "https://www.google.com/"
+            };
+            let lastErr = null;
+            for (const url of [
+              `https://www.makemytrip.com/hotels-in-${slug2}/`,
+              `https://www.makemytrip.com/hotels/hotels-in-${slug2}/`
+            ]) {
+              let bigBody = null;
+              let r;
+              try {
+                r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: mmtChromeHeaders });
+              } catch (e) {
+                lastErr = new AcquisitionError("SERVER_ERROR", `MakeMyTrip hotels page unreachable: ${String(e?.message || e).slice(0, 70)}`);
+                continue;
+              }
+              if (r.status === 301 || r.status === 302) {
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip redirected to Akamai geo-challenge (makemytrip.global) from this IP");
+                continue;
+              }
+              if (r.status !== 200) {
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", `MakeMyTrip HTTP ${r.status}`);
+                continue;
+              }
+              if (r.body.length < 500) {
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", "MakeMyTrip returned an empty Akamai edge body (no sensor cookie)");
+                continue;
+              }
+              bigBody = r.body;
+              const st = parseMmtHotelLanding(bigBody);
+              if (st.rows.length) {
+                st.rows.sort((a, b) => a.price - b.price);
+                const offers = [];
+                for (const h of st.rows.slice(0, 40)) {
+                  offers.push(newRawItem(ctx.source, {
+                    title: h.name,
+                    seller: "MakeMyTrip",
+                    sellerUrl: url,
+                    // redirect only to the site that owns the price
+                    currency: "INR",
+                    price: h.price,
+                    attributes: {
+                      image_url: h.image || "",
+                      rating: h.rating !== void 0 ? String(h.rating) : "",
+                      locality: h.locality || "",
+                      city,
+                      price_basis: "per night for 1 room (page's own service dates picked by MakeMyTrip)",
+                      data_note: "Live nightly rates from MakeMyTrip hotel landing page ($hotelReducerResponse)"
+                    },
+                    evidence: {
+                      sourceUrl: url,
+                      extractedFields: ["title", "price", "rating", "locality", "image_url"]
+                    }
+                  }));
+                }
+                return offers;
+              }
+              lastErr = new AcquisitionError("EMPTY_RESPONSE", "MakeMyTrip hotel page reached but $hotelReducerResponse carried no priced hotels (gate holds for this IP)");
+            }
+            throw lastErr || new AcquisitionError("NOT_FOUND", `MakeMyTrip has no hotels page for "${city}"`, 404);
           }
         },
         {
@@ -4838,43 +5127,64 @@ var init_hotels = __esm({
             } catch (e) {
               lastHermesErr = new AcquisitionError("TIMEOUT", `Goibibo hermes unreachable: ${String(e?.message || e).slice(0, 60)}`);
             }
+            const giChromeHeaders = {
+              "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+              "sec-ch-ua-mobile": "?0",
+              "sec-ch-ua-platform": '"Windows"',
+              "Upgrade-Insecure-Requests": "1",
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+              "Sec-Fetch-Site": "none",
+              "Sec-Fetch-Mode": "navigate",
+              "Sec-Fetch-User": "?1",
+              "Sec-Fetch-Dest": "document",
+              "Accept-Language": "en-US,en;q=0.9",
+              Referer: "https://www.google.com/"
+            };
             const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
             let lastErr = null;
+            const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
             for (const slug2 of attempts) {
               const url = `https://www.goibibo.com/hotels/${slug2}/`;
-              let r;
-              try {
-                r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: {
-                  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                  "Accept-Language": "en-US,en;q=0.9",
-                  Referer: "https://www.google.com/"
-                } });
-              } catch (e) {
-                lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable: ${String(e?.message || e).slice(0, 80)}`);
-                continue;
+              let bigBody = null;
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                let r;
+                try {
+                  r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: giChromeHeaders });
+                } catch (e) {
+                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/3): ${String(e?.message || e).slice(0, 80)}`);
+                  await sleep(1500);
+                  continue;
+                }
+                if (r.status === 404) break;
+                if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
+                if (r.status !== 200) {
+                  lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels HTTP ${r.status}`);
+                  await sleep(1500);
+                  continue;
+                }
+                if (r.body.length >= 1e5) {
+                  bigBody = r.body;
+                  break;
+                }
+                lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels Akamai-sampled a ${r.body.length}B stub (attempt ${attempt}/3); ladder retries next search`);
+                await sleep(2e3);
               }
-              if (r.status === 404) continue;
-              if (r.status === 403 || r.status === 429) throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Goibibo hotels edge-blocked (HTTP ${r.status}).`, r.status);
-              if (r.status !== 200) {
-                lastErr = new AcquisitionError("ACCESS_CHALLENGE", `Goibibo hotels HTTP ${r.status}`);
-                continue;
-              }
-              if (r.body.length < 500) {
-                lastErr = new AcquisitionError("ACCESS_CHALLENGE", 'Goibibo hotels returned the 8-byte Akamai stub ("200 - OK") for this IP \u2014 path-scoped gate; retries each search');
-                continue;
-              }
-              const rows = parseGoibiboHotelsSsr(r.body);
+              if (!bigBody) continue;
+              const st = parseGoibiboHotelSsrState(bigBody);
+              let rows = st.rows;
+              if (!rows.length) rows = parseGoibiboHotelsSsr(bigBody);
               if (!rows.length) {
-                lastErr = new AcquisitionError("EMPTY_RESPONSE", `Goibibo hotel page reached (${r.body.length} bytes) but carried no parseable hotel listings`);
+                lastErr = new AcquisitionError("EMPTY_RESPONSE", `Goibibo hotel page reached (${bigBody.length} bytes) but carried no parseable hotel listings`);
                 continue;
               }
               rows.sort((a, b) => a.price - b.price);
+              const dateLabel = st.checkIn ? ` for ${st.checkIn} \u2192 ${st.checkOut || ""}` : "";
               const offers = [];
               for (const h of rows.slice(0, 40)) {
                 offers.push(newRawItem(ctx.source, {
                   title: h.name,
                   seller: "Goibibo",
-                  sellerUrl: url,
+                  sellerUrl: h.url || url,
                   // redirect only to the site that owns the price
                   currency: "INR",
                   price: h.price,
@@ -4883,8 +5193,8 @@ var init_hotels = __esm({
                     rating: h.rating !== void 0 ? String(h.rating) : "",
                     locality: h.locality || "",
                     city,
-                    price_basis: "per night for 1 room (page picks its own service date)",
-                    data_note: "Live nightly rates from Goibibo hotel search results (SEO page)"
+                    price_basis: `per night for 1 room (page's own service date${dateLabel ? ": " + dateLabel.trim() : " picked by Goibibo"})`,
+                    data_note: `Live nightly rates from Goibibo hotel search results (SEO page${st.hotelCount ? `, ${st.hotelCount} hotels in city` : ""})`
                   },
                   evidence: {
                     sourceUrl: url,
@@ -6289,13 +6599,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num4(v);
+    f.stops = num5(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num4(v);
+    const n = num5(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -6337,7 +6647,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num4(pick2(o, FARE_KEYS));
+    const fare = num5(pick2(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -6501,12 +6811,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num4, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num5, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num4 = (v) => {
+    num5 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -16429,9 +16739,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num5(p.pricing?.discount?.prim_price?.sp);
+      const sp = num6(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num5(p.pricing?.discount?.mrp);
+      const mrp = num6(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -16467,11 +16777,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num5;
+var num6;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num5 = (v) => {
+    num6 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -18247,7 +18557,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num6 = (key) => {
+  const num7 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -18258,8 +18568,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num6("servicecount")) || 0,
-    operators: field("operators") || num6("operators") || "",
+    servicecount: Number(num7("servicecount")) || 0,
+    operators: field("operators") || num7("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -28123,7 +28433,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num6 = (v) => {
+    const num7 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -28134,8 +28444,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num6(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num6(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num7(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num7(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
