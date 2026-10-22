@@ -89,7 +89,7 @@ test('xiaomi: dedupes by product id, skips unpriced entries, caps at 30, survive
   ];
   const items = parseXiaomiSearch(xiaomiBody(products), src, 'url');
   assert.equal(items.length, 30);
-  assert.ok(items.every((x) => Number.isFinite(x.price) && x.price > 0));
+  assert.ok(items.every((x) => Number.isFinite(x.price!) && x.price! > 0));
   const ids = items.map((x) => x.identifiers?.sku);
   assert.equal(new Set(ids).size, 30);
   // out-of-stock flag respected

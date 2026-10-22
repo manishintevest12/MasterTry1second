@@ -2437,6 +2437,255 @@ var init_xiaomi = __esm({
   }
 });
 
+// server/workers/parsers/realme.ts
+function num2(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : void 0;
+}
+function parseRealmeSearch(rawBody, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  if (root?.code !== 200) return [];
+  const recs = Array.isArray(root?.data?.records) ? root.data.records : [];
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const r of recs) {
+    const name = String(r?.spuName || "").trim();
+    const sku = String(r?.skuId || r?.spuId || "");
+    if (!name || !sku || seen.has(sku)) continue;
+    if (r?.isPricePendingDisplay) continue;
+    const price = num2(r?.currentPrice) ?? num2(r?.useCouponPrice);
+    if (!price) continue;
+    seen.add(sku);
+    const mrp = num2(r?.mrpPrice) ?? num2(r?.originalPrice);
+    const hero = /^https?:\/\//.test(String(r?.overviewUrl || "")) ? String(r.overviewUrl) : "";
+    const inStock = r?.stockStatus === true && r?.saleStatus !== false;
+    const rating = num2(r?.reviewsScoreAvg);
+    const reviews = num2(r?.reviewsTotalNum);
+    const url = `https://buy.realme.com/in/goods/${sku}`;
+    const brand = /narzo/i.test(name) ? "Realme (Narzo)" : /^realme/i.test(name) ? "Realme" : "Realme";
+    const category = String(r?.productCategoryCode || "");
+    items.push(newRawItem(source, {
+      title: name.slice(0, 200),
+      brand,
+      model: String(r?.spuId || sku),
+      price,
+      listPrice: mrp && mrp > price ? mrp : void 0,
+      currency: "INR",
+      seller: "Realme (realme.com)",
+      sellerUrl: url,
+      availability: inStock ? "in_stock" : "out_of_stock",
+      attributes: {
+        brand,
+        image: hero,
+        image_urls: "",
+        category,
+        in_stock: inStock ? "true" : "false",
+        ...reviews ? { review_count: String(Math.round(reviews)) } : {},
+        ...rating ? { rating: String(Math.round(rating * 10) / 10) } : {},
+        ...r?.tag ? { badge: String(r.tag).slice(0, 40) } : {},
+        data_note: `Live prices from Realme India search API (api.realme.com), observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}. Gallery unavailable browserless: goods-detail API needs session auth \u2014 hero image only.`
+      },
+      identifiers: { sku },
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "image", "url", "stock", "rating"] }
+    }));
+    if (items.length >= 30) break;
+  }
+  return items;
+}
+var init_realme = __esm({
+  "server/workers/parsers/realme.ts"() {
+    init_contract();
+  }
+});
+
+// server/workers/parsers/oppo.ts
+function num3(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : void 0;
+}
+function parseOppoSearch(html) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  let idx = html.indexOf("buyLink");
+  while (idx !== -1 && out.length < 40) {
+    const start2 = walkBackToObject(html, idx);
+    if (start2 !== -1) {
+      const obj = scanObject(html, start2);
+      if (obj && typeof obj.buyLink === "string" && /^https?:/.test(obj.buyLink)) {
+        const title = String(obj.title || "").trim();
+        const key = String(obj.buyLink);
+        if (title && !seen.has(key)) {
+          seen.add(key);
+          let img = String(obj.image || "");
+          if (img && !/^https?:/.test(img)) img = img.startsWith("/") ? `https://www.oppo.com${img}` : `https://www.oppo.com/${img}`;
+          out.push({ title, buyLink: key, image: img, tag: String(obj.tag || "") });
+        }
+      }
+    }
+    idx = html.indexOf("buyLink", idx + 7);
+  }
+  return out;
+}
+function walkBackToObject(s, i) {
+  let depth = 0;
+  let j = i;
+  while (j > 0) {
+    const c = s[j];
+    if (c === "}") depth += 1;
+    else if (c === "{") {
+      if (depth === 0) return j;
+      depth -= 1;
+    }
+    j -= 1;
+  }
+  return -1;
+}
+function scanObject(s, start2) {
+  const end = findObjectEnd(s, start2);
+  if (end === -1) return null;
+  const body = s.slice(start2, end + 1);
+  const out = {};
+  const re = /"([A-Za-z0-9_]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while (m = re.exec(body)) out[m[1]] = m[2];
+  return Object.keys(out).length ? out : null;
+}
+function findObjectEnd(s, start2) {
+  let depth = 0;
+  for (let k = start2; k < s.length && k < start2 + 2e4; k++) {
+    const c = s[k];
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) return k;
+    }
+  }
+  return -1;
+}
+function parseOppoPdp(html) {
+  const variants = [];
+  const seenSku = /* @__PURE__ */ new Set();
+  let idx = html.indexOf('"priceCurrency"');
+  let steps = 0;
+  while (idx !== -1 && variants.length < 20 && steps < 120) {
+    steps += 1;
+    let start2 = walkBackToObject(html, idx);
+    let v = null;
+    while (start2 !== -1) {
+      const end = findObjectEnd(html, start2);
+      if (end === -1) break;
+      const body = html.slice(start2, end + 1);
+      if (body.includes('"sku"') && body.includes('"priceCurrency"')) {
+        v = extractVariant(body);
+        break;
+      }
+      start2 = walkBackToObject(html, start2 - 1);
+    }
+    if (v && !seenSku.has(v.sku)) {
+      seenSku.add(v.sku);
+      variants.push(v);
+    }
+    idx = html.indexOf('"priceCurrency"', idx + 15);
+  }
+  return variants;
+}
+function extractVariant(body) {
+  const priceM = /"offers"\s*:\s*\{[^{}]*?"price"\s*:\s*"([0-9.]+)"/.exec(body);
+  const price = num3(priceM?.[1]);
+  if (!price) return null;
+  const listM = /"listPrice"\s*:\s*\{\s*[^{}]*?"price"\s*:\s*"([0-9.]+)"/.exec(body);
+  const skuM = /"sku"\s*:\s*"([0-9A-Za-z-]+)"/.exec(body);
+  const nameM = /"name"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+  const availM = /"availability"\s*:\s*"([^"]+)"/.exec(body);
+  const colorM = /"color"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+  const memM = /"memory"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+  const storM = /"storageCapacity"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+  const modelM = /"model"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(body);
+  const images = [];
+  const imgRe = /"image"\s*:\s*\[([\s\S]*?)\]/.exec(body);
+  if (imgRe) {
+    for (const u of imgRe[1].match(/https?:\/\/[^"',\s]+/g) || []) {
+      if (!images.includes(u)) images.push(u);
+      if (images.length >= 6) break;
+    }
+  }
+  const name = (nameM?.[1] || "").trim();
+  if (!name) return null;
+  return {
+    name,
+    sku: skuM?.[1] || `${name}-${colorM?.[1] || ""}`,
+    price,
+    listPrice: num3(listM?.[1]),
+    inStock: (availM?.[1] || "").includes("InStock"),
+    images,
+    color: colorM?.[1] || void 0,
+    memory: memM?.[1] || void 0,
+    storage: storM?.[1],
+    model: modelM?.[1],
+    variantCount: 1
+  };
+}
+function extractOppoProsePrice(html) {
+  const indian = (raw) => Number(raw.replace(/,/g, ""));
+  const pats = [
+    /is ₹([0-9][0-9,]{3,9}) in (?:a|an) [A-Za-z ]{0,30}configuration/,
+    /Priced from ₹([0-9][0-9,]{3,9})/
+  ];
+  for (const re of pats) {
+    const m = re.exec(html);
+    if (m) {
+      const price = indian(m[1]);
+      if (Number.isFinite(price) && price >= 1e3) {
+        return { price, matched: m[0].slice(0, 120) };
+      }
+    }
+  }
+  return null;
+}
+function oppoItem(source, pageUrl, prod, v, totalVariants, dataNoteOverride) {
+  const gallery = [];
+  if (/^https?:/.test(prod.image) && !gallery.includes(prod.image)) gallery.push(prod.image);
+  for (const u of v.images) {
+    if (/^https?:/.test(u) && !gallery.includes(u)) gallery.push(u);
+    if (gallery.length >= 6) break;
+  }
+  const model = v.model || "";
+  return newRawItem(source, {
+    title: prod.title.slice(0, 200),
+    brand: "Oppo",
+    model,
+    price: v.price,
+    listPrice: v.listPrice && v.listPrice > v.price ? v.listPrice : void 0,
+    currency: "INR",
+    seller: "Oppo (oppo.com/in)",
+    sellerUrl: prod.buyLink,
+    availability: v.inStock ? "in_stock" : "out_of_stock",
+    attributes: {
+      brand: "Oppo",
+      image: gallery[0] || "",
+      image_urls: gallery.length > 1 ? gallery.join("|") : "",
+      category: "electronics",
+      in_stock: v.inStock ? "true" : "false",
+      ...v.color ? { variant: v.color } : {},
+      ...v.storage ? { storage: v.storage } : {},
+      ...totalVariants > 1 ? { variant_count: String(totalVariants) } : {},
+      data_note: dataNoteOverride || `Live price from Oppo India PDP schema.org offers (search SSR + product page), observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+    },
+    identifiers: { sku: v.sku },
+    evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "image", "url", "stock", "pdp_gallery"] }
+  });
+}
+var init_oppo = __esm({
+  "server/workers/parsers/oppo.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/jiomart.ts
 function parseJiomart(body, source, pageUrl) {
   let root;
@@ -2642,6 +2891,8 @@ var init_ecommerce = __esm({
     init_nykaa();
     init_croma();
     init_xiaomi();
+    init_realme();
+    init_oppo();
     init_jiomart();
     init_relianceDigital();
     import_node_crypto = require("node:crypto");
@@ -2914,6 +3165,97 @@ var init_ecommerce = __esm({
               } catch {
               }
             }
+            return items;
+          }
+        },
+        {
+          // Realme India (owner request 22 Oct) LIVE: the realme.com NUXT search page
+          // renders results client-side from an unauthenticated JSON POST cracked from
+          // search bundle DPzNpKbK.js: POST api.realme.com/in/product/info/search with
+          // {keyWords,pageNum,pageSize:20,labelType:1,sortType:1,categoryParams:[]}.
+          // Records carry live price/MRP/stock/rating + hero image; PDP deeplink is
+          // buy.realme.com/in/goods/<skuId>. Honest limit: the goods-detail API is
+          // 401 session-gated, so no gallery beyond the hero (no fabrication).
+          sourceId: "w_ecom_realme",
+          name: "Ecom worker: Realme India (api.realme.com search)",
+          priority: 18,
+          maxPerMinute: 8,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = "https://api.realme.com/in/product/info/search";
+            const r = await cffiFetch(url, {
+              impersonate: "chrome",
+              timeoutMs: 2e4,
+              method: "POST",
+              body: JSON.stringify({ keyWords: term, pageNum: 1, pageSize: 20, labelType: 1, sortType: 1, categoryParams: [] }),
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                Origin: "https://www.realme.com",
+                Referer: `https://www.realme.com/in/search?q=${encodeURIComponent(term)}`
+              }
+            });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Realme API blocked: HTTP ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Realme API HTTP ${r.status}`, r.status);
+            const items = parseRealmeSearch(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Realme search API returned no parseable products");
+            return items;
+          }
+        },
+        {
+          // Oppo India (owner request 22 Oct) LIVE: the /in/search page is SSR'd by
+          // "Venus-Render" and embeds product cards (title, buyLink, image) as JSON in
+          // script blocks — but with NO prices. Stage 2 fetches each product's PDP,
+          // which embeds per-variant schema.org objects (price, listPrice, InStock,
+          // 4-shot colour galleries). Search gives up to 40 cards; the first 6 with a
+          // buyLink get PDP enrichment (900ms spacing, soft-fail like Croma).
+          sourceId: "w_ecom_oppo",
+          name: "Ecom worker: Oppo India (SSR search + PDP schema.org)",
+          priority: 18,
+          maxPerMinute: 8,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const searchUrl = `https://www.oppo.com/in/search/?q=${encodeURIComponent(term)}`;
+            const r = await cffiFetch(searchUrl, { impersonate: "chrome", timeoutMs: 2e4 });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Oppo search blocked: HTTP ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Oppo search HTTP ${r.status}`, r.status);
+            const prods = parseOppoSearch(r.body).filter((p) => p.buyLink.includes("/product/"));
+            if (!prods.length) throw new AcquisitionError("EMPTY_RESPONSE", "Oppo search SSR had no buyLink products");
+            const items = [];
+            for (const prod of prods.slice(0, 6)) {
+              try {
+                await new Promise((res) => setTimeout(res, items.length ? 900 : 0));
+                const pdp = await cffiFetch(prod.buyLink, { impersonate: "chrome", timeoutMs: 15e3 });
+                if (pdp.status !== 200) continue;
+                const variants = parseOppoPdp(pdp.body);
+                if (variants.length) {
+                  const pick3 = variants.find((v) => v.inStock) || variants[0];
+                  items.push(oppoItem(ctx.source, searchUrl, prod, pick3, variants.length));
+                  continue;
+                }
+                const prose = extractOppoProsePrice(pdp.body);
+                if (prose) {
+                  items.push(oppoItem(ctx.source, searchUrl, prod, {
+                    name: prod.title,
+                    sku: `prose-${prose.price}`,
+                    price: prose.price,
+                    inStock: true,
+                    images: [],
+                    variantCount: 1
+                  }, 1, `Price from the PDP's own India-price FAQ text (\u201C${prose.matched}\u201D); structured variant prices load via a session-gated buy API`));
+                }
+              } catch {
+              }
+            }
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Oppo PDP enrichment yielded no priced variants");
             return items;
           }
         },
@@ -4243,7 +4585,7 @@ var init_goibiboHotelSsr = __esm({
 });
 
 // server/workers/parsers/mmtHotelLanding.ts
-function num2(v) {
+function num4(v) {
   if (typeof v === "number") return v;
   if (typeof v === "string") {
     const n = Number(v.replace(/[^\d.]/g, ""));
@@ -4313,14 +4655,14 @@ function parseMmtHotelLanding(body) {
         return;
       }
       const name = String(pickFirst2(o, NAME_KEYS3) || "").trim();
-      const price = num2(pickFirst2(o, PRICE_KEYS3));
+      const price = num4(pickFirst2(o, PRICE_KEYS3));
       if (name && Number.isFinite(price) && price >= 100 && price <= 1e7) {
         const key = name.toLowerCase() + "|" + Math.round(price);
         if (!seen.has(key)) {
           seen.add(key);
           let image = String(pickFirst2(o, IMG_KEYS2) || "");
           if (image.startsWith("//")) image = `https:${image}`;
-          const rating = num2(pickFirst2(o, RATING_KEYS3));
+          const rating = num4(pickFirst2(o, RATING_KEYS3));
           out.rows.push({
             name,
             price,
@@ -4425,7 +4767,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num9 = (x) => {
+  const num11 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -4446,17 +4788,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num9(rating.value),
-      ratingCount: num9(rating.count),
-      pricePerNight: num9(pricing.bookingPrice),
-      tax: num9(tax.total_tax),
-      priceInclusive: num9(tax.final_price_with_tax),
-      slashedPrice: num9(pricing.slashedPrice),
-      discountPercentage: num9(pricing.discountPercentage),
+      rating: num11(rating.value),
+      ratingCount: num11(rating.count),
+      pricePerNight: num11(pricing.bookingPrice),
+      tax: num11(tax.total_tax),
+      priceInclusive: num11(tax.final_price_with_tax),
+      slashedPrice: num11(pricing.slashedPrice),
+      discountPercentage: num11(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num9(geo.lat ?? geo.latitude),
-      lon: num9(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num11(geo.lat ?? geo.latitude),
+      lon: num11(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -4531,20 +4873,20 @@ function parseYatraHotels(body) {
       id: String(h.id ?? ""),
       name: String(h.n ?? h.orgName ?? "").trim(),
       slug: typeof h.hsk === "string" ? h.hsk : null,
-      rating: num3(h?.gr?.rating),
-      reviews: num3(h?.gr?.reviews),
+      rating: num5(h?.gr?.rating),
+      reviews: num5(h?.gr?.reviews),
       city: typeof h?.loc?.c === "string" ? h.loc.c : null,
       area: typeof h?.loc?.a === "string" ? h.loc.a : null,
-      lat: num3(h?.loc?.la),
-      lon: num3(h?.loc?.lo),
+      lat: num5(h?.loc?.la),
+      lon: num5(h?.loc?.lo),
       imageUrl: typeof h?.cldImage?.url === "string" ? h.cldImage.url : null,
       categories: Array.isArray(h.ctg) ? h.ctg.filter((x) => typeof x === "string") : [],
-      rackRate: num3(h.r),
-      price: num3(rate.price),
-      basePrice: num3(rate.basePrice),
+      rackRate: num5(h.r),
+      price: num5(rate.price),
+      basePrice: num5(rate.basePrice),
       roomName: typeof rate.roomName === "string" ? rate.roomName : null,
       bookable: rate.bookable !== false,
-      roomsLeft: num3(rate.roomsLeft),
+      roomsLeft: num5(rate.roomsLeft),
       freeCancel: Boolean(rate.freeCancel)
     });
   }
@@ -4603,14 +4945,14 @@ function ddmmyyyy(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
-var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num3;
+var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num5;
 var init_yatraHotels = __esm({
   "server/workers/parsers/yatraHotels.ts"() {
     init_contract();
     YATRA_HOTELS_API = "https://hotel.yatra.com/tgapi/hotels/v1/pageSearch";
     YATRA_HOTELS_API_KEY = "JN9aWyj7hJ1ZrExC7Ozo";
     YATRA_SRP = "https://hotel.yatra.com/nextui/hotel-search/dom/search";
-    num3 = (x) => {
+    num5 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4665,13 +5007,13 @@ function parseEmtHotels(items, links) {
     out.push({
       id,
       name: it.name.trim(),
-      starRating: num4(it?.starRating?.ratingValue),
+      starRating: num6(it?.starRating?.ratingValue),
       area: area?.trim() || null,
       locality: localityPart?.trim() || (typeof addr.addressLocality === "string" ? addr.addressLocality : null),
       region: typeof addr.addressRegion === "string" ? addr.addressRegion : null,
-      latitude: num4(it?.geo?.latitude),
-      longitude: num4(it?.geo?.longitude),
-      price: num4(it.priceRange),
+      latitude: num6(it?.geo?.latitude),
+      longitude: num6(it?.geo?.longitude),
+      price: num6(it.priceRange),
       imageUrl: image,
       deeplink: id && links.get(id) || null,
       checkInTime: typeof it.checkInTime === "string" ? it.checkInTime : null,
@@ -4721,13 +5063,13 @@ function ddmmyyyyDash(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
-var EMT_HOTELS_WEB, num4;
+var EMT_HOTELS_WEB, num6;
 var init_emtHotels = __esm({
   "server/workers/parsers/emtHotels.ts"() {
     init_contract();
     init_cityAlias();
     EMT_HOTELS_WEB = "https://www.easemytrip.com";
-    num4 = (x) => {
+    num6 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4771,16 +5113,16 @@ function parseSaffronVillas(data) {
       id: String(v.id ?? ""),
       title: v.title.trim(),
       location: typeof v.location === "string" ? v.location : null,
-      latitude: num5(v.latitude),
-      longitude: num5(v.longitude),
-      pricePerNight: num5(v.price_per_night),
-      perNightAfterDiscount: num5(v.per_night_price_after_discount),
-      totalWithTax: num5(v.total_amount_with_tax),
-      baseWithTax: num5(v.base_price_with_tax),
-      rating: num5(v.rating),
-      reviews: num5(v.total_reviews),
-      capacity: num5(v.max_capacity ?? v.capacity),
-      bedrooms: num5(v.bedrooms),
+      latitude: num7(v.latitude),
+      longitude: num7(v.longitude),
+      pricePerNight: num7(v.price_per_night),
+      perNightAfterDiscount: num7(v.per_night_price_after_discount),
+      totalWithTax: num7(v.total_amount_with_tax),
+      baseWithTax: num7(v.base_price_with_tax),
+      rating: num7(v.rating),
+      reviews: num7(v.total_reviews),
+      capacity: num7(v.max_capacity ?? v.capacity),
+      bedrooms: num7(v.bedrooms),
       signature: typeof v.signature === "string" ? v.signature : null,
       available: v.is_available !== false,
       imageIds: Array.isArray(v.images) ? v.images.filter((x) => typeof x === "string").slice(0, 6) : [],
@@ -4826,14 +5168,14 @@ function parseSaffronOffers(villas, source, city) {
   }
   return out;
 }
-var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num5;
+var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num7;
 var init_saffronStays = __esm({
   "server/workers/parsers/saffronStays.ts"() {
     init_contract();
     SAFFRON_API = "https://ecapi4.saffronstays.com/api/search-advance";
     SAFFRON_IMG_BASE = "https://ik.imagekit.io/5tgxhsqev/saffronstays-media";
     SAFFRON_WEB = "https://www.saffronstays.com";
-    num5 = (x) => {
+    num7 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -6833,13 +7175,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num6(v);
+    f.stops = num8(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num6(v);
+    const n = num8(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -6881,7 +7223,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num6(pick2(o, FARE_KEYS));
+    const fare = num8(pick2(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -7045,12 +7387,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num6, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num8, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num6 = (v) => {
+    num8 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -16973,9 +17315,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num7(p.pricing?.discount?.prim_price?.sp);
+      const sp = num9(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num7(p.pricing?.discount?.mrp);
+      const mrp = num9(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -17011,11 +17353,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num7;
+var num9;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num7 = (v) => {
+    num9 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -18791,7 +19133,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num9 = (key) => {
+  const num11 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -18802,8 +19144,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num9("servicecount")) || 0,
-    operators: field("operators") || num9("operators") || "",
+    servicecount: Number(num11("servicecount")) || 0,
+    operators: field("operators") || num11("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -25328,7 +25670,7 @@ async function resolveMerchantLogo(row) {
 function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
-  const dv = num8(row.discount_value);
+  const dv = num10(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
   const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
@@ -25376,7 +25718,7 @@ async function fetchAffiliateRows(limit) {
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
       []
     );
-    rows.sort((a, b) => (num8(b.discount_value) ?? 0) - (num8(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    rows.sort((a, b) => (num10(b.discount_value) ?? 0) - (num10(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
   } catch (e) {
     log.debug("Showcase", "affiliate pool query failed", { error: String(e).slice(0, 100) });
@@ -25567,7 +25909,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num8, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
+var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -25575,7 +25917,7 @@ var init_showcase = __esm({
     init_deeplink();
     init_merchantCrispLogo();
     init_merchantLogos();
-    num8 = (v) => {
+    num10 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -25586,8 +25928,8 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf = (r) => num8(r.effective_price) ?? num8(r.mandatory_total) ?? 0;
-    mrpOf = (r) => num8(r.list_price) ?? 0;
+    priceOf = (r) => num10(r.effective_price) ?? num10(r.mandatory_total) ?? 0;
+    mrpOf = (r) => num10(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
       return m && m > p ? (m - p) / m : 0;
@@ -29552,7 +29894,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num9 = (v) => {
+    const num11 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -29563,8 +29905,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num9(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num9(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num11(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num11(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,

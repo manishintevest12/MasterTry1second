@@ -4,6 +4,7 @@
  * SSR markup/embedded state); Open Library stays as the existing structured source.
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
+import type { RawSourceItem } from '../../types';
 import { parseAmazonIn, extractAmazonGallery } from '../parsers/amazonIn';
 import { parseFlipkart } from '../parsers/flipkart';
 import { parseMyntra } from '../parsers/myntra';
@@ -12,6 +13,8 @@ import { parseTataCliq } from '../parsers/tatacliq';
 import { parseNykaa } from '../parsers/nykaa';
 import { parseCromaSearch, extractCromaGallery, mergeCromaGallery } from '../parsers/croma';
 import { parseXiaomiSearch } from '../parsers/xiaomi';
+import { parseRealmeSearch } from '../parsers/realme';
+import { parseOppoSearch, parseOppoPdp, oppoItem, extractOppoProsePrice } from '../parsers/oppo';
 import { parseJiomart } from '../parsers/jiomart';
 import { parseRelianceDigital } from '../parsers/relianceDigital';
 import { createCipheriv } from 'node:crypto';
@@ -313,6 +316,94 @@ export const ecommerceWorker: VerticalWorker = {
             }
           } catch { /* soft-fail: keep search hero image */ }
         }
+        return items;
+      },
+    },
+    {
+      // Realme India (owner request 22 Oct) LIVE: the realme.com NUXT search page
+      // renders results client-side from an unauthenticated JSON POST cracked from
+      // search bundle DPzNpKbK.js: POST api.realme.com/in/product/info/search with
+      // {keyWords,pageNum,pageSize:20,labelType:1,sortType:1,categoryParams:[]}.
+      // Records carry live price/MRP/stock/rating + hero image; PDP deeplink is
+      // buy.realme.com/in/goods/<skuId>. Honest limit: the goods-detail API is
+      // 401 session-gated, so no gallery beyond the hero (no fabrication).
+      sourceId: 'w_ecom_realme',
+      name: 'Ecom worker: Realme India (api.realme.com search)',
+      priority: 18,
+      maxPerMinute: 8,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url = 'https://api.realme.com/in/product/info/search';
+        const r = await cffiFetch(url, {
+          impersonate: 'chrome',
+          timeoutMs: 20_000,
+          method: 'POST',
+          body: JSON.stringify({ keyWords: term, pageNum: 1, pageSize: 20, labelType: 1, sortType: 1, categoryParams: [] }),
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            Origin: 'https://www.realme.com',
+            Referer: `https://www.realme.com/in/search?q=${encodeURIComponent(term)}`,
+          },
+        });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Realme API blocked: HTTP ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Realme API HTTP ${r.status}`, r.status);
+        const items = parseRealmeSearch(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Realme search API returned no parseable products');
+        return items;
+      },
+    },
+    {
+      // Oppo India (owner request 22 Oct) LIVE: the /in/search page is SSR'd by
+      // "Venus-Render" and embeds product cards (title, buyLink, image) as JSON in
+      // script blocks — but with NO prices. Stage 2 fetches each product's PDP,
+      // which embeds per-variant schema.org objects (price, listPrice, InStock,
+      // 4-shot colour galleries). Search gives up to 40 cards; the first 6 with a
+      // buyLink get PDP enrichment (900ms spacing, soft-fail like Croma).
+      sourceId: 'w_ecom_oppo',
+      name: 'Ecom worker: Oppo India (SSR search + PDP schema.org)',
+      priority: 18,
+      maxPerMinute: 8,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const searchUrl = `https://www.oppo.com/in/search/?q=${encodeURIComponent(term)}`;
+        const r = await cffiFetch(searchUrl, { impersonate: 'chrome', timeoutMs: 20_000 });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Oppo search blocked: HTTP ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Oppo search HTTP ${r.status}`, r.status);
+        const prods = parseOppoSearch(r.body).filter((p) => p.buyLink.includes('/product/'));
+        if (!prods.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Oppo search SSR had no buyLink products');
+        const items: RawSourceItem[] = [];
+        for (const prod of prods.slice(0, 6)) {
+          try {
+            await new Promise((res) => setTimeout(res, items.length ? 900 : 0));
+            const pdp = await cffiFetch(prod.buyLink, { impersonate: 'chrome', timeoutMs: 15_000 });
+            if (pdp.status !== 200) continue;
+            const variants = parseOppoPdp(pdp.body);
+            if (variants.length) {
+              const pick = variants.find((v) => v.inStock) || variants[0];
+              items.push(oppoItem(ctx.source, searchUrl, prod, pick, variants.length));
+              continue;
+            }
+            // Fallback (Find X9 Ultra/X9s): no schema.org variants, but the PDP
+            // FAQ prose states the genuine India price — use it, honestly labelled.
+            const prose = extractOppoProsePrice(pdp.body);
+            if (prose) {
+              items.push(oppoItem(ctx.source, searchUrl, prod, {
+                name: prod.title, sku: `prose-${prose.price}`, price: prose.price,
+                inStock: true, images: [], variantCount: 1,
+              }, 1, `Price from the PDP's own India-price FAQ text (\u201c${prose.matched}\u201d); structured variant prices load via a session-gated buy API`));
+            }
+          } catch { /* soft-fail: unpriced card is skipped, others continue */ }
+        }
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Oppo PDP enrichment yielded no priced variants');
         return items;
       },
     },

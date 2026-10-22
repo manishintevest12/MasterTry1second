@@ -376,6 +376,39 @@ tracked as future work, no mock substitutes.
 - **SaffronStays villas** [saffronStays.ts] — LIVE (17 Oct): POST https://ecapi4.saffronstays.com/api/search-advance (no auth), body {location:'<City>',page:1,no_of_guest:2,no_of_room:1,suitables:[],amenities:[],sort_by:'',signature:'',min_price:0,max_price:2500000,pocket:false,same_day:false,non_shared:false,new_home:false,top_rated:false,lat:null,long:null,mint_fresh:false,is_agent:'',distance:125}. Response {data[],total}: title, price_per_night, per_night_price_after_discount, total_amount_with_tax, rating, total_reviews, location, lat/lon, images (ids), seo_url, max_capacity, bedrooms, signature, is_available. Images: https://ik.imagekit.io/5tgxhsqev/saffronstays-media/<id>?tr=w-640,q-75. Deeplink /villas/<seo_url> (verified 200). Captured via Playwright CDP, replayed browserless curl_cffi. Verified live: Goa 9 villas/page of 62 (Araqila 28800/night), Karjat 9 (9363), Alibaug 9 (8024). Worker w_hotels_saffronstays priority 10.
 - **OYO hotels** [oyoHotels.ts] — LIVE (17 Oct): city SEO listing pages https://www.oyorooms.com/hotels-in-<city>/?checkin=DD/MM/YYYY&checkout=DD/MM/YYYY&guests=2&rooms=1 are FULL SSR — window.__PRELOADED_STATE__ JSON carries listing.hotels[] with real per-night bookingPrice (tax-exclusive; taxInfo.final_price_with_tax = inclusive total), slashedPrice, discount %, rating {value,count}, hotel_images[] CDN gallery, /<id>/ property deeplink. No auth, no WAF, curl_cffi chrome. Sold-out (isSoldOut) and price-less rows never published. Verified live: Goa 20 offers (cheapest ₹1084, Sand Castles Miramar ₹1410+₹149 tax), Indore 20 (₹721), New Delhi 20 (₹612). Worker w_hotels_oyo priority 8.
 
+## E-commerce — Oppo + Realme LIVE BROWSERLESS (22 Oct)
+- **Realme** [realme.ts] — LIVE: the NUXT search page (www.realme.com/in/search) renders
+  results client-side from an UNAUTHENTICATED JSON POST cracked from bundle DPzNpKbK.js:
+  `POST https://api.realme.com/in/product/info/search` with
+  `{"keyWords":<q>,"pageNum":1,"pageSize":20,"labelType":1,"sortType":1,"categoryParams":[]}`
+  (+ Origin/Referer headers). data.records[] carry spuName, skuId (PDP =
+  buy.realme.com/in/goods/<skuId>), currentPrice, mrpPrice, stockStatus, saleStatus,
+  reviewsScoreAvg/reviewsTotalNum, productCategoryCode, overviewUrl (hero image).
+  Honest limit: the goods-detail API (api.realme.com/in/goods/detail etc.) returns
+  401 err.common.user.unauthorized without the buy-SPA session token, so galleries are
+  hero-only (image_urls stays empty — no fabrication). isPricePendingDisplay rows are
+  skipped; useCouponPrice is the price fallback. Narzo gets "Realme (Narzo)" branding.
+  Worker w_ecom_realme, priority 18, maxPerMinute 8. Verified live 22 Oct: 20 offers.
+- **Oppo** [oppo.ts] — LIVE (two-stage): /in/search/?q=<term> is SSR'd ("Venus-Render")
+  and embeds product cards as JSON objects (title, buyLink, image — every buyLink object
+  is a hit; relative /content/dam images upgraded to https://www.oppo.com). The SSR search
+  carries NO prices, so up to 6 cards get PDP enrichment (900ms spacing, soft-fail):
+  - Phone PDPs embed per-variant schema.org objects — parseOppoPdp climbs from every
+    offers.priceCurrency occurrence to the enclosing object that has BOTH "sku" and
+    "priceCurrency" (walking straight back stops at the inner Offer{}, and matching on
+    "name" wrongly accepts the Offer itself because seller{} also has a name — the sku
+    anchor is the fix). Variant fields: offers.price, offers.listPrice.price,
+    availability InStock, image[] (4-shot colour gallery), color, storageCapacity, model.
+    GOTCHA: the JSON is pretty-printed — the image-array regex needs [\s\S] (s flag).
+  - Find X9 Ultra / X9s PDPs load prices via a session-gated buy XHR, but their FAQ prose
+    states the genuine India price ("...is ₹1,69,999 in a single India configuration" /
+    "Priced from ₹79,999 ...") — extractOppoProsePrice() uses it, honestly labelled in
+    data_note. F35/F35 Pro/Pad/Enco PDPs expose no browserless price and are skipped
+    honestly (no rows fabricated).
+  Worker w_ecom_oppo, priority 18, maxPerMinute 8. Verified live 22 Oct: Find X9 Ultra
+  ₹1,69,999 (prose), Find X9s ₹79,999 (prose), Reno16 5G ₹66,999/MRP ₹89,999 (5-image
+  gallery, 5 variants), Reno16c 5G ₹52,999/MRP ₹74,999 (8 variants).
+
 ## Hotels — Goibibo SEO city pages LIVE BROWSERLESS (21 Oct, supersedes the gated-SSR verdict)
 - `GET https://www.goibibo.com/hotels/hotels-in-<city>[-ct]/` with the FULL real-Chrome
   header set (sec-ch-ua v130, Sec-Fetch-Site none/Mode navigate/User ?1/Dest document,
