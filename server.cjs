@@ -4191,7 +4191,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num7 = (x) => {
+  const num8 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -4212,17 +4212,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num7(rating.value),
-      ratingCount: num7(rating.count),
-      pricePerNight: num7(pricing.bookingPrice),
-      tax: num7(tax.total_tax),
-      priceInclusive: num7(tax.final_price_with_tax),
-      slashedPrice: num7(pricing.slashedPrice),
-      discountPercentage: num7(pricing.discountPercentage),
+      rating: num8(rating.value),
+      ratingCount: num8(rating.count),
+      pricePerNight: num8(pricing.bookingPrice),
+      tax: num8(tax.total_tax),
+      priceInclusive: num8(tax.final_price_with_tax),
+      slashedPrice: num8(pricing.slashedPrice),
+      discountPercentage: num8(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num7(geo.lat ?? geo.latitude),
-      lon: num7(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num8(geo.lat ?? geo.latitude),
+      lon: num8(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -16636,8 +16636,8 @@ ${v}\r
   };
   async function mintAwsWafToken(url, opts = {}) {
     const host = new URL(url).hostname;
-    const cached = tokenCache.get(host);
-    if (cached && Date.now() - cached.mintedAt < CACHE_TTL_MS) return cached.token;
+    const cached2 = tokenCache.get(host);
+    if (cached2 && Date.now() - cached2.mintedAt < CACHE_TTL_MS) return cached2.token;
     const t0 = Date.now();
     const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" } });
     const html = r.body || "";
@@ -18557,7 +18557,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num7 = (key) => {
+  const num8 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -18568,8 +18568,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num7("servicecount")) || 0,
-    operators: field("operators") || num7("operators") || "",
+    servicecount: Number(num8("servicecount")) || 0,
+    operators: field("operators") || num8("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -24737,6 +24737,249 @@ var init_spendLens = __esm({
   }
 });
 
+// server/home/showcase.ts
+function imageFromAttributes(raw) {
+  if (!raw) return null;
+  let a = raw;
+  if (typeof a === "string") {
+    try {
+      a = JSON.parse(a);
+    } catch {
+      return null;
+    }
+  }
+  const single = a?.image_url ?? a?.imageUrl ?? a?.image;
+  if (typeof single === "string" && single.startsWith("https://")) return single;
+  const gallery = a?.image_urls ?? a?.imageUrls;
+  if (Array.isArray(gallery)) {
+    const hit = gallery.find((u) => typeof u === "string" && u.startsWith("https://"));
+    if (hit) return hit;
+  }
+  return null;
+}
+function ratingFromAttributes(raw) {
+  if (!raw) return null;
+  let a = raw;
+  if (typeof a === "string") {
+    try {
+      a = JSON.parse(a);
+    } catch {
+      return null;
+    }
+  }
+  for (const k of ["rating", "rating_value", "average_rating", "stars"]) {
+    const v = a?.[k];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 5) return Math.round(v * 10) / 10;
+    if (typeof v === "string" && v.trim() !== "") {
+      const n = parseFloat(v.replace(/[^0-9.]/g, ""));
+      if (Number.isFinite(n) && n > 0 && n <= 5) return Math.round(n * 10) / 10;
+    }
+  }
+  return null;
+}
+function itemFromOffer(row) {
+  const url = row.seller_url || null;
+  const price = num7(row.effective_price) ?? num7(row.mandatory_total);
+  const mrp = num7(row.list_price);
+  if (!url || !price) return null;
+  let pct = null;
+  if (mrp && mrp > price) pct = Math.round((mrp - price) / mrp * 100);
+  const merchant = (row.vendor || row.seller || "Store").slice(0, 40);
+  return {
+    id: `off-${row.id}`,
+    title: String(row.title || "").slice(0, 90),
+    merchant,
+    merchantLogo: null,
+    image: imageFromAttributes(row.attributes),
+    price,
+    mrp: mrp && mrp > price ? mrp : null,
+    discountPct: pct,
+    rating: ratingFromAttributes(row.attributes),
+    badge: pct && pct >= 1 ? `${pct}% OFF` : null,
+    url: createMaskingPointer(url, { offerId: `showcase-off-${row.id}` })
+  };
+}
+function itemFromAffiliate(row) {
+  const url = row.affiliate_url || row.original_url;
+  if (!url) return null;
+  const dv = num7(row.discount_value);
+  const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
+  return {
+    id: `aff-${row.network_source}-${row.network_offer_id}`,
+    title: String(row.title || "").slice(0, 90),
+    merchant: String(row.merchant_name || "Store").slice(0, 40),
+    merchantLogo: row.merchant_logo || null,
+    image: row.merchant_logo || null,
+    price: null,
+    mrp: null,
+    discountPct: row.discount_type === "percent" ? dv : null,
+    rating: null,
+    badge,
+    url: createMaskingPointer(url, { offerId: `showcase-aff-${row.id}` })
+  };
+}
+async function bestHotelPartner() {
+  const store2 = getStore();
+  try {
+    const rows = await store2.query(
+      `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
+              discount_value, discount_type, affiliate_url, original_url, categories, commission_note
+       FROM affiliate_offers
+       WHERE status = 'active' AND (
+         merchant_name LIKE '%makemytrip%' OR merchant_name LIKE '%goibibo%' OR merchant_name LIKE '%yatra%'
+         OR merchant_name LIKE '%cleartrip%' OR merchant_name LIKE '%easemytrip%' OR merchant_name LIKE '%agoda%'
+         OR merchant_name LIKE '%booking%' OR merchant_name LIKE '%oyo%' OR merchant_name LIKE '%fabhotels%'
+       ) LIMIT 400`,
+      []
+    );
+    let best = null;
+    for (const r of rows) {
+      const m = /([0-9]+(?:\.[0-9]+)?)\s*%/.exec(r.commission_note || "");
+      if (!m) continue;
+      const pct = parseFloat(m[1]);
+      if (!best || pct > best.pct) best = { name: r.merchant_name, pct };
+    }
+    return best?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+async function queryOffers(where, params, limit) {
+  const store2 = getStore();
+  try {
+    const rows = await store2.query(
+      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url,
+              list_price, mandatory_total, effective_price, fetched_at
+       FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
+      [...params, limit]
+    );
+    const seen = /* @__PURE__ */ new Set();
+    const items = [];
+    for (const row of rows) {
+      const item = itemFromOffer(row);
+      if (!item || !item.image) continue;
+      const key = `${item.merchant}|${item.title.slice(0, 40).toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push(item);
+      if (items.length >= 12) break;
+    }
+    return items;
+  } catch (e) {
+    log.debug("Showcase", "offers query failed", { error: String(e).slice(0, 100) });
+    return [];
+  }
+}
+async function queryAffiliate(where, params, limit) {
+  const store2 = getStore();
+  try {
+    const rows = await store2.query(
+      `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
+              discount_value, discount_type, affiliate_url, original_url, categories, commission_note
+       FROM affiliate_offers WHERE status = 'active' AND ${where}
+       ORDER BY discount_value DESC, last_seen_at DESC LIMIT ?`,
+      [...params, limit]
+    );
+    const items = [];
+    for (const row of rows) {
+      const item = itemFromAffiliate(row);
+      if (item) items.push(item);
+      if (items.length >= 12) break;
+    }
+    return items;
+  } catch (e) {
+    log.debug("Showcase", "affiliate query failed", { error: String(e).slice(0, 100) });
+    return [];
+  }
+}
+async function buildShowcase() {
+  if (cached && Date.now() - cached.at < SHOWCASE_TTL_MS) return cached.sections;
+  const TECH = "(title REGEXP 'mobile|phone|laptop|headphone|earbud|airdopes|smartwatch|tablet|camera|speaker|television|tv|gaming|console|charger|power bank|ssd|keyboard|mouse' OR brand REGEXP 'apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|hp |asus|acer|xiaomi|realme|vivo|oppo|nothing')";
+  const [picked, couponSpecial, massive, mega, tech, steals, places, cards, partner] = await Promise.all([
+    queryOffers(
+      "vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL AND effective_price IS NOT NULL",
+      [],
+      60
+    ),
+    queryAffiliate("coupon_code IS NOT NULL AND coupon_code != ''", [], 40),
+    queryOffers(
+      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
+       AND list_price IS NOT NULL AND effective_price IS NOT NULL
+       AND list_price > effective_price AND (list_price - effective_price) / list_price >= 0.40
+       ORDER BY (list_price - effective_price) / list_price DESC, fetched_at DESC`,
+      [],
+      40
+    ),
+    queryOffers(
+      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
+       AND list_price IS NOT NULL AND effective_price IS NOT NULL
+       AND list_price - effective_price >= 1000
+       ORDER BY (list_price - effective_price) DESC, fetched_at DESC`,
+      [],
+      40
+    ),
+    queryOffers(
+      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL AND ${TECH}`,
+      [],
+      60
+    ),
+    queryOffers(
+      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
+       AND effective_price <= 999 AND list_price IS NOT NULL AND list_price > effective_price
+       AND (list_price - effective_price) / list_price >= 0.30
+       ORDER BY (list_price - effective_price) / list_price DESC, fetched_at DESC`,
+      [],
+      40
+    ),
+    queryOffers(
+      `vertical = 'hotels' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
+       AND effective_price IS NOT NULL`,
+      [],
+      40
+    ),
+    queryOffers(
+      `vertical = 'creditcards' AND validation_status != 'INVALID'`,
+      [],
+      40
+    ),
+    bestHotelPartner()
+  ]);
+  const sections = [
+    { id: "picked", title: "Picked Just for You", subtitle: "real products, live-acquired prices", items: picked },
+    { id: "special", title: "Special Offers For You", subtitle: "auto-tested coupons from live registries", items: couponSpecial },
+    { id: "massive", title: "Massive Discounts", subtitle: "40%+ off, verified this hour", items: massive },
+    { id: "mega", title: "Mega Savings", subtitle: "the biggest absolute savings right now", items: mega },
+    { id: "tech", title: "Best in Tech & Gadgets", subtitle: "phones, audio, laptops and more", items: tech },
+    { id: "steals", title: "Steals You Can't Ignore", subtitle: "under \u20B9999, heavily discounted", items: steals },
+    {
+      id: "places",
+      title: "Most Visited Places",
+      subtitle: partner ? `live hotel rates via ${partner} \u2014 our best-paying hotel partner` : "live per-night hotel rates, side by side",
+      // Owner rule: hotel section deeplinks go through the best-paying partner.
+      // Prefer rows from that partner; fall back to other honest hotel rows.
+      items: partner ? places.filter((p) => p.merchant.toLowerCase().includes(partner.toLowerCase().split(" ")[0])).concat(places.filter((p) => !p.merchant.toLowerCase().includes(partner.toLowerCase().split(" ")[0]))) : places
+    },
+    { id: "cards", title: "Best Cards For You", subtitle: "fees & rewards, straight from the banks", items: cards }
+  ].filter((s) => s.items.length > 0);
+  cached = { at: Date.now(), sections };
+  return sections;
+}
+var num7, cached, SHOWCASE_TTL_MS;
+var init_showcase = __esm({
+  "server/home/showcase.ts"() {
+    init_db();
+    init_logger();
+    init_deeplink();
+    num7 = (v) => {
+      if (v === null || v === void 0 || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    cached = null;
+    SHOWCASE_TTL_MS = 10 * 60 * 1e3;
+  }
+});
+
 // src/server/catalogueStore.ts
 function saveCatalogueStore(state) {
   try {
@@ -27010,6 +27253,7 @@ var init_routes = __esm({
     init_affiliateNetwork();
     init_spendLens();
     init_deeplink();
+    init_showcase();
     init_db();
     init_db();
     init_cache();
@@ -27178,6 +27422,14 @@ var init_routes = __esm({
       }
       const place = await geoReverse(lat, lng);
       res.json({ place });
+    });
+    apiRouter.get("/home/showcase", async (_req, res) => {
+      try {
+        const sections = await buildShowcase();
+        res.json({ success: true, sections });
+      } catch (e) {
+        res.status(500).json({ success: false, error: "showcase_unavailable" });
+      }
     });
     apiRouter.get("/status", (_req, res) => {
       res.json({
@@ -28433,7 +28685,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num7 = (v) => {
+    const num8 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -28444,8 +28696,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num7(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num7(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num8(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num8(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
@@ -29190,7 +29442,7 @@ async function buildCoverageReport(windowHours = 24) {
   const latencies = searches.map((s) => Number(s.latency_ms)).filter((n) => Number.isFinite(n) && n >= 0);
   const nonInvalid = offerRows.filter((o) => o.validation_status !== "INVALID");
   const fresh = nonInvalid.filter((o) => ["LIVE_VERIFIED", "FRESH"].includes(o.freshness_status));
-  const cached = nonInvalid.filter((o) => o.freshness_status === "CACHED_VERIFIED");
+  const cached2 = nonInvalid.filter((o) => o.freshness_status === "CACHED_VERIFIED");
   const stale = nonInvalid.filter((o) => ["AGING", "STALE", "EXPIRED"].includes(o.freshness_status));
   const avail = nonInvalid.filter((o) => ["in_stock", "available", "confirmed"].includes(o.availability));
   return {
@@ -29205,7 +29457,7 @@ async function buildCoverageReport(windowHours = 24) {
     catalogue: {
       offersTotal: offerRows.length,
       freshVerified: ratio(fresh.length, nonInvalid.length),
-      cachedVerified: ratio(cached.length, nonInvalid.length),
+      cachedVerified: ratio(cached2.length, nonInvalid.length),
       staleOrExpired: ratio(stale.length, nonInvalid.length),
       withVerifiedAvailability: ratio(avail.length, nonInvalid.length)
     },

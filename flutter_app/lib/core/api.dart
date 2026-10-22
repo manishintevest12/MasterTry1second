@@ -375,6 +375,59 @@ class LiveResponse {
       );
 }
 
+/// One curated home-showcase item (GET /api/home/showcase). Every item is a
+/// real catalogue/affiliate row; url is a masking pointer -> /api/out.
+class ShowcaseItem {
+  final String id;
+  final String title;
+  final String merchant;
+  final String? merchantLogo;
+  final String? image;
+  final double? price;
+  final double? mrp;
+  final int? discountPct;
+  final double? rating;
+  final String? badge;
+  final String url;
+  const ShowcaseItem(this.id, this.title, this.merchant, this.merchantLogo, this.image, this.price, this.mrp, this.discountPct, this.rating, this.badge, this.url);
+
+  factory ShowcaseItem.fromJson(Map<String, dynamic> j) => ShowcaseItem(
+        '${j['id'] ?? ''}',
+        '${j['title'] ?? ''}',
+        '${j['merchant'] ?? ''}',
+        j['merchantLogo'] == null || '${j['merchantLogo']}'.isEmpty ? null : '${j['merchantLogo']}',
+        j['image'] == null || '${j['image']}'.isEmpty ? null : '${j['image']}',
+        (j['price'] is num) ? (j['price'] as num).toDouble() : null,
+        (j['mrp'] is num) ? (j['mrp'] as num).toDouble() : null,
+        (j['discountPct'] is num) ? (j['discountPct'] as num).round() : null,
+        (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
+        j['badge'] == null || '${j['badge']}'.isEmpty ? null : '${j['badge']}',
+        '${j['url'] ?? ''}',
+      );
+}
+
+/// One showcase section ("Picked Just for You", "Massive Discounts", ...).
+class ShowcaseSection {
+  final String id;
+  final String title;
+  final String subtitle;
+  final List<ShowcaseItem> items;
+  const ShowcaseSection(this.id, this.title, this.subtitle, this.items);
+
+  factory ShowcaseSection.fromJson(Map<String, dynamic> j) => ShowcaseSection(
+        '${j['id'] ?? ''}',
+        '${j['title'] ?? ''}',
+        '${j['subtitle'] ?? ''}',
+        [for (final x in (j['items'] as List? ?? const [])) if (x is Map<String, dynamic>) ShowcaseItem.fromJson(x)],
+      );
+}
+
+/// GET /api/home/showcase — the curated homepage sections under the launch grid.
+Future<List<ShowcaseSection>> fetchHomeShowcase(Try1SecondApi api) async {
+  final res = await api.getJson('/api/home/showcase');
+  return [for (final s in (res['sections'] as List? ?? const [])) if (s is Map<String, dynamic>) ShowcaseSection.fromJson(s)];
+}
+
 /// One deal / coupon / bank offer (GET /api/deals).
 class DealsFeed {
   final List<Deal> deals;

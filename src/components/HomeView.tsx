@@ -28,6 +28,7 @@ import { PriceLens, PriceLensAndAssistant } from './PriceLensAndAssistant';
 // eager bundle; the Deferred wrapper mounts it only near the viewport.
 const ChromeInstallSection = lazy(() => import('./ChromeInstallSection').then((m) => ({ default: m.ChromeInstallSection })));
 import { Deferred } from './Deferred';
+const HomeShowcase = lazy(() => import('./HomeShowcase'));
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -279,6 +280,17 @@ export const HomeView: React.FC = () => {
           })}
         </div>
       </section>
+
+      {/* 2b. HOME SHOWCASE (owner spec 21 Oct): eight curated sections under the
+           launch grid — Picked Just for You, Special Offers, Massive Discounts,
+           Mega Savings, Tech & Gadgets, Steals, Most Visited Places, Best Cards.
+           All items are real; redirects go through /api/out (Amazon tag and
+           Myntra INR-Deals/Cuelinks injected server-side). Deferred + lazy. */}
+      <Deferred minHeight={420}>
+      <Suspense fallback={null}>
+      <HomeShowcase />
+      </Suspense>
+      </Deferred>
 
       {/* 3. CHROME EXTENSION INSTALL SECTION (deferred: fetches start only near viewport) */}
       <Deferred minHeight={620}>

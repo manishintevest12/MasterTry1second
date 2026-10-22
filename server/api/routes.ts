@@ -26,6 +26,7 @@ import {
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
+import { buildShowcase } from '../home/showcase';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -220,6 +221,17 @@ apiRouter.get('/geo/reverse', async (req, res) => {
   }
   const place = await geoReverse(lat, lng);
   res.json({ place }); // place: null when Nominatim has no answer — never invented
+});
+
+// GET /api/home/showcase — the 8 curated homepage sections (owner spec 21 Oct).
+// Real rows only; empty sections are omitted. Cached in-process for 10 min.
+apiRouter.get('/home/showcase', async (_req, res) => {
+  try {
+    const sections = await buildShowcase();
+    res.json({ success: true, sections });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: 'showcase_unavailable' });
+  }
 });
 
 apiRouter.get('/status', (_req, res) => {
