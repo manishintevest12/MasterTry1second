@@ -106,14 +106,19 @@ const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string }
 
 let destWarmCursor = 0;
 
-/** Warm the next two destinations (flight route + hotel city alternate). */
+/**
+ * Warm the next four destinations (flight route + hotel city, alternating).
+ * Owner 22 Oct (min 6 destination cards): 4 entries per pass covers the whole
+ * 20-destination rotation in ~2h (12-min cadence) so every Top Destinations
+ * candidate keeps a fresh recorded fare + fresh hotel rows with live art.
+ */
 export async function keepWarmDestinations(): Promise<void> {
   if (DESTINATION_WARM.length === 0) return;
   const slice: Array<Record<string, any>> = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 4; i++) {
     slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
   }
-  destWarmCursor = (destWarmCursor + 2) % DESTINATION_WARM.length;
+  destWarmCursor = (destWarmCursor + 4) % DESTINATION_WARM.length;
   await warmRows(slice, 'DestWarm');
 }
 

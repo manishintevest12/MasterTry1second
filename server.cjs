@@ -26090,9 +26090,10 @@ function destinationItem(d, flights, hotels, liveUrls) {
     const c = String(r.location_city || "").toLowerCase();
     return d.keys.some((k) => t.includes(k) || c.includes(k)) || (iataRx ? iataRx.test(t) : false);
   };
-  const fare = flights.filter((r) => servableRow(r, 14) && matches(r)).sort((a, b) => priceOf(a) - priceOf(b))[0];
+  const cheapest = (rows) => [...rows].sort((a, b) => priceOf(a) - priceOf(b))[0];
+  const fare = cheapest(flights.filter((r) => servableRow(r, 14) && matches(r))) ?? cheapest(flights.filter((r) => servableRow(r, 45) && matches(r))) ?? null;
   if (!fare) return null;
-  const hotel = hotels.find((r) => ageDays(r) <= 21 && matches(r) && imageFromAttributes(r.attributes) && (!liveUrls || liveUrls.has(imageFromAttributes(r.attributes))));
+  const hotel = hotels.find((r) => ageDays(r) <= 60 && matches(r) && imageFromAttributes(r.attributes) && (!liveUrls || liveUrls.has(imageFromAttributes(r.attributes))));
   if (!hotel) return null;
   return {
     id: `dest-${d.keys[0]}`,
@@ -26146,7 +26147,7 @@ async function buildShowcase() {
     verifyLiveArt(cardsC)
   ]);
   const hotelArtUrls = [...new Set(
-    hotels.filter((r) => ageDays(r) <= 21 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
+    hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
   )].slice(0, 40);
   const artResults = await Promise.all(hotelArtUrls.map((u) => logoAnswers(u)));
   const liveArt = new Set(hotelArtUrls.filter((u, i) => artResults[i]));
@@ -31635,10 +31636,10 @@ __export(warm_exports, {
 async function keepWarmDestinations() {
   if (DESTINATION_WARM.length === 0) return;
   const slice = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 4; i++) {
     slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
   }
-  destWarmCursor = (destWarmCursor + 2) % DESTINATION_WARM.length;
+  destWarmCursor = (destWarmCursor + 4) % DESTINATION_WARM.length;
   await warmRows(slice, "DestWarm");
 }
 async function warmRows(rows, tag) {

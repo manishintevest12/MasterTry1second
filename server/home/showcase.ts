@@ -604,15 +604,22 @@ export function destinationItem(d: { name: string; keys: string[]; iata?: string
     const c = String(r.location_city || '').toLowerCase();
     return d.keys.some((k) => t.includes(k) || c.includes(k)) || (iataRx ? iataRx.test(t) : false);
   };
-  // Cheapest recorded flight fare naming this destination (fresh window: 14 days
-  // — owner 22 Oct: the 7d window starved the section to a single card).
-  const fare = flights
-    .filter((r) => servableRow(r, 14) && matches(r))
-    .sort((a, b) => priceOf(a) - priceOf(b))[0];
+  // Cheapest recorded flight fare naming this destination. Fresh window first
+  // (14 days, owner 22 Oct: the 7d window starved the section to a single
+  // card); when a city has no fresh fare we still show its cheapest RECENTLY
+  // recorded fare (<= 45 days) rather than dropping below the min-6 card
+  // count (owner 22 Oct: 'top destinations me at least 6'). Never invented —
+  // always a fare the engine actually recorded, and the badge says so.
+  const cheapest = (rows: OfferRow[]) => [...rows].sort((a, b) => priceOf(a) - priceOf(b))[0];
+  const fare = cheapest(flights.filter((r) => servableRow(r, 14) && matches(r)))
+    ?? cheapest(flights.filter((r) => servableRow(r, 45) && matches(r)))
+    ?? null;
   if (!fare) return null; // no recorded fare -> skip honestly (never invent a price)
   // A real, LIVE hotel photo from the same destination (owner 22 Oct: dead CDN
   // art made cards render as initials text). liveUrls carries the verified set.
-  const hotel = hotels.find((r) => ageDays(r) <= 21 && matches(r) && imageFromAttributes(r.attributes)
+  // Art window is 60 days: a photo does not go stale the way a price does and
+  // the card never shows the hotel's price — only the fresh FARE above is priced.
+  const hotel = hotels.find((r) => ageDays(r) <= 60 && matches(r) && imageFromAttributes(r.attributes)
     && (!liveUrls || liveUrls.has(imageFromAttributes(r.attributes)!)));
   if (!hotel) return null; // card needs real art
   return {
@@ -700,7 +707,7 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
 
   // One probe batch for destination hotel art (shared 6h cache with the rest).
   const hotelArtUrls = [...new Set(
-    hotels.filter((r) => ageDays(r) <= 21 && imageFromAttributes(r.attributes))
+    hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
       .map((r) => imageFromAttributes(r.attributes)!),
   )].slice(0, 40);
   const artResults = await Promise.all(hotelArtUrls.map((u) => logoAnswers(u)));

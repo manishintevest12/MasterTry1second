@@ -141,8 +141,14 @@ test('destinationItem: real fare + real hotel photo -> card; missing data -> hon
   // Fare but no hotel art -> no card (card needs real art)
   const hotelsNoArt = hotels.map((h) => ({ ...h, attributes: {} }));
   assert.strictEqual(destinationItem(goa, flights, hotelsNoArt), null);
-  // Stale fare (16d) -> no card (window widened 7->14d on 22 Oct for the min-6 rule)
-  const stale = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 16)];
+  // Owner 22 Oct (min 6 destination cards): a 16d fare is RECENTLY recorded —
+  // the 45d fallback window keeps the card count up, still a real recorded fare.
+  const recent = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 16)];
+  const recentCard = destinationItem(goa, recent, hotels);
+  assert.ok(recentCard, 'recently recorded fare (16d) still renders for min-6');
+  assert.strictEqual(recentCard!.price, 4599);
+  // But a 50d fare is beyond the honesty window -> no card, never an invented price
+  const stale = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 50)];
   assert.strictEqual(destinationItem(goa, stale, hotels), null);
 
   // Bengaluru spelling variant matches a Bangalore-titled fare
@@ -312,4 +318,44 @@ test('destinationItem matches IATA codes as whole words in flight titles', () =>
   const none = destinationItem({ name: 'Pune', keys: ['pune'], iata: 'pnq' },
     [F(3, 'Cheap flight to PunjabiBagh', 1999)], [H(4, 'https://pix8.agoda.net/p.jpg')]);
   assert.strictEqual(none, null, 'no city-name fare and no whole-word PNQ -> no card');
+});
+
+test('destinationItem min-6 fallback (owner 22 Oct): a recently recorded fare renders', () => {
+  // 20 days old = outside the fresh 14d window, inside the 45d honesty window.
+  const H = (id: number): OfferRow => ({
+    id, vertical: 'hotels', title: 'Jaipur Heritage Haveli', brand: null, location_city: 'jaipur',
+    attributes: { image_url: 'https://pix8.agoda.net/j.jpg' },
+    vendor: 'Agoda', seller: 'Agoda', seller_url: 'https://www.agoda.com/',
+    list_price: 5200, mandatory_total: 2600, effective_price: 2600, fetched_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+  });
+  const staleFare: OfferRow = {
+    id: 2, vertical: 'flights', title: 'IndiGo 6E-77 · Indore → Jaipur', brand: null, attributes: null,
+    vendor: 'Ixigo', seller: 'Ixigo', seller_url: 'https://www.ixigo.com/',
+    list_price: 6000, mandatory_total: 3400, effective_price: 3400,
+    fetched_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+  };
+  const card = destinationItem({ name: 'Jaipur', keys: ['jaipur'], iata: 'jai' }, [staleFare], [H(1)]);
+  assert.ok(card, 'recently recorded fare (20d) still renders a card');
+  assert.strictEqual(card!.price, 3400);
+  // too-old fare (50d) stays honest: no card, never an invented price
+  const ancient: OfferRow = { ...staleFare, id: 3, fetched_at: new Date(Date.now() - 50 * 86400000).toISOString() };
+  assert.strictEqual(destinationItem({ name: 'Jaipur', keys: ['jaipur'], iata: 'jai' }, [ancient], [H(1)]), null);
+});
+
+test('destinationItem art window: a 45-day-old hotel photo still counts as art', () => {
+  const F = (id: number): OfferRow => ({
+    id, vertical: 'flights', title: 'IndiGo 6E-5 · Indore → UDR', brand: null, attributes: null,
+    vendor: 'Ixigo', seller: 'Ixigo', seller_url: 'https://www.ixigo.com/',
+    list_price: 7000, mandatory_total: 3900, effective_price: 3900, fetched_at: new Date(Date.now() - 86400000).toISOString(),
+  });
+  const H = (id: number, agoDays: number): OfferRow => ({
+    id, vertical: 'hotels', title: 'Udaipur Lake Palace Stay', brand: null, location_city: 'udaipur',
+    attributes: { image_url: 'https://pix8.agoda.net/u.jpg' },
+    vendor: 'Agoda', seller: 'Agoda', seller_url: 'https://www.agoda.com/',
+    list_price: 9000, mandatory_total: 4500, effective_price: 4500, fetched_at: new Date(Date.now() - agoDays * 86400000).toISOString(),
+  });
+  const card = destinationItem({ name: 'Udaipur', keys: ['udaipur'], iata: 'udr' }, [F(1)], [H(2, 45)]);
+  assert.ok(card, '45d-old photo (art does not stale; price never shown) renders');
+  const gone = destinationItem({ name: 'Udaipur', keys: ['udaipur'], iata: 'udr' }, [F(1)], [H(3, 70)]);
+  assert.strictEqual(gone, null, '70d-old row dropped — window is 60d, not unbounded');
 });

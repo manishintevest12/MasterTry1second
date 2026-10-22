@@ -23532,10 +23532,10 @@ var destWarmCursor = 0;
 async function keepWarmDestinations() {
   if (DESTINATION_WARM.length === 0) return;
   const slice = [];
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 4; i++) {
     slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
   }
-  destWarmCursor = (destWarmCursor + 2) % DESTINATION_WARM.length;
+  destWarmCursor = (destWarmCursor + 4) % DESTINATION_WARM.length;
   await warmRows(slice, "DestWarm");
 }
 async function warmRows(rows, tag) {
