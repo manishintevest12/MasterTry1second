@@ -24829,12 +24829,14 @@ __export(showcase_exports, {
   imageFromAttributes: () => imageFromAttributes,
   itemFromAffiliate: () => itemFromAffiliate,
   itemFromOffer: () => itemFromOffer,
-  merchantDomainOf: () => merchantDomainOf,
+  merchantLogoCandidates: () => merchantLogoCandidates,
   mrpOf: () => mrpOf,
+  nameDomainOf: () => nameDomainOf,
   pctOf: () => pctOf,
   pickTopOfferRow: () => pickTopOfferRow,
   priceOf: () => priceOf,
   ratingFromAttributes: () => ratingFromAttributes,
+  realMerchantDomain: () => realMerchantDomain,
   saveOf: () => saveOf,
   servableRow: () => servableRow
 });
@@ -24890,8 +24892,8 @@ function itemFromOffer(row) {
     merchant,
     merchantLogo: null,
     image: imageFromAttributes(row.attributes) || (() => {
-      const dom = merchantDomainOf(merchant, [row.seller_url]);
-      return dom ? `https://logo.clearbit.com/${dom}` : null;
+      const dom = realMerchantDomain([row.seller_url]) || nameDomainOf(merchant);
+      return dom ? `https://icons.duckduckgo.com/ip3/${dom}.ico` : null;
     })(),
     price,
     mrp: mrp > price ? mrp : null,
@@ -24901,7 +24903,7 @@ function itemFromOffer(row) {
     url: createMaskingPointer(url, { offerId: `showcase-off-${row.id}` })
   };
 }
-function merchantDomainOf(name, urls) {
+function realMerchantDomain(urls) {
   for (const u of urls) {
     if (!u) continue;
     try {
@@ -24910,25 +24912,63 @@ function merchantDomainOf(name, urls) {
     } catch {
     }
   }
+  return null;
+}
+function nameDomainOf(name) {
   const n = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   return n ? `${n}.com` : null;
 }
-function merchantLogoFor(row) {
-  if (row.merchant_logo) return row.merchant_logo;
-  const dom = merchantDomainOf(row.merchant_name, [row.original_url, row.affiliate_url]);
-  return dom ? `https://logo.clearbit.com/${dom}` : null;
+function merchantLogoCandidates(row) {
+  if (row.merchant_logo) return [row.merchant_logo];
+  const out = [];
+  const real = realMerchantDomain([row.original_url, row.affiliate_url]);
+  const named = nameDomainOf(row.merchant_name);
+  const push = (dom) => {
+    out.push(`https://icons.duckduckgo.com/ip3/${dom}.ico`);
+    out.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128`);
+  };
+  if (real) push(real);
+  if (named && named !== real) push(named);
+  return out;
 }
-function itemFromAffiliate(row) {
+async function logoAnswers(url) {
+  const hit = logoCache.get(url);
+  if (hit && Date.now() - hit.at < LOGO_TTL_MS) return hit.ok;
+  let ok = false;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 3500);
+    const res = await fetch(url, { signal: ctl.signal, redirect: "follow" });
+    clearTimeout(t);
+    const ct = String(res.headers.get("content-type") || "");
+    const len = Number(res.headers.get("content-length") || 0);
+    ok = res.status === 200 && ct.startsWith("image/") && (len === 0 || len > 400);
+  } catch {
+    ok = false;
+  }
+  logoCache.set(url, { at: Date.now(), ok });
+  return ok;
+}
+async function resolveMerchantLogo(row) {
+  const cands = merchantLogoCandidates(row);
+  if (!cands.length) return null;
+  for (const c of cands) {
+    if (await logoAnswers(c)) return c;
+  }
+  return cands[0];
+}
+function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
   const dv = num7(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
+  const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
     id: `aff-${row.network_source}-${row.network_offer_id}`,
     title: String(row.title || "").slice(0, 90),
     merchant: String(row.merchant_name || "Store").slice(0, 40),
-    merchantLogo: merchantLogoFor(row),
-    image: merchantLogoFor(row),
+    merchantLogo: logo,
+    image: logo,
     price: null,
     mrp: null,
     discountPct: row.discount_type === "percent" ? dv : null,
@@ -25032,9 +25072,9 @@ async function couponItems() {
   const rows = await fetchAffiliateRows(600);
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const row of rows) {
-    if (!row.coupon_code) continue;
-    const item = itemFromAffiliate(row);
+  const build = rows.filter((r) => r.coupon_code).map(async (row) => ({ row, logo: await resolveMerchantLogo(row) }));
+  for (const { row, logo } of await Promise.all(build)) {
+    const item = itemFromAffiliate(row, logo);
     if (!item) continue;
     const key = `${item.merchant.toLowerCase()}|${item.badge || ""}`;
     if (seen.has(key)) continue;
@@ -25113,7 +25153,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num7, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, poolCache, POOL_TTL_MS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
+var num7, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -25141,7 +25181,9 @@ var init_showcase = __esm({
       return m && m > p ? m - p : 0;
     };
     servableRow = (r, maxAgeDays = 14) => (r.validation_status || "") !== "INVALID" && !!r.seller_url && priceOf(r) > 0 && ageDays(r) <= maxAgeDays;
-    AFFILIATE_HOST = /cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia/i;
+    AFFILIATE_HOST = /linksredirect|cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia|awin|adtraction|partnerize|webgains|dgm|impact|clk|redirect|try1second/i;
+    logoCache = /* @__PURE__ */ new Map();
+    LOGO_TTL_MS = 6 * 60 * 60 * 1e3;
     poolCache = /* @__PURE__ */ new Map();
     POOL_TTL_MS = 5 * 60 * 1e3;
     FAMOUS = [

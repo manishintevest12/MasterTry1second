@@ -464,7 +464,7 @@ class _DealArt extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: CachedNetworkImage(
-          imageUrl: 'https://logo.clearbit.com/$logoDomain?size=256',
+          imageUrl: 'https://icons.duckduckgo.com/ip3/$logoDomain.ico',
           fit: BoxFit.contain,
           errorWidget: (_, __, ___) => NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
         ),

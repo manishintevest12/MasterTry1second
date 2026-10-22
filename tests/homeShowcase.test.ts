@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 
 const mk = (id: string, merchant: string): any => ({ id, title: id, merchant, merchantLogo: null, image: 'https://x/i.jpg', price: 1, mrp: null, discountPct: null, rating: null, badge: null, url: '/api/out?t=x' });
-import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant } from '../server/home/showcase';
+import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, merchantLogoCandidates, realMerchantDomain, nameDomainOf } from '../server/home/showcase';
 
 test('itemFromOffer builds a masked, priced, honest showcase item', () => {
   const item = itemFromOffer({
@@ -76,4 +76,34 @@ test('merchant spread: round-robins every present seller', () => {
   // and with four sellers the section reaches the full 12 (3 each).
   const pool4 = [...pool, ...Array.from({ length: 10 }, (_, i) => mk(`r${i}`, 'Reliance Digital'))];
   assert.strictEqual(diversifyByMerchant(pool4, 3, 12).length, 12);
+});
+
+
+test('coupon logo chain never uses the redirect host (owner 22 Oct live bug)', () => {
+  // Live production rows: original_url is linksredirect.com (Cuelinks redirect),
+  // which used to hand EVERY card the network's logo.
+  const row: any = {
+    id: 1, network_source: 'cuelinks', network_offer_id: 'x', merchant_name: 'Nykaa Fashion',
+    merchant_logo: null, title: 't', description: null, coupon_code: 'X', discount_value: 10,
+    discount_type: 'percent', affiliate_url: 'https://linksredirect.com/?cid=1', original_url: 'https://linksredirect.com/?cid=1',
+    categories: null, commission_note: null,
+  };
+  const cands = merchantLogoCandidates(row);
+  assert.ok(cands.length >= 2);
+  assert.ok(!cands.some((c) => c.includes('linksredirect')), 'redirect host must never be a logo source');
+  assert.ok(cands[0].includes('icons.duckduckgo.com/ip3/nykaafashion.com.ico')); // name-derived real merchant
+  assert.ok(!cands.some((c) => c.includes('clearbit')), 'clearbit is DNS-dead, never ship it');
+  assert.ok(cands.some((c) => c.includes('google.com/s2/favicons')), 'google fallback present');
+  // a REAL merchant url host beats the name-derived domain
+  const row2 = { ...row, original_url: 'https://www.jockey.in/coupon', merchant_name: 'Jockey India' };
+  assert.strictEqual(realMerchantDomain([row2.original_url, row2.affiliate_url]), 'jockey.in');
+  // registry logo wins over everything
+  const row3 = { ...row, merchant_logo: 'https://cdn.example/logo.png' };
+  assert.deepStrictEqual(merchantLogoCandidates(row3), ['https://cdn.example/logo.png']);
+  // itemFromAffiliate carries the resolved logo through to image
+  const item = itemFromAffiliate(row, 'https://icons.duckduckgo.com/ip3/nykaafashion.com.ico');
+  assert.strictEqual(item!.image, 'https://icons.duckduckgo.com/ip3/nykaafashion.com.ico');
+  // name domain derivation
+  assert.strictEqual(nameDomainOf('AJIO GRAM'), 'ajiogram.com');
+  assert.strictEqual(nameDomainOf(''), null);
 });

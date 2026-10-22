@@ -143,7 +143,7 @@ export function itemFromOffer(row: OfferRow): ShowcaseItem | null {
     merchant,
     merchantLogo: null,
     image: imageFromAttributes(row.attributes)
-      || (() => { const dom = merchantDomainOf(merchant, [row.seller_url]); return dom ? `https://logo.clearbit.com/${dom}` : null; })(),
+      || (() => { const dom = realMerchantDomain([row.seller_url]) || nameDomainOf(merchant); return dom ? `https://icons.duckduckgo.com/ip3/${dom}.ico` : null; })(),
     price,
     mrp: mrp > price ? mrp : null,
     discountPct: pct,
@@ -153,13 +153,27 @@ export function itemFromOffer(row: OfferRow): ShowcaseItem | null {
   };
 }
 
-/** Owner 22 Oct: Special Offers coupon cards must carry the merchant's real logo
- *  image (they were rendering as bare initials). Priority: registry merchant_logo ->
- *  the OFFICIAL Clearbit logo CDN keyed by the merchant's own domain (derived from
- *  the row's original_url host, else from the merchant name). Clearbit 404s degrade
- *  to the card initials in the UI, so nothing is ever fabricated. */
-const AFFILIATE_HOST = /cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia/i;
-export function merchantDomainOf(name: string, urls: Array<string | null>): string | null {
+/**
+ * MERCHANT LOGO RESOLUTION for coupon cards (owner 22 Oct: "image do, google se
+ * bhi mil jaayega; initials sirf worst-case me").
+ *
+ * Reality check (live prod): nearly every coupon row's original_url is an
+ * AFFILIATE REDIRECT host (linksredirect.com = Cuelinks), so the naive
+ * host-of-original_url derivation handed every card the network's logo. The
+ * chain is now:
+ *   1. registry merchant_logo (synced with the affiliate feed)
+ *   2. DuckDuckGo icon service for the merchant's OWN domain — first the URL
+ *      host when it is a real merchant host, else the merchant-name-derived
+ *      domain (logo.clearbit.com is DNS-dead since Clearbit's shutdown — the
+ *      previous chain shipped dead URLs and cards rendered empty)
+ *   3. Google favicon service (sz=128) for the same domain — always answers
+ *   4. null -> UI initials (worst case only)
+ * Candidates are VERIFIED SERVER-SIDE (200 + real image bytes) with a 6h
+ * in-memory cache, so a dead CDN never reaches the card. */
+const AFFILIATE_HOST = /linksredirect|cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia|awin|adtraction|partnerize|webgains|dgm|impact|clk|redirect|try1second/i;
+
+/** Host of the first URL that is a REAL merchant site (never a redirect host). */
+export function realMerchantDomain(urls: Array<string | null>): string | null {
   for (const u of urls) {
     if (!u) continue;
     try {
@@ -167,16 +181,63 @@ export function merchantDomainOf(name: string, urls: Array<string | null>): stri
       if (h && !AFFILIATE_HOST.test(h)) return h;
     } catch { /* not an absolute URL */ }
   }
+  return null;
+}
+
+/** Compact merchant name -> domain guess ("Nykaa Fashion" -> nykaafashion.com). */
+export function nameDomainOf(name: string): string | null {
   const n = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   return n ? `${n}.com` : null;
 }
-function merchantLogoFor(row: AffiliateRow): string | null {
-  if (row.merchant_logo) return row.merchant_logo;
-  const dom = merchantDomainOf(row.merchant_name, [row.original_url, row.affiliate_url]);
-  return dom ? `https://logo.clearbit.com/${dom}` : null;
+
+/** Ordered logo candidates for a coupon row (pure; first is preferred). */
+export function merchantLogoCandidates(row: AffiliateRow): string[] {
+  if (row.merchant_logo) return [row.merchant_logo];
+  const out: string[] = [];
+  const real = realMerchantDomain([row.original_url, row.affiliate_url]);
+  const named = nameDomainOf(row.merchant_name);
+  const push = (dom: string) => {
+    out.push(`https://icons.duckduckgo.com/ip3/${dom}.ico`);
+    out.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128`);
+  };
+  if (real) push(real);
+  if (named && named !== real) push(named);
+  return out;
 }
 
-export function itemFromAffiliate(row: AffiliateRow): ShowcaseItem | null {
+const logoCache = new Map<string, { at: number; ok: boolean }>();
+const LOGO_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** Does this logo URL really answer with image bytes? (verified server-side) */
+async function logoAnswers(url: string): Promise<boolean> {
+  const hit = logoCache.get(url);
+  if (hit && Date.now() - hit.at < LOGO_TTL_MS) return hit.ok;
+  let ok = false;
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 3500);
+    const res = await fetch(url, { signal: ctl.signal, redirect: 'follow' });
+    clearTimeout(t);
+    const ct = String(res.headers.get('content-type') || '');
+    const len = Number(res.headers.get('content-length') || 0);
+    ok = res.status === 200 && ct.startsWith('image/') && (len === 0 || len > 400);
+  } catch { ok = false; } // network hiccup -> treat as unverified
+  logoCache.set(url, { at: Date.now(), ok });
+  return ok;
+}
+
+/** First verified candidate; when verification is impossible (offline sandbox)
+ *  the first candidate still ships so the browser can try it. */
+async function resolveMerchantLogo(row: AffiliateRow): Promise<string | null> {
+  const cands = merchantLogoCandidates(row);
+  if (!cands.length) return null;
+  for (const c of cands) {
+    if (await logoAnswers(c)) return c;
+  }
+  return cands[0];
+}
+
+export function itemFromAffiliate(row: AffiliateRow, resolvedLogo: string | null = null): ShowcaseItem | null {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
   const dv = num(row.discount_value);
@@ -187,12 +248,13 @@ export function itemFromAffiliate(row: AffiliateRow): ShowcaseItem | null {
       : dv
         ? `Upto \u20B9${dv} off`
         : null;
+  const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
     id: `aff-${row.network_source}-${row.network_offer_id}`,
     title: String(row.title || '').slice(0, 90),
     merchant: String(row.merchant_name || 'Store').slice(0, 40),
-    merchantLogo: merchantLogoFor(row),
-    image: merchantLogoFor(row),
+    merchantLogo: logo,
+    image: logo,
     price: null,
     mrp: null,
     discountPct: row.discount_type === 'percent' ? dv : null,
@@ -328,9 +390,9 @@ async function couponItems(): Promise<ShowcaseItem[]> {
   const rows = await fetchAffiliateRows(600);
   const seen = new Set<string>();
   const out: ShowcaseItem[] = [];
-  for (const row of rows) {
-    if (!row.coupon_code) continue;               // Special Offers = coupon-backed cards
-    const item = itemFromAffiliate(row);
+  const build = rows.filter((r) => r.coupon_code).map(async (row) => ({ row, logo: await resolveMerchantLogo(row) }));
+  for (const { row, logo } of await Promise.all(build)) {
+    const item = itemFromAffiliate(row, logo);
     if (!item) continue;
     const key = `${item.merchant.toLowerCase()}|${item.badge || ''}`; // same merchant+code once
     if (seen.has(key)) continue;
