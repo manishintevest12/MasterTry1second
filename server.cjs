@@ -22408,25 +22408,15 @@ function ekaroEnabled() {
 function apiKey() {
   return String(process.env.EKARO_API_KEY || "").trim();
 }
-function extractLink(body) {
+function extractLink(body, original) {
   if (!body || typeof body !== "object") return null;
-  const seen = /* @__PURE__ */ new Set();
-  const stack = [body];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (typeof cur === "string") {
-      if (/^https:\/\/[\w.-]*(?:ekaro|earnkaro)[\w.-]*\//i.test(cur)) return cur;
-      continue;
-    }
-    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
-    seen.add(cur);
-    if (Array.isArray(cur)) {
-      stack.push(...cur);
-      continue;
-    }
-    for (const k of Object.keys(cur)) stack.push(cur[k]);
-  }
-  return null;
+  const data = body.data;
+  if (typeof data !== "string" || !data) return null;
+  const src2 = /* @__PURE__ */ new Set([trimUrl(original)]);
+  const urls = (data.match(/https?:\/\/[^\s"'<>]+/g) || []).map(trimUrl).filter((u) => !src2.has(u));
+  if (!urls.length) return null;
+  const branded = urls.find((u) => /earnkaro|ekaro|fktr\.in/i.test(u));
+  return branded || urls[0];
 }
 async function convert(dest) {
   if (!ekaroEnabled()) return null;
@@ -22443,7 +22433,7 @@ async function convert(dest) {
       const res = await fetch(EKARO_ENDPOINT, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
-        body: JSON.stringify({ url: dest }),
+        body: JSON.stringify({ deal: dest, convert_option: "convert_only" }),
         signal: ctrl.signal
       });
       clearTimeout(t);
@@ -22459,7 +22449,8 @@ async function convert(dest) {
         cache7.set(host, { link: null, at: Date.now() });
         return null;
       }
-      const link = extractLink(await res.json().catch(() => null));
+      const json = await res.json().catch(() => null);
+      const link = extractLink(json, dest);
       cache7.set(host, { link, at: Date.now() });
       return link;
     } catch {
@@ -22480,16 +22471,17 @@ async function ekaroTrackingUrl(dest) {
     return null;
   }
 }
-var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache7, inFlight, authWarned;
+var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache7, inFlight, authWarned, trimUrl;
 var init_ekaro = __esm({
   "server/affiliate/ekaro/index.ts"() {
-    EKARO_ENDPOINT = "https://ekaro-api.affiliaters.in/api/converter/public";
+    EKARO_ENDPOINT = "https://ekaro-api.affiliaters.in/api/converter";
     POS_TTL_MS = 6 * 60 * 60 * 1e3;
     NEG_TTL_MS = 60 * 60 * 1e3;
     FETCH_TIMEOUT_MS2 = 2500;
     cache7 = /* @__PURE__ */ new Map();
     inFlight = /* @__PURE__ */ new Map();
     authWarned = false;
+    trimUrl = (u) => u.replace(/[.,;!)'"\]]+$/, "");
   }
 });
 
@@ -23261,6 +23253,7 @@ function hostOf(u) {
 }
 function brandImageFor(o) {
   const attrs = o.attributes || {};
+  if (String(o.vertical) === "creditcards") return void 0;
   if (o.vertical === "flights") {
     const code = String(attrs.airline_code || "").toUpperCase();
     const iata = /^[A-Z0-9]{2}$/.test(code) ? code : AIRLINE_IATA[String(attrs.airline || o.seller || "").toLowerCase().trim()];
@@ -23286,6 +23279,7 @@ function withBrandImages(offers) {
     const a = o.attributes || (o.attributes = {});
     if (a.image_url || a.image) continue;
     if (PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
+    if (CARD_ART_VERTICALS.has(String(o.vertical))) continue;
     const img = brandImageFor(o);
     if (img) {
       a.image_url = img;
@@ -23334,6 +23328,46 @@ async function withLenderLogos(offers) {
   }
   return offers;
 }
+function withCardArt(offers) {
+  const art = /* @__PURE__ */ new Map();
+  for (const o of offers) {
+    if (String(o.vertical) !== "creditcards") continue;
+    const a = o.attributes || {};
+    const u = String(a.image_url || "");
+    if (u && a.image_is_brand_logo !== "true" && !FAVICON_URL.test(u)) {
+      const k = normCardTitle(o.title);
+      if (k && !art.has(k)) art.set(k, u);
+    }
+  }
+  for (const o of offers) {
+    if (String(o.vertical) !== "creditcards") continue;
+    const a = o.attributes || (o.attributes = {});
+    const u = String(a.image_url || "");
+    const missing = !u || a.image_is_brand_logo === "true" || FAVICON_URL.test(u);
+    if (!missing) continue;
+    const borrowed = art.get(normCardTitle(o.title));
+    if (borrowed) {
+      a.image_url = borrowed;
+      delete a.image_is_brand_logo;
+      delete a.image_is_lender_logo;
+    }
+  }
+  return offers;
+}
+function stripCardLogoStandIns(offers) {
+  for (const o of offers) {
+    if (String(o.vertical) !== "creditcards") continue;
+    const a = o.attributes || {};
+    const u = String(a.image_url || "");
+    const isLogo = !u || a.image_is_brand_logo === "true" || a.image_is_lender_logo === "true" || FAVICON_URL.test(u);
+    if (isLogo) {
+      delete a.image_url;
+      delete a.image_is_brand_logo;
+      delete a.image_is_lender_logo;
+    }
+  }
+  return offers;
+}
 async function uploadedLogoMap() {
   if (uploadedLogosCache && Date.now() - uploadedLogosCache.at < 3e5) return uploadedLogosCache.map;
   try {
@@ -23368,7 +23402,7 @@ async function withMerchantLogos(offers) {
   }
   return offers;
 }
-var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, PRODUCT_IMAGE_VERTICALS, FAVICON_URL, LENDER_VERTICAL_IDS, uploadedLogosCache;
+var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, PRODUCT_IMAGE_VERTICALS, CARD_ART_VERTICALS, FAVICON_URL, LENDER_VERTICAL_IDS, FD_VARIANT_RE, normCardTitle, uploadedLogosCache;
 var init_brandImage = __esm({
   "server/pipeline/brandImage.ts"() {
     init_lenderLogo();
@@ -23524,15 +23558,18 @@ var init_brandImage = __esm({
       [/manipal/i, "manipalcigna.com"],
       [/aditya birla health/i, "adityabirlacapital.com"]
     ];
-    LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "banking", "account"]);
+    LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "banking", "account"]);
     DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
     HD_LOGO = [
       [/redbus/i, "/brand-logos/redbus.svg"],
       [/big ?basket|bb ?now/i, "/brand-logos/bigbasket.png"]
     ];
     PRODUCT_IMAGE_VERTICALS = /* @__PURE__ */ new Set(["grocery", "food"]);
+    CARD_ART_VERTICALS = /* @__PURE__ */ new Set(["creditcards"]);
     FAVICON_URL = /s2\/favicons|brand-logos\//;
-    LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "account"]);
+    LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "account"]);
+    FD_VARIANT_RE = /\b(fd|against fd|secured)\b/gi;
+    normCardTitle = (t) => String(t || "").toLowerCase().replace(FD_VARIANT_RE, " ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
     uploadedLogosCache = null;
   }
 });
@@ -24998,7 +25035,7 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
-  const branded = stripMerchantLogoFallbacks(withBrandImages(combined));
+  const branded = withCardArt(stripCardLogoStandIns(stripMerchantLogoFallbacks(withBrandImages(combined))));
   const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(branded))), { userPincode: input.pincode, userCity: input.city });
   if (ranked.length === 0) {
     state.servedFrom = "unavailable";

@@ -1,8 +1,14 @@
 /**
  * Ekaro affiliate converter (owner rule, 22 Oct): monetize EVERY retailer
- * deeplink that has no direct partnership — via EarnKaro/Ekaro's public
- * converter API (https://ekaro-api.affiliaters.in/api/converter/public).
+ * converter API (https://ekaro-api.affiliaters.in/api/converter).
  *
+ * API shape (live-verified 22 Oct, reverse-engineered from the app.affiliaters.in
+ * frontend bundle): POST {deal:"<text with link>", convert_option:'convert_only'}
+ * with `Authorization: Bearer $EKARO_API_KEY` -> {success:1, data:"<deal text with
+ * links replaced in place>", randomPostID}. EarnKaro profit links come back as
+ * fktr.in/<code> (Flipkart) and similar short hosts, so extraction keeps every
+ * URL in `data` that is NOT the original destination. /api/converter/public is a
+ * dead endpoint (401/500) — never use it.
  * Position in /api/out: the LAST fallback before a bare direct hop, so direct
  * partnerships (admin affiliate_configs, Amazon Associates, Cuelinks-joined,
  * LinkInR campaigns) always win. Today that means grocery exits (Blinkit,
@@ -17,7 +23,7 @@
  *  - cab booking deeplinks are excluded upstream (deeplink integrity rule)
  */
 
-const EKARO_ENDPOINT = 'https://ekaro-api.affiliaters.in/api/converter/public';
+const EKARO_ENDPOINT = 'https://ekaro-api.affiliaters.in/api/converter';
 const POS_TTL_MS = 6 * 60 * 60 * 1000;
 const NEG_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 2500;
@@ -36,23 +42,21 @@ function apiKey(): string {
   return String(process.env.EKARO_API_KEY || '').trim();
 }
 
-/** Pull the first https monetized URL out of an unknown converter response shape. */
-function extractLink(body: unknown): string | null {
+/** Strip punctuation a deal text glues onto the URL. */
+const trimUrl = (u: string): string => u.replace(/[.,;!)'"\]]+$/, '');
+
+/** Pull the converter's monetized URL out of the returned deal text: every
+ * https URL that is NOT the original destination, preferring EarnKaro's own
+ * short-link hosts when several appear. */
+function extractLink(body: unknown, original: string): string | null {
   if (!body || typeof body !== 'object') return null;
-  const seen = new Set<unknown>();
-  const stack: unknown[] = [body];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (typeof cur === 'string') {
-      if (/^https:\/\/[\w.-]*(?:ekaro|earnkaro)[\w.-]*\//i.test(cur)) return cur;
-      continue;
-    }
-    if (!cur || typeof cur !== 'object' || seen.has(cur)) continue;
-    seen.add(cur);
-    if (Array.isArray(cur)) { stack.push(...cur); continue; }
-    for (const k of Object.keys(cur as Record<string, unknown>)) stack.push((cur as Record<string, unknown>)[k]);
-  }
-  return null;
+  const data = (body as Record<string, unknown>).data;
+  if (typeof data !== 'string' || !data) return null;
+  const src = new Set([trimUrl(original)]);
+  const urls = (data.match(/https?:\/\/[^\s"'<>]+/g) || []).map(trimUrl).filter((u) => !src.has(u));
+  if (!urls.length) return null;
+  const branded = urls.find((u) => /earnkaro|ekaro|fktr\.in/i.test(u));
+  return branded || urls[0];
 }
 
 async function convert(dest: string): Promise<string | null> {
@@ -70,7 +74,7 @@ async function convert(dest: string): Promise<string | null> {
       const res = await fetch(EKARO_ENDPOINT, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey()}` },
-        body: JSON.stringify({ url: dest }),
+        body: JSON.stringify({ deal: dest, convert_option: 'convert_only' }),
         signal: ctrl.signal,
       });
       clearTimeout(t);
@@ -80,7 +84,10 @@ async function convert(dest: string): Promise<string | null> {
         return null;
       }
       if (!res.ok) { cache.set(host, { link: null, at: Date.now() }); return null; }
-      const link = extractLink(await res.json().catch(() => null));
+      const json: unknown = await res.json().catch(() => null);
+      // success:1 is the documented hit; a 200 with success:0 ('Url not found in
+      // post') means the merchant is not on EarnKaro — honest null either way.
+      const link = extractLink(json, dest);
       cache.set(host, { link, at: Date.now() });
       return link;
     } catch {

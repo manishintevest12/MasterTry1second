@@ -23,7 +23,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day

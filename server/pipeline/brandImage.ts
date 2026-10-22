@@ -58,7 +58,7 @@ const LENDER_DOMAIN: Array<[RegExp, string]> = [
   [/future generali|generali/i, 'generalicentral.com'], [/chola/i, 'cholainsurance.com'], [/iffco/i, 'iffcotokio.co.in'],
   [/acko/i, 'acko.com'], [/digit/i, 'godigit.com'], [/manipal/i, 'manipalcigna.com'], [/aditya birla health/i, 'adityabirlacapital.com'],
 ];
-const LENDER_VERTICALS = new Set(['loans', 'insurance', 'creditcards', 'banking', 'account']);
+const LENDER_VERTICALS = new Set(['loans', 'insurance', 'banking', 'account']);
 const DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
 
 function hostOf(u?: string): string | undefined {
@@ -73,6 +73,10 @@ const HD_LOGO: Array<[RegExp, string]> = [
 
 export function brandImageFor(o: NormalizedOffer): string | undefined {
   const attrs: any = o.attributes || {};
+  // Owner 22 Oct: credit-card art is a product photo — no brand/logo stand-in
+  // from ANY branch (favicon, Wikidata, Commons). Missing art borrows sibling
+  // art (withCardArt) or renders the honest placeholder.
+  if (String(o.vertical) === 'creditcards') return undefined;
   if (o.vertical === 'flights') {
     const code = String(attrs.airline_code || '').toUpperCase();
     const iata = /^[A-Z0-9]{2}$/.test(code) ? code : AIRLINE_IATA[String(attrs.airline || o.seller || '').toLowerCase().trim()];
@@ -96,6 +100,11 @@ export function brandImageFor(o: NormalizedOffer): string | undefined {
  * logo in place of a product photo. Grocery/food rows without a real photo stay empty
  * and the UI renders its honest product placeholder instead of a misleading logo. */
 const PRODUCT_IMAGE_VERTICALS = new Set(['grocery', 'food']);
+// Owner 22 Oct: credit-card art is a PRODUCT photo — a bank logo must never
+// stand in for it either (the FD variants of Tata Neu/PhonePe cards showed the
+// HDFC logo stretched where the web showed the card). Borrowed sibling art
+// (withCardArt) or an honest placeholder instead.
+const CARD_ART_VERTICALS = new Set(['creditcards']);
 
 /** Attach a brand image only where the offer has none of its own. Never overwrites a real product/hotel photo. */
 export function withBrandImages(offers: NormalizedOffer[]): NormalizedOffer[] {
@@ -103,6 +112,7 @@ export function withBrandImages(offers: NormalizedOffer[]): NormalizedOffer[] {
     const a: any = o.attributes || (o.attributes = {} as any);
     if (a.image_url || a.image) continue;
     if (PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
+    if (CARD_ART_VERTICALS.has(String(o.vertical))) continue;
     const img = brandImageFor(o);
     if (img) { a.image_url = img; a.image_is_brand_logo = 'true'; }
   }
@@ -128,12 +138,15 @@ export function stripMerchantLogoFallbacks(offers: NormalizedOffer[]): Normalize
   return offers;
 }
 
-const LENDER_VERTICAL_IDS = new Set(['loans', 'insurance', 'creditcards', 'account']);
+const LENDER_VERTICAL_IDS = new Set(['loans', 'insurance', 'account']);
 
 /**
  * Loans / insurance: replace the comparison-site favicon with the LENDER's real logo (Wikidata P154).
- * Credit cards keep their own card art; only a missing image falls back to the issuing bank's logo.
- * Real photos are never overwritten. Lookups are cached; failures leave the existing fallback in place.
+ * Owner 22 Oct: credit cards are NO LONGER logo-tile fallbacks — a missing card
+ * image borrows real art from a sibling row of the same card (withCardArt) or
+ * stays empty (honest placeholder in the UI). A bank logo never masquerades as
+ * card art again. Real photos are never overwritten. Lookups are cached; failures
+ * leave the existing fallback in place.
  */
 export async function withLenderLogos(offers: NormalizedOffer[]): Promise<NormalizedOffer[]> {
   const targets = offers.filter((o) => {
@@ -148,6 +161,58 @@ export async function withLenderLogos(offers: NormalizedOffer[]): Promise<Normal
     const a: any = o.attributes || (o.attributes = {} as any);
     const logo = logos.get(String((o.attributes as any)?.bank || o.title || ''));
     if (logo) { a.image_url = logo; a.image_is_brand_logo = 'true'; a.image_is_lender_logo = 'true'; }
+  }
+  return offers;
+}
+
+/**
+ * Owner 22 Oct (app screenshot: 'credit card vertical mai image ki jagah logo'):
+ * FD-variant rows ('Tata Neu Plus HDFC Bank FD Credit Card', 'Credit Card
+ * Against FD', ...) often arrive without artwork while the SAME card's regular
+ * row in the same result set carries the real art (CardInsider/Paisabazaar card
+ * images). Borrow that sibling art — same physical card, real photo, no mock.
+ * Rows whose card family has no art anywhere stay empty (honest placeholder),
+ * never a bank logo.
+ */
+const FD_VARIANT_RE = /\b(fd|against fd|secured)\b/gi;
+const normCardTitle = (t: string): string =>
+  String(t || '').toLowerCase().replace(FD_VARIANT_RE, ' ')
+    .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+export function withCardArt(offers: NormalizedOffer[]): NormalizedOffer[] {
+  const art = new Map<string, string>();
+  for (const o of offers) {
+    if (String(o.vertical) !== 'creditcards') continue;
+    const a: any = o.attributes || {};
+    const u = String(a.image_url || '');
+    if (u && a.image_is_brand_logo !== 'true' && !FAVICON_URL.test(u)) {
+      const k = normCardTitle(o.title);
+      if (k && !art.has(k)) art.set(k, u);
+    }
+  }
+  for (const o of offers) {
+    if (String(o.vertical) !== 'creditcards') continue;
+    const a: any = o.attributes || (o.attributes = {} as any);
+    const u = String(a.image_url || '');
+    const missing = !u || a.image_is_brand_logo === 'true' || FAVICON_URL.test(u);
+    if (!missing) continue;
+    const borrowed = art.get(normCardTitle(o.title));
+    if (borrowed) { a.image_url = borrowed; delete a.image_is_brand_logo; delete a.image_is_lender_logo; }
+  }
+  return offers;
+}
+
+/**
+ * Purge bank-logo stand-ins from stored credit-card rows (persisted before the
+ * 22 Oct rule) so a stretched HDFC logo can never render where card art belongs.
+ */
+export function stripCardLogoStandIns(offers: NormalizedOffer[]): NormalizedOffer[] {
+  for (const o of offers) {
+    if (String(o.vertical) !== 'creditcards') continue;
+    const a: any = o.attributes || {};
+    const u = String(a.image_url || '');
+    const isLogo = !u || a.image_is_brand_logo === 'true' || a.image_is_lender_logo === 'true' || FAVICON_URL.test(u);
+    if (isLogo) { delete a.image_url; delete a.image_is_brand_logo; delete a.image_is_lender_logo; }
   }
   return offers;
 }

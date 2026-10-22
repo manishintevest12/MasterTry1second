@@ -99,13 +99,18 @@ test('ekaroTrackingUrl converts a retailer deeplink when the API answers', async
   let called = 0;
   globalThis.fetch = (async (u: any, opts: any) => {
     called += 1;
-    assert.equal(String(u), 'https://ekaro-api.affiliaters.in/api/converter/public');
+    // Live-verified 22 Oct: POST /api/converter, body {deal, convert_option}.
+    assert.equal(String(u), 'https://ekaro-api.affiliaters.in/api/converter');
     assert.equal((opts.headers as any).authorization, 'Bearer test-key');
-    assert.ok(String(opts.body).includes('blinkit.com'));
-    return { ok: true, status: 200, json: async () => ({ status: 'success', data: { link: 'https://ekaro.earnkaro.com/abc123' } }) } as any;
+    const body = JSON.parse(String(opts.body));
+    assert.equal(body.deal, 'https://blinkit.com/s/?q=milk&fresh=1');
+    assert.equal(body.convert_option, 'convert_only');
+    // Real response shape: deal text with the profit link REPLACED IN PLACE
+    // (observed live: Flipkart -> https://fktr.in/W6Zsh2S, success:1 + randomPostID).
+    return { ok: true, status: 200, json: async () => ({ success: 1, data: 'https://fktr.in/W6Zsh2S', randomPostID: 'ibDMuHX' }) } as any;
   }) as any;
   const link = await ekaroTrackingUrl('https://blinkit.com/s/?q=milk&fresh=1');
-  assert.equal(link, 'https://ekaro.earnkaro.com/abc123');
+  assert.equal(link, 'https://fktr.in/W6Zsh2S');
   // domain cache: second call must not hit the API again
   await ekaroTrackingUrl('https://blinkit.com/s/?q=bread');
   assert.equal(called, 1);
