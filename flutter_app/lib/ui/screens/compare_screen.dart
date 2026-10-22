@@ -100,6 +100,9 @@ class _CompareScreenState extends State<CompareScreen> {
   Timer? _bgPoll;
   int _bgPollCount = 0;
   LiveResponse? _res;
+  /// The cache key of the response currently on screen; lets a background
+  /// revalidation (stale TTL refresh) swap in newer prices without a spinner.
+  String? _shownCacheKey;
   String? _error;
   SortMode _sort = SortMode.best;
   FilterOptions _filterOpts = const FilterOptions();
@@ -132,6 +135,7 @@ class _CompareScreenState extends State<CompareScreen> {
       _filterOpts = const FilterOptions();
       _seedForm();
       _res = _state.cache[_meta.id];
+      _shownCacheKey = _state.cacheQuery[_meta.id];
       if (mounted) setState(() {});
       _runSearch(auto: true);
       return;
@@ -144,6 +148,18 @@ class _CompareScreenState extends State<CompareScreen> {
       }
       _q.text = pending.query;
       _runSearch(query: pending.query);
+      return;
+    }
+    // Background revalidation finished: same query, fresher prices — adopt
+    // them silently so the user never sees a spinner for data already shown.
+    final fresh = _state.cache[_meta.id];
+    final key = _shownCacheKey;
+    if (fresh != null &&
+        !identical(fresh, _res) &&
+        key != null &&
+        _state.cacheQuery[_meta.id] == key &&
+        mounted) {
+      setState(() => _res = fresh);
     }
   }
 
@@ -180,6 +196,7 @@ class _CompareScreenState extends State<CompareScreen> {
     _bgPoll?.cancel();
     try {
       _res = await _state.live(_meta.id, q, depart: _iso(_date), force: force);
+      _shownCacheKey = _state.cacheQuery[_meta.id];
       // Progressive cold-start: real catalogue rows arrived instantly and the
       // server is still scanning live sources. Poll the same search quietly
       // until the full live set replaces the partial rows (max ~25s of polls).
@@ -1300,58 +1317,92 @@ class _SearchCard extends StatelessWidget {
         );
     }
 
-    return Box(
-      padding: const EdgeInsets.all(12),
-      radius: 16,
-      shadow: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(meta.icon, size: 14, color: T1SColors.red),
-              const SizedBox(width: 6),
-              Expanded(child: Text(meta.name.toUpperCase(), style: tx(context, 11, w: FontWeight.w900, ls: 0.7))),
-              Text(meta.tagline, style: tx(context, 9.5, color: muted(context))),
-            ],
-          ),
-          const SizedBox(height: 10),
-          body,
-          if (meta.kind != SearchKind.text) ...[
-            const SizedBox(height: 10),
-            RedButton('Search', onTap: onSearch, icon: Icons.search_rounded, expand: true),
+    // WEB-PARITY SURFACES (21 Oct owner report): every vertical on the website
+    // has its own distinctive full-width colored search bar (hotels #003580,
+    // bus #d84e55, food #fc8019, grocery emerald/teal, cab slate-950, ecommerce
+    // #232f3e, movie #333545, loans indigo-950, insurance #0f3d64, account
+    // red-950, creditcards rose-950). The app used to show one plain white
+    // card for all 13 — this map mirrors the web surface per vertical.
+    final surface = T1SSearchSurface.of(meta.id);
+    final dark = surface.dark;
+    final accent = Color(surface.accent);
+
+    Widget content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(meta.icon, size: 14, color: dark ? Colors.white : T1SColors.red),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                meta.name.toUpperCase(),
+                style: tx(context, 11, w: FontWeight.w900, ls: 0.7, color: dark ? Colors.white : null),
+              ),
+            ),
+            Text(
+              meta.tagline,
+              style: tx(context, 9.5, w: FontWeight.w700, color: dark ? accent : muted(context)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
-          if (meta.samples.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 26,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: meta.samples.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 6),
-                itemBuilder: (c, i) => GestureDetector(
-                  onTap: () {
-                    q.text = meta.samples[i];
-                    onSearch();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isDark(c) ? T1SColors.slate800 : T1SColors.slate50,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: border(context)),
-                    ),
-                    child: Text(meta.samples[i], style: tx(c, 9.5, w: FontWeight.w600, color: muted(context))),
+        ),
+        const SizedBox(height: 10),
+        body,
+        if (meta.kind != SearchKind.text) ...[
+          const SizedBox(height: 10),
+          RedButton('Search', onTap: onSearch, icon: Icons.search_rounded, expand: true),
+        ],
+        if (meta.samples.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 26,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: meta.samples.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (c, i) => GestureDetector(
+                onTap: () {
+                  q.text = meta.samples[i];
+                  onSearch();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    // White pill on a colored surface, exactly like the web's sample chips.
+                    color: surface.dark ? Colors.white : T1SColors.slate50,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: surface.dark ? Colors.white.withValues(alpha: 0.2) : border(context)),
+                  ),
+                  child: Text(
+                    meta.samples[i],
+                    style: tx(c, 9.5, w: FontWeight.w700, color: surface.dark ? Colors.black87 : muted(context)),
                   ),
                 ),
               ),
             ),
-          ],
+          ),
         ],
+      ],
+    );
+
+    // The inner form widgets pick their colors from the theme brightness: force
+    // the light palette so fields render as white/slate pills with dark text —
+    // the exact look the website uses on its colored search surfaces — in both
+    // app light and dark modes.
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Color(surface.bg),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, 4))],
       ),
+      child: Theme(data: Theme.of(context).copyWith(brightness: Brightness.light), child: content),
     );
   }
 }
+
 
 class _DateChip extends StatelessWidget {
   const _DateChip({required this.date, required this.onTap, this.label = 'Date'});

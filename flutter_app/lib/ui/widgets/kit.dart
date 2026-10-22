@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -76,14 +77,16 @@ class NetImage extends StatelessWidget {
     final u = url;
     final child = (u == null || u.isEmpty)
         ? fallback()
-        : Image.network(
-            u,
+        : CachedNetworkImage(
+            // SPEED (21 Oct): photos persist on disk across launches and scrolls
+            // (Image.network kept re-downloading every hotel/dish/product image).
+            imageUrl: u,
             width: width,
             height: height,
             fit: fit,
-            gaplessPlayback: true,
-            errorBuilder: (_, __, ___) => fallback(),
-            loadingBuilder: (c, w, p) => p == null ? w : Container(width: width, height: height, color: back),
+            fadeInDuration: const Duration(milliseconds: 150),
+            errorWidget: (_, __, ___) => fallback(),
+            placeholder: (_, __) => Container(width: width, height: height, color: back),
           );
     return radius == 0 ? child : ClipRRect(borderRadius: BorderRadius.circular(radius), child: child);
   }
@@ -102,10 +105,10 @@ class SiteLogo extends StatelessWidget {
       decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: T1SColors.slate200)),
       clipBehavior: Clip.antiAlias,
       padding: EdgeInsets.all(size * 0.16),
-      child: Image.network(
-        'https://www.google.com/s2/favicons?domain=$domain&sz=64',
+      child: CachedNetworkImage(
+        imageUrl: 'https://www.google.com/s2/favicons?domain=$domain&sz=64',
         fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Icon(Icons.storefront_outlined, size: size * 0.5, color: T1SColors.slate400),
+        errorWidget: (_, __, ___) => Icon(Icons.storefront_outlined, size: size * 0.5, color: T1SColors.slate400),
       ),
     );
   }

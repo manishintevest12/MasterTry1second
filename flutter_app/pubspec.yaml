@@ -5,7 +5,7 @@ description: >-
   in India. Every price comes from the real Try1Second engine; the app
   never invents data.
 publish_to: "none"
-version: 1.8.0+12
+version: 1.8.5+13
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -18,6 +18,9 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.2
+  # SPEED (21 Oct): disk-cached product photos — Image.network re-downloaded
+  # every image on every scroll; the web browser caches aggressively.
+  cached_network_image: ^3.4.1
   shared_preferences: ^2.3.2
   url_launcher: ^6.3.1
   speech_to_text: ^7.0.0

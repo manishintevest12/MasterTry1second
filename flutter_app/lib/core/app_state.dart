@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
@@ -92,7 +95,18 @@ class AppState extends ChangeNotifier {
   /// Last live result per vertical, so tabs reopen instantly (website keeps `items`).
   final Map<String, LiveResponse> cache = {};
   final Map<String, String> cacheQuery = {};
+  /// Epoch ms when each vertical's cached response was fetched (TTL checks).
+  final Map<String, int> cacheAt = {};
   final Map<String, Future<LiveResponse>> _inFlight = {};
+
+  // -- SPEED (21 Oct owner report: app slower than web) --------------------
+  // TTLs mirror the server cache (server/routes searchCache): travel prices
+  // move hourly and stay 'fresh' 5 min / persist 15; everything else 15/45.
+  static const Set<String> _travelLike = {'flights', 'hotels', 'bus', 'cab', 'movies', 'movie'};
+  static int freshTtlMs(String v) => _travelLike.contains(v) ? 5 * 60 * 1000 : 15 * 60 * 1000;
+  static int staleTtlMs(String v) => _travelLike.contains(v) ? 15 * 60 * 1000 : 45 * 60 * 1000;
+
+  static int get _nowMs => DateTime.now().millisecondsSinceEpoch;
   final Map<String, List<Deal>> _dealsByKind = {};
   List<Deal>? allDeals;
 
@@ -105,7 +119,10 @@ class AppState extends ChangeNotifier {
     AuthService.instance.addListener(_onAuth);
     await AuthService.instance.restore(api);
     unawaited(refreshBadges());
-    // Warm-up runs in the background; the splash watches [warmProgress].
+    // SPEED: paint every vertical instantly from the on-disk live cache
+    // (previous session's real results) BEFORE any network warms up.
+    await _loadDiskCache();
+    // Warm-up runs in the background; the splash only watches it for its label.
     unawaited(prefetchDefaults());
     notifyListeners();
   }
@@ -170,6 +187,9 @@ class AppState extends ChangeNotifier {
     await store.saveSettings(city: city, pincode: pincode);
     cache.clear();
     cacheQuery.clear();
+    cacheAt.clear();
+    // Old-location prices are invalid for the new pincode.
+    unawaited(store.liveDiskCacheClear());
     notifyListeners();
   }
 
@@ -178,7 +198,18 @@ class AppState extends ChangeNotifier {
     final key = v == 'movies' ? 'movie' : v;
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
     final cacheKey = '$key|$q|${depart ?? ''}';
-    if (!force && cache[key] != null && cacheQuery[key] == cacheKey) return cache[key]!;
+    if (!force && cache[key] != null && cacheQuery[key] == cacheKey) {
+      final hit = cache[key]!;
+      final age = _nowMs - (cacheAt[key] ?? 0);
+      if (age <= freshTtlMs(key)) return hit;
+      // Stale-but-valid: paint INSTANTLY from cache and refresh quietly in the
+      // background (web parity: never make the user watch a spinner for a
+      // result we already have on screen).
+      if (_inFlight[cacheKey] == null) {
+        unawaited(_fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate));
+      }
+      return hit;
+    }
     final flying = _inFlight[cacheKey];
     if (flying != null) return flying;
     // Account vertical: real bank-account offers come from the admin-managed deals
@@ -187,22 +218,109 @@ class AppState extends ChangeNotifier {
       final f = _accountFeed().then((res) {
         cache[key] = res;
         cacheQuery[key] = cacheKey;
+        cacheAt[key] = _nowMs;
         notifyListeners();
         return res;
       }).whenComplete(() => _inFlight.remove(cacheKey));
       _inFlight[cacheKey] = f;
       return f;
     }
-    final f = api
+    final f = _fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate);
+    _inFlight[cacheKey] = f;
+    return f;
+  }
+
+  /// The single acquisition pipeline used by live() and stale revalidation.
+  Future<LiveResponse> _fetchAndStore(
+    String key,
+    String cacheKey,
+    String q, {
+    String? depart,
+    String? returnDate,
+  }) {
+    return api
         .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate)
         .then((res) {
       cache[key] = res;
       cacheQuery[key] = cacheKey;
+      cacheAt[key] = _nowMs;
+      if (!res.pendingRefresh) _scheduleDiskSave();
       notifyListeners();
       return res;
     }).whenComplete(() => _inFlight.remove(cacheKey));
-    _inFlight[cacheKey] = f;
-    return f;
+  }
+
+  // -- on-disk live cache ---------------------------------------------------
+  // Persist each vertical's latest full response so a cold app start paints
+  // REAL results instantly (a second app-open is as fast as a tab reopen).
+  // Only complete, fresh responses are stored; partial progressive rows
+  // (pendingRefresh) never hit the disk.
+
+  Timer? _diskSaveTimer;
+
+  void _scheduleDiskSave() {
+    _diskSaveTimer?.cancel();
+    // Coalesce the 13-vertical warm-up burst into one write.
+    _diskSaveTimer = Timer(const Duration(milliseconds: 1500), () {
+      unawaited(store.liveDiskCacheSave(_buildDiskDoc()));
+    });
+  }
+
+  Map<String, dynamic> _capDiskSize(Map<String, dynamic> raw) {
+    var j = raw;
+    for (final keep in [999999, 60, 40, 20]) {
+      final out = Map<String, dynamic>.from(j);
+      final r = out['results'];
+      if (r is List && r.length > keep) out['results'] = r.sublist(0, keep);
+      final enc = jsonEncode(out);
+      if (enc.length <= 60000) return out;
+    }
+    return const {};
+  }
+
+  Map<String, dynamic> _buildDiskDoc() {
+    final v = <String, dynamic>{};
+    final now = _nowMs;
+    cache.forEach((k, res) {
+      final raw = res.rawJson;
+      if (raw == null || res.pendingRefresh || res.items.isEmpty) return;
+      final age = now - (cacheAt[k] ?? 0);
+      if (age > staleTtlMs(k)) return; // ancient prices mislead on open
+      final capped = _capDiskSize(raw);
+      if (capped.isEmpty) return;
+      v[k] = {'q': cacheQuery[k], 't': cacheAt[k], 'j': capped};
+    });
+    return {'city': city, 'pincode': pincode, 'v': v};
+  }
+
+  Future<void> _loadDiskCache() async {
+    final doc = await store.liveDiskCacheLoad();
+    if (doc.isEmpty) return;
+    // A different location means every stored price is wrong for this user.
+    if ('${doc['city'] ?? ''}' != city || '${doc['pincode'] ?? ''}' != pincode) {
+      await store.liveDiskCacheClear();
+      return;
+    }
+    final v = doc['v'];
+    if (v is! Map) return;
+    var loaded = 0;
+    v.forEach((k, entry) {
+      if (entry is! Map) return;
+      final j = entry['j'];
+      if (j is! Map<String, dynamic>) return;
+      try {
+        final res = LiveResponse.fromJson(j);
+        if (res.items.isEmpty) return;
+        final key = '$k';
+        cache[key] = res;
+        cacheQuery[key] = '${entry['q'] ?? ''}';
+        cacheAt[key] = (entry['t'] is num) ? (entry['t'] as num).toInt() : 0;
+        loaded++;
+      } catch (_) {
+        // Corrupt entry: skip it, never crash the boot.
+      }
+    });
+    if (loaded > 0) notifyListeners();
   }
 
   /// Account feed: maps admin-managed account deals into the compare-card shape.
@@ -245,15 +363,25 @@ class AppState extends ChangeNotifier {
       warmProgress.value = done / total;
     }
 
-    final jobs = <Future<void>>[
+    final jobs = <Future<void> Function()>[
       for (final v in kVerticals)
-        live(v.id, defaultQueryFor(v.id, city))
+        () => live(v.id, defaultQueryFor(v.id, city))
             .then<void>((_) {})
             .catchError((_) {})
             .whenComplete(tick),
-      deals().then<void>((_) {}).catchError((_) {}).whenComplete(tick),
+      () => deals().then<void>((_) {}).catchError((_) {}).whenComplete(tick),
     ];
-    await Future.wait(jobs);
+    // SPEED: 14 simultaneous cold searches used to wedge Hostinger shared
+    // hosting at app open and made the user's own first search slow. The
+    // server keep-warms every seed on a 12-min cron anyway — trickle at 3.
+    var next = 0;
+    Future<void> worker() async {
+      while (next < jobs.length) {
+        await jobs[next++]();
+      }
+    }
+
+    await Future.wait([worker(), worker(), worker()]);
   }
 
   Future<List<Deal>> deals({String? kind}) async {

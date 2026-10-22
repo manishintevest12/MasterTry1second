@@ -8,19 +8,22 @@ import '../core/verticals.dart';
 import 'widgets/logo.dart';
 
 /// Animated splash. Stays up until:
-///  * the session is verified ([ready]),
-///  * the minimum display time has passed (so it never flashes), and
-///  * every vertical's default search + the deals feed have loaded (real
-///    [AppState.warmProgress]) OR the max wait is hit (slow network: we never
-///    trap the user, the app then shows its own skeletons).
+///  * the session is verified ([ready]), and
+///  * the minimum display time has passed (so it never flashes).
+/// SPEED FIX (21 Oct owner report: app very slow): the splash used to ALSO wait
+/// for every vertical's default search (warmProgress >= 1.0, up to an 8s cap) —
+/// that gate alone made every cold start feel like an 8-second hang. The server
+/// already keep-warms all seed queries on a 12-min cron, and verticals now
+/// render instantly from the on-disk live cache + skeleton, so the splash must
+/// never block on the warm-up. warmProgress only drives the progress label now.
 /// Behind the logo: soft floating icons of all 11 verticals (flights, food, ...).
 class SplashGate extends StatefulWidget {
   const SplashGate({
     super.key,
     required this.child,
     required this.ready,
-    this.minDuration = const Duration(milliseconds: 2200),
-    this.maxDuration = const Duration(seconds: 8),
+    this.minDuration = const Duration(milliseconds: 1200),
+    this.maxDuration = const Duration(seconds: 6),
   });
 
   final Widget child;
@@ -34,7 +37,6 @@ class SplashGate extends StatefulWidget {
 
 class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateMixin {
   bool _minDone = false;
-  bool _maxDone = false;
   bool _faded = false;
   bool _gone = false;
   late final AnimationController _float = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
@@ -44,9 +46,6 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
     super.initState();
     Future.delayed(widget.minDuration, () {
       if (mounted) setState(() => _minDone = true);
-    });
-    Future.delayed(widget.maxDuration, () {
-      if (mounted) setState(() => _maxDone = true);
     });
     AppState.instance.warmProgress.addListener(_tick);
   }
@@ -66,7 +65,8 @@ class _SplashGateState extends State<SplashGate> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    final canLeave = widget.ready && _minDone && (_warm || _maxDone);
+    // SPEED FIX: session + minimum display only — never blocks on the warm-up.
+    final canLeave = widget.ready && _minDone;
     if (canLeave && !_faded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_faded) setState(() => _faded = true);

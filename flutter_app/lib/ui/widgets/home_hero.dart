@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -161,10 +162,10 @@ class _HomeHeroState extends State<HomeHero> {
                       decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: T1SColors.slate200)),
                       clipBehavior: Clip.antiAlias,
                       padding: const EdgeInsets.all(3),
-                      child: Image.network(
-                        'https://www.google.com/s2/favicons?domain=${merchants[i]}&sz=64',
+                      child: CachedNetworkImage(
+                        imageUrl: 'https://www.google.com/s2/favicons?domain=${merchants[i]}&sz=64',
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(Icons.language_rounded, size: 13, color: T1SColors.slate300),
+                        errorWidget: (_, __, ___) => Icon(Icons.language_rounded, size: 13, color: T1SColors.slate300),
                       ),
                     ),
                   ),

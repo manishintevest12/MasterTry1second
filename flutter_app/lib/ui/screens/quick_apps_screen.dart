@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -152,10 +153,10 @@ class _AppCard extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                app.iconUrl,
+              child: CachedNetworkImage(
+                imageUrl: app.iconUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.apps, size: 24, color: T1SColors.slate400),
+                errorWidget: (_, __, ___) => const Icon(Icons.apps, size: 24, color: T1SColors.slate400),
               ),
             ),
           ),

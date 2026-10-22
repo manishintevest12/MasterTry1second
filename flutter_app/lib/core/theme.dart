@@ -171,3 +171,33 @@ ThemeData t1sDarkTheme() {
     ),
   );
 }
+
+
+/// Per-vertical search surface colors — web SearchAndFilterHeader parity (21 Oct).
+/// hotels #003580 (Booking blue), bus #d84e55, food #fc8019, grocery emerald/teal,
+/// cab slate-950, ecommerce #232f3e, movie #333545, loans indigo-950,
+/// insurance #0f3d64, account red-950, creditcards rose-950, flights slate-100.
+class T1SSearchSurface {
+  final int bg;
+  final int accent;
+  final bool dark;
+  const T1SSearchSurface(this.bg, this.accent, {this.dark = true});
+
+  static const Map<String, T1SSearchSurface> map = {
+    'flights': T1SSearchSurface(0xFFF1F5F9, 0xFF64748B, dark: false),
+    'hotels': T1SSearchSurface(0xFF003580, 0xFFFCD34D),
+    'bus': T1SSearchSurface(0xFFD84E55, 0xFFFDE68A),
+    'cab': T1SSearchSurface(0xFF0B1220, 0xFFFBBF24),
+    'food': T1SSearchSurface(0xFFFC8019, 0xFFFFF7ED),
+    'grocery': T1SSearchSurface(0xFF0F766E, 0xFFA7F3D0),
+    'ecommerce': T1SSearchSurface(0xFF232F3E, 0xFFFBBF24),
+    'movie': T1SSearchSurface(0xFF333545, 0xFFF87171),
+    'loans': T1SSearchSurface(0xFF1E1B4B, 0xFFFCD34D),
+    'insurance': T1SSearchSurface(0xFF0F3D64, 0xFF6EE7B7),
+    'account': T1SSearchSurface(0xFF450A0A, 0xFFFCA5A5),
+    'creditcards': T1SSearchSurface(0xFF4C0519, 0xFFFDA4AF),
+  };
+
+  static T1SSearchSurface of(String id) =>
+      map[id] ?? const T1SSearchSurface(0xFFFFFFFF, 0xFF64748B, dark: false);
+}

@@ -355,7 +355,10 @@ class LiveResponse {
   /// Progressive cold-start: fresh catalogue rows were served instantly and live
   /// prices are still being acquired in the background — poll the same search again.
   final bool pendingRefresh;
-  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed, this.servedFrom, this.latencyMs, {this.pendingRefresh = false});
+  /// Raw server JSON kept so AppState can persist this response to the on-disk
+  /// cache (instant app-open paint) without a second serialization pass.
+  final Map<String, dynamic>? rawJson;
+  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed, this.servedFrom, this.latencyMs, {this.pendingRefresh = false, this.rawJson});
 
   factory LiveResponse.fromJson(Map<String, dynamic> j) => LiveResponse(
         [
@@ -368,6 +371,7 @@ class LiveResponse {
         '${j['servedFrom'] ?? ''}',
         (j['latencyMs'] is num) ? (j['latencyMs'] as num).round() : 0,
         pendingRefresh: j['pendingRefresh'] == true,
+        rawJson: j,
       );
 }
 
@@ -963,17 +967,26 @@ class Try1SecondApi {
   Map<String, String> _headers(String? token) =>
       token == null ? _jsonHeaders : {..._jsonHeaders, 'Authorization': 'Bearer $token'};
 
+  /// Speed fix (21 Oct): no request may hang forever — a stuck socket used to
+  /// leave a vertical's spinner up indefinitely. 30s covers every endpoint
+  /// (live search is progressive and returns within ~1s, worst cases included).
+  static const _httpTimeout = Duration(seconds: 30);
+
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {
-    final res = await _client.post(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(token),
-      body: jsonEncode(body),
-    );
+    final res = await _client
+        .post(
+          Uri.parse('$baseUrl$path'),
+          headers: _headers(token),
+          body: jsonEncode(body),
+        )
+        .timeout(_httpTimeout);
     return _decode(res);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
-    final res = await _client.get(Uri.parse('$baseUrl$path'), headers: _headers(token));
+    final res = await _client
+        .get(Uri.parse('$baseUrl$path'), headers: _headers(token))
+        .timeout(_httpTimeout);
     return _decode(res);
   }
 

@@ -129,6 +129,40 @@ class AppStore {
   Future<bool> isTracked(String key) async =>
       (await tracked()).any((t) => t.key == key);
 
+  // -- on-disk live cache (21 Oct speed fix) -----------------------------
+  // Persisted live-search responses so the app paints results INSTANTLY on a
+  // cold start (before the first network byte arrives). Layout:
+  //   {"city": "...", "pincode": "...", "v": {vertical: {"q": "...", "t": ms, "j": {...raw server json...}}}}
+  // Entries whose city/pincode no longer match are dropped on load.
+
+  static const _kLiveCache = 't1sLiveDiskCache';
+
+  Future<Map<String, dynamic>> liveDiskCacheLoad() async {
+    try {
+      final raw = (await _p).getString(_kLiveCache);
+      if (raw == null || raw.isEmpty) return const {};
+      final j = jsonDecode(raw);
+      if (j is! Map<String, dynamic>) return const {};
+      return j;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> liveDiskCacheSave(Map<String, dynamic> doc) async {
+    final p = await _p;
+    try {
+      await p.setString(_kLiveCache, jsonEncode(doc));
+    } catch (_) {
+      // Storage full / too large: drop the cache rather than crash.
+      await p.remove(_kLiveCache);
+    }
+  }
+
+  Future<void> liveDiskCacheClear() async {
+    await (await _p).remove(_kLiveCache);
+  }
+
   Future<void> toggleTrack(TrackedItem item) async {
     final list = await tracked();
     final exists = list.any((t) => t.key == item.key);
