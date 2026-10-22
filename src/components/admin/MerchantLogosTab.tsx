@@ -11,7 +11,7 @@ const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs fo
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
 
 /** Client-side resize to max 256px so uploads stay tiny (MySQL-safe base64). */
-function fileToDataUrl(file: File, max = 256): Promise<string> {
+export function fileToDataUrl(file: File, max = 256): Promise<string> {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
     fr.onerror = () => reject(new Error('Could not read the file'));

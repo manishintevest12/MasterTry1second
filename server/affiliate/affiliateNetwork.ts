@@ -66,20 +66,34 @@ function safeDomain(url: string): string {
 // ============ Redirect validation (Section 15) ============
 const BLOCKED_SCHEMES = /^(?!https?:$).+:$/i; // anything not http/https
 
-/** Validate a destination before redirecting: scheme, host sanity, no open redirect. */
-export function validateDestination(dest: string): { valid: boolean; reason?: string } {
+/** Trusted affiliate-network tracking hosts (owner 22 Oct bug: "Refused: embedded
+ * redirect to another host"). Cuelinks linksredirect.com ALWAYS carries
+ * `url=<merchant>` — that is the network's own routing, not an open redirect.
+ * These hosts are exempt from the embedded-redirect-param check. */
+const TRUSTED_TRACKING_HOSTS = /^([a-z0-9-]+\.)*(linksredirect\.com|cuelinks\.com)$/i;
+
+/** Validate a destination before redirecting: scheme, host sanity, no open redirect.
+ * `allowEmbeddedRedirect` is set for destinations whose pointer was stamped trusted
+ * at creation (provenance: coupon/affiliate registry feeds, admin partners) — those
+ * merchant landing pages legitimately bridge to the vendor via a url= param, and
+ * the pointer token itself is HMAC-signed server-side, so the destination is our
+ * own data, never user input. */
+export function validateDestination(dest: string, opts: { allowEmbeddedRedirect?: boolean } = {}): { valid: boolean; reason?: string } {
   try {
     const u = new URL(dest);
     if (BLOCKED_SCHEMES.test(u.protocol)) return { valid: false, reason: `blocked scheme ${u.protocol}` };
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return { valid: false, reason: 'non-HTTP scheme' };
     if (!u.hostname || !u.hostname.includes('.')) return { valid: false, reason: 'invalid hostname' };
     // Credirect chains are collapsed: an embedded "next=/redirect" param pointing at another host is refused
-    for (const [k, v] of u.searchParams.entries()) {
-      if (/^(next|redirect|redir|return|return_to|url)$/i.test(k)) {
-        try {
-          const inner = new URL(v, u.origin);
-          if (inner.hostname !== u.hostname) return { valid: false, reason: 'embedded redirect to another host' };
-        } catch { /* not a URL — ignore */ }
+    // (still enforced for scraped/untrusted destinations and non-tracking hosts).
+    if (!opts.allowEmbeddedRedirect && !TRUSTED_TRACKING_HOSTS.test(u.hostname)) {
+      for (const [k, v] of u.searchParams.entries()) {
+        if (/^(next|redirect|redir|return|return_to|url)$/i.test(k)) {
+          try {
+            const inner = new URL(v, u.origin);
+            if (inner.hostname !== u.hostname) return { valid: false, reason: 'embedded redirect to another host' };
+          } catch { /* not a URL — ignore */ }
+        }
       }
     }
     return { valid: true };

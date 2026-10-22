@@ -306,7 +306,7 @@ export function itemFromAffiliate(row: AffiliateRow, resolvedLogo: string | null
     discountPct: row.discount_type === 'percent' ? dv : null,
     rating: null,
     badge,
-    url: createMaskingPointer(url, { offerId: `showcase-aff-${row.id}` }),
+    url: createMaskingPointer(url, { offerId: `showcase-aff-${row.id}`, trusted: true }), // affiliate registry feed
   };
 }
 

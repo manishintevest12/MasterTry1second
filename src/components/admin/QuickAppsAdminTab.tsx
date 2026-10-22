@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Zap,
   Plus,
@@ -25,6 +25,7 @@ import {
   Apple,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { fileToDataUrl } from './MerchantLogosTab';
 import { QuickAppPartner, QuickAppPartnerType, QuickAppRedirectionLog } from '../../types';
 
 const TYPE_OPTIONS: { id: QuickAppPartnerType; label: string; desc: string; badgeColor: string }[] = [
@@ -89,6 +90,8 @@ export const QuickAppsAdminTab: React.FC = () => {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingPartner, setEditingPartner] = useState<QuickAppPartner | null>(null);
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // Form State
   const [formState, setFormState] = useState({
@@ -145,6 +148,33 @@ export const QuickAppsAdminTab: React.FC = () => {
       badge: partner.badge || '',
     });
     setIsModalOpen(true);
+  };
+
+  // Upload the chosen image to the merchant-logos registry (MySQL) and point the
+  // partner's iconUrl at the stable public /api/logos/<key> URL (works in web + Flutter).
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!formState.name.trim()) { addToast('alert', 'Partner Name Required', 'Enter the company name first, then upload its logo.'); return; }
+    setLogoUploading(true);
+    try {
+      const logo = await fileToDataUrl(f);
+      const token = localStorage.getItem('t1s_admin_token') || '';
+      const res = await fetch('/api/admin/merchant-logos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: formState.name.trim(), logo }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not save logo');
+      setFormState((prev) => ({ ...prev, iconUrl: `${location.origin}/api/logos/${data.name_key}` }));
+      addToast('success', 'Logo Uploaded', 'Saved to the merchant logo registry — using the stable public URL now.');
+    } catch (err: any) {
+      addToast('alert', 'Logo Upload Failed', err?.message || 'Could not upload the image');
+    } finally {
+      setLogoUploading(false);
+      if (logoFileRef.current) logoFileRef.current.value = '';
+    }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -865,6 +895,16 @@ export const QuickAppsAdminTab: React.FC = () => {
                     title="Fetch the brand logo from the partner's website"
                   >
                     Logo from Web URL
+                  </button>
+                  <input ref={logoFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} />
+                  <button
+                    type="button"
+                    disabled={logoUploading}
+                    onClick={() => logoFileRef.current?.click()}
+                    className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-[10px] font-bold cursor-pointer shrink-0"
+                    title="Upload a logo image — saved to the merchant logo registry and served at a stable public URL"
+                  >
+                    {logoUploading ? 'Uploading…' : 'Upload Logo'}
                   </button>
                   <img
                     src={formState.iconUrl}

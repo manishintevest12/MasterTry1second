@@ -37,13 +37,25 @@ function secret(): string {
 function b64url(s: string): string { return Buffer.from(s, 'utf8').toString('base64url'); }
 function unb64url(s: string): string { return Buffer.from(s, 'base64url').toString('utf8'); }
 
-export function createMaskingPointer(destination: string, opts: { offerId?: string } = {}): string {
-  const payload = b64url(JSON.stringify({ d: destination.slice(0, 2000), o: (opts.offerId || '').slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1000 }));
+export function createMaskingPointer(destination: string, opts: { offerId?: string; trusted?: boolean } = {}): string {
+  const dest = String(destination || '').trim();
+  // Never mint a pointer the click endpoint would refuse — a non-HTTP / malformed
+  // destination yields '' so cards render without a dead-end link instead of
+  // shipping a "Refused:" page to the user (owner bug, 22 Oct).
+  try {
+    const u = new URL(dest);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    if (!u.hostname || !u.hostname.includes('.')) return '';
+  } catch { return ''; }
+  // `t: 1` stamps trusted PROVENANCE (coupon/affiliate registry feed or admin partner):
+  // click-time validation then permits merchant bridge pages that carry url= params
+  // (e.g. a registry merchant whose landing page forwards to the vendor).
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2000), o: (opts.offerId || '').slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1000, ...(opts.trusted ? { t: 1 } : {}) }));
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url').slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 
-export function resolveMaskingPointer(token: string): { destination: string; offerId?: string } | null {
+export function resolveMaskingPointer(token: string): { destination: string; offerId?: string; trusted?: boolean } | null {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ''));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
@@ -52,7 +64,7 @@ export function resolveMaskingPointer(token: string): { destination: string; off
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== 'string' || Number(j.e) < Date.now()) return null;
-    return { destination: String(j.d), offerId: j.o ? String(j.o) : undefined };
+    return { destination: String(j.d), offerId: j.o ? String(j.o) : undefined, trusted: j.t === 1 };
   } catch { return null; }
 }
 

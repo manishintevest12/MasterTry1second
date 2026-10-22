@@ -30,9 +30,22 @@ class _MainShellState extends State<MainShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _menuOpen = false;
 
+  // SPEED (22 Oct): the shell paints only tab + header/menu/bottom-bar badges.
+  // AppState notifies on EVERY warm/search tick (~15x per app open), and each
+  // notify used to rebuild the whole shell — including the active screen with
+  // its image-heavy cards. Screens listen to AppState themselves, so the shell
+  // rebuilds ONLY when a value it actually shows changes.
+  NavTab _lastTab = NavTab.home;
+  int _lastUnread = 0;
+  int _lastPoints = 0;
+  int _lastTracked = 0;
+  int _lastSpins = 0;
+  int _lastRewardsTab = 0;
+
   @override
   void initState() {
     super.initState();
+    _syncShellFields();
     _state.addListener(_rebuild);
     _state.init();
   }
@@ -43,8 +56,26 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
+  void _syncShellFields() {
+    _lastTab = _state.tab;
+    _lastUnread = _state.unread;
+    _lastPoints = _state.points;
+    _lastTracked = _state.trackedCount;
+    _lastSpins = _state.spinsAvailable;
+    _lastRewardsTab = _state.pendingRewardsTab;
+  }
+
   void _rebuild() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final changed = _lastTab != _state.tab ||
+        _lastUnread != _state.unread ||
+        _lastPoints != _state.points ||
+        _lastTracked != _state.trackedCount ||
+        _lastSpins != _state.spinsAvailable ||
+        _lastRewardsTab != _state.pendingRewardsTab;
+    if (!changed) return; // warm/search ticks: nothing the shell shows moved
+    _syncShellFields();
+    setState(() {});
   }
 
   static const _tabs = [NavTab.home, NavTab.quickApps, NavTab.insights, NavTab.compare, NavTab.rewards];

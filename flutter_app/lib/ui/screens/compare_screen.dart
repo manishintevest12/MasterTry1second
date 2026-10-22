@@ -411,10 +411,13 @@ class _CompareScreenState extends State<CompareScreen> {
         child: RefreshIndicator(
           color: T1SColors.red,
           onRefresh: () => _runSearch(force: true),
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              _SearchCard(
+          // SPEED (22 Oct): builder + prebuilt header/feed lists — the eager
+          // ListView(children:) built EVERY result card (often 100+ image
+          // cards) in one frame; now offscreen cards build lazily on scroll.
+          child: Builder(
+            builder: (bc) {
+              final header = <Widget>[
+                _SearchCard(
                 onSwap: _swap,
                 meta: _meta,
                 q: _q,
@@ -457,17 +460,33 @@ class _CompareScreenState extends State<CompareScreen> {
                   onSort: (s) => setState(() => _sort = s),
                 ),
                 const SizedBox(height: 12),
-                _FeedBody(
-                  meta: _meta,
-                  res: _res!,
-                  sort: _sort,
-                  filterOpts: _filterOpts,
-                ),
               ] else if (!_loading && _error == null) ...[
                 const SizedBox(height: 26),
                 _EmptyState(onSearch: () => _runSearch(force: true)),
+              ] else if (_loading && (_res == null || _res!.items.isEmpty)) ...[
+                // WarpLoader (owner 22 Oct): engaging 3-2-1 countdown while the live
+                // search runs in the background — results replace it automatically.
+                const SizedBox(height: 20),
+                const _WarpLoader(),
               ],
-            ],
+              ];
+
+              // Feed cards build lazily below the header list.
+              final feed = (_res != null && _res!.items.isNotEmpty)
+                  ? _FeedBody(
+                      meta: _meta,
+                      res: _res!,
+                      sort: _sort,
+                      filterOpts: _filterOpts,
+                    ).cards(bc)
+                  : const <Widget>[];
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                itemCount: header.length + feed.length,
+                itemBuilder: (c, i) => i < header.length ? header[i] : feed[i - header.length],
+              );
+            },
           ),
         ),
       ),
@@ -1488,7 +1507,7 @@ class _StatusStrip extends StatelessWidget {
         child: Row(children: [
           const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2.2, color: T1SColors.red)),
           const SizedBox(width: 12),
-          Expanded(child: Text('Scanning thousands of deals and seconds in real time… The lowest price is loading right now.', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)))),
+          Expanded(child: Text('Comparing prices across the web at warp speed… your ultimate steal is arriving in 3, 2, 1...', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)))),
         ]),
       );
     }
@@ -1504,7 +1523,7 @@ class _StatusStrip extends StatelessWidget {
         child: Row(children: [
           const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.amber400)),
           const SizedBox(width: 11),
-          Expanded(child: Text('Scanning thousands of deals and seconds in real time. The lowest price is loading right now.', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
+          Expanded(child: Text('Comparing prices across the web at warp speed. Your ultimate steal is arriving in 3, 2, 1...', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
         ]),
       );
     }
@@ -1576,6 +1595,102 @@ class _SortBar extends StatelessWidget {
   }
 }
 
+/// WarpLoader (owner 22 Oct): the one site-wide loading experience —
+/// "Comparing prices across the web at warp speed... Your ultimate steal is
+/// arriving in 3, 2, 1..." Animated pulsing warp core with a ticking 3-2-1
+/// countdown, progress bar and shimmering skeleton cards. Unmounts the moment
+/// real results arrive; the background fetch continues while it shows.
+class _WarpLoader extends StatefulWidget {
+  const _WarpLoader();
+  @override
+  State<_WarpLoader> createState() => _WarpLoaderState();
+}
+
+class _WarpLoaderState extends State<_WarpLoader> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat(reverse: true);
+  int _count = 3;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _count = _count > 1 ? _count - 1 : 3);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = isDark(context);
+    return Box(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      radius: 16,
+      child: Column(children: [
+        // Warp core: pulsing red ring + ticking countdown
+        ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1.06).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
+          child: Container(
+            width: 74,
+            height: 74,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: T1SColors.red,
+              boxShadow: [BoxShadow(color: T1SColors.red.withValues(alpha: 0.18 + 0.14 * _pulse.value), blurRadius: 24, spreadRadius: 4 + 8 * _pulse.value)],
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (w, a) => ScaleTransition(scale: a, child: w),
+              child: Text('$_count', key: ValueKey<int>(_count), style: tx(context, 30, w: FontWeight.w900, color: Colors.white)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text('Comparing prices across the web at warp speed...', style: tx(context, 14, w: FontWeight.w800, color: ink(context)), textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+        FadeTransition(
+          opacity: Tween<double>(begin: 0.75, end: 1.0).animate(_pulse),
+          child: Text('Your ultimate steal is arriving in 3, 2, 1...', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)), textAlign: TextAlign.center),
+        ),
+        const SizedBox(height: 16),
+        // Progress bar — eases toward done but only real results complete it
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.06, end: 0.92),
+          duration: const Duration(seconds: 18),
+          curve: Curves.easeOut,
+          builder: (c, v, _) => ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(value: v, minHeight: 5, backgroundColor: dark ? T1SColors.slate800 : T1SColors.slate100, valueColor: const AlwaysStoppedAnimation(T1SColors.red)),
+          ),
+        ),
+        const SizedBox(height: 18),
+        // Skeleton cards — the page never looks dead while loading
+        Row(children: [
+          for (int i = 0; i < 3; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(
+              child: FadeTransition(
+                opacity: Tween<double>(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _pulse, curve: Interval(i * 0.12, (i * 0.12) + 0.88, curve: Curves.easeInOut))),
+                child: Container(
+                  height: 84,
+                  decoration: BoxDecoration(color: dark ? T1SColors.slate800 : T1SColors.slate100, borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ],
+        ]),
+      ]),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.onSearch});
   final VoidCallback onSearch;
@@ -1602,7 +1717,10 @@ class _EmptyState extends StatelessWidget {
 // Feed body: groups per vertical + filter application
 // ---------------------------------------------------------------------------
 
-class _FeedBody extends StatelessWidget {
+/// SPEED (22 Oct): emits the result cards as a plain List so the outer
+/// ListView.builder can build them lazily on scroll (was an eager Column
+/// that built every image card in one frame).
+class _FeedBody {
   const _FeedBody({
     required this.meta,
     required this.res,
@@ -1623,8 +1741,7 @@ class _FeedBody extends StatelessWidget {
     return null;
   }
 
-  @override
-  Widget build(BuildContext context) {
+  List<Widget> cards(BuildContext context) {
     var items = res.items;
 
     // Apply FilterOptions
@@ -1693,9 +1810,9 @@ class _FeedBody extends StatelessWidget {
       if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
         groups.sort((a, b) => b.best.price.compareTo(a.best.price));
       }
-      return Column(children: [
+      return [
         for (final g in groups) ...[HotelCard(g: g), const SizedBox(height: 12)],
-      ]);
+      ];
     }
 
     var groups = groupOffers(items);
@@ -1704,7 +1821,7 @@ class _FeedBody extends StatelessWidget {
       groups.sort((a, b) => b.best.price.compareTo(a.best.price));
     }
 
-    return Column(children: [
+    return [
       for (final g in groups) ...[
         if (meta.id == 'creditcards')
           CreditCardTile(g: g)
@@ -1714,7 +1831,7 @@ class _FeedBody extends StatelessWidget {
           GroupCard(g: g, vertical: meta.id),
         const SizedBox(height: 12),
       ],
-    ]);
+    ];
   }
 }
 
@@ -1734,6 +1851,10 @@ Future<void> showTrackSheet(
   final targetController = TextEditingController(
     text: price != null && price > 0 ? (price * 0.95).round().toString() : '',
   );
+  // SPEED (22 Oct): every track sheet created a TextEditingController that was
+  // never disposed — a small listener/bitmap leak per sheet open. Dispose once
+  // the sheet closes.
+  try {
   final ok = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
@@ -1792,5 +1913,8 @@ Future<void> showTrackSheet(
     } catch (e) {
       if (context.mounted) toast(context, 'Could not save alert: $e', error: true);
     }
+  }
+  } finally {
+    targetController.dispose();
   }
 }

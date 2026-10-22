@@ -14,6 +14,7 @@ import { CreditCardCard } from './CreditCardCard';
 import { CreditCardsCompareModal } from './CreditCardsCompareModal';
 import { VERTICAL_META } from '../data/mockData';
 import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X, ShoppingCart } from 'lucide-react';
+import { WarpBanner, WarpResultsLoader } from './WarpLoader';
 
 export const ComparisonFeed: React.FC = () => {
   const {
@@ -291,14 +292,7 @@ export const ComparisonFeed: React.FC = () => {
           sourcesReport, so the banner only flashed during the instant catalogue hop
           and vanished before the eye could see it. Gate on the vertical key instead:
           it stays visible for the whole background live-price acquisition. */}
-      {(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) && (
-        <div className="mb-3 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3.5 py-2.5 text-[12px] font-semibold text-orange-700">
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          <span>
-            Scanning thousands of deals and seconds in real time. The lowest price is loading right now.
-          </span>
-        </div>
-      )}
+      {(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) && <WarpBanner />}
 
       {/* Main 2-Column Comparison Layout (Sidebar + Feed) */}
       <div className="flex flex-col lg:flex-row items-start gap-6">
@@ -313,20 +307,9 @@ export const ComparisonFeed: React.FC = () => {
             isScrapingLive ? (
               // First open: default-city results are being fetched live — never show a
               // dead "no options" page while the default search is still running.
-              <div className="bg-white rounded-xl border border-slate-200 p-8 sm:p-12 text-center">
-                <Loader2 className="w-10 h-10 text-orange-500 mx-auto mb-3 animate-spin" />
-                <h3 className="text-base font-bold text-slate-900 mb-1">
-                  Scanning thousands of deals and seconds in real time{searchQuery ? ` for "${searchQuery}"` : ''}...
-                </h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  The lowest price is loading right now. We are comparing live prices across every website for you — results appear automatically in a few seconds.
-                </p>
-                <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl mx-auto">
-                  {[0, 1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse border border-slate-200" />
-                  ))}
-                </div>
-              </div>
+              // WarpLoader (owner 22 Oct): animated 3-2-1 countdown keeps the user
+              // engaged; results render automatically here the moment they arrive.
+              <WarpResultsLoader query={searchQuery || undefined} />
             ) : (
             <div className="bg-white rounded-xl border border-slate-200 p-8 sm:p-12 text-center">
               <SearchX className="w-12 h-12 text-slate-300 mx-auto mb-3" />

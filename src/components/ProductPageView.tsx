@@ -162,7 +162,9 @@ export const ProductPageView: React.FC = () => {
       {loading && (
         <div className="bg-white rounded-2xl border border-slate-200 p-10 flex flex-col items-center gap-3 text-slate-500">
           <Loader2 className="w-7 h-7 animate-spin text-red-600" />
-          <p className="text-sm font-semibold">Reading the product and comparing live prices across sites\u2026</p>
+          <style>{`@keyframes t1s-pulse-subtle-kf { 0%,100% { opacity:1; } 50% { opacity:0.78; } } .animate-pulse-subtle { animation: t1s-pulse-subtle-kf 1.8s ease-in-out infinite; }`}</style>
+          <p className="text-sm font-bold text-slate-900">Comparing prices across the web at warp speed...</p>
+          <p className="text-xs text-slate-500 font-semibold animate-pulse-subtle">Your ultimate steal is arriving in <span className="font-black text-red-600 tabular-nums">3, 2, 1...</span></p>
         </div>
       )}
 

@@ -22190,7 +22190,15 @@ function unb64url(s) {
   return Buffer.from(s, "base64url").toString("utf8");
 }
 function createMaskingPointer(destination, opts = {}) {
-  const payload = b64url(JSON.stringify({ d: destination.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3 }));
+  const dest = String(destination || "").trim();
+  try {
+    const u = new URL(dest);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (!u.hostname || !u.hostname.includes(".")) return "";
+  } catch {
+    return "";
+  }
+  const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {} }));
   const sig = import_crypto20.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
@@ -22203,7 +22211,7 @@ function resolveMaskingPointer(token) {
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
-    return { destination: String(j.d), offerId: j.o ? String(j.o) : void 0 };
+    return { destination: String(j.d), offerId: j.o ? String(j.o) : void 0, trusted: j.t === 1 };
   } catch {
     return null;
   }
@@ -22577,7 +22585,8 @@ function toPublicDeal(r) {
     terms: r.terms || null,
     imageUrl: r.image_url || null,
     validTill: r.valid_till ? String(r.valid_till).slice(0, 10) : null,
-    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}` })
+    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}`, trusted: true })
+    // coupon registry feed
   };
 }
 async function ensureDealsSchema() {
@@ -22658,7 +22667,8 @@ async function affiliateDealsForSeller(seller, limit = 100) {
       terms: null,
       validTill: r.expires_at ? String(r.expires_at).slice(0, 10) : null,
       imageUrl: r.merchant_logo || null,
-      goUrl: createMaskingPointer(String(r.affiliate_url || r.original_url || ""), { offerId: `aff-${r.id}` })
+      goUrl: createMaskingPointer(String(r.affiliate_url || r.original_url || ""), { offerId: `aff-${r.id}`, trusted: true })
+      // affiliate registry feed
     }));
   } catch {
     return [];
@@ -22834,8 +22844,10 @@ var init_deals = __esm({
 // server/marketing/merchantLogos.ts
 var merchantLogos_exports = {};
 __export(merchantLogos_exports, {
+  decodeLogoDataUrl: () => decodeLogoDataUrl,
   deleteMerchantLogo: () => deleteMerchantLogo,
   ensureMerchantLogosTable: () => ensureMerchantLogosTable,
+  getMerchantLogo: () => getMerchantLogo,
   listMerchantLogos: () => listMerchantLogos,
   merchantLogoMap: () => merchantLogoMap,
   upsertMerchantLogo: () => upsertMerchantLogo,
@@ -22862,6 +22874,22 @@ function validateLogoPayload(p) {
 async function listMerchantLogos() {
   await ensureMerchantLogosTable();
   return await getStore().query("SELECT name_key, name, logo, updated_at FROM merchant_logos ORDER BY name");
+}
+async function getMerchantLogo(nameKey) {
+  await ensureMerchantLogosTable();
+  const rows = await getStore().query("SELECT name_key, name, logo, updated_at FROM merchant_logos WHERE name_key = ? LIMIT 1", [
+    String(nameKey || "").slice(0, 80)
+  ]);
+  return rows[0] || null;
+}
+function decodeLogoDataUrl(logo) {
+  const m = /^data:image\/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(String(logo || "").trim());
+  if (!m) return null;
+  try {
+    return { mime: m[1] === "jpg" ? "jpeg" : m[1], bytes: Buffer.from(m[2], "base64") };
+  } catch {
+    return null;
+  }
 }
 async function merchantLogoMap() {
   const rows = await listMerchantLogos();
@@ -24115,18 +24143,20 @@ function safeDomain2(url) {
     return "";
   }
 }
-function validateDestination(dest) {
+function validateDestination(dest, opts = {}) {
   try {
     const u = new URL(dest);
     if (BLOCKED_SCHEMES.test(u.protocol)) return { valid: false, reason: `blocked scheme ${u.protocol}` };
     if (u.protocol !== "http:" && u.protocol !== "https:") return { valid: false, reason: "non-HTTP scheme" };
     if (!u.hostname || !u.hostname.includes(".")) return { valid: false, reason: "invalid hostname" };
-    for (const [k, v] of u.searchParams.entries()) {
-      if (/^(next|redirect|redir|return|return_to|url)$/i.test(k)) {
-        try {
-          const inner = new URL(v, u.origin);
-          if (inner.hostname !== u.hostname) return { valid: false, reason: "embedded redirect to another host" };
-        } catch {
+    if (!opts.allowEmbeddedRedirect && !TRUSTED_TRACKING_HOSTS.test(u.hostname)) {
+      for (const [k, v] of u.searchParams.entries()) {
+        if (/^(next|redirect|redir|return|return_to|url)$/i.test(k)) {
+          try {
+            const inner = new URL(v, u.origin);
+            if (inner.hostname !== u.hostname) return { valid: false, reason: "embedded redirect to another host" };
+          } catch {
+          }
         }
       }
     }
@@ -24167,7 +24197,7 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto21, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES;
+var import_crypto21, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
     import_crypto21 = __toESM(require("crypto"), 1);
@@ -24188,6 +24218,7 @@ var init_affiliateNetwork = __esm({
     };
     NETWORKS = [new CuelinksAdapter()];
     BLOCKED_SCHEMES = /^(?!https?:$).+:$/i;
+    TRUSTED_TRACKING_HOSTS = /^([a-z0-9-]+\.)*(linksredirect\.com|cuelinks\.com)$/i;
   }
 });
 
@@ -25848,7 +25879,8 @@ function itemFromAffiliate(row, resolvedLogo = null) {
     discountPct: row.discount_type === "percent" ? dv : null,
     rating: null,
     badge,
-    url: createMaskingPointer(url, { offerId: `showcase-aff-${row.id}` })
+    url: createMaskingPointer(url, { offerId: `showcase-aff-${row.id}`, trusted: true })
+    // affiliate registry feed
   };
 }
 async function fetchVerticalOffers(vertical, limit) {
@@ -28673,7 +28705,8 @@ var init_routes = __esm({
             badge: "Live Coupons",
             bgColor: "bg-slate-700",
             createdAt: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-            goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` })
+            goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, trusted: true })
+            // affiliate registry
           };
         });
         res.json({ success: true, affiliates });
@@ -28691,7 +28724,7 @@ var init_routes = __esm({
           const id = String(it.id || "");
           const host = domainHost(url);
           if (!id || !/^https:\/\//.test(url) || !allow.has(host)) continue;
-          goUrls[id] = createMaskingPointer(url, { offerId: `qapp-${id}` });
+          goUrls[id] = createMaskingPointer(url, { offerId: `qapp-${id}`, trusted: true });
         }
         res.json({ success: true, goUrls });
       } catch {
@@ -29251,7 +29284,8 @@ var init_routes = __esm({
             rating: p.rating ?? null,
             image: p.image_url || null,
             ctaText: p.cta_text || "Grab Deal",
-            url: dest.startsWith("/api/out") ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}` })
+            url: dest.startsWith("/api/out") ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}`, trusted: true })
+            // admin-curated pick
           });
         }
         for (const v of VERTICALS2) {
@@ -29389,6 +29423,18 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e?.message || "Could not load leads" });
       }
     });
+    apiRouter.get("/logos/:key", async (req, res) => {
+      try {
+        const { getMerchantLogo: getMerchantLogo2, decodeLogoDataUrl: decodeLogoDataUrl2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+        const row = await getMerchantLogo2(String(req.params.key || ""));
+        const dec = row ? decodeLogoDataUrl2(row.logo) : null;
+        if (!dec) return res.status(404).type("image/png").end();
+        res.set("Cache-Control", "public, max-age=300");
+        res.type(dec.mime).send(dec.bytes);
+      } catch {
+        res.status(404).end();
+      }
+    });
     apiRouter.get("/merchant-logos", async (_req, res) => {
       try {
         const { merchantLogoMap: merchantLogoMap2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
@@ -29447,8 +29493,13 @@ var init_routes = __esm({
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));
       if (!resolved) return res.status(410).send("This link has expired. Please search again for a fresh link.");
-      const check = validateDestination(resolved.destination);
-      if (!check.valid) return res.status(400).send(`Refused: ${check.reason}`);
+      const check = validateDestination(resolved.destination, { allowEmbeddedRedirect: resolved.trusted === true });
+      if (!check.valid) {
+        log.warn("Api", "Out pointer refused", { reason: check.reason });
+        return res.status(400).send(
+          `<!doctype html><html><head><meta charset="utf-8"><title>Link not verified</title></head><body style="font-family:system-ui,sans-serif;text-align:center;padding-top:15vh;color:#0f172a"><h2 style="font-weight:700">This link couldn't be verified</h2><p style="color:#475569">For your safety we didn't open it (${check.reason}).</p><p><a href="/" style="color:#e11d48;font-weight:700">Search again on Try1Second</a></p></body></html>`
+        );
+      }
       const dl = await buildSecureDeeplink(resolved.destination);
       await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
       res.redirect(302, dl.trackingUrl);

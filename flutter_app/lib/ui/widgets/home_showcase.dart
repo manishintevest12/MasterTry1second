@@ -102,7 +102,7 @@ class _HomeShowcaseState extends State<HomeShowcase> {
                         height: 46,
                         padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: T1SColors.slate200)),
-                        child: NetImage(a.image, fit: BoxFit.contain),
+                        child: NetImage(a.image, fit: BoxFit.contain, width: 46, height: 46),
                       ),
                   ],
                 ),
@@ -303,7 +303,7 @@ class _ShowcaseCard extends StatelessWidget {
             height: 104,
             width: double.infinity,
             child: Stack(children: [
-              NetImage(item.image ?? item.merchantLogo, fit: BoxFit.contain, bg: dark ? T1SColors.slate800 : T1SColors.slate50),
+              NetImage(item.image ?? item.merchantLogo, fit: BoxFit.contain, bg: dark ? T1SColors.slate800 : T1SColors.slate50, cacheWidthPx: 460),
               if (item.discountPct != null)
                 Positioned(top: 6, right: 6, child: _DiscountRing(pct: item.discountPct!)),
               // seller chip (reference: marketplace logo corner badge)

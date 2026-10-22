@@ -38,6 +38,24 @@ export async function listMerchantLogos(): Promise<MerchantLogo[]> {
   return (await getStore().query('SELECT name_key, name, logo, updated_at FROM merchant_logos ORDER BY name')) as MerchantLogo[];
 }
 
+/** Fetch one logo by its name_key (serves GET /api/logos/:key). */
+export async function getMerchantLogo(nameKey: string): Promise<MerchantLogo | null> {
+  await ensureMerchantLogosTable();
+  const rows = (await getStore().query('SELECT name_key, name, logo, updated_at FROM merchant_logos WHERE name_key = ? LIMIT 1', [
+    String(nameKey || '').slice(0, 80),
+  ])) as MerchantLogo[];
+  return rows[0] || null;
+}
+
+/** Decode a stored data URL into { mime, bytes } for HTTP image serving. */
+export function decodeLogoDataUrl(logo: string): { mime: string; bytes: Buffer } | null {
+  const m = /^data:image\/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/=]+)$/.exec(String(logo || '').trim());
+  if (!m) return null;
+  try {
+    return { mime: m[1] === 'jpg' ? 'jpeg' : m[1], bytes: Buffer.from(m[2], 'base64') };
+  } catch { return null; }
+}
+
 /** Map of key -> data URL for the public endpoint (client caches it). */
 export async function merchantLogoMap(): Promise<Record<string, string>> {
   const rows = await listMerchantLogos();

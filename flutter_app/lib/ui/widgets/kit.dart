@@ -61,7 +61,7 @@ class Box extends StatelessWidget {
 
 /// Network image with a quiet placeholder + graceful failure (never a fake product photo).
 class NetImage extends StatelessWidget {
-  const NetImage(this.url, {super.key, this.fit = BoxFit.cover, this.width, this.height, this.radius = 0, this.fallbackIcon = Icons.image_outlined, this.bg});
+  const NetImage(this.url, {super.key, this.fit = BoxFit.cover, this.width, this.height, this.radius = 0, this.fallbackIcon = Icons.image_outlined, this.bg, this.cacheWidthPx});
   final String? url;
   final BoxFit fit;
   final double? width;
@@ -69,6 +69,11 @@ class NetImage extends StatelessWidget {
   final double radius;
   final IconData fallbackIcon;
   final Color? bg;
+
+  /// Decode-budget override in physical pixels. When null (the normal case)
+  /// it is derived from [width]/[height] x device pixel ratio with headroom,
+  /// so a 1200x1200 CDN photo is decoded at card size instead of full size.
+  final int? cacheWidthPx;
 
   @override
   Widget build(BuildContext context) {
@@ -84,11 +89,24 @@ class NetImage extends StatelessWidget {
             width: width,
             height: height,
             fit: fit,
+            // SPEED (22 Oct): decode downscale — full-res product photos decode
+            // at card size (5-10x less bitmap memory, far fewer GC hitches mid-scroll).
+            memCacheWidth: cacheWidthPx ?? _decodeBudget(context),
             fadeInDuration: const Duration(milliseconds: 150),
             errorWidget: (_, __, ___) => fallback(),
             placeholder: (_, __) => Container(width: width, height: height, color: back),
           );
     return radius == 0 ? child : ClipRRect(borderRadius: BorderRadius.circular(radius), child: child);
+  }
+
+  /// Physical-pixel decode budget from the logical box size (1.25x headroom so
+  /// pinch/overscroll never rasterises a soft image).
+  int? _decodeBudget(BuildContext context) {
+    final w = width;
+    if (w != null) return (w * MediaQuery.devicePixelRatioOf(context) * 1.25).round();
+    final h = height;
+    if (h != null) return (h * MediaQuery.devicePixelRatioOf(context) * 1.25).round();
+    return null;
   }
 }
 

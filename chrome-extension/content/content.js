@@ -238,7 +238,7 @@
   }
 
   async function renderPanelFlow(panel, product, { t1sCity, t1sPincode, background = false }) {
-    renderStatus(panel, 'Searching across sites…');
+    renderStatus(panel, 'Comparing prices across the web at warp speed... your steal is arriving in 3, 2, 1...');
     const vertical = product.vertical || 'ecommerce';
     try {
       const searchRes = await apiSearch(product.title, { vertical, city: t1sCity, pincode: t1sPincode });

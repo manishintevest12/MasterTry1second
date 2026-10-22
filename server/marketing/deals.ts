@@ -160,7 +160,7 @@ export function toPublicDeal(r: any) {
     minOrder: r.min_order == null ? null : Number(r.min_order), terms: r.terms || null,
     imageUrl: r.image_url || null,
     validTill: r.valid_till ? String(r.valid_till).slice(0, 10) : null,
-    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}` }),
+    goUrl: createMaskingPointer(String(r.dest_url), { offerId: `deal-${r.id}`, trusted: true }), // coupon registry feed
   };
 }
 
@@ -270,7 +270,7 @@ async function affiliateDealsForSeller(seller: string, limit = 100): Promise<any
       terms: null,
       validTill: r.expires_at ? String(r.expires_at).slice(0, 10) : null,
       imageUrl: r.merchant_logo || null,
-      goUrl: createMaskingPointer(String(r.affiliate_url || r.original_url || ''), { offerId: `aff-${r.id}` }),
+      goUrl: createMaskingPointer(String(r.affiliate_url || r.original_url || ''), { offerId: `aff-${r.id}`, trusted: true }), // affiliate registry feed
     }));
   } catch { return []; }
 }

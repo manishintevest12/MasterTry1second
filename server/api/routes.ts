@@ -286,7 +286,7 @@ apiRouter.get('/quick-apps', async (_req, res) => {
         badge: 'Live Coupons',
         bgColor: 'bg-slate-700',
         createdAt: new Date().toISOString().split('T')[0],
-        goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` }),
+        goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, trusted: true }), // affiliate registry
       };
     });
     res.json({ success: true, affiliates });
@@ -306,7 +306,7 @@ apiRouter.post('/quick-apps/go', async (req: any, res) => {
       const id = String(it.id || '');
       const host = domainHost(url);
       if (!id || !/^https:\/\//.test(url) || !allow.has(host)) continue; // unknown domain: direct launch stays client-side
-      goUrls[id] = createMaskingPointer(url, { offerId: `qapp-${id}` });
+      goUrls[id] = createMaskingPointer(url, { offerId: `qapp-${id}`, trusted: true }); // allow-listed admin partner
     }
     res.json({ success: true, goUrls });
   } catch {
@@ -1104,7 +1104,7 @@ apiRouter.get('/rewards/top-picks', async (_req, res) => {
         rating: p.rating ?? null,
         image: p.image_url || null,
         ctaText: p.cta_text || 'Grab Deal',
-        url: dest.startsWith('/api/out') ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}` }),
+        url: dest.startsWith('/api/out') ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}`, trusted: true }), // admin-curated pick
       });
     }
 
@@ -1282,6 +1282,21 @@ apiRouter.get('/merchant/leads', async (req, res) => {
 
 // ============ Merchant logos (owner 21 Oct: admin-uploaded brand logos) ============
 // GET /api/merchant-logos -> { logos: { key: dataUrl } } for the whole site (cached client-side).
+// GET /api/logos/:key — admin-uploaded merchant logo served as a real HTTP image
+// (stable absolute URL usable by web <img>, Flutter Image.network and email clients).
+apiRouter.get('/logos/:key', async (req, res) => {
+  try {
+    const { getMerchantLogo, decodeLogoDataUrl } = await import('../marketing/merchantLogos');
+    const row = await getMerchantLogo(String(req.params.key || ''));
+    const dec = row ? decodeLogoDataUrl(row.logo) : null;
+    if (!dec) return res.status(404).type('image/png').end();
+    res.set('Cache-Control', 'public, max-age=300');
+    res.type(dec.mime).send(dec.bytes);
+  } catch {
+    res.status(404).end();
+  }
+});
+
 apiRouter.get('/merchant-logos', async (_req, res) => {
   try {
     const { merchantLogoMap } = await import('../marketing/merchantLogos');
@@ -1343,8 +1358,18 @@ apiRouter.get('/go', async (req, res) => {
 apiRouter.get('/out', async (req, res) => {
   const resolved = resolveMaskingPointer(String(req.query.t || ''));
   if (!resolved) return res.status(410).send('This link has expired. Please search again for a fresh link.');
-  const check = validateDestination(resolved.destination);
-  if (!check.valid) return res.status(400).send(`Refused: ${check.reason}`);
+  // Registry-fed / admin-partner destinations carry trusted provenance (pointer
+  // stamped at creation) — their merchant bridge pages may embed a url= param.
+  const check = validateDestination(resolved.destination, { allowEmbeddedRedirect: resolved.trusted === true });
+  if (!check.valid) {
+    log.warn('Api', 'Out pointer refused', { reason: check.reason });
+    return res.status(400).send(
+      `<!doctype html><html><head><meta charset="utf-8"><title>Link not verified</title></head>` +
+      `<body style="font-family:system-ui,sans-serif;text-align:center;padding-top:15vh;color:#0f172a">` +
+      `<h2 style="font-weight:700">This link couldn't be verified</h2>` +
+      `<p style="color:#475569">For your safety we didn't open it (${check.reason}).</p>` +
+      `<p><a href="/" style="color:#e11d48;font-weight:700">Search again on Try1Second</a></p></body></html>`);
+  }
   const dl = await buildSecureDeeplink(resolved.destination);
   await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
   res.redirect(302, dl.trackingUrl);
