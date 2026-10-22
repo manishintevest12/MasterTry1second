@@ -64,6 +64,17 @@ class Offer {
     } else if (j['image'] is String) {
       image = j['image'] as String?;
     }
+    // Website-parity hero chain (routes.ts offerToComparisonItem): raw offers keep
+    // their hero shot in attributes (image_url -> first image_urls gallery shot ->
+    // image). Without this fallback every catalogue offer (bank accounts, loans,
+    // insurance) rendered the shopping-bag placeholder (owner 22 Oct).
+    if (image == null || image.isEmpty) {
+      final imgUrls = attrs['image_urls'] ?? '';
+      final first = imgUrls.split('|').where((u) => u.startsWith('https://')).toList();
+      image = [attrs['image_url'] ?? '', first.isEmpty ? '' : first.first, attrs['image'] ?? '']
+          .firstWhere((u) => u.startsWith('https://'), orElse: () => '');
+      if (image!.isEmpty) image = null;
+    }
     return Offer(
       id: '${j['id'] ?? ''}',
       canonicalEntityId: j['canonicalEntityId'] == null ? null : '${j['canonicalEntityId']}',
