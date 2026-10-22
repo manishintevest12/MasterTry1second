@@ -120,23 +120,58 @@
 
   // ---------- main flow ------------------------------------------------
 
+  // Safe sessionStorage helpers — some sites block storage access and a raw
+  // getItem() there would throw and silently kill the whole extension (v1.8.5).
+  function ssGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+
   async function main() {
-    const product = detectProduct();
-    if (!product || !product.site) return;
+    // v1.8.5 OWNER FIX (recurring report: the right rail/sidebar "not showing"):
+    // (1) the rail now mounts on EVERY supported site — homepages and search
+    //     pages included — using siteFromHostname() when no product entity was
+    //     detected (main() used to bail out before mountDock on non-product
+    //     pages, so the rail silently vanished on most browsing);
+    // (2) the rail mounts FIRST, wrapped in its own try/catch, so no later
+    //     failure (storage, theme, network, panel build) can ever take it down;
+    // (3) the "disable for page/site" visibility toggles now hide ONLY the
+    //     compare bar — they no longer gate the rail;
+    // (4) a watchdog re-attaches the rail if a site's framework wipes it.
+    let product = null;
+    try { product = detectProduct(); } catch { product = null; }
+    const siteInfo = siteFromHostname();
+    if (!product && !siteInfo) return; // truly unsupported page
+    if (!product) {
+      product = {
+        ...siteInfo, title: '', identifiers: {}, price: null, mrp: null, image: null,
+        routeOnly: siteInfo && (siteInfo.vertical === 'travel' || siteInfo.vertical === 'bus'),
+      };
+    }
     state.product = product;
-    const vertical = product.vertical || 'ecommerce';
+    const vertical = state.product.vertical || 'ecommerce';
+
+    // RAIL FIRST — never let anything below (bar, panel, coupons) break it.
+    try {
+      state.prefs = await getPrefs();
+      await mountDock();
+    } catch (e) { /* rail must survive storage/theme hiccups */ }
+    // Watchdog (self-healing): if the host page removes our rail node (SPA DOM
+    // cleanup, ad blockers), re-attach it. Never fights a deliberate hide.
+    setInterval(async () => {
+      try {
+        if (dockEl && dockEl.isConnected) return;
+        if (state.prefs?.dockVisible === false) return;   // user toggled the rail off
+        if (await dockHiddenHere()) return;               // user hid it for this site
+        ensureChrome();                                    // site wiped our node — re-attach
+      } catch { /* best effort */ }
+    }, 4000);
+
+    try { applyTheme(await getTheme()); } catch { /* default theme is fine */ }
 
     const { t1sCity = '', t1sPincode = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode']);
 
-    // The floating bar appears on EVERY supported page, even when the page has
-    // no detectable product entity (search pages, listings): it offers a hop to
-    // the metasearch rather than invented numbers.
-    state.prefs = await getPrefs();
-    // Visibility (profile settings): per-page / per-site off until next visit.
-    if (sessionStorage.getItem('t1sOffPage') === '1' || sessionStorage.getItem('t1sOffSite:' + location.hostname) === '1') return;
-    if (state.prefs.recentRecording !== false) await recordRecent(product);
-    await mountDock(product);
-    applyTheme(await getTheme());
+    // The floating bar appears on every supported page with a product entity;
+    // per-page / per-site visibility toggles hide only THIS bar (not the rail).
+    if (ssGet('t1sOffPage') === '1' || ssGet('t1sOffSite:' + location.hostname) === '1') return;
+    if (state.prefs.recentRecording !== false) await recordRecent(state.product);
 
     const bar = buildBar();
     if (state.prefs.showBar === false) bar.style.display = 'none';
@@ -730,11 +765,16 @@
   }
 
   function ensureChrome() {
-    if (!sidebarEl) {
+    // v1.8.5: also REBUILD detached nodes — the watchdog calls this after a
+    // host page wipes our rail; a stale reference to a removed node used to
+    // make it a no-op (the rail then stayed gone forever).
+    if (!sidebarEl || !sidebarEl.isConnected) {
+      if (sidebarEl) { try { sidebarEl.remove(); } catch {} }
       sidebarEl = buildSidebar();
       document.documentElement.appendChild(sidebarEl);
     }
-    if (!dockEl) {
+    if (!dockEl || !dockEl.isConnected) {
+      if (dockEl) { try { dockEl.remove(); } catch {} }
       dockEl = buildDock();
       document.documentElement.appendChild(dockEl);
     }
@@ -800,16 +840,17 @@
 
     for (const item of DOCK_ITEMS) dock.appendChild(dockBtn(item));
 
-    // brand pill: Try1Second logo + 3x3 dots -> MAIN comparison view
+    // brand pill: Try1Second logo + 3x3 dots -> MAIN comparison view.
+    // v1.8.5: the hide-X is NO LONGER inside this pill — an accidental click on
+    // it while reaching for the logo permanently vanished the rail with no
+    // on-page way back (the recurring "sidebar not showing" owner report).
     const brand = el('button', 't1s-dock-brand');
     brand.type = 'button';
     brand.title = 'Open Try1Second';
     brand.innerHTML = `
-      <span class="t1s-dock-x" title="Hide the rail on this site">${ICON.x}</span>
       <img src="${chrome.runtime.getURL('images/logo-icon.png')}" alt="Try1Second" />
       <span class="t1s-dots">${'<i></i>'.repeat(9)}</span>`;
-    brand.addEventListener('click', async (e) => {
-      if (e.target.closest('.t1s-dock-x')) { e.stopPropagation(); await hideDockHere(); dock.remove(); dockEl = null; return; }
+    brand.addEventListener('click', () => {
       dock.classList.remove('t1s-dock-collapsed');
       dockEl.querySelectorAll('.t1s-dock-btn').forEach((x) => x.classList.remove('t1s-dock-active'));
       openView('main');
@@ -835,6 +876,19 @@
       openView('profile');
     });
     dock.appendChild(prof);
+
+    // deliberate, clearly-labelled hide for THIS site (v1.8.5): moved out of the
+    // logo pill so it can never be hit by accident. Restore anytime from the
+    // extension popup -> Settings -> "Restore rail on hidden sites".
+    const hide = el('button', 't1s-dock-btn t1s-dock-hide');
+    hide.type = 'button';
+    hide.title = 'Hide the Try1Second rail on this site (restore: popup > Settings)';
+    hide.innerHTML = `<span class="t1s-dock-ic">${ICON.x}</span><span class="t1s-dock-lb">Hide</span><span class="t1s-dock-tip">Hide rail on this site — restore from popup Settings</span>`;
+    hide.addEventListener('click', async () => {
+      await hideDockHere();
+      if (dockEl) { dockEl.remove(); dockEl = null; }
+    });
+    dock.appendChild(hide);
     return dock;
   }
 
@@ -1348,11 +1402,11 @@
     body.querySelector('a').href = 'https://www.try1second.com';
   }
 
-  /** Attach the dock on supported pages (unless the owner hid it for this site). */
-  async function mountDock(product) {
+  /** Attach the dock on supported pages (unless deliberately hidden — see popup Settings to restore). */
+  async function mountDock() {
     if (await dockHiddenHere()) return;
+    state.prefs = state.prefs && Object.keys(state.prefs).length ? state.prefs : await getPrefs();
     if (state.prefs.dockVisible === false) return;
-    state.prefs = await getPrefs();
     ensureChrome();
   }
 

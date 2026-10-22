@@ -219,6 +219,48 @@ function detectTravel() {
   return null;
 }
 
+/**
+ * Supported-site lookup WITHOUT a product (v1.8.5 owner fix: the right rail must
+ * mount on EVERY supported site — homepages and search pages included — not
+ * only where a product entity was detected). Same hosts as DETECTORS.
+ */
+const HOST_META = [
+  ['instamart.swiggy.com', 'Swiggy Instamart', 'grocery'],
+  ['swiggy.com', 'Swiggy', 'food'],
+  ['zomato.com', 'Zomato', 'food'],
+  ['dominos.co.in', "Domino's India", 'food'],
+  ['in.bookmyshow.com', 'BookMyShow', 'movies'],
+  ['bookmyshow.com', 'BookMyShow', 'movies'],
+  ['blinkit.com', 'Blinkit', 'grocery'],
+  ['bigbasket.com', 'BigBasket', 'grocery'],
+  ['zeptonow.com', 'Zepto', 'grocery'],
+  ['jiomart.com', 'JioMart', 'ecommerce'],
+  ['makemytrip.com', 'MakeMyTrip', 'travel'],
+  ['goibibo.com', 'Goibibo', 'travel'],
+  ['easemytrip.com', 'EaseMyTrip', 'travel'],
+  ['yatra.com', 'Yatra', 'travel'],
+  ['cleartrip.com', 'Cleartrip', 'travel'],
+  ['redbus.in', 'redBus', 'bus'],
+  ['abhibus.com', 'AbhiBus', 'bus'],
+  ['amazon.in', 'Amazon India', 'ecommerce'],
+  ['flipkart.com', 'Flipkart', 'ecommerce'],
+  ['myntra.com', 'Myntra', 'ecommerce'],
+  ['ajio.com', 'Ajio', 'ecommerce'],
+  ['tatacliq.com', 'Tata CLiQ', 'ecommerce'],
+  ['meesho.com', 'Meesho', 'ecommerce'],
+];
+
+/** Site info for the current hostname, or null when the site is unsupported. */
+function siteFromHostname() {
+  const host = location.hostname;
+  for (const [h, site, vertical] of HOST_META) {
+    if (host === h || host.endsWith('.' + h) || host.includes(h)) {
+      return { site, vertical };
+    }
+  }
+  return null;
+}
+
 const DETECTORS = [
   ['instamart.swiggy.com', detectSwiggy],
   ['swiggy.com', detectSwiggy],

@@ -385,8 +385,17 @@ async function loadSettings() {
   $('#set-city').value = t1sCity;
   $('#set-pincode').value = t1sPincode;
   $('#set-api').value = t1sApiBase;
+  const { t1sPrefs = {} } = await chrome.storage.sync.get('t1sPrefs').catch(async () => await chrome.storage.local.get('t1sPrefs'));
+  $('#set-dock').checked = t1sPrefs.dockVisible !== false;
 }
 $('#save-settings').addEventListener('click', async () => {
+  // keep the rail toggle in sync with the saved prefs (same store the rail reads)
+  try {
+    const store = chrome.storage.sync;
+    const { t1sPrefs = {} } = await store.get('t1sPrefs');
+    t1sPrefs.dockVisible = $('#set-dock').checked !== false;
+    await store.set({ t1sPrefs });
+  } catch { /* storage blocked — rail falls back to defaults (visible) */ }
   await chrome.storage.local.set({
     t1sCity: $('#set-city').value.trim(),
     t1sPincode: $('#set-pincode').value.trim(),
@@ -394,6 +403,20 @@ $('#save-settings').addEventListener('click', async () => {
   });
   $('#save-ok').classList.remove('hidden');
   setTimeout(() => $('#save-ok').classList.add('hidden'), 1600);
+});
+
+// v1.8.5 recovery: unhide the rail on every site it was hidden from. The old
+// in-logo X made accidental permanent hides far too easy (recurring owner
+// report: "sidebar not showing") — this is the one-click way back.
+$('#restore-dock').addEventListener('click', async () => {
+  try {
+    await chrome.storage.local.set({ t1sDockHidden: [] });
+    const { t1sPrefs = {} } = await chrome.storage.sync.get('t1sPrefs').catch(async () => await chrome.storage.local.get('t1sPrefs'));
+    t1sPrefs.dockVisible = true;
+    await chrome.storage.sync.set({ t1sPrefs }).catch(() => chrome.storage.local.set({ t1sPrefs }));
+    $('#restore-ok').classList.remove('hidden');
+    setTimeout(() => $('#restore-ok').classList.add('hidden'), 2200);
+  } catch { /* best effort */ }
 });
 
 loadSettings();
