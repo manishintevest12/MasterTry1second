@@ -544,6 +544,7 @@ class Deal {
     const m = <String, String>{
       'amazon': 'ecommerce', 'flipkart': 'ecommerce', 'myntra': 'ecommerce', 'ajio': 'ecommerce',
       'tatacliq': 'ecommerce', 'meesho': 'ecommerce', 'croma': 'ecommerce', 'nykaa': 'ecommerce',
+      'xiaomi': 'ecommerce', 'oppo': 'ecommerce', 'realme': 'ecommerce', 'lenovo': 'ecommerce',
       'makemytrip': 'flights', 'goibibo': 'hotels', 'easemytrip': 'flights', 'ixigo': 'flights',
       'yatra': 'flights', 'cleartrip': 'flights', 'goindigo': 'flights', 'akasaair': 'flights',
       'booking': 'hotels', 'agoda': 'hotels', 'airbnb': 'hotels',
