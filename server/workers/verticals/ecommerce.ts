@@ -11,6 +11,7 @@ import { parseAjio } from '../parsers/ajio';
 import { parseTataCliq } from '../parsers/tatacliq';
 import { parseNykaa } from '../parsers/nykaa';
 import { parseCromaSearch, extractCromaGallery, mergeCromaGallery } from '../parsers/croma';
+import { parseXiaomiSearch } from '../parsers/xiaomi';
 import { parseJiomart } from '../parsers/jiomart';
 import { parseRelianceDigital } from '../parsers/relianceDigital';
 import { createCipheriv } from 'node:crypto';
@@ -304,7 +305,7 @@ export const ecommerceWorker: VerticalWorker = {
             const pdpUrl = String((it.attributes as any)?.sellerUrl || it.sellerUrl || '');
             const pr = await cffiFetch(pdpUrl || 'https://www.croma.com', { impersonate: 'chrome', timeoutMs: 15_000 });
             if (pr.status !== 200) continue;
-            const gallery = extractCromaGallery(pr.body, String(it.identifiers.sku));
+            const gallery = extractCromaGallery(pr.body, String((it as any).identifiers?.sku || ''));
             if (gallery.length >= 2) {
               mergeCromaGallery(it, gallery);
               it.evidence = it.evidence || {};
@@ -312,6 +313,38 @@ export const ecommerceWorker: VerticalWorker = {
             }
           } catch { /* soft-fail: keep search hero image */ }
         }
+        return items;
+      },
+    },
+    {
+      // Xiaomi India (mi.com — Redmi/Poco/Xiaomi, owner request 22 Oct) LIVE: the
+      // storefront SPA fetches its search results from the goSite BFF, an
+      // unauthenticated GET (cracked from the SPPS bundle chunk 33572:
+      // url = goSite + "/v2/search/result", params word/type=2/page_size/from=pc).
+      // Multi-image: the payload's commodity[] variants carry distinct colour shots,
+      // merged into attributes.image_urls by the parser (no PDP fetch needed).
+      sourceId: 'w_ecom_xiaomi',
+      name: 'Ecom worker: Xiaomi India / Redmi (goSite search BFF)',
+      priority: 18,
+      maxPerMinute: 8,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url =
+          'https://in-go.buy.mi.com/in/v2/search/result?word=' + encodeURIComponent(term) +
+          '&type=2&page_index=0&page_size=24&v2_page_index=0&v2_page_size=24&from=pc';
+        const r = await cffiFetch(url, {
+          impersonate: 'chrome',
+          timeoutMs: 20_000,
+          headers: { Accept: 'application/json', Referer: `https://www.mi.com/in/search/${encodeURIComponent(term)}` },
+        });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Xiaomi goSite blocked: HTTP ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Xiaomi goSite HTTP ${r.status}`, r.status);
+        const items = parseXiaomiSearch(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Xiaomi search BFF returned no parseable products');
         return items;
       },
     },

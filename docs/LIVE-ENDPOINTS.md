@@ -202,6 +202,18 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   Worker w_ecom_croma, priority 18, maxPerMinute 8. Verified live 22 Oct: iphone 21 offers
   (iPhone 17 Pro Rs 1,27,990 / MRP 1,34,900, top-3 with 6 photos each); samsung tv, washing
   machine, smart watch, macbook, headphones, refrigerator all 21 rows each.
+- **Xiaomi (mi.com, Redmi/Poco)** [xiaomi.ts] — LIVE (22 Oct): owner-requested source. The
+  mi.com/in storefront SPA (SPPS bundle, chunk 33572 + Search.chunk) fetches search results from
+  the goSite BFF: GET https://in-go.buy.mi.com/in/v2/search/result?word=<term>&type=2&page_index=0&page_size=24&v2_page_index=0&v2_page_size=24&from=pc
+  (type=2 = product list, from=pc marks web client; unauthenticated, plain GET). Items:
+  data.data_provider.data.product_list[] with product{ id, name, price_min_num (live sales INR),
+  market_price_min_num (MRP), image (hero), item_link (PDP), spu_id, has_store, is_sale,
+  categories[{title, category_tag}] } + commodity[] (purchasable variants, each with own image).
+  Multi-image (owner rule): commodity[] colour shots are distinct photos, so the parser unions
+  hero + distinct variant images into attributes.image_urls (cap 6) — no PDP round trip needed.
+  Brand inferred from name (Redmi/Poco/Xiaomi). Worker w_ecom_xiaomi, priority 18, maxPerMinute 8.
+  Verified live 22 Oct: phone 32 offers (Redmi A7 Rs 12,999 / MRP 25,999, 3-colour galleries),
+  tv 35 offers (Xiaomi TV FX Mini LED 75 Rs 74,999 / MRP 1,39,999).
 - **JioMart** [jiomart.ts] — LIVE (17 Oct): Fynd/JCP catalog
   GET www.jiomart.com/api/service/application/catalog/v1.0/products/?q=<term>&page_no=1&page_size=40&pincode=<pin>
   browserless, NO guest-JWT mint needed. Two headers discovered in the web theme bundle

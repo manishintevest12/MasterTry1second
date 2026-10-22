@@ -2361,6 +2361,82 @@ var init_croma = __esm({
   }
 });
 
+// server/workers/parsers/xiaomi.ts
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : void 0;
+}
+function parseXiaomiSearch(rawBody, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const list = Array.isArray(root?.data?.data_provider?.data?.product_list) ? root.data.data_provider.data.product_list : [];
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const entry of list) {
+    const p = entry?.product;
+    const name = String(p?.name || "").trim();
+    if (!name || !p) continue;
+    const id = String(p.id || p.spu_id || "");
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    const price = num(p.price_min_num) ?? num(p.price_max_num) ?? num((entry.commodity || [])[0]?.sales_price);
+    if (!price) continue;
+    items.push(makeItem(source, pageUrl, p, entry, price));
+    if (items.length >= 30) break;
+  }
+  return items;
+}
+function makeItem(source, pageUrl, p, entry, price) {
+  const name = String(p.name || "").trim();
+  const id = String(p.id || p.spu_id || "");
+  const mrp = num(p.market_price_min_num) ?? num(p.market_price_max_num);
+  const url = /^https?:\/\//.test(String(p.item_link || "")) ? String(p.item_link) : "https://www.mi.com/in";
+  const hero = /^https?:\/\//.test(String(p.image || "")) ? String(p.image) : "";
+  const gallery = [];
+  if (hero) gallery.push(hero);
+  for (const c of entry?.commodity || []) {
+    const u = String(c?.image || "");
+    if (/^https?:\/\//.test(u) && !gallery.includes(u)) gallery.push(u);
+    if (gallery.length >= 6) break;
+  }
+  const cats = p.categories || [];
+  const category = cats.map((c) => String(c?.title || "")).filter(Boolean).join(" > ");
+  const brand = /(^|\s)redmi\b/i.test(name) ? "Redmi" : /(^|\s)poco\b/i.test(name) ? "Poco" : /(^|\s)xiaomi\b/i.test(name) ? "Xiaomi" : "Xiaomi";
+  const inStock = Number(p.has_store ?? p.is_sale ?? 1) === 1;
+  const isNew = Number(p.is_new ?? 0) === 1;
+  return newRawItem(source, {
+    title: name.slice(0, 200),
+    brand,
+    model: p.spu_id ? String(p.spu_id) : void 0,
+    price,
+    listPrice: mrp && mrp > price ? mrp : void 0,
+    currency: "INR",
+    seller: "Xiaomi (mi.com)",
+    sellerUrl: url,
+    availability: inStock ? "in_stock" : "out_of_stock",
+    attributes: {
+      brand,
+      image: hero,
+      image_urls: gallery.length > 1 ? gallery.join("|") : "",
+      category: category || "",
+      in_stock: inStock ? "true" : "false",
+      ...isNew ? { badge: "New" } : {},
+      data_note: `Live prices from Xiaomi India (mi.com) search API, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+    },
+    identifiers: id ? { sku: id } : void 0,
+    evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "image", "url", "stock", "variant_gallery"] }
+  });
+}
+var init_xiaomi = __esm({
+  "server/workers/parsers/xiaomi.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/jiomart.ts
 function parseJiomart(body, source, pageUrl) {
   let root;
@@ -2565,6 +2641,7 @@ var init_ecommerce = __esm({
     init_tatacliq();
     init_nykaa();
     init_croma();
+    init_xiaomi();
     init_jiomart();
     init_relianceDigital();
     import_node_crypto = require("node:crypto");
@@ -2828,7 +2905,7 @@ var init_ecommerce = __esm({
                 const pdpUrl = String(it.attributes?.sellerUrl || it.sellerUrl || "");
                 const pr = await cffiFetch(pdpUrl || "https://www.croma.com", { impersonate: "chrome", timeoutMs: 15e3 });
                 if (pr.status !== 200) continue;
-                const gallery = extractCromaGallery(pr.body, String(it.identifiers.sku));
+                const gallery = extractCromaGallery(pr.body, String(it.identifiers?.sku || ""));
                 if (gallery.length >= 2) {
                   mergeCromaGallery(it, gallery);
                   it.evidence = it.evidence || {};
@@ -2837,6 +2914,36 @@ var init_ecommerce = __esm({
               } catch {
               }
             }
+            return items;
+          }
+        },
+        {
+          // Xiaomi India (mi.com — Redmi/Poco/Xiaomi, owner request 22 Oct) LIVE: the
+          // storefront SPA fetches its search results from the goSite BFF, an
+          // unauthenticated GET (cracked from the SPPS bundle chunk 33572:
+          // url = goSite + "/v2/search/result", params word/type=2/page_size/from=pc).
+          // Multi-image: the payload's commodity[] variants carry distinct colour shots,
+          // merged into attributes.image_urls by the parser (no PDP fetch needed).
+          sourceId: "w_ecom_xiaomi",
+          name: "Ecom worker: Xiaomi India / Redmi (goSite search BFF)",
+          priority: 18,
+          maxPerMinute: 8,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = "https://in-go.buy.mi.com/in/v2/search/result?word=" + encodeURIComponent(term) + "&type=2&page_index=0&page_size=24&v2_page_index=0&v2_page_size=24&from=pc";
+            const r = await cffiFetch(url, {
+              impersonate: "chrome",
+              timeoutMs: 2e4,
+              headers: { Accept: "application/json", Referer: `https://www.mi.com/in/search/${encodeURIComponent(term)}` }
+            });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Xiaomi goSite blocked: HTTP ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Xiaomi goSite HTTP ${r.status}`, r.status);
+            const items = parseXiaomiSearch(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Xiaomi search BFF returned no parseable products");
             return items;
           }
         },
@@ -4136,7 +4243,7 @@ var init_goibiboHotelSsr = __esm({
 });
 
 // server/workers/parsers/mmtHotelLanding.ts
-function num(v) {
+function num2(v) {
   if (typeof v === "number") return v;
   if (typeof v === "string") {
     const n = Number(v.replace(/[^\d.]/g, ""));
@@ -4206,14 +4313,14 @@ function parseMmtHotelLanding(body) {
         return;
       }
       const name = String(pickFirst2(o, NAME_KEYS3) || "").trim();
-      const price = num(pickFirst2(o, PRICE_KEYS3));
+      const price = num2(pickFirst2(o, PRICE_KEYS3));
       if (name && Number.isFinite(price) && price >= 100 && price <= 1e7) {
         const key = name.toLowerCase() + "|" + Math.round(price);
         if (!seen.has(key)) {
           seen.add(key);
           let image = String(pickFirst2(o, IMG_KEYS2) || "");
           if (image.startsWith("//")) image = `https:${image}`;
-          const rating = num(pickFirst2(o, RATING_KEYS3));
+          const rating = num2(pickFirst2(o, RATING_KEYS3));
           out.rows.push({
             name,
             price,
@@ -4318,7 +4425,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num8 = (x) => {
+  const num9 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -4339,17 +4446,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num8(rating.value),
-      ratingCount: num8(rating.count),
-      pricePerNight: num8(pricing.bookingPrice),
-      tax: num8(tax.total_tax),
-      priceInclusive: num8(tax.final_price_with_tax),
-      slashedPrice: num8(pricing.slashedPrice),
-      discountPercentage: num8(pricing.discountPercentage),
+      rating: num9(rating.value),
+      ratingCount: num9(rating.count),
+      pricePerNight: num9(pricing.bookingPrice),
+      tax: num9(tax.total_tax),
+      priceInclusive: num9(tax.final_price_with_tax),
+      slashedPrice: num9(pricing.slashedPrice),
+      discountPercentage: num9(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num8(geo.lat ?? geo.latitude),
-      lon: num8(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num9(geo.lat ?? geo.latitude),
+      lon: num9(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -4424,20 +4531,20 @@ function parseYatraHotels(body) {
       id: String(h.id ?? ""),
       name: String(h.n ?? h.orgName ?? "").trim(),
       slug: typeof h.hsk === "string" ? h.hsk : null,
-      rating: num2(h?.gr?.rating),
-      reviews: num2(h?.gr?.reviews),
+      rating: num3(h?.gr?.rating),
+      reviews: num3(h?.gr?.reviews),
       city: typeof h?.loc?.c === "string" ? h.loc.c : null,
       area: typeof h?.loc?.a === "string" ? h.loc.a : null,
-      lat: num2(h?.loc?.la),
-      lon: num2(h?.loc?.lo),
+      lat: num3(h?.loc?.la),
+      lon: num3(h?.loc?.lo),
       imageUrl: typeof h?.cldImage?.url === "string" ? h.cldImage.url : null,
       categories: Array.isArray(h.ctg) ? h.ctg.filter((x) => typeof x === "string") : [],
-      rackRate: num2(h.r),
-      price: num2(rate.price),
-      basePrice: num2(rate.basePrice),
+      rackRate: num3(h.r),
+      price: num3(rate.price),
+      basePrice: num3(rate.basePrice),
       roomName: typeof rate.roomName === "string" ? rate.roomName : null,
       bookable: rate.bookable !== false,
-      roomsLeft: num2(rate.roomsLeft),
+      roomsLeft: num3(rate.roomsLeft),
       freeCancel: Boolean(rate.freeCancel)
     });
   }
@@ -4496,14 +4603,14 @@ function ddmmyyyy(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
-var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num2;
+var YATRA_HOTELS_API, YATRA_HOTELS_API_KEY, YATRA_SRP, num3;
 var init_yatraHotels = __esm({
   "server/workers/parsers/yatraHotels.ts"() {
     init_contract();
     YATRA_HOTELS_API = "https://hotel.yatra.com/tgapi/hotels/v1/pageSearch";
     YATRA_HOTELS_API_KEY = "JN9aWyj7hJ1ZrExC7Ozo";
     YATRA_SRP = "https://hotel.yatra.com/nextui/hotel-search/dom/search";
-    num2 = (x) => {
+    num3 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4558,13 +4665,13 @@ function parseEmtHotels(items, links) {
     out.push({
       id,
       name: it.name.trim(),
-      starRating: num3(it?.starRating?.ratingValue),
+      starRating: num4(it?.starRating?.ratingValue),
       area: area?.trim() || null,
       locality: localityPart?.trim() || (typeof addr.addressLocality === "string" ? addr.addressLocality : null),
       region: typeof addr.addressRegion === "string" ? addr.addressRegion : null,
-      latitude: num3(it?.geo?.latitude),
-      longitude: num3(it?.geo?.longitude),
-      price: num3(it.priceRange),
+      latitude: num4(it?.geo?.latitude),
+      longitude: num4(it?.geo?.longitude),
+      price: num4(it.priceRange),
       imageUrl: image,
       deeplink: id && links.get(id) || null,
       checkInTime: typeof it.checkInTime === "string" ? it.checkInTime : null,
@@ -4614,13 +4721,13 @@ function ddmmyyyyDash(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
-var EMT_HOTELS_WEB, num3;
+var EMT_HOTELS_WEB, num4;
 var init_emtHotels = __esm({
   "server/workers/parsers/emtHotels.ts"() {
     init_contract();
     init_cityAlias();
     EMT_HOTELS_WEB = "https://www.easemytrip.com";
-    num3 = (x) => {
+    num4 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -4664,16 +4771,16 @@ function parseSaffronVillas(data) {
       id: String(v.id ?? ""),
       title: v.title.trim(),
       location: typeof v.location === "string" ? v.location : null,
-      latitude: num4(v.latitude),
-      longitude: num4(v.longitude),
-      pricePerNight: num4(v.price_per_night),
-      perNightAfterDiscount: num4(v.per_night_price_after_discount),
-      totalWithTax: num4(v.total_amount_with_tax),
-      baseWithTax: num4(v.base_price_with_tax),
-      rating: num4(v.rating),
-      reviews: num4(v.total_reviews),
-      capacity: num4(v.max_capacity ?? v.capacity),
-      bedrooms: num4(v.bedrooms),
+      latitude: num5(v.latitude),
+      longitude: num5(v.longitude),
+      pricePerNight: num5(v.price_per_night),
+      perNightAfterDiscount: num5(v.per_night_price_after_discount),
+      totalWithTax: num5(v.total_amount_with_tax),
+      baseWithTax: num5(v.base_price_with_tax),
+      rating: num5(v.rating),
+      reviews: num5(v.total_reviews),
+      capacity: num5(v.max_capacity ?? v.capacity),
+      bedrooms: num5(v.bedrooms),
       signature: typeof v.signature === "string" ? v.signature : null,
       available: v.is_available !== false,
       imageIds: Array.isArray(v.images) ? v.images.filter((x) => typeof x === "string").slice(0, 6) : [],
@@ -4719,14 +4826,14 @@ function parseSaffronOffers(villas, source, city) {
   }
   return out;
 }
-var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num4;
+var SAFFRON_API, SAFFRON_IMG_BASE, SAFFRON_WEB, num5;
 var init_saffronStays = __esm({
   "server/workers/parsers/saffronStays.ts"() {
     init_contract();
     SAFFRON_API = "https://ecapi4.saffronstays.com/api/search-advance";
     SAFFRON_IMG_BASE = "https://ik.imagekit.io/5tgxhsqev/saffronstays-media";
     SAFFRON_WEB = "https://www.saffronstays.com";
-    num4 = (x) => {
+    num5 = (x) => {
       if (x == null || x === "") return null;
       const n = Number(x);
       return Number.isFinite(n) ? n : null;
@@ -6726,13 +6833,13 @@ function fillMeta(o, f) {
     if (typeof v === "string") f.duration = v;
   });
   if (f.stops === void 0) grab(["stop", "stops", "numberOfStops", "stopCount"], (v) => {
-    f.stops = num5(v);
+    f.stops = num6(v);
   });
   if (!f.cabin) grab(["cabin", "cabinClass", "class", "fareFamily"], (v) => {
     if (typeof v === "string") f.cabin = v;
   });
   if (f.seatsLeft === void 0) grab(["seatsLeft", "seatsAvailable", "availableSeats", "seatLeft"], (v) => {
-    const n = num5(v);
+    const n = num6(v);
     f.seatsLeft = n !== void 0 ? n : typeof v === "string" ? v : void 0;
   });
   const stat = (keys) => {
@@ -6774,7 +6881,7 @@ function collectFlights(root) {
       fillMeta(o, f);
       mine.push(f);
     }
-    const fare = num5(pick2(o, FARE_KEYS));
+    const fare = num6(pick2(o, FARE_KEYS));
     if (fare !== void 0 && fare > 0) {
       const first = mine.find((f) => f.fare === void 0);
       if (first) {
@@ -6938,12 +7045,12 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     }
   })];
 }
-var FLIGHT_NO, num5, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
+var FLIGHT_NO, num6, timeish, FARE_KEYS, NO_KEYS, DEP_KEYS, ARR_KEYS, DUR_KEYS, FLIGHT_DETAIL_KEYS, WEB_SESSION_KEY, WEB_BOOKING_KEY, WEB_TOKEN_URL, WEB_FARECAL_URL;
 var init_indigoFlights = __esm({
   "server/workers/parsers/indigoFlights.ts"() {
     init_contract();
     FLIGHT_NO = /\b6E[-\s]*(\d{2,4})\b/i;
-    num5 = (v) => {
+    num6 = (v) => {
       if (typeof v === "number" && Number.isFinite(v)) return v;
       if (typeof v === "string" && v.trim() !== "") {
         const n = Number(v.replace(/[₹,\s]/g, ""));
@@ -16866,9 +16973,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num6(p.pricing?.discount?.prim_price?.sp);
+      const sp = num7(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num6(p.pricing?.discount?.mrp);
+      const mrp = num7(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -16904,11 +17011,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num6;
+var num7;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num6 = (v) => {
+    num7 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -18684,7 +18791,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num8 = (key) => {
+  const num9 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -18695,8 +18802,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num8("servicecount")) || 0,
-    operators: field("operators") || num8("operators") || "",
+    servicecount: Number(num9("servicecount")) || 0,
+    operators: field("operators") || num9("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -25221,7 +25328,7 @@ async function resolveMerchantLogo(row) {
 function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
-  const dv = num7(row.discount_value);
+  const dv = num8(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
   const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
@@ -25269,7 +25376,7 @@ async function fetchAffiliateRows(limit) {
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
       []
     );
-    rows.sort((a, b) => (num7(b.discount_value) ?? 0) - (num7(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    rows.sort((a, b) => (num8(b.discount_value) ?? 0) - (num8(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
   } catch (e) {
     log.debug("Showcase", "affiliate pool query failed", { error: String(e).slice(0, 100) });
@@ -25460,7 +25567,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num7, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
+var num8, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -25468,7 +25575,7 @@ var init_showcase = __esm({
     init_deeplink();
     init_merchantCrispLogo();
     init_merchantLogos();
-    num7 = (v) => {
+    num8 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -25479,8 +25586,8 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf = (r) => num7(r.effective_price) ?? num7(r.mandatory_total) ?? 0;
-    mrpOf = (r) => num7(r.list_price) ?? 0;
+    priceOf = (r) => num8(r.effective_price) ?? num8(r.mandatory_total) ?? 0;
+    mrpOf = (r) => num8(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
       return m && m > p ? (m - p) / m : 0;
@@ -29445,7 +29552,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num8 = (v) => {
+    const num9 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -29456,8 +29563,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num8(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num8(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num9(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num9(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
