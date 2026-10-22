@@ -2437,6 +2437,113 @@ var init_xiaomi = __esm({
   }
 });
 
+// server/workers/parsers/lenovo.ts
+function lenovoSearchUrl(term, rows = 24) {
+  return `${LENOVO_SEARCH_API}?text=${encodeURIComponent(term)}&rows=${rows}&sort=Recommended&contentNum=0&productNum=${rows}`;
+}
+function lenovoHeaders(term) {
+  return {
+    Accept: "application/json, text/plain, */*",
+    // CRITICAL: the edge 403s (HTML) without a lenovo.com search Referer.
+    Referer: `https://www.lenovo.com/in/en/search?text=${encodeURIComponent(term)}`
+  };
+}
+function lenovoTitle(p) {
+  const summary = String(p.summary || "").trim();
+  if (summary && summary.length >= 3) return summary.slice(0, 200);
+  const slug2 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
+  if (slug2.includes("-")) {
+    return slug2.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
+  }
+  const alt = String(p?.media?.gallery?.[0]?.imageAlt || "").trim();
+  if (alt && !/^(front|side|back|top|bottom|left|right|angle)/i.test(alt)) {
+    return alt.replace(/^Lenovo\s+/i, "").slice(0, 200);
+  }
+  const raw = String(p.productName || "").trim();
+  if (raw) {
+    return raw.split(" - ")[0].split("_")[0].trim().slice(0, 200);
+  }
+  return "";
+}
+function parseLenovoSearch(rawBody, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const blocks = Array.isArray(root?.data?.data) ? root.data.data : [];
+  const products = [];
+  for (const block of blocks) {
+    if (Array.isArray(block?.products)) products.push(...block.products);
+  }
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const p of products) {
+    const price = money(p.finalPrice) ?? money(p.beforeTaxPrice);
+    if (!price) continue;
+    const id = String(p.id || p.productCode || "");
+    if (id && seen.has(id)) continue;
+    if (id) seen.add(id);
+    const title = lenovoTitle(p);
+    if (!title) continue;
+    const listPrice = money(p.webPrice) ?? money(p.noCouponPrice);
+    const inStock = Number(p.inventoryStatus ?? 1) === 1;
+    const gallery = [];
+    for (const g of p?.media?.gallery || []) {
+      let u = String(g?.imageAddress || "");
+      if (!u) continue;
+      if (u.startsWith("//")) u = "https:" + u;
+      if (!/^https?:\/\//.test(u) || gallery.includes(u)) continue;
+      gallery.push(u);
+      if (gallery.length >= 6) break;
+    }
+    const url = String(p.url || "").startsWith("http") ? String(p.url) : "https://www.lenovo.com" + String(p.url || "");
+    const specs = {};
+    for (const c of p.classification || []) {
+      const key = String(c?.a || "").trim();
+      const val = String(c?.b || "").trim();
+      if (key && val && Object.keys(specs).length < 8) specs[key] = val.slice(0, 120);
+    }
+    const rating = money(p.ratingStar);
+    items.push(newRawItem(source, {
+      title,
+      brand: "Lenovo",
+      price,
+      listPrice: listPrice && listPrice > price ? listPrice : void 0,
+      currency: String(p.currencyCode || "INR"),
+      seller: "Lenovo (lenovo.com)",
+      sellerUrl: url,
+      availability: inStock ? "in_stock" : "out_of_stock",
+      attributes: {
+        brand: "Lenovo",
+        ...rating && rating > 0 && rating <= 5 ? { rating: String(Math.round(rating * 10) / 10), ...Number(p.commentCount) > 0 ? { reviews: String(p.commentCount) } : {} } : {},
+        image: gallery[0] || "",
+        image_urls: gallery.length > 1 ? gallery.join("|") : "",
+        category: (p.categoryPath || []).slice(1, 4).join(" > "),
+        in_stock: inStock ? "true" : "false",
+        ...Object.keys(specs).length ? { specs: JSON.stringify(specs) } : {},
+        data_note: `Live prices from Lenovo India openapi search (finalPrice incl. instant savings), observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: p.productCode ? { sku: String(p.productCode) } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "listPrice", "rating", "image", "url", "stock", "specs"] }
+    }));
+    if (items.length >= 30) break;
+  }
+  return items;
+}
+var LENOVO_SEARCH_API, money;
+var init_lenovo = __esm({
+  "server/workers/parsers/lenovo.ts"() {
+    init_contract();
+    LENOVO_SEARCH_API = "https://openapi.lenovo.com/in/en/ofp/search/global/cache/products/get/_tsc";
+    money = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : void 0;
+    };
+  }
+});
+
 // server/workers/parsers/realme.ts
 function num2(v) {
   const n = Number(v);
@@ -2891,6 +2998,7 @@ var init_ecommerce = __esm({
     init_nykaa();
     init_croma();
     init_xiaomi();
+    init_lenovo();
     init_realme();
     init_oppo();
     init_jiomart();
@@ -3286,6 +3394,39 @@ var init_ecommerce = __esm({
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Xiaomi goSite HTTP ${r.status}`, r.status);
             const items = parseXiaomiSearch(r.body, ctx.source, url);
             if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Xiaomi search BFF returned no parseable products");
+            return items;
+          }
+        },
+        {
+          // Lenovo India (lenovo.com, owner request 22 Oct) LIVE: the SRP is fully
+          // client-rendered, but the search micro-app calls an unauthenticated JSON
+          // GET on openapi.lenovo.com (captured via Playwright request tracing —
+          // discovery only; production replays it with curl_cffi). CRITICAL: the
+          // edge 403s (HTML) unless Referer is a lenovo.com/in/en/search URL.
+          sourceId: "w_ecom_lenovo",
+          name: "Ecom worker: Lenovo India (openapi search)",
+          priority: 18,
+          maxPerMinute: 6,
+          timeoutMs: 25e3,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = lenovoSearchUrl(term);
+            let r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: lenovoHeaders(term) });
+            if (r.status === 403) {
+              await new Promise((res) => setTimeout(res, 1500));
+              r = await cffiFetch(url, {
+                impersonate: "chrome",
+                timeoutMs: 2e4,
+                headers: { ...lenovoHeaders(term), Origin: "https://www.lenovo.com" }
+              });
+            }
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Lenovo openapi edge block: HTTP ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Lenovo openapi HTTP ${r.status}`, r.status);
+            const items = parseLenovoSearch(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Lenovo search returned no priced products");
             return items;
           }
         },

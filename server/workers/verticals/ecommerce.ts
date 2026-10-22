@@ -13,6 +13,7 @@ import { parseTataCliq } from '../parsers/tatacliq';
 import { parseNykaa } from '../parsers/nykaa';
 import { parseCromaSearch, extractCromaGallery, mergeCromaGallery } from '../parsers/croma';
 import { parseXiaomiSearch } from '../parsers/xiaomi';
+import { parseLenovoSearch, lenovoSearchUrl, lenovoHeaders } from '../parsers/lenovo';
 import { parseRealmeSearch } from '../parsers/realme';
 import { parseOppoSearch, parseOppoPdp, oppoItem, extractOppoProsePrice } from '../parsers/oppo';
 import { parseJiomart } from '../parsers/jiomart';
@@ -436,6 +437,41 @@ export const ecommerceWorker: VerticalWorker = {
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Xiaomi goSite HTTP ${r.status}`, r.status);
         const items = parseXiaomiSearch(r.body, ctx.source, url);
         if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Xiaomi search BFF returned no parseable products');
+        return items;
+      },
+    },
+    {
+      // Lenovo India (lenovo.com, owner request 22 Oct) LIVE: the SRP is fully
+      // client-rendered, but the search micro-app calls an unauthenticated JSON
+      // GET on openapi.lenovo.com (captured via Playwright request tracing —
+      // discovery only; production replays it with curl_cffi). CRITICAL: the
+      // edge 403s (HTML) unless Referer is a lenovo.com/in/en/search URL.
+      sourceId: 'w_ecom_lenovo',
+      name: 'Ecom worker: Lenovo India (openapi search)',
+      priority: 18,
+      maxPerMinute: 6,
+      timeoutMs: 25_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url = lenovoSearchUrl(term);
+        // Self-healing ladder (owner rule): first attempt as the browser sends it;
+        // on an edge 403 retry once with Origin added before giving up (the edge
+        // samples aggressively; a single spaced retry usually clears it).
+        let r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 20_000, headers: lenovoHeaders(term) });
+        if (r.status === 403) {
+          await new Promise((res) => setTimeout(res, 1500));
+          r = await cffiFetch(url, {
+            impersonate: 'chrome', timeoutMs: 20_000,
+            headers: { ...lenovoHeaders(term), Origin: 'https://www.lenovo.com' },
+          });
+        }
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Lenovo openapi edge block: HTTP ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Lenovo openapi HTTP ${r.status}`, r.status);
+        const items = parseLenovoSearch(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Lenovo search returned no priced products');
         return items;
       },
     },

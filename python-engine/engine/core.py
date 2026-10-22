@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 VERTICAL_TARGETS: Dict[str, List[str]] = {
     "hotels":    ["makemytrip", "goibibo", "booking", "agoda", "yatra", "cleartrip", "oyo", "saffronstays", "easemytrip"],
     "flights":   ["makemytrip", "easemytrip", "ixigo", "yatra", "cleartrip", "akasaair", "indigo"],
-    "ecommerce": ["amazon", "flipkart", "meesho", "myntra", "ajio", "tatacliq", "nykaa", "croma", "xiaomi", "oppo", "realme"],
+    "ecommerce": ["amazon", "flipkart", "meesho", "myntra", "ajio", "tatacliq", "nykaa", "croma", "xiaomi", "oppo", "realme", "lenovo"],
     "grocery":   ["blinkit", "zepto", "swiggy-instamart", "bigbasket", "flipkart-minutes"],
     "bus":       ["redbus", "abhibus", "makemytrip", "yatra", "ixigo"],
     "cab":       ["olacabs", "uber", "indrive", "meru", "fastdeals", "snap-e", "rapido"],
@@ -35,7 +35,7 @@ COMPANY_DOMAINS: Dict[str, str] = {
     "amazon": "www.amazon.in", "flipkart": "www.flipkart.com", "meesho": "www.meesho.com",
     "myntra": "www.myntra.com", "ajio": "www.ajio.com", "tatacliq": "www.tatacliq.com",
     "nykaa": "www.nykaa.com", "croma": "www.croma.com", "xiaomi": "www.mi.com",
-    "oppo": "www.oppo.com", "realme": "www.realme.com",
+    "oppo": "www.oppo.com", "realme": "www.realme.com", "lenovo": "www.lenovo.com",
     "blinkit": "blinkit.com", "zepto": "www.zeptonow.com", "swiggy-instamart": "www.swiggy.com",
     "bigbasket": "www.bigbasket.com", "flipkart-minutes": "www.flipkart.com",
     "redbus": "www.redbus.in", "abhibus": "www.abhibus.com",

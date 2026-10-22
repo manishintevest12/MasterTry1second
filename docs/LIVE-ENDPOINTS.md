@@ -433,6 +433,22 @@ tracked as future work, no mock substitutes.
   set + `server/workers/parsers/mmtHotelLanding.ts` shape-tolerant $hotelReducerResponse
   walker — hotels appear automatically the day the gate lifts for the production IP.
 
+## E-commerce — Lenovo LIVE BROWSERLESS (22 Oct)
+- lenovo.com/in/en SRP is fully client-rendered (no SSR data), but the search micro-app
+  calls an unauthenticated JSON GET (captured via Playwright request tracing for
+  DISCOVERY only; production replays it with curl_cffi):
+  `GET https://openapi.lenovo.com/in/en/ofp/search/global/cache/products/get/_tsc?text=<q>&rows=24&sort=Recommended&contentNum=0&productNum=24`
+- CRITICAL HEADER: `Referer: https://www.lenovo.com/in/en/search?text=...` — without it
+  the edge returns a 403 HTML page. With it, instant 200s even after 403s.
+- `page` param is ignored (always page 1). Parser: `server/workers/parsers/lenovo.ts`
+  — finalPrice (live INR incl. instant savings), webPrice as the site's own listPrice,
+  inventoryStatus stock, ratingStar/commentCount, media.gallery (https-upgraded, cap 6),
+  classification specs, summary as the clean title (imageAlt is a generic photo caption —
+  never a title). Worker `w_ecom_lenovo` with a 403-retry ladder (Origin added, 1.5s gap).
+- Verified live 22 Oct: thinkpad 24 offers (E14 Gen 7 Rs 1,63,417 / MRP 3,09,001, rating
+  4.6, 6-image gallery), gaming laptop 24 (Legion Pro 5 Gen 10 Rs 2,06,895), plus
+  laptop/tablet/monitor queries. python-engine VERTICAL_TARGETS + COMPANY_DOMAINS synced.
+
 ## Hotels — Goibibo hermes v12 (self-detecting recipe, 21 Oct)
 - `GET https://hermes.goibibo.com/hotels/v12/search/data/v3?searchQuery={"Companion":{"TA":"1DA"},"Pax":{"A":"2"},"RoomCnt":"1","City":"<slug>","CheckIn":"YYYYMMDD","CheckOut":"YYYYMMDD"}`
 - parser: `server/workers/parsers/goibiboHermes.ts` (shape-tolerant walker; unpriced hotels skipped)
