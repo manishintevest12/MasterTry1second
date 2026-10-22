@@ -456,19 +456,34 @@ class _DealArt extends StatelessWidget {
     if (logoDomain.isEmpty) {
       return NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined);
     }
-    return Container(
-      width: 96,
-      height: 118,
-      color: Colors.white,
-      alignment: Alignment.center,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: CachedNetworkImage(
-          imageUrl: 'https://icons.duckduckgo.com/ip3/$logoDomain.ico',
-          fit: BoxFit.contain,
-          errorWidget: (_, __, ___) => NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
+    // Image-2 reference (owner 22 Oct): contained rounded-square logo tile with
+    // white padding + a small 'Verified' badge under it, like the loans cards.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 92,
+          height: 92,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(10),
+          child: CachedNetworkImage(
+            imageUrl: 'https://icons.duckduckgo.com/ip3/$logoDomain.ico',
+            fit: BoxFit.contain,
+            errorWidget: (_, __, ___) => NetImage(deal.imageUrl, width: 92, height: 92, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
+          ),
         ),
-      ),
+        const SizedBox(height: 5),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(color: const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(999)),
+          child: const Text('VERIFIED', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.w900, color: Color(0xFF4B5563), letterSpacing: .5)),
+        ),
+      ],
     );
   }
 }

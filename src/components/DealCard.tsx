@@ -14,6 +14,15 @@ export const KIND_LABEL: Record<string, string> = {
   loan: 'Loan', insurance: 'Insurance', movie: 'Movie offer', cashback: 'Cashback', sale: 'Sale',
 };
 
+/**
+ * Brand-tile kinds (owner 22 Oct, image reference): bank offers and finance
+ * deals render the merchant's logo as a CONTAINED rounded-square icon with
+ * white padding, left of the text — never a full-bleed hero image. Product-ish
+ * kinds (coupons, sales, movies) keep their real acquired photo.
+ */
+const BRAND_TILE_KINDS = new Set(['bank_offer', 'credit_card', 'gift_card', 'loan', 'insurance', 'account']);
+const initialsOf = (name: string) => name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
 const daysLeft = (d: string | null): number | null => {
   if (!d) return null;
   const ms = Date.parse(`${d}T23:59:59`) - Date.now();
@@ -22,7 +31,9 @@ const daysLeft = (d: string | null): number | null => {
 
 export const DealCard: React.FC<{ deal: PublicDeal; compact?: boolean; onUsed?: (d: PublicDeal) => void }> = ({ deal, compact, onUsed }) => {
   const [copied, setCopied] = useState(false);
+  const [logoBroken, setLogoBroken] = useState(false);
   const left = daysLeft(deal.validTill);
+  const brandTile = BRAND_TILE_KINDS.has(deal.kind);
 
   const copy = async () => {
     if (!deal.code) return;
@@ -41,17 +52,48 @@ export const DealCard: React.FC<{ deal: PublicDeal; compact?: boolean; onUsed?: 
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 truncate">{deal.merchantName}</span>
           <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-black uppercase shrink-0">{KIND_LABEL[deal.kind] || deal.kind}</span>
         </div>
-        {deal.imageUrl && (
-          <div className="mt-1.5 mb-1.5 rounded-lg overflow-hidden bg-white border border-slate-100">
-            {/* Product photo from the store itself, filling the tile (portrait shots were letterboxed tiny before). */}
-            <img src={deal.imageUrl} alt={deal.title} loading="lazy"
-              className={`w-full ${compact ? 'h-24' : 'aspect-[4/5] sm:aspect-[4/3]'} object-cover mix-blend-normal`} />
+        {brandTile ? (
+          /* Image-2 reference (owner 22 Oct): contained rounded logo icon with white
+           * padding, LEFT of the text — the merchant tile, not a full-bleed hero. */
+          <div className="mt-1.5 mb-1.5 flex gap-3 items-start">
+            <div className="flex flex-col items-center shrink-0">
+              <div className={`w-[72px] h-[72px] rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden ${compact ? 'scale-90 -mb-1' : 'p-2.5'}`}>
+                {deal.imageUrl && !logoBroken ? (
+                  <img
+                    src={deal.imageUrl}
+                    alt={deal.merchantName}
+                    loading="lazy"
+                    onError={() => setLogoBroken(true)}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <span className={`text-lg font-black text-slate-400 ${compact ? 'text-sm' : ''}`}>{initialsOf(deal.merchantName)}</span>
+                )}
+              </div>
+              <span className="mt-1.5 inline-flex px-2 py-0.5 rounded-full bg-slate-100 text-[8.5px] font-black uppercase tracking-wide text-slate-600">Verified</span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <h4 className={`font-bold text-slate-900 leading-snug ${compact ? 'text-xs' : 'text-sm'}`}>{deal.title}</h4>
+              {deal.discountText && <p className="text-xs font-bold text-emerald-600 mt-1">{deal.discountText}</p>}
+              {!compact && deal.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed line-clamp-3">{deal.description}</p>}
+              {deal.minOrder != null && deal.minOrder > 0 && <p className="text-[11px] text-slate-500 mt-1">Min. order ₹{deal.minOrder.toLocaleString('en-IN')}</p>}
+            </div>
           </div>
+        ) : (
+          <>
+            {deal.imageUrl && (
+              <div className="mt-1.5 mb-1.5 rounded-lg overflow-hidden bg-white border border-slate-100">
+                {/* Product photo from the store itself, filling the tile (portrait shots were letterboxed tiny before). */}
+                <img src={deal.imageUrl} alt={deal.title} loading="lazy"
+                  className={`w-full ${compact ? 'h-24' : 'aspect-[4/5] sm:aspect-[4/3]'} object-cover mix-blend-normal`} />
+              </div>
+            )}
+            <h4 className={`font-bold text-slate-900 leading-snug ${compact ? 'text-xs' : 'text-sm'}`}>{deal.title}</h4>
+            {deal.discountText && <p className="text-xs font-bold text-emerald-600 mt-1">{deal.discountText}</p>}
+            {!compact && deal.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed line-clamp-3">{deal.description}</p>}
+            {deal.minOrder != null && deal.minOrder > 0 && <p className="text-[11px] text-slate-500 mt-1">Min. order ₹{deal.minOrder.toLocaleString('en-IN')}</p>}
+          </>
         )}
-        <h4 className={`font-bold text-slate-900 leading-snug ${compact ? 'text-xs' : 'text-sm'}`}>{deal.title}</h4>
-        {deal.discountText && <p className="text-xs font-bold text-emerald-600 mt-1">{deal.discountText}</p>}
-        {!compact && deal.description && <p className="text-xs text-slate-500 mt-1.5 leading-relaxed line-clamp-3">{deal.description}</p>}
-        {deal.minOrder != null && deal.minOrder > 0 && <p className="text-[11px] text-slate-500 mt-1">Min. order ₹{deal.minOrder.toLocaleString('en-IN')}</p>}
       </div>
 
       <div className="mt-3 space-y-2">
