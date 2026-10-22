@@ -33,7 +33,6 @@ import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../c
 import { initCache, cacheStats } from '../common/cache';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
-import { scrapeLiveUrl } from '../../src/server/realDataAcquisition';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { isSameProduct } from '../lens/sameProduct';
@@ -728,28 +727,62 @@ apiRouter.post('/scrape/live', async (req, res) => {
   });
 });
 
-/** Legacy single-URL live scan — real HTTP + cheerio only. */
+/**
+ * Universal scanner: paste ANY product link -> honest page read + real competitor quotes.
+ *
+ * The page itself is read via the hardened lens resolver (curl_cffi chrome
+ * impersonation, Amazon Imperva bounce, honest bot-wall/error-page detection).
+ * When the site refuses automated reads, the product words in the URL slug are
+ * still the user's own input and identify the product — exactly like /api/lens.
+ * (The old legacy scraper used a plain 6s fetch, so every real Flipkart/Amazon
+ * link came back "not found"; fixed 22 Oct after the owner's AI Insights audit.)
+ */
+function verticalForScanUrl(url: string, domain: string): string {
+  const u = url.toLowerCase();
+  if (/(blinkit|zepto|instamart|bigbasket|jiomart)/.test(u)) return 'grocery';
+  if (/(swiggy|zomato|magicpin|eatclub|dominos|ovenscience|eatsure)/.test(u)) return 'food';
+  if (/(makemytrip|goibibo|easemytrip|yatra|cleartrip|ixigo|akasaair|indigo)/.test(u) && /(flight|air)/.test(u)) return 'flights';
+  if (/(booking|agoda|oyo|saffronstays|hotel)/.test(u)) return 'hotels';
+  if (/(redbus|abhibus|zingbus)/.test(u)) return 'bus';
+  if (/(uber|ola\.com|rapido|indrive|meru)/.test(u)) return 'cab';
+  if (/(bookmyshow|paytm\.com\/movies|cinepolis|ticketnew|district)/.test(u)) return 'movie';
+  if (/(policybazaar|acko|digit|insurancedekho|ditto)/.test(u)) return 'insurance';
+  if (/(bankbazaar|paisabazaar|kreditbee|moneyview|navi)/.test(u)) return 'loans';
+  return 'ecommerce';
+}
+
 apiRouter.post('/scan/url', async (req, res) => {
   const url = String(req.body.url || '').trim();
   if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ success: false, error: 'A valid http(s) URL is required.' });
-  const scan = await scrapeLiveUrl(url);
-  // HONEST DATA POLICY: a page without a readable product title (bot wall, error
-  // page, storefront template) is reported as not found — never a fabricated item.
-  if (!scan.found || !scan.title) {
-    return res.json({ success: true, found: false, message: scan.fetchNote || 'Could not read a product from that page. Nothing is simulated here.' });
+
+  // HONEST DATA POLICY: never fabricate a title or price. The resolver reads the
+  // real page with browser-grade impersonation and falls back to the URL slug
+  // (the user's own words) only when the merchant blocks the read.
+  const started = Date.now();
+  const product = await resolveProductFromLink(url);
+  if (!product.title) {
+    return res.json({
+      success: true,
+      found: false,
+      message:
+        product.fetchStatus === 'blocked'
+          ? `${product.merchant || 'That site'} blocks automated reads and the link carries no readable product name. Type the product name instead and we will compare it live.`
+          : 'The page did not expose a readable product title (bot wall, error or storefront page).',
+    });
   }
-  // Competitor quotes come from the REAL live orchestrator, never invented.
-  const scanQuery = searchableTitle(scan.title);
+
+  const vertical = verticalForScanUrl(url, product.domain);
+  const scanQuery = searchableTitle(product.title);
   const search = await runSearch({
     query: scanQuery,
-    vertical: scan.vertical === 'movie' ? 'movies' : (scan.vertical || 'ecommerce'),
+    vertical: vertical === 'movie' ? 'movies' : vertical,
     city: req.body?.city,
     pincode: req.body?.pincode,
   } as SearchInput);
   const priced = (search.results as any[])
     .map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 }))
     .filter((x) => x.price > 0);
-  const relevant = scan.vertical === 'ecommerce' || !scan.vertical
+  const relevant = vertical === 'ecommerce' || !vertical
     ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || '')))
     : priced;
   const cheapestFirst = relevant.sort((a, b) => a.price - b.price).slice(0, 8);
@@ -765,37 +798,44 @@ apiRouter.post('/scan/url', async (req, res) => {
     sourceDomain: hostOf(String(x.o.sellerUrl || '')),
     deliveryOrEta: x.o.attributes?.eta ? `Delivers in ${x.o.attributes.eta}` : undefined,
   }));
-  // The scanned page itself is a real quote only when it published a real price.
-  if (scan.extractedPrice > 0) {
+  // The scanned page itself is a quote only when it published a real price.
+  if (product.pagePrice && Number(product.pagePrice) > 0) {
     sellerQuotes.unshift({
       id: `sq-page-${Date.now()}`,
-      sellerName: scan.sourceDomain,
-      price: scan.extractedPrice,
+      sellerName: product.merchant || product.domain,
+      price: Number(product.pagePrice),
       currency: '₹',
       url,
       isLowest: false,
       isLiveScraped: true,
-      sourceDomain: scan.sourceDomain,
+      sourceDomain: product.domain,
     });
   }
-  const primaryPrice = scan.extractedPrice > 0 ? scan.extractedPrice : (cheapestFirst[0]?.price ?? 0);
+  const primaryPrice = (product.pagePrice && Number(product.pagePrice) > 0)
+    ? Number(product.pagePrice)
+    : (cheapestFirst[0]?.price ?? 0);
   if (!sellerQuotes.length) {
     return res.json({ success: true, found: false, message: 'The page was read, but no live competitor prices were found for that product right now. Nothing is simulated here.' });
   }
   const catalogueItem = {
     id: `scan-${Date.now()}`,
-    vertical: scan.vertical,
-    title: scan.title,
-    category: scan.category,
-    provider: scan.sourceDomain,
+    vertical,
+    title: product.title,
+    category: vertical,
+    provider: product.merchant || product.domain,
     primaryPrice,
     sellerQuotes,
     isLiveScraped: true,
     scrapedTimestamp: new Date().toISOString(),
-    scrapedLatencyMs: scan.latencyMs,
+    scrapedLatencyMs: Date.now() - started,
   };
   saveItemToCatalogue(catalogueItem as any);
-  res.json({ success: true, found: true, item: catalogueItem, rawScan: scan });
+  res.json({
+    success: true,
+    found: true,
+    item: catalogueItem,
+    rawScan: { vertical, title: product.title, titleSource: product.titleSource, fetchStatus: product.fetchStatus, latencyMs: Date.now() - started },
+  });
 });
 
 // ============ Price Lens: paste any product link -> cheapest across sites ============

@@ -32,7 +32,6 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
   bool _scanning = false;
   String? _scanError;
   ScanResult? _scan;
-  String _mode = 'url';
 
   // coupons
   List<Map<String, dynamic>> _coupons = const [];
@@ -67,17 +66,41 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
     }
   }
 
-  void _loadInsights() {
-    for (final p in kInsightProbes) {
-      () async {
-        try {
-          final r = await _state.live(p.vertical, p.query);
-          final s = computeInsight(r.items);
-          if (s != null && mounted) _stats[p.vertical] = s;
-        } catch (_) {/* a failed probe simply yields no card */}
-        if (mounted) setState(() => _probeDone.add(p.vertical));
-      }();
+  /// Probes are live searches, and a cold pipeline answers first with a
+  /// PARTIAL snapshot (pendingRefresh) that settles over the next seconds.
+  /// The old single-shot call read the partial and gave up: most verticals
+  /// never reached 2 priced offers, so "All Verticals" showed ~2 cards.
+  /// Now every probe polls until the pipeline settles (compare-screen pattern)
+  /// and probes run 3-wide so we don't stampede the orchestrator on a phone.
+  Future<void> _probe(InsightProbe p) async {
+    for (var attempt = 0; attempt < 6; attempt++) {
+      try {
+        final r = await _state.live(p.vertical, p.query);
+        final s = computeInsight(r.items);
+        if (s != null) {
+          if (mounted) setState(() => _stats[p.vertical] = s);
+          break; // a real spread: the card is honest as-is
+        }
+        if (!r.pendingRefresh) break; // pipeline settled without a spread: no card, honestly
+        if (attempt < 5) await Future<void>.delayed(const Duration(milliseconds: 2500));
+      } catch (_) {
+        // One honest retry for transient network hiccups, then give up quietly.
+        if (attempt >= 1) break;
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+      }
     }
+    if (mounted) setState(() => _probeDone.add(p.vertical));
+  }
+
+  void _loadInsights() {
+    final queue = List.of(kInsightProbes);
+    Future<void> worker() async {
+      while (queue.isNotEmpty) {
+        await _probe(queue.removeAt(0));
+      }
+    }
+
+    Future.wait([worker(), worker(), worker()]);
   }
 
   Future<void> _runScan() async {
@@ -201,8 +224,7 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
         ),
         const SizedBox(height: 14),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          _modeChip(context, 'Paste Product / Flight Link', Icons.link_rounded, _mode == 'url', () => setState(() => _mode = 'url')),
-          _modeChip(context, 'Barcode & QR Viewfinder', Icons.qr_code_scanner_rounded, _mode == 'barcode', () => setState(() => _mode = 'barcode')),
+          _modeChip(context, 'Paste Product / Flight Link', Icons.link_rounded, true, () {}),
           GestureDetector(
             onTap: _openExtension,
             child: Container(
@@ -217,8 +239,7 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
           ),
         ]),
         const SizedBox(height: 12),
-        if (_mode == 'url')
-          Container(
+        Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(color: const Color(0x1AFFFFFF), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0x33FFFFFF))),
             child: Column(children: [
@@ -253,7 +274,7 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 13),
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), gradient: const LinearGradient(colors: [Color(0xFF06B6D4), Color(0xFF2563EB)])),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), gradient: const LinearGradient(colors: [Color(0xFFE11D48), Color(0xFFBE123C)])),
                   child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     if (_scanning)
                       const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -264,16 +285,6 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
                   ]),
                 ),
               ),
-            ]),
-          )
-        else
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: const Color(0x1AFFFFFF), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0x33FFFFFF))),
-            child: Row(children: [
-              const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFF22D3EE)),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Barcode scanning is not available yet. Paste the product link instead and we will verify the live price.', style: tx(context, 11.5, color: const Color(0xFFCBD5E1), h: 1.4))),
             ]),
           ),
         if (_scanError != null) ...[

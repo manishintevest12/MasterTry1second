@@ -26889,66 +26889,6 @@ var init_showcase = __esm({
   }
 });
 
-// src/server/catalogueStore.ts
-function saveCatalogueStore(state) {
-  try {
-    if (!import_fs3.default.existsSync(DATA_DIR)) {
-      import_fs3.default.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    memoryState = {
-      ...memoryState,
-      ...state,
-      lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    import_fs3.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
-  } catch (err) {
-    console.error("[CatalogueStore] Error saving persistent catalogue to disk:", err.message);
-  }
-}
-function getCatalogueState() {
-  return memoryState;
-}
-function saveItemToCatalogue(item) {
-  const existingIdx = memoryState.items.findIndex((i) => i.id === item.id);
-  if (existingIdx >= 0) {
-    memoryState.items[existingIdx] = item;
-  } else {
-    memoryState.items.unshift(item);
-  }
-  if (memoryState.items.length > 1e3) {
-    memoryState.items = memoryState.items.slice(0, 1e3);
-  }
-  saveCatalogueStore({ items: memoryState.items });
-}
-function recordProvenance(log2) {
-  memoryState.provenanceLogs.unshift(log2);
-  if (memoryState.provenanceLogs.length > 500) {
-    memoryState.provenanceLogs = memoryState.provenanceLogs.slice(0, 500);
-  }
-  saveCatalogueStore({ provenanceLogs: memoryState.provenanceLogs });
-}
-var import_fs3, import_path4, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
-var init_catalogueStore = __esm({
-  "src/server/catalogueStore.ts"() {
-    import_fs3 = __toESM(require("fs"), 1);
-    import_path4 = __toESM(require("path"), 1);
-    import_promise2 = __toESM(require("mysql2/promise"), 1);
-    DATA_DIR = import_path4.default.resolve(process.cwd(), ".data");
-    CATALOGUE_FILE = import_path4.default.join(DATA_DIR, "catalogue.json");
-    memoryState = {
-      items: [],
-      leads: [],
-      proxies: [],
-      provenanceLogs: [],
-      searchApiConfig: {
-        apiKey: process.env.SEARCHAPI_API_KEY || "",
-        isEnabled: Boolean(process.env.SEARCHAPI_API_KEY)
-      },
-      lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-  }
-});
-
 // server/lens/productLink.ts
 function isSafePublicUrl(raw) {
   let u;
@@ -27035,10 +26975,6 @@ function isMerchantNameTitle(title, domain, merchant) {
   if (!title) return false;
   const plain = (x) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
   return plain(title) === plain(domain) || plain(title) === plain(merchant);
-}
-function isStorefrontTitle(title) {
-  if (!title) return false;
-  return STOREFRONT_RE.test(title.trim());
 }
 function isGenericTitle(title) {
   return !!title && GENERIC_TITLE_RE.test(title.trim());
@@ -27167,7 +27103,7 @@ async function resolveProductFromLink(rawUrl) {
   if (slugTitle) return { title: slugTitle, titleSource: "url-slug", merchant, domain, pagePrice: null, image: null, fetchStatus };
   return { title: null, titleSource: "none", merchant, domain, pagePrice: null, image: null, fetchStatus };
 }
-var cheerio6, MERCHANTS, JUNK_SLUG, STOREFRONT_RE, GENERIC_TITLE_RE, ERROR_TITLE_RE;
+var cheerio6, MERCHANTS, JUNK_SLUG, GENERIC_TITLE_RE, ERROR_TITLE_RE;
 var init_productLink = __esm({
   "server/lens/productLink.ts"() {
     cheerio6 = __toESM(require("cheerio"), 1);
@@ -27193,200 +27129,8 @@ var init_productLink = __esm({
       [/(^|\.)pricehistory\.app$/, "PriceHistory"]
     ];
     JUNK_SLUG = /^(dp|gp|p|product|products|item|itm|buy|pd|shop|s|ip|sku|b0[a-z0-9]{8}|[a-z]{0,3}\d[a-z0-9]{6,})$/i;
-    STOREFRONT_RE = /\b(online (shopping|store|fashion|grocery|shopping site)|shopping (online|for )|official (site|website|store)|home ?page|buy .* online at)\b/i;
     GENERIC_TITLE_RE = /^(products?|shop|store|search|search results|buy online|online store|best sellers?|deals?|all products?|cart|checkout|home)$/i;
     ERROR_TITLE_RE = /(^|\b)(service unavailable|temporarily unavailable|access denied|forbidden|page not found|just a moment|unusual traffic|robot check|are you a human|human verification|error\s*(40[034]|50[023])?|40[034]|50[023]|429)(\b|$)/i;
-  }
-});
-
-// src/server/realDataAcquisition.ts
-function getRandomUserAgent() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-async function scrapeLiveUrl(targetUrl) {
-  const startTime = Date.now();
-  let domain = "unknown";
-  try {
-    const parsedUrl = new URL(targetUrl);
-    domain = parsedUrl.hostname.replace("www.", "");
-  } catch {
-    domain = "direct-input";
-  }
-  let vertical = "ecommerce";
-  const urlLower = targetUrl.toLowerCase();
-  if (urlLower.includes("blinkit") || urlLower.includes("zepto") || urlLower.includes("instamart") || urlLower.includes("bigbasket")) {
-    vertical = "grocery";
-  } else if (urlLower.includes("swiggy") || urlLower.includes("zomato") || urlLower.includes("magicpin") || urlLower.includes("eatclub")) {
-    vertical = "food";
-  } else if (urlLower.includes("makemytrip") && (urlLower.includes("flight") || urlLower.includes("air"))) {
-    vertical = "flights";
-  } else if (urlLower.includes("booking") || urlLower.includes("agoda") || urlLower.includes("oyo") || urlLower.includes("hotel")) {
-    vertical = "hotels";
-  } else if (urlLower.includes("redbus") || urlLower.includes("abhibus")) {
-    vertical = "bus";
-  } else if (urlLower.includes("irctc") || urlLower.includes("confirmtkt") || urlLower.includes("railyatri") || urlLower.includes("train")) {
-    vertical = "trains";
-  } else if (urlLower.includes("1mg") || urlLower.includes("apollo") || urlLower.includes("pharmeasy") || urlLower.includes("netmeds")) {
-    vertical = "pharmacy";
-  } else if (urlLower.includes("uber") || urlLower.includes("ola") || urlLower.includes("rapido")) {
-    vertical = "cab";
-  } else if (urlLower.includes("bookmyshow") || urlLower.includes("paytm.com/movies")) {
-    vertical = "movie";
-  } else if (urlLower.includes("policybazaar") || urlLower.includes("acko") || urlLower.includes("digit")) {
-    vertical = "insurance";
-  }
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6e3);
-    const response = await fetch(targetUrl, {
-      signal: controller.signal,
-      headers: {
-        "User-Agent": getRandomUserAgent(),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-IN,en;q=0.9,hi;q=0.8",
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "X-Forwarded-For": "103.28.14.92"
-        // Real Indian Geo IP
-      }
-    });
-    clearTimeout(timeout);
-    const statusCode = response.status;
-    const htmlText = await response.text();
-    const $ = cheerio7.load(htmlText);
-    let title = $('meta[property="og:title"]').attr("content") || $('meta[name="twitter:title"]').attr("content") || $("h1").first().text().trim() || $("title").text().trim() || "";
-    title = title.replace(/\s*([|–—\-])\s*(Amazon\.in|Flipkart|Blinkit|Zepto|Myntra|Tata CLiQ|Swiggy|Zomato|MakeMyTrip).*$/i, "").trim();
-    if (isErrorPageTitle(title)) title = "";
-    if (isStorefrontTitle(title)) title = "";
-    const imageUrl = $('meta[property="og:image"]').attr("content") || $('meta[name="twitter:image"]').attr("content") || $('link[rel="image_src"]').attr("href") || $("#landingImage").attr("src") || $(".product-image img").attr("src") || "";
-    let price = 0;
-    let originalPrice = 0;
-    const ogPrice = $('meta[property="product:price:amount"]').attr("content") || $('meta[property="og:price:amount"]').attr("content");
-    if (ogPrice && !isNaN(parseFloat(ogPrice))) {
-      price = Math.round(parseFloat(ogPrice));
-    }
-    $('script[type="application/ld+json"]').each((_, elem) => {
-      try {
-        const json = JSON.parse($(elem).html() || "{}");
-        if (json["@type"] === "Product" || json["@type"] === "Offer") {
-          const offer = json.offers || json;
-          const p = Array.isArray(offer) ? offer[0]?.price : offer.price;
-          if (p && !isNaN(parseFloat(p))) {
-            price = Math.round(parseFloat(p));
-          }
-          if (json.name && !title) title = json.name;
-        }
-      } catch {
-      }
-    });
-    if (!price) {
-      const priceText = $(".a-price-whole").first().text() || $("._30jeq3").first().text() || // Flipkart price class
-      $('[data-test="product-price"]').first().text() || $(".price").first().text() || $('span:contains("\u20B9")').first().text();
-      const cleaned = (priceText || "").replace(/[^\d]/g, "");
-      if (cleaned) {
-        price = parseInt(cleaned, 10);
-      }
-    }
-    if (!price || price < 5) {
-      const bodyText = $("body").text();
-      const match = bodyText.match(/₹\s*([\d,]{2,10})/);
-      if (match && match[1]) {
-        price = parseInt(match[1].replace(/,/g, ""), 10);
-      }
-    }
-    if (!price || price < 5) price = 0;
-    originalPrice = 0;
-    const latency = Date.now() - startTime;
-    const found = Boolean(title);
-    const provenanceRecord = {
-      sourceType: "live_http",
-      fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
-      statusCode,
-      rawDomain: domain,
-      latencyMs: latency
-    };
-    recordProvenance({
-      id: `prov-${Date.now()}`,
-      itemId: `scan-${Date.now()}`,
-      sourceUrl: targetUrl,
-      sourceDomain: domain,
-      sourceType: "live_http",
-      httpStatus: statusCode,
-      fetchedAt: provenanceRecord.fetchedAt,
-      latencyMs: latency
-    });
-    return {
-      success: true,
-      found,
-      fetchNote: found ? void 0 : "The page did not expose a readable product title (bot wall, error or storefront page).",
-      sourceUrl: targetUrl,
-      sourceDomain: domain,
-      title,
-      category: determineCategory(title, vertical),
-      vertical,
-      extractedPrice: price,
-      originalPrice,
-      imageUrl: imageUrl || void 0,
-      sellerQuotes: [],
-      latencyMs: latency,
-      httpStatus: statusCode,
-      provenance: provenanceRecord
-    };
-  } catch (err) {
-    const latency = Date.now() - startTime;
-    return {
-      success: true,
-      found: false,
-      fetchNote: `Could not read that page (${err && err.message ? err.message : "fetch failed"}). Nothing is simulated here.`,
-      sourceUrl: targetUrl,
-      sourceDomain: domain,
-      title: "",
-      category: "",
-      vertical,
-      extractedPrice: 0,
-      originalPrice: 0,
-      imageUrl: void 0,
-      sellerQuotes: [],
-      latencyMs: latency,
-      httpStatus: 0,
-      provenance: {
-        sourceType: "live_http",
-        fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        statusCode: 0,
-        rawDomain: domain,
-        latencyMs: latency
-      }
-    };
-  }
-}
-function determineCategory(title, vertical) {
-  const t = title.toLowerCase();
-  if (vertical === "grocery") return "Groceries & Daily Essentials";
-  if (vertical === "food") return "Food Delivery & Dining";
-  if (vertical === "flights") return "Airlines & Flights";
-  if (vertical === "hotels") return "Hotels & Resort Stays";
-  if (vertical === "bus") return "AC Sleeper Bus";
-  if (vertical === "trains") return "IRCTC Rail Journey";
-  if (vertical === "pharmacy") return "Medicines & Healthcare";
-  if (vertical === "cab") return "Cab & City Transit";
-  if (vertical === "movie") return "Cinema & IMAX Tickets";
-  if (t.includes("phone") || t.includes("iphone") || t.includes("samsung") || t.includes("pro max")) return "Smartphones & Mobiles";
-  if (t.includes("laptop") || t.includes("macbook")) return "Laptops & Computers";
-  if (t.includes("headphone") || t.includes("earbud") || t.includes("audio") || t.includes("anc")) return "Headphones & Audio";
-  return "Electronics & Gadgets";
-}
-var cheerio7, USER_AGENTS;
-var init_realDataAcquisition = __esm({
-  "src/server/realDataAcquisition.ts"() {
-    cheerio7 = __toESM(require("cheerio"), 1);
-    init_catalogueStore();
-    init_productLink();
-    USER_AGENTS = [
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1"
-    ];
   }
 });
 
@@ -27905,6 +27649,59 @@ var init_priceAlerts = __esm({
     init_logger();
     init_notifications();
     isActive2 = (r) => r.is_active === void 0 || r.is_active === null || Number(r.is_active) === 1 || r.is_active === true;
+  }
+});
+
+// src/server/catalogueStore.ts
+function saveCatalogueStore(state) {
+  try {
+    if (!import_fs3.default.existsSync(DATA_DIR)) {
+      import_fs3.default.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    memoryState = {
+      ...memoryState,
+      ...state,
+      lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    import_fs3.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[CatalogueStore] Error saving persistent catalogue to disk:", err.message);
+  }
+}
+function getCatalogueState() {
+  return memoryState;
+}
+function saveItemToCatalogue(item) {
+  const existingIdx = memoryState.items.findIndex((i) => i.id === item.id);
+  if (existingIdx >= 0) {
+    memoryState.items[existingIdx] = item;
+  } else {
+    memoryState.items.unshift(item);
+  }
+  if (memoryState.items.length > 1e3) {
+    memoryState.items = memoryState.items.slice(0, 1e3);
+  }
+  saveCatalogueStore({ items: memoryState.items });
+}
+var import_fs3, import_path4, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
+var init_catalogueStore = __esm({
+  "src/server/catalogueStore.ts"() {
+    import_fs3 = __toESM(require("fs"), 1);
+    import_path4 = __toESM(require("path"), 1);
+    import_promise2 = __toESM(require("mysql2/promise"), 1);
+    DATA_DIR = import_path4.default.resolve(process.cwd(), ".data");
+    CATALOGUE_FILE = import_path4.default.join(DATA_DIR, "catalogue.json");
+    memoryState = {
+      items: [],
+      leads: [],
+      proxies: [],
+      provenanceLogs: [],
+      searchApiConfig: {
+        apiKey: process.env.SEARCHAPI_API_KEY || "",
+        isEnabled: Boolean(process.env.SEARCHAPI_API_KEY)
+      },
+      lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
   }
 });
 
@@ -29113,6 +28910,19 @@ function offerToComparisonItem(o) {
     }
   };
 }
+function verticalForScanUrl(url, domain) {
+  const u = url.toLowerCase();
+  if (/(blinkit|zepto|instamart|bigbasket|jiomart)/.test(u)) return "grocery";
+  if (/(swiggy|zomato|magicpin|eatclub|dominos|ovenscience|eatsure)/.test(u)) return "food";
+  if (/(makemytrip|goibibo|easemytrip|yatra|cleartrip|ixigo|akasaair|indigo)/.test(u) && /(flight|air)/.test(u)) return "flights";
+  if (/(booking|agoda|oyo|saffronstays|hotel)/.test(u)) return "hotels";
+  if (/(redbus|abhibus|zingbus)/.test(u)) return "bus";
+  if (/(uber|ola\.com|rapido|indrive|meru)/.test(u)) return "cab";
+  if (/(bookmyshow|paytm\.com\/movies|cinepolis|ticketnew|district)/.test(u)) return "movie";
+  if (/(policybazaar|acko|digit|insurancedekho|ditto)/.test(u)) return "insurance";
+  if (/(bankbazaar|paisabazaar|kreditbee|moneyview|navi)/.test(u)) return "loans";
+  return "ecommerce";
+}
 function leadRateOk(ip) {
   const now = Date.now();
   const h = leadHits.get(ip);
@@ -29202,7 +29012,6 @@ var init_routes = __esm({
     init_cache();
     init_settings();
     init_registry();
-    init_realDataAcquisition();
     init_productLink();
     init_assistantIntent();
     init_sameProduct();
@@ -29631,19 +29440,25 @@ var init_routes = __esm({
     apiRouter.post("/scan/url", async (req, res) => {
       const url = String(req.body.url || "").trim();
       if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ success: false, error: "A valid http(s) URL is required." });
-      const scan = await scrapeLiveUrl(url);
-      if (!scan.found || !scan.title) {
-        return res.json({ success: true, found: false, message: scan.fetchNote || "Could not read a product from that page. Nothing is simulated here." });
+      const started2 = Date.now();
+      const product = await resolveProductFromLink(url);
+      if (!product.title) {
+        return res.json({
+          success: true,
+          found: false,
+          message: product.fetchStatus === "blocked" ? `${product.merchant || "That site"} blocks automated reads and the link carries no readable product name. Type the product name instead and we will compare it live.` : "The page did not expose a readable product title (bot wall, error or storefront page)."
+        });
       }
-      const scanQuery = searchableTitle(scan.title);
+      const vertical = verticalForScanUrl(url, product.domain);
+      const scanQuery = searchableTitle(product.title);
       const search = await runSearch({
         query: scanQuery,
-        vertical: scan.vertical === "movie" ? "movies" : scan.vertical || "ecommerce",
+        vertical: vertical === "movie" ? "movies" : vertical,
         city: req.body?.city,
         pincode: req.body?.pincode
       });
       const priced = search.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0);
-      const relevant = scan.vertical === "ecommerce" || !scan.vertical ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || ""))) : priced;
+      const relevant = vertical === "ecommerce" || !vertical ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || ""))) : priced;
       const cheapestFirst = relevant.sort((a, b) => a.price - b.price).slice(0, 8);
       const hostOf2 = (u) => {
         try {
@@ -29663,36 +29478,41 @@ var init_routes = __esm({
         sourceDomain: hostOf2(String(x.o.sellerUrl || "")),
         deliveryOrEta: x.o.attributes?.eta ? `Delivers in ${x.o.attributes.eta}` : void 0
       }));
-      if (scan.extractedPrice > 0) {
+      if (product.pagePrice && Number(product.pagePrice) > 0) {
         sellerQuotes.unshift({
           id: `sq-page-${Date.now()}`,
-          sellerName: scan.sourceDomain,
-          price: scan.extractedPrice,
+          sellerName: product.merchant || product.domain,
+          price: Number(product.pagePrice),
           currency: "\u20B9",
           url,
           isLowest: false,
           isLiveScraped: true,
-          sourceDomain: scan.sourceDomain
+          sourceDomain: product.domain
         });
       }
-      const primaryPrice = scan.extractedPrice > 0 ? scan.extractedPrice : cheapestFirst[0]?.price ?? 0;
+      const primaryPrice = product.pagePrice && Number(product.pagePrice) > 0 ? Number(product.pagePrice) : cheapestFirst[0]?.price ?? 0;
       if (!sellerQuotes.length) {
         return res.json({ success: true, found: false, message: "The page was read, but no live competitor prices were found for that product right now. Nothing is simulated here." });
       }
       const catalogueItem = {
         id: `scan-${Date.now()}`,
-        vertical: scan.vertical,
-        title: scan.title,
-        category: scan.category,
-        provider: scan.sourceDomain,
+        vertical,
+        title: product.title,
+        category: vertical,
+        provider: product.merchant || product.domain,
         primaryPrice,
         sellerQuotes,
         isLiveScraped: true,
         scrapedTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        scrapedLatencyMs: scan.latencyMs
+        scrapedLatencyMs: Date.now() - started2
       };
       saveItemToCatalogue(catalogueItem);
-      res.json({ success: true, found: true, item: catalogueItem, rawScan: scan });
+      res.json({
+        success: true,
+        found: true,
+        item: catalogueItem,
+        rawScan: { vertical, title: product.title, titleSource: product.titleSource, fetchStatus: product.fetchStatus, latencyMs: Date.now() - started2 }
+      });
     });
     apiRouter.post("/lens", async (req, res) => {
       const input = String(req.body?.input || req.body?.url || "").trim().slice(0, 2e3);

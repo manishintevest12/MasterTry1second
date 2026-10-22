@@ -15,7 +15,6 @@ import {
   AlertCircle,
   Tag,
   Link as LinkIcon,
-  QrCode,
   Flame,
   Clock,
   Layers,
@@ -23,7 +22,6 @@ import {
   Percent,
   Check,
   Bell,
-  Camera,
   Share2,
   RefreshCw,
   ShoppingBag,
@@ -119,7 +117,7 @@ export const AiInsightsView: React.FC = () => {
   const [activeScan, setActiveScan] = useState<ScannerResult | null>(null);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<'90d' | '180d' | '365d'>('90d');
-  const [scannerMode, setScannerMode] = useState<'url' | 'barcode' | 'query'>('url');
+  const [scannerMode, setScannerMode] = useState<'url' | 'query'>('url');
 
   // LIVE market insight cards: one real query per vertical, built from actual results only.
   const [INSIGHTS, setInsights] = useState<AiInsightCard[]>([]);
@@ -554,7 +552,7 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
             Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.
           </p>
 
-          {/* Mode Selector Tabs: URL Link | Barcode / QR | Instant 10-Vertical Query */}
+          {/* Mode Selector Tabs: URL Link | Instant 10-Vertical Query (barcode removed 22 Oct per owner) */}
           <div className="flex items-center gap-2 pt-2">
             <button
               type="button"
@@ -567,19 +565,6 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
             >
               <LinkIcon className="w-3.5 h-3.5" />
               <span>Paste Product / Flight Link</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setScannerMode('barcode')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                scannerMode === 'barcode'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
-                  : 'bg-white/10 text-slate-300 hover:bg-white/15'
-              }`}
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              <span>Barcode & QR Viewfinder</span>
             </button>
 
             <button
@@ -628,56 +613,6 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
             </div>
           )}
 
-          {/* MODE 2: Barcode Viewfinder Simulator */}
-          {scannerMode === 'barcode' && (
-            <div className="bg-slate-900/90 rounded-2xl border border-slate-700 p-4 max-w-2xl space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-300 pb-2 border-b border-slate-800">
-                <span className="font-bold flex items-center gap-1.5 text-cyan-400">
-                  <Camera className="w-4 h-4" />
-                  <span>Optical Camera & Barcode Scanner Viewfinder</span>
-                </span>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30 font-mono">
-                  Lens Active · 100+ Brands
-                </span>
-              </div>
-
-              {/* Viewfinder Frame with Laser */}
-              <div className="relative h-44 rounded-xl overflow-hidden bg-slate-950 flex flex-col items-center justify-center border-2 border-dashed border-cyan-500/40">
-                <div className="absolute inset-x-8 top-1/2 h-0.5 bg-red-500 shadow-[0_0_12px_#ef4444] animate-pulse pointer-events-none" />
-                <QrCode className="w-16 h-16 text-cyan-400/40 mb-2" />
-                <p className="text-xs text-slate-300 font-semibold z-10">Point Camera at Product Barcode or QR</p>
-                <span className="text-[10px] text-slate-500 z-10">UPC, EAN-13, QR codes recognized automatically</span>
-              </div>
-
-              {/* Quick Barcode Test Buttons */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold text-slate-400 block">Camera scan is not wired yet. Run these products live instead:</span>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => handlePresetScan('sony wh-1000xm5 headphones')}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
-                  >
-                    🏷️ 490552498231 (Sony XM5 Barcode)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePresetScan('amul milk')}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
-                  >
-                    🏷️ 890123302451 (Amul Basket Barcode)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePresetScan('delhi to dubai flights')}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium border border-white/10 cursor-pointer"
-                  >
-                    ✈️ 6E-1461 QR Ticket Pass
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Quick Preset Chips for All 10 Verticals */}
           <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-300">

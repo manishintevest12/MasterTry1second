@@ -62,18 +62,21 @@ class _DealScoreSectionState extends State<DealScoreSection> {
         SectionTitle('DEAL SCORE · BUY OR WAIT?'),
         Box(
           padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _q,
-                onSubmitted: (_) => _run(),
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(hintText: 'Paste a product link or type a name', isDense: true, prefixIcon: Icon(Icons.search_rounded, size: 16)),
-                style: tx(context, 12.5),
-              ),
+          child: Column(children: [
+            TextField(
+              controller: _q,
+              onSubmitted: (_) => _run(),
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(hintText: 'Paste a product link or type a name', isDense: true, prefixIcon: Icon(Icons.search_rounded, size: 16)),
+              style: tx(context, 12.5),
             ),
-            const SizedBox(width: 8),
-            RedButton('Analyse', onTap: _busy ? null : _run, dense: true, loading: _busy),
+            const SizedBox(height: 10),
+            // Full-width, comfortably tall, never clipped (owner 22 Oct: the old
+            // dense side-button rendered cramped/misaligned next to the field).
+            SizedBox(
+              width: double.infinity,
+              child: RedButton('Analyse', onTap: _busy ? null : _run, loading: _busy),
+            ),
           ]),
         ),
         if (_busy) ...[
