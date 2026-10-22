@@ -161,8 +161,7 @@ class _SectionHeader extends StatelessWidget {
   static const _icons = <String, IconData>{
     'picked': Icons.auto_awesome_rounded,
     'special': Icons.confirmation_number_rounded,
-    'massive': Icons.local_fire_department_rounded,
-    'mega': Icons.savings_rounded,
+    'goBig': Icons.local_fire_department_rounded,
     'tech': Icons.memory_rounded,
     'steals': Icons.bolt_rounded,
     'places': Icons.location_on_rounded,
@@ -282,7 +281,7 @@ class _ShowcaseCard extends StatelessWidget {
     final dark = isDark(context);
     return GestureDetector(
       onTap: () {
-        // Famous Destinations: launch the REAL flights engine for the city —
+        // Top Destinations (owner 22 Oct): launch the REAL flights engine for the city —
         // never a fake external link.
         if (item.launch != null) {
           state.openVertical(item.launch!.vertical.isEmpty ? 'flights' : item.launch!.vertical,

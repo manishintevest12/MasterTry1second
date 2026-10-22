@@ -282,8 +282,8 @@ export const HomeView: React.FC = () => {
       </section>
 
       {/* 2b. HOME SHOWCASE (owner spec 21 Oct): eight curated sections under the
-           launch grid — Picked Just for You, Special Offers, Massive Discounts,
-           Mega Savings, Tech & Gadgets, Steals, Most Visited Places, Best Cards.
+           launch grid — Picked Just for You, Special Offers For You, Go Big,
+           Best in Tech & Gadgets, Steals, Famous Places to Visit, Best Cards, Top Destinations.
            All items are real; redirects go through /api/out (Amazon tag and
            Myntra INR-Deals/Cuelinks injected server-side). Deferred + lazy. */}
       <Deferred minHeight={420}>

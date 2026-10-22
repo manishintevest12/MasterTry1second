@@ -86,14 +86,40 @@ export const priceOf = (r: OfferRow): number => num(r.effective_price) ?? num(r.
 
 export const mrpOf = (r: OfferRow): number => num(r.list_price) ?? 0;
 
+/**
+ * Source-stated discount fallback (owner 22 Oct): several live SRP rows carry
+ * the seller's own discount claim in attributes (e.g. "discount":"19%") without
+ * an MRP strike-through. Use the source's own stated percentage — never a
+ * guess — so the Go Big / Steals sections don't starve on MRP-less sources.
+ * "Up to X%" claims are skipped: they cannot be pinned to this product.
+ */
+export function statedDiscountPct(attributes: unknown): number {
+  let att: any = attributes;
+  if (typeof att === 'string') {
+    try { att = JSON.parse(att); } catch { return 0; }
+  }
+  if (!att || typeof att !== 'object') return 0;
+  const raw = att.discount ?? att.discount_pct ?? att.discount_percentage;
+  if (raw == null) return 0;
+  const str = String(raw);
+  if (/up\s*to/i.test(str)) return 0; // not attributable to this exact item
+  const m = str.match(/(\d+(?:\.\d+)?)\s*%?/);
+  const pct = m ? Math.round(parseFloat(m[1])) : 0;
+  return pct >= 1 && pct <= 95 ? pct : 0;
+}
+
 export const pctOf = (r: OfferRow): number => {
   const p = priceOf(r), m = mrpOf(r);
-  return m && m > p ? (m - p) / m : 0;
+  if (m && m > p) return (m - p) / m;
+  const stated = statedDiscountPct(r.attributes);      // honest source-stated %
+  return stated > 0 ? stated / 100 : 0;
 };
 
 export const saveOf = (r: OfferRow): number => {
   const p = priceOf(r), m = mrpOf(r);
-  return m && m > p ? m - p : 0;
+  if (m && m > p) return m - p;
+  const stated = statedDiscountPct(r.attributes);
+  return stated > 0 ? Math.round(p * stated / 100) : 0; // derived from the source's own %
 };
 
 /** Servable: not invalidated, has a real seller link, is priced, is fresh. */
@@ -137,7 +163,10 @@ export function itemFromOffer(row: OfferRow): ShowcaseItem | null {
   const price = priceOf(row);
   const mrp = mrpOf(row);
   if (!url || !price) return null; // nothing honest to link or show
-  const pct = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : null;
+  // MRP strike-through first; else the seller's own stated % (owner 22 Oct).
+  const pct = mrp > price
+    ? Math.round(((mrp - price) / mrp) * 100)
+    : (() => { const st = statedDiscountPct(row.attributes); return st >= 1 ? st : null; })();
   const merchant = (row.vendor || row.seller || 'Store').slice(0, 40);
   return {
     id: `off-${row.id}`,
@@ -444,6 +473,20 @@ export function diversifyByMerchant(items: ShowcaseItem[], maxPerMerchant: numbe
 }
 
 /** Pool -> deduped, image-bearing items in the pool's order, then merchant spread. */
+/**
+ * Owner 22 Oct: ONE 'Go Big: Bigger Deals & Greater Savings' section replaces
+ * the old Massive Discounts + Mega Savings pair. Union of both pools, deduped,
+ * ranked by absolute savings first (bigger deals & greater savings), capped 12.
+ */
+export function mergeGoBig(mega: ShowcaseItem[], massive: ShowcaseItem[]): ShowcaseItem[] {
+  const seen = new Set<string>();
+  const savingsOf = (it: ShowcaseItem) => (it.mrp ?? 0) - (it.price ?? 0);
+  return mega.concat(massive)
+    .filter((it) => (seen.has(it.id) ? false : (seen.add(it.id), true)))
+    .sort((a, b) => (savingsOf(b) - savingsOf(a)) || ((b.discountPct ?? 0) - (a.discountPct ?? 0)))
+    .slice(0, 12);
+}
+
 function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: (a: OfferRow, b: OfferRow) => number, spreadKey?: (it: ShowcaseItem) => string): ShowcaseItem[] {
   const seen = new Set<string>();
   const out: ShowcaseItem[] = [];
@@ -570,8 +613,12 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
   const serv = (r: OfferRow) => servableRow(r, 14);
 
   const picked = sectionItems(ecom, (r) => serv(r), newest);
+  // Owner 22 Oct: ONE 'Go Big' section replaces the old Massive Discounts +
+  // Mega Savings pair — union of 40%+ off and ₹1,000+ absolute savings,
+  // deduped, ranked by absolute savings first (bigger deals & greater savings).
   const massive = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.40, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const mega = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1000, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
+  const goBig = mergeGoBig(mega, massive);
   const techFilter = (r: OfferRow) => serv(r) && (TECH_RX.test(String(r.title || '')) || TECH_BRAND_RX.test(String(r.brand || '')));
   // Owner 22 Oct: laptops, TVs, fridges and more must all appear — spread cards
   // across tech categories (max 2 per bucket) instead of a wall of phones.
@@ -584,12 +631,11 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
   const sections: ShowcaseSection[] = [
     { id: 'picked', title: 'Picked Just for You', subtitle: 'real products, live-acquired prices', items: picked },
     { id: 'special', title: 'Special Offers For You', subtitle: 'auto-tested coupons from live registries', items: couponSpecial },
-    { id: 'massive', title: 'Massive Discounts', subtitle: '40%+ off, verified this hour', items: massive },
-    { id: 'mega', title: 'Mega Savings', subtitle: 'the biggest absolute savings right now', items: mega },
+    { id: 'goBig', title: 'Go Big: Bigger Deals & Greater Savings', subtitle: '40%+ off and \u20B91,000+ savings on big-ticket finds', items: goBig },
     { id: 'tech', title: 'Best in Tech & Gadgets', subtitle: 'phones, audio, laptops and more', items: tech },
     { id: 'steals', title: "Steals You Can't Ignore", subtitle: 'under \u20B9999, heavily discounted', items: steals },
     {
-      id: 'places', title: 'Most Visited Places', subtitle: partner
+      id: 'places', title: 'Famous Places to Visit', subtitle: partner
         ? `live hotel rates via ${partner} — our best-paying hotel partner`
         : 'live per-night hotel rates, side by side',
       // Owner rule: hotel section deeplinks go through the best-paying partner.
@@ -600,7 +646,7 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
         : places,
     },
     { id: 'cards', title: 'Best Cards For You', subtitle: 'fees & rewards, straight from the banks', items: cards },
-    { id: 'destinations', title: 'Famous Destinations', subtitle: 'cheapest recorded fares — tap for live flight search', items: destinations },
+    { id: 'destinations', title: 'Top Destinations', subtitle: 'famous places to visit — cheapest recorded fares, tap for live flight search', items: destinations },
   ].filter(s => s.items.length > 0); // honesty: never render an empty section
 
   cached = { at: Date.now(), sections };

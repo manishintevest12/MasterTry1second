@@ -1,8 +1,9 @@
 /**
  * Home Showcase (owner spec, 21 Oct + reference-design restyle 22 Oct):
  * the eight curated sections under the "Instant Launch Verticals" grid —
- * Picked Just for You, Special Offers, Massive Discounts, Mega Savings,
- * Tech & Gadgets, Steals, Most Visited Places, Best Cards.
+ * Picked Just for You, Special Offers For You, Go Big (bigger deals &
+ * greater savings), Best in Tech & Gadgets, Steals You Can't Ignore,
+ * Famous Places to Visit, Best Cards, Top Destinations.
  *
  * Reference ideas applied (BuyHatke screenshots: Deal Drop, Deals Worth
  * Grabbing, hatke steal cards) but ALWAYS in the Try1Second RED brand —

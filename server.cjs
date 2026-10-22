@@ -25668,6 +25668,7 @@ __export(showcase_exports, {
   itemFromAffiliate: () => itemFromAffiliate,
   itemFromOffer: () => itemFromOffer,
   merchantLogoCandidates: () => merchantLogoCandidates,
+  mergeGoBig: () => mergeGoBig,
   mrpOf: () => mrpOf,
   nameDomainOf: () => nameDomainOf,
   pctOf: () => pctOf,
@@ -25678,8 +25679,27 @@ __export(showcase_exports, {
   roundRobinSpread: () => roundRobinSpread,
   saveOf: () => saveOf,
   servableRow: () => servableRow,
+  statedDiscountPct: () => statedDiscountPct,
   techCategoryOf: () => techCategoryOf
 });
+function statedDiscountPct(attributes) {
+  let att = attributes;
+  if (typeof att === "string") {
+    try {
+      att = JSON.parse(att);
+    } catch {
+      return 0;
+    }
+  }
+  if (!att || typeof att !== "object") return 0;
+  const raw = att.discount ?? att.discount_pct ?? att.discount_percentage;
+  if (raw == null) return 0;
+  const str3 = String(raw);
+  if (/up\s*to/i.test(str3)) return 0;
+  const m = str3.match(/(\d+(?:\.\d+)?)\s*%?/);
+  const pct = m ? Math.round(parseFloat(m[1])) : 0;
+  return pct >= 1 && pct <= 95 ? pct : 0;
+}
 function imageFromAttributes(raw) {
   if (!raw) return null;
   let a = raw;
@@ -25724,7 +25744,10 @@ function itemFromOffer(row) {
   const price = priceOf(row);
   const mrp = mrpOf(row);
   if (!url || !price) return null;
-  const pct = mrp > price ? Math.round((mrp - price) / mrp * 100) : null;
+  const pct = mrp > price ? Math.round((mrp - price) / mrp * 100) : (() => {
+    const st = statedDiscountPct(row.attributes);
+    return st >= 1 ? st : null;
+  })();
   const merchant = (row.vendor || row.seller || "Store").slice(0, 40);
   return {
     id: `off-${row.id}`,
@@ -25946,6 +25969,11 @@ function diversifyByMerchant(items, maxPerMerchant, target) {
   }
   return out;
 }
+function mergeGoBig(mega, massive) {
+  const seen = /* @__PURE__ */ new Set();
+  const savingsOf = (it) => (it.mrp ?? 0) - (it.price ?? 0);
+  return mega.concat(massive).filter((it) => seen.has(it.id) ? false : (seen.add(it.id), true)).sort((a, b) => savingsOf(b) - savingsOf(a) || (b.discountPct ?? 0) - (a.discountPct ?? 0)).slice(0, 12);
+}
 function sectionItems(pool2, filter, sort, spreadKey) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
@@ -26023,6 +26051,7 @@ async function buildShowcase() {
   const picked = sectionItems(ecom, (r) => serv(r), newest);
   const massive = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.4, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const mega = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1e3, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
+  const goBig = mergeGoBig(mega, massive);
   const techFilter = (r) => serv(r) && (TECH_RX.test(String(r.title || "")) || TECH_BRAND_RX.test(String(r.brand || "")));
   const tech = sectionItems(ecom, techFilter, newest, (it) => techCategoryOf(it.title));
   const steals = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.3, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
@@ -26032,20 +26061,19 @@ async function buildShowcase() {
   const sections = [
     { id: "picked", title: "Picked Just for You", subtitle: "real products, live-acquired prices", items: picked },
     { id: "special", title: "Special Offers For You", subtitle: "auto-tested coupons from live registries", items: couponSpecial },
-    { id: "massive", title: "Massive Discounts", subtitle: "40%+ off, verified this hour", items: massive },
-    { id: "mega", title: "Mega Savings", subtitle: "the biggest absolute savings right now", items: mega },
+    { id: "goBig", title: "Go Big: Bigger Deals & Greater Savings", subtitle: "40%+ off and \u20B91,000+ savings on big-ticket finds", items: goBig },
     { id: "tech", title: "Best in Tech & Gadgets", subtitle: "phones, audio, laptops and more", items: tech },
     { id: "steals", title: "Steals You Can't Ignore", subtitle: "under \u20B9999, heavily discounted", items: steals },
     {
       id: "places",
-      title: "Most Visited Places",
+      title: "Famous Places to Visit",
       subtitle: partner ? `live hotel rates via ${partner} \u2014 our best-paying hotel partner` : "live per-night hotel rates, side by side",
       // Owner rule: hotel section deeplinks go through the best-paying partner.
       // Prefer rows from that partner; fall back to other honest hotel rows.
       items: partner ? places.filter((p) => p.merchant.toLowerCase().includes(partner.toLowerCase().split(" ")[0])).concat(places.filter((p) => !p.merchant.toLowerCase().includes(partner.toLowerCase().split(" ")[0]))) : places
     },
     { id: "cards", title: "Best Cards For You", subtitle: "fees & rewards, straight from the banks", items: cards },
-    { id: "destinations", title: "Famous Destinations", subtitle: "cheapest recorded fares \u2014 tap for live flight search", items: destinations }
+    { id: "destinations", title: "Top Destinations", subtitle: "famous places to visit \u2014 cheapest recorded fares, tap for live flight search", items: destinations }
   ].filter((s) => s.items.length > 0);
   cached = { at: Date.now(), sections };
   return sections;
@@ -26073,11 +26101,15 @@ var init_showcase = __esm({
     mrpOf = (r) => num10(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
-      return m && m > p ? (m - p) / m : 0;
+      if (m && m > p) return (m - p) / m;
+      const stated = statedDiscountPct(r.attributes);
+      return stated > 0 ? stated / 100 : 0;
     };
     saveOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
-      return m && m > p ? m - p : 0;
+      if (m && m > p) return m - p;
+      const stated = statedDiscountPct(r.attributes);
+      return stated > 0 ? Math.round(p * stated / 100) : 0;
     };
     servableRow = (r, maxAgeDays = 14) => (r.validation_status || "") !== "INVALID" && !!r.seller_url && priceOf(r) > 0 && ageDays(r) <= maxAgeDays;
     AFFILIATE_HOST = /linksredirect|cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia|awin|adtraction|partnerize|webgains|dgm|impact|clk|redirect|try1second/i;

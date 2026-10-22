@@ -377,7 +377,7 @@ class LiveResponse {
 
 /// One curated home-showcase item (GET /api/home/showcase). Every item is a
 /// real catalogue/affiliate row; url is a masking pointer -> /api/out.
-/// In-app engine launch (Famous Destinations opens the REAL flights search
+/// In-app engine launch (Top Destinations opens the REAL flights search
 /// for the city instead of an external link).
 class ShowcaseLaunch {
   final String vertical;
@@ -417,7 +417,7 @@ class ShowcaseItem {
       );
 }
 
-/// One showcase section ("Picked Just for You", "Massive Discounts", ...).
+/// One showcase section ("Picked Just for You", "Go Big", ...).
 class ShowcaseSection {
   final String id;
   final String title;

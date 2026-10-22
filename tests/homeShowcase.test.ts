@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 
 const mk = (id: string, merchant: string): any => ({ id, title: id, merchant, merchantLogo: null, image: 'https://x/i.jpg', price: 1, mrp: null, discountPct: null, rating: null, badge: null, url: '/api/out?t=x' });
-import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, roundRobinSpread, techCategoryOf, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, type OfferRow } from '../server/home/showcase';
+import { mergeGoBig, statedDiscountPct, pctOf, saveOf, priceOf, itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, roundRobinSpread, techCategoryOf, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, type OfferRow } from '../server/home/showcase';
 
 test('itemFromOffer builds a masked, priced, honest showcase item', () => {
   const item = itemFromOffer({
@@ -186,4 +186,53 @@ test('roundRobinSpread caps per category and fills the grid across buckets', () 
   assert.ok((per.tv || 0) >= 2, 'TVs present');
   assert.ok((per.appliance || 0) >= 2, 'fridge/appliance present');
   assert.ok((per.audio || 0) >= 2, 'audio present');
+});
+
+// Owner 22 Oct home-page lineup: Go Big replaces Massive Discounts + Mega Savings.
+test('mergeGoBig unions the pools, dedupes, ranks by savings, caps 12', () => {
+  const mega = [
+    mk('a', 'Flipkart'), mk('b', 'Amazon'),
+  ];
+  // patch prices onto the generic fixture: a=5000 savings, b=1200 savings
+  mega[0].price = 5000; mega[0].mrp = 10000;
+  mega[1].price = 8800; mega[1].mrp = 10000;
+  const massive = [
+    { ...mk('b', 'Amazon'), price: 8800, mrp: 10000 },  // same id -> deduped
+    { ...mk('c', 'Croma'), price: 300, mrp: 500 },        // 40% off but small savings
+  ];
+  const out = mergeGoBig(mega, massive);
+  assert.equal(out.length, 3, 'dedupe by id keeps one b');
+  assert.equal(out[0].id, 'a', 'biggest absolute savings first');
+  assert.ok(['b', 'c'].includes(out[1].id) && ['b', 'c'].includes(out[2].id));
+  // cap check: 30 items -> 12
+  const big = Array.from({ length: 30 }, (_, i) => ({ ...mk(`g${i}`, 'M'), price: 100 + i, mrp: 200 + i }));
+  assert.equal(mergeGoBig(big, []).length, 12);
+});
+
+// Owner 22 Oct: MRP-less rows with a source-stated "19%" discount must still
+// feed Go Big / Steals — honest fallback on the seller's own claim.
+test('statedDiscountPct parses attributes JSON/object; skips "up to" claims', () => {
+  assert.equal(statedDiscountPct('{"discount":"19%"}'), 19);
+  assert.equal(statedDiscountPct({ discount: 25 }), 25);
+  assert.equal(statedDiscountPct({ discount_pct: '33 %' }), 33);
+  assert.equal(statedDiscountPct('{"discount":"Up to 50%"}'), 0, 'up-to claims are not attributable');
+  assert.equal(statedDiscountPct(null), 0);
+  assert.equal(statedDiscountPct('{"discount":"0%"}'), 0);
+  assert.equal(statedDiscountPct('{"discount":"197%"}'), 0, 'nonsense claims rejected');
+});
+
+test('pctOf/saveOf fall back to stated % when list_price is missing', () => {
+  const row = {
+    id: 41, vertical: 'ecommerce', title: 't', brand: null,
+    attributes: '{"discount":"19%"}', vendor: 'Flipkart', seller: 'Flipkart',
+    seller_url: 'https://f/dp', list_price: null, mandatory_total: 500,
+    effective_price: 500, fetched_at: new Date().toISOString(),
+  } as unknown as OfferRow;
+  assert.equal(priceOf(row), 500);
+  assert.equal(pctOf(row), 0.19);
+  assert.equal(saveOf(row), 95);
+  // MRP present -> strike-through math wins over the stated %
+  const withMrp = { ...row, list_price: 1000 } as OfferRow;
+  assert.equal(pctOf(withMrp), 0.5);
+  assert.equal(saveOf(withMrp), 500);
 });
