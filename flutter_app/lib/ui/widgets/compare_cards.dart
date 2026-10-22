@@ -207,6 +207,86 @@ String _domainOf(String site) {
 }
 
 
+/// Finance verticals (loans / insurance / creditcards / account): the web card
+/// ALWAYS shows the CTA when a quote exists — the lead form captures the
+/// enquiry server-side even when the partner exposes no direct deep-link
+/// (owner 22 Oct: "button ni aata jiss pr click kr ke form fill kr ke
+/// redirect ho sake jaise web pr ho raha hai").
+const kFinanceVerticals = ['loans', 'insurance', 'creditcards', 'account'];
+
+bool _isFinance(String vertical) => kFinanceVerticals.contains(vertical);
+
+/// Owner 22 Oct: web-parity CTA labels (ComparisonCard.tsx).
+String _financeCtaLabel(String vertical, String sellerName) {
+  switch (vertical) {
+    case 'loans':
+      return 'Check Eligibility & Match';
+    case 'insurance':
+      return 'Instant Policy Match';
+    default:
+      return 'Apply on $sellerName';
+  }
+}
+
+/// Web-parity logo gate for finance tiles (ComparisonCard.tsx): the tile shows
+/// the LENDER's logo, and aggregator favicons (bankbazaar/paisabazaar/
+/// policybazaar) are never shown as a brand — the tile falls back to crisp
+/// brand initials instead of a blurry wrong-logo icon.
+final _aggregatorLogoRe = RegExp(r'bankbazaar|paisabazaar|policybazaar', caseSensitive: false);
+
+String? _financeTileLogo(String? imageUrl) {
+  final u = (imageUrl ?? '').trim();
+  if (u.isEmpty) return null;
+  return _aggregatorLogoRe.hasMatch(u) ? null : u;
+}
+
+/// Brand initials for the finance tile, exactly like the web tile's fallback
+/// (brandLogo.ts initials()): 'Star Health health insurance' -> 'SH'.
+String _brandInitials(String title, {String? provider}) {
+  final cleaned = title
+      .replaceAll(RegExp(r'(personal|home|car|auto|business|gold|education|two[- ]wheeler|used car|property|loan|loans|insurance|health|term|life|motor|travel|savings|current|demat|trading|zero[- ]balance|account)s?', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final src = cleaned.isNotEmpty ? cleaned : (provider ?? '');
+  final parts = src.replaceAll(RegExp(r'[^A-Za-z0-9 ]'), ' ').split(RegExp(r'\s+')).where((x) => x.isNotEmpty).toList();
+  if (parts.isEmpty) return '1S';
+  return parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+}
+
+/// White-tile finance logo with web parity: lender logo when the URL is the
+/// lender's own, crisp brand initials when it is an aggregator favicon/none.
+class FinanceLogoTile extends StatelessWidget {
+  const FinanceLogoTile({super.key, required this.imageUrl, required this.title, this.provider, this.size = 88});
+  final String? imageUrl;
+  final String title;
+  final String? provider;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = _financeTileLogo(imageUrl);
+    final b = Border.all(color: border(context));
+    if (logo != null) {
+      return Container(
+        width: size, height: size,
+        decoration: BoxDecoration(color: Colors.white, border: b),
+        child: Center(
+          child: NetImage(logo, fit: BoxFit.contain, width: size - 16, height: size - 16, bg: Colors.white),
+        ),
+      );
+    }
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(color: Colors.white, border: b),
+      alignment: Alignment.center,
+      child: Text(
+        _brandInitials(title, provider: provider),
+        style: tx(context, 26, w: FontWeight.w900, color: const Color(0xFF334155)),
+      ),
+    );
+  }
+}
+
 /// Every Book/Buy tap first opens the redirect sheet: it confirms the direct
 /// price and surfaces the seller's real best offer/coupon before leaving.
 void _openRedirect(
@@ -744,7 +824,7 @@ class CreditCardTile extends StatelessWidget {
                       ],
                     ),
                     const Spacer(),
-                    if (g.best.item.bestQuote?.url.isNotEmpty == true)
+                    if (g.best.item.bestQuote != null)
                       GestureDetector(
                         onTap: () => _openRedirect(
                     context,
@@ -821,7 +901,8 @@ class GroupCard extends StatelessWidget {
       radius: 16,
       shadow: true,
       clip: true,
-      onTap: g.best.item.bestQuote?.url.isNotEmpty == true
+      onTap: g.best.item.bestQuote != null &&
+              (g.best.item.bestQuote!.url.isNotEmpty || _isFinance(vertical))
           ? () => _openRedirect(
               context,
               sellerName: sellerName,
@@ -843,7 +924,9 @@ class GroupCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(right: BorderSide(color: border(context))),
                 ),
-                child: NetImage(
+                child: _isFinance(vertical)
+                    ? FinanceLogoTile(imageUrl: it.imageUrl, title: it.title, provider: it.provider)
+                    : NetImage(
                   it.imageUrl,
                   width: isMovie ? 92 : 88,
                   height: isMovie ? 128 : 88,
@@ -942,9 +1025,17 @@ class GroupCard extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 5),
                       child: Text('+${g.rows.length - 4} more sites', style: tx(context, 9.5, w: FontWeight.w800, color: muted(context))),
                     ),
-                ] else if (g.best.item.bestQuote != null && g.best.item.bestQuote!.url.isNotEmpty) ...[
+                ] else if (g.best.item.bestQuote == null) ...[
+                  const SizedBox.shrink(),
+                ] else if (!_isFinance(vertical) && g.best.item.bestQuote!.url.isEmpty) ...[
+                  const SizedBox.shrink(),
+                ] else ...[
                   RedButton(
-                    it.isMovie ? 'Book tickets on $sellerName' : 'Book on $sellerName',
+                    it.isMovie
+                        ? 'Book tickets on $sellerName'
+                        : _isFinance(vertical)
+                            ? _financeCtaLabel(vertical, sellerName)
+                            : 'Book on $sellerName',
                     onTap: () => _openRedirect(
                     context,
                     sellerName: sellerName,
@@ -956,6 +1047,26 @@ class GroupCard extends StatelessWidget {
                     isLowest: true,
                     appOnly: (g.best.item.bestQuote?.badge ?? '').toLowerCase().contains('app'),
                   ),
+                    trailing: Icons.open_in_new_rounded,
+                    dense: true,
+                  ),
+                ],
+                // Finance multi-row cards keep the seller table AND get the web-parity
+                // CTA below it: the lead form opens even without a deep-link (22 Oct).
+                if (_isFinance(vertical) && g.rows.length > 1 && g.best.item.bestQuote != null) ...[
+                  const SizedBox(height: 8),
+                  RedButton(
+                    _financeCtaLabel(vertical, sellerName),
+                    onTap: () => _openRedirect(
+                      context,
+                      sellerName: sellerName,
+                      title: g.best.item.title,
+                      goUrl: g.best.item.bestQuote!.url,
+                      vertical: g.best.item.vertical,
+                      price: g.best.price > 0 ? g.best.price : null,
+                      image: g.best.item.imageUrl,
+                      isLowest: true,
+                    ),
                     trailing: Icons.open_in_new_rounded,
                     dense: true,
                   ),
