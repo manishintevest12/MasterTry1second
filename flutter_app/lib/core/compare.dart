@@ -65,6 +65,10 @@ class CompareItem {
   final Map<String, String> specs;
   final List<SellerQuote> sellerQuotes;
   final String? sourceId;
+  /// Server-built in-app booking link (owner 22 Oct): Uber/Ola cab rows open
+  /// the provider's own app prefilled via /api/cab/book -> /api/out, with the
+  /// admin-configured affiliate params injected server-side.
+  final String? appBookUrl;
 
   const CompareItem({
     required this.id,
@@ -85,6 +89,7 @@ class CompareItem {
     this.specs = const {},
     this.sellerQuotes = const [],
     this.sourceId,
+    this.appBookUrl,
   });
 
   factory CompareItem.fromJson(Map<String, dynamic> j) {
@@ -119,6 +124,7 @@ class CompareItem {
           if (q is Map<String, dynamic>) SellerQuote.fromJson(q),
       ],
       sourceId: (j['evidence'] is Map) ? '${(j['evidence'] as Map)['sourceId'] ?? ''}' : null,
+      appBookUrl: (j['appBookUrl'] is String && (j['appBookUrl'] as String).isNotEmpty) ? j['appBookUrl'] as String : null,
     );
   }
 
@@ -165,6 +171,7 @@ class CompareItem {
         specs: specs,
         sellerQuotes: [q],
         sourceId: sourceId,
+        appBookUrl: appBookUrl,
       );
 }
 
@@ -305,6 +312,23 @@ String _cabVehicleClass(String v) {
   return 'cab';
 }
 
+/// Owner 22 Oct: cab results must be segmented into Auto / Bike / Cab sections so
+/// every ride type's price is visible separately for the same trip.
+String cabVehicleClassOf(CompareItem it) =>
+    _cabVehicleClass(cabVariantOf(it).isNotEmpty ? cabVariantOf(it) : it.title);
+
+/// The vehicle variant a provider actually quoted ("Swift Dzire", "Ola Auto",
+/// "Uber Go"). Falls back to the title's parenthesised vehicle, then the spec.
+String cabVariantOf(CompareItem it) {
+  var v = it.spec('vehicle type');
+  if (v.isEmpty) v = it.spec('vehicle_type');
+  if (v.isEmpty) {
+    final m = RegExp(r'cab \(([^,)]+)', caseSensitive: false).firstMatch(it.title);
+    v = m != null ? m.group(1)!.trim() : '';
+  }
+  return v;
+}
+
 List<OfferRow> _rowsFor(CompareItem it) {
   if (it.isMovie && it.sellerQuotes.length > 1) {
     return [for (final q in it.sellerQuotes) OfferRow(it.withQuote(q), q.sellerName, q.price, q.price > 0)];
@@ -324,7 +348,15 @@ List<OfferGroup> groupOffers(List<CompareItem> items) {
       }
       // Cab: the same operator's vehicle VARIANTS (Ola Mini/Prime/SUV, BharatTaxi
       // Dzire/Ertiga/Innova) all stay on the category card — no same-site collapse.
-      final dup = it.vertical == 'cab' ? -1 : g.rows.indexWhere((r) => r.site == row.site);
+      // Owner 22 Oct: an IDENTICAL quote (same site + same variant + same price)
+      // is still one row — repeated "Bharat Taxi ₹2,600" cluttered the sheet.
+      final dup = it.vertical == 'cab'
+          ? g.rows.indexWhere((r) =>
+              r.site == row.site &&
+              cabVariantOf(r.item).toLowerCase() == cabVariantOf(it).toLowerCase() &&
+              r.price == row.price &&
+              r.priceAvailable == row.priceAvailable)
+          : g.rows.indexWhere((r) => r.site == row.site);
       if (dup >= 0) {
         final cur = g.rows[dup];
         final better = row.priceAvailable && (!cur.priceAvailable || row.price < cur.price);

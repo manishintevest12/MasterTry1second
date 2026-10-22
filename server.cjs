@@ -25762,15 +25762,103 @@ var init_spendLens = __esm({
   }
 });
 
+// server/common/cabDeeplink.ts
+async function getCabDeeplinkConfig() {
+  if (cache7 && Date.now() - cache7.at < CACHE_MS2) return cache7.v;
+  let merged = { ...DEFAULTS2 };
+  try {
+    const rows = await getStore().query("SELECT v FROM app_settings WHERE k = ?", [KEY]);
+    if (rows.length && rows[0].v) {
+      const parsed = JSON.parse(rows[0].v);
+      merged = { ...DEFAULTS2, ...parsed };
+    }
+  } catch (e) {
+    log.debug("CabDeeplink", `app_settings read skipped: ${String(e?.message || e).slice(0, 60)}`);
+  }
+  cache7 = { at: Date.now(), v: merged };
+  return merged;
+}
+async function saveCabDeeplinkConfig(patch) {
+  const cur = await getCabDeeplinkConfig();
+  const next = {
+    uberClientId: String(patch.uberClientId ?? cur.uberClientId).trim(),
+    uberExtraParams: String(patch.uberExtraParams ?? cur.uberExtraParams).trim(),
+    olaExtraParams: String(patch.olaExtraParams ?? cur.olaExtraParams).trim(),
+    uberEnabled: patch.uberEnabled === void 0 ? cur.uberEnabled : Boolean(patch.uberEnabled),
+    olaEnabled: patch.olaEnabled === void 0 ? cur.olaEnabled : Boolean(patch.olaEnabled)
+  };
+  await getStore().execute(
+    "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+    [KEY, JSON.stringify(next)]
+  );
+  cache7 = { at: Date.now(), v: next };
+  return next;
+}
+function sanitizeParams(raw) {
+  return String(raw || "").split("&").map((p) => p.trim()).filter((p) => /^[a-zA-Z0-9_.-]+=/.test(p)).join("&");
+}
+function buildUberBookUrl(opts) {
+  if (!opts.cfg.uberEnabled) return null;
+  const q3 = [];
+  if (opts.cfg.uberClientId) q3.push(`client_id=${encodeURIComponent(opts.cfg.uberClientId)}`);
+  q3.push(`pickup=${opts.pickup ? encJson({ latitude: opts.pickup.lat, longitude: opts.pickup.lng, addressLine1: opts.pickup.name.slice(0, 120) }) : "my_location"}`);
+  q3.push(`drop[0]=${encJson({ latitude: opts.drop.lat, longitude: opts.drop.lng, addressLine1: opts.drop.name.slice(0, 120) })}`);
+  const extra = sanitizeParams(opts.cfg.uberExtraParams);
+  if (extra) q3.push(extra);
+  return `https://m.uber.com/looking/?${q3.join("&")}`;
+}
+function buildOlaBookUrl(opts) {
+  if (!opts.cfg.olaEnabled) return null;
+  const params = new URLSearchParams({
+    lat: String(opts.pickup.lat),
+    lng: String(opts.pickup.lng),
+    drop_lat: String(opts.drop.lat),
+    drop_lng: String(opts.drop.lng),
+    drop_name: opts.drop.name.slice(0, 120)
+  });
+  if (opts.pickup.name) params.set("pickup_name", opts.pickup.name.slice(0, 120));
+  const extra = sanitizeParams(opts.cfg.olaExtraParams);
+  return `https://book.olacabs.com/?${params.toString()}${extra ? `&${extra}` : ""}`;
+}
+async function geocodeCabPlace(name) {
+  const rows = await geoSearch(name, 1);
+  const r = rows[0];
+  if (!r || !Number.isFinite(r.lat) || !Number.isFinite(r.lng)) return null;
+  return { lat: r.lat, lng: r.lng, name: name.trim().slice(0, 120) };
+}
+function numParam(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && (n !== 0 || String(v).trim() === "0") ? n : null;
+}
+var DEFAULTS2, KEY, cache7, CACHE_MS2, encJson;
+var init_cabDeeplink = __esm({
+  "server/common/cabDeeplink.ts"() {
+    init_db();
+    init_logger();
+    init_geoProxy();
+    DEFAULTS2 = {
+      uberClientId: process.env.UBER_CLIENT_ID || "",
+      uberExtraParams: "utm_source=try1second&utm_medium=cab",
+      olaExtraParams: "utm_source=try1second&utm_medium=cab",
+      uberEnabled: true,
+      olaEnabled: true
+    };
+    KEY = "cab_deeplinks";
+    cache7 = null;
+    CACHE_MS2 = 6e4;
+    encJson = (v) => encodeURIComponent(JSON.stringify(v));
+  }
+});
+
 // server/pipeline/merchantCrispLogo.ts
 function load8() {
-  if (cache7) return cache7;
+  if (cache8) return cache8;
   try {
-    cache7 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
+    cache8 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
   } catch {
-    cache7 = {};
+    cache8 = {};
   }
-  return cache7;
+  return cache8;
 }
 function persist3() {
   if (saveTimer3) return;
@@ -25778,7 +25866,7 @@ function persist3() {
     saveTimer3 = null;
     try {
       import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE2), { recursive: true });
-      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache7 || {}));
+      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
     } catch {
     }
   }, 1500);
@@ -25838,7 +25926,7 @@ function resolveMerchantCrispLogo(rawName) {
   inflight3.set(key, p);
   return p;
 }
-var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS2, cache7, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS2, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
     import_node_fs5 = __toESM(require("node:fs"), 1);
@@ -25847,7 +25935,7 @@ var init_merchantCrispLogo = __esm({
     CACHE_FILE2 = import_node_path5.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
     MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS2 = 4e3;
-    cache7 = null;
+    cache8 = null;
     inflight3 = /* @__PURE__ */ new Map();
     saveTimer3 = null;
     MERCHANT_ALIAS = {
@@ -28611,6 +28699,11 @@ function offerToComparisonItem(o) {
       }
     ],
     sellerUrl: url,
+    // Owner 22 Oct: Uber/Ola cab rows get an in-app booking link — the click
+    // resolves server-side (/api/cab/book) with coordinates + admin affiliate
+    // params and opens the provider's own app with pickup + drop prefilled, so
+    // the user sees the REAL provider fare and books directly in the app.
+    appBookUrl: String(o.vertical) === "cab" && attrs["pickup"] && attrs["drop"] ? /uber/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=uber&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : /(^|\b)ola(\b|$)/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=ola&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : void 0 : void 0,
     availability: o.availability,
     isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
     scrapedTimestamp: fetchedAt,
@@ -28705,6 +28798,7 @@ var init_routes = __esm({
     init_affiliateNetwork();
     init_spendLens();
     init_deeplink();
+    init_cabDeeplink();
     init_showcase();
     init_db();
     init_db();
@@ -29728,6 +29822,29 @@ var init_routes = __esm({
       const decision = await resolveRedirect(dest, { offerId: req.query.offerId });
       if (!decision.allowed) return res.status(400).json({ success: false, error: `Refused: ${decision.reason}` });
       res.json({ success: true, clickId: decision.clickId, redirectUrl: decision.destination, viaNetwork: decision.viaNetwork });
+    });
+    apiRouter.get("/cab/book", async (req, res) => {
+      const provider = String(req.query.provider || "").toLowerCase() === "ola" ? "ola" : "uber";
+      const pickupName = String(req.query.pickup || "").trim();
+      const dropName = String(req.query.drop || "").trim();
+      if (!dropName) return res.status(400).send("Missing drop location.");
+      const cfg = await getCabDeeplinkConfig();
+      const pLat = numParam(req.query.pLat);
+      const pLng = numParam(req.query.pLng);
+      const dLat = numParam(req.query.dLat);
+      const dLng = numParam(req.query.dLng);
+      const pickup = pLat != null && pLng != null ? { lat: pLat, lng: pLng, name: pickupName || "Current location" } : pickupName ? await geocodeCabPlace(pickupName) : null;
+      const drop = dLat != null && dLng != null ? { lat: dLat, lng: dLng, name: dropName } : await geocodeCabPlace(dropName);
+      const honestRefuse = (msg) => res.status(422).send(
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Booking link unavailable</title></head><body style="font-family:system-ui,sans-serif;text-align:center;padding-top:12vh;color:#0f172a"><h2 style="font-weight:700">${provider === "uber" ? "Uber" : "Ola"} app booking isn't available for this trip</h2><p style="color:#475569">${msg}</p><p><a href="/" style="color:#e11d48;font-weight:700">Back to Try1Second</a></p></body></html>`
+      );
+      if (!drop) return honestRefuse("We could not resolve the drop location to coordinates, and nothing is simulated here. Please open the provider app directly.");
+      const url = provider === "uber" ? buildUberBookUrl({ cfg, pickup, drop }) : pickup ? buildOlaBookUrl({ cfg, pickup, drop }) : null;
+      if (!url) return honestRefuse(
+        provider === "uber" && !pickup ? "We could not resolve your pickup location. Please open the app directly." : "In-app booking for this provider is currently disabled by the admin. Please try again later."
+      );
+      const pointer = createMaskingPointer(url, { offerId: String(req.query.offerId || "") });
+      res.redirect(302, `/api/out?t=${encodeURIComponent(pointer)}`);
     });
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));
@@ -31198,6 +31315,7 @@ var init_adminRoutes = __esm({
     init_speedtest();
     init_notifications();
     init_logger();
+    init_cabDeeplink();
     init_acceptanceRunner();
     adminRouter = (0, import_express2.Router)();
     adminRouter.use(authMiddleware);
@@ -31323,6 +31441,18 @@ var init_adminRoutes = __esm({
       );
       audit(req, "feature_flag.set", req.params.name, { enabled });
       res.json({ success: true, name: req.params.name, enabled });
+    });
+    adminRouter.get("/cab-deeplinks", async (_req, res) => {
+      res.json({ success: true, config: await getCabDeeplinkConfig() });
+    });
+    adminRouter.post("/cab-deeplinks", async (req, res) => {
+      const config = await saveCabDeeplinkConfig(req.body || {});
+      audit(req, "cab_deeplinks.set", "cab_deeplinks", {
+        uberClientId: config.uberClientId ? `${config.uberClientId.slice(0, 3)}\u2026` : "",
+        uberEnabled: config.uberEnabled,
+        olaEnabled: config.olaEnabled
+      });
+      res.json({ success: true, config });
     });
     adminRouter.get("/audit-logs", async (_req, res) => {
       try {

@@ -1366,6 +1366,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const clearSpendPrefill = () => setPendingSpendEntry(null);
 
   const startRedirection = (item: ComparisonItem, quote: SellerQuote) => {
+    // Owner 22 Oct: Uber/Ola cab rows open the provider's OWN app with the trip
+    // prefilled (real in-app fare, direct booking there). appBookUrl routes
+    // through /api/cab/book -> /api/out server-side, so affiliate injection
+    // (admin-configured params) and click tracking still apply.
+    if (item.vertical === 'cab' && item.appBookUrl) {
+      window.open(item.appBookUrl, '_blank', 'noopener');
+      return;
+    }
+
     // High-Ticket Verticals (Loans & Insurance): replace simple outbound redirect with native CPL Lead Capture & Multi-Bank Eligibility Match
     if (['loans', 'insurance', 'creditcards', 'account'].includes(String(item.vertical))) {
       openLeadCapture(item, quote);

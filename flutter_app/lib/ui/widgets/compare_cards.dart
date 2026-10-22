@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_state.dart';
 import '../../core/compare.dart';
@@ -70,9 +71,22 @@ class _SiteRow extends StatelessWidget {
           ),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(
-            sellerName,
-            style: tx(context, 11.5, w: FontWeight.w800),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: sellerName, style: tx(context, 11.5, w: FontWeight.w800)),
+                // Owner 22 Oct: cab rows must name the exact vehicle variant the
+                // provider quoted — "Bharat Taxi · Swift Dzire ₹2,600" instead of
+                // the same provider+price repeating with no visible difference.
+                if (vertical == 'cab') ...[
+                  if (cabVariantOf(row.item).isNotEmpty)
+                    TextSpan(
+                      text: ' · ${cabVariantOf(row.item)}',
+                      style: tx(context, 10.5, w: FontWeight.w700, color: muted(context)),
+                    ),
+                ],
+              ],
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -93,12 +107,14 @@ class _SiteRow extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         GestureDetector(
-          onTap: row.item.bestQuote != null && row.item.bestQuote!.url.isNotEmpty
+          onTap: row.item.bestQuote != null &&
+                  (row.item.bestQuote!.url.isNotEmpty || (row.item.appBookUrl ?? '').isNotEmpty)
               ? () => _openRedirect(
                   context,
                   sellerName: sellerName,
                   title: row.item.title,
                   goUrl: row.item.bestQuote!.url,
+                  appBookUrl: row.item.appBookUrl,
                   price: row.priceAvailable ? row.price : null,
                   image: row.item.imageUrl,
                   isLowest: isBest,
@@ -299,7 +315,17 @@ void _openRedirect(
   bool isLowest = false,
   bool appOnly = false,
   String vertical = '',
+  String? appBookUrl,
 }) {
+  // Owner 22 Oct: Uber/Ola cab rows open the provider's OWN app with the trip
+  // prefilled, so the user sees the real in-app fare and books directly there.
+  // The link routes through /api/cab/book -> /api/out server-side: the admin-
+  // configured affiliate params are injected and the click tracked there.
+  if (appBookUrl != null && appBookUrl.isNotEmpty) {
+    launchUrl(Uri.parse(appBookUrl), mode: LaunchMode.externalApplication);
+    return;
+  }
+
   // Owner 21 Oct: finance verticals capture the lead FIRST (server-persisted,
   // MySQL) and hand off to the partner after submission — website parity.
   if (const ['loans', 'insurance', 'creditcards', 'account'].contains(vertical)) {
@@ -487,13 +513,14 @@ class TravelTile extends StatelessWidget {
                 size: 9,
               ),
               const Spacer(),
-              if (g.best.item.bestQuote?.url.isNotEmpty == true)
+              if (g.best.item.bestQuote?.url.isNotEmpty == true || (g.best.item.appBookUrl ?? '').isNotEmpty)
                 GestureDetector(
                   onTap: () => _openRedirect(
                     context,
                     sellerName: sellerName,
                     title: g.best.item.title,
-                    goUrl: g.best.item.bestQuote!.url,
+                    goUrl: g.best.item.bestQuote?.url ?? '',
+                    appBookUrl: g.best.item.appBookUrl,
                     vertical: g.best.item.vertical,
                     price: g.best.priceAvailable ? g.best.price : null,
                     image: g.best.item.imageUrl,
@@ -711,6 +738,7 @@ class HotelCard extends StatelessWidget {
                     sellerName: bestSeller,
                     title: g.best.item.title,
                     goUrl: g.best.item.bestQuote!.url,
+                    appBookUrl: g.best.item.appBookUrl,
                     vertical: g.best.item.vertical,
                     price: g.best.price > 0 ? g.best.price : null,
                     image: g.best.item.imageUrl,
@@ -831,6 +859,7 @@ class CreditCardTile extends StatelessWidget {
                     sellerName: sellerName,
                     title: g.best.item.title,
                     goUrl: g.best.item.bestQuote!.url,
+                    appBookUrl: g.best.item.appBookUrl,
                     vertical: g.best.item.vertical,
                     price: g.best.price > 0 ? g.best.price : null,
                     image: g.best.item.imageUrl,
@@ -908,6 +937,7 @@ class GroupCard extends StatelessWidget {
               sellerName: sellerName,
               title: g.best.item.title,
               goUrl: g.best.item.bestQuote!.url,
+              appBookUrl: g.best.item.appBookUrl,
                     vertical: g.best.item.vertical,
               price: g.best.priceAvailable ? g.best.price : null,
               image: g.best.item.imageUrl,

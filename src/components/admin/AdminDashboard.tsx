@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import {
+import { Car,
   Users,
   DollarSign,
   TrendingUp,
@@ -45,6 +45,7 @@ import { Try1SecondLogo } from '../Try1SecondLogo';
 import { UserLoginsTab } from './UserLoginsTab';
 import { SpinEarnManagementTab } from './SpinEarnManagementTab';
 import { AffiliateNetworksTab } from './AffiliateNetworksTab';
+import { CabBookLinksTab } from './CabBookLinksTab';
 import { ResidentialProxyTab } from './ResidentialProxyTab';
 import { DirectPartnersTab } from './DirectPartnersTab';
 import { MerchantVendorIdsTab } from './MerchantVendorIdsTab';
@@ -72,6 +73,7 @@ export type AdminTab =
   | 'payouts'
   | 'affiliate_ids'
   | 'affiliate_networks'
+  | 'cab_book_links'
   | 'scrapers'
   | 'apis'
   | 'networks'
@@ -458,6 +460,19 @@ export const AdminDashboard: React.FC = () => {
           >
             <Link2 className="w-4 h-4" />
             <span>Affiliate Networks</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('cab_book_links')}
+            className={`py-3 px-3.5 border-b-2 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${
+              activeTab === 'cab_book_links'
+                ? 'border-orange-600 text-orange-600 font-bold bg-orange-50/50'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
+          >
+            <Car className="w-4 h-4" />
+            <span>Cab App Booking</span>
           </button>
 
           <button
@@ -1314,6 +1329,7 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'spin_earn' && <SpinEarnManagementTab />}
 
         {activeTab === 'affiliate_networks' && <AffiliateNetworksTab />}
+        {activeTab === 'cab_book_links' && <CabBookLinksTab />}
 
         {/* ================= TAB 9: RESIDENTIAL PROXY NETWORK & HOSTINGER ================= */}
         {activeTab === 'proxies' && <ResidentialProxyTab />}

@@ -23,6 +23,7 @@ import { syncAutoDeals } from '../deals/acquisition';
 import { latestScores, runSpeedTest, scoreHistory } from './speedtest';
 import { listAllNotifications, createNotification, deactivateNotification, validateNotification } from '../notifications/notifications';
 import { log } from '../common/logger';
+import { getCabDeeplinkConfig, saveCabDeeplinkConfig } from '../common/cabDeeplink';
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
 
 export const adminRouter = Router();
@@ -161,6 +162,22 @@ adminRouter.post('/feature-flags/:name', async (req, res) => {
   );
   audit(req, 'feature_flag.set', req.params.name, { enabled });
   res.json({ success: true, name: req.params.name, enabled });
+});
+
+// Cab in-app booking config (owner 22 Oct): Uber client id + affiliate params
+// appended to Uber/Ola booking deep links. Admin-editable end to end.
+adminRouter.get('/cab-deeplinks', async (_req, res) => {
+  res.json({ success: true, config: await getCabDeeplinkConfig() });
+});
+
+adminRouter.post('/cab-deeplinks', async (req, res) => {
+  const config = await saveCabDeeplinkConfig(req.body || {});
+  audit(req, 'cab_deeplinks.set', 'cab_deeplinks', {
+    uberClientId: config.uberClientId ? `${config.uberClientId.slice(0, 3)}…` : '',
+    uberEnabled: config.uberEnabled,
+    olaEnabled: config.olaEnabled,
+  });
+  res.json({ success: true, config });
 });
 
 adminRouter.get('/audit-logs', async (_req, res) => {

@@ -74,6 +74,8 @@ export interface PriceDataPoint {
 }
 
 export interface ComparisonItem {
+  /** Server-side in-app booking link (Uber/Ola cab rows): resolves coords + admin affiliate params via /api/cab/book. */
+  appBookUrl?: string;
   /** false when the source exposes no price (never invented); UI shows 'Price on seller site'. */
   priceAvailable?: boolean;
   id: string;

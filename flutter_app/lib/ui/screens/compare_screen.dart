@@ -7,7 +7,7 @@ import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/auth.dart';
 import '../../core/autocomplete_data.dart';
-import '../../core/compare.dart';
+import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../widgets/compare_cards.dart';
@@ -104,7 +104,7 @@ class _CompareScreenState extends State<CompareScreen> {
   /// revalidation (stale TTL refresh) swap in newer prices without a spinner.
   String? _shownCacheKey;
   String? _error;
-  SortMode _sort = SortMode.best;
+  cmp.SortMode _sort = cmp.SortMode.best;
   FilterOptions _filterOpts = const FilterOptions();
   // Account vertical (owner 21 Oct): Savings/Current/Demat chip + bank search box.
   String _accountType = 'Savings';
@@ -131,7 +131,7 @@ class _CompareScreenState extends State<CompareScreen> {
   void _onState() {
     if (verticalById(_state.vertical).id != _meta.id) {
       _meta = verticalById(_state.vertical);
-      _sort = SortMode.best;
+      _sort = cmp.SortMode.best;
       _filterOpts = const FilterOptions();
       _seedForm();
       _res = _state.cache[_meta.id];
@@ -873,72 +873,71 @@ class _SearchCard extends StatelessWidget {
     Widget body;
     switch (meta.kind) {
       case SearchKind.cab:
+        // Owner 22 Oct: the old side-by-side layout crammed both fields into
+        // half the phone width ("Inc"/"Bh" were clipped "Indore"/"Bhopal") and
+        // typing felt impossible. Uber-style stack: each field gets the FULL
+        // row width, big text, clear button and map pin.
+        Widget mapPin(bool pickup) => InkWell(
+              onTap: () => onPickOnMap(pickup),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: border(context)),
+                ),
+                child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
+              ),
+            );
         body = Column(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: LocationHintField(
-                    controller: from,
-                    label: 'Pickup Location',
-                    placeholder: 'Enter pickup point (e.g. Chappan Dukan)...',
-                    mode: 'pickup',
-                    onSelect: (_, __) => onSearch(),
-                    onSubmitted: (_) => onSearch(),
-                    trailing: InkWell(
-                      onTap: () => onPickOnMap(true),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: border(context)),
-                        ),
-                        child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
+            LocationHintField(
+              controller: from,
+              label: 'Pickup Location',
+              placeholder: 'Enter pickup point (e.g. Chappan Dukan, Indore)...',
+              mode: 'pickup',
+              onSelect: (_, __) => onSearch(),
+              onSubmitted: (_) => onSearch(),
+              trailing: mapPin(true),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+              child: Row(
+                children: [
+                  // Connector line between the pickup and drop dots (Uber-style).
+                  Container(width: 2, height: 14, color: border(context).withValues(alpha: 0.7)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: onSwap,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: border(context)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.swap_vert_rounded, size: 14, color: muted(context)),
+                          const SizedBox(width: 3),
+                          Text('Swap', style: tx(context, 9.5, w: FontWeight.w800, color: muted(context))),
+                        ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: onSwap,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: border(context)),
-                    ),
-                    child: Icon(Icons.swap_horiz_rounded, size: 18, color: muted(context)),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: LocationHintField(
-                    controller: to,
-                    label: 'Drop Destination',
-                    placeholder: 'Enter drop destination (e.g. Martand Chowk, Airport)...',
-                    mode: 'drop',
-                    onSelect: (_, __) => onSearch(),
-                    onSubmitted: (_) => onSearch(),
-                    trailing: InkWell(
-                      onTap: () => onPickOnMap(false),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: border(context)),
-                        ),
-                        child: Icon(Icons.map_outlined, size: 18, color: T1SColors.red),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
+            ),
+            LocationHintField(
+              controller: to,
+              label: 'Drop Destination',
+              placeholder: 'Enter drop destination (e.g. Martand Chowk, Bhopal)...',
+              mode: 'drop',
+              onSelect: (_, __) => onSearch(),
+              onSubmitted: (_) => onSearch(),
+              trailing: mapPin(false),
             ),
             const SizedBox(height: 8),
             Row(
@@ -1569,12 +1568,12 @@ class _StatusStrip extends StatelessWidget {
 
 class _SortBar extends StatelessWidget {
   const _SortBar({required this.sort, required this.onSort});
-  final SortMode sort;
-  final ValueChanged<SortMode> onSort;
+  final cmp.SortMode sort;
+  final ValueChanged<cmp.SortMode> onSort;
 
   @override
   Widget build(BuildContext context) {
-    const tabs = [SortMode.best, SortMode.cheapest, SortMode.highestRated];
+    const tabs = [cmp.SortMode.best, cmp.SortMode.cheapest, cmp.SortMode.highestRated];
     const labels = ['Best value', 'Cheapest', 'Highest rated'];
     return Row(children: [
       for (var i = 0; i < tabs.length; i++) ...[
@@ -1731,7 +1730,7 @@ class _FeedBody {
 
   final VerticalMeta meta;
   final LiveResponse res;
-  final SortMode sort;
+  final cmp.SortMode sort;
   final FilterOptions filterOpts;
 
   int? _parseHour(String depTime) {
@@ -1802,12 +1801,12 @@ class _FeedBody {
     // Sort items if filterOpts sortOrder overrides
     var effectiveSort = sort;
     if (filterOpts.sortOrder == SortOrder.priceLowToHigh) {
-      effectiveSort = SortMode.cheapest;
+      effectiveSort = cmp.SortMode.cheapest;
     }
 
     if (meta.id == 'hotels') {
-      var groups = groupHotels(items);
-      groups = sortHotels(groups, effectiveSort);
+      var groups = cmp.groupHotels(items);
+      groups = cmp.sortHotels(groups, effectiveSort);
       if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
         groups.sort((a, b) => b.best.price.compareTo(a.best.price));
       }
@@ -1816,10 +1815,31 @@ class _FeedBody {
       ];
     }
 
-    var groups = groupOffers(items);
-    groups = sortGroups(groups, effectiveSort);
+    var groups = cmp.groupOffers(items);
+    groups = cmp.sortGroups(groups, effectiveSort);
     if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
       groups.sort((a, b) => b.best.price.compareTo(a.best.price));
+    }
+
+    // Owner 22 Oct: cab prices must be segmented by ride type — Auto, Bike and
+    // Cab each get their own section so every class's fare is visible separately
+    // for the same trip (before this, every class sat in one long mixed list).
+    if (meta.id == 'cab' && groups.isNotEmpty) {
+      const sectionOrder = ['bike', 'auto', 'cab'];
+      final sections = <String, List<cmp.OfferGroup>>{};
+      for (final g in groups) {
+        (sections[cmp.cabVehicleClassOf(g.lead)] ??= []).add(g);
+      }
+      // A single class renders exactly like the old list, no headers needed.
+      if (sections.length <= 1) {
+        return [
+          for (final g in groups) ...[TravelTile(g: g, meta: meta), const SizedBox(height: 12)],
+        ];
+      }
+      return [
+        for (final cls in sectionOrder.where(sections.containsKey))
+          ..._cabSection(context, cls, sections[cls]!, meta),
+      ];
     }
 
     return [
@@ -1832,6 +1852,46 @@ class _FeedBody {
           GroupCard(g: g, vertical: meta.id),
         const SizedBox(height: 12),
       ],
+    ];
+  }
+
+  /// One ride-type section: a header ("Bike Rides · cheapest ₹80") followed by
+  /// that class's tiles, cheapest first (the list is already sorted).
+  List<Widget> _cabSection(BuildContext context, String cls, List<cmp.OfferGroup> gs, VerticalMeta meta) {
+    const meta0 = {
+      'bike': ('Bike Rides', Icons.bike_scooter_rounded, Color(0xFF059669)),
+      'auto': ('Auto Rides', Icons.local_taxi_rounded, Color(0xFFD97706)),
+      'cab': ('Cab & Taxi', Icons.directions_car_rounded, Color(0xFF0284C7)),
+    };
+    final (label, icon, color) = meta0[cls]!;
+    final priced = gs.where((g) => g.best.priceAvailable).toList();
+    final from = priced.isNotEmpty
+        ? priced.map((g) => g.best.price).reduce((a, b) => a < b ? a : b)
+        : null;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 6),
+        child: Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, size: 15, color: color),
+            ),
+            const SizedBox(width: 8),
+            Text(label, style: tx(context, 13, w: FontWeight.w900)),
+            const SizedBox(width: 6),
+            Text('${gs.length} option${gs.length == 1 ? '' : 's'}',
+                style: tx(context, 10, w: FontWeight.w700, color: muted(context))),
+            const Spacer(),
+            if (from != null)
+              Text('from ${cmp.formatPrice('cab', from)}',
+                  style: tx(context, 11, w: FontWeight.w800, color: T1SColors.emerald600)),
+          ],
+        ),
+      ),
+      for (final g in gs) ...[TravelTile(g: g, meta: meta), const SizedBox(height: 12)],
     ];
   }
 }
