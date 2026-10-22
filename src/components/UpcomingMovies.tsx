@@ -52,9 +52,6 @@ export const UpcomingMovies: React.FC = () => {
             Upcoming Movies · Watch Trailers First
           </h2>
         </div>
-        <span className="text-[11px] text-slate-500 hidden sm:block">
-          Live from BookMyShow · tap a poster to plan your first-day show
-        </span>
       </div>
 
       {/* Phones: 2-col poster grid; sm+: horizontal scroll rail */}
