@@ -21625,6 +21625,7 @@ async function acquireParallel(query, opts = {}) {
       recordFailure(source.id, "DEADLINE_CUT", "Total search deadline reached before this source started");
       return { kind: "fail", sourceId: source.id, failureClass: "DEADLINE_CUT", error: "Total search deadline reached" };
     }
+    if (!Number.isFinite(remaining)) return runSource(source);
     let timer;
     const watchdog = new Promise((resolve) => {
       timer = setTimeout(() => resolve({ kind: "fail", sourceId: source.id, failureClass: "DEADLINE_CUT", error: `Cut at total deadline (+${Math.round(remaining / 1e3)}s budget)` }), remaining);

@@ -13,8 +13,14 @@ import 'compare_screen.dart' show showTrackSheet;
 /// name -> same-product offers cheapest-first, REAL price history, deal score
 /// verdict, related products, seller coupons. Everything from POST /api/product-page.
 class ProductScreen extends StatefulWidget {
-  const ProductScreen({super.key, required this.input});
+  const ProductScreen({super.key, required this.input, this.seed = const [], this.gallery = const []});
   final String input;
+
+  /// Seller quotes from the card the user tapped Compare on (web parity):
+  /// the detail page shows every seller the engine already found for this
+  /// product even if the fresh search flakes on this attempt.
+  final List<Map<String, Object?>> seed;
+  final List<String> gallery;
 
   @override
   State<ProductScreen> createState() => _ProductScreenState();
@@ -39,7 +45,13 @@ class _ProductScreenState extends State<ProductScreen> {
   }
 
   Future<ProductPage> _load(String input) async {
-    final page = await _state.api.productPage(input, city: _state.city, pincode: _state.pincode);
+    final page = await _state.api.productPage(
+      input,
+      city: _state.city,
+      pincode: _state.pincode,
+      seed: widget.seed,
+      gallery: widget.gallery,
+    );
     return page;
   }
 

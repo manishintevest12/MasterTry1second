@@ -124,6 +124,11 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
       recordFailure(source.id, 'DEADLINE_CUT', 'Total search deadline reached before this source started');
       return { kind: 'fail', sourceId: source.id, failureClass: 'DEADLINE_CUT', error: 'Total search deadline reached' };
     }
+    // No deadlineAt means a background pass (catalogue refresh) with no wall
+    // clock. setTimeout(Infinity) clamps to 1ms in Node, which used to cut
+    // every refresh source DEADLINE_CUT at 1ms (prod TimeoutOverflowWarning) —
+    // so the watchdog is only armed for finite budgets.
+    if (!Number.isFinite(remaining)) return runSource(source);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const watchdog = new Promise<TaskOutcome>((resolve) => {
       timer = setTimeout(() => resolve({ kind: 'fail', sourceId: source.id, failureClass: 'DEADLINE_CUT', error: `Cut at total deadline (+${Math.round(remaining / 1000)}s budget)` }), remaining);

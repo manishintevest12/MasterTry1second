@@ -9,11 +9,63 @@ import 'redirect_sheet.dart';
 import 'hotel_detail.dart';
 import '../../core/verticals.dart';
 import '../screens/compare_screen.dart' show showTrackSheet;
+import '../screens/product_screen.dart';
 import 'kit.dart';
 
 /// Grouped result cards (one product = one card, every site's real price inside,
 /// cheapest site first) mirroring the website's TravelDealRow / HotelDealCard /
 /// CreditCardCard / ComparisonCard.
+
+/// Ecom 'Compare' button (web parity, owner rule: every e-commerce card carries
+/// one). Opens the in-app product detail page seeded with THIS card's own
+/// sellerQuotes so 100% of found sellers + gallery images show immediately.
+void _openComparePage(BuildContext context, {required CompareItem it, required OfferGroup g}) {
+  final heroImage = it.imageUrl;
+  final seed = <Map<String, Object?>>[
+    for (final r in g.rows)
+      if (r.item.bestQuote != null && r.item.bestQuote!.url.isNotEmpty && r.priceAvailable && r.price > 0)
+        {
+          'seller': r.site.isNotEmpty ? r.site : 'Seller',
+          'title': it.title,
+          'price': r.price,
+          'listPrice': r.item.bestQuote!.originalPrice > 0 ? r.item.bestQuote!.originalPrice : 0,
+          'image': heroImage != null && heroImage.startsWith('https://') ? heroImage : null,
+          'url': r.item.bestQuote!.url,
+        },
+  ];
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ProductScreen(input: it.title, seed: seed, gallery: it.images),
+    ),
+  );
+}
+
+class _CompareButton extends StatelessWidget {
+  const _CompareButton({required this.it, required this.g, required this.label});
+  final CompareItem it;
+  final OfferGroup g;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 7),
+      child: GestureDetector(
+        onTap: () => _openComparePage(context, it: it, g: g),
+        child: Container(
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            border: Border.all(color: T1SColors.red, width: 1.2),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.transparent,
+          ),
+          child: Text(label, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),
+        ),
+      ),
+    );
+  }
+}
 
 class _SiteRows extends StatelessWidget {
   const _SiteRows({required this.rows, required this.vertical});
@@ -1048,7 +1100,13 @@ class GroupCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (g.rows.length > 1) ...[
+                if (vertical == 'ecommerce')
+                  _CompareButton(
+                    it: it,
+                    g: g,
+                    label: g.rows.length > 1 ? 'Compare ${g.rows.length} sites' : 'Compare prices',
+                  ),
+                if (g.rows.length > 1 && vertical != 'ecommerce') ...[
                   Text('Compare ${g.rows.length} websites', style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),
                   const SizedBox(height: 4),
                   _SiteRows(rows: g.rows.take(4).toList(), vertical: vertical),

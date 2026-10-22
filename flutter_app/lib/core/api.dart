@@ -963,12 +963,24 @@ class Try1SecondApi {
   }
 
   /// POST /api/product-page: link or typed product -> same-product offers + history + deal score.
-  Future<ProductPage> productPage(String input, {String? city, String? pincode}) async {
+  /// [seed] mirrors the website's Compare button: the originating card's own
+  /// sellerQuotes ride along so 100% of the sellers already found for this
+  /// product stay on the detail page even if the fresh search flakes (circuit
+  /// backoff). [gallery] carries the card's image urls (parity with web).
+  Future<ProductPage> productPage(
+    String input, {
+    String? city,
+    String? pincode,
+    List<Map<String, Object?>> seed = const [],
+    List<String> gallery = const [],
+  }) async {
     final isUrl = RegExp(r'https?://', caseSensitive: false).hasMatch(input);
     final res = await _post('/api/product-page', {
       if (isUrl) 'input': input.trim() else 'query': input.trim(),
       if (city != null) 'city': city,
       if (pincode != null) 'pincode': pincode,
+      if (seed.isNotEmpty) 'seed': seed,
+      if (gallery.isNotEmpty) 'gallery': gallery,
     });
     final product = (res['product'] is Map) ? res['product'] as Map : const {};
     if (res['found'] != true) {
