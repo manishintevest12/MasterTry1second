@@ -11,6 +11,7 @@ import { indriveCityLookup, indrivePrices, buildIndriveOffers } from '../parsers
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace } from '../parsers/osmTravel';
+import { geoSearch, geoReverse } from '../../common/geoProxy';
 import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability } from '../parsers/rapidoCabs';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { AcquisitionError } from '../../common/httpClient';
@@ -541,6 +542,23 @@ export const cabWorker: VerticalWorker = {
           cityFromRouteText(place).toLowerCase().includes(city.toLowerCase()) || place.toLowerCase().includes(city.toLowerCase());
         if (!a && b && b.name && namesCity(rt.from, b.name)) a = b;
         if (!b && a && a.name && namesCity(rt.to, a.name)) b = a;
+        // Self-healing locality resolution (owner 22 Oct): bare localities ("Vijay Nagar",
+        // "Connaught Place") name no city and carry no pincode, so the text paths above miss
+        // and Rapido rows silently vanished even though the trip is inside a served city.
+        // Resolve the locality through the cached OSM geocoder (forward -> reverse) and match
+        // the REAL city OSM reports against Rapido's served-city registry. A failed lookup
+        // stays honest (no rows), never guessed.
+        const osmCity = async (place: string, hint?: string) => {
+          try {
+            const g = (await geoSearch(hint && !place.toLowerCase().includes(hint.toLowerCase()) ? `${place} ${hint}` : place, 1))[0];
+            if (!g) return null;
+            const rev = await geoReverse(g.lat, g.lng);
+            const c = rev?.city || '';
+            return c ? rapidoCityLookup(cities, c) : null;
+          } catch { return null; }
+        };
+        if (!a) a = await osmCity(rt.from, b?.name);
+        if (!b) b = await osmCity(rt.to, a?.name);
         if (!a || !b) return []; // Rapido does not serve one of the cities — honestly no rows
         if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) return []; // intercity: no published coverage
         return buildRapidoAvailability({

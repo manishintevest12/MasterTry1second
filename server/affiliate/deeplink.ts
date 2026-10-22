@@ -175,7 +175,7 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   // campaign's generic page and silently lose the trip. Their affiliate
   // attribution (client_id + admin utm params) is already baked into the URL by
   // /api/cab/book, so they stay direct here.
-  const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/)/.test(targetUrl);
+  const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
   const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
   // 4. Direct — honest, no invented parameters

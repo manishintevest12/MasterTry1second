@@ -25,16 +25,24 @@ export interface CabDeeplinkConfig {
   uberExtraParams: string;
   /** Extra query string appended to Ola links. */
   olaExtraParams: string;
+  /** Rapido deeplink base (owner 22 Oct: https://rapido.cc/ride). Admin-editable. */
+  rapidoBaseUrl: string;
+  /** Extra query string appended to the Rapido link (affiliate / utm). */
+  rapidoExtraParams: string;
   uberEnabled: boolean;
   olaEnabled: boolean;
+  rapidoEnabled: boolean;
 }
 
 const DEFAULTS: CabDeeplinkConfig = {
   uberClientId: process.env.UBER_CLIENT_ID || '',
   uberExtraParams: 'utm_source=try1second&utm_medium=cab',
   olaExtraParams: 'utm_source=try1second&utm_medium=cab',
+  rapidoBaseUrl: 'https://rapido.cc/ride',
+  rapidoExtraParams: '',
   uberEnabled: true,
   olaEnabled: true,
+  rapidoEnabled: true,
 };
 
 const KEY = 'cab_deeplinks';
@@ -66,6 +74,10 @@ export async function saveCabDeeplinkConfig(patch: Partial<CabDeeplinkConfig>): 
     olaExtraParams: String(patch.olaExtraParams ?? cur.olaExtraParams).trim(),
     uberEnabled: patch.uberEnabled === undefined ? cur.uberEnabled : Boolean(patch.uberEnabled),
     olaEnabled: patch.olaEnabled === undefined ? cur.olaEnabled : Boolean(patch.olaEnabled),
+    rapidoBaseUrl: /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/[^\s?#]*)?$/i.test(String(patch.rapidoBaseUrl ?? cur.rapidoBaseUrl).trim())
+      ? String(patch.rapidoBaseUrl ?? cur.rapidoBaseUrl).trim() : cur.rapidoBaseUrl,
+    rapidoExtraParams: String(patch.rapidoExtraParams ?? cur.rapidoExtraParams).trim(),
+    rapidoEnabled: patch.rapidoEnabled === undefined ? cur.rapidoEnabled : Boolean(patch.rapidoEnabled),
   };
   await getStore().execute(
     'INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)',
@@ -126,6 +138,19 @@ export function buildOlaBookUrl(opts: {
   if (opts.pickup.name) params.set('pickup_name', opts.pickup.name.slice(0, 120));
   const extra = sanitizeParams(opts.cfg.olaExtraParams);
   return `https://book.olacabs.com/?${params.toString()}${extra ? `&${extra}` : ''}`;
+}
+
+/**
+ * Rapido: owner-supplied universal link (https://rapido.cc/ride). Rapido has no
+ * documented pickup/drop prefill format, so NOTHING is invented: the link opens
+ * Rapido's ride screen (app if installed, else its web/store page) and only the
+ * admin-configured affiliate params are appended. Pickup/drop stay in our row.
+ */
+export function buildRapidoBookUrl(opts: { cfg: CabDeeplinkConfig }): string | null {
+  if (!opts.cfg.rapidoEnabled) return null;
+  const extra = sanitizeParams(opts.cfg.rapidoExtraParams);
+  const base = opts.cfg.rapidoBaseUrl || 'https://rapido.cc/ride';
+  return extra ? `${base}${base.includes('?') ? '&' : '?'}${extra}` : base;
 }
 
 /**

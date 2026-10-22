@@ -16,16 +16,23 @@ interface CabDeeplinkConfig {
   uberClientId: string;
   uberExtraParams: string;
   olaExtraParams: string;
+  /** Rapido universal deeplink (owner 22 Oct: https://rapido.cc/ride). */
+  rapidoBaseUrl: string;
+  rapidoExtraParams: string;
   uberEnabled: boolean;
   olaEnabled: boolean;
+  rapidoEnabled: boolean;
 }
 
 const DEFAULT: CabDeeplinkConfig = {
   uberClientId: '',
   uberExtraParams: 'utm_source=try1second&utm_medium=cab',
   olaExtraParams: 'utm_source=try1second&utm_medium=cab',
+  rapidoBaseUrl: 'https://rapido.cc/ride',
+  rapidoExtraParams: '',
   uberEnabled: true,
   olaEnabled: true,
+  rapidoEnabled: true,
 };
 
 export const CabBookLinksTab: React.FC = () => {
@@ -106,10 +113,26 @@ export const CabBookLinksTab: React.FC = () => {
               <span className="text-[11px] text-slate-400 block mt-1">Appended to every book.olacabs.com booking link.</span>
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              {(['uberEnabled', 'olaEnabled'] as const).map((k) => (
+            <label className="block">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Rapido deeplink</span>
+              <input className={`${field} mt-1.5`} value={cfg.rapidoBaseUrl}
+                onChange={(e) => setCfg({ ...cfg, rapidoBaseUrl: e.target.value })}
+                placeholder="https://rapido.cc/ride" />
+              <span className="text-[11px] text-slate-400 block mt-1">Rapido's own ride link (opens the Rapido app / store page). Rapido publishes no pickup-drop prefill format, so nothing is invented here — only your affiliate params are appended.</span>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Rapido extra params (affiliate)</span>
+              <input className={`${field} mt-1.5`} value={cfg.rapidoExtraParams}
+                onChange={(e) => setCfg({ ...cfg, rapidoExtraParams: e.target.value })}
+                placeholder="utm_source=try1second&utm_medium=cab&sub_id=xyz" />
+              <span className="text-[11px] text-slate-400 block mt-1">Appended to the Rapido link. Leave empty to send the plain link.</span>
+            </label>
+
+            <div className="grid grid-cols-3 gap-3">
+              {(['uberEnabled', 'olaEnabled', 'rapidoEnabled'] as const).map((k) => (
                 <label key={k} className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 cursor-pointer">
-                  <span className="text-sm font-bold text-slate-700">{k === 'uberEnabled' ? 'Uber in-app booking' : 'Ola in-app booking'}</span>
+                  <span className="text-sm font-bold text-slate-700">{k === 'uberEnabled' ? 'Uber in-app booking' : k === 'olaEnabled' ? 'Ola in-app booking' : 'Rapido link'}</span>
                   <input type="checkbox" className="w-5 h-5 accent-rose-600" checked={cfg[k]}
                     onChange={(e) => setCfg({ ...cfg, [k]: e.target.checked })} />
                 </label>

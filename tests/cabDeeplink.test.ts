@@ -66,3 +66,19 @@ test('network layer: LinkInR must not claim prefilled cab booking links (trip wo
   const r2 = await buildSecureDeeplink('https://book.olacabs.com/?lat=28.6&lng=77.2&drop_lat=28.5&drop_lng=77.3&utm_source=try1second');
   assert.equal(r2.matchedProfile, 'direct');
 });
+
+test('Rapido: /api/cab/book?provider=rapido 302s straight to the admin link, no coordinates needed', async () => {
+  const { buildRapidoBookUrl } = await import('../server/common/cabDeeplink');
+  const { getCabDeeplinkConfig } = await import('../server/common/cabDeeplink');
+  const cfg = await getCabDeeplinkConfig();
+  assert.equal(buildRapidoBookUrl({ cfg }), 'https://rapido.cc/ride');
+  assert.equal(buildRapidoBookUrl({ cfg: { ...cfg, rapidoExtraParams: 'utm_source=t1s&sub_ id=x' } }), 'https://rapido.cc/ride?utm_source=t1s', 'malformed pair dropped');
+  assert.equal(buildRapidoBookUrl({ cfg: { ...cfg, rapidoEnabled: false } }), null, 'disabled stays null');
+});
+
+test('network layer: rapido.cc ride link stays direct (not claimed by LinkInR)', async () => {
+  const { buildSecureDeeplink } = await import('../server/affiliate/deeplink');
+  const r = await buildSecureDeeplink('https://rapido.cc/ride?utm_source=try1second');
+  assert.notEqual(r.matchedProfile, 'linkinr');
+  assert.ok(r.trackingUrl.startsWith('https://rapido.cc/ride'), r.trackingUrl);
+});

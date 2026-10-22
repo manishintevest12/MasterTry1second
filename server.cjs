@@ -14051,6 +14051,72 @@ var init_indriveIntercity = __esm({
   }
 });
 
+// server/common/geoProxy.ts
+async function throttledNominatim(path13) {
+  const hit = cache5.get(path13);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastCallAt = Date.now();
+  try {
+    const r = await fetch(`${NOMINATIM}${path13}`, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (!r.ok) {
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path13.slice(0, 60)}`);
+      return null;
+    }
+    const value = await r.json();
+    if (cache5.size >= CACHE_MAX) cache5.delete(cache5.keys().next().value);
+    cache5.set(path13, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
+    return null;
+  }
+}
+async function geoSearch(q3, limit = 6) {
+  const clean3 = q3.trim().slice(0, 120);
+  if (clean3.length < 2) return [];
+  const path13 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path13);
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
+}
+async function geoReverse(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const la = lat.toFixed(6), lo = lng.toFixed(6);
+  const path13 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path13);
+  const a = row?.address;
+  if (!row || !a) return null;
+  const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
+  const city = a.city || a.town || a.village || a.county || a.state_district || "";
+  return {
+    lat,
+    lng,
+    address: String(row.display_name || `${locality} ${city}`.trim()).slice(0, 220),
+    locality: String(locality).slice(0, 80),
+    city: String(city).slice(0, 60),
+    state: a.state ? String(a.state).slice(0, 60) : void 0,
+    pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
+  };
+}
+var UA, NOMINATIM, cache5, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS;
+var init_geoProxy = __esm({
+  "server/common/geoProxy.ts"() {
+    init_logger();
+    UA = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
+    NOMINATIM = "https://nominatim.openstreetmap.org";
+    cache5 = /* @__PURE__ */ new Map();
+    CACHE_MS = 24 * 60 * 6e4;
+    CACHE_MAX = 800;
+    lastCallAt = 0;
+    MIN_INTERVAL_MS = 1100;
+  }
+});
+
 // server/workers/parsers/rapidoCabs.ts
 function rapidoCitySlug(city) {
   const l = city.trim().toLowerCase();
@@ -16742,6 +16808,7 @@ var init_cab = __esm({
     init_curlCffiFetch();
     init_contract();
     init_osmTravel();
+    init_geoProxy();
     init_rapidoCabs();
     init_uberIndiaCities();
     init_httpClient();
@@ -16953,6 +17020,19 @@ var init_cab = __esm({
             const namesCity = (place, city) => cityFromRouteText(place).toLowerCase().includes(city.toLowerCase()) || place.toLowerCase().includes(city.toLowerCase());
             if (!a && b && b.name && namesCity(rt.from, b.name)) a = b;
             if (!b && a && a.name && namesCity(rt.to, a.name)) b = a;
+            const osmCity = async (place, hint) => {
+              try {
+                const g = (await geoSearch(hint && !place.toLowerCase().includes(hint.toLowerCase()) ? `${place} ${hint}` : place, 1))[0];
+                if (!g) return null;
+                const rev = await geoReverse(g.lat, g.lng);
+                const c = rev?.city || "";
+                return c ? rapidoCityLookup(cities, c) : null;
+              } catch {
+                return null;
+              }
+            };
+            if (!a) a = await osmCity(rt.from, b?.name);
+            if (!b) b = await osmCity(rt.to, a?.name);
             if (!a || !b) return [];
             if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) return [];
             return buildRapidoAvailability({
@@ -17378,7 +17458,7 @@ ${v}\r
     const cached2 = tokenCache.get(host);
     if (cached2 && Date.now() - cached2.mintedAt < CACHE_TTL_MS) return cached2.token;
     const t0 = Date.now();
-    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" } });
+    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9" } });
     const html = r.body || "";
     if (r.status === 200 && !html.includes("gokuProps")) {
       tokenCache.set(host, { token: "", mintedAt: Date.now() });
@@ -17387,7 +17467,7 @@ ${v}\r
     if (!html.includes("gokuProps")) throw new Error(`AWS WAF shell missing (HTTP ${r.status}, len ${html.length})`);
     const m = html.match(/<script src="(https:\/\/[^"]*awswaf\.com[^"]*challenge\.js)"><\/script>/);
     if (!m) throw new Error("challenge.js URL not found in shell");
-    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA } });
+    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA2 } });
     if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
     const { JSDOM } = await import("jsdom");
     const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true });
@@ -17401,7 +17481,7 @@ ${v}\r
     w.TextDecoder = w.TextDecoder || TextDecoder;
     Object.defineProperty(w.Location.prototype, "reload", { value: () => {
     }, configurable: true });
-    Object.defineProperty(w.navigator, "userAgent", { get: () => UA, configurable: true });
+    Object.defineProperty(w.navigator, "userAgent", { get: () => UA2, configurable: true });
     w.fetch = async (u, init = {}) => {
       let bodyStr;
       let ct = "";
@@ -17414,7 +17494,7 @@ ${v}\r
         else if (init.body instanceof Uint8Array) bodyStr = Buffer.from(init.body).toString();
         else bodyStr = String(init.body);
       }
-      const hdrs = { "User-Agent": UA, ...init.headers || {} };
+      const hdrs = { "User-Agent": UA2, ...init.headers || {} };
       if (ct && !hdrs["Content-Type"] && !hdrs["content-type"]) hdrs["Content-Type"] = ct;
       const res = await cffiFetch2(String(u), { impersonate: "chrome", method: init.method || "GET", body: bodyStr, timeoutMs: 25e3, headers: hdrs });
       const body = res.body || "";
@@ -17439,7 +17519,7 @@ ${v}\r
   }
   async function wafGet(url, extraHeaders = {}, opts = {}) {
     const token = await mintAwsWafToken(url, opts);
-    const headers = { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
+    const headers = { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
     let r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 25e3, headers });
     if (r.status === 202) {
       tokenCache.delete(new URL(url).hostname);
@@ -17450,11 +17530,11 @@ ${v}\r
   }
   return { mintAwsWafToken, wafGet, isChallenged: (status, body) => status === 202 || status === 200 && body.includes("gokuProps") };
 }
-var import_node_crypto2, UA, CACHE_TTL_MS, tokenCache;
+var import_node_crypto2, UA2, CACHE_TTL_MS, tokenCache;
 var init_awsWafChallenge = __esm({
   "server/common/awsWafChallenge.ts"() {
     import_node_crypto2 = require("node:crypto");
-    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     CACHE_TTL_MS = 15e4;
     tokenCache = /* @__PURE__ */ new Map();
   }
@@ -21960,13 +22040,13 @@ var init_freshness = __esm({
 
 // server/pipeline/lenderLogo.ts
 function load7() {
-  if (cache5) return cache5;
+  if (cache6) return cache6;
   try {
-    cache5 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+    cache6 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
   } catch {
-    cache5 = {};
+    cache6 = {};
   }
-  return cache5;
+  return cache6;
 }
 function persist2() {
   if (saveTimer2) return;
@@ -21974,7 +22054,7 @@ function persist2() {
     saveTimer2 = null;
     try {
       import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
-      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache5 || {}));
+      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache6 || {}));
     } catch {
     }
   }, 1500);
@@ -21986,7 +22066,7 @@ async function getJson(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA2, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA3, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -22058,16 +22138,16 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs4, import_node_path4, UA2, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
+var import_node_fs4, import_node_path4, UA3, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache6, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
     import_node_fs4 = __toESM(require("node:fs"), 1);
     import_node_path4 = __toESM(require("node:path"), 1);
-    UA2 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    UA3 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
     CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos-v2.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
-    cache5 = null;
+    cache6 = null;
     inflight2 = /* @__PURE__ */ new Map();
     saveTimer2 = null;
     LENDER_ALIAS = {
@@ -22378,7 +22458,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   }
   const cuelinks = cuelinksMerchantUrl(targetUrl);
   if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
-  const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/)/.test(targetUrl);
+  const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
   const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
@@ -24841,72 +24921,6 @@ var init_basket = __esm({
   }
 });
 
-// server/common/geoProxy.ts
-async function throttledNominatim(path13) {
-  const hit = cache6.get(path13);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
-  const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-  lastCallAt = Date.now();
-  try {
-    const r = await fetch(`${NOMINATIM}${path13}`, {
-      headers: { "User-Agent": UA3, Accept: "application/json" },
-      signal: AbortSignal.timeout(8e3)
-    });
-    if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path13.slice(0, 60)}`);
-      return null;
-    }
-    const value = await r.json();
-    if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(path13, { at: Date.now(), value });
-    return value;
-  } catch (e) {
-    log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
-    return null;
-  }
-}
-async function geoSearch(q3, limit = 6) {
-  const clean3 = q3.trim().slice(0, 120);
-  if (clean3.length < 2) return [];
-  const path13 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path13);
-  if (!Array.isArray(rows)) return [];
-  return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
-}
-async function geoReverse(lat, lng) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path13 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path13);
-  const a = row?.address;
-  if (!row || !a) return null;
-  const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
-  const city = a.city || a.town || a.village || a.county || a.state_district || "";
-  return {
-    lat,
-    lng,
-    address: String(row.display_name || `${locality} ${city}`.trim()).slice(0, 220),
-    locality: String(locality).slice(0, 80),
-    city: String(city).slice(0, 60),
-    state: a.state ? String(a.state).slice(0, 60) : void 0,
-    pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
-  };
-}
-var UA3, NOMINATIM, cache6, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS;
-var init_geoProxy = __esm({
-  "server/common/geoProxy.ts"() {
-    init_logger();
-    UA3 = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
-    NOMINATIM = "https://nominatim.openstreetmap.org";
-    cache6 = /* @__PURE__ */ new Map();
-    CACHE_MS = 24 * 60 * 6e4;
-    CACHE_MAX = 800;
-    lastCallAt = 0;
-    MIN_INTERVAL_MS = 1100;
-  }
-});
-
 // server/pipeline/productGrouping.ts
 function sizeTokens(text) {
   const out = [];
@@ -25786,7 +25800,10 @@ async function saveCabDeeplinkConfig(patch) {
     uberExtraParams: String(patch.uberExtraParams ?? cur.uberExtraParams).trim(),
     olaExtraParams: String(patch.olaExtraParams ?? cur.olaExtraParams).trim(),
     uberEnabled: patch.uberEnabled === void 0 ? cur.uberEnabled : Boolean(patch.uberEnabled),
-    olaEnabled: patch.olaEnabled === void 0 ? cur.olaEnabled : Boolean(patch.olaEnabled)
+    olaEnabled: patch.olaEnabled === void 0 ? cur.olaEnabled : Boolean(patch.olaEnabled),
+    rapidoBaseUrl: /^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(\/[^\s?#]*)?$/i.test(String(patch.rapidoBaseUrl ?? cur.rapidoBaseUrl).trim()) ? String(patch.rapidoBaseUrl ?? cur.rapidoBaseUrl).trim() : cur.rapidoBaseUrl,
+    rapidoExtraParams: String(patch.rapidoExtraParams ?? cur.rapidoExtraParams).trim(),
+    rapidoEnabled: patch.rapidoEnabled === void 0 ? cur.rapidoEnabled : Boolean(patch.rapidoEnabled)
   };
   await getStore().execute(
     "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
@@ -25821,6 +25838,12 @@ function buildOlaBookUrl(opts) {
   const extra = sanitizeParams(opts.cfg.olaExtraParams);
   return `https://book.olacabs.com/?${params.toString()}${extra ? `&${extra}` : ""}`;
 }
+function buildRapidoBookUrl(opts) {
+  if (!opts.cfg.rapidoEnabled) return null;
+  const extra = sanitizeParams(opts.cfg.rapidoExtraParams);
+  const base = opts.cfg.rapidoBaseUrl || "https://rapido.cc/ride";
+  return extra ? `${base}${base.includes("?") ? "&" : "?"}${extra}` : base;
+}
 async function geocodeCabPlace(name) {
   const rows = await geoSearch(name, 1);
   const r = rows[0];
@@ -25841,8 +25864,11 @@ var init_cabDeeplink = __esm({
       uberClientId: process.env.UBER_CLIENT_ID || "",
       uberExtraParams: "utm_source=try1second&utm_medium=cab",
       olaExtraParams: "utm_source=try1second&utm_medium=cab",
+      rapidoBaseUrl: "https://rapido.cc/ride",
+      rapidoExtraParams: "",
       uberEnabled: true,
-      olaEnabled: true
+      olaEnabled: true,
+      rapidoEnabled: true
     };
     KEY = "cab_deeplinks";
     cache7 = null;
@@ -28704,7 +28730,7 @@ function offerToComparisonItem(o) {
     // resolves server-side (/api/cab/book) with coordinates + admin affiliate
     // params and opens the provider's own app with pickup + drop prefilled, so
     // the user sees the REAL provider fare and books directly in the app.
-    appBookUrl: String(o.vertical) === "cab" && attrs["pickup"] && attrs["drop"] ? /uber/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=uber&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : /(^|\b)ola(\b|$)/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=ola&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : void 0 : void 0,
+    appBookUrl: String(o.vertical) === "cab" && attrs["pickup"] && attrs["drop"] ? /uber/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=uber&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : /(^|\b)ola(\b|$)/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=ola&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : /rapido/i.test(String(o.vendor || "")) ? `/api/cab/book?provider=rapido&pickup=${encodeURIComponent(attrs["pickup"])}&drop=${encodeURIComponent(attrs["drop"])}&offerId=${encodeURIComponent(String(o.id || ""))}` : void 0 : void 0,
     availability: o.availability,
     isLiveScraped: o.freshnessStatus === "LIVE_VERIFIED",
     scrapedTimestamp: fetchedAt,
@@ -29825,11 +29851,19 @@ var init_routes = __esm({
       res.json({ success: true, clickId: decision.clickId, redirectUrl: decision.destination, viaNetwork: decision.viaNetwork });
     });
     apiRouter.get("/cab/book", async (req, res) => {
-      const provider = String(req.query.provider || "").toLowerCase() === "ola" ? "ola" : "uber";
+      const pq = String(req.query.provider || "").toLowerCase();
+      const provider = pq === "ola" ? "ola" : pq === "rapido" ? "rapido" : "uber";
+      const providerLabel = provider === "uber" ? "Uber" : provider === "ola" ? "Ola" : "Rapido";
       const pickupName = String(req.query.pickup || "").trim();
       const dropName = String(req.query.drop || "").trim();
-      if (!dropName) return res.status(400).send("Missing drop location.");
       const cfg = await getCabDeeplinkConfig();
+      if (provider === "rapido") {
+        const rurl = buildRapidoBookUrl({ cfg });
+        if (!rurl) return res.status(422).send("Rapido booking link is disabled by the admin.");
+        const rp = createMaskingPointer(rurl, { offerId: String(req.query.offerId || "") });
+        return res.redirect(302, rp.startsWith("/api/out") ? rp : `/api/out?t=${encodeURIComponent(rp)}`);
+      }
+      if (!dropName) return res.status(400).send("Missing drop location.");
       const pLat = numParam(req.query.pLat);
       const pLng = numParam(req.query.pLng);
       const dLat = numParam(req.query.dLat);
@@ -29837,7 +29871,7 @@ var init_routes = __esm({
       const pickup = pLat != null && pLng != null ? { lat: pLat, lng: pLng, name: pickupName || "Current location" } : pickupName ? await geocodeCabPlace(pickupName) : null;
       const drop = dLat != null && dLng != null ? { lat: dLat, lng: dLng, name: dropName } : await geocodeCabPlace(dropName);
       const honestRefuse = (msg) => res.status(422).send(
-        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Booking link unavailable</title></head><body style="font-family:system-ui,sans-serif;text-align:center;padding-top:12vh;color:#0f172a"><h2 style="font-weight:700">${provider === "uber" ? "Uber" : "Ola"} app booking isn't available for this trip</h2><p style="color:#475569">${msg}</p><p><a href="/" style="color:#e11d48;font-weight:700">Back to Try1Second</a></p></body></html>`
+        `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Booking link unavailable</title></head><body style="font-family:system-ui,sans-serif;text-align:center;padding-top:12vh;color:#0f172a"><h2 style="font-weight:700">${providerLabel} app booking isn't available for this trip</h2><p style="color:#475569">${msg}</p><p><a href="/" style="color:#e11d48;font-weight:700">Back to Try1Second</a></p></body></html>`
       );
       if (!drop) return honestRefuse("We could not resolve the drop location to coordinates, and nothing is simulated here. Please open the provider app directly.");
       const url = provider === "uber" ? buildUberBookUrl({ cfg, pickup, drop }) : pickup ? buildOlaBookUrl({ cfg, pickup, drop }) : null;

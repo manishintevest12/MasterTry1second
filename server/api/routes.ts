@@ -26,7 +26,7 @@ import {
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
-import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, geocodeCabPlace, numParam } from '../common/cabDeeplink';
+import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
@@ -558,6 +558,7 @@ function offerToComparisonItem(o: any) {
     appBookUrl: String(o.vertical) === 'cab' && attrs['pickup'] && attrs['drop']
       ? (/uber/i.test(String(o.vendor || '')) ? `/api/cab/book?provider=uber&pickup=${encodeURIComponent(attrs['pickup'])}&drop=${encodeURIComponent(attrs['drop'])}&offerId=${encodeURIComponent(String(o.id || ''))}`
         : /(^|\b)ola(\b|$)/i.test(String(o.vendor || '')) ? `/api/cab/book?provider=ola&pickup=${encodeURIComponent(attrs['pickup'])}&drop=${encodeURIComponent(attrs['drop'])}&offerId=${encodeURIComponent(String(o.id || ''))}`
+        : /rapido/i.test(String(o.vendor || '')) ? `/api/cab/book?provider=rapido&pickup=${encodeURIComponent(attrs['pickup'])}&drop=${encodeURIComponent(attrs['drop'])}&offerId=${encodeURIComponent(String(o.id || ''))}`
         : undefined)
       : undefined,
     availability: o.availability,
@@ -1377,11 +1378,20 @@ apiRouter.get('/go', async (req, res) => {
 // the cached Nominatim geo proxy), apply the ADMIN-configured affiliate params,
 // then route through /api/out so server-side click tracking still applies.
 apiRouter.get('/cab/book', async (req, res) => {
-  const provider = String(req.query.provider || '').toLowerCase() === 'ola' ? 'ola' : 'uber';
+  const pq = String(req.query.provider || '').toLowerCase();
+  const provider: 'uber' | 'ola' | 'rapido' = pq === 'ola' ? 'ola' : pq === 'rapido' ? 'rapido' : 'uber';
+  const providerLabel = provider === 'uber' ? 'Uber' : provider === 'ola' ? 'Ola' : 'Rapido';
   const pickupName = String(req.query.pickup || '').trim();
   const dropName = String(req.query.drop || '').trim();
-  if (!dropName) return res.status(400).send('Missing drop location.');
   const cfg = await getCabDeeplinkConfig();
+  // Rapido needs no coordinates (no prefill format exists): straight to the admin-set link.
+  if (provider === 'rapido') {
+    const rurl = buildRapidoBookUrl({ cfg });
+    if (!rurl) return res.status(422).send('Rapido booking link is disabled by the admin.');
+    const rp = createMaskingPointer(rurl, { offerId: String(req.query.offerId || '') });
+    return res.redirect(302, rp.startsWith('/api/out') ? rp : `/api/out?t=${encodeURIComponent(rp)}`);
+  }
+  if (!dropName) return res.status(400).send('Missing drop location.');
   const pLat = numParam(req.query.pLat); const pLng = numParam(req.query.pLng);
   const dLat = numParam(req.query.dLat); const dLng = numParam(req.query.dLng);
   const pickup = (pLat != null && pLng != null)
@@ -1393,7 +1403,7 @@ apiRouter.get('/cab/book', async (req, res) => {
   const honestRefuse = (msg: string) => res.status(422).send(
     `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Booking link unavailable</title></head>` +
     `<body style="font-family:system-ui,sans-serif;text-align:center;padding-top:12vh;color:#0f172a">` +
-    `<h2 style="font-weight:700">${provider === 'uber' ? 'Uber' : 'Ola'} app booking isn't available for this trip</h2>` +
+    `<h2 style="font-weight:700">${providerLabel} app booking isn't available for this trip</h2>` +
     `<p style="color:#475569">${msg}</p><p><a href="/" style="color:#e11d48;font-weight:700">Back to Try1Second</a></p></body></html>`);
   if (!drop) return honestRefuse('We could not resolve the drop location to coordinates, and nothing is simulated here. Please open the provider app directly.');
   const url = provider === 'uber'
