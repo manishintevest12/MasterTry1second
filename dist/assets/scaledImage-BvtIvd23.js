@@ -1,0 +1,1 @@
+function e(e,t,n){if(!e)return;if(!/^https:\/\//i.test(e))return e;let r=e.replace(/^https:\/\//i,``),i=new URLSearchParams({url:r,w:String(t),q:`72`,output:`webp`});return n&&(i.set(`h`,String(n)),i.set(`fit`,`cover`)),`https://wsrv.nl/?${i.toString()}`}export{e as t};

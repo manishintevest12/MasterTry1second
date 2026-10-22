@@ -22,6 +22,7 @@
 import { useEffect, useState, type SyntheticEvent } from 'react';
 import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, ArrowRight, Star, Plane } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { scaledImage } from '../utils/scaledImage';
 
 interface ShowcaseItem {
   id: string;
@@ -112,13 +113,19 @@ function DiscountRing({ pct }: { pct: number }) {
 function onArtError(e: SyntheticEvent<HTMLImageElement>, item: ShowcaseItem, initials: string) {
   const img = e.target as HTMLImageElement;
   const stage = img.dataset.stage || '0';
-  if (stage === '0' && item.merchantLogo && item.merchantLogo !== img.src) {
+  // stage 0 = wsrv.nl-sized art failed -> retry the RAW CDN URL (proxy down = graceful degrade)
+  if (stage === '0' && item.image && item.image !== img.src) {
     img.dataset.stage = '1';
+    img.src = item.image;
+    return;
+  }
+  if (stage !== '2' && item.merchantLogo && item.merchantLogo !== img.src) {
+    img.dataset.stage = '2';
     img.src = item.merchantLogo;
     return;
   }
-  if (stage !== '2') {
-    img.dataset.stage = '2';
+  if (stage !== '3') {
+    img.dataset.stage = '3';
     img.src = initials; // worst case only — server-side liveness keeps this rare
   }
 }
@@ -130,9 +137,12 @@ function CouponCard({ item }: { item: ShowcaseItem }) {
     <a href={item.url} target="_blank" rel="noopener noreferrer" className="group bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col cursor-pointer">
       <div className="h-[92px] bg-slate-100 border-b border-slate-200 flex items-center justify-center p-2.5">
         <img
-          src={item.image || fallback}
+          src={scaledImage(item.image, 240, 136) || fallback}
           alt={item.merchant}
+          width={240}
+          height={136}
           loading="lazy"
+          decoding="async"
           className="max-h-[68px] max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
           onError={(e) => onArtError(e, item, fallback)}
         />
@@ -157,9 +167,12 @@ function ShowcaseCard({ item, onLaunch }: { item: ShowcaseItem; onLaunch?: (q: s
     <>
       <div className="relative h-36 sm:h-40 bg-slate-50 overflow-hidden">
         <img
-          src={item.image || fallback}
+          src={scaledImage(item.image, 400, 160) || fallback}
           alt={item.title}
+          width={400}
+          height={160}
           loading="lazy"
+          decoding="async"
           className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
           onError={(e) => onArtError(e, item, fallback)}
         />
@@ -274,10 +287,13 @@ export default function HomeShowcase() {
               {heroArts.map((a) => (
                 <img
                   key={a.id}
-                  src={a.image || undefined}
+                  src={scaledImage(a.image, 160, 160) || undefined}
                   alt=""
+                  width={80}
+                  height={80}
                   className="w-20 h-20 object-contain drop-shadow-md rounded-xl bg-white/70 border border-white"
                   loading="lazy"
+                  decoding="async"
                 />
               ))}
             </div>

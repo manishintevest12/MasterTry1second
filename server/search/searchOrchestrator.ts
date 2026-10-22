@@ -13,13 +13,14 @@
  *  - Cached data is labeled CACHED_VERIFIED, never LIVE_VERIFIED.
  *  - Slow sources never block verified results (progressive, bounded parallel acquisition).
  */
-import type { AdapterResult, NormalizedOffer, ParsedQuery, SearchResponse, SearchStateFlags } from '../types';
+import type { AdapterResult, NormalizedOffer, ParsedQuery, SearchResponse, SearchStateFlags, SourceConfig } from '../types';
 import { recordSourcePrices, enrichFailedWithLastPrice } from '../common/lastPrice';
 import { buildCacheKey, cacheGet, cachePut, revalidateInBackground } from '../common/cache';
 import { log } from '../common/logger';
 import { aiAssistedUnderstanding, understandQuery } from '../query/queryUnderstanding';
 import { selectSources } from '../sources/registry';
 import { acquireParallel } from '../sources/orchestrator';
+import type { AcquisitionOutcome } from '../sources/orchestrator';
 import { dedupeOffers, normalizeOffer } from '../pipeline/normalization';
 import { validateOffer } from '../pipeline/validation';
 import { computeEffectivePrice } from '../pipeline/pricing';
@@ -264,36 +265,73 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
     }
   }
 
-  const response = await runLivePipeline(input, parsed);
-  // Cache-poisoning guard: a transient zero-result search (worker timeouts, edge-gate
-  // sampling on a cold IP) must NOT be replayed for the normal fresh/stale window —
-  // that is how users saw "only 2 flights" or empty feeds for 15 minutes. Empty
-  // responses are cached briefly (45s) so the very next search re-acquires live,
-  // while per-source rate limits still bound the retry pressure.
-  if (response.results.length === 0) {
-    cachePut(cacheKey, response, 45, 45);
-  } else {
-    cachePut(cacheKey, response, ttlSec, staleSec);
+  // FIRST-PAINT COLD PATH (owner 22 Oct, 'any vertical's results within 2-3s'):
+  // a fully cold query no longer blocks on the slowest source. The FULL live
+  // pipeline keeps acquiring and caches the complete set (as before); we race it
+  // against a 2.2s first-paint deadline. If at least one source has already
+  // returned real rows by then, the partial snapshot is finalized and served
+  // with pendingRefresh so clients re-poll and pick up the completed response.
+  // Nothing is invented: every row is a live acquisition, just from the sources
+  // that finished so far; slower sources land seconds later via the client top-up.
+  // If nothing real has arrived by the deadline we keep waiting for the full
+  // pipeline — an honest wait, never a fabricated instant answer.
+  const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2_200;
+  const partialRef: { current: AcquisitionOutcome | null } = { current: null };
+  const full = runLivePipeline(input, parsed, {
+    onPartial: (snapshot) => {
+      if (snapshot.results.length > 0) partialRef.current = snapshot;
+    },
+  })
+    .then((response) => {
+      // Cache-poisoning guard: a transient zero-result search (worker timeouts, edge-gate
+      // sampling on a cold IP) must NOT be replayed for the normal fresh/stale window —
+      // that is how users saw "only 2 flights" or empty feeds for 15 minutes. Empty
+      // responses are cached briefly (45s) so the very next search re-acquires live,
+      // while per-source rate limits still bound the retry pressure.
+      if (response.results.length === 0) {
+        cachePut(cacheKey, response, 45, 45);
+      } else {
+        cachePut(cacheKey, response, ttlSec, staleSec);
+      }
+      return response;
+    })
+    .finally(() => { inflightPipelines.delete(cacheKey); });
+  inflightPipelines.set(cacheKey, full);
+  full.catch(() => {}); // background pipeline failure never crashes this caller
+  type RaceOutcome = { kind: 'full'; r: SearchResponse } | { kind: 'timer' };
+  const firstPaintTimer = new Promise<RaceOutcome>((resolve) => {
+    setTimeout(() => resolve({ kind: 'timer' }), FIRST_PAINT_MS);
+  });
+  const early: RaceOutcome = await Promise.race([
+    full.then((r): RaceOutcome => ({ kind: 'full', r })),
+    firstPaintTimer,
+  ]);
+  if (early.kind === 'full') return early.r;
+  const snapshot = partialRef.current;
+  if (snapshot && snapshot.results.length > 0) {
+    // The full pipeline persists every offer; the partial path must not double-write.
+    const ctx = await buildLiveCtx(parsed, input);
+    const partial = await finalizeLive(Date.now(), input, parsed, ctx, snapshot, false);
+    if (partial.results.length > 0) {
+      partial.state.pendingRefresh = true;
+      return partial;
+    }
   }
-  return response;
+  return await full; // nothing real yet — wait for the complete pipeline (honest)
 }
 
-/** Full acquisition pipeline (cache miss / background refresh path). */
-async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Promise<SearchResponse> {
-  const totalStart = Date.now();
-  let parsed: ParsedQuery = parsedIn ?? understandQuery(input.query, {
-    pincode: input.pincode,
-    city: input.city,
-    lat: input.lat,
-    lng: input.lng,
-  });
-  if (input.vertical) parsed.vertical = input.vertical as any;
-  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...(input.travelDates.return ? { return: input.travelDates.return } : {}) };
-  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
-  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
-  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
-    parsed = await aiAssistedUnderstanding(parsed);
-  }
+/** Shared acquisition context (state flags + catalogue supplements + sources). */
+interface LiveCtx {
+  state: SearchStateFlags;
+  vertical: string;
+  enabledSources: SourceConfig[];
+  catalogueOffers: NormalizedOffer[];
+  eligibleCount: number;
+  hasEligibleFresh: boolean;
+}
+
+async function buildLiveCtx(parsedIn: ParsedQuery, input: SearchInput): Promise<LiveCtx> {
+  const parsed = parsedIn;
   const vertical = parsed.vertical || 'ecommerce';
   parsed.vertical = vertical;
 
@@ -321,19 +359,30 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Prom
   state.reusedCatalogue = hasEligibleFresh;
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
 
+  return { state, vertical, enabledSources, catalogueOffers, eligibleCount: eligible.length, hasEligibleFresh };
+}
+
+/** Steps 6-11 of the pipeline: parse/normalize acquired results, combine with the
+ *  catalogue, run the vertical engine, attach deep links, rank, build the response.
+ *  Shared by the FULL pipeline and the FIRST-PAINT partial path (persist=false —
+ *  the full pipeline that is still running performs the canonical DB writes). */
+async function finalizeLive(
+  totalStart: number,
+  input: SearchInput,
+  parsed: ParsedQuery,
+  ctx: LiveCtx,
+  outcome: AcquisitionOutcome,
+  persist = true,
+): Promise<SearchResponse> {
+  const { state, vertical, enabledSources, catalogueOffers, hasEligibleFresh } = ctx;
   let liveOffers: NormalizedOffer[] = [];
   if (enabledSources.length > 0) {
-    // 5. PARALLEL INDEPENDENT SOURCE ACQUISITION (Section 5)
-    // 42s acquisition budget: Hostinger's nginx proxy returns 504 at ~55s. Cutting
-    // acquisition at 42s leaves time for normalize/rank/respond + proxy headroom.
-    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42_000);
-    const outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
 
     // 6. PARSING → NORMALIZATION → MATCHING → PRICING → VALIDATION → FRESHNESS → EVIDENCE
-    liveOffers = await processAdapterResults(outcome.results, parsed);
+    liveOffers = await processAdapterResults(outcome.results, parsed, persist);
     // LAST PRICE MEMORY: remember what each source last charged in this vertical so a
     // later blocked/empty search can show "Last: ₹X · when" instead of nothing.
     recordSourcePrices(String(vertical), String(input.query || ''), liveOffers as any);
@@ -391,8 +440,43 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Prom
   return response;
 }
 
+/** Full acquisition pipeline (cache miss / background refresh path). onPartial
+ *  (owner 22 Oct) receives a live snapshot of the sources settled so far — the
+ *  search layer uses it to answer cold queries with a FIRST-PAINT partial response
+ *  while this pipeline keeps acquiring and caches the complete result. */
+async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery, hooks?: { onPartial?: (snapshot: AcquisitionOutcome) => void }): Promise<SearchResponse> {
+  const totalStart = Date.now();
+  let parsed: ParsedQuery = parsedIn ?? understandQuery(input.query, {
+    pincode: input.pincode,
+    city: input.city,
+    lat: input.lat,
+    lng: input.lng,
+  });
+  if (input.vertical) parsed.vertical = input.vertical as any;
+  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...(input.travelDates.return ? { return: input.travelDates.return } : {}) };
+  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
+  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
+  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
+    parsed = await aiAssistedUnderstanding(parsed);
+  }
+
+  const ctx = await buildLiveCtx(parsed, input);
+  let outcome: AcquisitionOutcome = { results: [], attempted: [], succeeded: [], failed: [] };
+  if (ctx.enabledSources.length > 0) {
+    // 5. PARALLEL INDEPENDENT SOURCE ACQUISITION (Section 5)
+    // 42s acquisition budget: Hostinger's nginx proxy returns 504 at ~55s. Cutting
+    // acquisition at 42s leaves time for normalize/rank/respond + proxy headroom.
+    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42_000);
+    outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt, onPartial: hooks?.onPartial });
+  }
+  return finalizeLive(totalStart, input, parsed, ctx, outcome);
+}
+
 /** Adapter results → validated, persisted, evidence-backed offers. */
-async function processAdapterResults(results: AdapterResult[], parsed: ParsedQuery): Promise<NormalizedOffer[]> {
+/** persist=false is used by the FIRST-PAINT partial path (owner 22 Oct): the rows
+ * are real live acquisitions, but the FULL pipeline (still running) persists them
+ * once it completes — no double INSERTs, one canonical write per offer. */
+async function processAdapterResults(results: AdapterResult[], parsed: ParsedQuery, persist = true): Promise<NormalizedOffer[]> {
   const { getSource } = await import('../sources/registry');
   const out: NormalizedOffer[] = [];
 
@@ -454,7 +538,7 @@ async function processAdapterResults(results: AdapterResult[], parsed: ParsedQue
         if (!isServable(offer.freshnessStatus)) continue;
 
         // PERSIST + PRICE HISTORY (Section 7)
-        if (source.permittedForRetention) {
+        if (persist && source.permittedForRetention) {
           const rowId = await persistOffer(offer, raw, source);
           await recordPriceSnapshot(offer, rowId);
         }

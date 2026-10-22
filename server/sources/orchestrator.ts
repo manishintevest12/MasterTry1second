@@ -45,7 +45,14 @@ export interface AcquisitionOutcome {
  * Runs acquisition across selected sources in parallel (each with its own timeout).
  * Returns as soon as all bounded-parallel promises settle — no source waits on another.
  */
-export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: number; deadlineAt?: number } = {}): Promise<AcquisitionOutcome> {
+/**
+ * onPartial (owner 22 Oct, '2-3s results on the app for ANY vertical'): invoked
+ * every time a source settles, with a snapshot of everything collected so far.
+ * The search layer uses it to finalize an honest FIRST-PAINT response while
+ * slow sources keep acquiring in the background (the full pipeline still runs
+ * to completion and caches the complete result).
+ */
+export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: number; deadlineAt?: number; onPartial?: (snapshot: AcquisitionOutcome) => void } = {}): Promise<AcquisitionOutcome> {
   const sources = selectSources(query).slice(0, opts.maxSources ?? 6);
   const outcome: AcquisitionOutcome = { results: [], attempted: sources.map((s) => s.id), succeeded: [], failed: [] };
 
@@ -128,17 +135,25 @@ export async function acquireParallel(query: ParsedQuery, opts: { maxSources?: n
     }
   };
 
-  const settled = await Promise.allSettled(sources.map((source) => runWithDeadline(source)));
-  for (const s of settled) {
-    if (s.status !== 'fulfilled') continue;
-    const r = s.value;
-    if (r.kind === 'ok') {
-      outcome.results.push(r.result);
-      outcome.succeeded.push(r.result.sourceId);
-    } else {
-      outcome.failed.push({ sourceId: r.sourceId, failureClass: r.failureClass, error: r.error });
-    }
-  }
+  const settled = await Promise.allSettled(sources.map((source) =>
+    runWithDeadline(source).then((r) => {
+      // Aggregate incrementally so a first-paint snapshot can be taken mid-flight.
+      if (r.kind === 'ok') {
+        outcome.results.push(r.result);
+        outcome.succeeded.push(r.result.sourceId);
+      } else {
+        outcome.failed.push({ sourceId: r.sourceId, failureClass: r.failureClass, error: r.error });
+      }
+      opts.onPartial?.({
+        results: [...outcome.results],
+        attempted: outcome.attempted,
+        succeeded: [...outcome.succeeded],
+        failed: [...outcome.failed],
+      });
+      return r;
+    }),
+  ));
+  void settled;
   return outcome;
 }
 

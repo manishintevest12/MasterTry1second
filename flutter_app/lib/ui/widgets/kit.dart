@@ -80,12 +80,29 @@ class NetImage extends StatelessWidget {
     final back = bg ?? (isDark(context) ? T1SColors.slate800 : T1SColors.slate50);
     Widget fallback() => Container(width: width, height: height, color: back, alignment: Alignment.center, child: Icon(fallbackIcon, color: T1SColors.slate300, size: 26));
     final u = url;
-    final child = (u == null || u.isEmpty)
-        ? fallback()
+    if (u == null || u.isEmpty) return fallback();
+    // SPEED (22 Oct, web mirror): network downscale via wsrv.nl — a 1.4MB OYO/Agoda
+    // photo transfers as ~10-30KB WebP at the card's pixel budget (decode budget only
+    // fixed memory; this fixes the wire + cold-start time). Two-stage self-healing
+    // degrade like the web chain: sized -> RAW CDN URL -> placeholder icon. Never a
+    // fake product photo.
+    final proxied = _proxiedUrl(u, cacheWidthPx ?? _decodeBudget(context));
+    final direct = CachedNetworkImage(
+      imageUrl: u,
+      width: width,
+      height: height,
+      fit: fit,
+      memCacheWidth: cacheWidthPx ?? _decodeBudget(context),
+      fadeInDuration: const Duration(milliseconds: 150),
+      errorWidget: (_, __, ___) => fallback(),
+      placeholder: (_, __) => Container(width: width, height: height, color: back),
+    );
+    final child = proxied == u
+        ? direct
         : CachedNetworkImage(
             // SPEED (21 Oct): photos persist on disk across launches and scrolls
             // (Image.network kept re-downloading every hotel/dish/product image).
-            imageUrl: u,
+            imageUrl: proxied,
             width: width,
             height: height,
             fit: fit,
@@ -93,10 +110,18 @@ class NetImage extends StatelessWidget {
             // at card size (5-10x less bitmap memory, far fewer GC hitches mid-scroll).
             memCacheWidth: cacheWidthPx ?? _decodeBudget(context),
             fadeInDuration: const Duration(milliseconds: 150),
-            errorWidget: (_, __, ___) => fallback(),
+            errorWidget: (_, __, ___) => direct,
             placeholder: (_, __) => Container(width: width, height: height, color: back),
           );
     return radius == 0 ? child : ClipRRect(borderRadius: BorderRadius.circular(radius), child: child);
+  }
+
+  /// wsrv.nl sizing URL; returns [u] untouched when it cannot be proxied.
+  String _proxiedUrl(String u, int? budgetPx) {
+    if (!u.startsWith('https://')) return u;
+    final wpx = budgetPx != null && budgetPx > 0 ? (budgetPx < 320 ? 320 : (budgetPx > 800 ? 800 : budgetPx)) : 480;
+    final bare = u.replaceFirst('https://', '');
+    return 'https://wsrv.nl/?url=${Uri.encodeComponent(bare)}&w=$wpx&q=72&output=webp';
   }
 
   /// Physical-pixel decode budget from the logical box size (1.25x headroom so

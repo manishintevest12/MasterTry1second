@@ -44,6 +44,8 @@ const DEFAULT_VERTICAL_IMAGES: Record<string, string> = {
 // placeholder (vertical monogram) — NEVER a generic stock photo that could be
 // mistaken for the actual product (a mango photo is not Amul milk).
 const PLACEHOLDER_SVG: Record<string, string> = {};
+import { scaledImage } from '../utils/scaledImage';
+
 function placeholderImage(vertical: string, title: string): string {
   const label = (vertical || 'item').slice(0, 8).toUpperCase();
   const text = title.slice(0, 24).replace(/&/g, 'and').replace(/</g, '');
@@ -252,14 +254,26 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 className="w-full sm:w-48 md:w-52 h-40 sm:h-40 shrink-0 relative rounded-xl overflow-hidden border border-slate-200 group bg-white cursor-pointer"
               >
                 <img
-                  src={photoSrc}
+                  src={scaledImage(photoSrc, 480, 320) || photoSrc}
                   alt={item.title}
+                  width={480}
+                  height={320}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
+                  decoding="async"
                   onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).onerror = null;
-                    (e.currentTarget as HTMLImageElement).src = placeholderImage(item.vertical, item.title);
+                    const img = e.currentTarget as HTMLImageElement;
+                    const raw = img.dataset.raw || '';
+                    // wsrv.nl-sized art failed -> RAW CDN URL first (proxy-down degrade), then placeholder
+                    if (raw && img.src !== raw) {
+                      img.dataset.raw = '';
+                      img.src = raw;
+                      return;
+                    }
+                    img.onerror = null;
+                    img.src = placeholderImage(item.vertical, item.title);
                   }}
+                  data-raw={photoSrc}
                 />
                 {/* Honest vertical tag - describes the CATEGORY, never a claim we can't verify */}
                 <div className="absolute top-2 left-2">

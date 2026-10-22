@@ -21518,17 +21518,24 @@ async function acquireParallel(query, opts = {}) {
       if (timer) clearTimeout(timer);
     }
   };
-  const settled = await Promise.allSettled(sources2.map((source) => runWithDeadline(source)));
-  for (const s of settled) {
-    if (s.status !== "fulfilled") continue;
-    const r = s.value;
-    if (r.kind === "ok") {
-      outcome.results.push(r.result);
-      outcome.succeeded.push(r.result.sourceId);
-    } else {
-      outcome.failed.push({ sourceId: r.sourceId, failureClass: r.failureClass, error: r.error });
-    }
-  }
+  const settled = await Promise.allSettled(sources2.map(
+    (source) => runWithDeadline(source).then((r) => {
+      if (r.kind === "ok") {
+        outcome.results.push(r.result);
+        outcome.succeeded.push(r.result.sourceId);
+      } else {
+        outcome.failed.push({ sourceId: r.sourceId, failureClass: r.failureClass, error: r.error });
+      }
+      opts.onPartial?.({
+        results: [...outcome.results],
+        attempted: outcome.attempted,
+        succeeded: [...outcome.succeeded],
+        failed: [...outcome.failed]
+      });
+      return r;
+    })
+  ));
+  void settled;
   return outcome;
 }
 async function checkSourceHealth(source) {
@@ -24393,11 +24400,11 @@ async function runSearch(input) {
   {
     const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) {
-      const pipeline2 = runLivePipeline(input, parsed).then((response2) => {
+      const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
-        if (response2.results.length === 0) cachePut(cacheKey, response2, 45, 45);
-        else cachePut(cacheKey, response2, t, st);
-        return response2;
+        if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
+        else cachePut(cacheKey, response, t, st);
+        return response;
       }).finally(() => {
         inflightPipelines.delete(cacheKey);
       });
@@ -24407,29 +24414,46 @@ async function runSearch(input) {
       return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     }
   }
-  const response = await runLivePipeline(input, parsed);
-  if (response.results.length === 0) {
-    cachePut(cacheKey, response, 45, 45);
-  } else {
-    cachePut(cacheKey, response, ttlSec, staleSec);
-  }
-  return response;
-}
-async function runLivePipeline(input, parsedIn) {
-  const totalStart = Date.now();
-  let parsed = parsedIn ?? understandQuery(input.query, {
-    pincode: input.pincode,
-    city: input.city,
-    lat: input.lat,
-    lng: input.lng
+  const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
+  const partialRef = { current: null };
+  const full = runLivePipeline(input, parsed, {
+    onPartial: (snapshot2) => {
+      if (snapshot2.results.length > 0) partialRef.current = snapshot2;
+    }
+  }).then((response) => {
+    if (response.results.length === 0) {
+      cachePut(cacheKey, response, 45, 45);
+    } else {
+      cachePut(cacheKey, response, ttlSec, staleSec);
+    }
+    return response;
+  }).finally(() => {
+    inflightPipelines.delete(cacheKey);
   });
-  if (input.vertical) parsed.vertical = input.vertical;
-  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...input.travelDates.return ? { return: input.travelDates.return } : {} };
-  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
-  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
-  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
-    parsed = await aiAssistedUnderstanding(parsed);
+  inflightPipelines.set(cacheKey, full);
+  full.catch(() => {
+  });
+  const firstPaintTimer = new Promise((resolve) => {
+    setTimeout(() => resolve({ kind: "timer" }), FIRST_PAINT_MS);
+  });
+  const early = await Promise.race([
+    full.then((r) => ({ kind: "full", r })),
+    firstPaintTimer
+  ]);
+  if (early.kind === "full") return early.r;
+  const snapshot = partialRef.current;
+  if (snapshot && snapshot.results.length > 0) {
+    const ctx = await buildLiveCtx(parsed, input);
+    const partial = await finalizeLive(Date.now(), input, parsed, ctx, snapshot, false);
+    if (partial.results.length > 0) {
+      partial.state.pendingRefresh = true;
+      return partial;
+    }
   }
+  return await full;
+}
+async function buildLiveCtx(parsedIn, input) {
+  const parsed = parsedIn;
   const vertical = parsed.vertical || "ecommerce";
   parsed.vertical = vertical;
   const state = {
@@ -24451,14 +24475,16 @@ async function runLivePipeline(input, parsedIn) {
   const enabledSources = selectSources(parsed);
   state.reusedCatalogue = hasEligibleFresh;
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
+  return { state, vertical, enabledSources, catalogueOffers, eligibleCount: eligible.length, hasEligibleFresh };
+}
+async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = true) {
+  const { state, vertical, enabledSources, catalogueOffers, hasEligibleFresh } = ctx;
   let liveOffers = [];
   if (enabledSources.length > 0) {
-    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42e3);
-    const outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
-    liveOffers = await processAdapterResults(outcome.results, parsed);
+    liveOffers = await processAdapterResults(outcome.results, parsed, persist4);
     recordSourcePrices(String(vertical), String(input.query || ""), liveOffers);
     state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed);
   } else {
@@ -24492,7 +24518,30 @@ async function runLivePipeline(input, parsedIn) {
   void recordSearchMetrics(input, parsed, response);
   return response;
 }
-async function processAdapterResults(results, parsed) {
+async function runLivePipeline(input, parsedIn, hooks) {
+  const totalStart = Date.now();
+  let parsed = parsedIn ?? understandQuery(input.query, {
+    pincode: input.pincode,
+    city: input.city,
+    lat: input.lat,
+    lng: input.lng
+  });
+  if (input.vertical) parsed.vertical = input.vertical;
+  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...input.travelDates.return ? { return: input.travelDates.return } : {} };
+  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
+  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
+  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
+    parsed = await aiAssistedUnderstanding(parsed);
+  }
+  const ctx = await buildLiveCtx(parsed, input);
+  let outcome = { results: [], attempted: [], succeeded: [], failed: [] };
+  if (ctx.enabledSources.length > 0) {
+    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42e3);
+    outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt, onPartial: hooks?.onPartial });
+  }
+  return finalizeLive(totalStart, input, parsed, ctx, outcome);
+}
+async function processAdapterResults(results, parsed, persist4 = true) {
   const { getSource: getSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
   const out = [];
   let processed = 0;
@@ -24535,7 +24584,7 @@ async function processAdapterResults(results, parsed) {
         );
         offer.provenance.validatedAt = (/* @__PURE__ */ new Date()).toISOString();
         if (!isServable(offer.freshnessStatus)) continue;
-        if (source.permittedForRetention) {
+        if (persist4 && source.permittedForRetention) {
           const rowId = await persistOffer(offer, raw, source);
           await recordPriceSnapshot(offer, rowId);
         }

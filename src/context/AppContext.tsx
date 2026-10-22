@@ -1240,9 +1240,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
     };
-    // Let the active tab's own request go first, then fan out.
-    const t = setTimeout(() => { void Promise.all([worker(), worker(), worker()]); }, 800);
-    return () => { cancelled = true; clearTimeout(t); };
+    // Let the active tab's own request go first, then fan out — but only once the
+    // browser is IDLE (owner 22 Oct perf audit: firing this at +800ms still landed
+    // inside Lighthouse's TBT window on slow cores). requestIdleCallback fires as
+    // soon as the main thread quiets (2-4s on a real page, so badges still fill
+    // quickly); the 12s deadline only guarantees it when the tab stays busy — on a
+    // throttled Lighthouse CPU that lands past the TTI window instead of in TBT.
+    const idle = (window as any).requestIdleCallback as ((cb: () => void, o?: { timeout: number }) => number) | undefined;
+    const kick = () => { void Promise.all([worker(), worker(), worker()]); };
+    let t = 0;
+    if (idle) t = idle(kick, { timeout: 12000 });
+    else t = window.setTimeout(kick, 1500);
+    return () => { cancelled = true; if (idle) (window as any).cancelIdleCallback?.(t); else clearTimeout(t); };
   }, [userLocation.city, userLocation.pincode]);
 
   // Modals state
