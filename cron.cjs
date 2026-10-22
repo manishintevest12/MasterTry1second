@@ -19229,11 +19229,11 @@ var init_bus = __esm({
             try {
               const getJson2 = async (url) => {
                 const s = Date.now();
-                const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 12e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
-                steps.push(`suggest=${r2.latencyMs ?? Date.now() - s}ms/${r2.status}`);
-                if (r2.status !== 200) throw new AcquisitionError("SERVER_ERROR", `redBus suggestion HTTP ${r2.status}`, r2.status);
+                const r = await ctx.fetch(url, { expectJson: true, timeoutMs: 12e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
+                steps.push(`suggest=${r.latencyMs ?? Date.now() - s}ms/${r.status}`);
+                if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `redBus suggestion HTTP ${r.status}`, r.status);
                 try {
-                  return JSON.parse(r2.body);
+                  return JSON.parse(r.body);
                 } catch {
                   throw new AcquisitionError("MALFORMED_RESPONSE", "redBus citySuggestion non-JSON");
                 }
@@ -19248,14 +19248,38 @@ var init_bus = __esm({
             }
             const depart = String(ctx.query.travelDates?.depart || "");
             const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+            let routeP = null;
+            const fetchRoutePage = async () => {
+              const rp = Date.now();
+              let r;
+              try {
+                r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
+              } catch (e) {
+                throw new AcquisitionError("TIMEOUT", `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
+              }
+              steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
+              if (r.status === 404) return [];
+              if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status} [${steps.join(" ")}]`, r.status);
+              const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
+              if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `redBus route page carried no parseable dataInfo fare [${steps.join(" ")}]`);
+              return items;
+            };
+            const startRoutePage = () => {
+              if (routeP) return;
+              const p = fetchRoutePage();
+              p.catch(() => {
+              });
+              routeP = p;
+            };
             if (resolved.from && resolved.to) {
               const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
               const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
-              let r2 = { status: 0, body: "" };
+              const warmup = setTimeout(startRoutePage, 4e3);
+              let r = { status: 0, body: "" };
               for (let attempt = 1; attempt <= 2; attempt++) {
                 const sr = Date.now();
                 try {
-                  r2 = await ctx.fetch(u, {
+                  r = await ctx.fetch(u, {
                     method: "POST",
                     expectJson: true,
                     maxBytes: 6e6,
@@ -19267,28 +19291,20 @@ var init_bus = __esm({
                   steps.push(`searchResults#${attempt}=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
                   continue;
                 }
-                steps.push(`searchResults#${attempt}=${r2.latencyMs ?? Date.now() - sr}ms/${r2.status}`);
+                steps.push(`searchResults#${attempt}=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
                 break;
               }
-              if (r2.status === 200) {
-                const items2 = parseRedBusSearch(r2.body, ctx.source, route);
-                if (items2.length) return items2;
+              clearTimeout(warmup);
+              if (r.status === 200) {
+                const items = parseRedBusSearch(r.body, ctx.source, route);
+                if (items.length) return items;
                 return [];
               }
+              startRoutePage();
+              return await routeP;
             }
-            const rp = Date.now();
-            let r;
-            try {
-              r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
-            } catch (e) {
-              throw new AcquisitionError("TIMEOUT", `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
-            }
-            steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
-            if (r.status === 404) return [];
-            if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `redBus HTTP ${r.status} [${steps.join(" ")}]`, r.status);
-            const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
-            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `redBus route page carried no parseable dataInfo fare [${steps.join(" ")}]`);
-            return items;
+            startRoutePage();
+            return await routeP;
           }
         },
         {

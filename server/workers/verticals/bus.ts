@@ -7,6 +7,7 @@
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseAbhiBusServices, resolveAbhiBusCity, type AbhiBusRoute } from '../parsers/abhibus';
+import type { RawSourceItem } from '../../types';
 import { parseRedBusRoute } from '../parsers/redbusRoute';
 import { parseRedBusSearch, resolveRedBusCity, type RedBusRoute } from '../parsers/redbusSearch';
 import { cffiFetch } from '../../common/curlCffiFetch';
@@ -74,6 +75,46 @@ export const busWorker: VerticalWorker = {
         const depart = String(ctx.query.travelDates?.depart || '');
         const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
+        // Route-page dataInfo fetch as a REUSABLE promise (owner bug 22 Oct: DEADLINE_CUT —
+        // on Hostinger the searchResults POST tarpits 2x12s and the sequential route-page
+        // fetch afterwards ran past the 42s search budget, so redBus never answered at all).
+        // It now runs IN PARALLEL with the POST: kicked off 4s after the search attempts
+        // start (a healthy answer lands in 2-4s, so the fast path costs nothing extra),
+        // and awaited only when the POST fails. Same honesty rules as before: 404 = no
+        // route page, never a fabricated fare.
+        let routeP: Promise<RawSourceItem[]> | null = null;
+        const fetchRoutePage = async (): Promise<RawSourceItem[]> => {
+          const rp = Date.now();
+          let r: { status: number; body: string };
+          try {
+            r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
+          } catch (e: any) {
+            // Whole redbus.in domain not answering from this egress IP (tarpit):
+            // every step hangs until its own timeout. Report honestly, never guess.
+            // Owner bug 22 Oct ("app me sirf abhibus"): this used to be ACCESS_CHALLENGE,
+            // which climbs the 1->5->25->60min challenge ladder — a few tarpits and redBus
+            // went invisible for up to an hour (not even sourcesAttempted). A tarpit is a
+            // TIMEOUT, not a WAF challenge: the flat 60s circuit keeps redBus attempted on
+            // nearly every search, so the honest per-bus / route-page result self-heals.
+            throw new AcquisitionError('TIMEOUT', `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(' ') || 'no steps recorded'}]`);
+          }
+          steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
+          if (r.status === 404) return []; // route page not published — honest unavailable
+          if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `redBus HTTP ${r.status} [${steps.join(' ')}]`, r.status);
+          const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
+          if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `redBus route page carried no parseable dataInfo fare [${steps.join(' ')}]`);
+          return items;
+        };
+        const startRoutePage = () => {
+          // Attach a no-op catch the moment it starts so a rejection while the POST
+          // attempts are still running can never become an unhandled promise error;
+          // awaiting routeP later still re-throws the original error honestly.
+          if (routeP) return;
+          const p = fetchRoutePage();
+          p.catch(() => {});
+          routeP = p;
+        };
+
         if (resolved.from && resolved.to) {
           const route: RedBusRoute = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
           const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
@@ -81,6 +122,8 @@ export const busWorker: VerticalWorker = {
           // 21 Oct: redBus showing only route summaries). A healthy answer lands in ~2-4s;
           // when it tarpits it hangs to the timeout. So: two short attempts (12s each) —
           // a second attempt catches a good window twice as often as one long hang.
+          // Route-page warm-up runs from t+4s in parallel (see fetchRoutePage above).
+          const warmup = setTimeout(startRoutePage, 4_000);
           let r: { status: number; body: string; latencyMs?: number } = { status: 0, body: '' };
           for (let attempt = 1; attempt <= 2; attempt++) {
             const sr = Date.now();
@@ -102,36 +145,26 @@ export const busWorker: VerticalWorker = {
             steps.push(`searchResults#${attempt}=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
             break; // got an HTTP response — success or gate, do not blind-retry a 403/429
           }
+          clearTimeout(warmup);
           if (r.status === 200) {
             const items = parseRedBusSearch(r.body, ctx.source, route);
+            // Per-bus rows answered in time: the parallel route-page promise (if the
+            // warm-up fired) already has its own no-op catch (see startRoutePage),
+            // so it can never become an unhandled promise error.
             if (items.length) return items;
             // Searchable ids with zero services for this date — honest empty, no fallback
             // (a route-page min-fare would claim a fare no service actually offers today).
             return [];
           }
-          // searchResults endpoint failed — fall through to the route-page dataInfo fallback
+          // searchResults endpoint failed/tarpitted — the route-page fallback is already
+          // in flight (started at t+4s); await it instead of restarting it sequentially.
+          startRoutePage();
+          return await routeP!;
         }
 
-        const rp = Date.now();
-        let r: { status: number; body: string };
-        try {
-          r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
-        } catch (e: any) {
-          // Whole redbus.in domain not answering from this egress IP (tarpit):
-          // every step hangs until its own timeout. Report honestly, never guess.
-          // Owner bug 22 Oct ("app me sirf abhibus"): this used to be ACCESS_CHALLENGE,
-          // which climbs the 1->5->25->60min challenge ladder — a few tarpits and redBus
-          // went invisible for up to an hour (not even sourcesAttempted). A tarpit is a
-          // TIMEOUT, not a WAF challenge: the flat 60s circuit keeps redBus attempted on
-          // nearly every search, so the honest per-bus / route-page result self-heals.
-          throw new AcquisitionError('TIMEOUT', `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(' ') || 'no steps recorded'}]`);
-        }
-        steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
-        if (r.status === 404) return []; // route page not published — honest unavailable
-        if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `redBus HTTP ${r.status} [${steps.join(' ')}]`, r.status);
-        const items = parseRedBusRoute(r.body, ctx.source, pageUrl);
-        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `redBus route page carried no parseable dataInfo fare [${steps.join(' ')}]`);
-        return items;
+        // City resolution failed — the route page is the only honest source left.
+        startRoutePage();
+        return await routeP!;
       },
     },
     {
