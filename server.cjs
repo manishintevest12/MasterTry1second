@@ -25084,13 +25084,17 @@ async function couponItems() {
   return diversifyByMerchant(out, 2, 12);
 }
 function destinationItem(d, flights, hotels) {
-  const matches = (r) => String(r.title || "").toLowerCase().includes(d.key) || String(r.location_city || "").toLowerCase().includes(d.key);
+  const matches = (r) => {
+    const t = String(r.title || "").toLowerCase();
+    const c = String(r.location_city || "").toLowerCase();
+    return d.keys.some((k) => t.includes(k) || c.includes(k));
+  };
   const fare = flights.filter((r) => servableRow(r, 7) && matches(r)).sort((a, b) => priceOf(a) - priceOf(b))[0];
   if (!fare) return null;
   const hotel = hotels.find((r) => ageDays(r) <= 14 && matches(r) && imageFromAttributes(r.attributes));
   if (!hotel) return null;
   return {
-    id: `dest-${d.key}`,
+    id: `dest-${d.keys[0]}`,
     title: d.name,
     merchant: String(fare.seller || fare.vendor || "Flights").slice(0, 40),
     merchantLogo: null,
@@ -25187,18 +25191,19 @@ var init_showcase = __esm({
     poolCache = /* @__PURE__ */ new Map();
     POOL_TTL_MS = 5 * 60 * 1e3;
     FAMOUS = [
-      { key: "goa", name: "Goa" },
-      { key: "mumbai", name: "Mumbai" },
-      { key: "delhi", name: "Delhi" },
-      { key: "jaipur", name: "Jaipur" },
-      { key: "udaipur", name: "Udaipur" },
-      { key: "dubai", name: "Dubai" },
-      { key: "bangkok", name: "Bangkok" },
-      { key: "singapore", name: "Singapore" },
-      { key: "srinagar", name: "Srinagar" },
-      { key: "shimla", name: "Shimla" },
-      { key: "bengaluru", name: "Bengaluru" },
-      { key: "hyderabad", name: "Hyderabad" }
+      { name: "Goa", keys: ["goa"] },
+      { name: "Mumbai", keys: ["mumbai"] },
+      { name: "Delhi", keys: ["delhi"] },
+      { name: "Jaipur", keys: ["jaipur"] },
+      { name: "Udaipur", keys: ["udaipur"] },
+      { name: "Dubai", keys: ["dubai"] },
+      { name: "Bangkok", keys: ["bangkok"] },
+      { name: "Singapore", keys: ["singapore"] },
+      { name: "Srinagar", keys: ["srinagar"] },
+      { name: "Shimla", keys: ["shimla"] },
+      { name: "Bengaluru", keys: ["bengaluru", "bangalore"] },
+      // both spellings appear in source titles
+      { name: "Hyderabad", keys: ["hyderabad"] }
     ];
     cached = null;
     SHOWCASE_TTL_MS = 10 * 60 * 1e3;
@@ -30454,8 +30459,18 @@ var init_bootstrap = __esm({
 var warm_exports = {};
 __export(warm_exports, {
   bootWarm: () => bootWarm,
-  keepWarmDefaults: () => keepWarmDefaults
+  keepWarmDefaults: () => keepWarmDefaults,
+  keepWarmDestinations: () => keepWarmDestinations
 });
+async function keepWarmDestinations() {
+  if (DESTINATION_WARM.length === 0) return;
+  const slice = [];
+  for (let i = 0; i < 2; i++) {
+    slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
+  }
+  destWarmCursor = (destWarmCursor + 2) % DESTINATION_WARM.length;
+  await warmRows(slice, "DestWarm");
+}
 async function warmRows(rows, tag) {
   let ok = 0;
   for (const r of rows) {
@@ -30545,7 +30560,7 @@ async function main() {
     });
   }, intervalMin * 6e4);
 }
-var SEED_QUERIES, invokedAsScript;
+var SEED_QUERIES, DESTINATION_WARM, destWarmCursor, invokedAsScript;
 var init_warm = __esm({
   "server/cron/warm.ts"() {
     init_db();
@@ -30572,6 +30587,33 @@ var init_warm = __esm({
       { query: "savings account", vertical: "banking" },
       { query: "demat account", vertical: "banking" }
     ];
+    DESTINATION_WARM = [
+      { query: "Indore to Goa", vertical: "flights", city: "Indore" },
+      { query: "goa", vertical: "hotels" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
+      { query: "mumbai", vertical: "hotels" },
+      { query: "Indore to Delhi", vertical: "flights", city: "Indore" },
+      { query: "delhi", vertical: "hotels" },
+      { query: "Indore to Jaipur", vertical: "flights", city: "Indore" },
+      { query: "jaipur", vertical: "hotels" },
+      { query: "Indore to Udaipur", vertical: "flights", city: "Indore" },
+      { query: "udaipur", vertical: "hotels" },
+      { query: "Indore to Bengaluru", vertical: "flights", city: "Indore" },
+      { query: "bengaluru", vertical: "hotels" },
+      { query: "Indore to Hyderabad", vertical: "flights", city: "Indore" },
+      { query: "hyderabad", vertical: "hotels" },
+      { query: "Indore to Srinagar", vertical: "flights", city: "Indore" },
+      { query: "srinagar", vertical: "hotels" },
+      { query: "Indore to Dubai", vertical: "flights", city: "Indore" },
+      { query: "dubai", vertical: "hotels" },
+      { query: "Indore to Bangkok", vertical: "flights", city: "Indore" },
+      { query: "bangkok", vertical: "hotels" },
+      { query: "Indore to Singapore", vertical: "flights", city: "Indore" },
+      { query: "singapore", vertical: "hotels" },
+      { query: "Indore to Shimla", vertical: "flights", city: "Indore" },
+      { query: "shimla", vertical: "hotels" }
+    ];
+    destWarmCursor = 0;
     invokedAsScript = /cron/.test(String(process.argv[1] || ""));
     if (invokedAsScript) {
       main().catch((e) => {
@@ -30594,8 +30636,9 @@ function startWorkers() {
   const keepWarmTimer = setInterval(() => {
     void withLock("keep-warm", async () => {
       try {
-        const { keepWarmDefaults: keepWarmDefaults2 } = await Promise.resolve().then(() => (init_warm(), warm_exports));
+        const { keepWarmDefaults: keepWarmDefaults2, keepWarmDestinations: keepWarmDestinations2 } = await Promise.resolve().then(() => (init_warm(), warm_exports));
         await keepWarmDefaults2();
+        await keepWarmDestinations2();
       } catch (e) {
         log.warn("Worker", "Keep-warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 120) });
       }

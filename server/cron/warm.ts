@@ -42,6 +42,56 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string }> = 
   { query: 'demat account', vertical: 'banking' },
 ];
 
+/**
+ * FAMOUS DESTINATIONS WARM (owner 22 Oct): the homepage's Famous Destinations
+ * section needs (a) a recorded flight fare naming the city and (b) a hotel row
+ * with real art. Users mostly search Indore routes, so without warm coverage
+ * the section honestly stays empty (the owner's report). Two entries are
+ * re-warmed per keep-warm cycle (one flight route + one hotel city alternating
+ * via rotation), so every listed destination refreshes its real fare roughly
+ * every ~2.5 hours — same honesty rules as every other warm: real searches,
+ * recorded prices, nothing invented.
+ */
+const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string }> = [
+  { query: 'Indore to Goa', vertical: 'flights', city: 'Indore' },
+  { query: 'goa', vertical: 'hotels' },
+  { query: 'Indore to Mumbai', vertical: 'flights', city: 'Indore' },
+  { query: 'mumbai', vertical: 'hotels' },
+  { query: 'Indore to Delhi', vertical: 'flights', city: 'Indore' },
+  { query: 'delhi', vertical: 'hotels' },
+  { query: 'Indore to Jaipur', vertical: 'flights', city: 'Indore' },
+  { query: 'jaipur', vertical: 'hotels' },
+  { query: 'Indore to Udaipur', vertical: 'flights', city: 'Indore' },
+  { query: 'udaipur', vertical: 'hotels' },
+  { query: 'Indore to Bengaluru', vertical: 'flights', city: 'Indore' },
+  { query: 'bengaluru', vertical: 'hotels' },
+  { query: 'Indore to Hyderabad', vertical: 'flights', city: 'Indore' },
+  { query: 'hyderabad', vertical: 'hotels' },
+  { query: 'Indore to Srinagar', vertical: 'flights', city: 'Indore' },
+  { query: 'srinagar', vertical: 'hotels' },
+  { query: 'Indore to Dubai', vertical: 'flights', city: 'Indore' },
+  { query: 'dubai', vertical: 'hotels' },
+  { query: 'Indore to Bangkok', vertical: 'flights', city: 'Indore' },
+  { query: 'bangkok', vertical: 'hotels' },
+  { query: 'Indore to Singapore', vertical: 'flights', city: 'Indore' },
+  { query: 'singapore', vertical: 'hotels' },
+  { query: 'Indore to Shimla', vertical: 'flights', city: 'Indore' },
+  { query: 'shimla', vertical: 'hotels' },
+];
+
+let destWarmCursor = 0;
+
+/** Warm the next two destinations (flight route + hotel city alternate). */
+export async function keepWarmDestinations(): Promise<void> {
+  if (DESTINATION_WARM.length === 0) return;
+  const slice: Array<Record<string, any>> = [];
+  for (let i = 0; i < 2; i++) {
+    slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
+  }
+  destWarmCursor = (destWarmCursor + 2) % DESTINATION_WARM.length;
+  await warmRows(slice, 'DestWarm');
+}
+
 async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<void> {
   let ok = 0;
   for (const r of rows) {

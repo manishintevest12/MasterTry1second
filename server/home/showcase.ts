@@ -409,18 +409,28 @@ async function couponItems(): Promise<ShowcaseItem[]> {
  *  - price: the CHEAPEST recorded FLIGHT fare whose route/title names the city
  *  - click: launches the REAL flights engine ("to <City>") — never a fake link
  */
-const FAMOUS: Array<{ key: string; name: string }> = [
-  { key: 'goa', name: 'Goa' }, { key: 'mumbai', name: 'Mumbai' }, { key: 'delhi', name: 'Delhi' },
-  { key: 'jaipur', name: 'Jaipur' }, { key: 'udaipur', name: 'Udaipur' }, { key: 'dubai', name: 'Dubai' },
-  { key: 'bangkok', name: 'Bangkok' }, { key: 'singapore', name: 'Singapore' },
-  { key: 'srinagar', name: 'Srinagar' }, { key: 'shimla', name: 'Shimla' },
-  { key: 'bengaluru', name: 'Bengaluru' }, { key: 'hyderabad', name: 'Hyderabad' },
+const FAMOUS: Array<{ name: string; keys: string[] }> = [
+  { name: 'Goa', keys: ['goa'] },
+  { name: 'Mumbai', keys: ['mumbai'] },
+  { name: 'Delhi', keys: ['delhi'] },
+  { name: 'Jaipur', keys: ['jaipur'] },
+  { name: 'Udaipur', keys: ['udaipur'] },
+  { name: 'Dubai', keys: ['dubai'] },
+  { name: 'Bangkok', keys: ['bangkok'] },
+  { name: 'Singapore', keys: ['singapore'] },
+  { name: 'Srinagar', keys: ['srinagar'] },
+  { name: 'Shimla', keys: ['shimla'] },
+  { name: 'Bengaluru', keys: ['bengaluru', 'bangalore'] }, // both spellings appear in source titles
+  { name: 'Hyderabad', keys: ['hyderabad'] },
 ];
 
 /** One Famous Destinations card, or null when the data is not honestly there. */
-export function destinationItem(d: { key: string; name: string }, flights: OfferRow[], hotels: OfferRow[]): ShowcaseItem | null {
-  const matches = (r: OfferRow) =>
-    String(r.title || '').toLowerCase().includes(d.key) || String(r.location_city || '').toLowerCase().includes(d.key);
+export function destinationItem(d: { name: string; keys: string[] }, flights: OfferRow[], hotels: OfferRow[]): ShowcaseItem | null {
+  const matches = (r: OfferRow) => {
+    const t = String(r.title || '').toLowerCase();
+    const c = String(r.location_city || '').toLowerCase();
+    return d.keys.some((k) => t.includes(k) || c.includes(k));
+  };
   // Cheapest recorded flight fare naming this destination (fresh window: 7 days).
   const fare = flights
     .filter((r) => servableRow(r, 7) && matches(r))
@@ -430,7 +440,7 @@ export function destinationItem(d: { key: string; name: string }, flights: Offer
   const hotel = hotels.find((r) => ageDays(r) <= 14 && matches(r) && imageFromAttributes(r.attributes));
   if (!hotel) return null; // card needs real art
   return {
-    id: `dest-${d.key}`,
+    id: `dest-${d.keys[0]}`,
     title: d.name,
     merchant: String(fare.seller || fare.vendor || 'Flights').slice(0, 40),
     merchantLogo: null,

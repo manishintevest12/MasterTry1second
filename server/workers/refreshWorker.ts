@@ -28,8 +28,9 @@ export function startWorkers() {
   const keepWarmTimer = setInterval(() => {
     void withLock('keep-warm', async () => {
       try {
-        const { keepWarmDefaults } = await import('../cron/warm');
+        const { keepWarmDefaults, keepWarmDestinations } = await import('../cron/warm');
         await keepWarmDefaults();
+        await keepWarmDestinations(); // Famous Destinations: rotate 2 entries/cycle
       } catch (e: any) {
         log.warn('Worker', 'Keep-warm pass failed (will retry next tick)', { error: String(e?.message || e).slice(0, 120) });
       }

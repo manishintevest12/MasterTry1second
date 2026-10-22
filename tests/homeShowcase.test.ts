@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 
 const mk = (id: string, merchant: string): any => ({ id, title: id, merchant, merchantLogo: null, image: 'https://x/i.jpg', price: 1, mrp: null, discountPct: null, rating: null, badge: null, url: '/api/out?t=x' });
-import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, merchantLogoCandidates, realMerchantDomain, nameDomainOf } from '../server/home/showcase';
+import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, type OfferRow } from '../server/home/showcase';
 
 test('itemFromOffer builds a masked, priced, honest showcase item', () => {
   const item = itemFromOffer({
@@ -106,4 +106,49 @@ test('coupon logo chain never uses the redirect host (owner 22 Oct live bug)', (
   // name domain derivation
   assert.strictEqual(nameDomainOf('AJIO GRAM'), 'ajiogram.com');
   assert.strictEqual(nameDomainOf(''), null);
+});
+
+
+test('destinationItem: real fare + real hotel photo -> card; missing data -> honest null', () => {
+  const F = (id: number, title: string, price: number, agoDays = 1): OfferRow => ({
+    id, vertical: 'flights', title, brand: null, attributes: {}, vendor: 'Ixigo', seller: 'Ixigo',
+    seller_url: 'https://www.ixigo.com/search/f/1', list_price: null, mandatory_total: price,
+    effective_price: price, validation_status: 'PARTIAL', location_city: 'Indore',
+    fetched_at: new Date(Date.now() - agoDays * 86_400_000).toISOString(),
+  });
+  const H = (id: number, title: string, city: string, agoDays = 1): OfferRow => ({
+    id, vertical: 'hotels', title, brand: null, attributes: { image_url: 'https://img.example/h.jpg' },
+    vendor: 'Agoda', seller: 'Agoda', seller_url: 'https://www.agoda.com/x', list_price: null,
+    mandatory_total: 3000, effective_price: 2800, validation_status: 'VALID', location_city: city,
+    fetched_at: new Date(Date.now() - agoDays * 86_400_000).toISOString(),
+  });
+
+  const goa = { name: 'Goa', keys: ['goa'] };
+  const flights = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599), F(2, 'Air India AI-5 · Indore → Delhi', 6000)];
+  const hotels = [H(1, 'Royal Orchid Beach Resort', 'Goa'), H(2, 'Some Indore Hotel', 'Indore')];
+
+  const item = destinationItem(goa, flights, hotels);
+  assert.ok(item, 'goa has a fare and a hotel photo');
+  assert.strictEqual(item!.price, 4599); // cheapest recorded fare wins
+  assert.strictEqual(item!.image, 'https://img.example/h.jpg'); // real hotel art
+  assert.strictEqual(item!.launch!.vertical, 'flights');
+  assert.strictEqual(item!.launch!.query, 'to Goa');
+  assert.strictEqual(item!.url, ''); // no external link — in-app engine launch
+
+  // No fare recorded -> no card (never invent a price)
+  const mumbai = { name: 'Mumbai', keys: ['mumbai'] };
+  assert.strictEqual(destinationItem(mumbai, flights, hotels), null);
+  // Fare but no hotel art -> no card (card needs real art)
+  const hotelsNoArt = hotels.map((h) => ({ ...h, attributes: {} }));
+  assert.strictEqual(destinationItem(goa, flights, hotelsNoArt), null);
+  // Stale fare (8d) -> no card
+  const stale = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 8)];
+  assert.strictEqual(destinationItem(goa, stale, hotels), null);
+
+  // Bengaluru spelling variant matches a Bangalore-titled fare
+  const blr = { name: 'Bengaluru', keys: ['bengaluru', 'bangalore'] };
+  const blrFlights = [F(3, 'IndiGo 6E-9 · Indore → Bangalore', 4999)];
+  const blrHotels = [H(3, 'The Ritz-Carlton', 'Bangalore')];
+  const blrItem = destinationItem(blr, blrFlights, blrHotels);
+  assert.ok(blrItem, 'bangalore spelling variant matched');
 });
