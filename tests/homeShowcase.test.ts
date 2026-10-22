@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 
 const mk = (id: string, merchant: string): any => ({ id, title: id, merchant, merchantLogo: null, image: 'https://x/i.jpg', price: 1, mrp: null, discountPct: null, rating: null, badge: null, url: '/api/out?t=x' });
-import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, type OfferRow } from '../server/home/showcase';
+import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, roundRobinSpread, techCategoryOf, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, type OfferRow } from '../server/home/showcase';
 
 test('itemFromOffer builds a masked, priced, honest showcase item', () => {
   const item = itemFromOffer({
@@ -151,4 +151,39 @@ test('destinationItem: real fare + real hotel photo -> card; missing data -> hon
   const blrHotels = [H(3, 'The Ritz-Carlton', 'Bangalore')];
   const blrItem = destinationItem(blr, blrFlights, blrHotels);
   assert.ok(blrItem, 'bangalore spelling variant matched');
+});
+
+// ---- Owner 22 Oct: "iss section mai laptop, fridge, tv... sb dikhao" ----
+test('techCategoryOf buckets the tech section correctly', () => {
+  assert.equal(techCategoryOf('HP 15 Ryzen 5 Laptop'), 'laptop');
+  assert.equal(techCategoryOf('Samsung 55 inch QLED Smart TV'), 'tv');
+  assert.equal('LG 260L Double Door Refrigerator', 'LG 260L Double Door Refrigerator');
+  assert.equal(techCategoryOf('LG 260L Double Door Refrigerator'), 'appliance');
+  assert.equal(techCategoryOf('Samsung Galaxy F07 Mobile'), 'phone');
+  assert.equal(techCategoryOf('boAt Airdopes 141 Wireless Earbuds'), 'audio');
+  assert.equal(techCategoryOf('Noise ColorFit Pro Smartwatch'), 'wearable');
+});
+
+test('roundRobinSpread caps per category and fills the grid across buckets', () => {
+  const mk = (t: string) => ({ title: t, merchant: 'X', price: 100, badge: '', url: '' } as any);
+  const phones = [mk('iPhone 17'), mk('Galaxy M07'), mk('Redmi 15C'), mk('vivo T5')];
+  const laptops = [mk('HP Laptop'), mk('Acer Laptop'), mk('Lenovo Laptop'), mk('Asus Laptop')];
+  const tvs = [mk('Sony Bravia TV'), mk('Xiaomi Smart TV')];
+  // production-shaped pool: bigger than the 12-slot grid
+  const bigPool = [
+    ...Array.from({ length: 8 }, (_, i) => mk(`Samsung Galaxy M${i} Mobile`)),
+    ...Array.from({ length: 4 }, (_, i) => mk(`HP Pavilion Laptop ${i}`)),
+    ...Array.from({ length: 3 }, (_, i) => mk(`Xiaomi Smart TV ${i}`)),
+    ...Array.from({ length: 3 }, (_, i) => mk(`LG Refrigerator ${i}`)),
+    ...Array.from({ length: 3 }, (_, i) => mk(`boAt Airdopes ${i} Earbuds`)),
+  ];
+  const out = roundRobinSpread(bigPool, (it) => techCategoryOf(it.title), 2, 12);
+  const per = {} as Record<string, number>;
+  for (const it of out) per[techCategoryOf(it.title)] = (per[techCategoryOf(it.title)] || 0) + 1;
+  assert.equal(out.length, 12, 'fills the full 12-slot grid');
+  assert.ok((per.phone || 0) <= 3, 'phones cannot dominate the grid');
+  assert.ok((per.laptop || 0) >= 2, 'laptops present');
+  assert.ok((per.tv || 0) >= 2, 'TVs present');
+  assert.ok((per.appliance || 0) >= 2, 'fridge/appliance present');
+  assert.ok((per.audio || 0) >= 2, 'audio present');
 });

@@ -342,6 +342,62 @@ async function bestHotelPartner(): Promise<string | null> {
  * so sections round-robin across merchants: at most `maxPerMerchant` items per
  * seller before every other present seller got its slot.
  */
+/** Tech-section buckets so one category (phones) can't fill the grid — the owner
+ *  asked for laptops, TVs, fridges and friends side by side. */
+const TECH_CATS: Array<[RegExp, string]> = [
+  [/laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook/i, 'laptop'],
+  [/television|\btv\b|qled|oled tv|smart tv/i, 'tv'],
+  [/refrigerator|fridge|washing machine|air conditioner|air cooler|microwave|mixer|grinder|geyser|induction|air fryer|purifier|oven|dishwasher/i, 'appliance'],
+  [/headphone|earbud|airdopes|earphone|speaker|soundbar/i, 'audio'],
+  [/watch|band|fitness tracker/i, 'wearable'],
+  [/mobile|phone|iphone|galaxy \b|redmi|pixel|vivo|oppo|realme|oneplus|pocophone/i, 'phone'],
+  [/camera|dslr|gopro/i, 'camera'],
+  [/console|playstation|xbox|\bps5\b|gaming/i, 'gaming'],
+  [/tablet|ipad/i, 'tablet'],
+];
+export function techCategoryOf(title: string): string {
+  const s = title.toLowerCase();
+  for (const [rx, c] of TECH_CATS) if (rx.test(s)) return c;
+  return 'gadget';
+}
+
+/** Balanced spread across a key (merchant OR tech category): respect the per-key
+ *  cap while slots remain, then fill remaining slots by always taking from the
+ *  category with the FEWEST cards already in the grid, so phones (or any single
+ *  merchant) can never dominate the section (owner 22 Oct).
+ */
+export function roundRobinSpread(items: ShowcaseItem[], keyOf: (it: ShowcaseItem) => string, maxPerKey: number, target: number): ShowcaseItem[] {
+  const byKey = new Map<string, ShowcaseItem[]>();
+  const order: string[] = [];
+  for (const it of items) {
+    const k = keyOf(it);
+    if (!byKey.has(k)) { byKey.set(k, []); order.push(k); }
+    byKey.get(k)!.push(it);
+  }
+  const counts = new Map<string, number>();
+  const out: ShowcaseItem[] = [];
+  const pick = (k: string): boolean => {
+    const c = counts.get(k) || 0;
+    const list = byKey.get(k)!;
+    if (!list[c]) return false;
+    out.push(list[c]);
+    counts.set(k, c + 1);
+    return true;
+  };
+  // Phase 1: strict cap — every key gets up to maxPerKey.
+  for (let i = 0; i < maxPerKey; i++) {
+    for (const k of order) { if (out.length >= target) break; pick(k); }
+  }
+  // Phase 2: balanced fill — always extend the smallest category first.
+  while (out.length < target) {
+    const open = order.filter((k) => (byKey.get(k)!.length) > (counts.get(k) || 0));
+    if (!open.length) break;
+    open.sort((a, b) => (counts.get(a) || 0) - (counts.get(b) || 0) || order.indexOf(a) - order.indexOf(b));
+    if (!pick(open[0])) break;
+  }
+  return out;
+}
+
 export function diversifyByMerchant(items: ShowcaseItem[], maxPerMerchant: number, target: number): ShowcaseItem[] {
   const byMerchant = new Map<string, ShowcaseItem[]>();
   for (const it of items) {
@@ -371,7 +427,7 @@ export function diversifyByMerchant(items: ShowcaseItem[], maxPerMerchant: numbe
 }
 
 /** Pool -> deduped, image-bearing items in the pool's order, then merchant spread. */
-function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: (a: OfferRow, b: OfferRow) => number): ShowcaseItem[] {
+function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: (a: OfferRow, b: OfferRow) => number, spreadKey?: (it: ShowcaseItem) => string): ShowcaseItem[] {
   const seen = new Set<string>();
   const out: ShowcaseItem[] = [];
   for (const row of pool.filter(filter).sort(sort)) {
@@ -382,7 +438,8 @@ function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: 
     seen.add(key);
     out.push(item);
   }
-  return diversifyByMerchant(out, 3, 12);
+  const merchSpread = diversifyByMerchant(out, 3, spreadKey ? 48 : 12);
+  return spreadKey ? roundRobinSpread(merchSpread, spreadKey, 2, 12) : merchSpread;
 }
 
 /** Coupon cards from the live affiliate registry, one per merchant+code, spread. */
@@ -474,7 +531,9 @@ export function pickTopOfferRow(rows: OfferRow[]): OfferRow | null {
 let cached: { at: number; sections: ShowcaseSection[] } | null = null;
 const SHOWCASE_TTL_MS = 10 * 60 * 1000;
 
-const TECH_RX = /mobile|phone|laptop|headphone|earbud|airdopes|smartwatch|tablet|camera|speaker|television|\btv\b|gaming|console|charger|power bank|ssd|keyboard|mouse/i;
+// Owner 22 Oct: "iss section mai laptop, fridge, tv... sb dikhao" — appliances
+// count as tech for this section, not just phones and audio.
+const TECH_RX = /mobile|phone|laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook|headphone|earbud|airdopes|smartwatch|tablet|ipad|camera|speaker|soundbar|television|\btv\b|qled|gaming|console|charger|power bank|ssd|keyboard|mouse|refrigerator|fridge|washing machine|air conditioner|air cooler|microwave|mixer|grinder|geyser|induction|air fryer|purifier|oven|dishwasher/i;
 const TECH_BRAND_RX = /apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|\bhp\b|asus|acer|xiaomi|realme|vivo|oppo|nothing/i;
 
 export async function buildShowcase(): Promise<ShowcaseSection[]> {
@@ -496,7 +555,10 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
   const picked = sectionItems(ecom, (r) => serv(r), newest);
   const massive = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.40, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const mega = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1000, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
-  const tech = sectionItems(ecom, (r) => serv(r) && (TECH_RX.test(String(r.title || '')) || TECH_BRAND_RX.test(String(r.brand || ''))), newest);
+  const techFilter = (r: OfferRow) => serv(r) && (TECH_RX.test(String(r.title || '')) || TECH_BRAND_RX.test(String(r.brand || '')));
+  // Owner 22 Oct: laptops, TVs, fridges and more must all appear — spread cards
+  // across tech categories (max 2 per bucket) instead of a wall of phones.
+  const tech = sectionItems(ecom, techFilter, newest, (it) => techCategoryOf(it.title));
   const steals = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.30, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const places = sectionItems(hotels, (r) => serv(r), newest);
   const cards = sectionItems(cardsPool, (r) => (r.validation_status || '') !== 'INVALID' && ageDays(r) <= 14, newest);

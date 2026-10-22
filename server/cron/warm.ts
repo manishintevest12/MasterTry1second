@@ -40,6 +40,12 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string }> = 
   { query: 'goa', vertical: 'hotels' },
   { query: 'savings account', vertical: 'banking' },
   { query: 'demat account', vertical: 'banking' },
+  // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
+  // phones — warm those catalogues so the section always has fresh rows to show.
+  { query: 'laptop', vertical: 'ecommerce' },
+  { query: 'smart tv', vertical: 'ecommerce' },
+  { query: 'refrigerator', vertical: 'ecommerce' },
+  { query: 'washing machine', vertical: 'ecommerce' },
 ];
 
 /**

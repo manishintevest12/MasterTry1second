@@ -154,7 +154,12 @@ async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed
   // Bank search bar (owner 21 Oct): a query that NAMES a provider must not serve every
   // other bank's catalogue rows during the instant cold-start window. Apply the SAME
   // provider rule the live pipeline's engine filter uses.
-  return filterByNamedProviders(offers, parsed?.entityName);
+  // Owner 22 Oct ("bahut saare vertical mai image ni aa raha"): the progressive
+  // cold-start path skipped the brand-image pipeline entirely, so every instant
+  // catalogue card (account/banking rows have no seller/vendor to self-serve an
+  // image) rendered blank. Attach the same brand/lender favicons the live pipeline
+  // uses; the live pass then upgrades them to crisp Wikidata logos where available.
+  return withBrandImages(filterByNamedProviders(offers, parsed?.entityName) as any[]) as any[];
 }
 
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {

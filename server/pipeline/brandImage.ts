@@ -35,7 +35,11 @@ const LENDER_DOMAIN: Array<[RegExp, string]> = [
   [/axis/i, 'axisbank.com'], [/union bank/i, 'unionbankofindia.co.in'], [/idfc/i, 'idfcfirstbank.com'],
   [/\bsbi\b|state bank/i, 'sbi.co.in'], [/\bpnb\b|punjab national/i, 'pnbindia.in'], [/indusind/i, 'indusind.com'],
   [/hdfc ergo/i, 'hdfcergo.com'], [/hdfc/i, 'hdfcbank.com'], [/icici lombard/i, 'icicilombard.com'], [/icici pru|icici prudential/i, 'iciciprulife.com'],
-  [/icici/i, 'icicibank.com'], [/kotak/i, 'kotak.com'], [/yes bank/i, 'yesbank.in'], [/bank of baroda|\bbob\b/i, 'bankofbaroda.in'],
+  [/icici/i, 'icicibank.com'], [/kotak/i, 'kotak.com'],
+  // Brokers / demat + investment platforms (owner 22 Oct: "Zerodha Demat Account" card rendered blank)
+  [/zerodha/i, 'zerodha.com'], [/groww/i, 'groww.in'], [/upstox/i, 'upstox.com'],
+  [/angel ?one|angel broking/i, 'angelone.in'], [/5paisa/i, '5paisa.com'], [/dhan/i, 'dhan.co'],
+  [/paytm money/i, 'paytmmoney.com'], [/smallcase/i, 'smallcase.com'], [/yes bank/i, 'yesbank.in'], [/bank of baroda|\bbob\b/i, 'bankofbaroda.in'],
   [/canara/i, 'canarabank.com'], [/bank of india/i, 'bankofindia.co.in'], [/bank of maharashtra/i, 'bankofmaharashtra.in'],
   [/central bank/i, 'centralbankofindia.co.in'], [/indian bank/i, 'indianbank.in'], [/indian overseas|\biob\b/i, 'iob.in'],
   [/uco bank/i, 'ucobank.com'], [/punjab (&|and) sind/i, 'psbindia.com'], [/federal bank/i, 'federalbank.co.in'],
@@ -54,7 +58,7 @@ const LENDER_DOMAIN: Array<[RegExp, string]> = [
   [/future generali|generali/i, 'generalicentral.com'], [/chola/i, 'cholainsurance.com'], [/iffco/i, 'iffcotokio.co.in'],
   [/acko/i, 'acko.com'], [/digit/i, 'godigit.com'], [/manipal/i, 'manipalcigna.com'], [/aditya birla health/i, 'adityabirlacapital.com'],
 ];
-const LENDER_VERTICALS = new Set(['loans', 'insurance', 'creditcards', 'banking']);
+const LENDER_VERTICALS = new Set(['loans', 'insurance', 'creditcards', 'banking', 'account']);
 const DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
 
 function hostOf(u?: string): string | undefined {
@@ -99,7 +103,7 @@ export function withBrandImages(offers: NormalizedOffer[]): NormalizedOffer[] {
   return offers;
 }
 
-const LENDER_VERTICAL_IDS = new Set(['loans', 'insurance', 'creditcards']);
+const LENDER_VERTICAL_IDS = new Set(['loans', 'insurance', 'creditcards', 'account']);
 
 /**
  * Loans / insurance: replace the comparison-site favicon with the LENDER's real logo (Wikidata P154).

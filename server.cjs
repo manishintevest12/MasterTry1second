@@ -22361,6 +22361,15 @@ var init_brandImage = __esm({
       [/icici pru|icici prudential/i, "iciciprulife.com"],
       [/icici/i, "icicibank.com"],
       [/kotak/i, "kotak.com"],
+      // Brokers / demat + investment platforms (owner 22 Oct: "Zerodha Demat Account" card rendered blank)
+      [/zerodha/i, "zerodha.com"],
+      [/groww/i, "groww.in"],
+      [/upstox/i, "upstox.com"],
+      [/angel ?one|angel broking/i, "angelone.in"],
+      [/5paisa/i, "5paisa.com"],
+      [/dhan/i, "dhan.co"],
+      [/paytm money/i, "paytmmoney.com"],
+      [/smallcase/i, "smallcase.com"],
       [/yes bank/i, "yesbank.in"],
       [/bank of baroda|\bbob\b/i, "bankofbaroda.in"],
       [/canara/i, "canarabank.com"],
@@ -22421,13 +22430,13 @@ var init_brandImage = __esm({
       [/manipal/i, "manipalcigna.com"],
       [/aditya birla health/i, "adityabirlacapital.com"]
     ];
-    LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "banking"]);
+    LENDER_VERTICALS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "banking", "account"]);
     DATA_HOST = /(^|\.)(githubusercontent|github|wikidata|wikipedia|openstreetmap|project-osrm|osrm)\./i;
     HD_LOGO = [
       [/redbus/i, "/brand-logos/redbus.svg"],
       [/big ?basket|bb ?now/i, "/brand-logos/bigbasket.png"]
     ];
-    LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards"]);
+    LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "account"]);
     uploadedLogosCache = null;
   }
 });
@@ -23549,7 +23558,7 @@ async function freshCatalogueOffers(vertical, input, parsed) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
   const offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
-  return filterByNamedProviders(offers, parsed?.entityName);
+  return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
 }
 async function runSearch(input) {
   const totalStart = Date.now();
@@ -24837,8 +24846,10 @@ __export(showcase_exports, {
   priceOf: () => priceOf,
   ratingFromAttributes: () => ratingFromAttributes,
   realMerchantDomain: () => realMerchantDomain,
+  roundRobinSpread: () => roundRobinSpread,
   saveOf: () => saveOf,
-  servableRow: () => servableRow
+  servableRow: () => servableRow,
+  techCategoryOf: () => techCategoryOf
 });
 function imageFromAttributes(raw) {
   if (!raw) return null;
@@ -25028,6 +25039,46 @@ async function bestHotelPartner() {
   }
   return best?.name ?? null;
 }
+function techCategoryOf(title) {
+  const s = title.toLowerCase();
+  for (const [rx, c] of TECH_CATS) if (rx.test(s)) return c;
+  return "gadget";
+}
+function roundRobinSpread(items, keyOf, maxPerKey, target) {
+  const byKey = /* @__PURE__ */ new Map();
+  const order = [];
+  for (const it of items) {
+    const k = keyOf(it);
+    if (!byKey.has(k)) {
+      byKey.set(k, []);
+      order.push(k);
+    }
+    byKey.get(k).push(it);
+  }
+  const counts = /* @__PURE__ */ new Map();
+  const out = [];
+  const pick3 = (k) => {
+    const c = counts.get(k) || 0;
+    const list = byKey.get(k);
+    if (!list[c]) return false;
+    out.push(list[c]);
+    counts.set(k, c + 1);
+    return true;
+  };
+  for (let i = 0; i < maxPerKey; i++) {
+    for (const k of order) {
+      if (out.length >= target) break;
+      pick3(k);
+    }
+  }
+  while (out.length < target) {
+    const open = order.filter((k) => byKey.get(k).length > (counts.get(k) || 0));
+    if (!open.length) break;
+    open.sort((a, b) => (counts.get(a) || 0) - (counts.get(b) || 0) || order.indexOf(a) - order.indexOf(b));
+    if (!pick3(open[0])) break;
+  }
+  return out;
+}
 function diversifyByMerchant(items, maxPerMerchant, target) {
   const byMerchant = /* @__PURE__ */ new Map();
   for (const it of items) {
@@ -25055,7 +25106,7 @@ function diversifyByMerchant(items, maxPerMerchant, target) {
   }
   return out;
 }
-function sectionItems(pool2, filter, sort) {
+function sectionItems(pool2, filter, sort, spreadKey) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const row of pool2.filter(filter).sort(sort)) {
@@ -25066,7 +25117,8 @@ function sectionItems(pool2, filter, sort) {
     seen.add(key);
     out.push(item);
   }
-  return diversifyByMerchant(out, 3, 12);
+  const merchSpread = diversifyByMerchant(out, 3, spreadKey ? 48 : 12);
+  return spreadKey ? roundRobinSpread(merchSpread, spreadKey, 2, 12) : merchSpread;
 }
 async function couponItems() {
   const rows = await fetchAffiliateRows(600);
@@ -25131,7 +25183,8 @@ async function buildShowcase() {
   const picked = sectionItems(ecom, (r) => serv(r), newest);
   const massive = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.4, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const mega = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1e3, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
-  const tech = sectionItems(ecom, (r) => serv(r) && (TECH_RX.test(String(r.title || "")) || TECH_BRAND_RX.test(String(r.brand || ""))), newest);
+  const techFilter = (r) => serv(r) && (TECH_RX.test(String(r.title || "")) || TECH_BRAND_RX.test(String(r.brand || "")));
+  const tech = sectionItems(ecom, techFilter, newest, (it) => techCategoryOf(it.title));
   const steals = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.3, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const places = sectionItems(hotels, (r) => serv(r), newest);
   const cards = sectionItems(cardsPool, (r) => (r.validation_status || "") !== "INVALID" && ageDays(r) <= 14, newest);
@@ -25157,7 +25210,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num7, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
+var num7, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -25190,6 +25243,17 @@ var init_showcase = __esm({
     LOGO_TTL_MS = 6 * 60 * 60 * 1e3;
     poolCache = /* @__PURE__ */ new Map();
     POOL_TTL_MS = 5 * 60 * 1e3;
+    TECH_CATS = [
+      [/laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook/i, "laptop"],
+      [/television|\btv\b|qled|oled tv|smart tv/i, "tv"],
+      [/refrigerator|fridge|washing machine|air conditioner|air cooler|microwave|mixer|grinder|geyser|induction|air fryer|purifier|oven|dishwasher/i, "appliance"],
+      [/headphone|earbud|airdopes|earphone|speaker|soundbar/i, "audio"],
+      [/watch|band|fitness tracker/i, "wearable"],
+      [/mobile|phone|iphone|galaxy \b|redmi|pixel|vivo|oppo|realme|oneplus|pocophone/i, "phone"],
+      [/camera|dslr|gopro/i, "camera"],
+      [/console|playstation|xbox|\bps5\b|gaming/i, "gaming"],
+      [/tablet|ipad/i, "tablet"]
+    ];
     FAMOUS = [
       { name: "Goa", keys: ["goa"] },
       { name: "Mumbai", keys: ["mumbai"] },
@@ -25207,7 +25271,7 @@ var init_showcase = __esm({
     ];
     cached = null;
     SHOWCASE_TTL_MS = 10 * 60 * 1e3;
-    TECH_RX = /mobile|phone|laptop|headphone|earbud|airdopes|smartwatch|tablet|camera|speaker|television|\btv\b|gaming|console|charger|power bank|ssd|keyboard|mouse/i;
+    TECH_RX = /mobile|phone|laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook|headphone|earbud|airdopes|smartwatch|tablet|ipad|camera|speaker|soundbar|television|\btv\b|qled|gaming|console|charger|power bank|ssd|keyboard|mouse|refrigerator|fridge|washing machine|air conditioner|air cooler|microwave|mixer|grinder|geyser|induction|air fryer|purifier|oven|dishwasher/i;
     TECH_BRAND_RX = /apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|\bhp\b|asus|acer|xiaomi|realme|vivo|oppo|nothing/i;
   }
 });
@@ -30585,7 +30649,13 @@ var init_warm = __esm({
       { query: "delhi to jaipur", vertical: "bus" },
       { query: "goa", vertical: "hotels" },
       { query: "savings account", vertical: "banking" },
-      { query: "demat account", vertical: "banking" }
+      { query: "demat account", vertical: "banking" },
+      // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
+      // phones — warm those catalogues so the section always has fresh rows to show.
+      { query: "laptop", vertical: "ecommerce" },
+      { query: "smart tv", vertical: "ecommerce" },
+      { query: "refrigerator", vertical: "ecommerce" },
+      { query: "washing machine", vertical: "ecommerce" }
     ];
     DESTINATION_WARM = [
       { query: "Indore to Goa", vertical: "flights", city: "Indore" },
