@@ -69,7 +69,7 @@ const MainContent: React.FC = () => {
       {/* Top Header with Try1Second logo, Compare button, Notifications, Profile */}
       <Navbar />
 
-      {/* Subnav strip for 10 verticals when browsing comparison or home */}
+      {/* Subnav strip for 12 verticals when browsing comparison or home */}
       {['compare', 'home'].includes(activeNavTab) && <VerticalNav />}
 
       {/* In Compare tab, show the Kayak-style search & filter bar */}

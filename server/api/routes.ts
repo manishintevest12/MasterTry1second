@@ -45,6 +45,7 @@ import { log } from '../common/logger';
 import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
 import { YATRA_HOTELS_API_KEY } from '../workers/parsers/yatraHotels';
 import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
+import { bmsUpcomingUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion } from '../workers/parsers/bookmyshow';
 
 export const apiRouter = Router();
 
@@ -202,6 +203,46 @@ apiRouter.get('/bus/locations', async (req, res) => {
     return res.json({ locations });
   } catch (e: any) {
     return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+  }
+});
+
+// ---- Upcoming movies for the homepage Upcoming section (owner 22 Oct) ----
+// BMS's own upcoming-discovery tab, browserless cffi like the movies worker.
+// Trailer = YouTube search deeplink (real link, never a fabricated stream URL).
+const upcomingCache = new Map<string, { at: number; movies: any[] }>();
+apiRouter.get('/movies/upcoming', async (req, res) => {
+  const city = String(req.query.city || '').slice(0, 60).trim();
+  const cacheKey = (city || 'default').toLowerCase();
+  const hit = upcomingCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return res.json({ movies: hit.movies });
+  try {
+    const fetchJson = async (url: string) => {
+      const r = await cffiFetch(url, { impersonate: 'safari', timeoutMs: 15_000, headers: { Accept: 'application/json' } });
+      if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+      return JSON.parse(r.body || '{}');
+    };
+    const region = await resolveBmsRegion(city || undefined, fetchJson);
+    // Akamai occasionally 403s a fresh request (edge jitter): one honest retry, then report.
+    let r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: 'safari', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
+    if (r.status !== 200) r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: 'chrome', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
+    if (r.status !== 200) return res.json({ movies: [], error: `BookMyShow upcoming HTTP ${r.status}` });
+    const parsed = parseUpcomingCards(JSON.parse(r.body || '{}'), region);
+    const movies = parsed.map((m) => ({
+      title: m.title,
+      genres: m.genres,
+      likes: m.likes,
+      releaseDate: m.releaseDate, // exactly what BMS prints on the poster overlay; null when BMS does not show one
+      poster: m.poster,
+      pageUrl: m.pageUrl,
+      eventCode: m.eventCode,
+      trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(m.title + ' official trailer')}`,
+      // merchant redirect policy: every exit routes through /api/out via a masking pointer
+      goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) }),
+    }));
+    if (movies.length) upcomingCache.set(cacheKey, { at: Date.now(), movies });
+    return res.json({ movies });
+  } catch (e: any) {
+    return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
   }
 });
 
@@ -474,6 +515,17 @@ function offerToComparisonItem(o: any) {
   if (attrs['sum_insured']) parts.push(`Cover ${attrs['sum_insured']}`);
   if (attrs['theatre']) parts.push(String(attrs['theatre']));
   if (attrs['showtime']) parts.push(String(attrs['showtime']));
+  // Owner 22 Oct: movie cards show TIME + SEAT-CLASS-wise real prices (District/TicketNew
+  // live sessions). attrs['showtimes'] = [{time, theatre, areas:[{label, price}]}].
+  if (attrs['showtimes']) {
+    try {
+      const shows = JSON.parse(String(attrs['showtimes']));
+      if (Array.isArray(shows) && shows.length) {
+        const fmt = (sh: any) => `${sh.time}${Array.isArray(sh.areas) && sh.areas.length ? ` · ${sh.areas.map((a: any) => `${a.label} ₹${a.price}`).join(' / ')}` : ''}`;
+        parts.push(`${shows.length} show${shows.length > 1 ? 's' : ''} today — ${shows.slice(0, 3).map(fmt).join(' | ')}`);
+      }
+    } catch { /* not JSON: skip honestly */ }
+  }
   if (o.location?.city) parts.push(`${o.location.city}`);
   if (attrs['in_stock'] === 'false' || o.availability === 'out_of_stock') parts.push('Currently out of stock');
   // Credit cards: the comparable facts the issuer published (fees, rewards, APR).

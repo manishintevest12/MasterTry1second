@@ -149,7 +149,7 @@ export const PriceAlertsView: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono">
             ₹{metrics.totalMonitoredValue.toLocaleString('en-IN')}
           </div>
-          <span className="text-[10px] text-slate-400 font-medium">10 Verticals Protected</span>
+          <span className="text-[10px] text-slate-400 font-medium">12 Verticals Protected</span>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
@@ -242,7 +242,7 @@ export const PriceAlertsView: React.FC = () => {
               onClick={() => setActiveNavTab('compare')}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
             >
-              Browse 10 Verticals
+              Browse 12 Verticals
             </button>
           </div>
         </div>

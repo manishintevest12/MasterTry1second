@@ -18501,6 +18501,48 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
   }
   return out.slice(0, 40);
 }
+function bmsUpcomingUrl(region, healedBase) {
+  const base = healedBase && /^https:\/\/in\.bookmyshow\.com\//.test(healedBase) ? healedBase.replace(/\/$/, "") : DISCOVER_BASE;
+  return `${base}/upcoming-movies-${region.regionSlug}?region=${encodeURIComponent(region.regionCode)}&embedded=true`;
+}
+function bmsPosterReleaseDate(posterUrl) {
+  const m = /,ie-([A-Za-z0-9+/=]+),/.exec(posterUrl || "");
+  if (!m) return null;
+  try {
+    const txt = Buffer.from(m[1], "base64").toString("utf8").trim();
+    return /[A-Za-z]{3}.{0,4}\d{4}/.test(txt) ? txt : null;
+  } catch {
+    return null;
+  }
+}
+function parseUpcomingCards(payload, region) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const L of payload?.listings || []) {
+    for (const card of L?.cards || []) {
+      const ctaUrl = String(card?.ctaUrl || "");
+      if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
+      const text = Array.isArray(card?.text) ? card.text : [];
+      const title = String(text[0]?.components?.[0]?.text || "").trim();
+      if (!title || title.length > 120) continue;
+      const key = String(card?.id || ctaUrl);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const poster = String(card?.image?.url || "");
+      const likesRaw = String(text[2]?.components?.map((x) => x?.text || "").join("") || "").replace(/\s+/g, " ").trim();
+      out.push({
+        title,
+        genres: String(text[1]?.components?.[0]?.text || "") || null,
+        likes: likesRaw.replace(/^\s*/, "") || null,
+        releaseDate: bmsPosterReleaseDate(poster),
+        poster: poster || null,
+        pageUrl: ctaUrl,
+        eventCode: String(card?.id || "") || null
+      });
+    }
+  }
+  return out.slice(0, 20);
+}
 var REGIONS_URL, DISCOVER_BASE, DEFAULT_REGION, regionsCache, MOVIE_QUERY_NOISE;
 var init_bookmyshow = __esm({
   "server/workers/parsers/bookmyshow.ts"() {
@@ -18830,6 +18872,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
           maxPrice: 0,
           showCount: 0,
           theatres: [],
+          shows: [],
           contentId: null,
           posterUrl: null,
           censor: null,
@@ -18841,6 +18884,10 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       agg.mids.add(mid);
       agg.showCount += 1;
       if (!agg.theatres.includes(cinema.name)) agg.theatres.push(cinema.name);
+      if (agg.shows.length < 8) {
+        const t = String(ss?.showTime || ss?.showtime || "").trim();
+        if (t) agg.shows.push({ time: t, theatre: cinema.name, areas: areas.slice(0, 4) });
+      }
       const contentId = contentByTitle.get(key);
       if (contentId && !agg.contentId) agg.contentId = contentId;
       const mvMeta = moviesMeta.find((mv) => String(mv?.id) === mid);
@@ -19079,6 +19126,7 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
     o.attributes["theatre_count"] = agg.theatres.length;
     o.attributes["shows_today"] = agg.showCount;
+    o.attributes["showtimes"] = JSON.stringify(agg.shows.slice(0, 5));
     o.attributes["data_note"] = forSite ? `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${gwHost === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.` : `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
     const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
@@ -19175,6 +19223,7 @@ var init_movies = __esm({
                   o.attributes["theatres"] = agg.theatres.slice(0, 6).join(" | ");
                   o.attributes["theatre_count"] = String(agg.theatres.length);
                   o.attributes["shows_today"] = String(agg.showCount);
+                  o.attributes["showtimes"] = JSON.stringify(agg.shows.slice(0, 5));
                   o.attributes["data_note"] = `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${host === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on BookMyShow is shown at seat selection.`;
                   o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
                   bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes["price_band"], note: o.attributes["data_note"] });
@@ -28819,6 +28868,16 @@ function offerToComparisonItem(o) {
   if (attrs["sum_insured"]) parts.push(`Cover ${attrs["sum_insured"]}`);
   if (attrs["theatre"]) parts.push(String(attrs["theatre"]));
   if (attrs["showtime"]) parts.push(String(attrs["showtime"]));
+  if (attrs["showtimes"]) {
+    try {
+      const shows = JSON.parse(String(attrs["showtimes"]));
+      if (Array.isArray(shows) && shows.length) {
+        const fmt = (sh) => `${sh.time}${Array.isArray(sh.areas) && sh.areas.length ? ` \xB7 ${sh.areas.map((a) => `${a.label} \u20B9${a.price}`).join(" / ")}` : ""}`;
+        parts.push(`${shows.length} show${shows.length > 1 ? "s" : ""} today \u2014 ${shows.slice(0, 3).map(fmt).join(" | ")}`);
+      }
+    } catch {
+    }
+  }
   if (o.location?.city) parts.push(`${o.location.city}`);
   if (attrs["in_stock"] === "false" || o.availability === "out_of_stock") parts.push("Currently out of stock");
   if (String(o.vertical) === "banking") {
@@ -29001,7 +29060,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, leadHits;
+var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -29040,6 +29099,7 @@ var init_routes = __esm({
     init_curlCffiFetch();
     init_yatraHotels();
     init_mmtAutosuggest();
+    init_bookmyshow();
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", async (_req, res) => {
       const store2 = getStore();
@@ -29176,6 +29236,42 @@ var init_routes = __esm({
         return res.json({ locations });
       } catch (e) {
         return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+      }
+    });
+    upcomingCache = /* @__PURE__ */ new Map();
+    apiRouter.get("/movies/upcoming", async (req, res) => {
+      const city = String(req.query.city || "").slice(0, 60).trim();
+      const cacheKey = (city || "default").toLowerCase();
+      const hit = upcomingCache.get(cacheKey);
+      if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies });
+      try {
+        const fetchJson = async (url) => {
+          const r2 = await cffiFetch(url, { impersonate: "safari", timeoutMs: 15e3, headers: { Accept: "application/json" } });
+          if (r2.status !== 200) throw new Error(`HTTP ${r2.status}`);
+          return JSON.parse(r2.body || "{}");
+        };
+        const region = await resolveBmsRegion(city || void 0, fetchJson);
+        let r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+        if (r.status !== 200) r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+        if (r.status !== 200) return res.json({ movies: [], error: `BookMyShow upcoming HTTP ${r.status}` });
+        const parsed = parseUpcomingCards(JSON.parse(r.body || "{}"), region);
+        const movies = parsed.map((m) => ({
+          title: m.title,
+          genres: m.genres,
+          likes: m.likes,
+          releaseDate: m.releaseDate,
+          // exactly what BMS prints on the poster overlay; null when BMS does not show one
+          poster: m.poster,
+          pageUrl: m.pageUrl,
+          eventCode: m.eventCode,
+          trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(m.title + " official trailer")}`,
+          // merchant redirect policy: every exit routes through /api/out via a masking pointer
+          goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
+        }));
+        if (movies.length) upcomingCache.set(cacheKey, { at: Date.now(), movies });
+        return res.json({ movies });
+      } catch (e) {
+        return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
       }
     });
     apiRouter.get("/geo/search", async (req, res) => {

@@ -219,7 +219,7 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
         ),
         const SizedBox(height: 10),
         Text(
-          'Combines 365-day historical price telemetry with instant cross-platform parity across all 10 verticals. Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.',
+          'Combines 365-day historical price telemetry with instant cross-platform parity across all 12 verticals. Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.',
           style: tx(context, 11.5, color: const Color(0xFFCBD5E1), h: 1.5),
         ),
         const SizedBox(height: 14),

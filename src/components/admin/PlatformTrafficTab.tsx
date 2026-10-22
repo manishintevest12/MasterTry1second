@@ -344,7 +344,7 @@ export const PlatformTrafficTab: FC = () => {
               <span>Metasearch Queries</span>
             </span>
             <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-bold">
-              10 Verticals
+              12 Verticals
             </span>
           </div>
           <div className="flex items-baseline gap-2">

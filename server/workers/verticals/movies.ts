@@ -57,6 +57,7 @@ async function enrichWithGw(
     o.attributes['theatres'] = agg.theatres.slice(0, 6).join(' | ');
     o.attributes['theatre_count'] = agg.theatres.length;
     o.attributes['shows_today'] = agg.showCount;
+    o.attributes['showtimes'] = JSON.stringify(agg.shows.slice(0, 5)); // [{time,theatre,areas:[{label,price}]}]
     o.attributes['data_note'] = forSite
       ? `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${gwHost === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.`
       : `Real area-level seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
@@ -148,6 +149,7 @@ export const moviesWorker: VerticalWorker = {
               o.attributes['theatres'] = agg.theatres.slice(0, 6).join(' | ');
               o.attributes['theatre_count'] = String(agg.theatres.length);
               o.attributes['shows_today'] = String(agg.showCount);
+              o.attributes['showtimes'] = JSON.stringify(agg.shows.slice(0, 5));
               o.attributes['data_note'] = `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${host === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on BookMyShow is shown at seat selection.`;
               (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_min', 'price_max', 'theatres', 'shows_today'];
               bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes['price_band'], note: o.attributes['data_note'] });

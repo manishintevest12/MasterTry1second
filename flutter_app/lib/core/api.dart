@@ -514,6 +514,40 @@ Future<List<RewardTopPick>> fetchRewardsTopPicks(Try1SecondApi api) async {
   return [for (final x in (res['picks'] as List? ?? const [])) if (x is Map<String, dynamic>) RewardTopPick.fromJson(x)];
 }
 
+/// One upcoming movie (GET /api/movies/upcoming): BookMyShow's own upcoming
+/// tab — real posters, release dates (decoded from BMS's poster overlay) and a
+/// YouTube trailer search link. `goUrl` is a masking pointer -> /api/out.
+class UpcomingMovie {
+  final String title;
+  final String? genres;
+  final String? likes;
+  final String? releaseDate;
+  final String? poster;
+  final String pageUrl;
+  final String? eventCode;
+  final String trailerUrl;
+  final String goUrl;
+  const UpcomingMovie(this.title, this.genres, this.likes, this.releaseDate, this.poster, this.pageUrl, this.eventCode, this.trailerUrl, this.goUrl);
+
+  factory UpcomingMovie.fromJson(Map<String, dynamic> j) => UpcomingMovie(
+        '${j['title'] ?? ''}',
+        j['genres'] == null || '${j['genres']}'.isEmpty ? null : '${j['genres']}',
+        j['likes'] == null || '${j['likes']}'.isEmpty ? null : '${j['likes']}',
+        j['releaseDate'] == null || '${j['releaseDate']}'.isEmpty ? null : '${j['releaseDate']}',
+        j['poster'] == null || '${j['poster']}'.isEmpty ? null : '${j['poster']}',
+        '${j['pageUrl'] ?? ''}',
+        j['eventCode'] == null || '${j['eventCode']}'.isEmpty ? null : '${j['eventCode']}',
+        '${j['trailerUrl'] ?? ''}',
+        '${j['goUrl'] ?? ''}',
+      );
+}
+
+/// GET /api/movies/upcoming — upcoming movies for the homepage section.
+Future<List<UpcomingMovie>> fetchUpcomingMovies(Try1SecondApi api) async {
+  final res = await api.getJson('/api/movies/upcoming');
+  return [for (final m in (res['movies'] as List? ?? const [])) if (m is Map<String, dynamic>) UpcomingMovie.fromJson(m)];
+}
+
 /// GET /api/home/showcase — the curated homepage sections under the launch grid.
 Future<List<ShowcaseSection>> fetchHomeShowcase(Try1SecondApi api) async {
   final res = await api.getJson('/api/home/showcase');

@@ -50,7 +50,7 @@ export const Footer: React.FC = () => {
             <div>
               <h4 className="font-bold text-slate-900 text-sm">Real-time Price Tracking</h4>
               <p className="text-slate-500 mt-1 leading-relaxed text-xs">
-                Sub-second live comparisons across 10 verticals with historical low-price alerts so you always book at the bottom.
+                Sub-second live comparisons across 12 verticals with historical low-price alerts so you always book at the bottom.
               </p>
             </div>
           </div>
@@ -169,7 +169,7 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Column 2: 10 Verticals (Part 1) */}
+          {/* Column 2: 12 Verticals (Part 1) */}
           <div>
             <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider mb-3">
               Travel & Commute

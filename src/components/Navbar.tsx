@@ -212,9 +212,9 @@ export const Navbar: React.FC = () => {
             )}
           </div>
 
-          {/* ZONE 3 (>=sm): Compare 10 Verticals, Alerts, Profile Avatar */}
+          {/* ZONE 3 (>=sm): Compare 12 Verticals, Alerts, Profile Avatar */}
           <div className="hidden sm:flex items-center gap-2.5 sm:gap-3 min-w-0 shrink">
-            {/* Compare 10 Verticals Red Pill Button (Exact to screenshot) */}
+            {/* Compare 12 Verticals Red Pill Button (Exact to screenshot) */}
             <div className="relative" ref={menuRef}>
               <button
                 type="button"
@@ -224,7 +224,7 @@ export const Navbar: React.FC = () => {
                 <Clock className="w-4 h-4 text-white" />
                 <span className="tracking-wide">Compare</span>
                 <span className="hidden md:inline text-[10px] font-bold bg-white/20 text-white px-1.5 py-0.2 rounded-full uppercase tracking-wider">
-                  10 Verticals
+                  12 Verticals
                 </span>
                 <ChevronDown
                   className={`w-3.5 h-3.5 text-white/90 transition-transform ${

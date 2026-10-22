@@ -29,6 +29,7 @@ import { PriceLens, PriceLensAndAssistant } from './PriceLensAndAssistant';
 const ChromeInstallSection = lazy(() => import('./ChromeInstallSection').then((m) => ({ default: m.ChromeInstallSection })));
 import { Deferred } from './Deferred';
 const HomeShowcase = lazy(() => import('./HomeShowcase'));
+const UpcomingMovies = lazy(() => import('./UpcomingMovies'));
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
   flights: Plane,
@@ -286,6 +287,14 @@ export const HomeView: React.FC = () => {
            Best in Tech & Gadgets, Steals, Famous Places to Visit, Best Cards, Top Destinations.
            All items are real; redirects go through /api/out (Amazon tag and
            Myntra INR-Deals/Cuelinks injected server-side). Deferred + lazy. */}
+      {/* 2b. UPCOMING MOVIES (owner 22 Oct): real BMS upcoming tab — posters,
+          release dates, Watch Trailer. Sits right below the launch grid. */}
+      <Deferred minHeight={260}>
+      <Suspense fallback={null}>
+      <UpcomingMovies />
+      </Suspense>
+      </Deferred>
+
       <Deferred minHeight={420}>
       <Suspense fallback={null}>
       <HomeShowcase />

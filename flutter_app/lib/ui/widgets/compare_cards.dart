@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1089,6 +1091,7 @@ class GroupCard extends StatelessWidget {
                           _ChipSpecs(it: it, vertical: vertical),
                         ],
                       ),
+                      if (it.isMovie) _MovieShowtimes(raw: it.spec('showtimes')),
                     ],
                   ),
                 ),
@@ -1219,6 +1222,87 @@ class GroupCard extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Movies (owner 22 Oct): per-showtime seat-class prices on the card.
+/// specs['showtimes'] = [{"time","theatre","areas":[{"label","price"}]}]
+/// from the District/TicketNew live sessions. District publishes ISO times
+/// ("2026-10-23T06:30") — shown as a 12h clock; any other raw text passes through.
+class _MovieShowtimes extends StatelessWidget {
+  final String raw;
+  const _MovieShowtimes({required this.raw});
+
+  String _fmt(Object? t) {
+    final s = '$t';
+    final m = RegExp(r'^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})').firstMatch(s);
+    if (m == null) return s;
+    final h = int.parse(m.group(1)!);
+    final ap = h >= 12 ? 'PM' : 'AM';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    return '$h12:${m.group(2)} $ap';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    List shows;
+    try {
+      shows = jsonDecode(raw.isEmpty ? '[]' : raw) as List;
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+    if (shows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final sh in shows.take(3))
+            if (sh is Map)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(5)),
+                      child: Text(
+                        _fmt(sh['time']),
+                        style: tx(context, 9, w: FontWeight.w900, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        '${sh['theatre'] ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tx(context, 9, color: muted(context)),
+                      ),
+                    ),
+                    for (final a in ((sh['areas'] as List?) ?? const []).take(2))
+                      if (a is Map)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).cardColor,
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(color: border(context)),
+                            ),
+                            child: Text(
+                              '${a['label'] ?? ''} ₹${a['price'] ?? ''}',
+                              style: tx(context, 8.5, w: FontWeight.w800, color: ink(context)),
+                            ),
+                          ),
+                        ),
+                  ],
+                ),
+              ),
         ],
       ),
     );

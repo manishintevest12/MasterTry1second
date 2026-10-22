@@ -90,6 +90,14 @@ export interface GwAreaPrice {
   avail: number;
 }
 
+export interface GwShowtime {
+  /** show time exactly as the platform states it, e.g. '12:30 PM' — never reformatted/invented */
+  time: string;
+  theatre: string;
+  /** seat-class prices for THIS show (areas are seat classes: Classic/Prime/Recliner...) */
+  areas: GwAreaPrice[];
+}
+
 export interface GwMovieAgg {
   /** movie ids (mids) that carry this title in the fetched cinema sessions */
   mids: Set<string>;
@@ -98,6 +106,8 @@ export interface GwMovieAgg {
   maxPrice: number;
   showCount: number;
   theatres: string[];
+  /** per-show time + seat-class prices (owner 22 Oct: time and seat-wise pricing on movie cards) */
+  shows: GwShowtime[];
   contentId: number | null;
   posterUrl: string | null;
   censor: string | null;
@@ -157,6 +167,7 @@ export async function gwCityMovieAggregates(
           maxPrice: 0,
           showCount: 0,
           theatres: [],
+          shows: [],
           contentId: null,
           posterUrl: null,
           censor: null,
@@ -168,6 +179,11 @@ export async function gwCityMovieAggregates(
       agg.mids.add(mid);
       agg.showCount += 1;
       if (!agg.theatres.includes(cinema.name)) agg.theatres.push(cinema.name);
+      // per-show time + seat-class prices (cap 8 shows, earliest first per source order)
+      if (agg.shows.length < 8) {
+        const t = String(ss?.showTime || ss?.showtime || '').trim();
+        if (t) agg.shows.push({ time: t, theatre: cinema.name, areas: areas.slice(0, 4) });
+      }
       const contentId = contentByTitle.get(key);
       if (contentId && !agg.contentId) agg.contentId = contentId;
       const mvMeta = moviesMeta.find((mv) => String(mv?.id) === mid);

@@ -131,7 +131,7 @@ export const RadarView: React.FC = () => {
             Try1Second Live Scanner Radar
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Automated crawler analyzing price spreads across all 10 verticals every 0.4 seconds.
+            Automated crawler analyzing price spreads across all 12 verticals every 0.4 seconds.
           </p>
         </div>
 
@@ -201,7 +201,7 @@ export const RadarView: React.FC = () => {
           </div>
 
           <div className="mt-2 text-xs text-slate-400 font-mono">
-            Scanning 10 verticals: Flight OTAs, Quick-Commerce, E-Comm, Rides
+            Scanning 12 verticals: Flight OTAs, Quick-Commerce, E-Comm, Rides
           </div>
         </div>
 

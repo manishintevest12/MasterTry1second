@@ -7,6 +7,7 @@ import '../../core/verticals.dart';
 import '../widgets/home_hero.dart';
 import '../widgets/kit.dart';
 import '../widgets/home_showcase.dart';
+import '../widgets/upcoming_movies_rail.dart';
 import '../widgets/home_lens_and_assistant.dart';
 
 /// Website HomeView: dark hero (engine pill, stat tiles, headline, Price Lens,
@@ -56,6 +57,11 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: _VerticalGrid(state: _state),
         ),
+        // Upcoming Movies (owner 22 Oct): real BMS upcoming tab with posters,
+        // release dates and Watch Trailer — mirrors the web section that sits
+        // directly below the launch grid.
+        const SizedBox(height: 22),
+        UpcomingMoviesRail(api: _state.api),
         // Home Showcase (owner spec 21 Oct): the eight curated sections under
         // the launch grid — real items only, redirects via /api/out.
         const SizedBox(height: 22),

@@ -87,6 +87,40 @@ interface ComparisonCardProps {
   group?: OfferGroup;
 }
 
+/** Movies (owner 22 Oct): show TIME + SEAT-CLASS-wise real prices on the card.
+ *  specs.showtimes = [{time, theatre, areas:[{label, price}]}] from District/TicketNew live sessions.
+ *  District publishes ISO times ("2026-10-23T06:30") — displayed as 12h clock; raw text passes through unchanged. */
+function MovieShowtimes({ raw }: { raw: unknown }) {
+  let shows: any[] = [];
+  try { const v = JSON.parse(String(raw || '[]')); if (Array.isArray(v)) shows = v; } catch { return null; }
+  if (!shows.length) return null;
+  const fmt = (t: string) => {
+    const m = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(String(t || ''));
+    if (!m) return String(t || '');
+    const h = Number(m[1]); const ap = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12;
+    return `${h12}:${m[2]} ${ap}`;
+  };
+  return (
+    <div className="mt-1.5 space-y-1">
+      {shows.slice(0, 3).map((sh: any, i: number) => (
+        <div key={i} className="flex items-center gap-1.5 text-[10.5px] min-w-0">
+          <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-bold whitespace-nowrap shrink-0">{fmt(sh.time)}</span>
+          <span className="text-slate-500 truncate min-w-0">{String(sh.theatre || '')}</span>
+          {Array.isArray(sh.areas) && sh.areas.length > 0 && (
+            <span className="ml-auto flex items-center gap-1 whitespace-nowrap shrink-0">
+              {sh.areas.slice(0, 3).map((a: any, j: number) => (
+                <span key={j} className="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
+                  {String(a.label || '')} ₹{a.price}
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, group }) => {
   // In grouped mode the card is the product's richest listing, priced and linked by its CHEAPEST site.
   const item: ComparisonItem = group
@@ -337,6 +371,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     {item.description}
                   </p>
                 )}
+                {(item as any).vertical === 'movies' && (item.specs as any)?.showtimes && (
+                  <MovieShowtimes raw={(item.specs as any).showtimes} />
+                )}
 
                 {/* Hyper-local Pincode & GPS Delivery Badge */}
                 {['food', 'grocery'].includes(item.vertical) && (
@@ -464,6 +501,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">
                     {item.description}
                   </p>
+                )}
+                {(item as any).vertical === 'movies' && (item.specs as any)?.showtimes && (
+                  <MovieShowtimes raw={(item.specs as any).showtimes} />
                 )}
 
                 {/* Hyper-local Pincode & GPS Delivery Badge for Cab */}

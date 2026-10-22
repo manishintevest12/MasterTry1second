@@ -678,7 +678,7 @@ export const AdminDashboard: React.FC = () => {
               ₹{totalGMV.toLocaleString('en-IN')}
             </div>
             <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">
-              ↑ 18.4% this month across 10 verticals
+              ↑ 18.4% this month across 12 verticals
             </span>
           </div>
 

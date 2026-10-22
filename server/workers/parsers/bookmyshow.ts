@@ -167,3 +167,64 @@ export function parseMovieCards(payload: any, source: SourceConfig, region: BmsR
   }
   return out.slice(0, 40);
 }
+
+/* ===================== UPCOMING MOVIES (owner 22 Oct: homepage Upcoming section) ===================== */
+
+export interface UpcomingMovie {
+  title: string;
+  genres: string | null;
+  likes: string | null;
+  /** Release date exactly as BMS prints it on the poster overlay (base64 in the CDN URL), e.g. '25, Oct 2026'. Never invented. */
+  releaseDate: string | null;
+  poster: string | null;
+  pageUrl: string;
+  eventCode: string | null;
+}
+
+/** BMS discover URL for the UPCOMING movies tab of a region (verified live 22 Oct: HTTP 200, 28 cards for Indore). */
+export function bmsUpcomingUrl(region: BmsRegion, healedBase?: string | null): string {
+  const base = healedBase && /^https:\/\/in\.bookmyshow\.com\//.test(healedBase) ? healedBase.replace(/\/$/, '') : DISCOVER_BASE;
+  return `${base}/upcoming-movies-${region.regionSlug}?region=${encodeURIComponent(region.regionCode)}&embedded=true`;
+}
+
+/** Decode the release-date text BMS bakes into the poster CDN URL (l-text,ie-<base64>,fs-...). Null when absent. */
+export function bmsPosterReleaseDate(posterUrl: string): string | null {
+  const m = /,ie-([A-Za-z0-9+/=]+),/.exec(posterUrl || '');
+  if (!m) return null;
+  try {
+    const txt = Buffer.from(m[1], 'base64').toString('utf8').trim();
+    return /[A-Za-z]{3}.{0,4}\d{4}/.test(txt) ? txt : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse the upcoming-discovery payload into UpcomingMovie rows. Strict: only BMS movie-page cards, never promo cards. */
+export function parseUpcomingCards(payload: any, region: BmsRegion): UpcomingMovie[] {
+  const out: UpcomingMovie[] = [];
+  const seen = new Set<string>();
+  for (const L of payload?.listings || []) {
+    for (const card of L?.cards || []) {
+      const ctaUrl: string = String(card?.ctaUrl || '');
+      if (!ctaUrl.startsWith('https://in.bookmyshow.com/movies/')) continue; // promo/explore cards are not upcoming movies
+      const text: any[] = Array.isArray(card?.text) ? card.text : [];
+      const title = String(text[0]?.components?.[0]?.text || '').trim();
+      if (!title || title.length > 120) continue;
+      const key = String(card?.id || ctaUrl);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const poster = String(card?.image?.url || '');
+      const likesRaw = String(text[2]?.components?.map((x: any) => x?.text || '').join('') || '').replace(/\s+/g, ' ').trim();
+      out.push({
+        title,
+        genres: String(text[1]?.components?.[0]?.text || '') || null,
+        likes: likesRaw.replace(/^\s*/, '') || null,
+        releaseDate: bmsPosterReleaseDate(poster),
+        poster: poster || null,
+        pageUrl: ctaUrl,
+        eventCode: String(card?.id || '') || null,
+      });
+    }
+  }
+  return out.slice(0, 20);
+}
