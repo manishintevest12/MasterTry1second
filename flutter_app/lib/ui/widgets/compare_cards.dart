@@ -391,7 +391,9 @@ class TravelTile extends StatelessWidget {
 
     // Spec pills for cab and general travel
     final vehicleType = it.spec('vehicle type').isNotEmpty ? it.spec('vehicle type') : it.spec('vehicle_type');
-    final seats = it.spec('seats').isNotEmpty ? it.spec('seats') : (it.spec('capacity').isNotEmpty ? it.spec('capacity') : '');
+    // Web parity (22 Oct): bus rows publish 'seats available' (underscore attrs are
+    // space-normalized server-side) — check that key first, then generic fallbacks.
+    final seats = it.spec('seats available', 'seats', 'capacity');
     final tripType = it.spec('trip type').isNotEmpty ? it.spec('trip type') : (it.spec('trip_type').isNotEmpty ? it.spec('trip_type') : '');
 
     // Owner 17 Oct: airline name visible on flight cards alongside the seller website.
