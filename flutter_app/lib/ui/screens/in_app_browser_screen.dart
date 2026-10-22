@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'product_screen.dart';
+import 'package:try1second/core/nav_stack.dart';
 
 /// Derives a friendly seller name from the redirect's final host, mirroring the
 /// seller labels the engine itself uses (Air India, MakeMyTrip, redBus, ...).
@@ -142,10 +143,10 @@ class InAppBrowserScreen extends StatefulWidget {
 class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
   WebViewController? _controller;
   String _currentUrl = '';
-  bool _canGoBack = false;
-  bool _canGoForward = false;
   bool _loading = true;
   bool _acting = false;
+  /// Own-history back/forward (webview canGoBack lies after redirect chains).
+  late final BrowserNavStack _nav;
 
   String get _siteName => hostDisplayName(_currentUrl.isEmpty ? widget.url : _currentUrl);
 
@@ -153,6 +154,7 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
   void initState() {
     super.initState();
     _currentUrl = widget.url;
+    _nav = BrowserNavStack(widget.url);
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
@@ -175,17 +177,35 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
   }
 
   Future<void> _syncState({String? url, bool? loading}) async {
-    final ctl = _controller;
-    if (ctl == null) return;
-    final back = await ctl.canGoBack();
-    final fwd = await ctl.canGoForward();
+    if (url != null) _nav.record(url);
     if (!mounted) return;
     setState(() {
       if (url != null) _currentUrl = url;
       if (loading != null) _loading = loading;
-      _canGoBack = back;
-      _canGoForward = fwd;
     });
+  }
+
+  /// Toolbar Back — always functional: goes back inside the merchant site, and
+  /// when the landing came via a redirect chain it EXITS back to the app
+  /// (never reloads the /api/out pointer, which would bounce forward again).
+  Future<void> _goBack() async {
+    final u = _nav.back();
+    if (u == null) {
+      if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+      return;
+    }
+    _set(loading: true);
+    await _controller?.loadRequest(Uri.parse(u));
+    _syncState(url: u);
+  }
+
+  /// Toolbar Forward — replays a real visited page (redirect entries skipped).
+  Future<void> _goForward() async {
+    final u = _nav.forward();
+    if (u == null) return;
+    _set(loading: true);
+    await _controller?.loadRequest(Uri.parse(u));
+    _syncState(url: u);
   }
 
   Future<void> _refresh() => _controller?.reload() ?? Future.value();
@@ -257,7 +277,7 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
             child: Row(children: [
               // Back arrow — returns to the app
               IconButton(
-                onPressed: () => Navigator.of(context).maybePop(),
+                onPressed: _goBack,
                 icon: const Icon(Icons.keyboard_arrow_left, color: Colors.white, size: 30),
               ),
               // Favicon + seller-name pill; the URL itself is never shown.
@@ -359,13 +379,10 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
             ]),
           ),
           _BottomToolBar(
-            canGoBack: _canGoBack,
-            canGoForward: _canGoForward,
-            onBack: () async {
-              final ctl = _controller;
-              if (ctl != null && await ctl.canGoBack()) await ctl.goBack();
-            },
-            onForward: () => _controller?.goForward(),
+            canGoBack: true, // in-page back, else exit to the app — never dead
+            canGoForward: _nav.canGoForward,
+            onBack: _goBack,
+            onForward: _goForward,
             onRefresh: _refresh,
             onPriceHistory: _priceHistory,
             onExpand: _expand,
