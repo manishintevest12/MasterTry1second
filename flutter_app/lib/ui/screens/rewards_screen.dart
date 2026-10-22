@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
@@ -350,6 +351,37 @@ class _StoreTile extends StatelessWidget {
   }
 }
 
+
+/// Clean official-brand logo domain for a merchant (owner 21 Oct: bank offers
+/// show the seller's crisp logo, not the blurry favicon scrape).
+String _logoDomainOf(String merchant) {
+  const map = {
+    'amazon': 'amazon.in',
+    'flipkart': 'flipkart.com',
+    'myntra': 'myntra.com',
+    'ajio': 'ajio.com',
+    'tatacliq': 'tatacliq.com',
+    'croma': 'croma.com',
+    'meesho': 'meesho.com',
+    'nykaa': 'nykaa.com',
+    'blinkit': 'blinkit.com',
+    'zepto': 'zepto.com',
+    'bigbasket': 'bigbasket.com',
+    'jiomart': 'jiomart.com',
+    'zomato': 'zomato.com',
+    'swiggy': 'swiggy.com',
+    'domino': 'dominos.co.in',
+    'bookmyshow': 'bookmyshow.com',
+    'makemytrip': 'makemytrip.com',
+    'goibibo': 'goibibo.com',
+  };
+  final m = merchant.toLowerCase();
+  for (final e in map.entries) {
+    if (m.contains(e.key)) return e.value;
+  }
+  return '';
+}
+
 class _DealCard extends StatelessWidget {
   const _DealCard({required this.deal});
   final Deal deal;
@@ -361,7 +393,7 @@ class _DealCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       clip: true,
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
+        _DealArt(deal: deal),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -398,6 +430,36 @@ class _DealCard extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// Card art. Bank offers (owner 21 Oct): the seller's crisp OFFICIAL logo on a
+/// clean tile — the scraped favicon image is blurry at this size. Every other
+/// deal kind keeps its real acquired image.
+class _DealArt extends StatelessWidget {
+  const _DealArt({required this.deal});
+  final Deal deal;
+
+  @override
+  Widget build(BuildContext context) {
+    final logoDomain = deal.kind == 'bank_offer' ? _logoDomainOf(deal.merchantName) : '';
+    if (logoDomain.isEmpty) {
+      return NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined);
+    }
+    return Container(
+      width: 96,
+      height: 118,
+      color: Colors.white,
+      alignment: Alignment.center,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: CachedNetworkImage(
+          imageUrl: 'https://logo.clearbit.com/$logoDomain?size=256',
+          fit: BoxFit.contain,
+          errorWidget: (_, __, ___) => NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
+        ),
+      ),
     );
   }
 }
