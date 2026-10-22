@@ -199,9 +199,10 @@ class _CompareScreenState extends State<CompareScreen> {
       _shownCacheKey = _state.cacheQuery[_meta.id];
       // Progressive cold-start: real catalogue rows arrived instantly and the
       // server is still scanning live sources. Poll the same search quietly
-      // until the full live set replaces the partial rows (max ~25s of polls).
-      if (mounted && _res?.pendingRefresh == true && _bgPollCount < 5) {
-        _bgPoll = Timer(const Duration(milliseconds: 4500), () {
+      // until the full live set replaces the partial rows (max ~25s of polls,
+      // now 2s apart so live top-ups land progressively instead of one long wait).
+      if (mounted && _res?.pendingRefresh == true && _bgPollCount < 12) {
+        _bgPoll = Timer(const Duration(milliseconds: 2000), () {
           if (!mounted) return;
           _bgPollCount += 1;
           // force: the partial progressive rows are STILL in the fresh-TTL

@@ -116,6 +116,12 @@ function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } 
  * response's state.pendingRefresh tells them a refresh is still running.
  */
 const inflightPipelines = new Map<string, Promise<SearchResponse>>();
+/** Newest live partial snapshot per cacheKey while a cold pipeline runs (owner 22 Oct):
+ *  a re-poll must serve the sources that have ALREADY landed instead of blocking on
+ *  the full pipeline. `response` memoizes the finalized partial until a newer
+ *  snapshot arrives (each onPartial invalidates it). */
+interface InflightPartial { snap: AcquisitionOutcome; response: SearchResponse | null }
+const inflightPartials = new Map<string, InflightPartial>();
 
 function progressiveCatalogueResponse(
   vertical: string,
@@ -159,11 +165,11 @@ function progressiveCatalogueResponse(
  */
 const RELEVANCE_GATED_CATALOGUE = new Set(['ecommerce', 'grocery', 'food', 'movies', 'movie']);
 
-async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery): Promise<any[]> {
+async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery, maxAgeSec = 3600): Promise<any[]> {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
   let offers = rows
-    .filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < 3600 && r.validation_status !== 'INVALID')
+    .filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < maxAgeSec && r.validation_status !== 'INVALID')
     .map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
@@ -243,6 +249,29 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // honestly with pendingRefresh so clients keep polling instead of spawning work.
   const running = inflightPipelines.get(cacheKey);
   if (running) {
+    // PROGRESSIVE POLL (owner 22 Oct, 'sab verticals slow'): a re-poll must NEVER
+    // block on the full pipeline (that was a 10-30s hang per poll on slow
+    // verticals). Wait at most 600ms for the pipeline to finish; otherwise serve
+    // the newest live partial snapshot first (rows grow as sources land), then
+    // fresh catalogue rows. Each poll is fast AND shows more than the last one.
+    type R = { kind: 'full'; r: SearchResponse } | null;
+    const early = await Promise.race([
+      running.then((r): R => ({ kind: 'full', r }), (): R => null),
+      new Promise<R>((res) => setTimeout(() => res(null), 600)),
+    ]);
+    if (early && early.kind === 'full') return early.r;
+    const memo = inflightPartials.get(cacheKey);
+    if (memo && memo.snap.results.length > 0) {
+      if (!memo.response) {
+        const ctx = await buildLiveCtx(parsed, input);
+        const partial = await finalizeLive(Date.now(), input, parsed, ctx, memo.snap, false);
+        if (partial.results.length > 0) {
+          partial.state.pendingRefresh = true;
+          memo.response = partial;
+        }
+      }
+      if (memo.response) return memo.response;
+    }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running; // nothing to show yet — this caller becomes the one that waits
@@ -277,9 +306,22 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // pipeline — an honest wait, never a fabricated instant answer.
   const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2_200;
   const partialRef: { current: AcquisitionOutcome | null } = { current: null };
+  // FIRST-LIVE-ROW signal (owner 22 Oct, 'sab verticals slow'): slow verticals
+  // (hotels 5-15s per source) never had a row inside a fixed 2.2s window, so the
+  // first paint degenerated to waiting for the FULL pipeline (30s spinners on a
+  // first-ever hotel city). Now the first real row is a RACE LEG: the moment any
+  // source settles with offers we paint immediately instead of idling to a timer.
+  let firstRowResolve: ((snap: AcquisitionOutcome) => void) | null = null;
+  const firstRow = new Promise<RaceOutcome>((resolve) => {
+    firstRowResolve = (snap) => resolve({ kind: 'partial', snap });
+  });
   const full = runLivePipeline(input, parsed, {
     onPartial: (snapshot) => {
-      if (snapshot.results.length > 0) partialRef.current = snapshot;
+      if (snapshot.results.length > 0) {
+        partialRef.current = snapshot;
+        inflightPartials.set(cacheKey, { snap: snapshot, response: null });
+        if (firstRowResolve) { const r = firstRowResolve; firstRowResolve = null; r(snapshot); }
+      }
     },
   })
     .then((response) => {
@@ -295,29 +337,53 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       }
       return response;
     })
-    .finally(() => { inflightPipelines.delete(cacheKey); });
+    .finally(() => { inflightPipelines.delete(cacheKey); inflightPartials.delete(cacheKey); });
   inflightPipelines.set(cacheKey, full);
   full.catch(() => {}); // background pipeline failure never crashes this caller
-  type RaceOutcome = { kind: 'full'; r: SearchResponse } | { kind: 'timer' };
-  const firstPaintTimer = new Promise<RaceOutcome>((resolve) => {
-    setTimeout(() => resolve({ kind: 'timer' }), FIRST_PAINT_MS);
-  });
-  const early: RaceOutcome = await Promise.race([
-    full.then((r): RaceOutcome => ({ kind: 'full', r })),
-    firstPaintTimer,
-  ]);
-  if (early.kind === 'full') return early.r;
-  const snapshot = partialRef.current;
-  if (snapshot && snapshot.results.length > 0) {
-    // The full pipeline persists every offer; the partial path must not double-write.
+  // The full pipeline persists every offer; the partial path must not double-write.
+  const servePartial = async (): Promise<SearchResponse | null> => {
+    const snapshot = partialRef.current;
+    if (!snapshot || snapshot.results.length === 0) return null;
     const ctx = await buildLiveCtx(parsed, input);
     const partial = await finalizeLive(Date.now(), input, parsed, ctx, snapshot, false);
-    if (partial.results.length > 0) {
-      partial.state.pendingRefresh = true;
-      return partial;
-    }
+    if (partial.results.length === 0) return null;
+    partial.state.pendingRefresh = true;
+    return partial;
+  };
+  type RaceOutcome = { kind: 'full'; r: SearchResponse } | { kind: 'partial'; snap: AcquisitionOutcome } | { kind: 'timer' };
+  const early: RaceOutcome = await Promise.race([
+    full.then((r): RaceOutcome => ({ kind: 'full', r })),
+    firstRow,
+    new Promise<RaceOutcome>((resolve) => { setTimeout(() => resolve({ kind: 'timer' }), FIRST_PAINT_MS); }),
+  ]);
+  if (early.kind === 'full') return early.r;
+  if (early.kind === 'partial') {
+    const p = await servePartial();
+    if (p) return p; // a source settled fast: paint NOW, top up in the background
   }
-  return await full; // nothing real yet — wait for the complete pipeline (honest)
+  // FIRST-PAINT FLOOR (owner 22 Oct, 'kaise v fix kro'): the deadline hit without
+  // a live row — serve honest, relevance-gated CATALOGUE rows instead of hanging
+  // on a spinner while the live pipeline finishes behind pendingRefresh. Travel
+  // prices go stale fast, so they borrow only up to 60 min; product/finance
+  // offers change slowly and borrow up to 24h. Every row is CACHED_VERIFIED
+  // (replayedFromCache), nothing is invented; the top-up replaces them with
+  // live prices seconds later.
+  const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
+  const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
+  if (floorOffers.length > 0) {
+    return progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
+  }
+  // Nothing to borrow either: no fixed second timer — the moment the FIRST real
+  // live row lands (or the full pipeline completes) we return. A cold hotel city
+  // paints when its first source settles instead of after the whole pipeline.
+  const next: RaceOutcome = await Promise.race([
+    full.then((r): RaceOutcome => ({ kind: 'full', r })),
+    firstRow,
+  ]);
+  if (next.kind === 'full') return next.r;
+  const p2 = await servePartial();
+  if (p2) return p2;
+  return await full; // honest: nothing real ever arrived
 }
 
 /** Shared acquisition context (state flags + catalogue supplements + sources). */

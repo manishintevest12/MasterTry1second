@@ -1116,7 +1116,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // the same search a few seconds later; the finished pipeline lands in cache
         // and this poll replaces the partial rows with the full live set.
         if (data.pendingRefresh) {
-          setTimeout(() => { void triggerLiveLocationScrape(); }, 4500);
+          setTimeout(() => { void triggerLiveLocationScrape(); }, 2000);
         }
         if (!data.results || data.results.length === 0) {
           // A search shows ONLY what was searched: drop stale rows of an earlier query for this vertical.

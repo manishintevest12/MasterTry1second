@@ -24331,10 +24331,10 @@ function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pend
     totalSearchLatencyMs: Date.now() - start2
   };
 }
-async function freshCatalogueOffers(vertical, input, parsed) {
+async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
@@ -24393,6 +24393,23 @@ async function runSearch(input) {
   }
   const running2 = inflightPipelines.get(cacheKey);
   if (running2) {
+    const early2 = await Promise.race([
+      running2.then((r) => ({ kind: "full", r }), () => null),
+      new Promise((res) => setTimeout(() => res(null), 600))
+    ]);
+    if (early2 && early2.kind === "full") return early2.r;
+    const memo = inflightPartials.get(cacheKey);
+    if (memo && memo.snap.results.length > 0) {
+      if (!memo.response) {
+        const ctx = await buildLiveCtx(parsed, input);
+        const partial = await finalizeLive(Date.now(), input, parsed, ctx, memo.snap, false);
+        if (partial.results.length > 0) {
+          partial.state.pendingRefresh = true;
+          memo.response = partial;
+        }
+      }
+      if (memo.response) return memo.response;
+    }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running2;
@@ -24416,9 +24433,21 @@ async function runSearch(input) {
   }
   const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
   const partialRef = { current: null };
+  let firstRowResolve = null;
+  const firstRow = new Promise((resolve) => {
+    firstRowResolve = (snap) => resolve({ kind: "partial", snap });
+  });
   const full = runLivePipeline(input, parsed, {
-    onPartial: (snapshot2) => {
-      if (snapshot2.results.length > 0) partialRef.current = snapshot2;
+    onPartial: (snapshot) => {
+      if (snapshot.results.length > 0) {
+        partialRef.current = snapshot;
+        inflightPartials.set(cacheKey, { snap: snapshot, response: null });
+        if (firstRowResolve) {
+          const r = firstRowResolve;
+          firstRowResolve = null;
+          r(snapshot);
+        }
+      }
     }
   }).then((response) => {
     if (response.results.length === 0) {
@@ -24429,27 +24458,44 @@ async function runSearch(input) {
     return response;
   }).finally(() => {
     inflightPipelines.delete(cacheKey);
+    inflightPartials.delete(cacheKey);
   });
   inflightPipelines.set(cacheKey, full);
   full.catch(() => {
   });
-  const firstPaintTimer = new Promise((resolve) => {
-    setTimeout(() => resolve({ kind: "timer" }), FIRST_PAINT_MS);
-  });
-  const early = await Promise.race([
-    full.then((r) => ({ kind: "full", r })),
-    firstPaintTimer
-  ]);
-  if (early.kind === "full") return early.r;
-  const snapshot = partialRef.current;
-  if (snapshot && snapshot.results.length > 0) {
+  const servePartial = async () => {
+    const snapshot = partialRef.current;
+    if (!snapshot || snapshot.results.length === 0) return null;
     const ctx = await buildLiveCtx(parsed, input);
     const partial = await finalizeLive(Date.now(), input, parsed, ctx, snapshot, false);
-    if (partial.results.length > 0) {
-      partial.state.pendingRefresh = true;
-      return partial;
-    }
+    if (partial.results.length === 0) return null;
+    partial.state.pendingRefresh = true;
+    return partial;
+  };
+  const early = await Promise.race([
+    full.then((r) => ({ kind: "full", r })),
+    firstRow,
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ kind: "timer" }), FIRST_PAINT_MS);
+    })
+  ]);
+  if (early.kind === "full") return early.r;
+  if (early.kind === "partial") {
+    const p = await servePartial();
+    if (p) return p;
   }
+  const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
+  const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
+  if (floorOffers.length > 0) {
+    return progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
+  }
+  const next = await Promise.race([
+    full.then((r) => ({ kind: "full", r })),
+    firstRow
+  ]);
+  if (next.kind === "full") return next.r;
+  const p2 = await servePartial();
+  if (p2) return p2;
   return await full;
 }
 async function buildLiveCtx(parsedIn, input) {
@@ -24617,7 +24663,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var inflightPipelines, RELEVANCE_GATED_CATALOGUE;
+var inflightPipelines, inflightPartials, RELEVANCE_GATED_CATALOGUE;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -24640,6 +24686,7 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_affiliateNetwork();
     inflightPipelines = /* @__PURE__ */ new Map();
+    inflightPartials = /* @__PURE__ */ new Map();
     RELEVANCE_GATED_CATALOGUE = /* @__PURE__ */ new Set(["ecommerce", "grocery", "food", "movies", "movie"]);
   }
 });
