@@ -117,9 +117,14 @@ export const busWorker: VerticalWorker = {
         try {
           r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 15_000 });
         } catch (e: any) {
-          // Whole redbus.in domain not answering from this egress IP (Akamai tarpit):
+          // Whole redbus.in domain not answering from this egress IP (tarpit):
           // every step hangs until its own timeout. Report honestly, never guess.
-          throw new AcquisitionError('ACCESS_CHALLENGE', `redBus domain unresponsive from this IP after ${Date.now() - t0}ms [${steps.join(' ') || 'no steps recorded'}]`);
+          // Owner bug 22 Oct ("app me sirf abhibus"): this used to be ACCESS_CHALLENGE,
+          // which climbs the 1->5->25->60min challenge ladder — a few tarpits and redBus
+          // went invisible for up to an hour (not even sourcesAttempted). A tarpit is a
+          // TIMEOUT, not a WAF challenge: the flat 60s circuit keeps redBus attempted on
+          // nearly every search, so the honest per-bus / route-page result self-heals.
+          throw new AcquisitionError('TIMEOUT', `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(' ') || 'no steps recorded'}]`);
         }
         steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
         if (r.status === 404) return []; // route page not published — honest unavailable

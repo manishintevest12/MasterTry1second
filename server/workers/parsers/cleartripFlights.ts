@@ -19,7 +19,7 @@
  * BLR-DEL 206, BOM-BLR 176. The old "client-side only" verdict is superseded —
  * the v2 search API is server-rendered JSON with no session/Akamai gate.
  */
-import type { RawSourceItem, SourceConfig } from '../../../types';
+import type { RawSourceItem, SourceConfig } from '../../types';
 import { newRawItem } from '../../sources/contract';
 import { EMT_AIRLINES } from './emtFareCalendar';
 

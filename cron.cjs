@@ -18910,10 +18910,12 @@ function parseAbhiBusServices(json, source, route) {
         // Flutter both read arrival_time + duration_minutes; derive them from AbhiBus's
         // own arriveTime/travelTime fields, never invented.
         ...t.arriveTime ? { arrival_time: String(t.arriveTime).slice(0, 5) } : {},
-        ...t.travelTime ? (() => {
+        ...(() => {
+          if (!t.travelTime) return {};
           const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(t.travelTime).trim());
-          return m ? { duration_minutes: String(Number(m[1]) * 60 + Number(m[2])) } : {};
-        })() : {},
+          const mins = m ? { duration_minutes: String(Number(m[1]) * 60 + Number(m[2])) } : {};
+          return mins;
+        })(),
         // structured facets from AbhiBus's own bus-type string (no invention)
         ac: /non[- ]?a\/?c/i.test(busType) ? "no" : /a\/?c|air conditioned/i.test(busType) ? "yes" : "",
         sleeper: /sleeper/i.test(busType) ? "yes" : /seater/i.test(busType) ? "no" : "",
@@ -19279,7 +19281,7 @@ var init_bus = __esm({
             try {
               r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
             } catch (e) {
-              throw new AcquisitionError("ACCESS_CHALLENGE", `redBus domain unresponsive from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
+              throw new AcquisitionError("TIMEOUT", `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
             }
             steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
             if (r.status === 404) return [];
