@@ -92,13 +92,38 @@ export function brandImageFor(o: NormalizedOffer): string | undefined {
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : undefined;
 }
 
+/** Owner rule (17 Oct food, 22 Oct grocery): PRODUCT cards must never show a merchant
+ * logo in place of a product photo. Grocery/food rows without a real photo stay empty
+ * and the UI renders its honest product placeholder instead of a misleading logo. */
+const PRODUCT_IMAGE_VERTICALS = new Set(['grocery', 'food']);
+
 /** Attach a brand image only where the offer has none of its own. Never overwrites a real product/hotel photo. */
 export function withBrandImages(offers: NormalizedOffer[]): NormalizedOffer[] {
   for (const o of offers) {
     const a: any = o.attributes || (o.attributes = {} as any);
     if (a.image_url || a.image) continue;
+    if (PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
     const img = brandImageFor(o);
     if (img) { a.image_url = img; a.image_is_brand_logo = 'true'; }
+  }
+  return offers;
+}
+
+const FAVICON_URL = /s2\/favicons|brand-logos\//;
+
+/** Purge merchant-logo stand-ins already stored on product rows (stale catalogue rows
+ * persisted before the rule). Runs on every search assembly so old favicons cannot
+ * resurface as fake product photos on grocery/food cards. */
+export function stripMerchantLogoFallbacks(offers: NormalizedOffer[]): NormalizedOffer[] {
+  for (const o of offers) {
+    if (!PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
+    const a: any = o.attributes || {};
+    const isLogo = (u?: string) => !u || a.image_is_brand_logo === 'true' || FAVICON_URL.test(u);
+    if (isLogo(a.image_url)) { delete a.image_url; delete a.image_is_brand_logo; delete a.image_is_lender_logo; }
+    if (Array.isArray(a.image_urls)) {
+      const real = (a.image_urls as string[]).filter((u) => u && !FAVICON_URL.test(u));
+      if (real.length) a.image_urls = real; else delete a.image_urls;
+    }
   }
   return offers;
 }

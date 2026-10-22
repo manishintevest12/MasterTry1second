@@ -25,7 +25,7 @@ import { dedupeOffers, normalizeOffer } from '../pipeline/normalization';
 import { validateOffer } from '../pipeline/validation';
 import { computeEffectivePrice } from '../pipeline/pricing';
 import { computeFreshness, isServable } from '../pipeline/freshness';
-import { withBrandImages, withLenderLogos, withMerchantLogos } from '../pipeline/brandImage';
+import { withBrandImages, withLenderLogos, withMerchantLogos, stripMerchantLogoFallbacks } from '../pipeline/brandImage';
 import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
@@ -504,7 +504,10 @@ async function finalizeLive(
   combined = await attachAffiliateDeepLinks(combined);
 
   // 10. RANKING — comparable offers only, explainable scores
-  const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(withBrandImages(combined)))), { userPincode: input.pincode, userCity: input.city });
+  // 22 Oct: product verticals (grocery/food) never get a merchant logo in place of a
+      // product photo — strip stale favicons first, then let fresh photos through.
+      const branded = stripMerchantLogoFallbacks(withBrandImages(combined));
+      const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(branded))), { userPincode: input.pincode, userCity: input.city });
 
   // State determination — honest, never overclaims
   if (ranked.length === 0) {

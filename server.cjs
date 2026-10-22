@@ -17699,7 +17699,8 @@ function buildImItems(products, term, cityLabel, sourceUrl, cap) {
     for (const t of tokens2) if (hay.includes(t) || t.endsWith("s") && hay.includes(t.slice(0, -1))) score++;
     if (score === 0) continue;
     if (tokens2.length > 1 && score < tokens2.length) score -= 0.5;
-    const imageId = (v.imageIds || [])[0];
+    const mediaId = (v.medias || []).find((m) => m?.id && String(m.type || "MEDIA_TYPE_IMAGE").includes("IMAGE"))?.id;
+    const imageId = (v.imageIds || [])[0] || mediaId;
     const imageUrl = imageId ? `https://media-assets.swiggy.com/swiggy/image/upload/${imageId}` : void 0;
     const inStock = p.inStock === true && p.isAvail !== false;
     const item = {
@@ -18069,21 +18070,25 @@ var init_grocery = __esm({
             }
             const layouts = extractImLayouts(home.body).slice(0, 18);
             const calls = [{ endpoint: "campaign/listing/v2", id: "35019" }, ...layouts];
-            for (const c of calls) {
-              const url = c.endpoint === "layout/v2" ? `${IM_BASE}/api/instamart/layout/v2?layoutId=${c.id}&storeId=${storeId}&clusterId=&lat=${lat}&lng=${lng}&clientId=INSTAMART-APP` : `${IM_BASE}/api/instamart/campaign/listing/v2?layoutId=${c.id}&clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
-              try {
+            const gridUrl = (c) => c.endpoint === "layout/v2" ? `${IM_BASE}/api/instamart/layout/v2?layoutId=${c.id}&storeId=${storeId}&clusterId=&lat=${lat}&lng=${lng}&clientId=INSTAMART-APP` : `${IM_BASE}/api/instamart/campaign/listing/v2?layoutId=${c.id}&clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
+            let pending = calls.slice();
+            while (pending.length) {
+              const batch = pending.splice(0, 6);
+              const results = await Promise.allSettled(batch.map(async (c) => {
+                const url = gridUrl(c);
                 const r = await cffiFetch(url, { impersonate: "chrome", headers: IM_HEADERS, timeoutMs: 15e3 });
-                if (r.status !== 200 || !r.body) continue;
-                let json;
+                if (r.status !== 200 || !r.body) return null;
                 try {
-                  json = JSON.parse(r.body);
+                  return { url, json: JSON.parse(r.body) };
                 } catch {
-                  continue;
+                  return null;
                 }
+              }));
+              for (const res of results) {
+                if (res.status !== "fulfilled" || !res.value) continue;
                 const before = products.length;
-                collectImProducts(json, products);
-                if (products.length > before) sources2.push(url);
-              } catch {
+                collectImProducts(res.value.json, products);
+                if (products.length > before) sources2.push(res.value.url);
               }
               if (products.length > 1500) break;
             }
@@ -23169,10 +23174,29 @@ function withBrandImages(offers) {
   for (const o of offers) {
     const a = o.attributes || (o.attributes = {});
     if (a.image_url || a.image) continue;
+    if (PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
     const img = brandImageFor(o);
     if (img) {
       a.image_url = img;
       a.image_is_brand_logo = "true";
+    }
+  }
+  return offers;
+}
+function stripMerchantLogoFallbacks(offers) {
+  for (const o of offers) {
+    if (!PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
+    const a = o.attributes || {};
+    const isLogo = (u) => !u || a.image_is_brand_logo === "true" || FAVICON_URL.test(u);
+    if (isLogo(a.image_url)) {
+      delete a.image_url;
+      delete a.image_is_brand_logo;
+      delete a.image_is_lender_logo;
+    }
+    if (Array.isArray(a.image_urls)) {
+      const real = a.image_urls.filter((u) => u && !FAVICON_URL.test(u));
+      if (real.length) a.image_urls = real;
+      else delete a.image_urls;
     }
   }
   return offers;
@@ -23233,7 +23257,7 @@ async function withMerchantLogos(offers) {
   }
   return offers;
 }
-var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, LENDER_VERTICAL_IDS, uploadedLogosCache;
+var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, PRODUCT_IMAGE_VERTICALS, FAVICON_URL, LENDER_VERTICAL_IDS, uploadedLogosCache;
 var init_brandImage = __esm({
   "server/pipeline/brandImage.ts"() {
     init_lenderLogo();
@@ -23395,6 +23419,8 @@ var init_brandImage = __esm({
       [/redbus/i, "/brand-logos/redbus.svg"],
       [/big ?basket|bb ?now/i, "/brand-logos/bigbasket.png"]
     ];
+    PRODUCT_IMAGE_VERTICALS = /* @__PURE__ */ new Set(["grocery", "food"]);
+    FAVICON_URL = /s2\/favicons|brand-logos\//;
     LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "creditcards", "account"]);
     uploadedLogosCache = null;
   }
@@ -24861,7 +24887,8 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
-  const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(withBrandImages(combined)))), { userPincode: input.pincode, userCity: input.city });
+  const branded = stripMerchantLogoFallbacks(withBrandImages(combined));
+  const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(branded))), { userPincode: input.pincode, userCity: input.city });
   if (ranked.length === 0) {
     state.servedFrom = "unavailable";
     state.honestNotice = enabledSources.length === 0 ? "No data sources are enabled and verified for this vertical yet. Real results appear once a source is configured and passes validation \u2014 we never show invented prices." : "All configured sources were attempted but returned no verified offers for this query. Partial or cached data appears only when it passes freshness rules.";

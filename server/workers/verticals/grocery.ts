@@ -98,7 +98,7 @@ const IM_HEADERS = {
 interface ImMoney { currencyCode?: string; units?: string | number; nanos?: number }
 interface ImVariation {
   skuId?: string; spinId?: string; quantityDescription?: string;
-  imageIds?: string[];
+  imageIds?: string[]; medias?: Array<{ id?: string; type?: string }>;
   price?: { mrp?: ImMoney; offerPrice?: ImMoney; discountValue?: ImMoney };
 }
 interface ImProduct {
@@ -168,7 +168,11 @@ function buildImItems(products: ImProduct[], term: string, cityLabel: string, so
     for (const t of tokens) if (hay.includes(t) || (t.endsWith('s') && hay.includes(t.slice(0, -1)))) score++;
     if (score === 0) continue;
     if (tokens.length > 1 && score < tokens.length) score -= 0.5; // partial matches rank below full matches
-    const imageId = (v.imageIds || [])[0];
+    // Image chain (22 Oct owner bug: product cards showed the merchant favicon):
+    // variation.imageIds first, then variation.medias[].id (payloads increasingly ship
+    // images there), both resolve to the same media-assets CDN path.
+    const mediaId = (v.medias || []).find((m: any) => m?.id && String(m.type || 'MEDIA_TYPE_IMAGE').includes('IMAGE'))?.id;
+    const imageId = (v.imageIds || [])[0] || mediaId;
     const imageUrl = imageId ? `https://media-assets.swiggy.com/swiggy/image/upload/${imageId}` : undefined;
     const inStock = p.inStock === true && p.isAvail !== false;
     const item: any = {
@@ -478,23 +482,31 @@ export const groceryWorker: VerticalWorker = {
         }
 
         // Collect product grids: Top Deals campaign + home banner layouts (cap requests).
+        // 22 Oct speed fix: these 15s-timeout grid calls were SEQUENTIAL, so a cold
+        // grocery search waited on up to 19 round-trips before Instamart settled —
+        // one of the four live 10-min sources landing 20-30s late read as
+        // "10-min grocery is very slow". Now fetched in bounded-6 parallel batches;
+        // total wall time collapses to ~2 slow calls instead of the sum of all.
         const layouts = extractImLayouts(home.body).slice(0, 18);
         const calls: Array<{ endpoint: string; id: string }> = [{ endpoint: 'campaign/listing/v2', id: '35019' }, ...layouts];
-        for (const c of calls) {
-          const url =
-            c.endpoint === 'layout/v2'
-              ? `${IM_BASE}/api/instamart/layout/v2?layoutId=${c.id}&storeId=${storeId}&clusterId=&lat=${lat}&lng=${lng}&clientId=INSTAMART-APP`
-              : `${IM_BASE}/api/instamart/campaign/listing/v2?layoutId=${c.id}&clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
-          try {
+        const gridUrl = (c: { endpoint: string; id: string }) =>
+          c.endpoint === 'layout/v2'
+            ? `${IM_BASE}/api/instamart/layout/v2?layoutId=${c.id}&storeId=${storeId}&clusterId=&lat=${lat}&lng=${lng}&clientId=INSTAMART-APP`
+            : `${IM_BASE}/api/instamart/campaign/listing/v2?layoutId=${c.id}&clientId=INSTAMART-APP&lat=${lat}&lng=${lng}`;
+        let pending = calls.slice();
+        while (pending.length) {
+          const batch = pending.splice(0, 6);
+          const results = await Promise.allSettled(batch.map(async (c) => {
+            const url = gridUrl(c);
             const r = await cffiFetch(url, { impersonate: 'chrome', headers: IM_HEADERS, timeoutMs: 15_000 });
-            if (r.status !== 200 || !r.body) continue;
-            let json: any;
-            try { json = JSON.parse(r.body); } catch { continue; }
+            if (r.status !== 200 || !r.body) return null;
+            try { return { url, json: JSON.parse(r.body) }; } catch { return null; }
+          }));
+          for (const res of results) {
+            if (res.status !== 'fulfilled' || !res.value) continue;
             const before = products.length;
-            collectImProducts(json, products);
-            if (products.length > before) sources.push(url);
-          } catch {
-            /* one grid failing never blocks the source */
+            collectImProducts(res.value.json, products);
+            if (products.length > before) sources.push(res.value.url);
           }
           if (products.length > 1500) break;
         }
