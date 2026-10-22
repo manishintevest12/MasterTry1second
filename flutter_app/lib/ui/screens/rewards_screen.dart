@@ -9,8 +9,6 @@ import '../../core/app_state.dart';
 import '../../core/auth.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
-import 'profile_screen.dart';
-
 /// Rewards Hub (website RewardsHub + OffersHub): wallet with OmniPoints and
 /// free spins, the real Spin & Earn wheel, referral link, and the Deals &
 /// Coupons hub with per-store tiles (UP TO X% OFF) and live deal cards.
@@ -359,8 +357,6 @@ class _StoreTile extends StatelessWidget {
     );
   }
 }
-
-
 /// Clean official-brand logo domain for a merchant (owner 21 Oct: bank offers
 /// show the seller's crisp logo, not the blurry favicon scrape).
 String _logoDomainOf(String merchant) {
@@ -769,8 +765,6 @@ class _ReferralTabState extends State<_ReferralTab> {
     );
   }
 }
-
-
 // ---------------------------------------------------------------------------
 // Top Picks rail (website RewardsTopPicks): one best pick per vertical.
 // Admin-curated picks first, live auto-picks from the real offers catalogue

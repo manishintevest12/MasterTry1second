@@ -6,7 +6,6 @@ import '../../core/auth.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
 import 'alerts_screen.dart';
-import 'settings_screen.dart';
 
 /// Profile (website ProfileModal): Google sign-in -> session, wallet with
 /// OmniPoints + spins, quick actions, honest sign-out. End-to-end auth:
@@ -109,11 +108,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _GoogleButton(onTap: _auth.busy ? () {} : _login, busy: _auth.busy)
               else
                 RedButton('Log out', onTap: _logout, icon: Icons.logout_rounded, expand: true),
-              if (!signedIn && !_auth.isConfigured) ...[
-                const SizedBox(height: 8),
-                Text('Google sign-in needs GOOGLE_SERVER_CLIENT_ID in this build.',
-                    textAlign: TextAlign.center, style: tx(context, 9.5, color: muted(context))),
-              ],
             ]),
           ),
           if (signedIn) ...[
@@ -132,7 +126,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             T1SOutlineButton('My Price Alerts', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlertsScreen())), icon: Icons.notifications_active_outlined),
           ],
           const SizedBox(height: 14),
-          T1SOutlineButton('Settings', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())), icon: Icons.settings_outlined),
         ],
       ),
     );

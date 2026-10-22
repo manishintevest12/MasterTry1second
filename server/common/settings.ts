@@ -57,7 +57,13 @@ export const settings = {
    */
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID || 'try1second-66273',
   /** Google OAuth client IDs allowed as the `aud` of mobile-app Google ID tokens (comma separated). */
-  googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || '').split(',').map((e) => e.trim()).filter(Boolean),
+  // Accepted ID-token audiences for mobile Google sign-in (/api/auth/google-mobile).
+  // Default = the OAuth client in flutter_app/android/app/google-services.json: the
+  // google_sign_in Android plugin uses it as the audience via default_web_client_id,
+  // so every plain build works without owner env setup. Override/extend via env.
+  googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS
+    || '49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com'
+  ).split(',').map((e) => e.trim()).filter(Boolean),
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
   // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click

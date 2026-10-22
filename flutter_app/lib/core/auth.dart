@@ -6,9 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 
-/// Web OAuth client id (same Google Cloud project as the site's Firebase login).
-/// Supplied at build time: `--dart-define=GOOGLE_SERVER_CLIENT_ID=xxxx.apps.googleusercontent.com`.
-/// When empty, Google sign-in is reported honestly as "not configured" instead of failing mid-flow.
+/// OPTIONAL build-time override: `--dart-define=GOOGLE_SERVER_CLIENT_ID=xxxx.apps.googleusercontent.com`.
+/// When empty we pass null to the plugin, and the Android plugin falls back to
+/// default_web_client_id from google-services.json (same Google Cloud project as
+/// the site's Firebase login) — so sign-in works in every plain build, no
+/// dart-define needed. The resulting ID-token audience is whitelisted server-side.
 const String kGoogleServerClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
 
 enum AuthStatus { unknown, signedOut, signedIn }
@@ -27,7 +29,6 @@ class AuthService extends ChangeNotifier {
   bool busy = false;
   bool _googleReady = false;
 
-  bool get isConfigured => kGoogleServerClientId.isNotEmpty;
   bool get signedIn => status == AuthStatus.signedIn && session != null;
   AuthUser? get user => session?.user;
   String? get token => session?.token;
@@ -65,16 +66,14 @@ class AuthService extends ChangeNotifier {
   Future<bool> signInWithGoogle(Try1SecondApi api) async {
     if (busy) return false;
     error = null;
-    if (!isConfigured) {
-      error = 'Google sign-in is not configured in this build yet.';
-      notifyListeners();
-      return false;
-    }
     busy = true;
     notifyListeners();
     try {
       if (!_googleReady) {
-        await GoogleSignIn.instance.initialize(serverClientId: kGoogleServerClientId);
+        // Empty define -> null -> plugin uses default_web_client_id from google-services.json.
+        await GoogleSignIn.instance.initialize(
+          serverClientId: kGoogleServerClientId.isNotEmpty ? kGoogleServerClientId : null,
+        );
         _googleReady = true;
       }
       final account = await GoogleSignIn.instance.authenticate();
