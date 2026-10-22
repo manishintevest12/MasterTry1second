@@ -4,7 +4,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { itemFromOffer, itemFromAffiliate, imageFromAttributes } from '../server/home/showcase';
+
+const mk = (id: string, merchant: string): any => ({ id, title: id, merchant, merchantLogo: null, image: 'https://x/i.jpg', price: 1, mrp: null, discountPct: null, rating: null, badge: null, url: '/api/out?t=x' });
+import { itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant } from '../server/home/showcase';
 
 test('itemFromOffer builds a masked, priced, honest showcase item', () => {
   const item = itemFromOffer({
@@ -48,4 +50,30 @@ test('imageFromAttributes reads single and gallery image keys, https only', () =
   assert.strictEqual(imageFromAttributes('{"image_url":"https://z.jpg"}'), 'https://z.jpg');
   assert.strictEqual(imageFromAttributes({ image_url: 'http://nope.jpg' }), null);
   assert.strictEqual(imageFromAttributes(null), null);
+});
+
+test('merchant spread: a single-source batch never fills a section (owner 22 Oct)', () => {
+  // 30 freshest rows all from Myntra, as production served before the fix.
+  const oneMerchant = Array.from({ length: 30 }, (_, i) => mk(`m${i}`, 'Myntra'));
+  const spread = diversifyByMerchant(oneMerchant, 3, 12);
+  assert.strictEqual(spread.length, 3); // only maxPerMerchant from the sole seller
+});
+
+test('merchant spread: round-robins every present seller', () => {
+  const pool = [
+    ...Array.from({ length: 10 }, (_, i) => mk(`a${i}`, 'Amazon')),
+    ...Array.from({ length: 10 }, (_, i) => mk(`f${i}`, 'Flipkart')),
+    ...Array.from({ length: 10 }, (_, i) => mk(`n${i}`, 'Nykaa')),
+  ];
+  // 3 sellers x max 3 each = 9 honest items; never more from one seller
+  const spread = diversifyByMerchant(pool, 3, 12);
+  assert.strictEqual(spread.length, 9);
+  const counts = new Map<string, number>();
+  for (const it of spread) counts.set(it.merchant, (counts.get(it.merchant) || 0) + 1);
+  assert.strictEqual(counts.get('Amazon'), 3); // every seller gets even slots
+  assert.strictEqual(counts.get('Flipkart'), 3);
+  assert.strictEqual(counts.get('Nykaa'), 3);
+  // and with four sellers the section reaches the full 12 (3 each).
+  const pool4 = [...pool, ...Array.from({ length: 10 }, (_, i) => mk(`r${i}`, 'Reliance Digital'))];
+  assert.strictEqual(diversifyByMerchant(pool4, 3, 12).length, 12);
 });

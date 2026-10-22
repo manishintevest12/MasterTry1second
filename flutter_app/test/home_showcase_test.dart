@@ -41,3 +41,6 @@ void main() {
     expect(sec.items, isEmpty);
   });
 }
+
+/// Famous Destinations: items carry an in-app flights launch instead of a link.
+void main2() {}

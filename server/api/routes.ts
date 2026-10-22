@@ -721,6 +721,21 @@ apiRouter.post('/lens', async (req, res) => {
 apiRouter.post('/product-page', async (req, res) => {
   const input = String(req.body?.input || req.body?.url || '').trim().slice(0, 2000);
   const textQuery = String(req.body?.query || '').trim().slice(0, 200);
+  // Seed offers come from the exact card the user clicked "Compare" on. The engine's
+  // fresh search can flake per-attempt (a source circuit may be in backoff right now),
+  // so the sellers that were ALREADY found for this product stay visible on the
+  // comparison page. Each seed url must be one of our own masking pointers.
+  const seedRaw = Array.isArray(req.body?.seed) ? req.body.seed.slice(0, 12) : [];
+  const seed = seedRaw
+    .map((x: any) => ({
+      seller: String(x?.seller || '').trim().slice(0, 60),
+      title: String(x?.title || '').trim().slice(0, 120),
+      price: Number(x?.price) || 0,
+      listPrice: Number(x?.listPrice) || 0,
+      image: String(x?.image || '').startsWith('https://') ? String(x.image).slice(0, 500) : null,
+      url: String(x?.url || '').startsWith('/api/out') ? String(x.url).slice(0, 2000) : '',
+    }))
+    .filter((x: any) => x.seller && x.price > 0 && x.url);
   const url = extractUrl(input);
   let product: any = null;
   let lensQuery = '';
@@ -741,9 +756,28 @@ apiRouter.post('/product-page', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Paste a product link or type a product name.' });
   }
 
-  const response = await runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput);
+  // Resilience (extension deep-link fix): one exact-title search can flake per attempt
+  // (a source circuit in backoff, or a stale cache entry from a transient failure), so a
+  // second, broader query (brand + model, capacities dropped) runs in parallel. Each hits
+  // its own cache/acquisition path; the union maximises the sellers found. isSameProduct
+  // still decides what counts as this product, so a broader query never adds false rows.
+  const broadQuery = (() => {
+    const caps = new Set((lensQuery.match(/\b\d+\s?(gb|tb)\b/gi) || []).map((m: string) => m.toLowerCase().replace(/\s/g, '')));
+    const toks = lensQuery.split(/\s+/).filter(Boolean);
+    const keep = toks.filter((t: string) => !caps.has(t.toLowerCase().replace(/\s/g, ''))).slice(0, 4).join(' ');
+    return keep && keep !== lensQuery ? keep : '';
+  })();
+  const searches: Array<Promise<any>> = [
+    runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput),
+  ];
+  if (broadQuery) searches.push(runSearch({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput));
+  const responses = await Promise.all(searches);
+  const seenIds = new Set<string>();
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-  const all = response.results.map((o: any) => ({ o, price: priceOf(o) })).filter((x) => x.price > 0);
+  const all = responses.flatMap((r: any) => r.results || [])
+    .filter((o: any) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id)))
+    .map((o: any) => ({ o, price: priceOf(o) }))
+    .filter((x) => x.price > 0);
   const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ''))).sort((a, b) => a.price - b.price);
   const toRow = ({ o, price }: any) => {
     const attrs = o.attributes || {};
@@ -775,6 +809,21 @@ apiRouter.post('/product-page', async (req, res) => {
     .sort((a, b) => a.row.price - b.row.price)
     .slice(0, 30)
     .map(({ row, count }) => ({ ...toRow(row), variantCount: count }));
+  // Seed rows from the clicked card: sellers the fresh search did not return this
+  // attempt. Their urls are already masking pointers (built when the card's quotes
+  // were acquired), so they redirect through /api/out exactly like search rows.
+  const offerSellers = new Set(offers.map((o: any) => String(o.seller).toLowerCase().trim()));
+  for (const sd of seed) {
+    const k = sd.seller.toLowerCase().trim();
+    if (offerSellers.has(k)) continue;
+    offers.push({
+      id: `seed-${k}`, title: sd.title, seller: sd.seller, price: sd.price,
+      listPrice: sd.listPrice || 0, image: sd.image, images: sd.image ? [sd.image] : [],
+      availability: 'unknown', rating: null, reviews: null, canonicalEntityId: null,
+      goUrl: sd.url, variantCount: 0,
+    });
+  }
+  offers.sort((a: any, b: any) => a.price - b.price);
   const cheapest = offers[0] || null;
 
   // Related: other priced ecommerce results that are NOT this product (de-duplicated by title).
@@ -808,7 +857,7 @@ apiRouter.post('/product-page', async (req, res) => {
   res.json({
     success: true, found: true, product, searchedAs: lensQuery, images,
     cheapest, offers, related, history, historyEntity, deal, pageVsCheapest,
-    servedFrom: response.state?.servedFrom,
+    servedFrom: responses[0]?.state?.servedFrom,
     message: offers.length ? undefined : 'No verified listing of this exact product was found on our sources right now.',
   });
 });
@@ -928,6 +977,74 @@ apiRouter.get('/picks', async (req, res) => {
     res.json({ success: true, picks });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not load picks' });
+  }
+});
+
+// GET /api/rewards/top-picks -> one best pick per vertical for the Rewards Top Picks section.
+// Admin-curated picks (marketing placements) take precedence; verticals without one get an
+// AUTO pick derived from the live offers catalogue (real rows only, never fabricated).
+// Every destination is served as a masking pointer (/api/out) so affiliate tracking is
+// injected server-side (owner rule: ALL rewards/ads redirect through /api/out).
+apiRouter.get('/rewards/top-picks', async (_req, res) => {
+  try {
+    const { listTopPicks } = await import('../marketing/placements');
+    const { itemFromOffer, imageFromAttributes, fetchVerticalOffers, pickTopOfferRow, ageDays } = await import('../home/showcase');
+
+    const VERTICALS = ['ecommerce', 'grocery', 'food', 'flights', 'hotels', 'bus', 'cab', 'movie',
+      'loans', 'insurance', 'creditcards', 'account'];
+
+    const adminPicks = await listTopPicks(undefined, false);
+    const picks: any[] = [];
+    const covered = new Set<string>();
+
+    for (const p of adminPicks || []) {
+      const v = String(p.vertical || '').toLowerCase();
+      covered.add(v);
+      const dest = String(p.destination_url || '').trim();
+      if (!dest) continue; // honest: a pick with no destination cannot redirect, so it is skipped
+      picks.push({
+        vertical: v,
+        source: 'admin',
+        partnerName: p.partner_name || '',
+        headline: p.headline || '',
+        offerText: p.offer_text || null,
+        priceBadge: p.price_badge || null,
+        badgeText: p.badge_text || null,
+        rating: p.rating ?? null,
+        image: p.image_url || null,
+        ctaText: p.cta_text || 'Grab Deal',
+        url: dest.startsWith('/api/out') ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}` }),
+      });
+    }
+
+    // Auto picks from the live catalogue for verticals the admin has not curated.
+    // Store-agnostic (owner 22 Oct): the pool fetch keeps SQL to shapes both the
+    // MySQL and the file store parse; all selection math runs in JS.
+    for (const v of VERTICALS) {
+      if (covered.has(v)) continue;
+      const rows = await fetchVerticalOffers(v, 300);
+      const row = pickTopOfferRow(rows);
+      if (!row) continue;
+      const item = itemFromOffer(row);
+      if (!item) continue;
+      picks.push({
+        vertical: v,
+        source: 'live',
+        partnerName: item.merchant,
+        headline: String(row.title || '').slice(0, 90),
+        offerText: item.badge,
+        priceBadge: item.price != null ? `Rs ${Math.round(item.price)}` : null,
+        badgeText: item.discountPct ? `${item.discountPct}% OFF` : null,
+        rating: item.rating,
+        image: item.image,
+        ctaText: 'View Deal',
+        url: item.url,
+      });
+    }
+
+    res.json({ success: true, picks });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load top picks' });
   }
 });
 

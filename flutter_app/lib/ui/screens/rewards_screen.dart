@@ -84,6 +84,7 @@ class _DealsHub extends StatefulWidget {
 
 class _DealsHubState extends State<_DealsHub> {
   List<Deal>? _deals;
+  List<RewardTopPick>? _picks; // Rewards Top Picks (owner 21 Oct): one per vertical
   Map<String, int> _counts = const {};
   String? _error;
   String? _merchant;
@@ -100,6 +101,10 @@ class _DealsHubState extends State<_DealsHub> {
   void initState() {
     super.initState();
     _load();
+    // Top Picks rail: admin-curated picks + live auto-picks, all /api/out redirects.
+    fetchRewardsTopPicks(widget.state.api).then((picks) {
+      if (mounted) setState(() => _picks = picks);
+    }).catchError((_) {}); // honest: rail simply stays hidden on failure
   }
 
   Future<void> _load({String? merchant, String? vertical}) async {
@@ -171,6 +176,10 @@ class _DealsHubState extends State<_DealsHub> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
+          if ((_picks ?? const []).isNotEmpty) ...[
+            _TopPicksRail(picks: _picks!, state: widget.state),
+            const SizedBox(height: 14),
+          ],
           Row(children: [
             Expanded(
               child: TextField(
@@ -738,6 +747,119 @@ class _ReferralTabState extends State<_ReferralTab> {
           ]),
         ),
       ],
+    );
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Top Picks rail (website RewardsTopPicks): one best pick per vertical.
+// Admin-curated picks first, live auto-picks from the real offers catalogue
+// otherwise; every card redirects through its masking pointer (/api/out).
+// ---------------------------------------------------------------------------
+
+const _kPickVerticals = <String, String>{
+  'ecommerce': 'Shopping', 'grocery': 'Grocery', 'food': 'Food', 'flights': 'Flights',
+  'hotels': 'Hotels', 'bus': 'Bus', 'cab': 'Cab', 'movie': 'Movies', 'loans': 'Loans',
+  'insurance': 'Insurance', 'creditcards': 'Credit Cards', 'account': 'Accounts',
+};
+
+class _TopPicksRail extends StatelessWidget {
+  const _TopPicksRail({required this.picks, required this.state});
+  final List<RewardTopPick> picks;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Icon(Icons.workspace_premium_rounded, size: 15, color: T1SColors.red),
+        const SizedBox(width: 6),
+        Expanded(child: Text('TOP PICKS — ONE BEST DEAL PER VERTICAL', style: tx(context, 11.5, w: FontWeight.w900, ls: .5))),
+      ]),
+      const SizedBox(height: 8),
+      SizedBox(
+        height: 172,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: picks.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (c, i) => _TopPickCard(pick: picks[i], state: state),
+        ),
+      ),
+    ]);
+  }
+}
+
+class _TopPickCard extends StatelessWidget {
+  const _TopPickCard({required this.pick, required this.state});
+  final RewardTopPick pick;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = isDark(context);
+    return GestureDetector(
+      onTap: pick.url.isEmpty ? null : () => openDeal(pick.url, sellerName: pick.partnerName),
+      child: Container(
+        width: 150,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: dark ? T1SColors.slate900 : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: border(context)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            height: 84,
+            width: double.infinity,
+            child: Stack(children: [
+              NetImage(pick.image, fit: BoxFit.cover, bg: dark ? T1SColors.slate800 : T1SColors.slate50),
+              Positioned(
+                top: 6, left: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(999)),
+                  child: Text((_kPickVerticals[pick.vertical] ?? pick.vertical).toUpperCase(),
+                      style: const TextStyle(fontSize: 7.5, fontWeight: FontWeight.w900, color: Colors.white)),
+                ),
+              ),
+              if (pick.badgeText != null)
+                Positioned(
+                  bottom: 6, left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: const Color(0xFFFACC15), borderRadius: BorderRadius.circular(999)),
+                    child: Text(pick.badgeText!, style: const TextStyle(fontSize: 7.5, fontWeight: FontWeight.w900, color: T1SColors.slate900)),
+                  ),
+                ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                height: 26,
+                child: Text(pick.headline, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 9.5, w: FontWeight.w800, h: 1.12)),
+              ),
+              const SizedBox(height: 2),
+              Text('via ${pick.partnerName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 9, color: muted(context))),
+              if (pick.priceBadge != null) ...[
+                const SizedBox(height: 2),
+                Text(pick.priceBadge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10.5, w: FontWeight.w900, color: T1SColors.red)),
+              ],
+              const SizedBox(height: 5),
+              Container(
+                width: double.infinity,
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
+                child: Text(pick.ctaText, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900, color: Colors.white)),
+              ),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 }

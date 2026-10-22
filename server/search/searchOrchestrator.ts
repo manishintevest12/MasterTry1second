@@ -28,6 +28,7 @@ import { withBrandImages, withLenderLogos, withMerchantLogos } from '../pipeline
 import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
+import { passesQueryRelevance } from './queryRelevance';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
@@ -325,7 +326,10 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery): Prom
   // not round-tripped), so it is dropped; catalogue rows only supplement listings live did not return.
   const liveIdentity = (o: NormalizedOffer) => `${o.vertical}|${o.title.toLowerCase()}|${o.seller.toLowerCase()}|${o.travel?.date || ''}|${o.travel?.route || ''}`;
   const liveKeys = new Set(liveOffers.map(liveIdentity));
-  const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)));
+  // Query-relevance gate (owner 22 Oct): the catalogue is vertical-wide, so a
+  // fresh-but-unrelated batch (e.g. iPhones) must never supplement a watch/TV
+  // query. Only rows sharing stemmed title tokens with the typed query replay.
+  const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
 
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules

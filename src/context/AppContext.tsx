@@ -329,8 +329,8 @@ interface AppContextType {
   /** Home AI assistant handoff: the vertical's search form consumes this once to fill its boxes and search. */
   pendingAssistantSearch: { vertical: string; query: string; date?: string } | null;
   /** In-site product page (Price Lens click-through): what to load, and the opener. */
-  productPageRequest: { input?: string; query?: string; nonce: number } | null;
-  openProductPage: (req: { input?: string; query?: string }) => void;
+  productPageRequest: { input?: string; query?: string; nonce: number; seed?: Array<{ seller: string; title: string; price: number; listPrice?: number; image?: string | null; url: string }>; gallery?: string[] } | null;
+  openProductPage: (req: { input?: string; query?: string; seed?: Array<{ seller: string; title: string; price: number; listPrice?: number; image?: string | null; url: string }>; gallery?: string[] }) => void;
   setPendingAssistantSearch: (p: { vertical: string; query: string; date?: string } | null) => void;
 
   // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
@@ -438,7 +438,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     } catch {}
   }, [activeNavTab]);
-  const [rewardsSubTab, setRewardsSubTab] = useState<RewardsSubTab>('spin');
+  const [rewardsSubTab, setRewardsSubTab] = useState<RewardsSubTab>('top');
   const [userLocation, setUserLocation] = useState<UserLocationState>(DEFAULT_USER_LOCATION);
   const [isGpsLocating, setIsGpsLocating] = useState<boolean>(false);
   const [isCompareMenuOpen, setIsCompareMenuOpen] = useState<boolean>(false);
@@ -995,7 +995,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const [pendingAssistantSearch, setPendingAssistantSearch] = useState<{ vertical: string; query: string; date?: string } | null>(null);
-  const [productPageRequest, setProductPageRequest] = useState<{ input?: string; query?: string; nonce: number } | null>(null);
+  const [productPageRequest, setProductPageRequest] = useState<{ input?: string; query?: string; nonce: number; seed?: Array<{ seller: string; title: string; price: number; listPrice?: number; image?: string | null; url: string }>; gallery?: string[] } | null>(null);
 
   const handleSetVertical = (newVertical: VerticalId) => {
     setVertical(newVertical);
@@ -2580,7 +2580,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         triggerLiveLocationScrape,
         pendingAssistantSearch,
         productPageRequest,
-        openProductPage: (req: { input?: string; query?: string }) => {
+        openProductPage: (req: { input?: string; query?: string; seed?: Array<{ seller: string; title: string; price: number; listPrice?: number; image?: string | null; url: string }>; gallery?: string[] }) => {
           setProductPageRequest({ ...req, nonce: Date.now() });
           setActiveNavTab('product');
           window.scrollTo({ top: 0, behavior: 'smooth' });

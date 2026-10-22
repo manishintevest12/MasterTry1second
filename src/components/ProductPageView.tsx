@@ -66,7 +66,7 @@ export const ProductPageView: React.FC = () => {
       try {
         const res = await fetch('/api/product-page', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: productPageRequest.input, query: productPageRequest.query }),
+          body: JSON.stringify({ input: productPageRequest.input, query: productPageRequest.query, seed: productPageRequest.seed, gallery: productPageRequest.gallery }),
         });
         const d: PageData = await res.json();
         if (cancelled) return;
@@ -89,7 +89,12 @@ export const ProductPageView: React.FC = () => {
   const current = cheapest?.price ?? data?.product?.pagePrice ?? 0;
   const listPrice = cheapest?.listPrice && cheapest.listPrice > current ? cheapest.listPrice : 0;
   const off = listPrice ? Math.round(((listPrice - current) / listPrice) * 100) : 0;
-  const images = useMemo(() => (data?.images || []).slice(0, 8), [data]);
+  const images = useMemo(() => {
+    // Merge the gallery from the clicked card with the server images (real photos only).
+    const merged = [...(data?.images || [])];
+    for (const g of productPageRequest?.gallery || []) if (g.startsWith('https://') && !merged.includes(g)) merged.push(g);
+    return merged.slice(0, 8);
+  }, [data, productPageRequest?.nonce]);
 
   // history filtered by range
   const hist = useMemo(() => {

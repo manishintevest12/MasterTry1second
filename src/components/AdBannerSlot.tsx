@@ -1,0 +1,98 @@
+import { useEffect, useRef, useState } from 'react';
+import { Megaphone } from 'lucide-react';
+
+/**
+ * Generic ad banner slot for the Rewards section (owner request 21 Oct: AdSense +
+ * banner advertisement slots inside Rewards, every element redirects).
+ * Renders ONE of:
+ *  - Google AdSense unit (admin configures ca-pub client + slot under this slot key)
+ *  - Admin-authored custom HTML
+ *  - NOTHING — when no ad is configured there is no placeholder, per no-fabrication.
+ */
+interface AdSlot {
+  slot_key: string;
+  provider: string;
+  adsense_client: string | null;
+  adsense_slot: string | null;
+  custom_html: string | null;
+}
+
+declare global {
+  interface Window { adsbygoogle?: unknown[] }
+}
+
+export const AdBannerSlot: React.FC<{ slotKey: string; format?: string }> = ({ slotKey, format = 'horizontal' }) => {
+  const [slot, setSlot] = useState<AdSlot | null>(null);
+  const pushed = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/ads?slot=${encodeURIComponent(slotKey)}`);
+        const data = await res.json();
+        if (!cancelled) setSlot(data.active ? data.slot : null);
+      } catch {
+        if (!cancelled) setSlot(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [slotKey]);
+
+  useEffect(() => {
+    if (!slot || slot.provider !== 'adsense' || !slot.adsense_client || !slot.adsense_slot) return;
+    const client = slot.adsense_client;
+    const existing = document.querySelector<HTMLScriptElement>('script.adsbygoogle-lib');
+    if (!existing) {
+      const s = document.createElement('script');
+      s.async = true;
+      s.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+      s.crossOrigin = 'anonymous';
+      s.className = 'adsbygoogle-lib';
+      document.head.appendChild(s);
+    }
+    pushed.current = false;
+    const t = window.setInterval(() => {
+      if (pushed.current) return;
+      const el = document.querySelector(`ins.adsbygoogle[data-ad-slot="${slot.adsense_slot}"]`);
+      if (el) {
+        try { (window.adsbygoogle = window.adsbygoogle || []).push({}); pushed.current = true; } catch { /* lib not ready yet */ }
+        window.clearInterval(t);
+      }
+    }, 600);
+    const stop = window.setTimeout(() => window.clearInterval(t), 15000);
+    return () => { window.clearInterval(t); window.clearTimeout(stop); };
+  }, [slot]);
+
+  if (!slot) return null;
+
+  if (slot.provider === 'custom_html' && slot.custom_html) {
+    return (
+      <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-2" dangerouslySetInnerHTML={{ __html: slot.custom_html }} />
+    );
+  }
+
+  if (slot.provider === 'adsense' && slot.adsense_client && slot.adsense_slot) {
+    return (
+      <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-2 flex items-center justify-center gap-2 min-h-[92px]">
+        <ins
+          className="adsbygoogle"
+          style={{ display: 'block', width: '100%' }}
+          data-ad-client={slot.adsense_client}
+          data-ad-slot={slot.adsense_slot}
+          data-ad-format={format}
+          data-full-width-responsive="true"
+        />
+      </div>
+    );
+  }
+
+  // Configured but incomplete: show nothing rather than a dead ad frame.
+  return null;
+};
+
+export const AdBannerLabel: React.FC = () => (
+  <p className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
+    <Megaphone className="w-3 h-3" /> Advertisement
+  </p>
+);

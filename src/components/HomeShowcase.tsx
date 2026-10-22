@@ -19,7 +19,7 @@
  * server-side, exactly like every other Try1Second redirection.
  */
 import { useEffect, useState } from 'react';
-import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, ArrowRight, Star } from 'lucide-react';
+import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, ArrowRight, Star, Plane } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 interface ShowcaseItem {
@@ -34,6 +34,7 @@ interface ShowcaseItem {
   rating: number | null;
   badge: string | null;
   url: string;
+  launch?: { vertical: string; query: string } | null;
 }
 
 interface ShowcaseSection {
@@ -52,12 +53,13 @@ const SECTION_ICONS: Record<string, typeof Sparkles> = {
   steals: Bolt,
   places: MapPin,
   cards: CreditCard,
+  destinations: Plane,
 };
 
 /** Section -> the vertical its "View all" launches (real engine, not a fake link). */
 const SECTION_VERTICAL: Record<string, string> = {
   picked: 'ecommerce', special: 'ecommerce', massive: 'ecommerce', mega: 'ecommerce',
-  tech: 'ecommerce', steals: 'ecommerce', places: 'hotels', cards: 'creditcards',
+  tech: 'ecommerce', steals: 'ecommerce', places: 'hotels', cards: 'creditcards', destinations: 'flights',
 };
 
 /** Real metasearch queries for the pill row (reference: Deal Drop category pills). */
@@ -97,16 +99,13 @@ function DiscountRing({ pct }: { pct: number }) {
   );
 }
 
-function ShowcaseCard({ item }: { item: ShowcaseItem }) {
+function ShowcaseCard({ item, onLaunch }: { item: ShowcaseItem; onLaunch?: (q: string, v: string) => void }) {
   const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.merchant)}&background=fef2f2&color=e11d48&size=160`;
   const sb = stealBadge(item);
-  return (
-    <a
-      href={item.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col cursor-pointer"
-    >
+  const isLaunchCard = Boolean(item.launch);
+  const cardClass = "group bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col cursor-pointer";
+  const inner = (
+    <>
       <div className="relative h-36 sm:h-40 bg-slate-50 overflow-hidden">
         <img
           src={item.image || fallback}
@@ -151,12 +150,25 @@ function ShowcaseCard({ item }: { item: ShowcaseItem }) {
           <span className="mt-auto inline-flex items-center gap-1 self-start px-2 py-0.5 rounded-full bg-red-50 border border-red-100 text-[9.5px] font-black text-red-600 tracking-wide">
             {sb === 'EPIC STEAL' ? '\u{1F680}' : '\u{1F525}'} {sb}
           </span>
-        ) : item.badge && item.price != null ? (
+        ) : item.badge && (item.price != null || isLaunchCard) ? (
           <span className="mt-auto inline-flex items-center self-start px-2 py-0.5 rounded-full bg-red-50 border border-red-100 text-[9.5px] font-black text-red-600 tracking-wide">
             {item.badge}
           </span>
         ) : null}
       </div>
+    </>
+  );
+  // Famous Destinations: a real in-app flights engine launch, never an external link.
+  if (isLaunchCard && item.launch && onLaunch) {
+    return (
+      <button type="button" onClick={() => onLaunch(item.launch!.query, item.launch!.vertical)} className={cardClass + ' text-left'}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <a href={item.url} target="_blank" rel="noopener noreferrer" className={cardClass}>
+      {inner}
     </a>
   );
 }
@@ -174,9 +186,9 @@ export default function HomeShowcase() {
     return () => { alive = false; };
   }, []);
 
-  const launchQuery = (q: string) => {
-    setVertical('ecommerce');
-    setPendingAssistantSearch({ vertical: 'ecommerce', query: q });
+  const launchQuery = (q: string, vertical: string = 'ecommerce') => {
+    setVertical(vertical as never);
+    setPendingAssistantSearch({ vertical, query: q });
     setActiveNavTab('compare');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -266,7 +278,7 @@ export default function HomeShowcase() {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {sec.items.map((item) => (
-                  <ShowcaseCard key={item.id} item={item} />
+                  <ShowcaseCard key={item.id} item={item} onLaunch={launchQuery} />
                 ))}
               </div>
             </div>

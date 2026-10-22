@@ -544,7 +544,19 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
             {item.vertical === 'ecommerce' && (
               <button
                 type="button"
-                onClick={() => openProductPage({ query: item.title })}
+                onClick={() =>
+                    openProductPage({
+                      query: item.title,
+                      // The card's own quotes seed the comparison so every seller the
+                      // engine already found for this product shows even if the fresh
+                      // search flakes this attempt (circuit backoff).
+                      seed: item.sellerQuotes.map((q) => ({
+                        seller: q.sellerName, title: item.title, price: q.price,
+                        listPrice: q.originalPrice, image: q.sellerLogo || (item.images as string[] | undefined)?.[0] || null,
+                        url: q.url,
+                      })),
+                      gallery: item.images as string[] | undefined,
+                    })}
                 title="Compare this product across every store on one page"
                 className="py-2.5 px-4 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold text-xs rounded-lg border border-blue-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >

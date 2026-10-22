@@ -3,11 +3,18 @@
  * the "Instant Launch Verticals" grid on the homepage —
  *   Picked Just for You · Special Offers For You · Massive Discounts ·
  *   Mega Savings · Best in Tech & Gadgets · Steals You Can't Ignore ·
- *   Most Visited Places (best-paying hotel partner) · Best Cards For You.
+ *   Most Visited Places (best-paying hotel partner) · Best Cards For You ·
+ *   Famous Destinations (flights, owner 22 Oct).
  *
  * HONEST DATA ONLY (standing rule): every item is a real row from the
  * persistent `offers` catalogue or the synced `affiliate_offers` registry.
  * A section with no real data is simply omitted — never mocked.
+ *
+ * STORE-AGNOSTIC QUERIES (owner 22 Oct): SQL stays in the shape BOTH stores
+ * parse (MySQL in production, the file store in dev) — `col = ?`, literal
+ * LIMIT. REGEXP / INTERVAL / `!= 'literal'` / arithmetic WHERE clauses parse
+ * as match-nothing on the file store (sections silently emptied), so all
+ * freshness, discount and category math runs in JavaScript, identical on both.
  *
  * MONETIZATION (standing rules): items never carry raw links; they get an
  * HMAC masking pointer (/api/out?t=...). The redirect pipeline injects the
@@ -30,6 +37,9 @@ export interface ShowcaseItem {
   rating: number | null;     // real source rating (attributes.rating), shown only when present
   badge: string | null;      // coupon code / savings label
   url: string;              // masking pointer -> /api/out (affiliate injected)
+  /** In-app engine launch instead of an external redirect (Famous Destinations
+   *  opens the REAL flights search for that city — never a fake link). */
+  launch?: { vertical: string; query: string } | null;
 }
 
 export interface ShowcaseSection {
@@ -39,18 +49,19 @@ export interface ShowcaseSection {
   items: ShowcaseItem[];
 }
 
-interface OfferRow {
+export interface OfferRow {
   id: number; vertical: string; title: string; brand: string | null; attributes: unknown;
   vendor: string | null; seller: string | null; seller_url: string | null;
   list_price: number | string | null; mandatory_total: number | string | null; effective_price: number | string | null;
+  validation_status?: string | null; location_city?: string | null;
   fetched_at: string | Date;
 }
 
-interface AffiliateRow {
+export interface AffiliateRow {
   id: number; network_source: string; network_offer_id: string; merchant_name: string; merchant_logo: string | null;
   title: string; description: string | null; coupon_code: string | null; discount_value: number | string | null;
   discount_type: string | null; affiliate_url: string | null; original_url: string | null; categories: string | null;
-  commission_note: string | null;
+  commission_note: string | null; last_seen_at?: string | Date | null;
 }
 
 const num = (v: unknown): number | null => {
@@ -58,6 +69,37 @@ const num = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+
+const tsOf = (v: unknown): number => {
+  if (v instanceof Date) return v.getTime();
+  const t = Date.parse(String(v ?? ''));
+  return Number.isFinite(t) ? t : 0;
+};
+
+/** Row age in days (JS-side: the file store cannot evaluate INTERVAL). */
+export const ageDays = (r: OfferRow): number => (Date.now() - tsOf(r.fetched_at)) / 86_400_000;
+
+/** Effective price, mandatory-total fallback (JS-side COALESCE). */
+export const priceOf = (r: OfferRow): number => num(r.effective_price) ?? num(r.mandatory_total) ?? 0;
+
+export const mrpOf = (r: OfferRow): number => num(r.list_price) ?? 0;
+
+export const pctOf = (r: OfferRow): number => {
+  const p = priceOf(r), m = mrpOf(r);
+  return m && m > p ? (m - p) / m : 0;
+};
+
+export const saveOf = (r: OfferRow): number => {
+  const p = priceOf(r), m = mrpOf(r);
+  return m && m > p ? m - p : 0;
+};
+
+/** Servable: not invalidated, has a real seller link, is priced, is fresh. */
+export const servableRow = (r: OfferRow, maxAgeDays = 14): boolean =>
+  (r.validation_status || '') !== 'INVALID'
+  && !!r.seller_url
+  && priceOf(r) > 0
+  && ageDays(r) <= maxAgeDays;
 
 export function imageFromAttributes(raw: unknown): string | null {
   if (!raw) return null;
@@ -90,25 +132,48 @@ export function ratingFromAttributes(raw: unknown): number | null {
 
 export function itemFromOffer(row: OfferRow): ShowcaseItem | null {
   const url = row.seller_url || null;
-  const price = num(row.effective_price) ?? num(row.mandatory_total);
-  const mrp = num(row.list_price);
+  const price = priceOf(row);
+  const mrp = mrpOf(row);
   if (!url || !price) return null; // nothing honest to link or show
-  let pct: number | null = null;
-  if (mrp && mrp > price) pct = Math.round(((mrp - price) / mrp) * 100);
+  const pct = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : null;
   const merchant = (row.vendor || row.seller || 'Store').slice(0, 40);
   return {
     id: `off-${row.id}`,
     title: String(row.title || '').slice(0, 90),
     merchant,
     merchantLogo: null,
-    image: imageFromAttributes(row.attributes),
+    image: imageFromAttributes(row.attributes)
+      || (() => { const dom = merchantDomainOf(merchant, [row.seller_url]); return dom ? `https://logo.clearbit.com/${dom}` : null; })(),
     price,
-    mrp: mrp && mrp > price ? mrp : null,
+    mrp: mrp > price ? mrp : null,
     discountPct: pct,
     rating: ratingFromAttributes(row.attributes),
     badge: pct && pct >= 1 ? `${pct}% OFF` : null,
     url: createMaskingPointer(url, { offerId: `showcase-off-${row.id}` }),
   };
+}
+
+/** Owner 22 Oct: Special Offers coupon cards must carry the merchant's real logo
+ *  image (they were rendering as bare initials). Priority: registry merchant_logo ->
+ *  the OFFICIAL Clearbit logo CDN keyed by the merchant's own domain (derived from
+ *  the row's original_url host, else from the merchant name). Clearbit 404s degrade
+ *  to the card initials in the UI, so nothing is ever fabricated. */
+const AFFILIATE_HOST = /cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia/i;
+export function merchantDomainOf(name: string, urls: Array<string | null>): string | null {
+  for (const u of urls) {
+    if (!u) continue;
+    try {
+      const h = new URL(u).hostname.replace(/^www\./, '');
+      if (h && !AFFILIATE_HOST.test(h)) return h;
+    } catch { /* not an absolute URL */ }
+  }
+  const n = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return n ? `${n}.com` : null;
+}
+function merchantLogoFor(row: AffiliateRow): string | null {
+  if (row.merchant_logo) return row.merchant_logo;
+  const dom = merchantDomainOf(row.merchant_name, [row.original_url, row.affiliate_url]);
+  return dom ? `https://logo.clearbit.com/${dom}` : null;
 }
 
 export function itemFromAffiliate(row: AffiliateRow): ShowcaseItem | null {
@@ -126,8 +191,8 @@ export function itemFromAffiliate(row: AffiliateRow): ShowcaseItem | null {
     id: `aff-${row.network_source}-${row.network_offer_id}`,
     title: String(row.title || '').slice(0, 90),
     merchant: String(row.merchant_name || 'Store').slice(0, 40),
-    merchantLogo: row.merchant_logo || null,
-    image: row.merchant_logo || null,
+    merchantLogo: merchantLogoFor(row),
+    image: merchantLogoFor(row),
     price: null,
     mrp: null,
     discountPct: row.discount_type === 'percent' ? dv : null,
@@ -137,125 +202,233 @@ export function itemFromAffiliate(row: AffiliateRow): ShowcaseItem | null {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Store-agnostic pool fetches (SQL shape both stores parse; JS sorts/filters)
+// ---------------------------------------------------------------------------
+
+/** In-memory pool cache: repeated pool fetches within 5 minutes share rows. */
+const poolCache = new Map<string, { at: number; rows: OfferRow[] }>();
+const POOL_TTL_MS = 5 * 60 * 1000;
+
+/** Newest-first rows of one vertical. SQL keeps to `vertical = ?` + literal LIMIT
+ *  (the file store parses exactly that; complex WHERE clauses match nothing there),
+ *  then freshness sorting runs in JS so MySQL and dev behave identically. */
+export async function fetchVerticalOffers(vertical: string, limit: number): Promise<OfferRow[]> {
+  const key = `${vertical}|${limit}`;
+  const hit = poolCache.get(key);
+  if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.rows;
+  const store = getStore();
+  let rows: OfferRow[] = [];
+  try {
+    // Literal LIMIT is required: `LIMIT ?` is unsupported on the file store.
+    rows = await store.query<OfferRow>(
+      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
+              list_price, mandatory_total, effective_price, validation_status, fetched_at
+       FROM offers WHERE vertical = ? ORDER BY fetched_at DESC LIMIT ${Math.max(limit, 500)}`,
+      [vertical]);
+    rows.sort((a, b) => tsOf(b.fetched_at) - tsOf(a.fetched_at));
+    rows = rows.slice(0, limit);
+  } catch (e: any) {
+    log.debug('Showcase', 'offers pool query failed', { vertical, error: String(e).slice(0, 100) });
+    rows = [];
+  }
+  poolCache.set(key, { at: Date.now(), rows });
+  return rows;
+}
+
+/** Active affiliate rows, discount-first (coupon filtering happens in JS). */
+export async function fetchAffiliateRows(limit: number): Promise<AffiliateRow[]> {
+  const store = getStore();
+  try {
+    const rows = await store.query<AffiliateRow>(
+      `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
+              discount_value, discount_type, affiliate_url, original_url, categories, commission_note, last_seen_at
+       FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
+      []);
+    rows.sort((a, b) => (num(b.discount_value) ?? 0) - (num(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    return rows.slice(0, limit);
+  } catch (e: any) {
+    log.debug('Showcase', 'affiliate pool query failed', { error: String(e).slice(0, 100) });
+    return [];
+  }
+}
+
 /** Best-paying hotel partner: highest commission percentage among the known
  *  hotel/travel merchants in the live affiliate registry. */
 async function bestHotelPartner(): Promise<string | null> {
-  const store = getStore();
-  try {
-    const rows = await store.query<AffiliateRow>(
-      `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
-              discount_value, discount_type, affiliate_url, original_url, categories, commission_note
-       FROM affiliate_offers
-       WHERE status = 'active' AND (
-         merchant_name LIKE '%makemytrip%' OR merchant_name LIKE '%goibibo%' OR merchant_name LIKE '%yatra%'
-         OR merchant_name LIKE '%cleartrip%' OR merchant_name LIKE '%easemytrip%' OR merchant_name LIKE '%agoda%'
-         OR merchant_name LIKE '%booking%' OR merchant_name LIKE '%oyo%' OR merchant_name LIKE '%fabhotels%'
-       ) LIMIT 400`, []);
-    let best: { name: string; pct: number } | null = null;
-    for (const r of rows) {
-      const m = /([0-9]+(?:\.[0-9]+)?)\s*%/.exec(r.commission_note || '');
-      if (!m) continue;
-      const pct = parseFloat(m[1]);
-      if (!best || pct > best.pct) best = { name: r.merchant_name, pct };
-    }
-    return best?.name ?? null;
-  } catch {
-    return null;
+  const rows = await fetchAffiliateRows(600);
+  const PARTNER_RX = /makemytrip|goibibo|yatra|cleartrip|easemytrip|agoda|booking|oyo|fabhotels/i;
+  let best: { name: string; pct: number } | null = null;
+  for (const r of rows) {
+    if (!PARTNER_RX.test(r.merchant_name || '')) continue;
+    const m = /([0-9]+(?:\.[0-9]+)?)\s*%/.exec(r.commission_note || '');
+    if (!m) continue;
+    const pct = parseFloat(m[1]);
+    if (!best || pct > best.pct) best = { name: r.merchant_name, pct };
   }
+  return best?.name ?? null;
 }
 
-async function queryOffers(where: string, params: unknown[], limit: number): Promise<ShowcaseItem[]> {
-  const store = getStore();
-  try {
-    const rows = await store.query<OfferRow>(
-      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url,
-              list_price, mandatory_total, effective_price, fetched_at
-       FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
-      [...params, limit]);
-    const seen = new Set<string>();
-    const items: ShowcaseItem[] = [];
-    for (const row of rows) {
-      const item = itemFromOffer(row);
-      if (!item || !item.image) continue;            // showcase cards need real art
-      const key = `${item.merchant}|${item.title.slice(0, 40).toLowerCase()}`;
-      if (seen.has(key)) continue;                  // dedupe cross-source SKUs
-      seen.add(key);
-      items.push(item);
-      if (items.length >= 12) break;
-    }
-    return items;
-  } catch (e: any) {
-    log.debug('Showcase', 'offers query failed', { error: String(e).slice(0, 100) });
-    return [];
+// ---------------------------------------------------------------------------
+// Section builders (JS-side honest math)
+// ---------------------------------------------------------------------------
+
+/**
+ * Merchant spread (owner 22 Oct): a section must never render as a single
+ * merchant's batch. Rows arrive ordered by freshness/discount, and the newest
+ * ecommerce batch is often one source's output (only Myntra, only Agoda...),
+ * so sections round-robin across merchants: at most `maxPerMerchant` items per
+ * seller before every other present seller got its slot.
+ */
+export function diversifyByMerchant(items: ShowcaseItem[], maxPerMerchant: number, target: number): ShowcaseItem[] {
+  const byMerchant = new Map<string, ShowcaseItem[]>();
+  for (const it of items) {
+    const k = it.merchant.toLowerCase();
+    const list = byMerchant.get(k) || [];
+    list.push(it);
+    byMerchant.set(k, list);
   }
+  const merchants = [...byMerchant.keys()];
+  const out: ShowcaseItem[] = [];
+  const used = new Map<string, number>();
+  let added = true;
+  while (out.length < target && added) {
+    added = false;
+    for (const m of merchants) {
+      if (out.length >= target) break;
+      const u = used.get(m) || 0;
+      if (u >= maxPerMerchant) continue;
+      const next = byMerchant.get(m)![u];
+      if (!next) continue;
+      out.push(next);
+      used.set(m, u + 1);
+      added = true;
+    }
+  }
+  return out;
 }
 
-async function queryAffiliate(where: string, params: unknown[], limit: number): Promise<ShowcaseItem[]> {
-  const store = getStore();
-  try {
-    const rows = await store.query<AffiliateRow>(
-      `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
-              discount_value, discount_type, affiliate_url, original_url, categories, commission_note
-       FROM affiliate_offers WHERE status = 'active' AND ${where}
-       ORDER BY discount_value DESC, last_seen_at DESC LIMIT ?`, [...params, limit]);
-    const items: ShowcaseItem[] = [];
-    for (const row of rows) {
-      const item = itemFromAffiliate(row);
-      if (item) items.push(item);
-      if (items.length >= 12) break;
-    }
-    return items;
-  } catch (e: any) {
-    log.debug('Showcase', 'affiliate query failed', { error: String(e).slice(0, 100) });
-    return [];
+/** Pool -> deduped, image-bearing items in the pool's order, then merchant spread. */
+function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: (a: OfferRow, b: OfferRow) => number): ShowcaseItem[] {
+  const seen = new Set<string>();
+  const out: ShowcaseItem[] = [];
+  for (const row of pool.filter(filter).sort(sort)) {
+    const item = itemFromOffer(row);
+    if (!item || !item.image) continue;            // showcase cards need real art
+    const key = `${item.merchant}|${item.title.slice(0, 40).toLowerCase()}`;
+    if (seen.has(key)) continue;                  // dedupe cross-source SKUs
+    seen.add(key);
+    out.push(item);
   }
+  return diversifyByMerchant(out, 3, 12);
 }
+
+/** Coupon cards from the live affiliate registry, one per merchant+code, spread. */
+async function couponItems(): Promise<ShowcaseItem[]> {
+  const rows = await fetchAffiliateRows(600);
+  const seen = new Set<string>();
+  const out: ShowcaseItem[] = [];
+  for (const row of rows) {
+    if (!row.coupon_code) continue;               // Special Offers = coupon-backed cards
+    const item = itemFromAffiliate(row);
+    if (!item) continue;
+    const key = `${item.merchant.toLowerCase()}|${item.badge || ''}`; // same merchant+code once
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return diversifyByMerchant(out, 2, 12);
+}
+
+/**
+ * FAMOUS DESTINATIONS (owner 22 Oct): a flights-related home section.
+ * Honest data only per card:
+ *  - image: a real photo from a recorded HOTEL offer in that destination
+ *  - price: the CHEAPEST recorded FLIGHT fare whose route/title names the city
+ *  - click: launches the REAL flights engine ("to <City>") — never a fake link
+ */
+const FAMOUS: Array<{ key: string; name: string }> = [
+  { key: 'goa', name: 'Goa' }, { key: 'mumbai', name: 'Mumbai' }, { key: 'delhi', name: 'Delhi' },
+  { key: 'jaipur', name: 'Jaipur' }, { key: 'udaipur', name: 'Udaipur' }, { key: 'dubai', name: 'Dubai' },
+  { key: 'bangkok', name: 'Bangkok' }, { key: 'singapore', name: 'Singapore' },
+  { key: 'srinagar', name: 'Srinagar' }, { key: 'shimla', name: 'Shimla' },
+  { key: 'bengaluru', name: 'Bengaluru' }, { key: 'hyderabad', name: 'Hyderabad' },
+];
+
+/** One Famous Destinations card, or null when the data is not honestly there. */
+export function destinationItem(d: { key: string; name: string }, flights: OfferRow[], hotels: OfferRow[]): ShowcaseItem | null {
+  const matches = (r: OfferRow) =>
+    String(r.title || '').toLowerCase().includes(d.key) || String(r.location_city || '').toLowerCase().includes(d.key);
+  // Cheapest recorded flight fare naming this destination (fresh window: 7 days).
+  const fare = flights
+    .filter((r) => servableRow(r, 7) && matches(r))
+    .sort((a, b) => priceOf(a) - priceOf(b))[0];
+  if (!fare) return null; // no recorded fare -> skip honestly (never invent a price)
+  // A real hotel photo from the same destination (offers carry real art).
+  const hotel = hotels.find((r) => ageDays(r) <= 14 && matches(r) && imageFromAttributes(r.attributes));
+  if (!hotel) return null; // card needs real art
+  return {
+    id: `dest-${d.key}`,
+    title: d.name,
+    merchant: String(fare.seller || fare.vendor || 'Flights').slice(0, 40),
+    merchantLogo: null,
+    image: imageFromAttributes(hotel.attributes),
+    price: priceOf(fare) || null,
+    mrp: null,
+    discountPct: null,
+    rating: null,
+    badge: 'lowest recorded fare',
+    url: '',
+    launch: { vertical: 'flights', query: `to ${d.name}` },
+  };
+}
+
+/** Best honest pick for Rewards Top Picks (owner 21 Oct): prefer a row with
+ *  real art and the biggest discount; fall back to the lowest recorded price. */
+export function pickTopOfferRow(rows: OfferRow[]): OfferRow | null {
+  const servable = rows.filter((r) => servableRow(r, 14));
+  if (!servable.length) return null;
+  const withImg = servable.filter((r) => imageFromAttributes(r.attributes));
+  const pool = withImg.length ? withImg : servable;
+  return pool.reduce((best, r) => (pctOf(r) > pctOf(best) ? r : best), pool[0]);
+}
+
+// ---------------------------------------------------------------------------
+// buildShowcase
+// ---------------------------------------------------------------------------
 
 /** In-memory result cache: the homepage must stay sub-second, the showcase is
  *  rebuilt at most every 10 minutes. Zero-result sections are retried sooner. */
 let cached: { at: number; sections: ShowcaseSection[] } | null = null;
 const SHOWCASE_TTL_MS = 10 * 60 * 1000;
 
+const TECH_RX = /mobile|phone|laptop|headphone|earbud|airdopes|smartwatch|tablet|camera|speaker|television|\btv\b|gaming|console|charger|power bank|ssd|keyboard|mouse/i;
+const TECH_BRAND_RX = /apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|\bhp\b|asus|acer|xiaomi|realme|vivo|oppo|nothing/i;
+
 export async function buildShowcase(): Promise<ShowcaseSection[]> {
   if (cached && Date.now() - cached.at < SHOWCASE_TTL_MS) return cached.sections;
 
-  const TECH = "(title REGEXP 'mobile|phone|laptop|headphone|earbud|airdopes|smartwatch|tablet|camera|speaker|television|tv|gaming|console|charger|power bank|ssd|keyboard|mouse' OR brand REGEXP 'apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|hp |asus|acer|xiaomi|realme|vivo|oppo|nothing')";
-
-  const [picked, couponSpecial, massive, mega, tech, steals, places, cards, partner] = await Promise.all([
-    queryOffers(
-      "vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL AND effective_price IS NOT NULL",
-      [], 60),
-    queryAffiliate("coupon_code IS NOT NULL AND coupon_code != ''", [], 40),
-    queryOffers(
-      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
-       AND list_price IS NOT NULL AND effective_price IS NOT NULL
-       AND list_price > effective_price AND (list_price - effective_price) / list_price >= 0.40
-       ORDER BY (list_price - effective_price) / list_price DESC, fetched_at DESC`,
-      [], 40),
-    queryOffers(
-      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
-       AND list_price IS NOT NULL AND effective_price IS NOT NULL
-       AND list_price - effective_price >= 1000
-       ORDER BY (list_price - effective_price) DESC, fetched_at DESC`,
-      [], 40),
-    queryOffers(
-      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL AND ${TECH}`,
-      [], 60),
-    queryOffers(
-      `vertical = 'ecommerce' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
-       AND effective_price <= 999 AND list_price IS NOT NULL AND list_price > effective_price
-       AND (list_price - effective_price) / list_price >= 0.30
-       ORDER BY (list_price - effective_price) / list_price DESC, fetched_at DESC`,
-      [], 40),
-    queryOffers(
-      `vertical = 'hotels' AND validation_status != 'INVALID' AND seller_url IS NOT NULL
-       AND effective_price IS NOT NULL`,
-      [], 40),
-    queryOffers(
-      `vertical = 'creditcards' AND validation_status != 'INVALID'`,
-      [], 40),
+  const [ecom, hotels, cardsPool, flights, couponSpecial, partner] = await Promise.all([
+    fetchVerticalOffers('ecommerce', 600),
+    fetchVerticalOffers('hotels', 400),
+    fetchVerticalOffers('creditcards', 200),
+    fetchVerticalOffers('flights', 600),
+    couponItems(),
     bestHotelPartner(),
   ]);
+
+  const newest = (a: OfferRow, b: OfferRow) => tsOf(b.fetched_at) - tsOf(a.fetched_at);
+  const fresh = (r: OfferRow) => ageDays(r) <= 14;
+  const serv = (r: OfferRow) => servableRow(r, 14);
+
+  const picked = sectionItems(ecom, (r) => serv(r), newest);
+  const massive = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.40, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
+  const mega = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1000, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
+  const tech = sectionItems(ecom, (r) => serv(r) && (TECH_RX.test(String(r.title || '')) || TECH_BRAND_RX.test(String(r.brand || ''))), newest);
+  const steals = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.30, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
+  const places = sectionItems(hotels, (r) => serv(r), newest);
+  const cards = sectionItems(cardsPool, (r) => (r.validation_status || '') !== 'INVALID' && ageDays(r) <= 14, newest);
+  const destinations = FAMOUS.map((d) => destinationItem(d, flights, hotels)).filter((x): x is ShowcaseItem => x !== null).slice(0, 8);
 
   const sections: ShowcaseSection[] = [
     { id: 'picked', title: 'Picked Just for You', subtitle: 'real products, live-acquired prices', items: picked },
@@ -276,6 +449,7 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
         : places,
     },
     { id: 'cards', title: 'Best Cards For You', subtitle: 'fees & rewards, straight from the banks', items: cards },
+    { id: 'destinations', title: 'Famous Destinations', subtitle: 'cheapest recorded fares — tap for live flight search', items: destinations },
   ].filter(s => s.items.length > 0); // honesty: never render an empty section
 
   cached = { at: Date.now(), sections };

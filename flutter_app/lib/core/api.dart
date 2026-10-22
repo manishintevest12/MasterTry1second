@@ -377,6 +377,15 @@ class LiveResponse {
 
 /// One curated home-showcase item (GET /api/home/showcase). Every item is a
 /// real catalogue/affiliate row; url is a masking pointer -> /api/out.
+/// In-app engine launch (Famous Destinations opens the REAL flights search
+/// for the city instead of an external link).
+class ShowcaseLaunch {
+  final String vertical;
+  final String query;
+  const ShowcaseLaunch(this.vertical, this.query);
+  factory ShowcaseLaunch.fromJson(Map<String, dynamic> j) => ShowcaseLaunch('${j['vertical'] ?? ''}', '${j['query'] ?? ''}');
+}
+
 class ShowcaseItem {
   final String id;
   final String title;
@@ -389,7 +398,8 @@ class ShowcaseItem {
   final double? rating;
   final String? badge;
   final String url;
-  const ShowcaseItem(this.id, this.title, this.merchant, this.merchantLogo, this.image, this.price, this.mrp, this.discountPct, this.rating, this.badge, this.url);
+  final ShowcaseLaunch? launch;
+  const ShowcaseItem(this.id, this.title, this.merchant, this.merchantLogo, this.image, this.price, this.mrp, this.discountPct, this.rating, this.badge, this.url, [this.launch]);
 
   factory ShowcaseItem.fromJson(Map<String, dynamic> j) => ShowcaseItem(
         '${j['id'] ?? ''}',
@@ -403,6 +413,7 @@ class ShowcaseItem {
         (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
         j['badge'] == null || '${j['badge']}'.isEmpty ? null : '${j['badge']}',
         '${j['url'] ?? ''}',
+        (j['launch'] is Map<String, dynamic>) ? ShowcaseLaunch.fromJson(j['launch']) : null,
       );
 }
 
@@ -420,6 +431,43 @@ class ShowcaseSection {
         '${j['subtitle'] ?? ''}',
         [for (final x in (j['items'] as List? ?? const [])) if (x is Map<String, dynamic>) ShowcaseItem.fromJson(x)],
       );
+}
+
+/// One per-vertical Top Pick (GET /api/rewards/top-picks): admin-curated pick or
+/// live auto-pick from the offers catalogue. url is a masking pointer -> /api/out.
+class RewardTopPick {
+  final String vertical;
+  final String source; // 'admin' | 'live'
+  final String partnerName;
+  final String headline;
+  final String? offerText;
+  final String? priceBadge;
+  final String? badgeText;
+  final double? rating;
+  final String? image;
+  final String ctaText;
+  final String url;
+  const RewardTopPick(this.vertical, this.source, this.partnerName, this.headline, this.offerText, this.priceBadge, this.badgeText, this.rating, this.image, this.ctaText, this.url);
+
+  factory RewardTopPick.fromJson(Map<String, dynamic> j) => RewardTopPick(
+        '${j['vertical'] ?? ''}',
+        '${j['source'] ?? 'live'}',
+        '${j['partnerName'] ?? ''}',
+        '${j['headline'] ?? ''}',
+        j['offerText'] == null || '${j['offerText']}'.isEmpty ? null : '${j['offerText']}',
+        j['priceBadge'] == null || '${j['priceBadge']}'.isEmpty ? null : '${j['priceBadge']}',
+        j['badgeText'] == null || '${j['badgeText']}'.isEmpty ? null : '${j['badgeText']}',
+        (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
+        j['image'] == null || '${j['image']}'.isEmpty ? null : '${j['image']}',
+        '${j['ctaText'] ?? 'Grab Deal'}',
+        '${j['url'] ?? ''}',
+      );
+}
+
+/// GET /api/rewards/top-picks — one best pick per vertical (Rewards Top Picks).
+Future<List<RewardTopPick>> fetchRewardsTopPicks(Try1SecondApi api) async {
+  final res = await api.getJson('/api/rewards/top-picks');
+  return [for (final x in (res['picks'] as List? ?? const [])) if (x is Map<String, dynamic>) RewardTopPick.fromJson(x)];
 }
 
 /// GET /api/home/showcase — the curated homepage sections under the launch grid.

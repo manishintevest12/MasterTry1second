@@ -6,6 +6,8 @@ import { CouponsHub } from './CouponsHub';
 import { OffersHub } from './OffersHub';
 import { SpinAndEarnWheel } from './SpinAndEarnWheel';
 import { CardOptimizer } from './CardOptimizer';
+import { RewardsTopPicks } from './RewardsTopPicks';
+import { Crown } from 'lucide-react';
 
 export const RewardsHub: React.FC = () => {
   const { rewardsSubTab, setRewardsSubTab, userPoints, spinsAvailable, spinCostPoints } = useApp();
@@ -15,6 +17,20 @@ export const RewardsHub: React.FC = () => {
       {/* Top Segmented Sub-Nav: Coupons, Offers, Spin & Earn, Credit Card */}
       <div className="bg-white rounded-2xl border border-slate-200 p-2 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto scrollbar-none">
+          {/* Top Picks — one best deal per vertical */}
+          <button
+            type="button"
+            onClick={() => setRewardsSubTab('top')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+              rewardsSubTab === 'top'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Crown className="w-4 h-4" />
+            <span>Top Picks</span>
+          </button>
+
           {/* Spin & Earn */}
           <button
             type="button"
@@ -87,6 +103,7 @@ export const RewardsHub: React.FC = () => {
 
       {/* Subtab Contents */}
       <div>
+        {rewardsSubTab === 'top' && <RewardsTopPicks />}
         {rewardsSubTab === 'spin' && <SpinAndEarnWheel />}
         {rewardsSubTab === 'coupons' && <CouponsHub />}
         {rewardsSubTab === 'offers' && <OffersHub />}

@@ -145,7 +145,7 @@ class _HomeShowcaseState extends State<HomeShowcase> {
               crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 0.62,
             ),
             itemCount: sec.items.length,
-            itemBuilder: (c, i) => _ShowcaseCard(item: sec.items[i]),
+            itemBuilder: (c, i) => _ShowcaseCard(item: sec.items[i], state: widget.state),
           ),
           const SizedBox(height: 20),
         ],
@@ -167,12 +167,14 @@ class _SectionHeader extends StatelessWidget {
     'steals': Icons.bolt_rounded,
     'places': Icons.location_on_rounded,
     'cards': Icons.credit_card_rounded,
+    'destinations': Icons.flight_takeoff_rounded,
   };
 
   /// Website parity: section "View all" opens the section's real engine.
   static const _vertical = <String, String>{
     'places': 'hotels',
     'cards': 'creditcards',
+    'destinations': 'flights',
   };
 
   @override
@@ -249,8 +251,9 @@ class _RingPainter extends CustomPainter {
 }
 
 class _ShowcaseCard extends StatelessWidget {
-  const _ShowcaseCard({required this.item});
+  const _ShowcaseCard({required this.item, required this.state});
   final ShowcaseItem item;
+  final AppState state;
 
   String _rupee(double v) {
     final whole = v == v.roundToDouble();
@@ -278,7 +281,17 @@ class _ShowcaseCard extends StatelessWidget {
     final mrp = item.mrp;
     final dark = isDark(context);
     return GestureDetector(
-      onTap: item.url.isEmpty ? null : () => openDeal(item.url, sellerName: item.merchant, price: price),
+      onTap: () {
+        // Famous Destinations: launch the REAL flights engine for the city —
+        // never a fake external link.
+        if (item.launch != null) {
+          state.openVertical(item.launch!.vertical.isEmpty ? 'flights' : item.launch!.vertical,
+              search: PendingSearch(item.launch!.vertical.isEmpty ? 'flights' : item.launch!.vertical, item.launch!.query));
+          return;
+        }
+        if (item.url.isEmpty) return;
+        openDeal(item.url, sellerName: item.merchant, price: price);
+      },
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
@@ -291,7 +304,7 @@ class _ShowcaseCard extends StatelessWidget {
             height: 104,
             width: double.infinity,
             child: Stack(children: [
-              NetImage(item.image, fit: BoxFit.contain, bg: dark ? T1SColors.slate800 : T1SColors.slate50),
+              NetImage(item.image ?? item.merchantLogo, fit: BoxFit.contain, bg: dark ? T1SColors.slate800 : T1SColors.slate50),
               if (item.discountPct != null)
                 Positioned(top: 6, right: 6, child: _DiscountRing(pct: item.discountPct!)),
               // seller chip (reference: marketplace logo corner badge)
