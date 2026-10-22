@@ -145,12 +145,28 @@ function progressiveCatalogueResponse(
   } as SearchResponse;
 }
 
+/**
+ * Catalogue cold-start rows are query-gated for product-name verticals (owner rule,
+ * verified bug 22 Oct: back-to-back searches served the PREVIOUS query's rows —
+ * 'washing machine' returned NIKE shoes from a 'nike shoes' search minutes earlier
+ * because the catalogue lookup is vertical-wide with no query dimension). The
+ * same passesQueryRelevance gate the supplementary path uses (line ~337) applies
+ * here, so an instant cold-start only shows rows that match the typed query.
+ * Route verticals (flights/bus/cab/hotels) are exempt: their rows are keyed by
+ * route/city attributes the token gate cannot see, and they keep their own
+ * strict filters.
+ */
+const RELEVANCE_GATED_CATALOGUE = new Set(['ecommerce', 'grocery', 'food', 'movies', 'movie']);
+
 async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery): Promise<any[]> {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  const offers = rows
+  let offers = rows
     .filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < 3600 && r.validation_status !== 'INVALID')
     .map((r) => rowToOffer(r, false));
+  if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
+    offers = offers.filter((o) => passesQueryRelevance(o, parsed));
+  }
   // Bank search bar (owner 21 Oct): a query that NAMES a provider must not serve every
   // other bank's catalogue rows during the instant cold-start window. Apply the SAME
   // provider rule the live pipeline's engine filter uses.

@@ -23684,7 +23684,10 @@ function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pend
 async function freshCatalogueOffers(vertical, input, parsed) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  const offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
+    offers = offers.filter((o) => passesQueryRelevance(o, parsed));
+  }
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
 }
 async function runSearch(input) {
@@ -23922,7 +23925,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var inflightPipelines;
+var inflightPipelines, RELEVANCE_GATED_CATALOGUE;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -23945,6 +23948,7 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_affiliateNetwork();
     inflightPipelines = /* @__PURE__ */ new Map();
+    RELEVANCE_GATED_CATALOGUE = /* @__PURE__ */ new Set(["ecommerce", "grocery", "food", "movies", "movie"]);
   }
 });
 
