@@ -9,7 +9,7 @@ import '../widgets/kit.dart';
 /// sections directly under the "Instant Launch Verticals" grid, now styled with
 /// the reference-design ideas in the Try1Second RED brand — hero strip
 /// "DEALS WORTH GRABBING", category pills that launch REAL metasearch, and a
-/// 2-column product grid with seller chip, star rating, discount ring, price +
+/// 3-column product grid with seller chip, star rating, discount ring, price +
 /// struck MRP, and red "EPIC STEAL" / "HOT DEAL" badges.
 ///
 /// Server returns only REAL items; empty sections are omitted server-side, so
@@ -140,10 +140,8 @@ class _HomeShowcaseState extends State<HomeShowcase> {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 0.62,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            gridDelegate: kShowcaseGridDelegate,
             itemCount: sec.items.length,
             itemBuilder: (c, i) => _ShowcaseCard(item: sec.items[i], state: widget.state),
           ),
@@ -153,6 +151,13 @@ class _HomeShowcaseState extends State<HomeShowcase> {
     );
   }
 }
+
+/// Owner 22 Oct (app home redesign): 3 cards per row, tight 8px gutters, snug
+/// fixed-height cells — image 86 + text block; price is bottom-pinned inside the
+/// card so there is no dead space under it. Exported for the layout test.
+const kShowcaseGridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
+  crossAxisCount: 3, mainAxisSpacing: 8, crossAxisSpacing: 8, mainAxisExtent: 162,
+);
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.sec});
@@ -300,10 +305,18 @@ class _ShowcaseCard extends StatelessWidget {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
-            height: 104,
+            height: 86,
             width: double.infinity,
             child: Stack(children: [
-              NetImage(item.image ?? item.merchantLogo, fit: BoxFit.contain, bg: dark ? T1SColors.slate800 : T1SColors.slate50, cacheWidthPx: 460),
+              // Owner 22 Oct: real product/hotel photos fill the tile edge-to-edge
+              // (BoxFit.cover at a high decode budget = sharp); merchant-logo
+              // fallback keeps contain so logos never crop.
+              NetImage(
+                item.image ?? item.merchantLogo,
+                fit: (item.image ?? '').isNotEmpty ? BoxFit.cover : BoxFit.contain,
+                bg: dark ? T1SColors.slate800 : T1SColors.slate50,
+                cacheWidthPx: 480,
+              ),
               if (item.discountPct != null)
                 Positioned(top: 6, right: 6, child: _DiscountRing(pct: item.discountPct!)),
               // seller chip (reference: marketplace logo corner badge)
@@ -351,39 +364,44 @@ class _ShowcaseCard extends StatelessWidget {
                 ),
             ]),
           ),
-          Padding(
-            padding: const EdgeInsets.all(7),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(
-                height: 25,
-                child: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 9.5, w: FontWeight.w800, h: 1.12)),
+          // Owner 22 Oct: title at top, price pinned to the card bottom — zero
+          // dead space under the price; height differences are absorbed BETWEEN
+          // title and price instead of as faaltu bottom padding.
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(6, 5, 6, 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 9, w: FontWeight.w800, h: 1.1)),
+                  if (price != null)
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                        Flexible(child: Text('\u20B9${_rupee(price)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w900))),
+                        if (mrp != null) ...[
+                          const SizedBox(width: 3),
+                          Flexible(child: Text('\u20B9${_rupee(mrp)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 8, color: muted(context)).copyWith(decoration: TextDecoration.lineThrough))),
+                        ],
+                      ]),
+                      if (item.discountPct != null)
+                        Text('${item.discountPct}% Off', maxLines: 1, style: tx(context, 8, w: FontWeight.w900, color: T1SColors.red)),
+                    ])
+                  else if (item.badge != null)
+                    Text(item.badge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 9.5, w: FontWeight.w900, color: T1SColors.red)),
+                  if (_stealBadge != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: T1SColors.red50,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: T1SColors.red.withOpacity(.15)),
+                      ),
+                      child: Text(_stealBadge!, maxLines: 1, style: tx(context, 7, w: FontWeight.w900, color: T1SColors.red)),
+                    ),
+                ],
               ),
-              const SizedBox(height: 3),
-              if (price != null) ...[
-                Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                  Flexible(child: Text('\u20B9${_rupee(price)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 12.5, w: FontWeight.w900))),
-                  if (mrp != null) ...[
-                    const SizedBox(width: 3),
-                    Flexible(child: Text('\u20B9${_rupee(mrp)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 8.5, color: muted(context)).copyWith(decoration: TextDecoration.lineThrough))),
-                  ],
-                ]),
-                if (item.discountPct != null)
-                  Text('${item.discountPct}% Off', style: tx(context, 8.5, w: FontWeight.w900, color: T1SColors.red)),
-              ] else if (item.badge != null)
-                Text(item.badge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),
-              if (_stealBadge != null) ...[
-                const SizedBox(height: 3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: T1SColors.red50,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: T1SColors.red.withOpacity(.15)),
-                  ),
-                  child: Text(_stealBadge!, style: tx(context, 7.5, w: FontWeight.w900, color: T1SColors.red)),
-                ),
-              ],
-            ]),
+            ),
           ),
         ]),
       ),

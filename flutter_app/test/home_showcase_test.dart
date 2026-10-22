@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:try1second/core/api.dart';
+import 'package:try1second/ui/widgets/home_showcase.dart' show kShowcaseGridDelegate;
 
 /// Home showcase (owner spec 21 Oct): section/item parsing from
 /// /api/home/showcase — every item carries a masking-pointer url.
@@ -36,11 +37,16 @@ void main() {
     expect(sec.items.last.price, isNull);
   });
 
+  test('showcase grid pins the 3-column tight layout (owner 22 Oct)', () {
+    expect(kShowcaseGridDelegate.crossAxisCount, 3, reason: '3 cards per row');
+    expect(kShowcaseGridDelegate.mainAxisSpacing, 8, reason: 'no faaltu vertical gaps');
+    expect(kShowcaseGridDelegate.crossAxisSpacing, 8, reason: 'no faaltu horizontal gaps');
+    expect(kShowcaseGridDelegate.mainAxisExtent, 162, reason: 'snug fixed-height cells, price bottom-pinned');
+  });
+
   test('empty sections stay empty (server omits them; client renders nothing)', () {
     final sec = ShowcaseSection.fromJson({'id': 'steals', 'title': 'x', 'subtitle': '', 'items': []});
     expect(sec.items, isEmpty);
   });
 }
 
-/// Famous Destinations: items carry an in-app flights launch instead of a link.
-void main2() {}
