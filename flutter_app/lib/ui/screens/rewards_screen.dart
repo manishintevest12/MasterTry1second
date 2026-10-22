@@ -292,7 +292,7 @@ class _DealsHubState extends State<_DealsHub> {
           if (filtered.isNotEmpty) ...[
             SectionTitle(_merchant == null ? 'LIVE DEALS · AUTO-ACQUIRED' : '$_merchant DEALS'),
             for (final d in _kindFiltered(filtered)) ...[
-              _DealCard(deal: d),
+              DealCard(deal: d, apiBase: widget.state.api.baseUrl),
               const SizedBox(height: 10),
             ],
           ],
@@ -342,7 +342,9 @@ class _StoreTile extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: NetImage(deal.imageUrl, fit: BoxFit.cover, fallbackIcon: Icons.storefront_outlined, width: 112)),
+        // Owner 22 Oct: promo banners are wide — contain the full artwork
+        // instead of cover-cropping it to a sliver.
+        Expanded(child: NetImage(deal.imageUrl, fit: BoxFit.contain, fallbackIcon: Icons.storefront_outlined, width: 112)),
         const SizedBox(height: 6),
         if (maxPct > 0)
           Container(
@@ -391,9 +393,19 @@ String _logoDomainOf(String merchant) {
   return '';
 }
 
-class _DealCard extends StatelessWidget {
-  const _DealCard({required this.deal});
+/// Logo-registry key — mirrors the server's merchantKeyOf(): lowercase,
+/// strip the domain suffix, first word + aliases.
+String _logoKeyOf(String merchant) {
+  final m = merchant.toLowerCase().replaceAll(RegExp(r'\.(com|in|co\.in)\b'), '').replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+  final first = m.isEmpty ? '' : m.split(' ').first;
+  const alias = {'amzn': 'amazon', 'tata': 'tatacliq', 'bms': 'bookmyshow', 'book': 'bookmyshow', 'paytm': 'district'};
+  return alias[first] ?? first;
+}
+
+class DealCard extends StatelessWidget {
+  const DealCard({required this.deal, required this.apiBase});
   final Deal deal;
+  final String apiBase;
 
   @override
   Widget build(BuildContext context) {
@@ -402,7 +414,7 @@ class _DealCard extends StatelessWidget {
       padding: EdgeInsets.zero,
       clip: true,
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _DealArt(deal: deal),
+        DealArt(deal: deal, apiBase: apiBase),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -446,36 +458,50 @@ class _DealCard extends StatelessWidget {
 /// Card art. Bank offers (owner 21 Oct): the seller's crisp OFFICIAL logo on a
 /// clean tile — the scraped favicon image is blurry at this size. Every other
 /// deal kind keeps its real acquired image.
-class _DealArt extends StatelessWidget {
-  const _DealArt({required this.deal});
+class DealArt extends StatelessWidget {
+  const DealArt({required this.deal, required this.apiBase});
   final Deal deal;
+  final String apiBase;
 
   @override
   Widget build(BuildContext context) {
     final logoDomain = deal.kind == 'bank_offer' ? _logoDomainOf(deal.merchantName) : '';
     if (logoDomain.isEmpty) {
-      return NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined);
+      // FIX (owner 22 Oct: "image sahi ni hai"): deal promo art is WIDE. The old
+      // BoxFit.cover in this portrait slot cropped it to a meaningless sliver;
+      // contain shows the full acquired banner, honestly, on a quiet surface.
+      return NetImage(deal.imageUrl, width: 96, height: 118, fit: BoxFit.contain, fallbackIcon: Icons.sell_outlined);
     }
-    // Image-2 reference (owner 22 Oct): contained rounded-square logo tile with
-    // white padding + a small 'Verified' badge under it, like the loans cards.
+    // Owner rule (21/22 Oct): contained 72px rounded-square logo tile with white
+    // padding, border + small Verified badge. Source chain: admin-uploaded logo
+    // (MySQL registry via /api/logos/<key>) -> brand domain icon -> the deal's
+    // own image (contained, never cover-cropped) -> placeholder icon.
+    final key = _logoKeyOf(deal.merchantName);
+    final adminLogo = apiBase.isEmpty ? '' : '$apiBase/api/logos/$key';
+    Widget logo;
+    if (adminLogo.isNotEmpty) {
+      logo = CachedNetworkImage(
+        imageUrl: adminLogo,
+        fit: BoxFit.contain,
+        errorWidget: (_, __, ___) => _domainIcon(logoDomain, deal),
+      );
+    } else {
+      logo = _domainIcon(logoDomain, deal);
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 92,
-          height: 92,
+          width: 72,
+          height: 72,
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFFE5E7EB)),
           ),
           alignment: Alignment.center,
-          padding: const EdgeInsets.all(10),
-          child: CachedNetworkImage(
-            imageUrl: 'https://icons.duckduckgo.com/ip3/$logoDomain.ico',
-            fit: BoxFit.contain,
-            errorWidget: (_, __, ___) => NetImage(deal.imageUrl, width: 92, height: 92, fit: BoxFit.cover, fallbackIcon: Icons.sell_outlined),
-          ),
+          padding: const EdgeInsets.all(8),
+          child: logo,
         ),
         const SizedBox(height: 5),
         Container(
@@ -484,6 +510,15 @@ class _DealArt extends StatelessWidget {
           child: const Text('VERIFIED', style: TextStyle(fontSize: 7.5, fontWeight: FontWeight.w900, color: Color(0xFF4B5563), letterSpacing: .5)),
         ),
       ],
+    );
+  }
+
+  /// Brand-domain icon (last-resort chain before the deal image fallback).
+  Widget _domainIcon(String logoDomain, Deal deal) {
+    return CachedNetworkImage(
+      imageUrl: 'https://icons.duckduckgo.com/ip3/$logoDomain.ico',
+      fit: BoxFit.contain,
+      errorWidget: (_, __, ___) => NetImage(deal.imageUrl, width: 72, height: 72, fit: BoxFit.contain, fallbackIcon: Icons.sell_outlined),
     );
   }
 }
@@ -791,21 +826,26 @@ class _TopPicksRail extends StatelessWidget {
         Expanded(child: Text('TOP PICKS — ONE BEST DEAL PER VERTICAL', style: tx(context, 11.5, w: FontWeight.w900, ls: .5))),
       ]),
       const SizedBox(height: 8),
+      // FIX (owner 22 Oct: "button v hidden hai"): the old 172px rail was
+      // EXACTLY the worst-case content height, so any card with a price badge
+      // clipped its CTA button at the card's bottom edge. 186px + a fixed
+      // card height with the CTA pinned via Spacer guarantees the button
+      // always renders fully.
       SizedBox(
-        height: 172,
+        height: 186,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: picks.length,
           separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (c, i) => _TopPickCard(pick: picks[i], state: state),
+          itemBuilder: (c, i) => TopPickCard(pick: picks[i], state: state),
         ),
       ),
     ]);
   }
 }
 
-class _TopPickCard extends StatelessWidget {
-  const _TopPickCard({required this.pick, required this.state});
+class TopPickCard extends StatelessWidget {
+  const TopPickCard({required this.pick, required this.state});
   final RewardTopPick pick;
   final AppState state;
 
@@ -816,6 +856,7 @@ class _TopPickCard extends StatelessWidget {
       onTap: pick.url.isEmpty ? null : () => openDeal(pick.url, sellerName: pick.partnerName),
       child: Container(
         width: 150,
+        height: 186,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: dark ? T1SColors.slate900 : Colors.white,
@@ -848,9 +889,10 @@ class _TopPickCard extends StatelessWidget {
                 ),
             ]),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SizedBox(
                 height: 26,
                 child: Text(pick.headline, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 9.5, w: FontWeight.w800, h: 1.12)),
@@ -861,7 +903,7 @@ class _TopPickCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(pick.priceBadge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10.5, w: FontWeight.w900, color: T1SColors.red)),
               ],
-              const SizedBox(height: 5),
+              const Spacer(),
               Container(
                 width: double.infinity,
                 alignment: Alignment.center,
@@ -869,7 +911,8 @@ class _TopPickCard extends StatelessWidget {
                 decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
                 child: Text(pick.ctaText, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900, color: Colors.white)),
               ),
-            ]),
+              ]),
+            ),
           ),
         ]),
       ),
