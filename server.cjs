@@ -8160,8 +8160,8 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
     if (!Number.isFinite(price) || price <= 0) continue;
     const airlineName2 = EMT_AIRLINES[airlineCode]?.name || airlineCode || "Flight";
     const stops = Number(s.stops || 0);
-    const depT = String(s.firstDeparture?.time || "").slice(11, 16);
-    const arrT = String(s.lastArrival?.time || "").slice(11, 16);
+    const depT = String(s.firstDeparture?.time || s.firstDeparture?.airport?.time || "").slice(11, 16);
+    const arrT = String(s.lastArrival?.time || s.lastArrival?.airport?.time || "").slice(11, 16);
     const dur = s.totalDuration ? `${String(s.totalDuration.hh || 0).padStart(2, "0")}h ${String(s.totalDuration.mm || 0).padStart(2, "0")}m` : "";
     const couponMsg = String(fare?.pricing?.totalPricing?.message || "").trim();
     const srpUrl = `https://www.cleartrip.com/flights/results?from=${s.firstDeparture?.airport?.code || ""}&to=${s.lastArrival?.airport?.code || ""}&depart_date=${depIso}&adults=1`;
@@ -8176,6 +8176,7 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
       attributes: {
         airline: airlineName2,
         flight_number: flightNo2,
+        travel_date: depIso,
         ...depT ? { departure: depT } : {},
         ...arrT ? { arrival: arrT } : {},
         stops: String(stops),
@@ -24215,7 +24216,8 @@ async function findCatalogueOffers(vertical, opts = {}) {
     params.push(opts.limit ?? 50);
     return await store2.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
-              currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id
+              currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
+              seller_url, brand
        FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
       params
     );
@@ -24430,6 +24432,15 @@ function rowToOffer(row, isLiveNow) {
     attributes: parseCatalogueAttributes(row.attributes),
     vendor: row.vendor,
     seller: row.seller,
+    sellerUrl: row.seller_url || void 0,
+    brand: row.brand || void 0,
+    // The offers table has no travel column; parsers persist route/date as
+    // attributes. Hydrate o.travel from them so flight group keys (flight no +
+    // date + dep time) survive the catalogue path (owner 22 Oct grouping bug).
+    travel: (() => {
+      const a = parseCatalogueAttributes(row.attributes);
+      return a?.route || a?.travel_date ? { route: a.route, date: a.travel_date } : void 0;
+    })(),
     location: { pincode: row.location_pincode || void 0, city: row.location_city || void 0 },
     prices: {
       listPrice: row.mandatory_total ?? void 0,
@@ -28616,6 +28627,15 @@ function offerToComparisonItem(o) {
   if (String(o.vertical) === "flights" && o.brand && !specs["airline"] && !brandIsSeller) {
     specs["airline"] = String(o.brand);
   }
+  if (String(o.vertical) === "flights") {
+    if (attrs["departure"] && !specs["departure time"]) specs["departure time"] = String(attrs["departure"]);
+    if (attrs["arrival"] && !specs["arrival time"]) specs["arrival time"] = String(attrs["arrival"]);
+    if (!specs["flight number"]) {
+      const m = String(o.title || "").match(/\b([0-9]?[A-Z][A-Z0-9]?)\s?(\d{3,4})\b/);
+      if (m) specs["flight number"] = `${m[1]}${m[2]}`;
+    }
+    if (!specs["travel date"] && !attrs["travel_date"] && o.travel?.date) specs["travel date"] = String(o.travel.date);
+  }
   if (o.travel?.route) specs["Route"] = String(o.travel.route);
   if (o.travel?.date) specs["Date"] = String(o.travel.date);
   const fetchedAt = o.provenance?.fetchedAt;
@@ -28660,6 +28680,10 @@ function offerToComparisonItem(o) {
   }
   if (!parts.length && attrs["data_note"]) parts.push(String(attrs["data_note"]));
   const description = parts.join(" \xB7 ").slice(0, 300);
+  if (String(o.vertical) === "flights" && !/airline_logos/.test(attrs["image_url"] || "")) {
+    const code = (/^([0-9]?[A-Z][A-Z0-9]?)/.exec(specs["flight number"] || "") || [])[1];
+    if (code && !attrs["image_url"]) attrs["image_url"] = `https://www.gstatic.com/flights/airline_logos/70px/${code}.png`;
+  }
   const featurePills = [
     ...attrs["rating"] ? [`${attrs["rating"]}\u2605`] : [],
     ...attrs["interest_rate_min"] ? [`${attrs["interest_rate_min"]}\u2013${attrs["interest_rate_max"] || attrs["interest_rate_min"]}% p.a.`] : [],

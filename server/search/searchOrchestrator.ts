@@ -71,6 +71,15 @@ function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
     attributes: parseCatalogueAttributes(row.attributes),
     vendor: row.vendor,
     seller: row.seller,
+    sellerUrl: row.seller_url || undefined,
+    brand: row.brand || undefined,
+    // The offers table has no travel column; parsers persist route/date as
+    // attributes. Hydrate o.travel from them so flight group keys (flight no +
+    // date + dep time) survive the catalogue path (owner 22 Oct grouping bug).
+    travel: (() => {
+      const a: any = parseCatalogueAttributes(row.attributes);
+      return a?.route || a?.travel_date ? { route: a.route, date: a.travel_date } : undefined;
+    })(),
     location: { pincode: row.location_pincode || undefined, city: row.location_city || undefined },
     prices: {
       listPrice: row.mandatory_total ?? undefined,

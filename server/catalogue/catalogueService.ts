@@ -84,6 +84,9 @@ export interface CatalogueRow {
   canonical_entity_id?: number | null;
   /** Persisted attribute JSON (image_url, rating, gallery...) — hydrate, never discard. */
   attributes?: unknown;
+  /** Persisted seller deeplink target — without it cached rows had NO Book button (owner 22 Oct). */
+  seller_url?: string | null;
+  brand?: string | null;
 }
 
 /** L3 catalogue lookup: eligible fresh offers for a vertical/location. */
@@ -106,7 +109,8 @@ export async function findCatalogueOffers(
     params.push(opts.limit ?? 50);
     return await store.query<CatalogueRow>(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
-              currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id
+              currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
+              seller_url, brand
        FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
       params,
     );

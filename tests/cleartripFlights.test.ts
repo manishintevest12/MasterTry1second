@@ -81,3 +81,37 @@ test('cleartrip: broken/empty payloads return empty, never throw', () => {
 test('cleartrip: search URL carries IATA + DD/MM/YYYY date', () => {
   assert.equal(cleartripSearchUrl('DEL', 'BOM', '25/10/2026'), 'https://www.cleartrip.com/flight/search/v2?from=DEL&to=BOM&depart_date=25%2F10%2F2026&adults=1');
 });
+
+// Owner 22 Oct (flight cards: times missing + same-flight grouping broken):
+// Cleartrip moved times into firstDeparture.airport.time (verified live
+// 2026-10-22: 2026-10-29T07:15:00.000+05:30); the flat .time path returned
+// undefined so every row rendered time-less and the flight group key
+// (flight no + date + dep time) collapsed. travel_date is now persisted as an
+// attribute so catalogue-served rows keep their date (offers table has no
+// travel column).
+test('cleartrip: new nested airport.time shape parses times + travel_date persists', () => {
+  const card = {
+    travelOptionId: 'QP-1805-DEL-BOM-1792892400',
+    summary: {
+      flights: [{ airlineCode: 'QP', flightNumber: '1805' }],
+      firstDeparture: { airport: { code: 'DEL', time: '2026-10-29T07:15:00.000+05:30' } },
+      lastArrival: { airport: { code: 'BOM', time: '2026-10-29T09:35:00.000+05:30' } },
+      totalDuration: { hh: 2, mm: 20 }, stops: 0, timelineText: 'Non-stop',
+    },
+    subTravelOptionIds: ['QP-1805-DEL-BOM-1792892400'],
+  };
+  const subs = { 'QP-1805-DEL-BOM-1792892400': { fareIds: [FARE_ID_QP] } };
+  const fares = { [FARE_ID_QP]: { pricing: { totalPricing: { totalPrice: 4432 } } } };
+  const rows = parseCleartripFlights(JSON.stringify({ cards: { J1: [card] }, subTravelOptions: subs, fares }), src, 'Delhi', 'Mumbai', '2026-10-29');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].attributes.departure, '07:15');
+  assert.equal(rows[0].attributes.arrival, '09:35');
+  assert.equal(rows[0].attributes.travel_date, '2026-10-29');
+  assert.equal(rows[0].sellerUrl.startsWith('https://www.cleartrip.com/flights/results?'), true);
+});
+
+test('cleartrip: legacy flat .time shape still parses (backward compatible)', () => {
+  const rows = parseCleartripFlights(body(FIXTURE), src, 'Delhi', 'Mumbai', '2026-10-25');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].attributes.departure, '07:10');
+});

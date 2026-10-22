@@ -434,6 +434,20 @@ function offerToComparisonItem(o: any) {
   if (String(o.vertical) === 'flights' && o.brand && !specs['airline'] && !brandIsSeller) {
     specs['airline'] = String(o.brand);
   }
+  if (String(o.vertical) === 'flights') {
+    // Owner 22 Oct (flight cards missing times / not grouping / no image):
+    // parsers publish 'departure'/'arrival' attributes while cards + group keys read
+    // 'departure time'/'arrival time' — normalize once so every surface agrees.
+    if (attrs['departure'] && !specs['departure time']) specs['departure time'] = String(attrs['departure']);
+    if (attrs['arrival'] && !specs['arrival time']) specs['arrival time'] = String(attrs['arrival']);
+    if (!specs['flight number']) {
+      // Flight number published in the title itself (e.g. "IndiGo 6E6627 · ...").
+      // Code must contain a letter so years/dates ("2026-10-29") never match.
+      const m = String(o.title || '').match(/\b([0-9]?[A-Z][A-Z0-9]?)\s?(\d{3,4})\b/);
+      if (m) specs['flight number'] = `${m[1]}${m[2]}`;
+    }
+    if (!specs['travel date'] && !attrs['travel_date'] && o.travel?.date) specs['travel date'] = String(o.travel.date);
+  }
   if (o.travel?.route) specs['Route'] = String(o.travel.route);
   if (o.travel?.date) specs['Date'] = String(o.travel.date);
   const fetchedAt = o.provenance?.fetchedAt;
@@ -482,6 +496,15 @@ function offerToComparisonItem(o: any) {
   }
   if (!parts.length && attrs['data_note']) parts.push(String(attrs['data_note']));
   const description = parts.join(' · ').slice(0, 300);
+  // Flights (owner 22 Oct): the card's left image is the OPERATING AIRLINE logo
+  // (like Google Flights). Rows that only carry a tiny seller favicon (EMT) or no
+  // image render as a blank fallback on phones. Derive the official gstatic
+  // airline logo (the same CDN Cleartrip rows already use) from the flight
+  // number's IATA designator — a real published logo, nothing invented.
+  if (String(o.vertical) === 'flights' && !/airline_logos/.test(attrs['image_url'] || '')) {
+    const code = (/^([0-9]?[A-Z][A-Z0-9]?)/.exec(specs['flight number'] || '') || [])[1];
+    if (code && !attrs['image_url']) attrs['image_url'] = `https://www.gstatic.com/flights/airline_logos/70px/${code}.png`;
+  }
   const featurePills = [
     ...(attrs['rating'] ? [`${attrs['rating']}★`] : []),
     ...(attrs['interest_rate_min'] ? [`${attrs['interest_rate_min']}–${attrs['interest_rate_max'] || attrs['interest_rate_min']}% p.a.`] : []),

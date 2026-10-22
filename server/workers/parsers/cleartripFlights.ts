@@ -79,8 +79,11 @@ export function parseCleartripFlights(
 
     const airlineName = EMT_AIRLINES[airlineCode]?.name || airlineCode || 'Flight';
     const stops = Number(s.stops || 0);
-    const depT = String(s.firstDeparture?.time || '').slice(11, 16);
-    const arrT = String(s.lastArrival?.time || '').slice(11, 16);
+    // Self-heal 22 Oct: Cleartrip moved times to firstDeparture.airport.time
+    // (verified live: 2026-10-29T07:15:00.000+05:30); the old flat .time path
+    // returned undefined and every Cleartrip row rendered time-less.
+    const depT = String(s.firstDeparture?.time || (s.firstDeparture as any)?.airport?.time || '').slice(11, 16);
+    const arrT = String(s.lastArrival?.time || (s.lastArrival as any)?.airport?.time || '').slice(11, 16);
     const dur = s.totalDuration ? `${String(s.totalDuration.hh || 0).padStart(2, '0')}h ${String(s.totalDuration.mm || 0).padStart(2, '0')}m` : '';
     const couponMsg = String(fare?.pricing?.totalPricing?.message || '').trim();
     const srpUrl = `https://www.cleartrip.com/flights/results?from=${s.firstDeparture?.airport?.code || ''}&to=${s.lastArrival?.airport?.code || ''}&depart_date=${depIso}&adults=1`;
@@ -96,6 +99,7 @@ export function parseCleartripFlights(
       attributes: {
         airline: airlineName,
         flight_number: flightNo,
+        travel_date: depIso,
         ...(depT ? { departure: depT } : {}),
         ...(arrT ? { arrival: arrT } : {}),
         stops: String(stops),
