@@ -4506,6 +4506,7 @@ function parseOyoOffers(hotels, source, city, meta) {
     const attrs = {
       image_url: h.imageUrl,
       images: h.images.join("|"),
+      image_urls: h.images.join("|"),
       rating: h.rating != null ? String(h.rating) : null,
       // already /5
       review_count: h.ratingCount,
@@ -4532,7 +4533,7 @@ function parseOyoOffers(hotels, source, city, meta) {
       evidence: {
         sourceUrl: srpUrl,
         sourceReference: h.id,
-        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "image_urls", "deeplink"]
       }
     }));
   }
@@ -5112,9 +5113,15 @@ function parseAgodaHotels(props) {
     const inclusive = perNight?.inclusive?.display;
     const pricePerNight = typeof exclusive === "number" ? exclusive : typeof inclusive === "number" ? inclusive : null;
     const priceInclusive = typeof inclusive === "number" ? inclusive : null;
-    const imgEntry = first(first(p.content?.images?.hotelImages)?.urls);
-    const rawImg = typeof imgEntry?.value === "string" ? imgEntry.value : null;
-    const imageUrl = rawImg ? rawImg.startsWith("//") ? `https:${rawImg}` : rawImg : null;
+    const hotelImages = Array.isArray(p.content?.images?.hotelImages) ? p.content.images.hotelImages : [];
+    const imageUrls = [];
+    for (const hi of hotelImages.slice(0, 10)) {
+      const u = first(hi?.urls);
+      if (typeof u?.value === "string" && u.value) {
+        imageUrls.push(u.value.startsWith("//") ? `https:${u.value}` : u.value);
+      }
+    }
+    const imageUrl = imageUrls[0] ?? null;
     out.push({
       propertyId,
       name,
@@ -5128,7 +5135,8 @@ function parseAgodaHotels(props) {
       imageUrl,
       lat: typeof info.geoInfo?.latitude === "number" ? info.geoInfo.latitude : null,
       lon: typeof info.geoInfo?.longitude === "number" ? info.geoInfo.longitude : null,
-      available: p.pricing?.isAvailable === true
+      available: p.pricing?.isAvailable === true,
+      imageUrls
     });
   }
   return out;
@@ -5140,6 +5148,7 @@ function parseAgodaOffers(hotels, source, city, meta) {
     if (!h.pricePerNight) continue;
     const attrs = {
       image_url: h.imageUrl,
+      image_urls: h.imageUrls.filter(Boolean).join("|"),
       rating: h.score != null ? String(h.score / 10) : null,
       // Agoda scores are /10 → /5 scale
       review_count: h.reviews,
@@ -5161,7 +5170,7 @@ function parseAgodaOffers(hotels, source, city, meta) {
       evidence: {
         sourceUrl: srpUrl,
         sourceReference: h.propertyId,
-        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "image_urls", "deeplink"]
       }
     }));
   }
@@ -5411,17 +5420,26 @@ var init_hotels = __esm({
               Referer: "https://www.google.com/"
             };
             const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
+            const mobileHeaders = {
+              ...giChromeHeaders,
+              "sec-ch-ua-mobile": "?1",
+              "sec-ch-ua-platform": '"iOS"',
+              "sec-ch-ua": '"Not A(Brand";v="8", "Safari";v="17", "Chromium";v="130"',
+              Accept: "text/html,application/xhtml+xml,*/*;q=0.8"
+            };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
             for (const slug2 of attempts) {
               const url = `https://www.goibibo.com/hotels/${slug2}/`;
               let bigBody = null;
-              for (let attempt = 1; attempt <= 3; attempt++) {
+              for (let attempt = 1; attempt <= 4; attempt++) {
                 let r;
+                const headers = attempt === 3 ? mobileHeaders : giChromeHeaders;
+                const imp = attempt === 3 ? "safari17_0" : "chrome";
                 try {
-                  r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: giChromeHeaders });
+                  r = await cffiFetch(url, { impersonate: imp, timeoutMs: 25e3, headers });
                 } catch (e) {
-                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/3): ${String(e?.message || e).slice(0, 80)}`);
+                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e?.message || e).slice(0, 80)}`);
                   await sleep(1500);
                   continue;
                 }
@@ -5618,7 +5636,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA3 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA4 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -7712,8 +7730,8 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
     if (!Number.isFinite(price) || price <= 0) continue;
     const airlineName2 = EMT_AIRLINES[airlineCode]?.name || airlineCode || "Flight";
     const stops = Number(s.stops || 0);
-    const depT = String(s.firstDeparture?.time || "").slice(11, 16);
-    const arrT = String(s.lastArrival?.time || "").slice(11, 16);
+    const depT = String(s.firstDeparture?.time || s.firstDeparture?.airport?.time || "").slice(11, 16);
+    const arrT = String(s.lastArrival?.time || s.lastArrival?.airport?.time || "").slice(11, 16);
     const dur = s.totalDuration ? `${String(s.totalDuration.hh || 0).padStart(2, "0")}h ${String(s.totalDuration.mm || 0).padStart(2, "0")}m` : "";
     const couponMsg = String(fare?.pricing?.totalPricing?.message || "").trim();
     const srpUrl = `https://www.cleartrip.com/flights/results?from=${s.firstDeparture?.airport?.code || ""}&to=${s.lastArrival?.airport?.code || ""}&depart_date=${depIso}&adults=1`;
@@ -7728,6 +7746,7 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
       attributes: {
         airline: airlineName2,
         flight_number: flightNo2,
+        travel_date: depIso,
         ...depT ? { departure: depT } : {},
         ...arrT ? { arrival: arrT } : {},
         stops: String(stops),
@@ -13603,6 +13622,72 @@ var init_indriveIntercity = __esm({
   }
 });
 
+// server/common/geoProxy.ts
+async function throttledNominatim(path6) {
+  const hit = cache5.get(path6);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastCallAt = Date.now();
+  try {
+    const r = await fetch(`${NOMINATIM}${path6}`, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (!r.ok) {
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path6.slice(0, 60)}`);
+      return null;
+    }
+    const value = await r.json();
+    if (cache5.size >= CACHE_MAX) cache5.delete(cache5.keys().next().value);
+    cache5.set(path6, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
+    return null;
+  }
+}
+async function geoSearch(q3, limit = 6) {
+  const clean3 = q3.trim().slice(0, 120);
+  if (clean3.length < 2) return [];
+  const path6 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path6);
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
+}
+async function geoReverse(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const la = lat.toFixed(6), lo = lng.toFixed(6);
+  const path6 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path6);
+  const a = row?.address;
+  if (!row || !a) return null;
+  const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
+  const city = a.city || a.town || a.village || a.county || a.state_district || "";
+  return {
+    lat,
+    lng,
+    address: String(row.display_name || `${locality} ${city}`.trim()).slice(0, 220),
+    locality: String(locality).slice(0, 80),
+    city: String(city).slice(0, 60),
+    state: a.state ? String(a.state).slice(0, 60) : void 0,
+    pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
+  };
+}
+var UA, NOMINATIM, cache5, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS;
+var init_geoProxy = __esm({
+  "server/common/geoProxy.ts"() {
+    init_logger();
+    UA = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
+    NOMINATIM = "https://nominatim.openstreetmap.org";
+    cache5 = /* @__PURE__ */ new Map();
+    CACHE_MS = 24 * 60 * 6e4;
+    CACHE_MAX = 800;
+    lastCallAt = 0;
+    MIN_INTERVAL_MS = 1100;
+  }
+});
+
 // server/workers/parsers/rapidoCabs.ts
 function rapidoCitySlug(city) {
   const l = city.trim().toLowerCase();
@@ -16294,6 +16379,7 @@ var init_cab = __esm({
     init_curlCffiFetch();
     init_contract();
     init_osmTravel();
+    init_geoProxy();
     init_rapidoCabs();
     init_uberIndiaCities();
     init_httpClient();
@@ -16505,6 +16591,19 @@ var init_cab = __esm({
             const namesCity = (place, city) => cityFromRouteText(place).toLowerCase().includes(city.toLowerCase()) || place.toLowerCase().includes(city.toLowerCase());
             if (!a && b && b.name && namesCity(rt.from, b.name)) a = b;
             if (!b && a && a.name && namesCity(rt.to, a.name)) b = a;
+            const osmCity = async (place, hint) => {
+              try {
+                const g = (await geoSearch(hint && !place.toLowerCase().includes(hint.toLowerCase()) ? `${place} ${hint}` : place, 1))[0];
+                if (!g) return null;
+                const rev = await geoReverse(g.lat, g.lng);
+                const c = rev?.city || "";
+                return c ? rapidoCityLookup(cities, c) : null;
+              } catch {
+                return null;
+              }
+            };
+            if (!a) a = await osmCity(rt.from, b?.name);
+            if (!b) b = await osmCity(rt.to, a?.name);
             if (!a || !b) return [];
             if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) return [];
             return buildRapidoAvailability({
@@ -16930,7 +17029,7 @@ ${v}\r
     const cached = tokenCache.get(host);
     if (cached && Date.now() - cached.mintedAt < CACHE_TTL_MS) return cached.token;
     const t0 = Date.now();
-    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9" } });
+    const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9" } });
     const html = r.body || "";
     if (r.status === 200 && !html.includes("gokuProps")) {
       tokenCache.set(host, { token: "", mintedAt: Date.now() });
@@ -16939,7 +17038,7 @@ ${v}\r
     if (!html.includes("gokuProps")) throw new Error(`AWS WAF shell missing (HTTP ${r.status}, len ${html.length})`);
     const m = html.match(/<script src="(https:\/\/[^"]*awswaf\.com[^"]*challenge\.js)"><\/script>/);
     if (!m) throw new Error("challenge.js URL not found in shell");
-    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA } });
+    const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA2 } });
     if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
     const { JSDOM } = await import("jsdom");
     const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true });
@@ -16953,7 +17052,7 @@ ${v}\r
     w.TextDecoder = w.TextDecoder || TextDecoder;
     Object.defineProperty(w.Location.prototype, "reload", { value: () => {
     }, configurable: true });
-    Object.defineProperty(w.navigator, "userAgent", { get: () => UA, configurable: true });
+    Object.defineProperty(w.navigator, "userAgent", { get: () => UA2, configurable: true });
     w.fetch = async (u, init = {}) => {
       let bodyStr;
       let ct = "";
@@ -16966,7 +17065,7 @@ ${v}\r
         else if (init.body instanceof Uint8Array) bodyStr = Buffer.from(init.body).toString();
         else bodyStr = String(init.body);
       }
-      const hdrs = { "User-Agent": UA, ...init.headers || {} };
+      const hdrs = { "User-Agent": UA2, ...init.headers || {} };
       if (ct && !hdrs["Content-Type"] && !hdrs["content-type"]) hdrs["Content-Type"] = ct;
       const res = await cffiFetch2(String(u), { impersonate: "chrome", method: init.method || "GET", body: bodyStr, timeoutMs: 25e3, headers: hdrs });
       const body = res.body || "";
@@ -16991,7 +17090,7 @@ ${v}\r
   }
   async function wafGet(url, extraHeaders = {}, opts = {}) {
     const token = await mintAwsWafToken(url, opts);
-    const headers = { "User-Agent": UA, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
+    const headers = { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9", ...token ? { Cookie: "aws-waf-token=" + token } : {}, ...extraHeaders };
     let r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 25e3, headers });
     if (r.status === 202) {
       tokenCache.delete(new URL(url).hostname);
@@ -17002,11 +17101,11 @@ ${v}\r
   }
   return { mintAwsWafToken, wafGet, isChallenged: (status, body) => status === 202 || status === 200 && body.includes("gokuProps") };
 }
-var import_node_crypto2, UA, CACHE_TTL_MS, tokenCache;
+var import_node_crypto2, UA2, CACHE_TTL_MS, tokenCache;
 var init_awsWafChallenge = __esm({
   "server/common/awsWafChallenge.ts"() {
     import_node_crypto2 = require("node:crypto");
-    UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     CACHE_TTL_MS = 15e4;
     tokenCache = /* @__PURE__ */ new Map();
   }
@@ -21559,17 +21658,24 @@ async function acquireParallel(query, opts = {}) {
       if (timer) clearTimeout(timer);
     }
   };
-  const settled = await Promise.allSettled(sources2.map((source) => runWithDeadline(source)));
-  for (const s of settled) {
-    if (s.status !== "fulfilled") continue;
-    const r = s.value;
-    if (r.kind === "ok") {
-      outcome.results.push(r.result);
-      outcome.succeeded.push(r.result.sourceId);
-    } else {
-      outcome.failed.push({ sourceId: r.sourceId, failureClass: r.failureClass, error: r.error });
-    }
-  }
+  const settled = await Promise.allSettled(sources2.map(
+    (source) => runWithDeadline(source).then((r) => {
+      if (r.kind === "ok") {
+        outcome.results.push(r.result);
+        outcome.succeeded.push(r.result.sourceId);
+      } else {
+        outcome.failed.push({ sourceId: r.sourceId, failureClass: r.failureClass, error: r.error });
+      }
+      opts.onPartial?.({
+        results: [...outcome.results],
+        attempted: outcome.attempted,
+        succeeded: [...outcome.succeeded],
+        failed: [...outcome.failed]
+      });
+      return r;
+    })
+  ));
+  void settled;
   return outcome;
 }
 
@@ -21938,20 +22044,20 @@ function buildEvidence(offer, raw) {
 // server/pipeline/lenderLogo.ts
 var import_node_fs4 = __toESM(require("node:fs"), 1);
 var import_node_path4 = __toESM(require("node:path"), 1);
-var UA2 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-var CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos.json");
+var UA3 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+var CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos-v2.json");
 var MISS_TTL_MS = 7 * 864e5;
 var FETCH_TIMEOUT_MS = 4e3;
-var cache5 = null;
+var cache6 = null;
 var inflight2 = /* @__PURE__ */ new Map();
 function load7() {
-  if (cache5) return cache5;
+  if (cache6) return cache6;
   try {
-    cache5 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+    cache6 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
   } catch {
-    cache5 = {};
+    cache6 = {};
   }
-  return cache5;
+  return cache6;
 }
 var saveTimer2 = null;
 function persist2() {
@@ -21960,7 +22066,7 @@ function persist2() {
     saveTimer2 = null;
     try {
       import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
-      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache5 || {}));
+      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache6 || {}));
     } catch {
     }
   }, 1500);
@@ -21972,7 +22078,7 @@ async function getJson(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA2, Accept: "application/json" }, signal: ctl.signal });
+    const r = await fetch(url, { headers: { "User-Agent": UA3, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } finally {
@@ -22000,6 +22106,72 @@ var LENDER_ALIAS = {
   axis: "Axis Bank",
   "yes bank": "Yes Bank"
 };
+var OTHER_BANK_TOKENS = /* @__PURE__ */ new Set([
+  "union",
+  "sbi",
+  "pnb",
+  "canara",
+  "axis",
+  "kotak",
+  "hdfc",
+  "icici",
+  "idbi",
+  "iob",
+  "uco",
+  "federal",
+  "rbl",
+  "bandhan",
+  "gramin",
+  "gramya",
+  "baroda",
+  "indusind",
+  "idfc",
+  "navi",
+  "karnataka",
+  "south",
+  "punjab",
+  "sind",
+  "central",
+  "jammu",
+  "kashmir",
+  "overseas",
+  "reserve"
+]);
+var STOP_TOKENS = /* @__PURE__ */ new Set(["ltd", "bank", "and", "of", "the", "in", "co", "pvt", "limited"]);
+var normTokens = (t) => t.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((x) => x.length > 1 && !STOP_TOKENS.has(x));
+function pickCommonsLogoHit(titles, institution) {
+  const want = new Set(normTokens(institution));
+  if (!want.size) return null;
+  for (const raw of titles) {
+    const file = String(raw || "").replace(/^File:/i, "");
+    if (!/logo|\.svg$/i.test(file)) continue;
+    const have = new Set(normTokens(file));
+    let ok = true;
+    for (const w of want) if (!have.has(w)) {
+      ok = false;
+      break;
+    }
+    if (!ok) continue;
+    for (const t of have) if (OTHER_BANK_TOKENS.has(t) && !want.has(t)) {
+      ok = false;
+      break;
+    }
+    if (!ok) continue;
+    return file;
+  }
+  return null;
+}
+async function commonsLogoFallback(name) {
+  try {
+    const s = await getJson(`https://commons.wikimedia.org/w/api.php?action=query&format=json&list=search&srnamespace=6&srlimit=8&srsearch=${encodeURIComponent(name + " logo")}`);
+    const titles = (s?.query?.search || []).map((x) => String(x.title || "")).filter(Boolean);
+    const hit = pickCommonsLogoHit(titles, name);
+    if (!hit) return null;
+    return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(hit.replace(/ /g, "_"))}?width=256`;
+  } catch {
+    return null;
+  }
+}
 async function lookup(nameRaw) {
   const name = LENDER_ALIAS[nameRaw.toLowerCase()] || nameRaw;
   const s = await getJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
@@ -22013,7 +22185,7 @@ async function lookup(nameRaw) {
     const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
     if (file) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(file).replace(/ /g, "_"))}?width=256`;
   }
-  return null;
+  return commonsLogoFallback(name);
 }
 function resolveLenderLogo(rawName) {
   const name = lenderNameFrom(rawName);
@@ -22651,6 +22823,95 @@ function passesQueryRelevance(offer, parsed) {
   return qt.size <= 1 ? hits >= 1 : hits / qt.size >= 0.6;
 }
 
+// server/search/sellerPresence.ts
+init_airportLookup();
+init_flights();
+init_yatraFlights();
+init_akasaFlights();
+var PRESENCE_SELLERS = [
+  {
+    seller: "Yatra",
+    sourceId: "w_flights_yatra",
+    srp: (rt, dIso) => yatraSrpUrl3(rt.fromCode, rt.toCode, dIso),
+    note: "Yatra's live fare feed is not reachable from our servers right now; this opens Yatra's own results for the route with the date prefilled."
+  },
+  {
+    seller: "IndiGo",
+    sourceId: "w_flights_indigo",
+    srp: (rt, dIso) => `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${rt.fromCode}&to=${rt.toCode}&depart=${dIso}&pax=A1`,
+    note: "IndiGo's live fare feed is not reachable from our servers right now; this opens IndiGo's own booking widget with the route and date prefilled."
+  },
+  {
+    seller: "Akasa Air",
+    sourceId: "w_flights_akasa",
+    srp: () => `${AKASA_WEB}/booking`,
+    note: "Akasa Air's live fare feed is not reachable from our servers right now; this opens Akasa Air's own booking flow to check availability for the route."
+  },
+  {
+    seller: "Expedia",
+    sourceId: "w_flights_expedia",
+    srp: (rt, dIso) => `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}&from=${encodeURIComponent(`${rt.from} (${rt.fromCode})`)}&to=${encodeURIComponent(`${rt.to} (${rt.toCode})`)}&search-type=arsed&mode=search`,
+    note: "Expedia's live fare feed is not reachable from our servers right now; this opens Expedia's own results for the route with the date prefilled."
+  }
+];
+function presenceOffer(seller, sourceId, srp, note, from, to, dIso) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    id: `presence_${sourceId}_${from}_${to}_${dIso}`.toLowerCase().replace(/\s+/g, "-"),
+    canonicalEntityId: null,
+    canonicalVariantId: null,
+    vertical: "flights",
+    title: `${seller} flights: ${from} \u2192 ${to}`,
+    brand: seller,
+    identifiers: { sku: `presence-${seller}-${from}-${to}-${dIso}`.toLowerCase().replace(/\s+/g, "-") },
+    attributes: {
+      route: `${from} \u2192 ${to}`,
+      travel_date: dIso,
+      price_basis: "live_fares_unavailable",
+      data_note: `${note} No price is shown because we never invent one.`
+    },
+    vendor: seller,
+    seller,
+    sellerUrl: srp,
+    travel: { route: `${from.toLowerCase()} to ${to.toLowerCase()}`, date: dIso },
+    prices: { currency: "INR", fees: {} },
+    availability: "unknown",
+    matchState: "PROBABLE_MATCH",
+    freshnessStatus: "FRESH",
+    validationStatus: "VALID",
+    confidence: 0.75,
+    provenance: {
+      sourceId,
+      sourceMethod: "direct_http",
+      adapterVersion: "presence-v1",
+      parserVersion: "seller-presence/1.0",
+      sourceUrl: srp,
+      sourceReference: "Seller presence row (route-prefilled seller search page; no fare claimed)",
+      fetchedAt: now,
+      validatedAt: now
+    }
+  };
+}
+async function buildFlightSellerPresence(parsed, combined) {
+  const raw = String(parsed.rawQuery || parsed.entityName || "");
+  const rt0 = routeFromQuery(raw);
+  if (!rt0) return [];
+  const dIso = parsed.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(parsed.travelDates.depart) ? parsed.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const fromA = await resolveAirport(rt0.from, rt0.fromCode);
+  const toA = await resolveAirport(rt0.to, rt0.toCode);
+  if (!fromA.code || !toA.code) return [];
+  const rt = { from: rt0.from, to: rt0.to, fromCode: fromA.code, toCode: toA.code };
+  const presentSellers = new Set(
+    combined.filter((o) => (Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0) > 0).map((o) => `${o.seller || ""}`.toLowerCase().trim()).filter(Boolean)
+  );
+  const out = [];
+  for (const cfg of PRESENCE_SELLERS) {
+    if (presentSellers.has(cfg.seller.toLowerCase())) continue;
+    out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
+  }
+  return out;
+}
+
 // server/verticals/verticalEngine.ts
 var NON_COMPARISON_VERTICALS = [
   "coupons",
@@ -23072,13 +23333,35 @@ async function findCatalogueOffers(vertical, opts = {}) {
     params.push(opts.limit ?? 50);
     return await store2.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
-              currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id
+              currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
+              seller_url, brand
        FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
       params
     );
   } catch (e) {
     log.debug("Catalogue", "Lookup failed (store unavailable)", { error: String(e).slice(0, 100) });
     return [];
+  }
+}
+async function purgePhotolessHotelOffers() {
+  const store2 = getStore();
+  try {
+    await store2.execute(
+      `DELETE FROM offers WHERE vertical = 'hotels'
+        AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%'
+             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL)
+        AND fetched_at < (NOW() - INTERVAL 1 DAY)`
+    );
+  } catch (e) {
+    try {
+      await store2.execute(
+        `DELETE FROM offers WHERE vertical = 'hotels'
+          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')
+          AND fetched_at < (NOW() - INTERVAL 1 DAY)`
+      );
+    } catch (e2) {
+      log.debug("Catalogue", "Photoless hotel purge failed", { error: String(e2).slice(0, 100) });
+    }
   }
 }
 async function purgeStaleBankingOffers() {
@@ -23160,6 +23443,15 @@ function rowToOffer(row, isLiveNow) {
     attributes: parseCatalogueAttributes(row.attributes),
     vendor: row.vendor,
     seller: row.seller,
+    sellerUrl: row.seller_url || void 0,
+    brand: row.brand || void 0,
+    // The offers table has no travel column; parsers persist route/date as
+    // attributes. Hydrate o.travel from them so flight group keys (flight no +
+    // date + dep time) survive the catalogue path (owner 22 Oct grouping bug).
+    travel: (() => {
+      const a = parseCatalogueAttributes(row.attributes);
+      return a?.route || a?.travel_date ? { route: a.route, date: a.travel_date } : void 0;
+    })(),
     location: { pincode: row.location_pincode || void 0, city: row.location_city || void 0 },
     prices: {
       listPrice: row.mandatory_total ?? void 0,
@@ -23187,8 +23479,13 @@ function searchCacheTtl(vertical) {
   return { ttlSec: 900, staleSec: 2700 };
 }
 var inflightPipelines = /* @__PURE__ */ new Map();
-function progressiveCatalogueResponse(vertical, inputQuery, offers, start, pending) {
+var inflightPartials = /* @__PURE__ */ new Map();
+async function progressiveCatalogueResponse(vertical, inputQuery, offers, start, pending) {
   const anyOffers = offers;
+  if (String(vertical) === "flights") {
+    const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
+    if (presence.length) anyOffers.push(...withBrandImages(presence));
+  }
   for (const o of anyOffers) {
     if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
     if (o.provenance) o.provenance.replayedFromCache = true;
@@ -23210,10 +23507,10 @@ function progressiveCatalogueResponse(vertical, inputQuery, offers, start, pendi
   };
 }
 var RELEVANCE_GATED_CATALOGUE = /* @__PURE__ */ new Set(["ecommerce", "grocery", "food", "movies", "movie"]);
-async function freshCatalogueOffers(vertical, input, parsed) {
+async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < 3600 && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
@@ -23272,50 +23569,113 @@ async function runSearch(input) {
   }
   const running = inflightPipelines.get(cacheKey);
   if (running) {
+    const early2 = await Promise.race([
+      running.then((r) => ({ kind: "full", r }), () => null),
+      new Promise((res) => setTimeout(() => res(null), 600))
+    ]);
+    if (early2 && early2.kind === "full") return early2.r;
+    const memo = inflightPartials.get(cacheKey);
+    if (memo && memo.snap.results.length > 0) {
+      if (!memo.response) {
+        const ctx = await buildLiveCtx(parsed, input);
+        const partial = await finalizeLive(Date.now(), input, parsed, ctx, memo.snap, false);
+        if (partial.results.length > 0) {
+          partial.state.pendingRefresh = true;
+          memo.response = partial;
+        }
+      }
+      if (memo.response) return memo.response;
+    }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
-    if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running;
   }
   {
     const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) {
-      const pipeline2 = runLivePipeline(input, parsed).then((response2) => {
+      const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
-        if (response2.results.length === 0) cachePut(cacheKey, response2, 45, 45);
-        else cachePut(cacheKey, response2, t, st);
-        return response2;
+        if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
+        else cachePut(cacheKey, response, t, st);
+        return response;
       }).finally(() => {
         inflightPipelines.delete(cacheKey);
       });
       inflightPipelines.set(cacheKey, pipeline2);
       pipeline2.catch(() => {
       });
-      return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+      return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     }
   }
-  const response = await runLivePipeline(input, parsed);
-  if (response.results.length === 0) {
-    cachePut(cacheKey, response, 45, 45);
-  } else {
-    cachePut(cacheKey, response, ttlSec, staleSec);
-  }
-  return response;
-}
-async function runLivePipeline(input, parsedIn) {
-  const totalStart = Date.now();
-  let parsed = parsedIn ?? understandQuery(input.query, {
-    pincode: input.pincode,
-    city: input.city,
-    lat: input.lat,
-    lng: input.lng
+  const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
+  const partialRef = { current: null };
+  let firstRowResolve = null;
+  const firstRow = new Promise((resolve) => {
+    firstRowResolve = (snap) => resolve({ kind: "partial", snap });
   });
-  if (input.vertical) parsed.vertical = input.vertical;
-  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...input.travelDates.return ? { return: input.travelDates.return } : {} };
-  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
-  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
-  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
-    parsed = await aiAssistedUnderstanding(parsed);
+  const full = runLivePipeline(input, parsed, {
+    onPartial: (snapshot) => {
+      if (snapshot.results.length > 0) {
+        partialRef.current = snapshot;
+        inflightPartials.set(cacheKey, { snap: snapshot, response: null });
+        if (firstRowResolve) {
+          const r = firstRowResolve;
+          firstRowResolve = null;
+          r(snapshot);
+        }
+      }
+    }
+  }).then((response) => {
+    if (response.results.length === 0) {
+      cachePut(cacheKey, response, 45, 45);
+    } else {
+      cachePut(cacheKey, response, ttlSec, staleSec);
+    }
+    return response;
+  }).finally(() => {
+    inflightPipelines.delete(cacheKey);
+    inflightPartials.delete(cacheKey);
+  });
+  inflightPipelines.set(cacheKey, full);
+  full.catch(() => {
+  });
+  const servePartial = async () => {
+    const snapshot = partialRef.current;
+    if (!snapshot || snapshot.results.length === 0) return null;
+    const ctx = await buildLiveCtx(parsed, input);
+    const partial = await finalizeLive(Date.now(), input, parsed, ctx, snapshot, false);
+    if (partial.results.length === 0) return null;
+    partial.state.pendingRefresh = true;
+    return partial;
+  };
+  const early = await Promise.race([
+    full.then((r) => ({ kind: "full", r })),
+    firstRow,
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ kind: "timer" }), FIRST_PAINT_MS);
+    })
+  ]);
+  if (early.kind === "full") return early.r;
+  if (early.kind === "partial") {
+    const p = await servePartial();
+    if (p) return p;
   }
+  const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
+  const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
+  if (floorOffers.length > 0) {
+    return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
+  }
+  const next = await Promise.race([
+    full.then((r) => ({ kind: "full", r })),
+    firstRow
+  ]);
+  if (next.kind === "full") return next.r;
+  const p2 = await servePartial();
+  if (p2) return p2;
+  return await full;
+}
+async function buildLiveCtx(parsedIn, input) {
+  const parsed = parsedIn;
   const vertical = parsed.vertical || "ecommerce";
   parsed.vertical = vertical;
   const state = {
@@ -23337,14 +23697,16 @@ async function runLivePipeline(input, parsedIn) {
   const enabledSources = selectSources(parsed);
   state.reusedCatalogue = hasEligibleFresh;
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
+  return { state, vertical, enabledSources, catalogueOffers, eligibleCount: eligible.length, hasEligibleFresh };
+}
+async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist3 = true) {
+  const { state, vertical, enabledSources, catalogueOffers, hasEligibleFresh } = ctx;
   let liveOffers = [];
   if (enabledSources.length > 0) {
-    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42e3);
-    const outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt });
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
-    liveOffers = await processAdapterResults(outcome.results, parsed);
+    liveOffers = await processAdapterResults(outcome.results, parsed, persist3);
     recordSourcePrices(String(vertical), String(input.query || ""), liveOffers);
     state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed);
   } else {
@@ -23354,6 +23716,9 @@ async function runLivePipeline(input, parsedIn) {
   const liveKeys = new Set(liveOffers.map(liveIdentity));
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+  if (String(vertical) === "flights") {
+    combined = [...combined, ...await buildFlightSellerPresence(parsed, combined)];
+  }
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
@@ -23378,7 +23743,30 @@ async function runLivePipeline(input, parsedIn) {
   void recordSearchMetrics(input, parsed, response);
   return response;
 }
-async function processAdapterResults(results, parsed) {
+async function runLivePipeline(input, parsedIn, hooks) {
+  const totalStart = Date.now();
+  let parsed = parsedIn ?? understandQuery(input.query, {
+    pincode: input.pincode,
+    city: input.city,
+    lat: input.lat,
+    lng: input.lng
+  });
+  if (input.vertical) parsed.vertical = input.vertical;
+  if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...input.travelDates.return ? { return: input.travelDates.return } : {} };
+  if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
+  if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
+  if (!parsedIn && (parsed.verticalConfidence < 0.6 || !parsed.vertical)) {
+    parsed = await aiAssistedUnderstanding(parsed);
+  }
+  const ctx = await buildLiveCtx(parsed, input);
+  let outcome = { results: [], attempted: [], succeeded: [], failed: [] };
+  if (ctx.enabledSources.length > 0) {
+    const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42e3);
+    outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt, onPartial: hooks?.onPartial });
+  }
+  return finalizeLive(totalStart, input, parsed, ctx, outcome);
+}
+async function processAdapterResults(results, parsed, persist3 = true) {
   const { getSource: getSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
   const out = [];
   let processed = 0;
@@ -23421,7 +23809,7 @@ async function processAdapterResults(results, parsed) {
         );
         offer.provenance.validatedAt = (/* @__PURE__ */ new Date()).toISOString();
         if (!isServable(offer.freshnessStatus)) continue;
-        if (source.permittedForRetention) {
+        if (persist3 && source.permittedForRetention) {
           const rowId = await persistOffer(offer, raw, source);
           await recordPriceSnapshot(offer, rowId);
         }
@@ -23560,6 +23948,7 @@ async function warmRows(rows, tag) {
 async function bootWarm() {
   try {
     await purgeStaleBankingOffers();
+    await purgePhotolessHotelOffers();
     const store2 = getStore();
     const rows = await store2.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city

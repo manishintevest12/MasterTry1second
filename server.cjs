@@ -4954,6 +4954,7 @@ function parseOyoOffers(hotels, source, city, meta) {
     const attrs = {
       image_url: h.imageUrl,
       images: h.images.join("|"),
+      image_urls: h.images.join("|"),
       rating: h.rating != null ? String(h.rating) : null,
       // already /5
       review_count: h.ratingCount,
@@ -4980,7 +4981,7 @@ function parseOyoOffers(hotels, source, city, meta) {
       evidence: {
         sourceUrl: srpUrl,
         sourceReference: h.id,
-        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "image_urls", "deeplink"]
       }
     }));
   }
@@ -5560,9 +5561,15 @@ function parseAgodaHotels(props) {
     const inclusive = perNight?.inclusive?.display;
     const pricePerNight = typeof exclusive === "number" ? exclusive : typeof inclusive === "number" ? inclusive : null;
     const priceInclusive = typeof inclusive === "number" ? inclusive : null;
-    const imgEntry = first(first(p.content?.images?.hotelImages)?.urls);
-    const rawImg = typeof imgEntry?.value === "string" ? imgEntry.value : null;
-    const imageUrl = rawImg ? rawImg.startsWith("//") ? `https:${rawImg}` : rawImg : null;
+    const hotelImages = Array.isArray(p.content?.images?.hotelImages) ? p.content.images.hotelImages : [];
+    const imageUrls = [];
+    for (const hi of hotelImages.slice(0, 10)) {
+      const u = first(hi?.urls);
+      if (typeof u?.value === "string" && u.value) {
+        imageUrls.push(u.value.startsWith("//") ? `https:${u.value}` : u.value);
+      }
+    }
+    const imageUrl = imageUrls[0] ?? null;
     out.push({
       propertyId,
       name,
@@ -5576,7 +5583,8 @@ function parseAgodaHotels(props) {
       imageUrl,
       lat: typeof info.geoInfo?.latitude === "number" ? info.geoInfo.latitude : null,
       lon: typeof info.geoInfo?.longitude === "number" ? info.geoInfo.longitude : null,
-      available: p.pricing?.isAvailable === true
+      available: p.pricing?.isAvailable === true,
+      imageUrls
     });
   }
   return out;
@@ -5588,6 +5596,7 @@ function parseAgodaOffers(hotels, source, city, meta) {
     if (!h.pricePerNight) continue;
     const attrs = {
       image_url: h.imageUrl,
+      image_urls: h.imageUrls.filter(Boolean).join("|"),
       rating: h.score != null ? String(h.score / 10) : null,
       // Agoda scores are /10 → /5 scale
       review_count: h.reviews,
@@ -5609,7 +5618,7 @@ function parseAgodaOffers(hotels, source, city, meta) {
       evidence: {
         sourceUrl: srpUrl,
         sourceReference: h.propertyId,
-        extractedFields: ["title", "price", "rating", "review_count", "image_url", "deeplink"]
+        extractedFields: ["title", "price", "rating", "review_count", "image_url", "image_urls", "deeplink"]
       }
     }));
   }
@@ -5859,17 +5868,26 @@ var init_hotels = __esm({
               Referer: "https://www.google.com/"
             };
             const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
+            const mobileHeaders = {
+              ...giChromeHeaders,
+              "sec-ch-ua-mobile": "?1",
+              "sec-ch-ua-platform": '"iOS"',
+              "sec-ch-ua": '"Not A(Brand";v="8", "Safari";v="17", "Chromium";v="130"',
+              Accept: "text/html,application/xhtml+xml,*/*;q=0.8"
+            };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
             for (const slug2 of attempts) {
               const url = `https://www.goibibo.com/hotels/${slug2}/`;
               let bigBody = null;
-              for (let attempt = 1; attempt <= 3; attempt++) {
+              for (let attempt = 1; attempt <= 4; attempt++) {
                 let r;
+                const headers = attempt === 3 ? mobileHeaders : giChromeHeaders;
+                const imp = attempt === 3 ? "safari17_0" : "chrome";
                 try {
-                  r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: giChromeHeaders });
+                  r = await cffiFetch(url, { impersonate: imp, timeoutMs: 25e3, headers });
                 } catch (e) {
-                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/3): ${String(e?.message || e).slice(0, 80)}`);
+                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e?.message || e).slice(0, 80)}`);
                   await sleep(1500);
                   continue;
                 }
@@ -24205,6 +24223,7 @@ __export(catalogueService_exports, {
   findCatalogueOffers: () => findCatalogueOffers,
   persistOffer: () => persistOffer,
   priceHistoryForEntity: () => priceHistoryForEntity,
+  purgePhotolessHotelOffers: () => purgePhotolessHotelOffers,
   purgeStaleBankingOffers: () => purgeStaleBankingOffers,
   recordPriceSnapshot: () => recordPriceSnapshot,
   refreshCandidates: () => refreshCandidates,
@@ -24372,6 +24391,27 @@ async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
     );
   } catch {
     return [];
+  }
+}
+async function purgePhotolessHotelOffers() {
+  const store2 = getStore();
+  try {
+    await store2.execute(
+      `DELETE FROM offers WHERE vertical = 'hotels'
+        AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%'
+             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL)
+        AND fetched_at < (NOW() - INTERVAL 1 DAY)`
+    );
+  } catch (e) {
+    try {
+      await store2.execute(
+        `DELETE FROM offers WHERE vertical = 'hotels'
+          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')
+          AND fetched_at < (NOW() - INTERVAL 1 DAY)`
+      );
+    } catch (e2) {
+      log.debug("Catalogue", "Photoless hotel purge failed", { error: String(e2).slice(0, 100) });
+    }
   }
 }
 async function purgeStaleBankingOffers() {
@@ -32118,6 +32158,7 @@ async function warmRows(rows, tag) {
 async function bootWarm() {
   try {
     await purgeStaleBankingOffers();
+    await purgePhotolessHotelOffers();
     const store2 = getStore();
     const rows = await store2.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city

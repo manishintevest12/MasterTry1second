@@ -36,7 +36,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: TravelTile(g: g, meta: _meta)))));
     await tester.pump();
     expect(find.text('10:00 → 11:45'), findsOneWidget, reason: 'flight times must render on the card');
-    expect(find.text('Book on EaseMyTrip'), findsOneWidget, reason: 'Book button must render when sellerQuotes url exists');
+    expect(find.text('Book'), findsOneWidget, reason: 'Book button must render when sellerQuotes url exists');
     expect(find.text('AI9580'), findsOneWidget);
   });
 

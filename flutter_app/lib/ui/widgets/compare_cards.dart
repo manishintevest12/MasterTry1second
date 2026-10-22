@@ -124,7 +124,7 @@ class _SiteRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
-            child: Text('Book on $sellerName', style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
+            child: Text('Book', style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
           ),
         ),
       ],
@@ -534,7 +534,7 @@ class TravelTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'Book on $sellerName',
+                      'Book',
                       style: tx(context, 10, w: FontWeight.w900, color: Colors.white),
                     ),
                   ),
@@ -732,7 +732,7 @@ class HotelCard extends StatelessWidget {
                 if (g.best.item.bestQuote?.url.isNotEmpty == true) ...[
                   const SizedBox(height: 8),
                   RedButton(
-                    'Book on $bestSeller',
+                    'Book',
                     onTap: () => _openRedirect(
                     context,
                     sellerName: bestSeller,
@@ -1065,7 +1065,7 @@ class GroupCard extends StatelessWidget {
                         ? 'Book tickets on $sellerName'
                         : _isFinance(vertical)
                             ? _financeCtaLabel(vertical, sellerName)
-                            : 'Book on $sellerName',
+                            : 'Book',
                     onTap: () => _openRedirect(
                     context,
                     sellerName: sellerName,

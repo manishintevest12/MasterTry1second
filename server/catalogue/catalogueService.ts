@@ -182,6 +182,39 @@ export async function priceHistoryForEntity(canonicalEntityId: number, limit = 6
   }
 }
 
+
+/**
+ * Hotel art hygiene (owner 22 Oct): prod served merchant favicons as property
+ * photos because rows written by pre-gallery batches carry no image_url in
+ * attributes. Current parsers (Agoda, OYO, Yatra, EMT, SaffronStays, Ixigo,
+ * Cleartrip, Airbnb) always persist image_url, so any hotel row older than a
+ * day without one is a stale-shape write — boot clears it once; the healthy
+ * warm rotation repopulates with real art within one cycle.
+ */
+export async function purgePhotolessHotelOffers(): Promise<void> {
+  const store = getStore();
+  try {
+    await store.execute(
+      `DELETE FROM offers WHERE vertical = 'hotels'
+        AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%'
+             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL)
+        AND fetched_at < (NOW() - INTERVAL 1 DAY)`,
+    );
+  } catch (e: any) {
+    // FileStore fallback lacks JSON_EXTRACT — plain LIKE keeps it working there.
+    try {
+      await store.execute(
+        `DELETE FROM offers WHERE vertical = 'hotels'
+          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')
+          AND fetched_at < (NOW() - INTERVAL 1 DAY)`,
+      );
+    } catch (e2: any) {
+      log.debug('Catalogue', 'Photoless hotel purge failed', { error: String(e2).slice(0, 100) });
+    }
+  }
+}
+
+/**
 /**
  * One-time hygiene (21 Oct): purge stale-shape banking rows persisted by the
  * pre-worker account implementation (they carry mis-captured charge text and

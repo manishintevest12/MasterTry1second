@@ -54,6 +54,7 @@ export interface AgodaHotel {
   priceInclusive: number | null;
   currency: string;
   imageUrl: string | null;
+  imageUrls: string[];
   lat: number | null;
   lon: number | null;
   available: boolean;
@@ -244,9 +245,15 @@ export function parseAgodaHotels(props: any[]): AgodaHotel[] {
     const pricePerNight = typeof exclusive === 'number' ? exclusive : (typeof inclusive === 'number' ? inclusive : null);
     const priceInclusive = typeof inclusive === 'number' ? inclusive : null;
 
-    const imgEntry = first(first(p.content?.images?.hotelImages)?.urls);
-    const rawImg = typeof imgEntry?.value === 'string' ? imgEntry.value : null;
-    const imageUrl = rawImg ? (rawImg.startsWith('//') ? `https:${rawImg}` : rawImg) : null;
+    const hotelImages: any[] = Array.isArray(p.content?.images?.hotelImages) ? p.content.images.hotelImages : [];
+    const imageUrls: string[] = [];
+    for (const hi of hotelImages.slice(0, 10)) {
+      const u = first(hi?.urls);
+      if (typeof u?.value === 'string' && u.value) {
+        imageUrls.push(u.value.startsWith('//') ? `https:${u.value}` : u.value);
+      }
+    }
+    const imageUrl = imageUrls[0] ?? null;
 
     out.push({
       propertyId,
@@ -260,6 +267,7 @@ export function parseAgodaHotels(props: any[]): AgodaHotel[] {
       lat: typeof info.geoInfo?.latitude === 'number' ? info.geoInfo.latitude : null,
       lon: typeof info.geoInfo?.longitude === 'number' ? info.geoInfo.longitude : null,
       available: p.pricing?.isAvailable === true,
+      imageUrls,
     });
   }
   return out;
@@ -278,6 +286,7 @@ export function parseAgodaOffers(
     if (!h.pricePerNight) continue; // never publish a price we did not see
     const attrs: Record<string, any> = {
       image_url: h.imageUrl,
+      image_urls: h.imageUrls.filter(Boolean).join('|'),
       rating: h.score != null ? String(h.score / 10) : null, // Agoda scores are /10 → /5 scale
       review_count: h.reviews,
       city: h.cityName || city,
@@ -299,7 +308,7 @@ export function parseAgodaOffers(
       evidence: {
         sourceUrl: srpUrl,
         sourceReference: h.propertyId,
-        extractedFields: ['title', 'price', 'rating', 'review_count', 'image_url', 'deeplink'],
+        extractedFields: ['title', 'price', 'rating', 'review_count', 'image_url', 'image_urls', 'deeplink'],
       },
     }));
   }

@@ -13,7 +13,7 @@
 import { getStore, runMigrations } from '../common/db';
 import { runSearch } from '../search/searchOrchestrator';
 import { log } from '../common/logger';
-import { purgeStaleBankingOffers } from '../catalogue/catalogueService';
+import { purgeStaleBankingOffers, purgePhotolessHotelOffers } from '../catalogue/catalogueService';
 
 /**
  * Seed queries (Section 8): when the searches table has no history yet (fresh
@@ -153,6 +153,9 @@ export async function bootWarm(): Promise<void> {
   try {
     // Hygiene (21 Oct): drop stale-shape banking rows from the pre-worker account impl.
     await purgeStaleBankingOffers();
+    // Hygiene (22 Oct): drop photo-less stale hotel rows (pre-gallery batches wrote
+    // no image_url; warm rotation repopulates them with real property art).
+    await purgePhotolessHotelOffers();
     const store = getStore();
     const rows: Array<Record<string, any>> = await store.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city

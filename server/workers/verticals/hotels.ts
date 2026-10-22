@@ -255,17 +255,29 @@ export const hotelsWorker: VerticalWorker = {
           Referer: 'https://www.google.com/',
         };
         const attempts = [`hotels-in-${base}-ct`, `hotels-in-${base}`];
+        // 22 Oct: Akamai's sample is per-IP+client-profile — rotating a mobile
+        // profile (impersonate safari iOS UA) through the ladder gives the
+        // Hostinger IP another independent sample each run.
+        const mobileHeaders = {
+          ...giChromeHeaders,
+          'sec-ch-ua-mobile': '?1',
+          'sec-ch-ua-platform': '"iOS"',
+          'sec-ch-ua': '"Not A(Brand";v="8", "Safari";v="17", "Chromium";v="130"',
+          Accept: 'text/html,application/xhtml+xml,*/*;q=0.8',
+        };
         let lastErr: AcquisitionError | null = null;
         const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
         for (const slug of attempts) {
           const url = `https://www.goibibo.com/hotels/${slug}/`;
           let bigBody: string | null = null;
-          for (let attempt = 1; attempt <= 3; attempt++) {
+          for (let attempt = 1; attempt <= 4; attempt++) {
             let r;
+            const headers = attempt === 3 ? mobileHeaders : giChromeHeaders;
+            const imp = attempt === 3 ? 'safari17_0' : 'chrome';
             try {
-              r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 25_000, headers: giChromeHeaders });
+              r = await cffiFetch(url, { impersonate: imp, timeoutMs: 25_000, headers });
             } catch (e: any) {
-              lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable (attempt ${attempt}/3): ${String(e?.message || e).slice(0, 80)}`);
+              lastErr = new AcquisitionError('SERVER_ERROR', `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e?.message || e).slice(0, 80)}`);
               await sleep(1500);
               continue;
             }

@@ -145,6 +145,7 @@ export function parseOyoOffers(
     const attrs: Record<string, any> = {
       image_url: h.imageUrl,
       images: h.images.join('|'),
+      image_urls: h.images.join('|'),
       rating: h.rating != null ? String(h.rating) : null, // already /5
       review_count: h.ratingCount,
       address: h.address,
@@ -172,7 +173,7 @@ export function parseOyoOffers(
       evidence: {
         sourceUrl: srpUrl,
         sourceReference: h.id,
-        extractedFields: ['title', 'price', 'rating', 'review_count', 'image_url', 'deeplink'],
+        extractedFields: ['title', 'price', 'rating', 'review_count', 'image_url', 'image_urls', 'deeplink'],
       },
     }));
   }
