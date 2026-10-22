@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 
 const mk = (id: string, merchant: string): any => ({ id, title: id, merchant, merchantLogo: null, image: 'https://x/i.jpg', price: 1, mrp: null, discountPct: null, rating: null, badge: null, url: '/api/out?t=x' });
-import { mergeGoBig, statedDiscountPct, pctOf, saveOf, priceOf, itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, roundRobinSpread, techCategoryOf, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, type OfferRow } from '../server/home/showcase';
+import { mergeGoBig, statedDiscountPct, pctOf, saveOf, priceOf, itemFromOffer, itemFromAffiliate, imageFromAttributes, diversifyByMerchant, roundRobinSpread, techCategoryOf, merchantLogoCandidates, realMerchantDomain, nameDomainOf, destinationItem, finalizeSection, type OfferRow } from '../server/home/showcase';
 
 test('itemFromOffer builds a masked, priced, honest showcase item', () => {
   const item = itemFromOffer({
@@ -141,8 +141,8 @@ test('destinationItem: real fare + real hotel photo -> card; missing data -> hon
   // Fare but no hotel art -> no card (card needs real art)
   const hotelsNoArt = hotels.map((h) => ({ ...h, attributes: {} }));
   assert.strictEqual(destinationItem(goa, flights, hotelsNoArt), null);
-  // Stale fare (8d) -> no card
-  const stale = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 8)];
+  // Stale fare (16d) -> no card (window widened 7->14d on 22 Oct for the min-6 rule)
+  const stale = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 16)];
   assert.strictEqual(destinationItem(goa, stale, hotels), null);
 
   // Bengaluru spelling variant matches a Bangalore-titled fare
@@ -235,4 +235,81 @@ test('pctOf/saveOf fall back to stated % when list_price is missing', () => {
   const withMrp = { ...row, list_price: 1000 } as OfferRow;
   assert.equal(pctOf(withMrp), 0.5);
   assert.equal(saveOf(withMrp), 500);
+});
+
+test('finalizeSection tops a thin section back up to the min-6 (owner 22 Oct)', () => {
+  // 8 real candidates from ONE seller: diversify caps at 3, the min-6 rule
+  // relaxes the per-merchant cap using the same honest rows — never invents.
+  const pool = Array.from({ length: 8 }, (_, i) => mk(`x${i}`, 'Cleartrip'));
+  const out = finalizeSection(pool, 3, 12, 6);
+  assert.strictEqual(out.length, 6);
+  // and a healthy multi-seller pool still caps at 3 per merchant / 12 total
+  const mixed = [
+    ...Array.from({ length: 6 }, (_, i) => mk(`a${i}`, 'Agoda')),
+    ...Array.from({ length: 6 }, (_, i) => mk(`b${i}`, 'Booking.com')),
+    ...Array.from({ length: 6 }, (_, i) => mk(`c${i}`, 'Cleartrip')),
+    ...Array.from({ length: 6 }, (_, i) => mk(`d${i}`, 'OYO')),
+  ];
+  const spread = finalizeSection(mixed, 3, 12, 6);
+  assert.strictEqual(spread.length, 12);
+  const counts = new Map<string, number>();
+  for (const it of spread) counts.set(it.merchant, (counts.get(it.merchant) || 0) + 1);
+  for (const c of counts.values()) assert.ok(c <= 3, 'never more than maxPerMerchant when the pool is healthy');
+});
+
+test('finalizeSection keeps honesty when fewer than 6 candidates exist', () => {
+  const thin = [mk('a', 'Agoda'), mk('b', 'Cleartrip'), mk('c', 'Booking.com')];
+  assert.strictEqual(finalizeSection(thin, 3, 12, 6).length, 3); // only real rows
+});
+
+test('destinationItem prefers verified-live hotel art (owner 22 Oct: no initials text)', () => {
+  const F = (id: number, title: string, price: number, agoDays: number): OfferRow => ({
+    id, vertical: 'flights', title, brand: null, attributes: null,
+    vendor: 'Ixigo', seller: 'Ixigo', seller_url: 'https://www.ixigo.com/',
+    list_price: price, mandatory_total: price, effective_price: price,
+    fetched_at: new Date(Date.now() - agoDays * 86400000).toISOString(),
+  });
+  const H = (id: number, title: string, img: string, agoDays: number): OfferRow => ({
+    id, vertical: 'hotels', title, brand: null, attributes: { image_url: img },
+    vendor: 'Cleartrip', seller: 'Cleartrip', seller_url: 'https://www.cleartrip.com/',
+    list_price: 4200, mandatory_total: 4200, effective_price: 4200,
+    fetched_at: new Date(Date.now() - agoDays * 86400000).toISOString(),
+  });
+  const flights = [F(1, 'IndiGo 6E-123 · Indore → Goa', 4599, 1)];
+  const hotels = [
+    H(10, 'Goa Dead-CDN Resort', 'https://dead.cdn.invalid/a.jpg', 2),   // 404s from the browser
+    H(11, 'Goa Live Beach Homestay', 'https://pix8.agoda.net/hotels/1.jpg', 2), // verified live
+  ];
+  const live = new Set(['https://pix8.agoda.net/hotels/1.jpg']);
+  const card = destinationItem({ name: 'Goa', keys: ['goa'] }, flights, hotels, live);
+  assert.ok(card, 'card renders from the live-art hotel');
+  assert.strictEqual(card!.image, 'https://pix8.agoda.net/hotels/1.jpg');
+  // without the verified set the old behavior (first real-art row) is kept,
+  // so the sync unit path (liveUrls undefined) is unchanged.
+  const first = destinationItem({ name: 'Goa', keys: ['goa'] }, flights, hotels);
+  assert.strictEqual(first!.image, 'https://dead.cdn.invalid/a.jpg');
+});
+
+test('destinationItem matches IATA codes as whole words in flight titles', () => {
+  const F = (id: number, title: string, price: number): OfferRow => ({
+    id, vertical: 'flights', title, brand: null, attributes: null,
+    vendor: 'Ixigo', seller: 'Ixigo', seller_url: 'https://www.ixigo.com/',
+    list_price: price, mandatory_total: price, effective_price: price,
+    fetched_at: new Date(Date.now() - 86400000).toISOString(),
+  });
+  const H = (id: number, img: string): OfferRow => ({
+    id, vertical: 'hotels', title: 'Pune Grand', brand: null, attributes: { image_url: img },
+    vendor: 'Cleartrip', seller: 'Cleartrip', seller_url: 'https://www.cleartrip.com/',
+    list_price: 3200, mandatory_total: 3200, effective_price: 3200,
+    fetched_at: new Date(Date.now() - 86400000).toISOString(),
+  });
+  // Flight titles carry the airport code, not always the city name.
+  const card = destinationItem({ name: 'Pune', keys: ['pune'], iata: 'pnq' },
+    [F(1, 'IndiGo 6E-99 · Indore → PNQ', 2899)], [H(2, 'https://pix8.agoda.net/p.jpg')]);
+  assert.ok(card, 'IATA code matched the fare');
+  assert.strictEqual(card!.price, 2899);
+  // Word-boundary guard: a title that merely CONTAINS the letters does not match.
+  const none = destinationItem({ name: 'Pune', keys: ['pune'], iata: 'pnq' },
+    [F(3, 'Cheap flight to PunjabiBagh', 1999)], [H(4, 'https://pix8.agoda.net/p.jpg')]);
+  assert.strictEqual(none, null, 'no city-name fare and no whole-word PNQ -> no card');
 });

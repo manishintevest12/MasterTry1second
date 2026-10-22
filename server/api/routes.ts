@@ -1079,7 +1079,7 @@ apiRouter.get('/picks', async (req, res) => {
 apiRouter.get('/rewards/top-picks', async (_req, res) => {
   try {
     const { listTopPicks } = await import('../marketing/placements');
-    const { itemFromOffer, imageFromAttributes, fetchVerticalOffers, pickTopOfferRow, ageDays } = await import('../home/showcase');
+    const { itemFromOffer, imageFromAttributes, fetchVerticalOffers, pickTopOfferRow, ageDays, logoAnswers, realMerchantDomain, nameDomainOf } = await import('../home/showcase');
 
     const VERTICALS = ['ecommerce', 'grocery', 'food', 'flights', 'hotels', 'bus', 'cab', 'movie',
       'loans', 'insurance', 'creditcards', 'account'];
@@ -1118,6 +1118,13 @@ apiRouter.get('/rewards/top-picks', async (_req, res) => {
       if (!row) continue;
       const item = itemFromOffer(row);
       if (!item) continue;
+      // Owner 22 Oct ("image ki jagah text aa raha hai"): never ship card art
+      // that cannot load — the browser would render initials text in the slot.
+      // A dead source image falls back to the merchant's own logo tile.
+      if (item.image && !(await logoAnswers(item.image))) {
+        const dom = realMerchantDomain([row.seller_url]) || nameDomainOf(item.merchant);
+        item.image = dom ? `https://icons.duckduckgo.com/ip3/${dom}.ico` : item.image;
+      }
       picks.push({
         vertical: v,
         source: 'live',

@@ -5,6 +5,7 @@
  * is served with price honestly unknown.
  */
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
+import { log } from '../../common/logger';
 import { photonGeocode, parseOverpassHotels, overpassHotelQuery } from '../parsers/osmTravel';
 import { parseBookingHotels } from '../parsers/booking';
 import { parseExpediaGroup, EXPEDIA_GRAPHQL_QUERY } from '../parsers/expediaGroup';
@@ -374,7 +375,34 @@ export const hotelsWorker: VerticalWorker = {
         if (!next) throw lastErr || new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip returned nothing for this destination');
         const hotels = parseCleartripHotels(next);
         if (hotels.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Cleartrip SRP had no priced hotel cards');
-        return parseCleartripOffers(hotels, ctx.source);
+        const rows = parseCleartripOffers(hotels, ctx.source);
+        // SELF-HEALING (owner 22 Oct, standing rule): Cleartrip's rukmini-ct
+        // CMS image URLs intermittently 404 from the browser even though the
+        // page parsed them — dead art renders as initials text in the photo
+        // slot. Probe the batch's first image once; when the CDN is dead, strip
+        // the images for the whole batch (they share the CDN session) instead
+        // of persisting art that cannot load. Showcase/destination selection
+        // then honestly prefers rows with live art.
+        const firstImg = (rows as any[]).find((r) => (r.attributes?.image_url) || (r.attributes?.image_urls))
+          ?.attributes?.image_url;
+        if (firstImg) {
+          let live = false;
+          try {
+            const ctl = new AbortController();
+            const t = setTimeout(() => ctl.abort(), 4000);
+            const res = await fetch(firstImg, { signal: ctl.signal, redirect: 'follow' });
+            clearTimeout(t);
+            live = res.status === 200 && String(res.headers.get('content-type') || '').startsWith('image/');
+          } catch { live = false; }
+          if (!live) {
+            for (const r of rows as any[]) {
+              if (r.attributes?.image_url) delete r.attributes.image_url;
+              if (r.attributes?.image_urls) delete r.attributes.image_urls;
+            }
+            log.warn('Hotels worker', 'Cleartrip CDN art dead — images stripped for this batch (self-healing)', { probe: String(firstImg).slice(0, 80) });
+          }
+        }
+        return rows;
       },
     },
     {

@@ -19,7 +19,7 @@
  * Associates tag and Myntra INR-Deals/Cuelinks routing are injected
  * server-side, exactly like every other Try1Second redirection.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type SyntheticEvent } from 'react';
 import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, ArrowRight, Star, Plane } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -106,6 +106,23 @@ function DiscountRing({ pct }: { pct: number }) {
  *  (Trost) stay visible, and the crisp Wikidata art renders at full quality.
  *  Typography follows the reference: store name BOLD uppercase, description in a
  *  light weight, coupon code BOLD red. */
+/** Staged art fallback (owner 22 Oct: initials text is the LAST resort).
+ *  Chain: source art -> merchant's own logo tile -> initials avatar. The
+ *  `stage` dataset flag stops onError from looping. */
+function onArtError(e: SyntheticEvent<HTMLImageElement>, item: ShowcaseItem, initials: string) {
+  const img = e.target as HTMLImageElement;
+  const stage = img.dataset.stage || '0';
+  if (stage === '0' && item.merchantLogo && item.merchantLogo !== img.src) {
+    img.dataset.stage = '1';
+    img.src = item.merchantLogo;
+    return;
+  }
+  if (stage !== '2') {
+    img.dataset.stage = '2';
+    img.src = initials; // worst case only — server-side liveness keeps this rare
+  }
+}
+
 function CouponCard({ item }: { item: ShowcaseItem }) {
   const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.merchant)}&background=1e293b&color=ffffff&size=160`;
   const code = item.badge && item.badge.startsWith('Code: ') ? item.badge.slice(6) : null;
@@ -117,7 +134,7 @@ function CouponCard({ item }: { item: ShowcaseItem }) {
           alt={item.merchant}
           loading="lazy"
           className="max-h-[68px] max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
-          onError={(e) => { (e.target as HTMLImageElement).src = fallback; }}
+          onError={(e) => onArtError(e, item, fallback)}
         />
       </div>
       <div className="p-2.5 flex flex-col gap-1 flex-1">
@@ -144,7 +161,7 @@ function ShowcaseCard({ item, onLaunch }: { item: ShowcaseItem; onLaunch?: (q: s
           alt={item.title}
           loading="lazy"
           className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
-          onError={(e) => { (e.target as HTMLImageElement).src = fallback; }}
+          onError={(e) => onArtError(e, item, fallback)}
         />
         {item.discountPct ? (
           <div className="absolute top-2 right-2">

@@ -240,7 +240,8 @@ const logoCache = new Map<string, { at: number; ok: boolean }>();
 const LOGO_TTL_MS = 6 * 60 * 60 * 1000;
 
 /** Does this logo URL really answer with image bytes? (verified server-side) */
-async function logoAnswers(url: string): Promise<boolean> {
+/** Exported: rewards/top-picks verifies its card art with the same cache. */
+export async function logoAnswers(url: string): Promise<boolean> {
   const hit = logoCache.get(url);
   if (hit && Date.now() - hit.at < LOGO_TTL_MS) return hit.ok;
   let ok = false;
@@ -478,28 +479,69 @@ export function diversifyByMerchant(items: ShowcaseItem[], maxPerMerchant: numbe
  * the old Massive Discounts + Mega Savings pair. Union of both pools, deduped,
  * ranked by absolute savings first (bigger deals & greater savings), capped 12.
  */
-export function mergeGoBig(mega: ShowcaseItem[], massive: ShowcaseItem[]): ShowcaseItem[] {
+export function mergeGoBig(mega: ShowcaseItem[], massive: ShowcaseItem[], cap = 12): ShowcaseItem[] {
   const seen = new Set<string>();
   const savingsOf = (it: ShowcaseItem) => (it.mrp ?? 0) - (it.price ?? 0);
   return mega.concat(massive)
     .filter((it) => (seen.has(it.id) ? false : (seen.add(it.id), true)))
     .sort((a, b) => (savingsOf(b) - savingsOf(a)) || ((b.discountPct ?? 0) - (a.discountPct ?? 0)))
-    .slice(0, 12);
+    .slice(0, cap);
 }
 
-function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: (a: OfferRow, b: OfferRow) => number, spreadKey?: (it: ShowcaseItem) => string): ShowcaseItem[] {
+/** Owner 22 Oct ("jaha image ki jagah text aa raha hai"): a showcase photo slot
+ *  needs REAL art from the source row itself. A merchant favicon or an initials
+ *  avatar is a logo-text substitute, never product art, so rows without their
+ *  own image are skipped for other honest rows. Dedupes cross-source SKUs. */
+function sectionItems(pool: OfferRow[], filter: (r: OfferRow) => boolean, sort: (a: OfferRow, b: OfferRow) => number, cap = 48): ShowcaseItem[] {
   const seen = new Set<string>();
   const out: ShowcaseItem[] = [];
   for (const row of pool.filter(filter).sort(sort)) {
+    if (!imageFromAttributes(row.attributes)) continue; // real art only
     const item = itemFromOffer(row);
-    if (!item || !item.image) continue;            // showcase cards need real art
+    if (!item) continue;
     const key = `${item.merchant}|${item.title.slice(0, 40).toLowerCase()}`;
     if (seen.has(key)) continue;                  // dedupe cross-source SKUs
     seen.add(key);
     out.push(item);
+    if (out.length >= cap) break;
   }
-  const merchSpread = diversifyByMerchant(out, 3, spreadKey ? 48 : 12);
-  return spreadKey ? roundRobinSpread(merchSpread, spreadKey, 2, 12) : merchSpread;
+  return out;
+}
+
+/** Diversity pass + the owner's min-6 rule (22 Oct: "hr section mai 6 card atleast
+ *  rakho"). Merchant spread first (max 3 per seller); when that honest spread
+ *  lands under 6 the same deduped pool tops the section back up — same real
+ *  rows, only the per-merchant cap is relaxed. Never invents items. */
+/** Exported for the min-6 regression tests (owner 22 Oct). */
+export function finalizeSection(items: ShowcaseItem[], maxPerMerchant = 3, target = 12, minItems = 6, spreadKey?: (it: ShowcaseItem) => string): ShowcaseItem[] {
+  const diversified = diversifyByMerchant(items, maxPerMerchant, spreadKey ? 48 : target);
+  const out = spreadKey ? roundRobinSpread(diversified, spreadKey, 2, target) : diversified;
+  if (out.length >= minItems) return out;
+  const seen = new Set(out.map((i) => i.id));
+  for (const it of items) {
+    if (out.length >= minItems) break;
+    if (seen.has(it.id)) continue;
+    out.push(it);
+    seen.add(it.id);
+  }
+  return out.slice(0, target);
+}
+
+/** Keep only items whose art URL really answers with image bytes (owner 22 Oct:
+ *  Cleartrip's rukmini-ct CDN 404s from the browser, which made the card fall
+ *  back to initials text). Verified with a 6h cache; when verification is
+ *  impossible (whole network down) the candidates still ship so the browser
+ *  can try — same policy as the logo chain. */
+async function verifyLiveArt(items: ShowcaseItem[], maxProbes = 30): Promise<ShowcaseItem[]> {
+  if (!items.length) return items;
+  const head = items.slice(0, maxProbes);
+  const urls = [...new Set(head.map((i) => i.image!).filter(Boolean))];
+  const results = await Promise.all(urls.map((u) => logoAnswers(u)));
+  const live = new Set(urls.filter((u, i) => results[i]));
+  const verified = head.filter((it) => live.has(it.image || ''));
+  // network-down protection: zero verifications means we could not check
+  if (verified.length === 0) return items;
+  return verified;
 }
 
 /** Coupon cards from the live affiliate registry, one per merchant+code, spread. */
@@ -526,35 +568,52 @@ async function couponItems(): Promise<ShowcaseItem[]> {
  *  - price: the CHEAPEST recorded FLIGHT fare whose route/title names the city
  *  - click: launches the REAL flights engine ("to <City>") — never a fake link
  */
-const FAMOUS: Array<{ name: string; keys: string[] }> = [
-  { name: 'Goa', keys: ['goa'] },
-  { name: 'Mumbai', keys: ['mumbai'] },
-  { name: 'Delhi', keys: ['delhi'] },
-  { name: 'Jaipur', keys: ['jaipur'] },
-  { name: 'Udaipur', keys: ['udaipur'] },
-  { name: 'Dubai', keys: ['dubai'] },
-  { name: 'Bangkok', keys: ['bangkok'] },
-  { name: 'Singapore', keys: ['singapore'] },
-  { name: 'Srinagar', keys: ['srinagar'] },
-  { name: 'Shimla', keys: ['shimla'] },
-  { name: 'Bengaluru', keys: ['bengaluru', 'bangalore'] }, // both spellings appear in source titles
-  { name: 'Hyderabad', keys: ['hyderabad'] },
+/** Keys are city spellings (substring match); iata is the airport code, matched
+ *  as a whole word — flight titles carry codes ("Indore → BOM") more often than
+ *  city names, so without the code those fares never matched (owner 22 Oct). */
+const FAMOUS: Array<{ name: string; keys: string[]; iata?: string }> = [
+  { name: 'Goa', keys: ['goa'], iata: 'goi' },
+  { name: 'Mumbai', keys: ['mumbai'], iata: 'bom' },
+  { name: 'Delhi', keys: ['delhi'], iata: 'del' },
+  { name: 'Jaipur', keys: ['jaipur'], iata: 'jai' },
+  { name: 'Udaipur', keys: ['udaipur'], iata: 'udr' },
+  { name: 'Dubai', keys: ['dubai'], iata: 'dxb' },
+  { name: 'Bangkok', keys: ['bangkok'], iata: 'bkk' },
+  { name: 'Singapore', keys: ['singapore'], iata: 'sin' },
+  { name: 'Srinagar', keys: ['srinagar'], iata: 'sxr' },
+  { name: 'Shimla', keys: ['shimla'], iata: 'slv' },
+  { name: 'Bengaluru', keys: ['bengaluru', 'bangalore'], iata: 'blr' }, // both spellings appear in source titles
+  { name: 'Hyderabad', keys: ['hyderabad'], iata: 'hyd' },
+  // Owner 22 Oct (min 6 cards): widen the honest candidate pool — every entry
+  // still needs a recorded fare + real hotel art before a card renders.
+  { name: 'Ahmedabad', keys: ['ahmedabad'], iata: 'amd' },
+  { name: 'Pune', keys: ['pune'], iata: 'pnq' },
+  { name: 'Kochi', keys: ['kochi', 'cochin'], iata: 'cok' },
+  { name: 'Varanasi', keys: ['varanasi'], iata: 'vns' },
+  { name: 'Amritsar', keys: ['amritsar'], iata: 'atq' },
+  { name: 'Lucknow', keys: ['lucknow'], iata: 'lko' },
+  { name: 'Chandigarh', keys: ['chandigarh'], iata: 'ixc' },
+  { name: 'Dehradun', keys: ['dehradun'], iata: 'ded' },
 ];
 
 /** One Famous Destinations card, or null when the data is not honestly there. */
-export function destinationItem(d: { name: string; keys: string[] }, flights: OfferRow[], hotels: OfferRow[]): ShowcaseItem | null {
+export function destinationItem(d: { name: string; keys: string[]; iata?: string }, flights: OfferRow[], hotels: OfferRow[], liveUrls?: Set<string>): ShowcaseItem | null {
+  const iataRx = d.iata ? new RegExp(`\\b${d.iata}\\b`, 'i') : null;
   const matches = (r: OfferRow) => {
     const t = String(r.title || '').toLowerCase();
     const c = String(r.location_city || '').toLowerCase();
-    return d.keys.some((k) => t.includes(k) || c.includes(k));
+    return d.keys.some((k) => t.includes(k) || c.includes(k)) || (iataRx ? iataRx.test(t) : false);
   };
-  // Cheapest recorded flight fare naming this destination (fresh window: 7 days).
+  // Cheapest recorded flight fare naming this destination (fresh window: 14 days
+  // — owner 22 Oct: the 7d window starved the section to a single card).
   const fare = flights
-    .filter((r) => servableRow(r, 7) && matches(r))
+    .filter((r) => servableRow(r, 14) && matches(r))
     .sort((a, b) => priceOf(a) - priceOf(b))[0];
   if (!fare) return null; // no recorded fare -> skip honestly (never invent a price)
-  // A real hotel photo from the same destination (offers carry real art).
-  const hotel = hotels.find((r) => ageDays(r) <= 14 && matches(r) && imageFromAttributes(r.attributes));
+  // A real, LIVE hotel photo from the same destination (owner 22 Oct: dead CDN
+  // art made cards render as initials text). liveUrls carries the verified set.
+  const hotel = hotels.find((r) => ageDays(r) <= 21 && matches(r) && imageFromAttributes(r.attributes)
+    && (!liveUrls || liveUrls.has(imageFromAttributes(r.attributes)!)));
   if (!hotel) return null; // card needs real art
   return {
     id: `dest-${d.keys[0]}`,
@@ -602,38 +661,63 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
   const [ecom, hotels, cardsPool, flights, couponSpecial, partner] = await Promise.all([
     fetchVerticalOffers('ecommerce', 600),
     fetchVerticalOffers('hotels', 400),
-    fetchVerticalOffers('creditcards', 200),
+    fetchVerticalOffers('creditcards', 400),
     fetchVerticalOffers('flights', 600),
     couponItems(),
     bestHotelPartner(),
   ]);
 
   const newest = (a: OfferRow, b: OfferRow) => tsOf(b.fetched_at) - tsOf(a.fetched_at);
-  const fresh = (r: OfferRow) => ageDays(r) <= 14;
   const serv = (r: OfferRow) => servableRow(r, 14);
 
-  const picked = sectionItems(ecom, (r) => serv(r), newest);
+  // ---- 1) candidates: real source art only, deduped (owner 22 Oct: a favicon
+  // or initials avatar is never acceptable art for a photo slot) ----
+  const pickedC = sectionItems(ecom, (r) => serv(r), newest);
   // Owner 22 Oct: ONE 'Go Big' section replaces the old Massive Discounts +
   // Mega Savings pair — union of 40%+ off and ₹1,000+ absolute savings,
   // deduped, ranked by absolute savings first (bigger deals & greater savings).
-  const massive = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.40, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
-  const mega = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1000, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
-  const goBig = mergeGoBig(mega, massive);
+  const massiveC = sectionItems(ecom, (r) => serv(r) && pctOf(r) >= 0.40, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
+  const megaC = sectionItems(ecom, (r) => serv(r) && saveOf(r) >= 1000, (a, b) => saveOf(b) - saveOf(a) || newest(a, b));
+  const goBigC = mergeGoBig(megaC, massiveC, 24); // 24 candidates -> verify -> finalize caps at 12
   const techFilter = (r: OfferRow) => serv(r) && (TECH_RX.test(String(r.title || '')) || TECH_BRAND_RX.test(String(r.brand || '')));
-  // Owner 22 Oct: laptops, TVs, fridges and more must all appear — spread cards
-  // across tech categories (max 2 per bucket) instead of a wall of phones.
-  const tech = sectionItems(ecom, techFilter, newest, (it) => techCategoryOf(it.title));
-  const steals = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.30, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
-  const places = sectionItems(hotels, (r) => serv(r), newest);
-  const cards = sectionItems(cardsPool, (r) => (r.validation_status || '') !== 'INVALID' && ageDays(r) <= 14, newest);
-  const destinations = FAMOUS.map((d) => destinationItem(d, flights, hotels)).filter((x): x is ShowcaseItem => x !== null).slice(0, 8);
+  const techC = sectionItems(ecom, techFilter, newest);
+  // Owner 22 Oct (min 6 per section): the 30% gate starved the pool to 3 cards;
+  // 20%+ stays honestly "heavily discounted" and the sort still leads with the
+  // deepest cuts.
+  const stealsC = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.20, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
+  const placesC = sectionItems(hotels, (r) => serv(r), newest);
+  // Owner 22 Oct (min 6 per section): card fee/reward data is catalogue-like and
+  // refreshes slowly — a 45-day honest window (was 14) so the pool has more
+  // than the freshest three rows of a single bank.
+  const cardsC = sectionItems(cardsPool, (r) => servableRow(r, 45), newest);
 
+  // ---- 2) art liveness (owner 22 Oct: dead Cleartrip CDN art rendered as
+  // 'CL' initials text in the photo slot) ----
+  const [picked, goBig, tech, steals, places, cards] = await Promise.all([
+    verifyLiveArt(pickedC), verifyLiveArt(goBigC), verifyLiveArt(techC),
+    verifyLiveArt(stealsC), verifyLiveArt(placesC), verifyLiveArt(cardsC),
+  ]);
+
+  // One probe batch for destination hotel art (shared 6h cache with the rest).
+  const hotelArtUrls = [...new Set(
+    hotels.filter((r) => ageDays(r) <= 21 && imageFromAttributes(r.attributes))
+      .map((r) => imageFromAttributes(r.attributes)!),
+  )].slice(0, 40);
+  const artResults = await Promise.all(hotelArtUrls.map((u) => logoAnswers(u)));
+  const liveArt = new Set(hotelArtUrls.filter((u, i) => artResults[i]));
+  const destinations = FAMOUS
+    .map((d) => destinationItem(d, flights, hotels, liveArt))
+    .filter((x): x is ShowcaseItem => x !== null)
+    .slice(0, 12);
+
+  // ---- 3) diversity + the owner's min-6 rule ----
+  const placesFinal = finalizeSection(places);
   const sections: ShowcaseSection[] = [
-    { id: 'picked', title: 'Picked Just for You', subtitle: 'real products, live-acquired prices', items: picked },
+    { id: 'picked', title: 'Picked Just for You', subtitle: 'real products, live-acquired prices', items: finalizeSection(picked) },
     { id: 'special', title: 'Special Offers For You', subtitle: 'auto-tested coupons from live registries', items: couponSpecial },
-    { id: 'goBig', title: 'Go Big: Bigger Deals & Greater Savings', subtitle: '40%+ off and \u20B91,000+ savings on big-ticket finds', items: goBig },
-    { id: 'tech', title: 'Best in Tech & Gadgets', subtitle: 'phones, audio, laptops and more', items: tech },
-    { id: 'steals', title: "Steals You Can't Ignore", subtitle: 'under \u20B9999, heavily discounted', items: steals },
+    { id: 'goBig', title: 'Go Big: Bigger Deals & Greater Savings', subtitle: '40%+ off and \u20B91,000+ savings on big-ticket finds', items: finalizeSection(goBig) },
+    { id: 'tech', title: 'Best in Tech & Gadgets', subtitle: 'phones, audio, laptops and more', items: finalizeSection(tech, 3, 12, 6, (it) => techCategoryOf(it.title)) },
+    { id: 'steals', title: "Steals You Can't Ignore", subtitle: 'under \u20B9999, heavily discounted', items: finalizeSection(steals) },
     {
       id: 'places', title: 'Famous Places to Visit', subtitle: partner
         ? `live hotel rates via ${partner} — our best-paying hotel partner`
@@ -641,11 +725,11 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
       // Owner rule: hotel section deeplinks go through the best-paying partner.
       // Prefer rows from that partner; fall back to other honest hotel rows.
       items: partner
-        ? (places.filter(p => p.merchant.toLowerCase().includes(partner.toLowerCase().split(' ')[0]))
-            .concat(places.filter(p => !p.merchant.toLowerCase().includes(partner.toLowerCase().split(' ')[0]))))
-        : places,
+        ? (placesFinal.filter(p => p.merchant.toLowerCase().includes(partner.toLowerCase().split(' ')[0]))
+            .concat(placesFinal.filter(p => !p.merchant.toLowerCase().includes(partner.toLowerCase().split(' ')[0]))))
+        : placesFinal,
     },
-    { id: 'cards', title: 'Best Cards For You', subtitle: 'fees & rewards, straight from the banks', items: cards },
+    { id: 'cards', title: 'Best Cards For You', subtitle: 'fees & rewards, straight from the banks', items: finalizeSection(cards) },
     { id: 'destinations', title: 'Top Destinations', subtitle: 'famous places to visit — cheapest recorded fares, tap for live flight search', items: destinations },
   ].filter(s => s.items.length > 0); // honesty: never render an empty section
 

@@ -55,7 +55,7 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string }> = 
  * the section honestly stays empty (the owner's report). Two entries are
  * re-warmed per keep-warm cycle (one flight route + one hotel city alternating
  * via rotation), so every listed destination refreshes its real fare roughly
- * every ~2.5 hours — same honesty rules as every other warm: real searches,
+ * every ~4 hours (40 entries at 2 per cycle) — same honesty rules as every other warm: real searches,
  * recorded prices, nothing invented.
  */
 const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string }> = [
@@ -83,6 +83,25 @@ const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string }
   { query: 'singapore', vertical: 'hotels' },
   { query: 'Indore to Shimla', vertical: 'flights', city: 'Indore' },
   { query: 'shimla', vertical: 'hotels' },
+  // Owner 22 Oct (min 6 destination cards): wider candidate pool — every extra
+  // destination still needs its own real fare + real hotel art before a card
+  // renders; the rotation just keeps them fresh like the original twelve.
+  { query: 'Indore to Ahmedabad', vertical: 'flights', city: 'Indore' },
+  { query: 'ahmedabad', vertical: 'hotels' },
+  { query: 'Indore to Pune', vertical: 'flights', city: 'Indore' },
+  { query: 'pune', vertical: 'hotels' },
+  { query: 'Indore to Kochi', vertical: 'flights', city: 'Indore' },
+  { query: 'kochi', vertical: 'hotels' },
+  { query: 'Indore to Varanasi', vertical: 'flights', city: 'Indore' },
+  { query: 'varanasi', vertical: 'hotels' },
+  { query: 'Indore to Amritsar', vertical: 'flights', city: 'Indore' },
+  { query: 'amritsar', vertical: 'hotels' },
+  { query: 'Indore to Lucknow', vertical: 'flights', city: 'Indore' },
+  { query: 'lucknow', vertical: 'hotels' },
+  { query: 'Indore to Chandigarh', vertical: 'flights', city: 'Indore' },
+  { query: 'chandigarh', vertical: 'hotels' },
+  { query: 'Indore to Dehradun', vertical: 'flights', city: 'Indore' },
+  { query: 'dehradun', vertical: 'hotels' },
 ];
 
 let destWarmCursor = 0;
