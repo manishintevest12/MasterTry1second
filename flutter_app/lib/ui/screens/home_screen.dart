@@ -105,7 +105,8 @@ class _AppTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => openDeal(app.webUrl),
+      // Owner rule: Quick App tiles also exit through the masking pointer.
+      onTap: () => openDeal(app.goUrl.isNotEmpty ? app.goUrl : app.webUrl, sellerName: app.name),
       child: Container(
         width: 56,
         height: 56,

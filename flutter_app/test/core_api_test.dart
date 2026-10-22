@@ -286,4 +286,42 @@ group('QuickApp', () {
   });
 });
 
+  // Owner 22 Oct bug: Quick Apps screen showed 'No apps found' — the server
+  // sends {affiliates: [...]}, the app read res['apps'] only.
+  group('Quick Apps parsing (server sends affiliates key)', () {
+    final serverShape = {
+      'success': true,
+      'affiliates': [
+        {
+          'id': 'qa-swiggy', 'name': 'Swiggy', 'category': 'Food',
+          'iconUrl': 'https://icons.duckduckgo.com/ip3/swiggy.com.ico',
+          'webUrl': 'https://swiggy.com', 'rating': 0,
+          'description': 'Live-tracked coupons', 'downloadsOrUsers': '', 'badge': 'Live Coupons',
+          'goUrl': '/api/out?t=abc.sig',
+        },
+        {'id': 'qa-x', 'name': '', 'webUrl': 'https://x.example'}, // malformed, skipped
+      ],
+    };
+
+    test('reads the affiliates key (and still tolerates the old apps key)', () {
+      final apps = QuickApp.parseRows(serverShape, baseUrl: 'https://try1second.com');
+      expect(apps.length, 1, reason: 'empty-name rows are skipped');
+      expect(apps.first.name, 'Swiggy');
+      expect(apps.first.category, 'Food');
+      // relative masking pointer resolved against the API base
+      expect(apps.first.goUrl, 'https://try1second.com/api/out?t=abc.sig');
+    });
+
+    test('old {apps: [...]} shape still parses (server-evolution safe)', () {
+      final apps = QuickApp.parseRows({'apps': serverShape['affiliates']}, baseUrl: 'https://try1second.com');
+      expect(apps.length, 1);
+      expect(apps.first.goUrl, startsWith('https://try1second.com/api/out?'));
+    });
+
+    test('empty/failed responses stay empty, never crash', () {
+      expect(QuickApp.parseRows(null, baseUrl: 'b'), isEmpty);
+      expect(QuickApp.parseRows('nope', baseUrl: 'b'), isEmpty);
+      expect(QuickApp.parseRows(<String, dynamic>{}, baseUrl: 'b'), isEmpty);
+    });
+  });
 }

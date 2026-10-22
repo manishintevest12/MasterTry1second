@@ -1,11 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../core/api.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/kit.dart';
 
 /// Quick Apps: the same curated partner-app catalogue as the website.
 /// Tapping a card opens the partner's web page in the browser.
@@ -43,14 +42,11 @@ class _QuickAppsScreenState extends State<QuickAppsScreen> {
   }
 
   Future<void> _open(QuickApp app) async {
-    final uri = Uri.tryParse(app.webUrl);
-    if (uri == null || !uri.isScheme('https')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No safe link available for this app yet.'), behavior: SnackBarBehavior.floating),
-      );
-      return;
-    }
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Owner rule: every Quick App exit routes through the server masking
+    // pointer (/api/out) so affiliate tracking fires server-side — same as the
+    // website. The pointer opens in the in-app browser (working Back stack).
+    final target = app.goUrl.isNotEmpty ? app.goUrl : app.webUrl;
+    final ok = target.isNotEmpty && await openDeal(target, sellerName: app.name);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not open ${app.name}.'), behavior: SnackBarBehavior.floating),

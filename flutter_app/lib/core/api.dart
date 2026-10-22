@@ -210,6 +210,9 @@ class QuickApp {
   final double rating;
   final String? users;
   final String? badge;
+  // Owner rule: Quick App taps route through the server masking pointer
+  // (/api/out) so affiliate tracking fires server-side, exactly like the web.
+  final String goUrl;
   const QuickApp({
     required this.id,
     required this.name,
@@ -220,6 +223,7 @@ class QuickApp {
     required this.rating,
     this.users,
     this.badge,
+    this.goUrl = '',
   });
 
   static QuickApp fromJson(Map<String, dynamic> j) => QuickApp(
@@ -232,7 +236,36 @@ class QuickApp {
         rating: Offer._num(j['rating']),
         users: j['downloadsOrUsers'] == null ? null : '${j['downloadsOrUsers']}',
         badge: j['badge'] == null ? null : '${j['badge']}',
+        goUrl: '${j['goUrl'] ?? ''}',
       );
+
+  /// Owner 22 Oct bug: the server sends {affiliates: [...]}; the app used to
+  /// read res['apps'] only, so the Quick Apps screen always showed the
+  /// 'No apps found' empty state. Accept BOTH keys (server evolution-safe)
+  /// and prefix relative icon/go URLs with the API base for the app.
+  static List<QuickApp> parseRows(dynamic res, {required String baseUrl}) {
+    if (res is! Map<String, dynamic>) return const [];
+    final rows = (res['apps'] as List?) ?? (res['affiliates'] as List?) ?? const [];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(QuickApp.fromJson)
+        .where((a) => a.name.isNotEmpty)
+        .map((a) => QuickApp(
+              id: a.id,
+              name: a.name,
+              iconUrl: a.iconUrl.startsWith('/') ? '$baseUrl${a.iconUrl}' : a.iconUrl,
+              category: a.category,
+              description: a.description,
+              webUrl: a.webUrl,
+              rating: a.rating,
+              users: a.users,
+              badge: a.badge,
+              // masking pointers are relative (/api/out?t=...) — resolve to the
+              // API base so the in-app browser can open and track them.
+              goUrl: a.goUrl.startsWith('/') ? '$baseUrl${a.goUrl}' : a.goUrl,
+            ))
+        .toList();
+  }
 }
 
 class AuthUser {
@@ -808,24 +841,7 @@ class Try1SecondApi {
 
   Future<List<QuickApp>> quickApps() async {
     final res = await _get('/api/quick-apps');
-    return ((res['apps'] as List?) ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map(QuickApp.fromJson)
-        .where((a) => a.name.isNotEmpty)
-        .map((a) => a.iconUrl.startsWith('/')
-            ? QuickApp(
-                id: a.id,
-                name: a.name,
-                iconUrl: '$baseUrl${a.iconUrl}',
-                category: a.category,
-                description: a.description,
-                webUrl: a.webUrl,
-                rating: a.rating,
-                users: a.users,
-                badge: a.badge,
-              )
-            : a)
-        .toList();
+    return QuickApp.parseRows(res, baseUrl: baseUrl);
   }
 
   /// AI Insights URL scanner: paste a product link, get the live-scraped price (or an honest failure).
