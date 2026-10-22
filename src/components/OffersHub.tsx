@@ -218,9 +218,8 @@ export const OffersHub: React.FC = () => {
                   <span className="font-extrabold uppercase text-slate-400 tracking-wider text-[10px]">
                     {offer.merchant_name}
                   </span>
-                  <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-black uppercase">
-                    {offer.network_source}
-                  </span>
+                  {/* Standing rule (owner 22 Oct): affiliate network labels (CUELINKS
+                      etc.) are NEVER shown to users — routing stays server-side. */}
                 </div>
 
                 <h4 className="text-sm font-bold text-slate-900 leading-snug mb-1">
