@@ -21,6 +21,7 @@ class LocationHintField extends StatefulWidget {
     this.onSelect,
     this.onSubmitted,
     this.trailing,
+    this.large = false,
   });
 
   final TextEditingController controller;
@@ -34,6 +35,10 @@ class LocationHintField extends StatefulWidget {
 
   /// Optional trailing widget (map pin button, GPS button) shown inside the field row.
   final Widget? trailing;
+
+  /// Owner 22 Oct: Uber-style roomy field (bigger label + text, 56px+ tap area, big clear
+  /// button) for the Cab form, where 12px text in a 26px strip made typing painful.
+  final bool large;
 
   @override
   State<LocationHintField> createState() => _LocationHintFieldState();
@@ -256,61 +261,75 @@ class _LocationHintFieldState extends State<LocationHintField> {
         widget.mode == 'pickup' ? const Color(0xFF34D399) : T1SColors.red;
     return CompositedTransformTarget(
       link: _link,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: border(context)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.only(right: 8),
-              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.label.toUpperCase(),
-                    style: tx(context, 8, color: muted(context), w: FontWeight.w800),
-                  ),
-                  TextField(
-                    controller: widget.controller,
-                    focusNode: _focus,
-                    style: tx(context, 12, w: FontWeight.w800),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (v) => widget.onSubmitted?.call(v),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                      hintText: widget.placeholder,
-                      hintStyle: tx(context, 11, color: muted(context)),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // Whole box focuses the field: a thin 26px TextField strip was the hard-to-hit target.
+        onTap: () => _focus.requestFocus(),
+        child: Container(
+          key: ValueKey('hintfield-box-${widget.mode}'),
+          constraints: BoxConstraints(minHeight: widget.large ? 60 : 0),
+          padding: EdgeInsets.symmetric(horizontal: widget.large ? 14 : 10, vertical: widget.large ? 8 : 4),
+          decoration: BoxDecoration(
+            color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+            borderRadius: BorderRadius.circular(widget.large ? 14 : 10),
+            border: Border.all(color: border(context)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: widget.large ? 10 : 8,
+                height: widget.large ? 10 : 8,
+                margin: EdgeInsets.only(right: widget.large ? 12 : 8),
+                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.label.toUpperCase(),
+                      style: tx(context, widget.large ? 10 : 8, color: muted(context), w: FontWeight.w800),
                     ),
+                    SizedBox(height: widget.large ? 2 : 0),
+                    TextField(
+                      controller: widget.controller,
+                      focusNode: _focus,
+                      style: tx(context, widget.large ? 16 : 12, w: FontWeight.w800),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (v) => widget.onSubmitted?.call(v),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: widget.large ? 6 : 0),
+                        border: InputBorder.none,
+                        hintText: widget.placeholder,
+                        hintStyle: tx(context, widget.large ? 14 : 11, color: muted(context)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_loading)
+                const SizedBox(
+                  width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              if (widget.controller.text.isNotEmpty)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    widget.controller.clear();
+                    _rows = const [];
+                    _removeOverlay();
+                  },
+                  child: Padding(
+                    padding: EdgeInsets.all(widget.large ? 8 : 2),
+                    child: Icon(Icons.cancel, size: widget.large ? 20 : 15, color: muted(context)),
                   ),
-                ],
-              ),
-            ),
-            if (_loading)
-              const SizedBox(
-                width: 12, height: 12,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            if (widget.controller.text.isNotEmpty)
-              GestureDetector(
-                onTap: () {
-                  widget.controller.clear();
-                  _rows = const [];
-                  _removeOverlay();
-                },
-                child: Icon(Icons.cancel, size: 15, color: muted(context)),
-              ),
-            if (widget.trailing != null) ...[const SizedBox(width: 6), widget.trailing!],
-          ],
+                ),
+              if (widget.trailing != null) ...[SizedBox(width: widget.large ? 8 : 6), widget.trailing!],
+            ],
+          ),
         ),
       ),
     );

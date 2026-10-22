@@ -819,6 +819,33 @@ class _VerticalTabs extends StatelessWidget {
 // Search card per vertical
 // ---------------------------------------------------------------------------
 
+/// Test seam: lets widget tests render the real search card at a phone width.
+@visibleForTesting
+Widget buildSearchCardForTest({
+  required VerticalMeta meta,
+  required TextEditingController from,
+  required TextEditingController to,
+}) =>
+    _SearchCard(
+      onSwap: () {},
+      meta: meta,
+      q: TextEditingController(),
+      from: from,
+      to: to,
+      date: DateTime(2026, 10, 23),
+      checkOutDate: DateTime(2026, 10, 24),
+      hotelGuests: '2 Guests',
+      city: 'Indore',
+      onPickDate: () {},
+      onSearch: () {},
+      onPickCity: () {},
+      onUseCurrentLocationForCab: () {},
+      onOpenCityPicker: (_, __) {},
+      onPickOnMap: (_) {},
+      onOpenPlacePicker: (_) {},
+      onOpenHotelPicker: () {},
+    );
+
 class _SearchCard extends StatelessWidget {
   const _SearchCard({
     required this.onSwap,
@@ -897,6 +924,7 @@ class _SearchCard extends StatelessWidget {
               label: 'Pickup Location',
               placeholder: 'Enter pickup point (e.g. Chappan Dukan, Indore)...',
               mode: 'pickup',
+              large: true,
               onSelect: (_, __) => onSearch(),
               onSubmitted: (_) => onSearch(),
               trailing: mapPin(true),
@@ -935,6 +963,7 @@ class _SearchCard extends StatelessWidget {
               label: 'Drop Destination',
               placeholder: 'Enter drop destination (e.g. Martand Chowk, Bhopal)...',
               mode: 'drop',
+              large: true,
               onSelect: (_, __) => onSearch(),
               onSubmitted: (_) => onSearch(),
               trailing: mapPin(false),
