@@ -30,6 +30,7 @@ import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { passesQueryRelevance } from './queryRelevance';
+import { buildFlightSellerPresence } from './sellerPresence';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
@@ -132,14 +133,23 @@ const inflightPipelines = new Map<string, Promise<SearchResponse>>();
 interface InflightPartial { snap: AcquisitionOutcome; response: SearchResponse | null }
 const inflightPartials = new Map<string, InflightPartial>();
 
-function progressiveCatalogueResponse(
+async function progressiveCatalogueResponse(
   vertical: string,
   inputQuery: ParsedQuery,
   offers: any[],
   start: number,
   pending: boolean
-): SearchResponse {
+): Promise<SearchResponse> {
   const anyOffers = offers as any[];
+  // Owner 22 Oct: the instant catalogue partial paints before live rows land —
+  // gated-seller presence rows (Yatra/IndiGo/Akasa/Expedia) must appear here too,
+  // not just in the finalized full response.
+  if (String(vertical) === 'flights') {
+    const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
+    // The catalogue partial skips the full pipeline's image steps, so brand
+    // logos are resolved here for the injected rows (cheap favicon chain).
+    if (presence.length) anyOffers.push(...withBrandImages(presence));
+  }
   for (const o of anyOffers) {
     if (o.freshnessStatus === 'LIVE_VERIFIED') o.freshnessStatus = 'CACHED_VERIFIED';
     if (o.provenance) o.provenance.replayedFromCache = true;
@@ -282,7 +292,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       if (memo.response) return memo.response;
     }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
-    if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running; // nothing to show yet — this caller becomes the one that waits
   }
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
@@ -299,7 +309,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
         .finally(() => { inflightPipelines.delete(cacheKey); });
       inflightPipelines.set(cacheKey, pipeline);
       pipeline.catch(() => {}); // never crash the caller on a background failure
-      return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+      return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     }
   }
 
@@ -380,7 +390,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
   const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
   if (floorOffers.length > 0) {
-    return progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
+    return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
   }
   // Nothing to borrow either: no fixed second timer — the moment the FIRST real
   // live row lands (or the full pipeline completes) we return. A cold hotel city
@@ -476,6 +486,15 @@ async function finalizeLive(
   // query. Only rows sharing stemmed title tokens with the typed query replay.
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+
+  // 7.5 SELLER PRESENCE (owner 22 Oct): mandatory flight sellers that are
+  // IP-gated / circuit-backed-off still appear at app level with their own
+  // route-prefilled search URL (monetized via /api/out). Honest rows — no
+  // price claimed, skipped automatically the moment the seller's live rows
+  // return. Ephemeral: never persisted, circuits and probes untouched.
+  if (String(vertical) === 'flights') {
+    combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined))];
+  }
 
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules
   const engine = getVerticalEngine(vertical as any);

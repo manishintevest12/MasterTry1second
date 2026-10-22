@@ -23742,6 +23742,100 @@ var init_queryRelevance = __esm({
   }
 });
 
+// server/search/sellerPresence.ts
+function presenceOffer(seller, sourceId, srp, note, from, to, dIso) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    id: `presence_${sourceId}_${from}_${to}_${dIso}`.toLowerCase().replace(/\s+/g, "-"),
+    canonicalEntityId: null,
+    canonicalVariantId: null,
+    vertical: "flights",
+    title: `${seller} flights: ${from} \u2192 ${to}`,
+    brand: seller,
+    identifiers: { sku: `presence-${seller}-${from}-${to}-${dIso}`.toLowerCase().replace(/\s+/g, "-") },
+    attributes: {
+      route: `${from} \u2192 ${to}`,
+      travel_date: dIso,
+      price_basis: "live_fares_unavailable",
+      data_note: `${note} No price is shown because we never invent one.`
+    },
+    vendor: seller,
+    seller,
+    sellerUrl: srp,
+    travel: { route: `${from.toLowerCase()} to ${to.toLowerCase()}`, date: dIso },
+    prices: { currency: "INR", fees: {} },
+    availability: "unknown",
+    matchState: "PROBABLE_MATCH",
+    freshnessStatus: "FRESH",
+    validationStatus: "VALID",
+    confidence: 0.75,
+    provenance: {
+      sourceId,
+      sourceMethod: "direct_http",
+      adapterVersion: "presence-v1",
+      parserVersion: "seller-presence/1.0",
+      sourceUrl: srp,
+      sourceReference: "Seller presence row (route-prefilled seller search page; no fare claimed)",
+      fetchedAt: now,
+      validatedAt: now
+    }
+  };
+}
+async function buildFlightSellerPresence(parsed, combined) {
+  const raw = String(parsed.rawQuery || parsed.entityName || "");
+  const rt0 = routeFromQuery(raw);
+  if (!rt0) return [];
+  const dIso = parsed.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(parsed.travelDates.depart) ? parsed.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const fromA = await resolveAirport(rt0.from, rt0.fromCode);
+  const toA = await resolveAirport(rt0.to, rt0.toCode);
+  if (!fromA.code || !toA.code) return [];
+  const rt = { from: rt0.from, to: rt0.to, fromCode: fromA.code, toCode: toA.code };
+  const presentSellers = new Set(
+    combined.filter((o) => (Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0) > 0).map((o) => `${o.seller || ""}`.toLowerCase().trim()).filter(Boolean)
+  );
+  const out = [];
+  for (const cfg of PRESENCE_SELLERS) {
+    if (presentSellers.has(cfg.seller.toLowerCase())) continue;
+    out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
+  }
+  return out;
+}
+var PRESENCE_SELLERS;
+var init_sellerPresence = __esm({
+  "server/search/sellerPresence.ts"() {
+    init_airportLookup();
+    init_flights();
+    init_yatraFlights();
+    init_akasaFlights();
+    PRESENCE_SELLERS = [
+      {
+        seller: "Yatra",
+        sourceId: "w_flights_yatra",
+        srp: (rt, dIso) => yatraSrpUrl3(rt.fromCode, rt.toCode, dIso),
+        note: "Yatra's live fare feed is not reachable from our servers right now; this opens Yatra's own results for the route with the date prefilled."
+      },
+      {
+        seller: "IndiGo",
+        sourceId: "w_flights_indigo",
+        srp: (rt, dIso) => `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${rt.fromCode}&to=${rt.toCode}&depart=${dIso}&pax=A1`,
+        note: "IndiGo's live fare feed is not reachable from our servers right now; this opens IndiGo's own booking widget with the route and date prefilled."
+      },
+      {
+        seller: "Akasa Air",
+        sourceId: "w_flights_akasa",
+        srp: () => `${AKASA_WEB}/booking`,
+        note: "Akasa Air's live fare feed is not reachable from our servers right now; this opens Akasa Air's own booking flow to check availability for the route."
+      },
+      {
+        seller: "Expedia",
+        sourceId: "w_flights_expedia",
+        srp: (rt, dIso) => `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}&from=${encodeURIComponent(`${rt.from} (${rt.fromCode})`)}&to=${encodeURIComponent(`${rt.to} (${rt.toCode})`)}&search-type=arsed&mode=search`,
+        note: "Expedia's live fare feed is not reachable from our servers right now; this opens Expedia's own results for the route with the date prefilled."
+      }
+    ];
+  }
+});
+
 // server/verticals/verticalEngine.ts
 function filterByNamedProviders(offers, entityName) {
   if (!entityName) return offers;
@@ -24467,8 +24561,12 @@ function searchCacheTtl(vertical) {
   if (["flights", "hotels", "bus", "cab", "movies"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   return { ttlSec: 900, staleSec: 2700 };
 }
-function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
+async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
   const anyOffers = offers;
+  if (String(vertical) === "flights") {
+    const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
+    if (presence.length) anyOffers.push(...withBrandImages(presence));
+  }
   for (const o of anyOffers) {
     if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
     if (o.provenance) o.provenance.replayedFromCache = true;
@@ -24569,7 +24667,7 @@ async function runSearch(input) {
       if (memo.response) return memo.response;
     }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
-    if (offers.length >= 4) return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return running2;
   }
   {
@@ -24586,7 +24684,7 @@ async function runSearch(input) {
       inflightPipelines.set(cacheKey, pipeline2);
       pipeline2.catch(() => {
       });
-      return progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+      return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     }
   }
   const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
@@ -24645,7 +24743,7 @@ async function runSearch(input) {
   const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
   const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
   if (floorOffers.length > 0) {
-    return progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
+    return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
   }
   const next = await Promise.race([
     full.then((r) => ({ kind: "full", r })),
@@ -24698,6 +24796,9 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   const liveKeys = new Set(liveOffers.map(liveIdentity));
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+  if (String(vertical) === "flights") {
+    combined = [...combined, ...await buildFlightSellerPresence(parsed, combined)];
+  }
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
   combined = await attachAffiliateDeepLinks(combined);
@@ -24839,6 +24940,7 @@ var init_searchOrchestrator = __esm({
     init_entityMatching();
     init_ranking();
     init_queryRelevance();
+    init_sellerPresence();
     init_verticalEngine();
     init_catalogueService();
     init_verticalEngine();
@@ -29252,7 +29354,8 @@ var init_routes = __esm({
         }
       }
       const keepUnpriced = ["movie", "movies", "cab", "banking"].includes(String(input.vertical));
-      if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced);
+      const isPresenceRow = (x) => String(x.o?.id || "").startsWith("presence_");
+      if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced || isPresenceRow(x));
       if (String(input.vertical) === "bus") {
         const live = kept.filter((x) => x.o.attributes?.fare_type !== "indicative_estimate");
         if (live.length) kept = live;

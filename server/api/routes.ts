@@ -686,7 +686,13 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // fares, so their real presence rows ("Fare on app") must survive alongside
   // Ola's priced rows (owner bug report 17 Oct: only Ola was showing).
   const keepUnpriced = ['movie', 'movies', 'cab', 'banking'].includes(String(input.vertical));
-  if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced);
+  // Owner 22 Oct: gated-seller PRESENCE rows (Yatra/IndiGo/Akasa/Expedia) carry
+  // no price by design — they are honest seller-presence cards with a
+  // route-prefilled booking link, like the Rapido "Fare on app" precedent. They
+  // survive alongside priced rows; the moment a seller's live rows return, the
+  // presence row is skipped at the source and never reaches here.
+  const isPresenceRow = (x: any) => String(x.o?.id || '').startsWith('presence_');
+  if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced || isPresenceRow(x));
   // Bus: once LIVE operator fares exist, the transparent OSRM indicative estimate
   // row is redundant — show only real operator quotes.
   if (String(input.vertical) === 'bus') {

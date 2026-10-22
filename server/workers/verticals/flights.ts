@@ -31,7 +31,7 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 const URL_AP = 'https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat';
 
 /** "Indore (IDR) to Delhi (DEL) on 20 oct", "patna to delhi flight", "DEL → BOM" -> clean city names (codes stripped). */
-function routeFromQuery(raw: string): { from: string; to: string; fromCode?: string; toCode?: string } | null {
+export function routeFromQuery(raw: string): { from: string; to: string; fromCode?: string; toCode?: string } | null {
   // Normalise bare trailing IATA codes ("indore idr to delhi del") into the "City (IDR)" form.
   // A 3-letter token after a city word is a typed IATA code: UPPERCASE always
   // counts ("dubai DXB to london LHR", any world airport); lowercase only when
