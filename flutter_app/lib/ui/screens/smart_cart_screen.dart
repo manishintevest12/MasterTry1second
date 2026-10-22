@@ -205,7 +205,7 @@ class _SmartCartScreenState extends State<SmartCartScreen> {
                       if ('${x['url']}'.isNotEmpty) ...[
                         const SizedBox(width: 6),
                         GestureDetector(
-                          onTap: () => openDeal('${x['url']}', sellerName: seller),
+                          onTap: () => openDeal('${x['url']}', sellerName: seller, price: (x['price'] is num) ? (x['price'] as num).toDouble() : null),
                           child: Text('Open', style: tx(context, 10, w: FontWeight.w800, color: T1SColors.red)),
                         ),
                       ],

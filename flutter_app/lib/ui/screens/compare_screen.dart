@@ -204,7 +204,10 @@ class _CompareScreenState extends State<CompareScreen> {
         _bgPoll = Timer(const Duration(milliseconds: 4500), () {
           if (!mounted) return;
           _bgPollCount += 1;
-          _runSearch(query: q, auto: true);
+          // force: the partial progressive rows are STILL in the fresh-TTL
+          // client cache — without force, live() would hand back the same
+          // quote-less rows forever and every Book button would stay dead.
+          _runSearch(query: q, auto: true, force: true);
         });
       } else {
         _bgPollCount = 0;

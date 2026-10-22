@@ -1,7 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
@@ -94,7 +93,7 @@ class _RedirectSheetState extends State<_RedirectSheet> {
     HapticFeedback.selectionClick();
     if (!mounted) return;
     Navigator.of(context).pop();
-    await openDeal(widget.goUrl, sellerName: widget.sellerName);
+    await openDeal(widget.goUrl, sellerName: widget.sellerName, price: widget.price);
   }
 
   @override

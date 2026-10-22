@@ -228,7 +228,7 @@ class SectionTitle extends StatelessWidget {
 /// Owner request (21 Oct): offer redirections open INSIDE the app in the
 /// embedded browser (dark header + favicon/seller pill, hidden URL, bottom
 /// Back/Forward/Refresh/Share/More toolbar) instead of leaving to Chrome.
-Future<bool> openDeal(String url, {String? sellerName}) async {
+Future<bool> openDeal(String url, {String? sellerName, double? price}) async {
   if (url.isEmpty) return false;
   final base = AppState.instance.api.baseUrl;
   final full = url.startsWith('http') ? url : '$base$url';
@@ -236,12 +236,22 @@ Future<bool> openDeal(String url, {String? sellerName}) async {
   if (uri == null) return false;
   final nav = AppState.instance.navigator.currentState;
   if (nav != null) {
-    await nav.push(MaterialPageRoute<void>(
-      builder: (_) => InAppBrowserScreen(url: full, sellerName: sellerName),
-    ));
-    return true;
+    try {
+      await nav.push(MaterialPageRoute<void>(
+        builder: (_) => InAppBrowserScreen(url: full, sellerName: sellerName, price: price),
+      ));
+      return true;
+    } catch (_) {
+      // The embedded webview failed to start (missing system WebView, plugin
+      // error, ...). NEVER leave a dead button: fall back to the external
+      // browser so the redirect still happens.
+    }
   }
-  return launchUrl(uri, mode: LaunchMode.externalApplication);
+  try {
+    return await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    return false;
+  }
 }
 
 void toast(BuildContext c, String msg, {bool error = false}) {

@@ -201,7 +201,10 @@ class AppState extends ChangeNotifier {
     if (!force && cache[key] != null && cacheQuery[key] == cacheKey) {
       final hit = cache[key]!;
       final age = _nowMs - (cacheAt[key] ?? 0);
-      if (age <= freshTtlMs(key)) return hit;
+      // Progressive partial rows (no seller quotes yet) are never a fresh
+      // hit — paint them, but revalidate in the background like any stale
+      // response so real quotes with working buttons land on their own.
+      if (age <= freshTtlMs(key) && !hit.pendingRefresh) return hit;
       // Stale-but-valid: paint INSTANTLY from cache and refresh quietly in the
       // background (web parity: never make the user watch a spinner for a
       // result we already have on screen).
