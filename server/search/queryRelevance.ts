@@ -27,6 +27,8 @@ const STOP = new Set([
 const CANON: Record<string, string> = {
   television: 'tv', telly: 'tv', smartphones: 'phone', smartphone: 'phone', mobiles: 'mobile',
   earphones: 'headphone', earphone: 'headphone', earbuds: 'earbud', laptops: 'laptop',
+  // tablet devices: 'Tab' is the short form sellers use ("Idea Tab", "Lenovo Tab")
+  tab: 'tablet', tabs: 'tablet', ipad: 'tablet',
 };
 
 /** lowercase, strip punctuation, drop stopwords, canonicalize, crude-stem plurals. */
@@ -71,6 +73,32 @@ function rowTokens(offer: {
   return tokens(parts.join(' '));
 }
 
+/**
+ * Accessory/supplement intent guard (owner 22 Oct: 'smart tv / tablet pe results
+ * nahi aate, fix kro'). Token overlap alone lets an ACCESSORY or SUPPLEMENT of the
+ * product pose AS the product — 'tablets' queries surfaced 'Tablet Stand' and
+ * 'Multivitamin Tablets', 'mobile power banks' surfaced 'USB Charger & Mobile
+ * Holder', a 'laptop' query surfaced laptop bags. If the title is an accessory/
+ * supplement of the searched product and the query itself does NOT ask for that
+ * accessory/supplement word, the row is NOT the product the user asked for.
+ * The 'charging case' phrase is exempt: it is part of TWS earbud products.
+ */
+const ACCESSORY_RE = /\b(stand|holder|case|cover|sleeve|skin|strap|band|tempered|protector|mount|armband|charger|charging|adapter|cable|pouch|sticker|guard|bag|backpack|dock|keyboard)\b/;
+// NOTE: prefix match (no closing \b) so plural/mixed forms match too — 'Probiotics'
+// must be caught by 'probiotic' (owner 22 Oct live bug).
+const SUPPLEMENT_RE = /\b(multivitamin|supplement|capsule|effervescent|ashwagandha|probiotic|ayurvedic|vitamin|collagen|creatine|omega|glucosamine|melatonin|arnica|homeopath|magnesium|glutathione|biotin|calcium|whey|protein)/;
+const CHARGING_CASE_RE = /\bcharging case\b/;
+
+/** True when the title is an accessory/supplement of what the query asks for. */
+export function isAccessoryOfQuery(title: string, rawQuery: string): boolean {
+  let t = String(title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  if (!t.trim()) return false;
+  // 'Charging Case' is part of the earbud product itself, not a detachable accessory.
+  t = t.replace(CHARGING_CASE_RE, ' ');
+  const q = String(rawQuery || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  return (ACCESSORY_RE.test(t) && !ACCESSORY_RE.test(q)) || (SUPPLEMENT_RE.test(t) && !SUPPLEMENT_RE.test(q));
+}
+
 /** True when the catalogue row is relevant to the typed query. */
 export function passesQueryRelevance(
   offer: { title?: string; brand?: string | null; attributes?: Record<string, string> | null },
@@ -84,5 +112,9 @@ export function passesQueryRelevance(
   for (const tok of qt) if (rt.has(tok)) hits++;
   // One-token queries need that token; multi-token queries need 60%+ overlap —
   // "smart watches" must no longer admit plain analog wrist watches (owner 22 Oct).
-  return qt.size <= 1 ? hits >= 1 : hits / qt.size >= 0.6;
+  if (!(qt.size <= 1 ? hits >= 1 : hits / qt.size >= 0.6)) return false;
+  // Accessories/supplements of the product are not the product (owner 22 Oct):
+  // a 'Tablet Stand' is not an iPad, a 'Multivitamin Tablet' is not a tablet device.
+  const rawQuery = String((q as any)?.rawQuery || (q as any)?.raw || (q as any)?.query || '');
+  return !isAccessoryOfQuery(String(offer.title || ''), rawQuery);
 }

@@ -23905,6 +23905,13 @@ function rowTokens(offer) {
   const parts = [offer.title || "", offer.brand || "", attrs["brand"] || "", attrs["category"] || "", attrs["product_type"] || ""];
   return tokens(parts.join(" "));
 }
+function isAccessoryOfQuery(title, rawQuery) {
+  let t = String(title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  if (!t.trim()) return false;
+  t = t.replace(CHARGING_CASE_RE, " ");
+  const q3 = String(rawQuery || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
+  return ACCESSORY_RE.test(t) && !ACCESSORY_RE.test(q3) || SUPPLEMENT_RE.test(t) && !SUPPLEMENT_RE.test(q3);
+}
 function passesQueryRelevance(offer, parsed) {
   const q3 = parsed;
   const qt = queryTokens(q3);
@@ -23912,9 +23919,11 @@ function passesQueryRelevance(offer, parsed) {
   const rt = rowTokens(offer);
   let hits = 0;
   for (const tok of qt) if (rt.has(tok)) hits++;
-  return qt.size <= 1 ? hits >= 1 : hits / qt.size >= 0.6;
+  if (!(qt.size <= 1 ? hits >= 1 : hits / qt.size >= 0.6)) return false;
+  const rawQuery = String(q3?.rawQuery || q3?.raw || q3?.query || "");
+  return !isAccessoryOfQuery(String(offer.title || ""), rawQuery);
 }
-var STOP2, CANON;
+var STOP2, CANON, ACCESSORY_RE, SUPPLEMENT_RE, CHARGING_CASE_RE;
 var init_queryRelevance = __esm({
   "server/search/queryRelevance.ts"() {
     STOP2 = /* @__PURE__ */ new Set([
@@ -23952,8 +23961,15 @@ var init_queryRelevance = __esm({
       earphones: "headphone",
       earphone: "headphone",
       earbuds: "earbud",
-      laptops: "laptop"
+      laptops: "laptop",
+      // tablet devices: 'Tab' is the short form sellers use ("Idea Tab", "Lenovo Tab")
+      tab: "tablet",
+      tabs: "tablet",
+      ipad: "tablet"
     };
+    ACCESSORY_RE = /\b(stand|holder|case|cover|sleeve|skin|strap|band|tempered|protector|mount|armband|charger|charging|adapter|cable|pouch|sticker|guard|bag|backpack|dock|keyboard)\b/;
+    SUPPLEMENT_RE = /\b(multivitamin|supplement|capsule|effervescent|ashwagandha|probiotic|ayurvedic|vitamin|collagen|creatine|omega|glucosamine|melatonin|arnica|homeopath|magnesium|glutathione|biotin|calcium|whey|protein)/;
+    CHARGING_CASE_RE = /\bcharging case\b/;
   }
 });
 
@@ -28991,6 +29007,7 @@ var init_routes = __esm({
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
+    init_queryRelevance();
     init_basket();
     init_registry();
     init_verticalEngine();
@@ -29376,13 +29393,46 @@ var init_routes = __esm({
         }
       }
       const response = await runSearch(input);
+      if (process.env.LOG_LEVEL === "debug") {
+        console.error(JSON.stringify({ dbg: "scrape/live runSearch", q: input.query, v: String(input.vertical), n: response.results.length, servedFrom: response.state.servedFrom }));
+      }
       const STOP4 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
       const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP4.has(w));
       const stem = (w) => w.replace(/(ies|es|s)$/, "");
+      const SYNONYM = {
+        television: ["tv", "telly"],
+        tv: ["television", "telly"],
+        shirt: ["tshirt", "tee"],
+        tshirt: ["shirt", "tee"],
+        tee: ["shirt", "tshirt"],
+        headphone: ["earphone", "earbud", "headset"],
+        earphone: ["headphone", "earbud", "headset"],
+        smartwatch: ["watch"],
+        watch: ["smartwatch"],
+        shoe: ["sneaker", "footwear"],
+        sneaker: ["shoe", "footwear"],
+        footwear: ["shoe", "sneaker"],
+        tablet: ["tab", "ipad"],
+        tab: ["tablet"],
+        mobile: ["phone", "smartphone"],
+        phone: ["mobile", "smartphone"],
+        smartphone: ["mobile", "phone"],
+        powerbank: ["power"]
+      };
       const stems = words2.map(stem);
+      const stemMatches = (t, w) => {
+        if (new RegExp(`\\b${w}`).test(t)) return true;
+        for (const syn of SYNONYM[w] || []) {
+          if (new RegExp(`\\b${syn}`).test(t)) return true;
+          const synStem = stem(syn);
+          if (synStem !== syn && new RegExp(`\\b${synStem}`).test(t)) return true;
+        }
+        return false;
+      };
       const scored = response.results.map((o) => {
         const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ");
-        const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
+        let hit = stems.length ? stems.filter((w) => stemMatches(t, w)).length / stems.length : 1;
+        if (isAccessoryOfQuery(String(o.title || ""), String(input.query || ""))) hit = Math.min(hit, 0.4);
         const financeAttrValued = ["loans", "insurance", "creditcards", "banking"].includes(String(o.vertical)) && (o.attributes?.interest_rate != null || o.attributes?.starting_premium != null || o.attributes?.amc != null || o.attributes?.min_balance != null || o.attributes?.annual_fee != null || o.attributes?.sum_insured != null);
         return { o, hit, priced: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) > 0 || financeAttrValued };
       });
@@ -29390,8 +29440,9 @@ var init_routes = __esm({
       let kept = scored;
       if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
         const full = scored.filter((x) => x.hit === 1);
-        kept = full;
-        if (!full.length) {
+        const majority = scored.filter((x) => x.hit >= 0.5 && x.hit < 1);
+        kept = full.length ? full : majority;
+        if (!kept.length) {
           res.json({
             results: [],
             honestNotice: `No exact matches for '${input.query}' from live sources right now. Sources returned only loosely related items, which we do not show.`,
@@ -29414,13 +29465,13 @@ var init_routes = __esm({
         if (live.length) kept = live;
       }
       kept.sort((a, b) => b.hit - a.hit || Number(b.priced) - Number(a.priced) || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
-      response.results = kept.map((x) => x.o);
-      const mappedItems = response.results.map((o) => {
+      const keptResults = kept.map((x) => x.o);
+      const mappedItems = keptResults.map((o) => {
         const item = offerToComparisonItem(o);
         return req.body.vertical === "movie" ? { ...item, vertical: "movie", category: "movie" } : req.body.vertical === "account" ? { ...item, vertical: "account", category: "account" } : item;
       });
       const brandById = /* @__PURE__ */ new Map();
-      for (const o of response.results) {
+      for (const o of keptResults) {
         const ids = o.identifiers || {};
         brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || void 0 });
       }

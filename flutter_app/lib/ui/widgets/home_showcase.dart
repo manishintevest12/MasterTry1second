@@ -143,11 +143,96 @@ class _HomeShowcaseState extends State<HomeShowcase> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             gridDelegate: kShowcaseGridDelegate,
             itemCount: sec.items.length,
-            itemBuilder: (c, i) => _ShowcaseCard(item: sec.items[i], state: widget.state),
+            itemBuilder: (c, i) => _isCouponItem(sec.items[i])
+                ? _CouponCard(item: sec.items[i], state: widget.state)
+                : _ShowcaseCard(item: sec.items[i], state: widget.state),
           ),
           const SizedBox(height: 20),
         ],
       ],
+    );
+  }
+}
+
+/// Owner 22 Oct (reference screenshot): Special Offers items are ALL merchant
+/// logos — they must never go through the product-image pipeline. Same
+/// detector as the web CouponCard: a "Code: ..." badge means coupon card.
+bool _isCouponItem(ShowcaseItem item) =>
+    (item.badge ?? '').startsWith('Code: ');
+
+class _CouponCard extends StatelessWidget {
+  const _CouponCard({required this.item, required this.state});
+  final ShowcaseItem item;
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = isDark(context);
+    final code = (item.badge ?? '').startsWith('Code: ')
+        ? (item.badge ?? '').substring(6)
+        : (item.badge ?? '');
+    final fallback = 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(item.merchant)}&background=1e293b&color=ffffff&size=160';
+    return GestureDetector(
+      onTap: () {
+        if (item.url.isEmpty) return;
+        openDeal(item.url, sellerName: item.merchant);
+      },
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: dark ? T1SColors.slate900 : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: border(context)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Logo tile: fixed height, centered contain — a logo is never cropped.
+          SizedBox(
+            height: 84,
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: NetImage(
+                item.image ?? item.merchantLogo ?? fallback,
+                fit: BoxFit.contain,
+                cacheWidthPx: 240,
+              ),
+            ),
+          ),
+          Divider(height: 1, color: dark ? T1SColors.slate800 : T1SColors.slate100),
+          Expanded(
+            child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.merchant.toUpperCase(),
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: tx(context, 9, w: FontWeight.w900)),
+                const SizedBox(height: 2),
+                Text(item.title,
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: tx(context, 9, h: 1.25, color: muted(context))),
+                const Expanded(child: SizedBox(height: 4)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: T1SColors.red50.withValues(alpha: .6),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: T1SColors.red.withValues(alpha: .2)),
+                  ),
+                  child: Text(
+                    code.isEmpty ? '' : 'CODE: $code',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tx(context, 8, w: FontWeight.w900, color: T1SColors.red),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ),
+        ]),
+      ),
     );
   }
 }

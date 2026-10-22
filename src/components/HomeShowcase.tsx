@@ -131,26 +131,31 @@ function onArtError(e: SyntheticEvent<HTMLImageElement>, item: ShowcaseItem, ini
 }
 
 function CouponCard({ item }: { item: ShowcaseItem }) {
+  // Owner 22 Oct (reference screenshot): this section is ALL merchant logos —
+  // a logo never goes through the product-image pipeline (no cover-crop, no
+  // image tile). Each card is a pure LOGO card: logo centered at a fixed
+  // height on a clean white surface, bold brand name, grey offer line, and a
+  // pill-shaped outlined coupon code. Mirrored in Flutter showcase cards.
   const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.merchant)}&background=1e293b&color=ffffff&size=160`;
   const code = item.badge && item.badge.startsWith('Code: ') ? item.badge.slice(6) : null;
   return (
-    <a href={item.url} target="_blank" rel="noopener noreferrer" className="group bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col cursor-pointer">
-      <div className="h-[92px] bg-slate-100 border-b border-slate-200 flex items-center justify-center p-2.5">
+    <a href={item.url} target="_blank" rel="noopener noreferrer" className="group bg-white rounded-lg border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col cursor-pointer">
+      <div className="h-[84px] bg-white flex items-center justify-center p-4">
         <img
-          src={scaledImage(item.image, 240, 136) || fallback}
+          src={scaledImage(item.image, 240) || fallback}
           alt={item.merchant}
           width={240}
-          height={136}
+          height={84}
           loading="lazy"
           decoding="async"
-          className="max-h-[68px] max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+          className="max-h-[56px] max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
           onError={(e) => onArtError(e, item, fallback)}
         />
       </div>
-      <div className="p-2.5 flex flex-col gap-1 flex-1">
-        <span className="text-[10.5px] font-black uppercase tracking-wide text-slate-900 truncate">{item.merchant}</span>
+      <div className="px-3 pb-3 pt-1.5 flex flex-col gap-1 flex-1 border-t border-slate-100">
+        <span className="text-[11px] font-black uppercase tracking-wide text-slate-900 truncate">{item.merchant}</span>
         <span className="text-[11px] font-medium text-slate-500 leading-snug line-clamp-2">{item.title}</span>
-        <span className="mt-auto inline-flex items-center self-start px-2 py-1 rounded-lg bg-red-50 border border-red-200 text-[10.5px] font-black text-red-600 tracking-wide">
+        <span className="mt-auto inline-flex items-center self-start px-2.5 py-1 rounded-full bg-red-50/60 border border-red-200 text-[10.5px] font-black text-red-600 tracking-wide">
           {code ? `CODE: ${code}` : item.badge}
         </span>
       </div>

@@ -8,6 +8,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
+import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
@@ -634,6 +635,9 @@ apiRouter.post('/scrape/live', async (req, res) => {
     }
   }
   const response = await runSearch(input);
+  if (process.env.LOG_LEVEL === 'debug') {
+    console.error(JSON.stringify({ dbg: 'scrape/live runSearch', q: input.query, v: String(input.vertical), n: response.results.length, servedFrom: response.state.servedFrom }));
+  }
   // Relevance: a metasearch engine returns what the user searched for. Score each offer
   // by how many query words appear in its title (+ small boosts), drop non-matches when
   // matches exist, and rank priced + relevant first. Nothing is invented or reordered
@@ -641,12 +645,40 @@ apiRouter.post('/scrape/live', async (req, res) => {
   const STOP = new Set(['in','near','the','a','an','of','for','to','from','with','and','best','cheap','cheapest','online','buy','price','under','below']);
   const words = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
   const stem = (w: string) => w.replace(/(ies|es|s)$/,'');
+  // Synonym families (owner 22 Oct "chips always return the same one" bug): sources
+  // title products with everyday retail words — a TV is never called a "television"
+  // on Flipkart. A query word is satisfied by ANY member of its family.
+  const SYNONYM: Record<string, string[]> = {
+    television: ['tv', 'telly'], tv: ['television', 'telly'],
+    shirt: ['tshirt', 'tee'], tshirt: ['shirt', 'tee'], tee: ['shirt', 'tshirt'],
+    headphone: ['earphone', 'earbud', 'headset'], earphone: ['headphone', 'earbud', 'headset'],
+    smartwatch: ['watch'], watch: ['smartwatch'],
+    shoe: ['sneaker', 'footwear'], sneaker: ['shoe', 'footwear'], footwear: ['shoe', 'sneaker'],
+    tablet: ['tab', 'ipad'], tab: ['tablet'],
+    mobile: ['phone', 'smartphone'], phone: ['mobile', 'smartphone'], smartphone: ['mobile', 'phone'],
+    powerbank: ['power'],
+  };
   const stems = words.map(stem);
+  const stemMatches = (t: string, w: string) => {
+    if (new RegExp(`\\b${w}`).test(t)) return true;
+    for (const syn of (SYNONYM[w] || [])) {
+      if (new RegExp(`\\b${syn}`).test(t)) return true;
+      const synStem = stem(syn);
+      if (synStem !== syn && new RegExp(`\\b${synStem}`).test(t)) return true;
+    }
+    return false;
+  };
   const scored = (response.results as any[]).map((o) => {
     const t = String(o.title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
     // Regex token boundary: 'milk' must appear as a WHOLE word, so 'buttermilk'
     // does not match 'milk'. Simple plural stemming keeps 'shoes' matching 'shoe'.
-    const hit = stems.length ? stems.filter((w) => new RegExp(`\\b${w}`).test(t)).length / stems.length : 1;
+    let hit = stems.length ? stems.filter((w) => stemMatches(t, w)).length / stems.length : 1;
+    // Owner 22 Oct ('smart tv / tablet pe results nahi aate'): an accessory or
+    // supplement of the product must not pose AS the product — 'Tablet Stand' and
+    // 'Multivitamin Tablets' for a 'tablets' query, 'USB Charger & Mobile Holder'
+    // for 'mobile power banks'. Demoted below the majority tier (shared guard with
+    // the catalogue-replay gate in server/search/queryRelevance.ts).
+    if (isAccessoryOfQuery(String(o.title || ''), String(input.query || ''))) hit = Math.min(hit, 0.4);
     // Finance rows carry their comparable value in attributes when the page publishes
     // a rate/premium schedule rather than one purchasable price — those are valued.
     const financeAttrValued = ['loans', 'insurance', 'creditcards', 'banking'].includes(String((o as any).vertical))
@@ -663,8 +695,17 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // no majority fallback. When nothing matches, the user sees an honest
     // 'no exact matches' notice instead of unrelated products.
     const full = scored.filter((x) => x.hit === 1);
-    kept = full;
-    if (!full.length) {
+    // Owner 22 Oct bug: category-style queries ("men's Wrist Watches", "Smart
+    // Televisions") matched almost nothing — titles rarely repeat every query
+    // word ("Fossil Men's Analog Watch" has no "wrist"), so every pill returned
+    // the same one item or none. Tier 2: when no FULL match exists, keep the
+    // majority matches (>= half the query words present in the title) so the
+    // user still sees the real, relevant category grid — never the generic
+    // catalogue, never fabricated rows. Tier 3 stays honest: nothing matches
+    // -> explicit notice.
+    const majority = scored.filter((x) => x.hit >= 0.5 && x.hit < 1);
+    kept = full.length ? full : majority;
+    if (!kept.length) {
       res.json({
         results: [],
         honestNotice: `No exact matches for '${input.query}' from live sources right now. Sources returned only loosely related items, which we do not show.`,
@@ -699,9 +740,13 @@ apiRouter.post('/scrape/live', async (req, res) => {
     if (live.length) kept = live;
   }
   kept.sort((a, b) => b.hit - a.hit || Number(b.priced) - Number(a.priced) || (a.o.prices?.effectivePrice ?? 0) - (b.o.prices?.effectivePrice ?? 0));
-  response.results = kept.map((x) => x.o) as any;
+  // Owner 22 Oct (cache-mutation bug): runSearch can hand back the SHARED L1 cache
+  // object (servedFrom='cache'). Writing into response.results poisoned the cached
+  // entry for every other caller of the same key (e.g. /api/search served the
+  // gated-down list). Build a local list instead — the cached object is never touched.
+  const keptResults = kept.map((x) => x.o) as any[];
   // Map to the legacy shape; honestNotice is surfaced instead of fabricated deals
-  const mappedItems = response.results.map((o: any) => {
+  const mappedItems = keptResults.map((o: any) => {
     const item = offerToComparisonItem(o);
     return req.body.vertical === 'movie' ? { ...item, vertical: 'movie', category: 'movie' }
       : req.body.vertical === 'account' ? { ...item, vertical: 'account', category: 'account' }
@@ -709,7 +754,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
   });
   // Same product sold by several sellers -> ONE card with every seller's price (conservative matching).
   const brandById = new Map<string, { brand?: string; gtin?: string }>();
-  for (const o of response.results as any[]) {
+  for (const o of keptResults as any[]) {
     const ids = o.identifiers || {};
     brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || undefined });
   }
