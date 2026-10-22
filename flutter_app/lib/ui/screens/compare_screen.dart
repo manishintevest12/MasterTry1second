@@ -11,6 +11,8 @@ import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../widgets/compare_cards.dart';
+import '../widgets/hint_field.dart';
+import '../widgets/journey_date_picker_modal.dart';
 import '../widgets/location_hint_field.dart';
 import '../widgets/filter_panel.dart';
 import '../widgets/kit.dart';
@@ -255,15 +257,49 @@ class _CompareScreenState extends State<CompareScreen> {
     _runSearch(force: true);
   }
 
+  /// Reference-style journey date modal (owner 22 Oct: date hints MANDATORY on
+  /// every vertical — same UI as the site: quick pills, locked past dates,
+  /// legend, Apply button). Accent matches the web per vertical.
   Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+    final v = _state.vertical;
+    final res = await showJourneyDatePicker(
+      context,
+      title: v == 'flights'
+          ? 'Flight Date'
+          : v == 'bus'
+              ? 'Date of Journey'
+              : v == 'movies'
+                  ? 'Select Movie Show Date'
+                  : 'Schedule Ride Date',
+      isRange: false,
+      initialDeparture: _date,
+      accent: v == 'flights'
+          ? const Color(0xFFF97316)
+          : v == 'bus'
+              ? const Color(0xFFE11D48)
+              : const Color(0xFFF59E0B),
     );
-    if (d != null) {
-      setState(() => _date = d);
+    if (res != null && mounted) {
+      setState(() => _date = res.departure);
+      await _runSearch();
+    }
+  }
+
+  /// Hotels: check-in + check-out range in ONE modal (site parity).
+  Future<void> _pickHotelDates() async {
+    final res = await showJourneyDatePicker(
+      context,
+      title: 'Check-in & Check-out Dates',
+      isRange: true,
+      initialDeparture: _date,
+      initialReturn: _checkOutDate,
+      accent: const Color(0xFF1D64FF),
+    );
+    if (res != null && mounted) {
+      setState(() {
+        _date = res.departure;
+        _checkOutDate = res.returnDate ?? _date.add(const Duration(days: 1));
+      });
       await _runSearch();
     }
   }
@@ -429,6 +465,7 @@ class _CompareScreenState extends State<CompareScreen> {
                 hotelGuests: _hotelGuests,
                 city: _state.city,
                 onPickDate: _pickDate,
+                onPickHotelDates: _pickHotelDates,
                 onSearch: () => _runSearch(force: true),
                 onPickCity: _pickCity,
                 onUseCurrentLocationForCab: _useCurrentLocationForCab,
@@ -844,6 +881,7 @@ Widget buildSearchCardForTest({
       onPickOnMap: (_) {},
       onOpenPlacePicker: (_) {},
       onOpenHotelPicker: () {},
+      onPickHotelDates: () {},
     );
 
 class _SearchCard extends StatelessWidget {
@@ -858,6 +896,7 @@ class _SearchCard extends StatelessWidget {
     required this.hotelGuests,
     required this.city,
     required this.onPickDate,
+    required this.onPickHotelDates,
     required this.onSearch,
     required this.onPickCity,
     required this.onUseCurrentLocationForCab,
@@ -881,6 +920,7 @@ class _SearchCard extends StatelessWidget {
   final String hotelGuests;
   final String city;
   final VoidCallback onPickDate;
+  final VoidCallback onPickHotelDates;
   final VoidCallback onSearch;
   final VoidCallback onPickCity;
   final VoidCallback onUseCurrentLocationForCab;
@@ -1010,78 +1050,61 @@ class _SearchCard extends StatelessWidget {
       case SearchKind.route:
       case SearchKind.dateRoute:
         if (meta.id == 'flights') {
+          // Owner 22 Oct: hints MANDATORY on every vertical — From/To are now
+          // inline typeaheads (reference dropdown: city list + badges + keyboard
+          // nav), with the full-screen airport picker still one tap away.
+          Widget browseBtn(VoidCallback onTap) => Padding(
+                padding: const EdgeInsets.only(right: 2),
+                child: IconButton(
+                  onPressed: onTap,
+                  icon: Icon(Icons.expand_more_rounded, size: 18, color: muted(context)),
+                  tooltip: 'Browse all airports',
+                ),
+              );
           body = Column(
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: InkWell(
-                      onTap: () => onOpenPlacePicker(true),
-                      borderRadius: BorderRadius.circular(10),
+                    child: HintField(
+                      controller: from,
+                      hint: 'From City / Airport',
+                      source: HintSource.cities,
+                      headerText: 'FLIGHT CITIES & AIRPORTS',
+                      icon: Icons.flight_takeoff_outlined,
+                      onSelect: (_) => onSearch(),
+                      onSubmitted: (_) => onSearch(),
+                      trailing: browseBtn(() => onOpenPlacePicker(true)),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: GestureDetector(
+                      onTap: onSwap,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: border(context)),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.flight_takeoff_outlined, size: 16, color: T1SColors.red),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                from.text.isNotEmpty ? from.text : 'From City / Airport',
-                                style: tx(context, 12, w: FontWeight.w800),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Icon(Icons.swap_horiz_rounded, size: 18, color: muted(context)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: onSwap,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: border(context)),
-                      ),
-                      child: Icon(Icons.swap_horiz_rounded, size: 18, color: muted(context)),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                   Expanded(
-                    child: InkWell(
-                      onTap: () => onOpenPlacePicker(false),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: border(context)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.flight_land_outlined, size: 16, color: T1SColors.red),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                to.text.isNotEmpty ? to.text : 'To City / Airport',
-                                style: tx(context, 12, w: FontWeight.w800),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    child: HintField(
+                      controller: to,
+                      hint: 'To City / Airport',
+                      source: HintSource.cities,
+                      headerText: 'FLIGHT CITIES & AIRPORTS',
+                      icon: Icons.flight_land_outlined,
+                      onSelect: (_) => onSearch(),
+                      onSubmitted: (_) => onSearch(),
+                      trailing: browseBtn(() => onOpenPlacePicker(false)),
                     ),
                   ),
                 ],
@@ -1098,78 +1121,60 @@ class _SearchCard extends StatelessWidget {
           );
         } else {
           // Bus
+          // Owner 22 Oct: hints MANDATORY — inline LIVE redBus typeahead
+          // (tier-1/2/3 towns + boarding points, same registry as the site).
+          Widget browseBtnBus(VoidCallback onTap) => Padding(
+                padding: const EdgeInsets.only(right: 2),
+                child: IconButton(
+                  onPressed: onTap,
+                  icon: Icon(Icons.expand_more_rounded, size: 18, color: muted(context)),
+                  tooltip: 'Browse all cities',
+                ),
+              );
           body = Column(
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: InkWell(
-                      onTap: () => onOpenCityPicker(from, 'Select From City / Town / Boarding Point'),
-                      borderRadius: BorderRadius.circular(10),
+                    child: HintField(
+                      controller: from,
+                      hint: 'From City / Town',
+                      source: HintSource.bus,
+                      headerText: 'LIVE BUS CITIES • TOWNS & BOARDING POINTS',
+                      icon: Icons.directions_bus_outlined,
+                      onSelect: (_) => onSearch(),
+                      onSubmitted: (_) => onSearch(),
+                      trailing: browseBtnBus(() => onOpenCityPicker(from, 'Select From City / Town / Boarding Point')),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: GestureDetector(
+                      onTap: onSwap,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: border(context)),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.directions_bus_outlined, size: 16, color: T1SColors.red),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                from.text.isNotEmpty ? from.text : 'From City',
-                                style: tx(context, 12, w: FontWeight.w800),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: Icon(Icons.swap_horiz_rounded, size: 18, color: muted(context)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: onSwap,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: border(context)),
-                      ),
-                      child: Icon(Icons.swap_horiz_rounded, size: 18, color: muted(context)),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                   Expanded(
-                    child: InkWell(
-                      onTap: () => onOpenCityPicker(to, 'Select To City / Town'),
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: border(context)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.location_on_outlined, size: 16, color: T1SColors.red),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                to.text.isNotEmpty ? to.text : 'To City',
-                                style: tx(context, 12, w: FontWeight.w800),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    child: HintField(
+                      controller: to,
+                      hint: 'To City / Town',
+                      source: HintSource.bus,
+                      headerText: 'LIVE BUS CITIES • TOWNS & BOARDING POINTS',
+                      icon: Icons.location_on_outlined,
+                      onSelect: (_) => onSearch(),
+                      onSubmitted: (_) => onSearch(),
+                      trailing: browseBtnBus(() => onOpenCityPicker(to, 'Select To City / Town')),
                     ),
                   ),
                 ],
@@ -1187,44 +1192,64 @@ class _SearchCard extends StatelessWidget {
         }
 
       case SearchKind.hotel:
+        // Owner 22 Oct: hints MANDATORY — the hotel field is now an inline
+        // LIVE typeahead (destinations + real properties via /api/hotels/locations,
+        // reference image: icon + bold name + grey line + Destination/Hotel badge),
+        // with check-in/check-out chips opening the site's range date modal.
+        // The full picker (guests/rooms, popular destinations) stays one tap away.
         body = Column(
           children: [
-            InkWell(
-              onTap: onOpenHotelPicker,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: border(context)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.search_rounded, size: 18, color: T1SColors.red),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            HintField(
+              controller: to,
+              hint: 'City, resort or landmark',
+              source: HintSource.hotels,
+              headerText: 'LIVE HOTELS • DESTINATIONS & PROPERTIES',
+              icon: Icons.search_rounded,
+              onSelect: (_) => onSearch(),
+              onSubmitted: (_) => onSearch(),
+              trailing: IconButton(
+                onPressed: onOpenHotelPicker,
+                icon: Icon(Icons.manage_search_rounded, size: 18, color: muted(context)),
+                tooltip: 'Guests, rooms & popular destinations',
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _DateChip(date: date, onTap: onPickHotelDates, label: 'Check-in')),
+                const SizedBox(width: 8),
+                Expanded(child: _DateChip(date: checkOutDate, onTap: onPickHotelDates, label: 'Check-out')),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: onOpenHotelPicker,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: border(context)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            to.text.isNotEmpty ? to.text : 'City, resort or landmark',
-                            style: tx(context, 12.5, w: FontWeight.w800),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${date.day}/${date.month} - ${checkOutDate.day}/${checkOutDate.month} · $hotelGuests',
-                            style: tx(context, 10.5, color: muted(context)),
+                          Icon(Icons.people_outline_rounded, size: 14, color: muted(context)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              hotelGuests,
+                              style: tx(context, 10.5, w: FontWeight.w800),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded, size: 18, color: T1SColors.slate400),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         );

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
+import '../widgets/journey_date_picker_modal.dart';
 
 class HotelPickerResult {
   final String destination;
@@ -141,34 +142,27 @@ class _HotelPickerScreenState extends State<HotelPickerScreen> {
     Navigator.pop(context, result);
   }
 
+  /// Owner 22 Oct (mandatory date hints everywhere): check-in + check-out are
+  /// now selected together in the site-parity range modal (quick pills, locked
+  /// past dates, CONFIRMED CHOICE summary, Apply button).
   Future<void> _pickCheckIn() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _checkIn,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+    final res = await showJourneyDatePicker(
+      context,
+      title: 'Check-in & Check-out Dates',
+      isRange: true,
+      initialDeparture: _checkIn,
+      initialReturn: _checkOut,
+      accent: const Color(0xFF1D64FF),
     );
-    if (d != null) {
+    if (res != null && mounted) {
       setState(() {
-        _checkIn = d;
-        if (_checkOut.isBefore(_checkIn.add(const Duration(days: 1)))) {
-          _checkOut = _checkIn.add(const Duration(days: 1));
-        }
+        _checkIn = res.departure;
+        _checkOut = res.returnDate ?? _checkIn.add(const Duration(days: 1));
       });
     }
   }
 
-  Future<void> _pickCheckOut() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _checkOut,
-      firstDate: _checkIn.add(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (d != null) {
-      setState(() => _checkOut = d);
-    }
-  }
+  Future<void> _pickCheckOut() => _pickCheckIn();
 
   String _fmtDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
 
