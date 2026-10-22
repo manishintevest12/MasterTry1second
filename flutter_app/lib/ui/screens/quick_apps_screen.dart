@@ -148,14 +148,14 @@ class _AppCard extends StatelessWidget {
             height: 52,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(13),
-              color: dark ? T1SColors.slate800 : T1SColors.slate50,
+              color: Colors.white,
               border: Border.all(color: dark ? const Color(0xFF334155) : T1SColors.slate200),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: CachedNetworkImage(
                 imageUrl: app.iconUrl,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 errorWidget: (_, __, ___) => const Icon(Icons.apps, size: 24, color: T1SColors.slate400),
               ),
             ),

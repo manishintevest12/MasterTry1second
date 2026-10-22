@@ -26,7 +26,7 @@ import {
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
-import { buildShowcase } from '../home/showcase';
+import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -221,6 +221,97 @@ apiRouter.get('/geo/reverse', async (req, res) => {
   }
   const place = await geoReverse(lat, lng);
   res.json({ place }); // place: null when Nominatim has no answer — never invented
+});
+
+// QUICK APPS (owner 22 Oct): the hub listed only ~29 curated companies and
+// opened them DIRECTLY — bypassing /api/out, so no affiliate injection and no
+// click tracking. GET returns every live affiliate-registry merchant as extra
+// quick-app entries (masked launch). POST mints masking pointers for partner
+// webUrls so launches redirect through /api/out. Domains are allow-listed
+// (curated partners + live registry merchants) — no open-redirect minting.
+const QUICK_APP_ALLOW_DOMAINS = new Set([
+  'cred.club', 'groww.in', 'bookmyshow.com', 'agoda.com', 'amazon.in', 'bankbazaar.com',
+  'bigbasket.com', 'blinkit.com', 'booking.com', 'cleartrip.com', 'dominos.co.in',
+  'easemytrip.com', 'flipkart.com', 'hdfcbank.com', 'makemytrip.com', 'microsoft.com',
+  'myntra.com', 'nykaa.com', 'olacabs.com', 'oyorooms.com', 'paisabazaar.com',
+  'policybazaar.com', 'redbus.in', 'swiggy.com', 'tataneu.com', 'uber.com',
+  'yatra.com', 'zeptonow.com', 'zomato.com',
+]);
+
+function domainHost(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
+}
+
+async function quickAppAllowList(): Promise<Set<string>> {
+  const allow = new Set(QUICK_APP_ALLOW_DOMAINS);
+  for (const row of await fetchAffiliateRows(600)) {
+    const dom = realMerchantDomain([row.original_url, row.affiliate_url]) || nameDomainOf(String(row.merchant_name || ''));
+    if (dom) allow.add(dom);
+  }
+  return allow;
+}
+
+// GET /api/quick-apps — every live affiliate-registry merchant as a quick-app entry.
+apiRouter.get('/quick-apps', async (_req, res) => {
+  try {
+    const rows = await fetchAffiliateRows(600);
+    const seen = new Set<string>();
+    const byName = new Map<string, { domains: Set<string>; category: string }>();
+    for (const row of rows) {
+      const name = String(row.merchant_name || '').trim();
+      if (name.length < 2) continue;
+      const dom = realMerchantDomain([row.original_url, row.affiliate_url]) || nameDomainOf(name);
+      const bucket = byName.get(name) || { domains: new Set<string>(), category: String(row.categories || '').split(',')[0].trim() };
+      if (dom) bucket.domains.add(dom);
+      byName.set(name, bucket);
+      seen.add(name.toLowerCase());
+    }
+    const affiliates = Array.from(byName.entries()).map(([name, b]) => {
+      const dom = Array.from(b.domains)[0] || nameDomainOf(name) || 'example.com';
+      const homepage = `https://${dom}`;
+      return {
+        id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
+        name: name.slice(0, 60),
+        iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
+        category: b.category || 'Shopping',
+        type: 'CPS',
+        deepLink: '',
+        webUrl: homepage,
+        description: `Live-tracked coupons and cashback offers from ${name} via Try1Second.`,
+        payoutRate: 'Affiliate commission on every tracked sale',
+        payoutAmount: 0,
+        status: 'active',
+        rating: 0,
+        downloadsOrUsers: '',
+        badge: 'Live Coupons',
+        bgColor: 'bg-slate-700',
+        createdAt: new Date().toISOString().split('T')[0],
+        goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` }),
+      };
+    });
+    res.json({ success: true, affiliates });
+  } catch {
+    res.status(500).json({ success: false, error: 'quick_apps_unavailable' });
+  }
+});
+
+// POST /api/quick-apps/go — masking pointers for allow-listed partner webUrls.
+apiRouter.post('/quick-apps/go', async (req: any, res) => {
+  try {
+    const items: Array<{ id?: string; url?: string }> = Array.isArray(req.body?.items) ? req.body.items.slice(0, 500) : [];
+    const allow = await quickAppAllowList();
+    const goUrls: Record<string, string> = {};
+    for (const it of items) {
+      const url = String(it.url || '');
+      const id = String(it.id || '');
+      const host = domainHost(url);
+      if (!id || !/^https:\/\//.test(url) || !allow.has(host)) continue; // unknown domain: direct launch stays client-side
+      goUrls[id] = createMaskingPointer(url, { offerId: `qapp-${id}` });
+    }
+    res.json({ success: true, goUrls });
+  } catch {
+    res.status(400).json({ success: false, error: 'bad_request' });
+  }
 });
 
 // GET /api/home/showcase — the 8 curated homepage sections (owner spec 21 Oct).

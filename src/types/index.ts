@@ -604,6 +604,8 @@ export interface QuickAppPartner {
   badge?: string;
   bgColor?: string;
   createdAt: string;
+  /** Owner 22 Oct: masked /api/out launch URL — affiliate injection happens server-side. */
+  goUrl?: string;
 }
 
 export interface QuickAppRedirectionLog {

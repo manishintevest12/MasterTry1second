@@ -24,6 +24,8 @@
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 import { createMaskingPointer } from '../affiliate/deeplink';
+import { resolveMerchantCrispLogo } from '../pipeline/merchantCrispLogo';
+import { merchantLogoMap } from '../marketing/merchantLogos';
 
 export interface ShowcaseItem {
   id: string;
@@ -226,9 +228,24 @@ async function logoAnswers(url: string): Promise<boolean> {
   return ok;
 }
 
+/** Key the admin-uploaded merchant_logos registry uses (first word, lowercased). */
+function uploadKeyOf(name: string): string {
+  return String(name || '').toLowerCase().replace(/\.(com|in|co\.in)\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim().split(' ')[0] || '';
+}
+
 /** First verified candidate; when verification is impossible (offline sandbox)
- *  the first candidate still ships so the browser can try it. */
+ *  the first candidate still ships so the browser can try it.
+ *  Owner 22 Oct ("acer, ajio gram... logo clearly visible ni hai"): admin
+ *  uploads beat everything, then the Wikidata crisp logo, and only then the
+ *  registry/favicon fallbacks — tiny registry icons were rendering blocky. */
 async function resolveMerchantLogo(row: AffiliateRow): Promise<string | null> {
+  try {
+    const uploads = await merchantLogoMap();
+    const uk = uploadKeyOf(String(row.merchant_name || ''));
+    if (uk && uploads[uk]) return uploads[uk];
+  } catch { /* registry unavailable offline */ }
+  const crisp = await resolveMerchantCrispLogo(String(row.merchant_name || ''));
+  if (crisp && (await logoAnswers(crisp))) return crisp;
   const cands = merchantLogoCandidates(row);
   if (!cands.length) return null;
   for (const c of cands) {

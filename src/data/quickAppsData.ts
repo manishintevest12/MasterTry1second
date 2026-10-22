@@ -40,7 +40,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-flipkart',
     name: 'Flipkart Online Shopping',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=flipkart.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Flipkart_logo_(2026).svg?width=256',
     category: 'E-Commerce & Electronics',
     type: 'CPS',
     deepLink: 'flipkart://open?affid=try1second&affExtParam1=instant',
@@ -94,7 +94,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-zepto',
     name: 'Zepto 10-Min Supermarket',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=zeptonow.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Zepto_Logo.svg?width=256',
     category: '10-Min Quick Grocery',
     type: 'CPI - IOS',
     deepLink: 'zepto://home?utm_campaign=try1second_ios',
@@ -130,7 +130,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-tataneu',
     name: 'Tata Neu Super App',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=tataneu.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Tata_Neu_Logo.svg?width=256',
     category: 'Super App & Retail',
     type: 'CPI - Windows',
     deepLink: 'tataneu://explore?ref=try1second_win',
@@ -148,7 +148,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-makemytrip',
     name: 'MakeMyTrip Flights & Hotels',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=makemytrip.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Makemytrip_logo.svg?width=256',
     category: 'Travel & Flights',
     type: 'CPC',
     deepLink: 'makemytrip://flightsearch?affil=try1second',
@@ -184,7 +184,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-hdfcloans',
     name: 'HDFC Bank Express Loans',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=hdfcbank.com&sz=128',
+    iconUrl: '/brand-logos/hdfc-bank.svg',
     category: 'Banking & Personal Loans',
     type: 'CPL',
     deepLink: 'https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec',
@@ -202,7 +202,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-uber',
     name: 'Uber Cabs & City Rides',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=uber.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Uber_logo_2018.svg?width=256',
     category: 'Cabs & Ride-Hailing',
     type: 'CPC',
     deepLink: 'uber://?client_id=try1second&action=setPickup',
@@ -220,7 +220,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-bookmyshow',
     name: 'BookMyShow Cinema & Concerts',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=bookmyshow.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Bookmyshow-logoid.png?width=256',
     category: 'Movies & Entertainment',
     type: 'CPS',
     deepLink: 'bookmyshow://home?campaign=try1second_cps',
@@ -238,7 +238,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-groww',
     name: 'Groww Stocks & Mutual Funds',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=groww.in&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Groww_app_logo.png?width=256',
     category: 'Fintech & Investments',
     type: 'CPI - Android',
     deepLink: 'groww://app?referrer=try1second',
@@ -272,20 +272,20 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
     createdAt: '2026-09-15',
   },
   // ---- Added 17 Oct: brands with real presence in our 13 verticals ----
-  { id: 'qapp-ola', name: 'Ola Cabs City Rides', iconUrl: 'https://www.google.com/s2/favicons?domain=olacabs.com&sz=128', category: 'Cabs & Ride-Hailing', type: 'Vertical Source', deepLink: 'olacabs://open?utm_source=try1second', webUrl: 'https://www.olacabs.com', description: 'Book city cabs, autos and bikes with live fares compared in our Cab vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '100M+ Downloads', badge: 'Cab Vertical', bgColor: 'bg-green-600', createdAt: '2026-10-17' },
+  { id: 'qapp-ola', name: 'Ola Cabs City Rides', iconUrl: '/brand-logos/ola.png', category: 'Cabs & Ride-Hailing', type: 'Vertical Source', deepLink: 'olacabs://open?utm_source=try1second', webUrl: 'https://www.olacabs.com', description: 'Book city cabs, autos and bikes with live fares compared in our Cab vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '100M+ Downloads', badge: 'Cab Vertical', bgColor: 'bg-green-600', createdAt: '2026-10-17' },
   { id: 'qapp-easemytrip', name: 'EaseMyTrip Flights & Hotels', iconUrl: 'https://www.google.com/s2/favicons?domain=easemytrip.com&sz=128', category: 'Travel & Flights', type: 'Vertical Source', deepLink: 'easemytrip://open?utm_source=try1second', webUrl: 'https://www.easemytrip.com', description: 'Flight fares and hotel rates scanned live across our Flights and Hotels verticals.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.1, downloadsOrUsers: '50M+ Downloads', badge: 'Live Source', bgColor: 'bg-sky-600', createdAt: '2026-10-17' },
   { id: 'qapp-yatra', name: 'Yatra Flights Hotels & Bus', iconUrl: 'https://www.google.com/s2/favicons?domain=yatra.com&sz=128', category: 'Travel & Flights', type: 'Vertical Source', deepLink: 'yatra://open?utm_source=try1second', webUrl: 'https://www.yatra.com', description: 'Live flight, hotel and bus inventory powering three Try1Second verticals.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.0, downloadsOrUsers: '10M+ Downloads', badge: '3 Verticals', bgColor: 'bg-indigo-600', createdAt: '2026-10-17' },
   { id: 'qapp-cleartrip', name: 'Cleartrip Flights & Hotels', iconUrl: 'https://www.google.com/s2/favicons?domain=cleartrip.com&sz=128', category: 'Travel & Flights', type: 'Vertical Source', deepLink: 'cleartrip://open?utm_source=try1second', webUrl: 'https://www.cleartrip.com', description: 'Flight and hotel prices scanned live into our travel comparison cards.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.1, downloadsOrUsers: '10M+ Downloads', badge: 'Live Source', bgColor: 'bg-teal-600', createdAt: '2026-10-17' },
   { id: 'qapp-redbus', name: 'redBus InterCity Tickets', iconUrl: '/brand-logos/redbus.svg', category: 'Bus & Travel', type: 'Vertical Source', deepLink: 'redbus://open?utm_source=try1second', webUrl: 'https://www.redbus.in', description: 'India-wide bus inventory with boarding points compared in our Bus vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.3, downloadsOrUsers: '50M+ Downloads', badge: 'Bus Vertical', bgColor: 'bg-rose-600', createdAt: '2026-10-17' },
-  { id: 'qapp-dominos', name: 'Dominos Pizza Order Online', iconUrl: 'https://www.google.com/s2/favicons?domain=dominos.co.in&sz=128', category: 'Food Delivery & Dining', type: 'Vertical Source', deepLink: 'dominos://open?utm_source=try1second', webUrl: 'https://www.dominos.co.in', description: 'Menu prices from our Food vertical, cooked by live web acquisition.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.4, downloadsOrUsers: '50M+ Downloads', badge: 'Food Vertical', bgColor: 'bg-blue-600', createdAt: '2026-10-17' },
+  { id: 'qapp-dominos', name: 'Dominos Pizza Order Online', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Dominos_2025.svg?width=256', category: 'Food Delivery & Dining', type: 'Vertical Source', deepLink: 'dominos://open?utm_source=try1second', webUrl: 'https://www.dominos.co.in', description: 'Menu prices from our Food vertical, cooked by live web acquisition.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.4, downloadsOrUsers: '50M+ Downloads', badge: 'Food Vertical', bgColor: 'bg-blue-600', createdAt: '2026-10-17' },
   { id: 'qapp-bigbasket', name: 'BigBasket & BB Now', iconUrl: '/brand-logos/bigbasket.png', category: '10-Min Quick Grocery', type: 'Vertical Source', deepLink: 'bigbasket://open?utm_source=try1second', webUrl: 'https://www.bigbasket.com', description: 'Grocery prices from BigBasket and BB Now inside our Grocery vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '50M+ Downloads', badge: 'Grocery Vertical', bgColor: 'bg-emerald-600', createdAt: '2026-10-17' },
-  { id: 'qapp-nykaa', name: 'Nykaa Beauty & Fashion', iconUrl: 'https://www.google.com/s2/favicons?domain=nykaa.com&sz=128', category: 'E-Commerce & Electronics', type: 'Vertical Source', deepLink: 'nykaa://open?utm_source=try1second', webUrl: 'https://www.nykaa.com', description: 'Beauty and fashion prices scanned live into our E-Commerce vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.3, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-pink-600', createdAt: '2026-10-17' },
+  { id: 'qapp-nykaa', name: 'Nykaa Beauty & Fashion', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Nykaa.png?width=256', category: 'E-Commerce & Electronics', type: 'Vertical Source', deepLink: 'nykaa://open?utm_source=try1second', webUrl: 'https://www.nykaa.com', description: 'Beauty and fashion prices scanned live into our E-Commerce vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.3, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-pink-600', createdAt: '2026-10-17' },
   { id: 'qapp-myntra', name: 'Myntra Fashion Store', iconUrl: 'https://www.google.com/s2/favicons?domain=myntra.com&sz=128', category: 'E-Commerce & Electronics', type: 'Vertical Source', deepLink: 'myntra://open?utm_source=try1second', webUrl: 'https://www.myntra.com', description: 'Live fashion prices powering our E-Commerce comparison cards.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-fuchsia-600', createdAt: '2026-10-17' },
   { id: 'qapp-paisabazaar', name: 'Paisabazaar Loans & Cards', iconUrl: 'https://www.google.com/s2/favicons?domain=paisabazaar.com&sz=128', category: 'Banking & Personal Loans', type: 'Vertical Source', deepLink: 'paisabazaar://open?utm_source=try1second', webUrl: 'https://www.paisabazaar.com', description: 'Personal loan rates compared live in our Loans vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.1, downloadsOrUsers: '10M+ Users', badge: 'Loans Vertical', bgColor: 'bg-orange-600', createdAt: '2026-10-17' },
   { id: 'qapp-bankbazaar', name: 'BankBazaar Loans & Cards', iconUrl: 'https://www.google.com/s2/favicons?domain=bankbazaar.com&sz=128', category: 'Banking & Personal Loans', type: 'Vertical Source', deepLink: 'bankbazaar://open?utm_source=try1second', webUrl: 'https://www.bankbazaar.com', description: 'Loan and card offers scanned live into Loans and Credit Card verticals.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.0, downloadsOrUsers: '10M+ Users', badge: 'Loans Vertical', bgColor: 'bg-cyan-700', createdAt: '2026-10-17' },
   { id: 'qapp-oyo', name: 'OYO Budget Hotels', iconUrl: 'https://www.google.com/s2/favicons?domain=oyorooms.com&sz=128', category: 'Hotels & Stays', type: 'Vertical Source', deepLink: 'oyorooms://open?utm_source=try1second', webUrl: 'https://www.oyorooms.com', description: 'Budget hotel rates scanned live into our Hotels vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 3.9, downloadsOrUsers: '100M+ Downloads', badge: 'Hotels Vertical', bgColor: 'bg-red-600', createdAt: '2026-10-17' },
-  { id: 'qapp-booking', name: 'Booking.com Stays', iconUrl: 'https://www.google.com/s2/favicons?domain=booking.com&sz=128', category: 'Hotels & Stays', type: 'Vertical Source', deepLink: 'booking://open?utm_source=try1second', webUrl: 'https://www.booking.com', description: 'Global hotel inventory compared live in our Hotels vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.4, downloadsOrUsers: '500M+ Downloads', badge: 'Hotels Vertical', bgColor: 'bg-blue-700', createdAt: '2026-10-17' },
-  { id: 'qapp-agoda', name: 'Agoda Hotel Deals', iconUrl: 'https://www.google.com/s2/favicons?domain=agoda.com&sz=128', category: 'Hotels & Stays', type: 'Vertical Source', deepLink: 'agoda://open?utm_source=try1second', webUrl: 'https://www.agoda.com', description: 'Hotel rates and galleries acquired live for our Hotels vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.3, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-violet-700', createdAt: '2026-10-17' },
+  { id: 'qapp-booking', name: 'Booking.com Stays', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Booking.com_Logo.svg?width=256', category: 'Hotels & Stays', type: 'Vertical Source', deepLink: 'booking://open?utm_source=try1second', webUrl: 'https://www.booking.com', description: 'Global hotel inventory compared live in our Hotels vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.4, downloadsOrUsers: '500M+ Downloads', badge: 'Hotels Vertical', bgColor: 'bg-blue-700', createdAt: '2026-10-17' },
+  { id: 'qapp-agoda', name: 'Agoda Hotel Deals', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Agoda_logo_2019.svg?width=256', category: 'Hotels & Stays', type: 'Vertical Source', deepLink: 'agoda://open?utm_source=try1second', webUrl: 'https://www.agoda.com', description: 'Hotel rates and galleries acquired live for our Hotels vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.3, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-violet-700', createdAt: '2026-10-17' },
 ];
 
 export const INITIAL_REDIRECTION_LOGS: QuickAppRedirectionLog[] = [

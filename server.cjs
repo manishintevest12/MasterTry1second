@@ -2280,6 +2280,87 @@ var init_nykaa = __esm({
   }
 });
 
+// server/workers/parsers/croma.ts
+function parseCromaSearch(rawBody, source, pageUrl) {
+  let root;
+  try {
+    root = JSON.parse(rawBody);
+  } catch {
+    return [];
+  }
+  const products = Array.isArray(root?.products) ? root.products : [];
+  const items = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const p of products) {
+    const name = String(p.name || "").trim();
+    const price = Number(p.price?.value ?? p.pincodePrice?.value);
+    if (!name || !Number.isFinite(price) || price <= 0) continue;
+    const sku = String(p.code || "");
+    if (sku && seen.has(sku)) continue;
+    if (sku) seen.add(sku);
+    const mrpVal = Number(p.mrp?.value);
+    const mrp = Number.isFinite(mrpVal) && mrpVal > price ? mrpVal : void 0;
+    const brand = p.manufacturer ? String(p.manufacturer) : void 0;
+    const rel = String(p.url || "");
+    const url = rel ? `https://www.croma.com${rel.startsWith("/") ? rel : `/${rel}`}` : "https://www.croma.com";
+    const img = /^https:\/\//.test(String(p.plpImage || "")) ? String(p.plpImage) : void 0;
+    const stock = Array.isArray(p.stockFlag) ? p.stockFlag.length > 0 ? "true" : "false" : "true";
+    const rating = Number(p.averageRating ?? p.finalReviewRating) || 0;
+    const reviews = Number(p.numberOfReviews ?? p.finalReviewRatingCount) || 0;
+    items.push(newRawItem(source, {
+      title: (brand && !name.toLowerCase().startsWith(brand.toLowerCase()) ? `${brand} ${name}` : name).slice(0, 200),
+      brand,
+      model: sku || void 0,
+      price,
+      listPrice: mrp,
+      currency: "INR",
+      seller: "Croma",
+      sellerUrl: url,
+      availability: stock === "true" ? "in_stock" : "out_of_stock",
+      attributes: {
+        brand: brand || "",
+        ...p.discount ? { discount: `${p.discount}%` } : {},
+        image: img || "",
+        in_stock: stock,
+        ...rating ? { rating: String(rating) } : {},
+        ...reviews ? { review_count: String(reviews) } : {},
+        data_note: `Live prices from Croma search API, observed ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`
+      },
+      identifiers: sku ? { sku } : void 0,
+      evidence: { sourceUrl: pageUrl, extractedFields: ["title", "price", "mrp", "brand", "image", "url", "stock"] }
+    }));
+    if (items.length >= 30) break;
+  }
+  return items;
+}
+function extractCromaGallery(html, code) {
+  if (!code) return [];
+  const urls = /* @__PURE__ */ new Set();
+  const re = /https:\/\/media\.tatacroma\.com\/[A-Za-z0-9%_()\/.-]*?Images[^"'\\ )]*/g;
+  let m;
+  while (m = re.exec(html)) {
+    const u = m[0];
+    if (!u.includes(code) || u.includes("No_image")) continue;
+    urls.add(u);
+  }
+  return Array.from(urls).map((u) => {
+    const idx = new RegExp(`${code}_(\\d+)_`).exec(u);
+    return { u, n: idx ? Number(idx[1]) : 99 };
+  }).sort((a, b) => a.n - b.n).map((x) => x.u).slice(0, 6);
+}
+function mergeCromaGallery(item, gallery) {
+  const hero = String(item.attributes?.image || "");
+  const merged = [hero, ...gallery].filter((u, i, a) => /^https:\/\//.test(u) && a.indexOf(u) === i).slice(0, 6);
+  if (merged.length > 1) {
+    item.attributes = { ...item.attributes, image_urls: merged.join("|") };
+  }
+}
+var init_croma = __esm({
+  "server/workers/parsers/croma.ts"() {
+    init_contract();
+  }
+});
+
 // server/workers/parsers/jiomart.ts
 function parseJiomart(body, source, pageUrl) {
   let root;
@@ -2483,6 +2564,7 @@ var init_ecommerce = __esm({
     init_ajio();
     init_tatacliq();
     init_nykaa();
+    init_croma();
     init_jiomart();
     init_relianceDigital();
     import_node_crypto = require("node:crypto");
@@ -2709,6 +2791,51 @@ var init_ecommerce = __esm({
             if (!items.length) {
               if (looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Nykaa presented a challenge page");
               throw new AcquisitionError("EMPTY_RESPONSE", "Nykaa carried no parseable products for this query");
+            }
+            return items;
+          }
+        },
+        {
+          // Croma (croma.com, Tata electronics retailer) LIVE (22 Oct 2026): the PWA
+          // search BFF is an unauthenticated GET extracted from the main SPA chunk
+          // (searchservices/v1/search, channel=WEB + channelCode pincode 400001).
+          // Multi-image: search gives 1 hero shot; top-3 PDP fetch lifts the
+          // media.tatacroma.com Images gallery (Amazon pattern, soft-fail).
+          sourceId: "w_ecom_croma",
+          name: "Ecom worker: Croma (search BFF)",
+          priority: 18,
+          maxPerMinute: 8,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const term = q(ctx);
+            if (!term) return [];
+            const url = "https://api.croma.com/searchservices/v1/search?currentPage=0&query=" + encodeURIComponent(`${term}:relevance`) + "&fields=FULL&channel=WEB&channelCode=400001";
+            const r = await cffiFetch(url, {
+              impersonate: "chrome",
+              timeoutMs: 2e4,
+              headers: { Accept: "application/json", Referer: "https://www.croma.com/searchB" }
+            });
+            if (r.status === 403 || r.status === 429) {
+              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Croma blocked: HTTP ${r.status}`, r.status);
+            }
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Croma search BFF HTTP ${r.status}`, r.status);
+            const items = parseCromaSearch(r.body, ctx.source, url);
+            if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", "Croma search BFF returned no parseable products");
+            const pin = String(ctx.query.location?.pincode || "").trim();
+            for (const it of items.filter((x) => x.identifiers?.sku).slice(0, 3)) {
+              try {
+                await new Promise((res) => setTimeout(res, 900));
+                const pdpUrl = String(it.attributes?.sellerUrl || it.sellerUrl || "");
+                const pr = await cffiFetch(pdpUrl || "https://www.croma.com", { impersonate: "chrome", timeoutMs: 15e3 });
+                if (pr.status !== 200) continue;
+                const gallery = extractCromaGallery(pr.body, String(it.identifiers.sku));
+                if (gallery.length >= 2) {
+                  mergeCromaGallery(it, gallery);
+                  it.evidence = it.evidence || {};
+                  it.evidence.extractedFields = [.../* @__PURE__ */ new Set([...it.evidence.extractedFields || [], "pdp_gallery"])];
+                }
+              } catch {
+              }
             }
             return items;
           }
@@ -5327,7 +5454,7 @@ var init_hotels = __esm({
             if (!city) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             const url = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(city)}&checkin=${checkin}&checkout=${checkout}&group_adults=2&no_rooms=1`;
-            const UA5 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
+            const UA6 = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" };
             let cookies = void 0;
             for (let attempt = 1; attempt <= 3; attempt++) {
               const r = await cffiFetch(url, { timeoutMs: 2e4, cookies, returnCookies: true, headers: { "Accept-Language": "en-IN,en;q=0.9" } });
@@ -5597,8 +5724,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path12 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path12}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
+            for (const path13 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path13}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -5608,7 +5735,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path12 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path13 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -5628,8 +5755,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path12 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path12}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path13 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path13}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -5640,7 +5767,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path12 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path13 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -13322,9 +13449,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path12 = m[1];
-    if (!path12 || path12.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path12).replace(/[_%20]/g, " ").trim(), mainPagePath: path12 });
+    const path13 = m[1];
+    if (!path13 || path13.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path13).replace(/[_%20]/g, " ").trim(), mainPagePath: path13 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -16311,12 +16438,12 @@ var init_cab = __esm({
           run: async (ctx) => {
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
-            const lookup2 = async (x) => {
+            const lookup3 = async (x) => {
               const byCity = await indriveCityLookup(cityFromRouteText(x));
               if (byCity) return byCity;
               return cityFromRouteText(x) !== x ? indriveCityLookup(x) : null;
             };
-            const [from, to] = await Promise.all([lookup2(rt.from), lookup2(rt.to)]);
+            const [from, to] = await Promise.all([lookup3(rt.from), lookup3(rt.to)]);
             if (!from || !to) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity registry has no match for ${!from ? rt.from : rt.to} (India registry only)`);
             if (from.id === to.id) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity: "${rt.from}" and "${rt.to}" resolved to the same city (${from.name})`);
             const rows = await indrivePrices(from.id, to.id);
@@ -17906,9 +18033,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path12, timeoutMs = 12e3) {
+async function gwJson(host, path13, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path12}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path13}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -18835,7 +18962,7 @@ var init_bus = __esm({
             const t0 = Date.now();
             let resolved = {};
             try {
-              const getJson2 = async (url) => {
+              const getJson3 = async (url) => {
                 const s = Date.now();
                 const r2 = await ctx.fetch(url, { expectJson: true, timeoutMs: 12e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
                 steps.push(`suggest=${r2.latencyMs ?? Date.now() - s}ms/${r2.status}`);
@@ -18847,8 +18974,8 @@ var init_bus = __esm({
                 }
               };
               const [fromDocs, toDocs] = await Promise.all([
-                getJson2(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
-                getJson2(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
+                getJson3(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.from.slice(0, 40))}&limit=3`),
+                getJson3(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
             } catch (e) {
@@ -18946,7 +19073,7 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const getJson2 = async (url) => {
+            const getJson3 = async (url) => {
               const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json" } });
               if (r2.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus HTTP ${r2.status} on ${url.split("?")[0]}`, r2.status);
               try {
@@ -18956,8 +19083,8 @@ var init_bus = __esm({
               }
             };
             const [from, to] = await Promise.all([
-              resolveAbhiBusCity(getJson2, rt.from),
-              resolveAbhiBusCity(getJson2, rt.to)
+              resolveAbhiBusCity(getJson3, rt.from),
+              resolveAbhiBusCity(getJson3, rt.to)
             ]);
             if (!from || !to) throw new AcquisitionError("NOT_FOUND", `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
             const depart = String(ctx.query.travelDates?.depart || "");
@@ -23905,24 +24032,24 @@ var init_basket = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path12) {
-  const hit = cache6.get(path12);
+async function throttledNominatim(path13) {
+  const hit = cache6.get(path13);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path12}`, {
+    const r = await fetch(`${NOMINATIM}${path13}`, {
       headers: { "User-Agent": UA3, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path12.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path13.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache6.size >= CACHE_MAX) cache6.delete(cache6.keys().next().value);
-    cache6.set(path12, { at: Date.now(), value });
+    cache6.set(path13, { at: Date.now(), value });
     return value;
   } catch (e) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
@@ -23932,16 +24059,16 @@ async function throttledNominatim(path12) {
 async function geoSearch(q3, limit = 6) {
   const clean3 = q3.trim().slice(0, 120);
   if (clean3.length < 2) return [];
-  const path12 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path12);
+  const path13 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path13);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path12 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path12);
+  const path13 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path13);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -24826,6 +24953,114 @@ var init_spendLens = __esm({
   }
 });
 
+// server/pipeline/merchantCrispLogo.ts
+function load8() {
+  if (cache7) return cache7;
+  try {
+    cache7 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
+  } catch {
+    cache7 = {};
+  }
+  return cache7;
+}
+function persist3() {
+  if (saveTimer3) return;
+  saveTimer3 = setTimeout(() => {
+    saveTimer3 = null;
+    try {
+      import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE2), { recursive: true });
+      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache7 || {}));
+    } catch {
+    }
+  }, 1500);
+}
+function merchantNameFrom(raw) {
+  const cleaned = String(raw || "").replace(/\b(the|official|store|shop|online|india|in)\b/gi, " ").replace(/[|:–—-].*$/, " ").replace(/\s+/g, " ").trim();
+  return cleaned.slice(0, 60);
+}
+async function getJson2(url) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS2);
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": UA4, Accept: "application/json" }, signal: ctl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(t);
+  }
+}
+async function lookup2(nameRaw) {
+  const name = MERCHANT_ALIAS[nameRaw.toLowerCase()] || nameRaw;
+  const s = await getJson2(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=20&search=${encodeURIComponent(name)}`);
+  const results = (s?.search || []).filter((x) => x.id);
+  if (!results.length) return null;
+  const e = await getJson2(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${results.map((x) => x.id).join("|")}`);
+  const wantedTokens = name.toLowerCase().split(/\W+/).filter((t) => t.length >= 3);
+  for (const r of results) {
+    const ent = e?.entities?.[r.id];
+    const desc = String(ent?.descriptions?.en?.value || "");
+    const label = String(r.label || "").toLowerCase();
+    if (desc && !MERCHANT_DESC_RX.test(desc)) continue;
+    if (label) {
+      const labelTokens = label.split(/\W+/).filter((t) => t.length >= 3);
+      const shortSide = wantedTokens.length <= labelTokens.length ? wantedTokens : labelTokens;
+      const longSide = shortSide === wantedTokens ? labelTokens : wantedTokens;
+      if (!shortSide.length || shortSide.some((t) => !longSide.includes(t))) continue;
+    }
+    const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
+    if (file) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(file).replace(/ /g, "_"))}?width=256`;
+  }
+  return null;
+}
+function resolveMerchantCrispLogo(rawName) {
+  const name = MERCHANT_ALIAS[String(rawName || "").trim().toLowerCase()] || merchantNameFrom(rawName);
+  if (name.length < 3) return Promise.resolve(null);
+  const key = name.toLowerCase();
+  const c = load8();
+  const hit = c[key];
+  if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS2)) return Promise.resolve(hit.url);
+  const running2 = inflight3.get(key);
+  if (running2) return running2;
+  const p = lookup2(name).catch(() => null).then((url) => {
+    c[key] = { url, at: Date.now() };
+    persist3();
+    return url;
+  }).finally(() => inflight3.delete(key));
+  inflight3.set(key, p);
+  return p;
+}
+var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS2, cache7, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var init_merchantCrispLogo = __esm({
+  "server/pipeline/merchantCrispLogo.ts"() {
+    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
+    UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
+    CACHE_FILE2 = import_node_path5.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
+    MISS_TTL_MS2 = 7 * 864e5;
+    FETCH_TIMEOUT_MS2 = 4e3;
+    cache7 = null;
+    inflight3 = /* @__PURE__ */ new Map();
+    saveTimer3 = null;
+    MERCHANT_ALIAS = {
+      "ajio gram": "Ajio",
+      "ajio": "Ajio",
+      "nykaa fashion": "Nykaa",
+      "air india": "Air India",
+      "reliance digital": "Reliance Retail",
+      "jiomart": "JioMart",
+      "tata cliq": "Tata CLiQ",
+      "tatacliq": "Tata CLiQ",
+      "bewakoof": "Bewakoof.com",
+      "the trost": "Trost",
+      "trunativ": "Trunativ",
+      "acer": "Acer",
+      "shyaway": "Shyaway",
+      "jockey": "Jockey International"
+    };
+    MERCHANT_DESC_RX = /(company|retail|brand|fashion|clothing|e-?commerce|marketplace|store|shop|airline|manufacturer|technology|electronic|food|beverage|beauty|wellness|travel|agency|app|platform|conglomerate|internet|restaurant|service)/i;
+  }
+});
+
 // server/home/showcase.ts
 var showcase_exports = {};
 __export(showcase_exports, {
@@ -24960,7 +25195,18 @@ async function logoAnswers(url) {
   logoCache.set(url, { at: Date.now(), ok });
   return ok;
 }
+function uploadKeyOf(name) {
+  return String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0] || "";
+}
 async function resolveMerchantLogo(row) {
+  try {
+    const uploads = await merchantLogoMap();
+    const uk = uploadKeyOf(String(row.merchant_name || ""));
+    if (uk && uploads[uk]) return uploads[uk];
+  } catch {
+  }
+  const crisp = await resolveMerchantCrispLogo(String(row.merchant_name || ""));
+  if (crisp && await logoAnswers(crisp)) return crisp;
   const cands = merchantLogoCandidates(row);
   if (!cands.length) return null;
   for (const c of cands) {
@@ -25216,6 +25462,8 @@ var init_showcase = __esm({
     init_db();
     init_logger();
     init_deeplink();
+    init_merchantCrispLogo();
+    init_merchantLogos();
     num7 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
@@ -26834,7 +27082,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-flipkart",
         name: "Flipkart Online Shopping",
-        iconUrl: "https://www.google.com/s2/favicons?domain=flipkart.com&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Flipkart_logo_(2026).svg?width=256",
         category: "E-Commerce & Electronics",
         type: "CPS",
         deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
@@ -26888,7 +27136,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-zepto",
         name: "Zepto 10-Min Supermarket",
-        iconUrl: "https://www.google.com/s2/favicons?domain=zeptonow.com&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Zepto_Logo.svg?width=256",
         category: "10-Min Quick Grocery",
         type: "CPI - IOS",
         deepLink: "zepto://home?utm_campaign=try1second_ios",
@@ -26925,7 +27173,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-tataneu",
         name: "Tata Neu Super App",
-        iconUrl: "https://www.google.com/s2/favicons?domain=tataneu.com&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Tata_Neu_Logo.svg?width=256",
         category: "Super App & Retail",
         type: "CPI - Windows",
         deepLink: "tataneu://explore?ref=try1second_win",
@@ -26944,7 +27192,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-makemytrip",
         name: "MakeMyTrip Flights & Hotels",
-        iconUrl: "https://www.google.com/s2/favicons?domain=makemytrip.com&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Makemytrip_logo.svg?width=256",
         category: "Travel & Flights",
         type: "CPC",
         deepLink: "makemytrip://flightsearch?affil=try1second",
@@ -26980,7 +27228,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-hdfcloans",
         name: "HDFC Bank Express Loans",
-        iconUrl: "https://www.google.com/s2/favicons?domain=hdfcbank.com&sz=128",
+        iconUrl: "/brand-logos/hdfc-bank.svg",
         category: "Banking & Personal Loans",
         type: "CPL",
         deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
@@ -26999,7 +27247,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-uber",
         name: "Uber Cabs & City Rides",
-        iconUrl: "https://www.google.com/s2/favicons?domain=uber.com&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Uber_logo_2018.svg?width=256",
         category: "Cabs & Ride-Hailing",
         type: "CPC",
         deepLink: "uber://?client_id=try1second&action=setPickup",
@@ -27017,7 +27265,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-bookmyshow",
         name: "BookMyShow Cinema & Concerts",
-        iconUrl: "https://www.google.com/s2/favicons?domain=bookmyshow.com&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Bookmyshow-logoid.png?width=256",
         category: "Movies & Entertainment",
         type: "CPS",
         deepLink: "bookmyshow://home?campaign=try1second_cps",
@@ -27035,7 +27283,7 @@ var init_quickAppsData = __esm({
       {
         id: "qapp-groww",
         name: "Groww Stocks & Mutual Funds",
-        iconUrl: "https://www.google.com/s2/favicons?domain=groww.in&sz=128",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Groww_app_logo.png?width=256",
         category: "Fintech & Investments",
         type: "CPI - Android",
         deepLink: "groww://app?referrer=try1second",
@@ -27071,20 +27319,20 @@ var init_quickAppsData = __esm({
         createdAt: "2026-09-15"
       },
       // ---- Added 17 Oct: brands with real presence in our 13 verticals ----
-      { id: "qapp-ola", name: "Ola Cabs City Rides", iconUrl: "https://www.google.com/s2/favicons?domain=olacabs.com&sz=128", category: "Cabs & Ride-Hailing", type: "Vertical Source", deepLink: "olacabs://open?utm_source=try1second", webUrl: "https://www.olacabs.com", description: "Book city cabs, autos and bikes with live fares compared in our Cab vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Cab Vertical", bgColor: "bg-green-600", createdAt: "2026-10-17" },
+      { id: "qapp-ola", name: "Ola Cabs City Rides", iconUrl: "/brand-logos/ola.png", category: "Cabs & Ride-Hailing", type: "Vertical Source", deepLink: "olacabs://open?utm_source=try1second", webUrl: "https://www.olacabs.com", description: "Book city cabs, autos and bikes with live fares compared in our Cab vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Cab Vertical", bgColor: "bg-green-600", createdAt: "2026-10-17" },
       { id: "qapp-easemytrip", name: "EaseMyTrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=easemytrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "easemytrip://open?utm_source=try1second", webUrl: "https://www.easemytrip.com", description: "Flight fares and hotel rates scanned live across our Flights and Hotels verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "50M+ Downloads", badge: "Live Source", bgColor: "bg-sky-600", createdAt: "2026-10-17" },
       { id: "qapp-yatra", name: "Yatra Flights Hotels & Bus", iconUrl: "https://www.google.com/s2/favicons?domain=yatra.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "yatra://open?utm_source=try1second", webUrl: "https://www.yatra.com", description: "Live flight, hotel and bus inventory powering three Try1Second verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Downloads", badge: "3 Verticals", bgColor: "bg-indigo-600", createdAt: "2026-10-17" },
       { id: "qapp-cleartrip", name: "Cleartrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=cleartrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "cleartrip://open?utm_source=try1second", webUrl: "https://www.cleartrip.com", description: "Flight and hotel prices scanned live into our travel comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Downloads", badge: "Live Source", bgColor: "bg-teal-600", createdAt: "2026-10-17" },
       { id: "qapp-redbus", name: "redBus InterCity Tickets", iconUrl: "/brand-logos/redbus.svg", category: "Bus & Travel", type: "Vertical Source", deepLink: "redbus://open?utm_source=try1second", webUrl: "https://www.redbus.in", description: "India-wide bus inventory with boarding points compared in our Bus vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "50M+ Downloads", badge: "Bus Vertical", bgColor: "bg-rose-600", createdAt: "2026-10-17" },
-      { id: "qapp-dominos", name: "Dominos Pizza Order Online", iconUrl: "https://www.google.com/s2/favicons?domain=dominos.co.in&sz=128", category: "Food Delivery & Dining", type: "Vertical Source", deepLink: "dominos://open?utm_source=try1second", webUrl: "https://www.dominos.co.in", description: "Menu prices from our Food vertical, cooked by live web acquisition.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "50M+ Downloads", badge: "Food Vertical", bgColor: "bg-blue-600", createdAt: "2026-10-17" },
+      { id: "qapp-dominos", name: "Dominos Pizza Order Online", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Dominos_2025.svg?width=256", category: "Food Delivery & Dining", type: "Vertical Source", deepLink: "dominos://open?utm_source=try1second", webUrl: "https://www.dominos.co.in", description: "Menu prices from our Food vertical, cooked by live web acquisition.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "50M+ Downloads", badge: "Food Vertical", bgColor: "bg-blue-600", createdAt: "2026-10-17" },
       { id: "qapp-bigbasket", name: "BigBasket & BB Now", iconUrl: "/brand-logos/bigbasket.png", category: "10-Min Quick Grocery", type: "Vertical Source", deepLink: "bigbasket://open?utm_source=try1second", webUrl: "https://www.bigbasket.com", description: "Grocery prices from BigBasket and BB Now inside our Grocery vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "50M+ Downloads", badge: "Grocery Vertical", bgColor: "bg-emerald-600", createdAt: "2026-10-17" },
-      { id: "qapp-nykaa", name: "Nykaa Beauty & Fashion", iconUrl: "https://www.google.com/s2/favicons?domain=nykaa.com&sz=128", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "nykaa://open?utm_source=try1second", webUrl: "https://www.nykaa.com", description: "Beauty and fashion prices scanned live into our E-Commerce vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-pink-600", createdAt: "2026-10-17" },
+      { id: "qapp-nykaa", name: "Nykaa Beauty & Fashion", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Nykaa.png?width=256", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "nykaa://open?utm_source=try1second", webUrl: "https://www.nykaa.com", description: "Beauty and fashion prices scanned live into our E-Commerce vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-pink-600", createdAt: "2026-10-17" },
       { id: "qapp-myntra", name: "Myntra Fashion Store", iconUrl: "https://www.google.com/s2/favicons?domain=myntra.com&sz=128", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "myntra://open?utm_source=try1second", webUrl: "https://www.myntra.com", description: "Live fashion prices powering our E-Commerce comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-fuchsia-600", createdAt: "2026-10-17" },
       { id: "qapp-paisabazaar", name: "Paisabazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=paisabazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "paisabazaar://open?utm_source=try1second", webUrl: "https://www.paisabazaar.com", description: "Personal loan rates compared live in our Loans vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-orange-600", createdAt: "2026-10-17" },
       { id: "qapp-bankbazaar", name: "BankBazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=bankbazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "bankbazaar://open?utm_source=try1second", webUrl: "https://www.bankbazaar.com", description: "Loan and card offers scanned live into Loans and Credit Card verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-cyan-700", createdAt: "2026-10-17" },
       { id: "qapp-oyo", name: "OYO Budget Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=oyorooms.com&sz=128", category: "Hotels & Stays", type: "Vertical Source", deepLink: "oyorooms://open?utm_source=try1second", webUrl: "https://www.oyorooms.com", description: "Budget hotel rates scanned live into our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 3.9, downloadsOrUsers: "100M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-red-600", createdAt: "2026-10-17" },
-      { id: "qapp-booking", name: "Booking.com Stays", iconUrl: "https://www.google.com/s2/favicons?domain=booking.com&sz=128", category: "Hotels & Stays", type: "Vertical Source", deepLink: "booking://open?utm_source=try1second", webUrl: "https://www.booking.com", description: "Global hotel inventory compared live in our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "500M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-blue-700", createdAt: "2026-10-17" },
-      { id: "qapp-agoda", name: "Agoda Hotel Deals", iconUrl: "https://www.google.com/s2/favicons?domain=agoda.com&sz=128", category: "Hotels & Stays", type: "Vertical Source", deepLink: "agoda://open?utm_source=try1second", webUrl: "https://www.agoda.com", description: "Hotel rates and galleries acquired live for our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-violet-700", createdAt: "2026-10-17" }
+      { id: "qapp-booking", name: "Booking.com Stays", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Booking.com_Logo.svg?width=256", category: "Hotels & Stays", type: "Vertical Source", deepLink: "booking://open?utm_source=try1second", webUrl: "https://www.booking.com", description: "Global hotel inventory compared live in our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "500M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-blue-700", createdAt: "2026-10-17" },
+      { id: "qapp-agoda", name: "Agoda Hotel Deals", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Agoda_logo_2019.svg?width=256", category: "Hotels & Stays", type: "Vertical Source", deepLink: "agoda://open?utm_source=try1second", webUrl: "https://www.agoda.com", description: "Hotel rates and galleries acquired live for our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-violet-700", createdAt: "2026-10-17" }
     ];
     INITIAL_REDIRECTION_LOGS = [
       {
@@ -27313,6 +27561,21 @@ __export(routes_exports, {
   apiRouter: () => apiRouter,
   bootstrapBackend: () => bootstrapBackend
 });
+function domainHost(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+async function quickAppAllowList() {
+  const allow = new Set(QUICK_APP_ALLOW_DOMAINS);
+  for (const row of await fetchAffiliateRows(600)) {
+    const dom = realMerchantDomain([row.original_url, row.affiliate_url]) || nameDomainOf(String(row.merchant_name || ""));
+    if (dom) allow.add(dom);
+  }
+  return allow;
+}
 function hotelSellerLabel(o, rawSeller) {
   if (!o || String(o.vertical) !== "hotels") return rawSeller;
   const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -27529,7 +27792,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationCache, HOTEL_SOURCE_LABEL, leadHits;
+var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -27718,6 +27981,96 @@ var init_routes = __esm({
       }
       const place = await geoReverse(lat, lng);
       res.json({ place });
+    });
+    QUICK_APP_ALLOW_DOMAINS = /* @__PURE__ */ new Set([
+      "cred.club",
+      "groww.in",
+      "bookmyshow.com",
+      "agoda.com",
+      "amazon.in",
+      "bankbazaar.com",
+      "bigbasket.com",
+      "blinkit.com",
+      "booking.com",
+      "cleartrip.com",
+      "dominos.co.in",
+      "easemytrip.com",
+      "flipkart.com",
+      "hdfcbank.com",
+      "makemytrip.com",
+      "microsoft.com",
+      "myntra.com",
+      "nykaa.com",
+      "olacabs.com",
+      "oyorooms.com",
+      "paisabazaar.com",
+      "policybazaar.com",
+      "redbus.in",
+      "swiggy.com",
+      "tataneu.com",
+      "uber.com",
+      "yatra.com",
+      "zeptonow.com",
+      "zomato.com"
+    ]);
+    apiRouter.get("/quick-apps", async (_req, res) => {
+      try {
+        const rows = await fetchAffiliateRows(600);
+        const seen = /* @__PURE__ */ new Set();
+        const byName = /* @__PURE__ */ new Map();
+        for (const row of rows) {
+          const name = String(row.merchant_name || "").trim();
+          if (name.length < 2) continue;
+          const dom = realMerchantDomain([row.original_url, row.affiliate_url]) || nameDomainOf(name);
+          const bucket = byName.get(name) || { domains: /* @__PURE__ */ new Set(), category: String(row.categories || "").split(",")[0].trim() };
+          if (dom) bucket.domains.add(dom);
+          byName.set(name, bucket);
+          seen.add(name.toLowerCase());
+        }
+        const affiliates = Array.from(byName.entries()).map(([name, b]) => {
+          const dom = Array.from(b.domains)[0] || nameDomainOf(name) || "example.com";
+          const homepage = `https://${dom}`;
+          return {
+            id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
+            name: name.slice(0, 60),
+            iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
+            category: b.category || "Shopping",
+            type: "CPS",
+            deepLink: "",
+            webUrl: homepage,
+            description: `Live-tracked coupons and cashback offers from ${name} via Try1Second.`,
+            payoutRate: "Affiliate commission on every tracked sale",
+            payoutAmount: 0,
+            status: "active",
+            rating: 0,
+            downloadsOrUsers: "",
+            badge: "Live Coupons",
+            bgColor: "bg-slate-700",
+            createdAt: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+            goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` })
+          };
+        });
+        res.json({ success: true, affiliates });
+      } catch {
+        res.status(500).json({ success: false, error: "quick_apps_unavailable" });
+      }
+    });
+    apiRouter.post("/quick-apps/go", async (req, res) => {
+      try {
+        const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 500) : [];
+        const allow = await quickAppAllowList();
+        const goUrls = {};
+        for (const it of items) {
+          const url = String(it.url || "");
+          const id = String(it.id || "");
+          const host = domainHost(url);
+          if (!id || !/^https:\/\//.test(url) || !allow.has(host)) continue;
+          goUrls[id] = createMaskingPointer(url, { offerId: `qapp-${id}` });
+        }
+        res.json({ success: true, goUrls });
+      } catch {
+        res.status(400).json({ success: false, error: "bad_request" });
+      }
     });
     apiRouter.get("/home/showcase", async (_req, res) => {
       try {
@@ -29512,7 +29865,7 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA4, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
+    const r = await fetch(url, { headers: { "User-Agent": UA5, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
   } catch (e) {
@@ -29752,7 +30105,7 @@ function acceptanceTotals(rows) {
   const verticalsOk = new Set(rows.filter((r) => r.status === "LIVE_VERIFIED").map((r) => r.vertical));
   return { rows: rows.length, byStatus, verticalsWithLiveVerified: [...verticalsOk].sort(), sourcesTested: new Set(rows.filter((r) => r.status !== "SOURCE_RETIRED").map((r) => r.source_id)).size, sourcesRegistered: new Set(rows.map((r) => r.source_id)).size };
 }
-var UA4, SRC, JS_SHELL_RE;
+var UA5, SRC, JS_SHELL_RE;
 var init_acceptanceRunner = __esm({
   "server/registry/acceptanceRunner.ts"() {
     init_acceptanceRegistry();
@@ -29769,7 +30122,7 @@ var init_acceptanceRunner = __esm({
     init_osmTravel();
     init_openflights();
     init_wikidataMovies();
-    UA4 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    UA5 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
     SRC = {
       id: "acceptance_test",
       name: "acceptance-test",
@@ -30904,18 +31257,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path12, params = {}) {
+      async apiGet(path13, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path12}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path13}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path12, params);
+          return this.apiGet(path13, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path12} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path13} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -30955,9 +31308,9 @@ var init_admitad = __esm({
         }
         for (const wid of websiteIds) {
           if (offers.length >= maxOffers) break;
-          const path12 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          const path13 = `/coupons/website/${encodeURIComponent(wid)}/`;
           for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-            const j = await this.apiGet(path12, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const j = await this.apiGet(path13, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
             const results = j?.results || [];
             if (results.length === 0) break;
             for (const c of results) {
@@ -31132,12 +31485,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path12, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path12}`, {
+      async api(path13, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path13}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path12} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path13} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -31526,18 +31879,18 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path5.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path6.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs5.default.statSync(file);
+    const st = import_node_fs6.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs5.default.unlinkSync(file);
+    import_node_fs6.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs5.default.openSync(file, "wx");
-    import_node_fs5.default.writeSync(fd, String(process.pid));
-    import_node_fs5.default.closeSync(fd);
+    import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs6.default.openSync(file, "wx");
+    import_node_fs6.default.writeSync(fd, String(process.pid));
+    import_node_fs6.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -31566,11 +31919,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs5, import_node_path5, import_promise3, STALE_MS;
+var import_node_fs6, import_node_path6, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs5 = __toESM(require("node:fs"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();

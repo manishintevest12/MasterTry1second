@@ -10,6 +10,7 @@ import { parseMyntra } from '../parsers/myntra';
 import { parseAjio } from '../parsers/ajio';
 import { parseTataCliq } from '../parsers/tatacliq';
 import { parseNykaa } from '../parsers/nykaa';
+import { parseCromaSearch, extractCromaGallery, mergeCromaGallery } from '../parsers/croma';
 import { parseJiomart } from '../parsers/jiomart';
 import { parseRelianceDigital } from '../parsers/relianceDigital';
 import { createCipheriv } from 'node:crypto';
@@ -262,6 +263,54 @@ export const ecommerceWorker: VerticalWorker = {
         if (!items.length) {
           if (looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Nykaa presented a challenge page');
           throw new AcquisitionError('EMPTY_RESPONSE', 'Nykaa carried no parseable products for this query');
+        }
+        return items;
+      },
+    },
+    {
+      // Croma (croma.com, Tata electronics retailer) LIVE (22 Oct 2026): the PWA
+      // search BFF is an unauthenticated GET extracted from the main SPA chunk
+      // (searchservices/v1/search, channel=WEB + channelCode pincode 400001).
+      // Multi-image: search gives 1 hero shot; top-3 PDP fetch lifts the
+      // media.tatacroma.com Images gallery (Amazon pattern, soft-fail).
+      sourceId: 'w_ecom_croma',
+      name: 'Ecom worker: Croma (search BFF)',
+      priority: 18,
+      maxPerMinute: 8,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const term = q(ctx);
+        if (!term) return [];
+        const url =
+          'https://api.croma.com/searchservices/v1/search?currentPage=0&query=' +
+          encodeURIComponent(`${term}:relevance`) +
+          '&fields=FULL&channel=WEB&channelCode=400001';
+        const r = await cffiFetch(url, {
+          impersonate: 'chrome',
+          timeoutMs: 20_000,
+          headers: { Accept: 'application/json', Referer: 'https://www.croma.com/searchB' },
+        });
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Croma blocked: HTTP ${r.status}`, r.status);
+        }
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Croma search BFF HTTP ${r.status}`, r.status);
+        const items = parseCromaSearch(r.body, ctx.source, url);
+        if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Croma search BFF returned no parseable products');
+        // Gallery enrichment for the top 3 offers (owner multi-image rule).
+        const pin = String(ctx.query.location?.pincode || '').trim();
+        for (const it of items.filter((x: any) => x.identifiers?.sku).slice(0, 3)) {
+          try {
+            await new Promise((res) => setTimeout(res, 900));
+            const pdpUrl = String((it.attributes as any)?.sellerUrl || it.sellerUrl || '');
+            const pr = await cffiFetch(pdpUrl || 'https://www.croma.com', { impersonate: 'chrome', timeoutMs: 15_000 });
+            if (pr.status !== 200) continue;
+            const gallery = extractCromaGallery(pr.body, String(it.identifiers.sku));
+            if (gallery.length >= 2) {
+              mergeCromaGallery(it, gallery);
+              it.evidence = it.evidence || {};
+              it.evidence.extractedFields = [...new Set([...(it.evidence.extractedFields || []), 'pdp_gallery'])];
+            }
+          } catch { /* soft-fail: keep search hero image */ }
         }
         return items;
       },

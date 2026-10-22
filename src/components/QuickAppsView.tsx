@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   Zap,
@@ -11,10 +11,40 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { INITIAL_QUICK_APP_PARTNERS } from '../data/quickAppsData';
 import { QuickAppPartner } from '../types';
 
 export const QuickAppsView: React.FC = () => {
   const { quickAppPartners, trackQuickAppRedirection } = useApp();
+  // Owner 22 Oct: the hub must show EVERY company on the site (the live
+  // affiliate registry, not just the curated few) and every launch must run
+  // through /api/out so the affiliate tracking is injected server-side.
+  const [affiliatePartners, setAffiliatePartners] = useState<QuickAppPartner[]>([]);
+  const [goUrls, setGoUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let alive = true;
+    // (a) every live registry merchant as an extra quick-app entry
+    fetch('/api/quick-apps')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d?.success && Array.isArray(d.affiliates)) setAffiliatePartners(d.affiliates as QuickAppPartner[]); })
+      .catch(() => {});
+    // (b) masking pointers for the curated partner webUrls (allow-listed server-side)
+    fetch('/api/quick-apps/go', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: INITIAL_QUICK_APP_PARTNERS.map((p) => ({ id: p.id, url: p.webUrl })) }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d?.success && d.goUrls) setGoUrls(d.goUrls); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const allPartners = useMemo(
+    () => [...quickAppPartners, ...affiliatePartners],
+    [quickAppPartners, affiliatePartners],
+  );
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -25,15 +55,15 @@ export const QuickAppsView: React.FC = () => {
   // Extract unique categories for clean category filtering
   const categories = useMemo(() => {
     const set = new Set<string>();
-    quickAppPartners.forEach((p) => {
+    allPartners.forEach((p) => {
       if (p.category) set.add(p.category);
     });
     return Array.from(set);
-  }, [quickAppPartners]);
+  }, [allPartners]);
 
   // Filter partners based on customer search query and category
   const filteredPartners = useMemo(() => {
-    return quickAppPartners.filter((partner) => {
+    return allPartners.filter((partner) => {
       // Search query filter (matches company name, category, or description)
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
@@ -47,7 +77,7 @@ export const QuickAppsView: React.FC = () => {
 
       return matchesSearch && matchesCategory;
     });
-  }, [quickAppPartners, searchQuery, selectedCategory]);
+  }, [allPartners, searchQuery, selectedCategory]);
 
   const handleSelectPartner = (partner: QuickAppPartner) => {
     // 1. Secretly record click & redirection in Admin reporting system
@@ -56,10 +86,11 @@ export const QuickAppsView: React.FC = () => {
     // 2. Open clean customer launch modal
     setActiveRedirectPartner(partner);
 
-    // 3. Attempt direct app launch via deep link / web URL
+    // 3. Launch: masked /api/out pointer first (affiliate injection happens
+    //    server-side — owner rule), then app deep link, then the plain web URL.
     try {
-      const targetUrl = partner.deepLink || partner.webUrl;
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      const targetUrl = goUrls[partner.id] || partner.goUrl || partner.deepLink || partner.webUrl;
+      if (targetUrl) window.open(targetUrl, '_blank', 'noopener,noreferrer');
     } catch {
       if (partner.webUrl) {
         window.open(partner.webUrl, '_blank', 'noopener,noreferrer');
@@ -90,7 +121,7 @@ export const QuickAppsView: React.FC = () => {
               <div className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl text-right">
                 <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Available Apps</span>
                 <span className="text-lg font-black text-slate-900 font-mono">
-                  {quickAppPartners.length} Apps
+                  {allPartners.length} Apps
                 </span>
               </div>
             </div>
@@ -151,7 +182,7 @@ export const QuickAppsView: React.FC = () => {
 
             {/* Pure Company Logos Rail - Company Logos Only */}
             <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none pt-1">
-              {quickAppPartners.map((partner) => (
+              {allPartners.map((partner) => (
                 <button
                   key={`top-logo-${partner.id}`}
                   type="button"
@@ -162,7 +193,7 @@ export const QuickAppsView: React.FC = () => {
                   <img
                     src={partner.iconUrl}
                     alt={partner.name}
-                    className="w-full h-full object-cover rounded-[14px]"
+                    className="w-full h-full object-contain bg-white rounded-[14px] p-0.5"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
                         partner.name
@@ -186,7 +217,7 @@ export const QuickAppsView: React.FC = () => {
                     : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                 }`}
               >
-                All Apps ({quickAppPartners.length})
+                All Apps ({allPartners.length})
               </button>
               {categories.map((cat) => {
                 const isSelected = selectedCategory === cat;
@@ -252,7 +283,7 @@ export const QuickAppsView: React.FC = () => {
                     <img
                       src={partner.iconUrl}
                       alt={partner.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain bg-white"
                       onError={(e) => {
                         (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
                           partner.name
@@ -314,7 +345,7 @@ export const QuickAppsView: React.FC = () => {
               <img
                 src={activeRedirectPartner.iconUrl}
                 alt={activeRedirectPartner.name}
-                className="w-12 h-12 rounded-xl object-cover border border-slate-200 shrink-0"
+                className="w-12 h-12 rounded-xl object-contain bg-white border border-slate-200 shrink-0"
               />
               <div className="min-w-0 flex-1">
                 <h4 className="font-extrabold text-slate-900 text-sm truncate">
@@ -349,7 +380,7 @@ export const QuickAppsView: React.FC = () => {
                 Close
               </button>
               <a
-                href={activeRedirectPartner.webUrl || activeRedirectPartner.deepLink}
+                href={goUrls[activeRedirectPartner.id] || activeRedirectPartner.goUrl || activeRedirectPartner.webUrl || activeRedirectPartner.deepLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setActiveRedirectPartner(null)}

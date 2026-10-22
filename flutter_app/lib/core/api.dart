@@ -800,6 +800,19 @@ class Try1SecondApi {
         .whereType<Map<String, dynamic>>()
         .map(QuickApp.fromJson)
         .where((a) => a.name.isNotEmpty)
+        .map((a) => a.iconUrl.startsWith('/')
+            ? QuickApp(
+                id: a.id,
+                name: a.name,
+                iconUrl: '$baseUrl${a.iconUrl}',
+                category: a.category,
+                description: a.description,
+                webUrl: a.webUrl,
+                rating: a.rating,
+                users: a.users,
+                badge: a.badge,
+              )
+            : a)
         .toList();
   }
 

@@ -99,6 +99,37 @@ function DiscountRing({ pct }: { pct: number }) {
   );
 }
 
+/** Coupon / special-offer card (owner 22 Oct: "acer, ajio gram logo clearly visible
+ *  ni hai"). A merchant logo must never float tiny in a product-image slot:
+ *  it gets a dedicated light-grey tile with a border, so white-on-white logos
+ *  (Trost) stay visible, and the crisp Wikidata art renders at full quality.
+ *  Typography follows the reference: store name BOLD uppercase, description in a
+ *  light weight, coupon code BOLD red. */
+function CouponCard({ item }: { item: ShowcaseItem }) {
+  const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.merchant)}&background=1e293b&color=ffffff&size=160`;
+  const code = item.badge && item.badge.startsWith('Code: ') ? item.badge.slice(6) : null;
+  return (
+    <a href={item.url} target="_blank" rel="noopener noreferrer" className="group bg-white rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col cursor-pointer">
+      <div className="h-[92px] bg-slate-100 border-b border-slate-200 flex items-center justify-center p-2.5">
+        <img
+          src={item.image || fallback}
+          alt={item.merchant}
+          loading="lazy"
+          className="max-h-[68px] max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+          onError={(e) => { (e.target as HTMLImageElement).src = fallback; }}
+        />
+      </div>
+      <div className="p-2.5 flex flex-col gap-1 flex-1">
+        <span className="text-[10.5px] font-black uppercase tracking-wide text-slate-900 truncate">{item.merchant}</span>
+        <span className="text-[11px] font-medium text-slate-500 leading-snug line-clamp-2">{item.title}</span>
+        <span className="mt-auto inline-flex items-center self-start px-2 py-1 rounded-lg bg-red-50 border border-red-200 text-[10.5px] font-black text-red-600 tracking-wide">
+          {code ? `CODE: ${code}` : item.badge}
+        </span>
+      </div>
+    </a>
+  );
+}
+
 function ShowcaseCard({ item, onLaunch }: { item: ShowcaseItem; onLaunch?: (q: string, v: string) => void }) {
   const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.merchant)}&background=fef2f2&color=e11d48&size=160`;
   const sb = stealBadge(item);
@@ -127,27 +158,29 @@ function ShowcaseCard({ item, onLaunch }: { item: ShowcaseItem; onLaunch?: (q: s
           <span className="text-[9px] font-black text-slate-600 uppercase tracking-wide">{item.merchant}</span>
         </div>
         {item.rating ? (
-          <div className="absolute bottom-2 right-2 flex items-center gap-0.5 bg-yellow-50 px-1.5 py-0.5 rounded-lg border border-yellow-200">
-            <Star className="w-2.5 h-2.5 fill-yellow-400 text-yellow-400" />
-            <span className="text-[9px] font-black text-slate-700">{item.rating.toFixed(1)}</span>
+          <div className="absolute bottom-2 right-2 flex items-center gap-0.5 bg-emerald-50 px-1.5 py-0.5 rounded-lg border border-emerald-200">
+            <Star className="w-2.5 h-2.5 fill-emerald-500 text-emerald-500" />
+            <span className="text-[9px] font-black text-emerald-700">{item.rating.toFixed(1)}</span>
           </div>
         ) : null}
       </div>
       <div className="p-2.5 flex flex-col gap-1 flex-1">
-        <span className="text-[11.5px] font-extrabold text-slate-900 leading-tight line-clamp-2">{item.title}</span>
+        {/* Owner 22 Oct typography hierarchy (reference image 2): product name in a
+            standard weight, price BOLD and bigger, savings in green. */}
+        <span className="text-[11.5px] font-medium text-slate-700 leading-snug line-clamp-2">{item.title}</span>
         <div className="flex flex-wrap items-baseline gap-1.5">
           {item.price != null ? (
             <>
-              <span className="text-[15px] font-black text-slate-900">{rupee(item.price)}</span>
-              {item.mrp ? <span className="text-[10.5px] text-slate-400 line-through">{rupee(item.mrp)}</span> : null}
-              {item.discountPct ? <span className="text-[10px] font-black text-red-600">{item.discountPct}% Off</span> : null}
+              <span className="text-base font-black text-slate-900">{rupee(item.price)}</span>
+              {item.mrp ? <span className="text-[10.5px] font-medium text-slate-400 line-through">{rupee(item.mrp)}</span> : null}
+              {item.discountPct ? <span className="text-[10.5px] font-black text-emerald-600">{item.discountPct}% Off</span> : null}
             </>
           ) : item.badge ? (
             <span className="text-[11px] font-black text-red-600">{item.badge}</span>
           ) : null}
         </div>
         {sb ? (
-          <span className="mt-auto inline-flex items-center gap-1 self-start px-2 py-0.5 rounded-full bg-red-50 border border-red-100 text-[9.5px] font-black text-red-600 tracking-wide">
+          <span className="mt-auto inline-flex items-center gap-1 self-start px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9.5px] font-black text-emerald-700 tracking-wide">
             {sb === 'EPIC STEAL' ? '\u{1F680}' : '\u{1F525}'} {sb}
           </span>
         ) : item.badge && (item.price != null || isLaunchCard) ? (
@@ -277,9 +310,13 @@ export default function HomeShowcase() {
                 </button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                {sec.items.map((item) => (
-                  <ShowcaseCard key={item.id} item={item} onLaunch={launchQuery} />
-                ))}
+                {sec.items.map((item) =>
+                  sec.id === 'special' ? (
+                    <CouponCard key={item.id} item={item} />
+                  ) : (
+                    <ShowcaseCard key={item.id} item={item} onLaunch={launchQuery} />
+                  ),
+                )}
               </div>
             </div>
           );

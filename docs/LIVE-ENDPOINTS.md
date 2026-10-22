@@ -188,6 +188,20 @@ never invent data. Blocked = honest ACCESS_CHALLENGE probe, never mock.
   Nike Men's Downshifter 14 Rs 2,937 (MRP 4,895) with PDP link + 6-photo gallery.
 
 ### Ecommerce source verdicts (17 Oct 2026, owner-requested sources)
+- **Croma** [croma.ts] — LIVE (22 Oct): Tata electronics retailer. The PWA search BFF is an
+  unauthenticated GET extracted from the SPA main chunk (function E(e) on /searchB routes):
+  GET https://api.croma.com/searchservices/v1/search?currentPage=0&query=<term>:relevance&fields=FULL&channel=WEB&channelCode=400001
+  (channelCode = pincode; 400001/Mumbai works unauthenticated). Items: name, manufacturer
+  (brand), price.value (selling INR), mrp.value, plpImage (hero), url (PDP path), code (SKU),
+  stockFlag (array of store codes; non-empty = in stock), averageRating, numberOfReviews.
+  Multi-image (owner rule): search gives 1 hero shot; worker fetches top-3 PDPs
+  (www.croma.com<pdp>, 900ms spacing, soft-fail) and extractCromaGallery() lifts the
+  media.tatacroma.com/.../Images/<code>_<n>_<hash>.png gallery (regex GOTCHA: the path class
+  must include '/' AND the pattern is plain 'Images' — 'Images%20?' never matched because '%'
+  was required). mergeCromaGallery unions hero+shots into attributes.image_urls (cap 6).
+  Worker w_ecom_croma, priority 18, maxPerMinute 8. Verified live 22 Oct: iphone 21 offers
+  (iPhone 17 Pro Rs 1,27,990 / MRP 1,34,900, top-3 with 6 photos each); samsung tv, washing
+  machine, smart watch, macbook, headphones, refrigerator all 21 rows each.
 - **JioMart** [jiomart.ts] — LIVE (17 Oct): Fynd/JCP catalog
   GET www.jiomart.com/api/service/application/catalog/v1.0/products/?q=<term>&page_no=1&page_size=40&pincode=<pin>
   browserless, NO guest-JWT mint needed. Two headers discovered in the web theme bundle
