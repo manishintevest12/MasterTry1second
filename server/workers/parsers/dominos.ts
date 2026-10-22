@@ -17,6 +17,20 @@ export interface DominosProduct {
   regularPrice: number;
   description: string;
   menuCode: string;
+  /** Real product photo on images.dominos.co.in (owner rule: food cards show dish photos, never logos). */
+  image?: string;
+}
+
+const DOMINOS_MEDIA_BASE = 'https://images.dominos.co.in/nextgen-catalog/media/prod/';
+
+/** First real media path in a product blob — mediaList.default entry, HomeProductV1 preferred. */
+function extractDominosImage(blob: string): string {
+  const mu = blob.match(/"mediaUrls":\{([^}]*)\}/);
+  if (!mu) return '';
+  const hp = mu[1].match(/"HomeProductV1":"(.*?)"/);
+  const any = mu[1].match(/"(?:HomeProductV1|menu|cart)":"(.*?)"/);
+  const rel = (hp && hp[1]) || (any && any[1]) || '';
+  return rel ? DOMINOS_MEDIA_BASE + rel : '';
 }
 
 export function parseDominosMenu(htmlEscaped: string): DominosProduct[] {
@@ -24,7 +38,11 @@ export function parseDominosMenu(htmlEscaped: string): DominosProduct[] {
   const re = /\{"productMasterUID":"[0-9a-f-]{36}","name":"(.*?)","displayName":"(.*?)","family":\{"familyId":"[0-9a-f-]{36}","name":"(.*?)"\},"description":"(.*?)".{0,4000}?"price":\{"regularPrice":(\d+),"currentPrice":(\d+)\}/gs;
   const seen = new Set<string>();
   const out: DominosProduct[] = [];
-  for (const m of html.matchAll(re)) {
+  // mediaList can sit PAST the 4000-char price window; slice each product up to the NEXT
+  // product's UID so its media entry is attributed to the right product.
+  const matches = [...html.matchAll(re)];
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
     const [, , displayName, family, description, regular, current] = m;
     const cur = Number(current);
     const reg = Number(regular);
@@ -32,6 +50,7 @@ export function parseDominosMenu(htmlEscaped: string): DominosProduct[] {
     const key = `${disp}|${family}`;
     if (!disp || !cur || cur <= 0 || seen.has(key)) continue;
     seen.add(key);
+    const blob = html.slice(m.index ?? 0, matches[i + 1]?.index ?? (m.index ?? 0) + 60000);
     out.push({
       displayName: disp,
       family: String(family),
@@ -39,6 +58,7 @@ export function parseDominosMenu(htmlEscaped: string): DominosProduct[] {
       regularPrice: reg,
       description: String(description).replace(/\\u0026/g, '&').slice(0, 160),
       menuCode: '',
+      image: extractDominosImage(blob),
     });
   }
   return out;
@@ -83,7 +103,7 @@ function buildItem(p: DominosProduct, source: SourceConfig, matchNote: string): 
       description: p.description,
       regular_price: String(p.regularPrice),
       saving: p.regularPrice > p.currentPrice ? String(p.regularPrice - p.currentPrice) : '',
-      image: '',
+      image: p.image || '',
       price_basis: `dominos.co.in web menu price (${matchNote}), scraped ${today}`,
       data_note: `Price from Domino's India national web menu on ${today}; final price at checkout may vary by city/store`,
     },

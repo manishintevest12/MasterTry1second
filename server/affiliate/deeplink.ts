@@ -16,6 +16,7 @@
 import crypto from 'crypto';
 import { settings } from '../common/settings';
 import { linkinrTrackingUrl } from './linkinr';
+import { ekaroTrackingUrl } from './ekaro';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
 
@@ -178,6 +179,15 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
   const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
+  // 3.7 Ekaro converter (owner rule 22 Oct): every remaining retailer deeplink
+  //     with no direct partnership (today: grocery exits — Blinkit, Zepto,
+  //     Instamart, BigBasket, Flipkart Minutes — and any other campaign-less
+  //     merchant) gets an EarnKaro/Ekaro monetized link. Needs EKARO_API_KEY;
+  //     absent or rejected -> honest direct hop, self-heals when the key lands.
+  if (!cabBookLink) {
+    const ekaro = await ekaroTrackingUrl(targetUrl);
+    if (ekaro) return { trackingUrl: ekaro, network: 'ekaro', matchedProfile: 'ekaro_converter' };
+  }
   // 4. Direct — honest, no invented parameters
   return { trackingUrl: targetUrl, network: null, matchedProfile: 'direct' };
 }

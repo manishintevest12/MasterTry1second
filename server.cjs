@@ -13196,12 +13196,22 @@ var init_swiggy = __esm({
 });
 
 // server/workers/parsers/dominos.ts
+function extractDominosImage(blob) {
+  const mu = blob.match(/"mediaUrls":\{([^}]*)\}/);
+  if (!mu) return "";
+  const hp = mu[1].match(/"HomeProductV1":"(.*?)"/);
+  const any = mu[1].match(/"(?:HomeProductV1|menu|cart)":"(.*?)"/);
+  const rel = hp && hp[1] || any && any[1] || "";
+  return rel ? DOMINOS_MEDIA_BASE + rel : "";
+}
 function parseDominosMenu(htmlEscaped) {
   const html = htmlEscaped.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#x27;|&#39;/g, "'");
   const re = /\{"productMasterUID":"[0-9a-f-]{36}","name":"(.*?)","displayName":"(.*?)","family":\{"familyId":"[0-9a-f-]{36}","name":"(.*?)"\},"description":"(.*?)".{0,4000}?"price":\{"regularPrice":(\d+),"currentPrice":(\d+)\}/gs;
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  for (const m of html.matchAll(re)) {
+  const matches = [...html.matchAll(re)];
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
     const [, , displayName, family, description, regular, current] = m;
     const cur = Number(current);
     const reg = Number(regular);
@@ -13209,13 +13219,15 @@ function parseDominosMenu(htmlEscaped) {
     const key = `${disp}|${family}`;
     if (!disp || !cur || cur <= 0 || seen.has(key)) continue;
     seen.add(key);
+    const blob = html.slice(m.index ?? 0, matches[i + 1]?.index ?? (m.index ?? 0) + 6e4);
     out.push({
       displayName: disp,
       family: String(family),
       currentPrice: cur,
       regularPrice: reg,
       description: String(description).replace(/\\u0026/g, "&").slice(0, 160),
-      menuCode: ""
+      menuCode: "",
+      image: extractDominosImage(blob)
     });
   }
   return out;
@@ -13253,7 +13265,7 @@ function buildItem(p, source, matchNote) {
       description: p.description,
       regular_price: String(p.regularPrice),
       saving: p.regularPrice > p.currentPrice ? String(p.regularPrice - p.currentPrice) : "",
-      image: "",
+      image: p.image || "",
       price_basis: `dominos.co.in web menu price (${matchNote}), scraped ${today2}`,
       data_note: `Price from Domino's India national web menu on ${today2}; final price at checkout may vary by city/store`
     },
@@ -13261,9 +13273,11 @@ function buildItem(p, source, matchNote) {
     evidence: { sourceUrl: "https://www.dominos.co.in/menu", extractedFields: ["displayName", "family", "currentPrice", "regularPrice", "description"] }
   });
 }
+var DOMINOS_MEDIA_BASE;
 var init_dominos = __esm({
   "server/workers/parsers/dominos.ts"() {
     init_contract();
+    DOMINOS_MEDIA_BASE = "https://images.dominos.co.in/nextgen-catalog/media/prod/";
   }
 });
 
@@ -21165,16 +21179,16 @@ var init_feedAndApiAdapters = __esm({
       async search(ctx) {
         const { source, query } = ctx;
         const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
-        const apiKey = String(source.config.apiKey || "");
+        const apiKey2 = String(source.config.apiKey || "");
         const isVcommission = source.config.schema === "vcommission_campaigns";
-        const feedUrl = isVcommission ? `${String(source.config.baseUrl || "https://api.vcommission.com/v2")}/publisher/campaigns?apiKey=${encodeURIComponent(apiKey)}` : String(source.config.feedUrl || "");
-        if (!feedUrl || !apiKey) {
+        const feedUrl = isVcommission ? `${String(source.config.baseUrl || "https://api.vcommission.com/v2")}/publisher/campaigns?apiKey=${encodeURIComponent(apiKey2)}` : String(source.config.feedUrl || "");
+        if (!feedUrl || !apiKey2) {
           return failedResult(source, "EXPIRED_CREDENTIALS", "Affiliate feed URL/API key not configured", 0);
         }
         try {
           const res = await httpAcquire(feedUrl, {
             sourceId: source.id,
-            headers: isVcommission ? {} : { Authorization: `Bearer ${apiKey}` },
+            headers: isVcommission ? {} : { Authorization: `Bearer ${apiKey2}` },
             expectJson: true,
             maxPerMinute: source.rateLimit.maxRequestsPerMinute
           });
@@ -21197,7 +21211,7 @@ var init_feedAndApiAdapters = __esm({
                 availability: "unknown",
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
-                  sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey)}`, "apiKey=***"),
+                  sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey2)}`, "apiKey=***"),
                   rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
@@ -21364,8 +21378,8 @@ var init_feedAndApiAdapters = __esm({
       async search(ctx) {
         const { source, query } = ctx;
         const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
-        const apiKey = String(source.config.apiKey || settings.searchApi.apiKey);
-        if (!apiKey) return failedResult(source, "EXPIRED_CREDENTIALS", "SearchApi key not configured (adapter optional)", 0);
+        const apiKey2 = String(source.config.apiKey || settings.searchApi.apiKey);
+        if (!apiKey2) return failedResult(source, "EXPIRED_CREDENTIALS", "SearchApi key not configured (adapter optional)", 0);
         const engineMap = { ecommerce: "google_shopping", flights: "google_flights", hotels: "google_hotels" };
         const engine = engineMap[query.vertical || ""] || "google_shopping";
         if (!source.config.engines?.includes(engine)) {
@@ -21373,7 +21387,7 @@ var init_feedAndApiAdapters = __esm({
         }
         try {
           const url = `https://www.searchapi.io/api/v1/search?engine=${engine}&q=${encodeURIComponent(query.rawQuery)}`;
-          const res = await httpAcquire(url, { sourceId: source.id, headers: { Authorization: `Bearer ${apiKey}` }, expectJson: true });
+          const res = await httpAcquire(url, { sourceId: source.id, headers: { Authorization: `Bearer ${apiKey2}` }, expectJson: true });
           if (res.status === 429) return failedResult(source, "QUOTA_EXHAUSTED", "SearchApi quota exhausted", res.latencyMs, 429);
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
           const json = JSON.parse(res.body);
@@ -22387,6 +22401,98 @@ var init_linkinr = __esm({
   }
 });
 
+// server/affiliate/ekaro/index.ts
+function ekaroEnabled() {
+  return Boolean(process.env.EKARO_API_KEY);
+}
+function apiKey() {
+  return String(process.env.EKARO_API_KEY || "").trim();
+}
+function extractLink(body) {
+  if (!body || typeof body !== "object") return null;
+  const seen = /* @__PURE__ */ new Set();
+  const stack = [body];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (typeof cur === "string") {
+      if (/^https:\/\/[\w.-]*(?:ekaro|earnkaro)[\w.-]*\//i.test(cur)) return cur;
+      continue;
+    }
+    if (!cur || typeof cur !== "object" || seen.has(cur)) continue;
+    seen.add(cur);
+    if (Array.isArray(cur)) {
+      stack.push(...cur);
+      continue;
+    }
+    for (const k of Object.keys(cur)) stack.push(cur[k]);
+  }
+  return null;
+}
+async function convert(dest) {
+  if (!ekaroEnabled()) return null;
+  const url = new URL(dest);
+  const host = url.hostname.replace(/^www\./, "");
+  const hit = cache7.get(host);
+  if (hit && Date.now() - hit.at < (hit.link ? POS_TTL_MS : NEG_TTL_MS)) return hit.link;
+  const pending = inFlight.get(host);
+  if (pending) return pending;
+  const task = (async () => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS2);
+      const res = await fetch(EKARO_ENDPOINT, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${apiKey()}` },
+        body: JSON.stringify({ url: dest }),
+        signal: ctrl.signal
+      });
+      clearTimeout(t);
+      if (res.status === 401 || res.status === 403) {
+        if (!authWarned) {
+          console.warn("[Ekaro] API key rejected (401/403) \u2014 exits stay direct until a valid EKARO_API_KEY is set");
+          authWarned = true;
+        }
+        cache7.set(host, { link: null, at: Date.now() });
+        return null;
+      }
+      if (!res.ok) {
+        cache7.set(host, { link: null, at: Date.now() });
+        return null;
+      }
+      const link = extractLink(await res.json().catch(() => null));
+      cache7.set(host, { link, at: Date.now() });
+      return link;
+    } catch {
+      cache7.set(host, { link: null, at: Date.now() });
+      return null;
+    } finally {
+      inFlight.delete(host);
+    }
+  })();
+  inFlight.set(host, task);
+  return task;
+}
+async function ekaroTrackingUrl(dest) {
+  if (!/^https:\/\//i.test(dest)) return null;
+  try {
+    return await convert(dest);
+  } catch {
+    return null;
+  }
+}
+var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache7, inFlight, authWarned;
+var init_ekaro = __esm({
+  "server/affiliate/ekaro/index.ts"() {
+    EKARO_ENDPOINT = "https://ekaro-api.affiliaters.in/api/converter/public";
+    POS_TTL_MS = 6 * 60 * 60 * 1e3;
+    NEG_TTL_MS = 60 * 60 * 1e3;
+    FETCH_TIMEOUT_MS2 = 2500;
+    cache7 = /* @__PURE__ */ new Map();
+    inFlight = /* @__PURE__ */ new Map();
+    authWarned = false;
+  }
+});
+
 // server/affiliate/deeplink.ts
 var deeplink_exports = {};
 __export(deeplink_exports, {
@@ -22504,6 +22610,10 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
   const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
+  if (!cabBookLink) {
+    const ekaro = await ekaroTrackingUrl(targetUrl);
+    if (ekaro) return { trackingUrl: ekaro, network: "ekaro", matchedProfile: "ekaro_converter" };
+  }
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
@@ -22539,6 +22649,7 @@ var init_deeplink = __esm({
     import_crypto20 = __toESM(require("crypto"), 1);
     init_settings();
     init_linkinr();
+    init_ekaro();
     init_logger();
     init_db();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
@@ -24567,9 +24678,9 @@ var init_affiliateNetwork = __esm({
         this.name = "Cuelinks";
       }
       buildDeepLink(destinationUrl, _vendorDomain) {
-        const apiKey = settings.cuelinks.apiKey;
+        const apiKey2 = settings.cuelinks.apiKey;
         const template = settings.cuelinks.campaignId ? `https://linksredirect.com/cuelink?type=nl&subid=${settings.cuelinks.subId}&campaign=${settings.cuelinks.campaignId}&url={DESTINATION}` : null;
-        if (!apiKey || !template) return null;
+        if (!apiKey2 || !template) return null;
         return template.replace("{DESTINATION}", encodeURIComponent(destinationUrl));
       }
     };
@@ -25038,6 +25149,12 @@ var init_searchOrchestrator = __esm({
 });
 
 // server/smartcart/basket.ts
+function unitPriceOf(o) {
+  const p = o && o.prices || {};
+  return Number(
+    p.effectivePrice ?? p.mandatoryTotal ?? p.finalPayablePrice ?? p.price ?? 0
+  ) || 0;
+}
 function groceryProductKey(title) {
   return String(title || "").toLowerCase().replace(/\([^)]*\)/g, " ").replace(/&/g, " and ").replace(/(\d)\s*(g|gm|gram|grams|kg|ml|l|ltr|litre|liter|litre|pc|pcs|piece|pieces|pack|pk)\b/g, "$1$2").replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -25978,7 +26095,7 @@ var init_spendLens = __esm({
 
 // server/common/cabDeeplink.ts
 async function getCabDeeplinkConfig() {
-  if (cache7 && Date.now() - cache7.at < CACHE_MS2) return cache7.v;
+  if (cache8 && Date.now() - cache8.at < CACHE_MS2) return cache8.v;
   let merged = { ...DEFAULTS2 };
   try {
     const rows = await getStore().query("SELECT v FROM app_settings WHERE k = ?", [KEY]);
@@ -25989,7 +26106,7 @@ async function getCabDeeplinkConfig() {
   } catch (e) {
     log.debug("CabDeeplink", `app_settings read skipped: ${String(e?.message || e).slice(0, 60)}`);
   }
-  cache7 = { at: Date.now(), v: merged };
+  cache8 = { at: Date.now(), v: merged };
   return merged;
 }
 async function saveCabDeeplinkConfig(patch) {
@@ -26008,7 +26125,7 @@ async function saveCabDeeplinkConfig(patch) {
     "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
     [KEY, JSON.stringify(next)]
   );
-  cache7 = { at: Date.now(), v: next };
+  cache8 = { at: Date.now(), v: next };
   return next;
 }
 function sanitizeParams(raw) {
@@ -26053,7 +26170,7 @@ function numParam(v) {
   const n = Number(v);
   return Number.isFinite(n) && (n !== 0 || String(v).trim() === "0") ? n : null;
 }
-var DEFAULTS2, KEY, cache7, CACHE_MS2, encJson;
+var DEFAULTS2, KEY, cache8, CACHE_MS2, encJson;
 var init_cabDeeplink = __esm({
   "server/common/cabDeeplink.ts"() {
     init_db();
@@ -26070,7 +26187,7 @@ var init_cabDeeplink = __esm({
       rapidoEnabled: true
     };
     KEY = "cab_deeplinks";
-    cache7 = null;
+    cache8 = null;
     CACHE_MS2 = 6e4;
     encJson = (v) => encodeURIComponent(JSON.stringify(v));
   }
@@ -26078,13 +26195,13 @@ var init_cabDeeplink = __esm({
 
 // server/pipeline/merchantCrispLogo.ts
 function load8() {
-  if (cache8) return cache8;
+  if (cache9) return cache9;
   try {
-    cache8 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
+    cache9 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
   } catch {
-    cache8 = {};
+    cache9 = {};
   }
-  return cache8;
+  return cache9;
 }
 function persist3() {
   if (saveTimer3) return;
@@ -26092,7 +26209,7 @@ function persist3() {
     saveTimer3 = null;
     try {
       import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE2), { recursive: true });
-      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
+      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache9 || {}));
     } catch {
     }
   }, 1500);
@@ -26103,7 +26220,7 @@ function merchantNameFrom(raw) {
 }
 async function getJson2(url) {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS2);
+  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS3);
   try {
     const r = await fetch(url, { headers: { "User-Agent": UA4, Accept: "application/json" }, signal: ctl.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -26152,7 +26269,7 @@ function resolveMerchantCrispLogo(rawName) {
   inflight3.set(key, p);
   return p;
 }
-var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS2, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache9, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
     import_node_fs5 = __toESM(require("node:fs"), 1);
@@ -26160,8 +26277,8 @@ var init_merchantCrispLogo = __esm({
     UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
     CACHE_FILE2 = import_node_path5.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
     MISS_TTL_MS2 = 7 * 864e5;
-    FETCH_TIMEOUT_MS2 = 4e3;
-    cache8 = null;
+    FETCH_TIMEOUT_MS3 = 4e3;
+    cache9 = null;
     inflight3 = /* @__PURE__ */ new Map();
     saveTimer3 = null;
     MERCHANT_ALIAS = {
@@ -29919,9 +30036,9 @@ var init_routes = __esm({
         const searches = await Promise.all(items.map(async (it) => {
           try {
             const response = await runSearch({ query: it.name, vertical: "grocery", pincode: req.body.pincode, city: req.body.city, locality: req.body.locality });
-            const offers = response.results.filter((o) => Number(o?.prices?.price) > 0 && o?.seller).map((o) => ({
+            const offers = response.results.filter((o) => unitPriceOf(o) > 0 && o?.seller).map((o) => ({
               seller: String(o.seller).slice(0, 80),
-              price: Number(o.prices.price),
+              price: unitPriceOf(o),
               title: String(o.title || it.name),
               url: o.sellerUrl ? createMaskingPointer(String(o.sellerUrl), { offerId: String(o.id || "") }) : null
             }));

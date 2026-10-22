@@ -8,7 +8,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, type SearchInput } from '../search/searchOrchestrator';
-import { bestUnitPricesPerStore, computeStoreTotals, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
+import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
 import { geoSearch, geoReverse } from '../common/geoProxy';
@@ -1228,11 +1228,13 @@ apiRouter.post('/smart-cart/compare', async (req, res) => {
     const searches = await Promise.all(items.map(async (it) => {
       try {
         const response = await runSearch({ query: it.name, vertical: 'grocery', pincode: (req.body as any).pincode, city: (req.body as any).city, locality: (req.body as any).locality } as SearchInput);
+        // Normalized offers carry prices.effectivePrice/mandatoryTotal (no `price`
+        // field) — see unitPriceOf in smartcart/basket.ts (owner bug 22 Oct).
         const offers: StoreOfferIn[] = (response.results as any[])
-          .filter((o: any) => Number(o?.prices?.price) > 0 && o?.seller)
+          .filter((o: any) => unitPriceOf(o) > 0 && o?.seller)
           .map((o: any) => ({
             seller: String(o.seller).slice(0, 80),
-            price: Number(o.prices.price),
+            price: unitPriceOf(o),
             title: String(o.title || it.name),
             url: o.sellerUrl ? createMaskingPointer(String(o.sellerUrl), { offerId: String(o.id || '') }) : null,
           }));

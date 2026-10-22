@@ -32,6 +32,16 @@ export interface BasketComparison {
   notFound: string[];        // basket items no store returned
 }
 
+/** Unit price of a normalized offer (owner bug 22 Oct: `prices.price` does not
+ *  exist on normalized offers — effectivePrice/mandatoryTotal do; reading `price`
+ *  alone dropped EVERY grocery offer and broke the Smart Cart basket compare). */
+export function unitPriceOf(o: { prices?: Record<string, unknown> } | null | undefined): number {
+  const p = (o && o.prices) || {};
+  return Number(
+    (p as any).effectivePrice ?? (p as any).mandatoryTotal ?? (p as any).finalPayablePrice ?? (p as any).price ?? 0,
+  ) || 0;
+}
+
 /** Normalize 'Amul Butter 100 g' == 'Amul Butter - 100g' for grouping. */
 export function groceryProductKey(title: string): string {
   return String(title || '')

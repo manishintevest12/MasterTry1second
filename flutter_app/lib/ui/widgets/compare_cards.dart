@@ -1187,7 +1187,16 @@ class GroupCard extends StatelessWidget {
                     if (vertical == 'grocery') ...[
                       const SizedBox(width: 12),
                       GestureDetector(
-                        onTap: () => AppState.instance.addToSmartCart(it.title),
+                        onTap: () {
+                          AppState.instance.addToSmartCart(it.title);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Added to Smart Cart \u2014 ${AppState.instance.smartCart.length} item\u2026'),
+                              duration: const Duration(milliseconds: 1400),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
