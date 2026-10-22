@@ -1403,8 +1403,9 @@ apiRouter.get('/cab/book', async (req, res) => {
     provider === 'uber' && !pickup
       ? 'We could not resolve your pickup location. Please open the app directly.'
       : 'In-app booking for this provider is currently disabled by the admin. Please try again later.');
+  // createMaskingPointer already returns the full masked path (/api/out?t=...).
   const pointer = createMaskingPointer(url, { offerId: String(req.query.offerId || '') });
-  res.redirect(302, `/api/out?t=${encodeURIComponent(pointer)}`);
+  res.redirect(302, pointer.startsWith('/api/out') ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
 });
 
 apiRouter.get('/out', async (req, res) => {

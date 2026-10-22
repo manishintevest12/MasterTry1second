@@ -22378,7 +22378,8 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   }
   const cuelinks = cuelinksMerchantUrl(targetUrl);
   if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
-  const linkinr = linkinrTrackingUrl(targetUrl);
+  const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/)/.test(targetUrl);
+  const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
@@ -29844,7 +29845,7 @@ var init_routes = __esm({
         provider === "uber" && !pickup ? "We could not resolve your pickup location. Please open the app directly." : "In-app booking for this provider is currently disabled by the admin. Please try again later."
       );
       const pointer = createMaskingPointer(url, { offerId: String(req.query.offerId || "") });
-      res.redirect(302, `/api/out?t=${encodeURIComponent(pointer)}`);
+      res.redirect(302, pointer.startsWith("/api/out") ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
     });
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));

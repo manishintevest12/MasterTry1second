@@ -57,3 +57,12 @@ test('ola: book.olacabs.com deep link with coords + name + affiliate', () => {
   assert.ok(url.includes('drop_name=Noida'), url);
   assert.ok(url.includes('utm_source=try1second'), url);
 });
+
+test('network layer: LinkInR must not claim prefilled cab booking links (trip would be lost)', async () => {
+  const { buildSecureDeeplink } = await import('../server/affiliate/deeplink');
+  const r = await buildSecureDeeplink('https://m.uber.com/looking/?pickup=my_location&drop[0]=%7B%22latitude%22%3A28.5355%7D&utm_source=try1second');
+  assert.equal(r.matchedProfile, 'direct', `expected direct, got ${r.matchedProfile}`);
+  assert.ok(r.trackingUrl.startsWith('https://m.uber.com/looking/'), r.trackingUrl);
+  const r2 = await buildSecureDeeplink('https://book.olacabs.com/?lat=28.6&lng=77.2&drop_lat=28.5&drop_lng=77.3&utm_source=try1second');
+  assert.equal(r2.matchedProfile, 'direct');
+});

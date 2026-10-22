@@ -169,7 +169,14 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   //     resolved above (admin configs, Amazon Associates, Cuelinks-joined
   //     MMT/Goibibo) always win; this layer only catches the rest, so every
   //     remaining exit earns affiliate revenue instead of a bare hop.
-  const linkinr = linkinrTrackingUrl(targetUrl);
+  // Owner 22 Oct: cab in-app booking links (m.uber.com/looking, book.olacabs.com)
+  // carry the prefilled pickup + drop trip. LinkInR does NOT deep-link (the
+  // destination URL is dropped) — converting these would land the user on the
+  // campaign's generic page and silently lose the trip. Their affiliate
+  // attribution (client_id + admin utm params) is already baked into the URL by
+  // /api/cab/book, so they stay direct here.
+  const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/)/.test(targetUrl);
+  const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
   // 4. Direct — honest, no invented parameters
   return { trackingUrl: targetUrl, network: null, matchedProfile: 'direct' };
