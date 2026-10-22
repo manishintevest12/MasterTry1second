@@ -21993,6 +21993,39 @@ async function getJson(url) {
     clearTimeout(t);
   }
 }
+function pickCommonsLogoHit(titles, institution) {
+  const want = new Set(normTokens(institution));
+  if (!want.size) return null;
+  for (const raw of titles) {
+    const file = String(raw || "").replace(/^File:/i, "");
+    if (!/logo|\.svg$/i.test(file)) continue;
+    const have = new Set(normTokens(file));
+    let ok = true;
+    for (const w of want) if (!have.has(w)) {
+      ok = false;
+      break;
+    }
+    if (!ok) continue;
+    for (const t of have) if (OTHER_BANK_TOKENS.has(t) && !want.has(t)) {
+      ok = false;
+      break;
+    }
+    if (!ok) continue;
+    return file;
+  }
+  return null;
+}
+async function commonsLogoFallback(name) {
+  try {
+    const s = await getJson(`https://commons.wikimedia.org/w/api.php?action=query&format=json&list=search&srnamespace=6&srlimit=8&srsearch=${encodeURIComponent(name + " logo")}`);
+    const titles = (s?.query?.search || []).map((x) => String(x.title || "")).filter(Boolean);
+    const hit = pickCommonsLogoHit(titles, name);
+    if (!hit) return null;
+    return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(hit.replace(/ /g, "_"))}?width=256`;
+  } catch {
+    return null;
+  }
+}
 async function lookup(nameRaw) {
   const name = LENDER_ALIAS[nameRaw.toLowerCase()] || nameRaw;
   const s = await getJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
@@ -22006,7 +22039,7 @@ async function lookup(nameRaw) {
     const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
     if (file) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(file).replace(/ /g, "_"))}?width=256`;
   }
-  return null;
+  return commonsLogoFallback(name);
 }
 function resolveLenderLogo(rawName) {
   const name = lenderNameFrom(rawName);
@@ -22025,13 +22058,13 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs4, import_node_path4, UA2, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS;
+var import_node_fs4, import_node_path4, UA2, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
     import_node_fs4 = __toESM(require("node:fs"), 1);
     import_node_path4 = __toESM(require("node:path"), 1);
     UA2 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-    CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos.json");
+    CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos-v2.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
     cache5 = null;
@@ -22058,6 +22091,39 @@ var init_lenderLogo = __esm({
       axis: "Axis Bank",
       "yes bank": "Yes Bank"
     };
+    OTHER_BANK_TOKENS = /* @__PURE__ */ new Set([
+      "union",
+      "sbi",
+      "pnb",
+      "canara",
+      "axis",
+      "kotak",
+      "hdfc",
+      "icici",
+      "idbi",
+      "iob",
+      "uco",
+      "federal",
+      "rbl",
+      "bandhan",
+      "gramin",
+      "gramya",
+      "baroda",
+      "indusind",
+      "idfc",
+      "navi",
+      "karnataka",
+      "south",
+      "punjab",
+      "sind",
+      "central",
+      "jammu",
+      "kashmir",
+      "overseas",
+      "reserve"
+    ]);
+    STOP_TOKENS = /* @__PURE__ */ new Set(["ltd", "bank", "and", "of", "the", "in", "co", "pvt", "limited"]);
+    normTokens = (t) => t.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((x) => x.length > 1 && !STOP_TOKENS.has(x));
   }
 });
 

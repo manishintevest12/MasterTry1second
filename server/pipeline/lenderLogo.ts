@@ -13,7 +13,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const UA = 'Try1Second/1.0 (contact: standardpetro.in@gmail.com)';
-const CACHE_FILE = path.join(process.cwd(), 'data', 'lender-logos.json');
+// v2 (owner 22 Oct): the Commons fallback below resolves banks the plain P154 lookup missed
+// // (Bank of Maharashtra, Yes Bank, Tata Capital...). The file name bump invalidates the old
+// // 7-day null caches so every institution retries with the better chain.
+const CACHE_FILE = path.join(process.cwd(), 'data', 'lender-logos-v2.json');
 const MISS_TTL_MS = 7 * 86_400_000;       // retry an unresolved institution weekly
 const FETCH_TIMEOUT_MS = 4_000;
 
@@ -65,6 +68,53 @@ const LENDER_ALIAS: Record<string, string> = {
   union: 'Union Bank of India', axis: 'Axis Bank', 'yes bank': 'Yes Bank',
 };
 
+// Bank brand tokens that belong to a DIFFERENT institution: a Commons hit carrying one of
+// these while the target name lacks it is a wrong-bank logo (searching "Bank of India"
+// returns "Union Bank of India Logo.svg" / "SBI-logo.svg" — owner 22 Oct: "jo aa raha hai
+// wo v sahi ni hai", a wrong logo is worse than an honest initials miss).
+const OTHER_BANK_TOKENS = new Set([
+  'union', 'sbi', 'pnb', 'canara', 'axis', 'kotak', 'hdfc', 'icici', 'idbi', 'iob', 'uco',
+  'federal', 'rbl', 'bandhan', 'gramin', 'gramya', 'baroda', 'indusind', 'idfc', 'navi',
+  'karnataka', 'south', 'punjab', 'sind', 'central', 'jammu', 'kashmir', 'overseas', 'reserve',
+]);
+
+const STOP_TOKENS = new Set(['ltd', 'bank', 'and', 'of', 'the', 'in', 'co', 'pvt', 'limited']);
+
+const normTokens = (t: string) =>
+  t.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((x) => x.length > 1 && !STOP_TOKENS.has(x));
+
+/** Strict validator for a Commons file hit: it must be a LOGO of THIS institution. */
+export function pickCommonsLogoHit(titles: string[], institution: string): string | null {
+  const want = new Set(normTokens(institution));
+  if (!want.size) return null;
+  for (const raw of titles) {
+    const file = String(raw || '').replace(/^File:/i, '');
+    // Photos/buildings are never a brand. Two honest logo shapes pass: a file
+    // that SAYS logo, or an SVG named after the institution itself
+    // ("Punjab & Sind Bank.svg") — Commons bank SVGs are its logo, while press
+    // photos are jpg/png with date/place names that fail the name-match below.
+    if (!/logo|\.svg$/i.test(file)) continue;
+    const have = new Set(normTokens(file));
+    let ok = true;
+    for (const w of want) if (!have.has(w)) { ok = false; break; }
+    if (!ok) continue;                                      // must name the target institution
+    for (const t of have) if (OTHER_BANK_TOKENS.has(t) && !want.has(t)) { ok = false; break; }  // wrong bank
+    if (!ok) continue;
+    return file;
+  }
+  return null;
+}
+
+async function commonsLogoFallback(name: string): Promise<string | null> {
+  try {
+    const s = await getJson(`https://commons.wikimedia.org/w/api.php?action=query&format=json&list=search&srnamespace=6&srlimit=8&srsearch=${encodeURIComponent(name + ' logo')}`);
+    const titles: string[] = (s?.query?.search || []).map((x: any) => String(x.title || '')).filter(Boolean);
+    const hit = pickCommonsLogoHit(titles, name);
+    if (!hit) return null;
+    return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(hit.replace(/ /g, '_'))}?width=256`;
+  } catch { return null; }
+}
+
 async function lookup(nameRaw: string): Promise<string | null> {
   const name = LENDER_ALIAS[nameRaw.toLowerCase()] || nameRaw;
   // Prefer a banking / insurance / finance entity: search a few candidates, take the first with a logo (P154).
@@ -80,7 +130,10 @@ async function lookup(nameRaw: string): Promise<string | null> {
     const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
     if (file) return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(String(file).replace(/ /g, '_'))}?width=256`;
   }
-  return null;
+  // P154 is optional on Wikidata and many Indian banks do not set it (Bank of
+  // Maharashtra, Yes Bank, Tata Capital...). Their real logo files still live on
+  // Commons — search them, but only accept a hit that names THIS institution.
+  return commonsLogoFallback(name);
 }
 
 /** Real logo URL for the institution, or null. Never throws, never blocks longer than the fetch timeout. */
