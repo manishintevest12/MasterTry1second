@@ -11,12 +11,16 @@
   RewriteEngine On
   RewriteBase /
 
-  # --- Canonical host: ONE-hop redirect (PageSpeed 'Avoid multiple page redirects') ---
-  # http://try1second.com, http://www.try1second.com and https://try1second.com all
-  # 301 straight to https://www.try1second.com/<path> in a SINGLE hop.
-  RewriteCond %{HTTPS} off [OR]
-  RewriteCond %{HTTP_HOST} !^www\.try1second\.com$ [NC]
-  RewriteRule ^ https://www.try1second.com%{REQUEST_URI} [L,R=301]
+  # --- HTTPS only, SAME host (owner 23 Oct: AdSense needs the apex to serve 200) ---
+  # Google AdSense only accepts the eTLD+1 (try1second.com) as the site URL, and
+  # its crawler does NOT follow host redirects — https://try1second.com must
+  # answer 200 with the AdSense snippet, NOT 301 to www. So this layer now only
+  # upgrades http -> https on the SAME host and never rewrites the host name.
+  # (The live apex -> www 301 today comes from hPanel's 'Force WWW' toggle on
+  # the CDN edge, which must be switched OFF; this file stays consistent with
+  # that so no layer can reintroduce the redirect.)
+  RewriteCond %{HTTPS} off
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
   # Bundle assets referenced by dist/index.html (base=/ build)
   RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
