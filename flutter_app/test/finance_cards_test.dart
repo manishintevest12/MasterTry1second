@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:try1second/core/compare.dart';
 import 'package:try1second/ui/widgets/compare_cards.dart';
-import 'package:try1second/ui/widgets/kit.dart';
 
 CompareItem financeItem({
   required String vertical,

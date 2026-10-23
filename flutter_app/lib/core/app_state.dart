@@ -28,6 +28,11 @@ class PendingSearch {
 /// App-wide state: current tab, selected vertical, location, API, cached live results.
 /// Equivalent of the website's AppContext (setVertical / setActiveNavTab / userLocation).
 class AppState extends ChangeNotifier {
+
+  /// Public, lint-clean way for screens to ask all listeners to rebuild after
+  /// mutating public fields on this notifier from outside its instance methods.
+  void refreshUi() => notifyListeners();
+
   AppState._();
   static final AppState instance = AppState._();
 

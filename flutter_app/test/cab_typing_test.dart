@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:try1second/ui/widgets/location_hint_field.dart';
-import 'package:try1second/ui/widgets/kit.dart';
 
 Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 

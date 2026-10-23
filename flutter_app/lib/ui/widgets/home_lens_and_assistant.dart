@@ -1,8 +1,6 @@
-import 'kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../core/app_state.dart';
@@ -24,11 +22,6 @@ class HomeLensAndAssistant extends StatefulWidget {
 }
 
 class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
-  // ---- Price Lens ----
-  final _linkCtrl = TextEditingController();
-  bool _lensBusy = false;
-  LensResponse? _lens;
-  String? _lensError;
 
   // ---- Assistant ----
   final _askCtrl = TextEditingController();
@@ -39,24 +32,8 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
 
   @override
   void dispose() {
-    _linkCtrl.dispose();
     _askCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _runLens([String? input]) async {
-    final text = (input ?? _linkCtrl.text).trim();
-    if (text.isEmpty) return;
-    _linkCtrl.text = text;
-    setState(() { _lensBusy = true; _lensError = null; _lens = null; });
-    try {
-      final res = await widget.api.lens(text);
-      setState(() => _lens = res);
-    } catch (e) {
-      setState(() => _lensError = _plainError(e));
-    } finally {
-      setState(() => _lensBusy = false);
-    }
   }
 
   Future<void> _ask([String? override]) async {
@@ -108,21 +85,6 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
       setState(() => _chat.add((me: false, text: 'Voice is not available on this device. Please type your question.')));
     }
   }
-
-  String _plainError(Object e) {
-    final m = e.toString().replaceFirst(RegExp(r'^Exception: ?'), '');
-    return m.isEmpty ? 'Something went wrong. Please try again.' : m;
-  }
-
-  Future<void> _open(String goUrl) async {
-    if (goUrl.isEmpty) return;
-    try {
-      await openDeal(goUrl); // 21 Oct: offer links open in the embedded browser
-    } catch (_) {}
-  }
-
-  String _inr(double v) =>
-      '₹${v.round().toString().replaceAllMapped(RegExp(r'\\B(?=(\\d{3})+(?!\\d))'), (m) => ',')}';
 
   @override
   Widget build(BuildContext context) {
@@ -241,142 +203,4 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
     );
   }
 
-  List<Widget> _lensResult(bool dark) {
-    final res = _lens!;
-    return [
-      const SizedBox(height: 12),
-      const Divider(height: 1),
-      const SizedBox(height: 10),
-      if (!res.found)
-        _note(Icons.info_outline, res.message ?? 'Could not read a product from that link. Try typing the product name.', dark)
-      else ...[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    res.merchant.toUpperCase(),
-                    style: T1SText.label(context).copyWith(fontSize: 9, color: T1SColors.slate500),
-                  ),
-                  Text(
-                    res.title ?? '',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: T1SText.body(context).copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  if (res.pagePrice != null)
-                    Text(
-                      'This page shows ${_inr(res.pagePrice!)}',
-                      style: T1SText.body(context).copyWith(fontSize: 10.5, color: T1SColors.slate500),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        if (res.offers.isEmpty)
-          _note(Icons.info_outline, res.message ?? 'No verified listing of this exact product right now.', dark)
-        else ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: dark ? const Color(0xFF052E16) : const Color(0xFFF0FDF4),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF86EFAC)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.trending_down_rounded, size: 13, color: Color(0xFF16A34A)),
-                          const SizedBox(width: 4),
-                          Text(
-                            'CHEAPEST WE FOUND',
-                            style: T1SText.label(context).copyWith(fontSize: 9, color: const Color(0xFF15803D)),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        _inr(res.offers.first.price),
-                        style: T1SText.body(context).copyWith(fontSize: 22, fontWeight: FontWeight.w900),
-                      ),
-                      Text(
-                        'on ${res.offers.first.seller}'
-                        '${res.savingVsPage != null && res.savingVsPage! > 0 ? ' · saves ${_inr(res.savingVsPage!)}' : ''}',
-                        style: T1SText.body(context).copyWith(fontSize: 10.5),
-                      ),
-                    ],
-                  ),
-                ),
-                T1SButton.primary(
-                  label: 'Buy',
-                  onTap: () => _open(res.offers.first.goUrl),
-                ),
-              ],
-            ),
-          ),
-          for (final o in res.offers.skip(1).take(7))
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(o.seller,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: T1SText.body(context).copyWith(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                        Text(
-                          o.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: T1SText.body(context).copyWith(fontSize: 10, color: T1SColors.slate500),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(_inr(o.price), style: T1SText.body(context).copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(width: 6),
-                  InkWell(
-                    onTap: () => _open(o.goUrl),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(Icons.arrow_forward_rounded, size: 15),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ],
-    ];
-  }
-
-  Widget _note(IconData icon, String text, bool dark) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: dark ? const Color(0xFF1E293B) : T1SColors.slate100,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 15, color: T1SColors.slate500),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text, style: T1SText.body(context).copyWith(fontSize: 11))),
-          ],
-        ),
-      );
 }

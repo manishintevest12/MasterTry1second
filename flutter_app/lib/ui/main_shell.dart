@@ -78,8 +78,6 @@ class _MainShellState extends State<MainShell> {
     setState(() {});
   }
 
-  static const _tabs = [NavTab.home, NavTab.quickApps, NavTab.insights, NavTab.compare, NavTab.rewards];
-
   Widget _body() {
     switch (_state.tab) {
       case NavTab.home:

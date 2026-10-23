@@ -169,8 +169,15 @@ class _CompareScreenState extends State<CompareScreen> {
   }
 
   Future<void> _runSearch({String? query, bool auto = false, bool force = false}) async {
-    final q = (query ?? _effectiveQuery()).trim();
+    final q0 = (query ?? _effectiveQuery()).trim();
+    // Web parity (AppContext triggerLive DEFAULT_QUERY): an empty search box
+    // falls back to the vertical's own starting query ('personal loan',
+    // 'health insurance', 'best credit card'...) so Loans / Insurance /
+    // Credit Cards NEVER dead-end in 'No matching options found' — a tab
+    // shows real data the moment it opens (owner 23 Oct complaint).
+    final q = q0.isEmpty ? defaultQueryFor(_meta.id, _state.city) : q0;
     if (q.isEmpty) return;
+    if (!auto) _bgPollCount = 0; // fresh user search: full 30-poll budget again
     setState(() {
       _loading = true;
       _error = null;
@@ -200,6 +207,20 @@ class _CompareScreenState extends State<CompareScreen> {
       }
     } catch (e) {
       _error = '$e'.replaceFirst(RegExp(r'^Exception: ?'), '');
+      // Chain resilience (owner 23 Oct 'bus sirf zingbus deta hai'): a single
+      // failed poll (30s client timeout on a cold route, one flaky hop on
+      // mobile data) used to strand the progressive chain forever — the user
+      // kept the partial rows (zingbus-only) and never received the slow
+      // sources' top-ups (AbhiBus lands ~40s in). Auto polls keep going.
+      if (auto && _bgPollCount < 30) {
+        _bgPoll = Timer(const Duration(milliseconds: 2500), () {
+          if (!mounted) return;
+          _bgPollCount += 1;
+          _runSearch(query: q, auto: true, force: true);
+        });
+      } else {
+        _bgPollCount = 0;
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

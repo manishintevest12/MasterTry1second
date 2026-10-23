@@ -27,13 +27,10 @@ class RewardsScreen extends StatefulWidget {
 
 class _RewardsScreenState extends State<RewardsScreen> {
   final _state = AppState.instance;
-  final _auth = AuthService.instance;
-  late int _tab = 0;
 
   @override
   void initState() {
     super.initState();
-    _tab = widget.initialTab.clamp(0, 2);
   }
 
   @override
@@ -49,7 +46,6 @@ class _RewardsScreenState extends State<RewardsScreen> {
             unselectedLabelColor: muted(context),
             indicatorColor: T1SColors.red,
             labelStyle: tx(context, 12.5, w: FontWeight.w900),
-            onTap: (i) => setState(() => _tab = i),
             tabs: const [
               Tab(icon: Icon(Icons.local_offer_rounded, size: 15), text: 'Deals & Coupons'),
               Tab(icon: Icon(Icons.casino_rounded, size: 15), text: 'Spin & Earn'),
@@ -642,7 +638,7 @@ class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin 
       if (mounted) setState(() => _summary = s);
       _state.points = s.validPoints;
       _state.spinsAvailable = s.availableSpins;
-      _state.notifyListeners();
+      _state.refreshUi();
     } catch (_) {/* honest: keep last wallet */}
   }
 

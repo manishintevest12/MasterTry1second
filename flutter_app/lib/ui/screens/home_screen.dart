@@ -259,23 +259,6 @@ class _LaunchCard extends StatelessWidget {
   }
 }
 
-class _IconBadge extends StatelessWidget {
-  const _IconBadge({required this.icon});
-  final IconData icon;
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 28,
-      decoration: BoxDecoration(
-        color: const Color(0xCC0F172A),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Icon(icon, size: 16, color: T1SColors.amber400),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Radar + referral teaser (website dark banner)

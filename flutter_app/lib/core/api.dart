@@ -77,7 +77,7 @@ class Offer {
       final first = imgUrls.split('|').where((u) => u.startsWith('https://')).toList();
       image = [attrs['image_url'] ?? '', first.isEmpty ? '' : first.first, attrs['image'] ?? '']
           .firstWhere((u) => u.startsWith('https://'), orElse: () => '');
-      if (image!.isEmpty) image = null;
+      if (image.isEmpty) image = null;
     }
     return Offer(
       id: '${j['id'] ?? ''}',

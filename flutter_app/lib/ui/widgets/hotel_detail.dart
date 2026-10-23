@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/compare.dart';
 import '../../core/theme.dart';
-import '../../core/verticals.dart';
 import 'kit.dart';
 import 'redirect_sheet.dart';
 

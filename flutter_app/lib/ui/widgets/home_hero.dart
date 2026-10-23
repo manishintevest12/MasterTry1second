@@ -218,37 +218,6 @@ class _HomeHeroState extends State<HomeHero> {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.icon, required this.iconColor, required this.label, required this.value, required this.valueColor});
-  final IconData icon;
-  final Color iconColor;
-  final String label;
-  final String value;
-  final Color valueColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-      ),
-      child: Row(children: [
-        Icon(icon, size: 15, color: iconColor),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: tx(context, 9, w: FontWeight.w600, color: T1SColors.slate400)),
-            const SizedBox(height: 2),
-            Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w900, color: valueColor, mono: true)),
-          ]),
-        ),
-      ]),
-    );
-  }
-}
 
 class _PulseDot extends StatefulWidget {
   const _PulseDot({required this.color, required this.size});

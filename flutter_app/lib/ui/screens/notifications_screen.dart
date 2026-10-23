@@ -33,7 +33,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final f = await _state.api.notifications(token: _auth.token);
       if (mounted) setState(() => _feed = f);
       _state.unread = f.unread;
-      _state.notifyListeners();
+      _state.refreshUi();
     } catch (_) {/* honest: keep last feed */} finally {
       if (mounted) setState(() => _busy = false);
     }
