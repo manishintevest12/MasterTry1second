@@ -191,7 +191,8 @@ export const HomeView: React.FC = () => {
 
           {/* Company Logos Only */}
           <div className="flex items-center gap-3.5 overflow-x-auto pb-1 scrollbar-none pt-1">
-            {quickAppPartners.map((partner) => (
+            {/* Owner 23 Oct (screenshot): home rail shows exactly 6 partner tiles; View All keeps the full catalogue. */}
+            {quickAppPartners.slice(0, 6).map((partner) => (
               <button
                 key={`home-qapp-${partner.id}`}
                 type="button"

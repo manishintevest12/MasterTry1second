@@ -285,6 +285,8 @@ function domainHost(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
 }
 
+import { resolveMerchantCrispLogo } from '../pipeline/merchantCrispLogo';
+
 async function quickAppAllowList(): Promise<Set<string>> {
   const allow = new Set(QUICK_APP_ALLOW_DOMAINS);
   for (const row of await fetchAffiliateRows(600)) {
@@ -295,6 +297,21 @@ async function quickAppAllowList(): Promise<Set<string>> {
 }
 
 // GET /api/quick-apps — every live affiliate-registry merchant as a quick-app entry.
+// Owner 23 Oct (screenshot): the home rail must show exactly 6 partner/seller
+// logos; everything else stays behind View All. The OLD APK renders entries in
+// server order, so the server pins the six curated partner domains FIRST and
+// the rail shows those tiles; the View All screen (same endpoint) still lists
+// the full catalogue. Crisp logos via the Wikidata P154 resolver replace the
+// blurry DuckDuckGo fallback wherever one exists (owner logo rule).
+const QUICK_APP_HOME_SIX = ['zomato.com', 'flipkart.com', 'amazon.in', 'swiggy.com', 'bookmyshow.com', 'myntra.com'];
+
+/** Owner 23 Oct: partner-first ordering for /api/quick-apps — the home rail
+ * (old APK renders server order) shows exactly the six curated partner
+ * domains; every other seller keeps registry order behind them. */
+export function quickAppsPartnerFirst<T extends { dom: string }>(rows: T[]): T[] {
+  const pinned = new Map(QUICK_APP_HOME_SIX.map((d, i) => [d, i]));
+  return [...rows].sort((a, z) => (pinned.get(a.dom) ?? QUICK_APP_HOME_SIX.length) - (pinned.get(z.dom) ?? QUICK_APP_HOME_SIX.length));
+}
 apiRouter.get('/quick-apps', async (_req, res) => {
   try {
     const rows = await fetchAffiliateRows(600);
@@ -309,10 +326,11 @@ apiRouter.get('/quick-apps', async (_req, res) => {
       byName.set(name, bucket);
       seen.add(name.toLowerCase());
     }
-    const affiliates = Array.from(byName.entries()).map(([name, b]) => {
+    const entries = Array.from(byName.entries()).map(([name, b]) => {
       const dom = Array.from(b.domains)[0] || nameDomainOf(name) || 'example.com';
       const homepage = `https://${dom}`;
-      return {
+      return { name, dom,
+        payload: {
         id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)}`,
         name: name.slice(0, 60),
         iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
@@ -330,8 +348,18 @@ apiRouter.get('/quick-apps', async (_req, res) => {
         bgColor: 'bg-slate-700',
         createdAt: new Date().toISOString().split('T')[0],
         goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, trusted: true }), // affiliate registry
+        },
       };
     });
+    // Partner-first order (owner 23 Oct): the six curated partner domains lead
+    // the array so the home rail shows them; remaining sellers keep registry order.
+    const ordered = quickAppsPartnerFirst(entries);
+    // Crisp logo upgrade: admin/Wikidata P154 official art where available.
+    const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
+    const affiliates = ordered.map((e, i) => ({
+      ...e.payload,
+      iconUrl: logos[i] || e.payload.iconUrl,
+    }));
     res.json({ success: true, affiliates });
   } catch {
     res.status(500).json({ success: false, error: 'quick_apps_unavailable' });

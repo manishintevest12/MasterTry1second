@@ -95,7 +95,9 @@ class _QuickAppsRail extends StatelessWidget {
         height: 56,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          itemCount: apps.length,
+          // Owner 23 Oct (screenshot): home rail shows exactly 6 partner tiles
+          // (server pins partner order first); View All shows everyone.
+          itemCount: apps.length > 6 ? 6 : apps.length,
           separatorBuilder: (_, __) => const SizedBox(width: 10),
           itemBuilder: (c, i) => _AppTile(app: apps[i]),
         ),

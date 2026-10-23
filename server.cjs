@@ -28348,84 +28348,84 @@ var init_warm = __esm({
     init_logger();
     init_catalogueService();
     SEED_QUERIES = [
-      { query: "mobile phone", vertical: "ecommerce" },
-      { query: "milk", vertical: "grocery", city: "Indore" },
-      { query: "biryani", vertical: "food", city: "Indore" },
-      { query: "movies", vertical: "movies", city: "Indore" },
-      { query: "Indore to Bhopal", vertical: "bus", city: "Indore" },
-      { query: "Indore to Bhopal", vertical: "cab", city: "Indore" },
-      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore" },
-      { query: "Indore", vertical: "hotels", city: "Indore" },
-      { query: "personal loan", vertical: "loans" },
-      { query: "health insurance", vertical: "insurance" },
-      { query: "hdfc credit card", vertical: "creditcards" },
-      { query: "best credit card", vertical: "creditcards" },
-      { query: "iphone", vertical: "ecommerce" },
-      { query: "pizza", vertical: "food", city: "Indore" },
+      { query: "mobile phone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "milk", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "biryani", vertical: "food", city: "Indore", pincode: "452001" },
+      { query: "movies", vertical: "movies", city: "Indore", pincode: "452001" },
+      { query: "Indore to Bhopal", vertical: "bus", city: "Indore", pincode: "452001" },
+      { query: "Indore to Bhopal", vertical: "cab", city: "Indore", pincode: "452001" },
+      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore", pincode: "452001" },
+      { query: "Indore", vertical: "hotels", city: "Indore", pincode: "452001" },
+      { query: "personal loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      { query: "health insurance", vertical: "insurance", city: "Indore", pincode: "452001" },
+      { query: "hdfc credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      { query: "best credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      { query: "iphone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "pizza", vertical: "food", city: "Indore", pincode: "452001" },
       { query: "delhi to jaipur", vertical: "bus" },
       { query: "goa", vertical: "hotels" },
-      { query: "savings account", vertical: "banking" },
-      { query: "demat account", vertical: "banking" },
+      { query: "savings account", vertical: "banking", city: "Indore", pincode: "452001" },
+      { query: "demat account", vertical: "banking", city: "Indore", pincode: "452001" },
       // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
       // phones — warm those catalogues so the section always has fresh rows to show.
-      { query: "laptop", vertical: "ecommerce" },
-      { query: "smart tv", vertical: "ecommerce" },
-      { query: "refrigerator", vertical: "ecommerce" },
-      { query: "washing machine", vertical: "ecommerce" }
+      { query: "laptop", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "smart tv", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "refrigerator", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "washing machine", vertical: "ecommerce", city: "Indore", pincode: "452001" }
     ];
     DESTINATION_WARM = [
       // Owner 23 Oct: the six homepage cities lead the rotation so their recorded
       // fares + hotel art stay the freshest (Jaipur, Manali, Udaipur, Mumbai,
       // Kolkata, Goa).
-      { query: "Indore to Jaipur", vertical: "flights", city: "Indore" },
+      { query: "Indore to Jaipur", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "jaipur", vertical: "hotels" },
-      { query: "Indore to Manali", vertical: "flights", city: "Indore" },
+      { query: "Indore to Manali", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "manali", vertical: "hotels" },
-      { query: "Indore to Udaipur", vertical: "flights", city: "Indore" },
+      { query: "Indore to Udaipur", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "udaipur", vertical: "hotels" },
-      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "mumbai", vertical: "hotels" },
-      { query: "Indore to Kolkata", vertical: "flights", city: "Indore" },
+      { query: "Indore to Kolkata", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "kolkata", vertical: "hotels" },
-      { query: "Indore to Goa", vertical: "flights", city: "Indore" },
+      { query: "Indore to Goa", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "goa", vertical: "hotels" },
-      { query: "Indore to Delhi", vertical: "flights", city: "Indore" },
+      { query: "Indore to Delhi", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "delhi", vertical: "hotels" },
       { query: "goa", vertical: "hotels" },
-      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "mumbai", vertical: "hotels" },
-      { query: "Indore to Bengaluru", vertical: "flights", city: "Indore" },
+      { query: "Indore to Bengaluru", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "bengaluru", vertical: "hotels" },
-      { query: "Indore to Hyderabad", vertical: "flights", city: "Indore" },
+      { query: "Indore to Hyderabad", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "hyderabad", vertical: "hotels" },
-      { query: "Indore to Srinagar", vertical: "flights", city: "Indore" },
+      { query: "Indore to Srinagar", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "srinagar", vertical: "hotels" },
-      { query: "Indore to Dubai", vertical: "flights", city: "Indore" },
+      { query: "Indore to Dubai", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "dubai", vertical: "hotels" },
-      { query: "Indore to Bangkok", vertical: "flights", city: "Indore" },
+      { query: "Indore to Bangkok", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "bangkok", vertical: "hotels" },
-      { query: "Indore to Singapore", vertical: "flights", city: "Indore" },
+      { query: "Indore to Singapore", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "singapore", vertical: "hotels" },
-      { query: "Indore to Shimla", vertical: "flights", city: "Indore" },
+      { query: "Indore to Shimla", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "shimla", vertical: "hotels" },
       // Owner 22 Oct (min 6 destination cards): wider candidate pool — every extra
       // destination still needs its own real fare + real hotel art before a card
       // renders; the rotation just keeps them fresh like the original twelve.
-      { query: "Indore to Ahmedabad", vertical: "flights", city: "Indore" },
+      { query: "Indore to Ahmedabad", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "ahmedabad", vertical: "hotels" },
-      { query: "Indore to Pune", vertical: "flights", city: "Indore" },
+      { query: "Indore to Pune", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "pune", vertical: "hotels" },
-      { query: "Indore to Kochi", vertical: "flights", city: "Indore" },
+      { query: "Indore to Kochi", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "kochi", vertical: "hotels" },
-      { query: "Indore to Varanasi", vertical: "flights", city: "Indore" },
+      { query: "Indore to Varanasi", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "varanasi", vertical: "hotels" },
-      { query: "Indore to Amritsar", vertical: "flights", city: "Indore" },
+      { query: "Indore to Amritsar", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "amritsar", vertical: "hotels" },
-      { query: "Indore to Lucknow", vertical: "flights", city: "Indore" },
+      { query: "Indore to Lucknow", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "lucknow", vertical: "hotels" },
-      { query: "Indore to Chandigarh", vertical: "flights", city: "Indore" },
+      { query: "Indore to Chandigarh", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "chandigarh", vertical: "hotels" },
-      { query: "Indore to Dehradun", vertical: "flights", city: "Indore" },
+      { query: "Indore to Dehradun", vertical: "flights", city: "Indore", pincode: "452001" },
       { query: "dehradun", vertical: "hotels" }
     ];
     destWarmCursor = 0;
@@ -29262,7 +29262,8 @@ var init_fileImport = __esm({
 var routes_exports = {};
 __export(routes_exports, {
   apiRouter: () => apiRouter,
-  bootstrapBackend: () => bootstrapBackend
+  bootstrapBackend: () => bootstrapBackend,
+  quickAppsPartnerFirst: () => quickAppsPartnerFirst
 });
 function domainHost(url) {
   try {
@@ -29278,6 +29279,10 @@ async function quickAppAllowList() {
     if (dom) allow.add(dom);
   }
   return allow;
+}
+function quickAppsPartnerFirst(rows) {
+  const pinned = new Map(QUICK_APP_HOME_SIX.map((d, i) => [d, i]));
+  return [...rows].sort((a, z) => (pinned.get(a.dom) ?? QUICK_APP_HOME_SIX.length) - (pinned.get(z.dom) ?? QUICK_APP_HOME_SIX.length));
 }
 function hotelSellerLabel(o, rawSeller) {
   if (!o || String(o.vertical) !== "hotels") return rawSeller;
@@ -29536,7 +29541,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits;
+var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -29577,6 +29582,7 @@ var init_routes = __esm({
     init_yatraHotels();
     init_mmtAutosuggest();
     init_bookmyshow();
+    init_merchantCrispLogo();
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", async (_req, res) => {
       const store2 = getStore();
@@ -29796,6 +29802,7 @@ var init_routes = __esm({
       "zeptonow.com",
       "zomato.com"
     ]);
+    QUICK_APP_HOME_SIX = ["zomato.com", "flipkart.com", "amazon.in", "swiggy.com", "bookmyshow.com", "myntra.com"];
     apiRouter.get("/quick-apps", async (_req, res) => {
       try {
         const rows = await fetchAffiliateRows(600);
@@ -29810,30 +29817,40 @@ var init_routes = __esm({
           byName.set(name, bucket);
           seen.add(name.toLowerCase());
         }
-        const affiliates = Array.from(byName.entries()).map(([name, b]) => {
+        const entries = Array.from(byName.entries()).map(([name, b]) => {
           const dom = Array.from(b.domains)[0] || nameDomainOf(name) || "example.com";
           const homepage = `https://${dom}`;
           return {
-            id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
-            name: name.slice(0, 60),
-            iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
-            category: b.category || "Shopping",
-            type: "CPS",
-            deepLink: "",
-            webUrl: homepage,
-            description: `Live-tracked coupons and cashback offers from ${name} via Try1Second.`,
-            payoutRate: "Affiliate commission on every tracked sale",
-            payoutAmount: 0,
-            status: "active",
-            rating: 0,
-            downloadsOrUsers: "",
-            badge: "Live Coupons",
-            bgColor: "bg-slate-700",
-            createdAt: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-            goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, trusted: true })
-            // affiliate registry
+            name,
+            dom,
+            payload: {
+              id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
+              name: name.slice(0, 60),
+              iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
+              category: b.category || "Shopping",
+              type: "CPS",
+              deepLink: "",
+              webUrl: homepage,
+              description: `Live-tracked coupons and cashback offers from ${name} via Try1Second.`,
+              payoutRate: "Affiliate commission on every tracked sale",
+              payoutAmount: 0,
+              status: "active",
+              rating: 0,
+              downloadsOrUsers: "",
+              badge: "Live Coupons",
+              bgColor: "bg-slate-700",
+              createdAt: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+              goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, trusted: true })
+              // affiliate registry
+            }
           };
         });
+        const ordered = quickAppsPartnerFirst(entries);
+        const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
+        const affiliates = ordered.map((e, i) => ({
+          ...e.payload,
+          iconUrl: logos[i] || e.payload.iconUrl
+        }));
         res.json({ success: true, affiliates });
       } catch {
         res.status(500).json({ success: false, error: "quick_apps_unavailable" });
