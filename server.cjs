@@ -27251,10 +27251,13 @@ async function buildShowcase() {
     fetchVerticalOffersByCity("flights", FAMOUS, 80),
     fetchVerticalOffersByCity("hotels", FAMOUS, 60)
   ]);
-  const hotelsForArt = [...hotels, ...FAMOUS.flatMap((d) => hotelsByCity.get(d.name) || [])];
-  const hotelArtUrls = [...new Set(
-    hotelsForArt.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
-  )].slice(0, 80);
+  const bucketArtUrls = FAMOUS.flatMap((d) => [...new Set(
+    (hotelsByCity.get(d.name) || []).filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
+  )].slice(0, 10));
+  const globalArtUrls = [...new Set(
+    hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
+  )].slice(0, 40);
+  const hotelArtUrls = [.../* @__PURE__ */ new Set([...bucketArtUrls, ...globalArtUrls])];
   const liveArt = await destinationArtSet(hotelArtUrls);
   const destinations = FAMOUS.map((d) => destinationItem(
     d,

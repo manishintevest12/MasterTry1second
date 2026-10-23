@@ -797,14 +797,22 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
     fetchVerticalOffersByCity('flights', FAMOUS, 80),
     fetchVerticalOffersByCity('hotels', FAMOUS, 60),
   ]);
-  // Owner 23 Oct: probe per-city bucket art too — a Jaipur hotel photo that
-  // fell out of the global window still needs its URL verified or the card
-  // drops for 'no real art'. Slice raised 40 -> 80 (12 candidate cities).
-  const hotelsForArt = [...hotels, ...FAMOUS.flatMap((d) => hotelsByCity.get(d.name) || [])];
-  const hotelArtUrls = [...new Set(
-    hotelsForArt.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
+  // Owner 23 Oct: the art probe is PER-CITY QUOTA'd. destinationItem.find()
+  // scans a city's newest bucket rows first, so each city needs its own
+  // newest URLs inside the probe set — a single global slice gets exhausted
+  // by the first city's rows and never reaches the rest (local debug showed
+  // Jaipur/Manali art probed 0 URLs this way). 10 newest per city (find()
+  // needs only one verified image) + the global pool's newest 40.
+  const bucketArtUrls = FAMOUS.flatMap((d) =>
+    [...new Set((hotelsByCity.get(d.name) || [])
+      .filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
       .map((r) => imageFromAttributes(r.attributes)!),
-  )].slice(0, 80);
+    )].slice(0, 10));
+  const globalArtUrls = [...new Set(
+    hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
+      .map((r) => imageFromAttributes(r.attributes)!),
+  )].slice(0, 40);
+  const hotelArtUrls = [...new Set([...bucketArtUrls, ...globalArtUrls])];
   // Trust-cache probe (owner 23 Oct): previously verified art is not
   // re-probed every 10-min rebuild, so one flaky CDN round cannot blank the
   // whole section the way the per-rebuild batch could.
