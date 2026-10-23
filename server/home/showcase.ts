@@ -317,6 +317,7 @@ export function itemFromAffiliate(row: AffiliateRow, resolvedLogo: string | null
 
 /** In-memory pool cache: repeated pool fetches within 5 minutes share rows. */
 const poolCache = new Map<string, { at: number; rows: OfferRow[] }>();
+const cityPoolCache = new Map<string, { at: number; map: Map<string, OfferRow[]> }>();
 const POOL_TTL_MS = 5 * 60 * 1000;
 
 /** Newest-first rows of one vertical. SQL keeps to `vertical = ?` + literal LIMIT
@@ -343,6 +344,68 @@ export async function fetchVerticalOffers(vertical: string, limit: number): Prom
   }
   poolCache.set(key, { at: Date.now(), rows });
   return rows;
+}
+
+/** Owner 23 Oct ('top destination mai 6 cities bola tha... abhi 1 hi dikh raha
+ *  hai'): pure bucketing for the per-city pools. A row belongs to the FIRST
+ *  city whose key appears in its title or location_city (same substring
+ *  semantics destinationItem.matches() applies, so nothing extra leaks into a
+ *  card). Newest-first in, newest-first out, capped per city. */
+export function bucketRowsByCity(
+  rows: OfferRow[],
+  cities: Array<{ name: string; keys: string[] }>,
+  perCityLimit = 60,
+): Map<string, OfferRow[]> {
+  const map = new Map<string, OfferRow[]>();
+  for (const c of cities) {
+    const bucket = rows.filter((r) =>
+      c.keys.some((k) =>
+        String(r.title || '').toLowerCase().includes(k)
+        || String(r.location_city || '').toLowerCase().includes(k)));
+    map.set(c.name, bucket.slice(0, perCityLimit));
+  }
+  return map;
+}
+
+/** Owner 23 Oct: the destinations section used the GLOBAL newest-N pools
+ *  (hotels 400 / flights 600 rows), but the 10-min keep-warm cycles flood
+ *  those pools with the default queries' rows, so most cities' recorded
+ *  fares/hotel art aged out of the window between DestWarm rotation passes
+ *  (~2h) and only the freshly-warmed city survived (Mumbai alone on prod).
+ *  Fix: ONE extra query per vertical with all city keys OR'ed, bucketed in
+ *  JS (bucketRowsByCity). destinationItem keeps its precise
+ *  matches()/servableRow/age gates, so a card still only renders from rows
+ *  the engine honestly recorded. The file store parses only vertical=? +
+ *  literal LIMIT (LIKE clauses match nothing there), so dev gracefully
+ *  falls back to the merged global pool — same behavior as before the fix. */
+export async function fetchVerticalOffersByCity(
+  vertical: string,
+  cities: Array<{ name: string; keys: string[] }>,
+  perCityLimit = 60,
+): Promise<Map<string, OfferRow[]>> {
+  const cacheKey = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
+  const hit = cityPoolCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
+  const store = getStore();
+  let rows: OfferRow[] = [];
+  try {
+    const keys = [...new Set(cities.flatMap((c) => c.keys))];
+    const like = keys.map(() => '(title LIKE ? OR location_city LIKE ?)').join(' OR ');
+    const params: unknown[] = [`%${keys[0]}%`];
+    for (const k of keys) params.push(`%${k}%`, `%${k}%`);
+    params.shift();
+    rows = await store.query<OfferRow>(
+      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
+              list_price, mandatory_total, effective_price, validation_status, fetched_at
+       FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${cities.length * perCityLimit}`,
+      [vertical, ...params]);
+  } catch (e: any) {
+    log.debug('Showcase', 'by-city pool query failed', { vertical, error: String(e).slice(0, 100) });
+    rows = [];
+  }
+  const map = bucketRowsByCity(rows, cities, perCityLimit);
+  cityPoolCache.set(cacheKey, { at: Date.now(), map });
+  return map;
 }
 
 /** Active affiliate rows, discount-first (coupon filtering happens in JS). */
@@ -728,16 +791,30 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
   ]);
 
   // One probe batch for destination hotel art (shared 6h cache with the rest).
+  // Owner 23 Oct: per-city pools merged AHEAD of the global pools so a city's
+  // recorded fares/hotel art survive keep-warm floods of the global windows.
+  const [flightsByCity, hotelsByCity] = await Promise.all([
+    fetchVerticalOffersByCity('flights', FAMOUS, 80),
+    fetchVerticalOffersByCity('hotels', FAMOUS, 60),
+  ]);
+  // Owner 23 Oct: probe per-city bucket art too — a Jaipur hotel photo that
+  // fell out of the global window still needs its URL verified or the card
+  // drops for 'no real art'. Slice raised 40 -> 80 (12 candidate cities).
+  const hotelsForArt = [...hotels, ...FAMOUS.flatMap((d) => hotelsByCity.get(d.name) || [])];
   const hotelArtUrls = [...new Set(
-    hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
+    hotelsForArt.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
       .map((r) => imageFromAttributes(r.attributes)!),
-  )].slice(0, 40);
+  )].slice(0, 80);
   // Trust-cache probe (owner 23 Oct): previously verified art is not
   // re-probed every 10-min rebuild, so one flaky CDN round cannot blank the
   // whole section the way the per-rebuild batch could.
   const liveArt = await destinationArtSet(hotelArtUrls);
   const destinations = FAMOUS
-    .map((d) => destinationItem(d, flights, hotels, liveArt))
+    .map((d) => destinationItem(
+      d,
+      [...(flightsByCity.get(d.name) || []), ...flights],
+      [...(hotelsByCity.get(d.name) || []), ...hotels],
+      liveArt))
     .filter((x): x is ShowcaseItem => x !== null)
     .slice(0, 12);
 

@@ -26767,11 +26767,13 @@ var init_merchantCrispLogo = __esm({
 var showcase_exports = {};
 __export(showcase_exports, {
   ageDays: () => ageDays,
+  bucketRowsByCity: () => bucketRowsByCity,
   buildShowcase: () => buildShowcase,
   destinationItem: () => destinationItem,
   diversifyByMerchant: () => diversifyByMerchant,
   fetchAffiliateRows: () => fetchAffiliateRows,
   fetchVerticalOffers: () => fetchVerticalOffers,
+  fetchVerticalOffersByCity: () => fetchVerticalOffersByCity,
   finalizeSection: () => finalizeSection,
   imageFromAttributes: () => imageFromAttributes,
   itemFromAffiliate: () => itemFromAffiliate,
@@ -26983,6 +26985,40 @@ async function fetchVerticalOffers(vertical, limit) {
   }
   poolCache.set(key, { at: Date.now(), rows });
   return rows;
+}
+function bucketRowsByCity(rows, cities, perCityLimit = 60) {
+  const map = /* @__PURE__ */ new Map();
+  for (const c of cities) {
+    const bucket = rows.filter((r) => c.keys.some((k) => String(r.title || "").toLowerCase().includes(k) || String(r.location_city || "").toLowerCase().includes(k)));
+    map.set(c.name, bucket.slice(0, perCityLimit));
+  }
+  return map;
+}
+async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
+  const cacheKey = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
+  const hit = cityPoolCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
+  const store2 = getStore();
+  let rows = [];
+  try {
+    const keys = [...new Set(cities.flatMap((c) => c.keys))];
+    const like = keys.map(() => "(title LIKE ? OR location_city LIKE ?)").join(" OR ");
+    const params = [`%${keys[0]}%`];
+    for (const k of keys) params.push(`%${k}%`, `%${k}%`);
+    params.shift();
+    rows = await store2.query(
+      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
+              list_price, mandatory_total, effective_price, validation_status, fetched_at
+       FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${cities.length * perCityLimit}`,
+      [vertical, ...params]
+    );
+  } catch (e) {
+    log.debug("Showcase", "by-city pool query failed", { vertical, error: String(e).slice(0, 100) });
+    rows = [];
+  }
+  const map = bucketRowsByCity(rows, cities, perCityLimit);
+  cityPoolCache.set(cacheKey, { at: Date.now(), map });
+  return map;
 }
 async function fetchAffiliateRows(limit) {
   const store2 = getStore();
@@ -27211,11 +27247,21 @@ async function buildShowcase() {
     verifyLiveArt(placesC),
     verifyLiveArt(cardsC)
   ]);
+  const [flightsByCity, hotelsByCity] = await Promise.all([
+    fetchVerticalOffersByCity("flights", FAMOUS, 80),
+    fetchVerticalOffersByCity("hotels", FAMOUS, 60)
+  ]);
+  const hotelsForArt = [...hotels, ...FAMOUS.flatMap((d) => hotelsByCity.get(d.name) || [])];
   const hotelArtUrls = [...new Set(
-    hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
-  )].slice(0, 40);
+    hotelsForArt.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
+  )].slice(0, 80);
   const liveArt = await destinationArtSet(hotelArtUrls);
-  const destinations = FAMOUS.map((d) => destinationItem(d, flights, hotels, liveArt)).filter((x) => x !== null).slice(0, 12);
+  const destinations = FAMOUS.map((d) => destinationItem(
+    d,
+    [...flightsByCity.get(d.name) || [], ...flights],
+    [...hotelsByCity.get(d.name) || [], ...hotels],
+    liveArt
+  )).filter((x) => x !== null).slice(0, 12);
   const placesFinal = finalizeSection(places);
   const sections = [
     { id: "picked", title: "Picked Just for You", subtitle: "real products, live-acquired prices", items: finalizeSection(picked) },
@@ -27237,7 +27283,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
+var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -27275,6 +27321,7 @@ var init_showcase = __esm({
     logoCache = /* @__PURE__ */ new Map();
     LOGO_TTL_MS = 6 * 60 * 60 * 1e3;
     poolCache = /* @__PURE__ */ new Map();
+    cityPoolCache = /* @__PURE__ */ new Map();
     POOL_TTL_MS = 5 * 60 * 1e3;
     TECH_CATS = [
       [/laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook/i, "laptop"],

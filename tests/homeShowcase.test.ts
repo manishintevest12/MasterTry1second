@@ -359,3 +359,67 @@ test('destinationItem art window: a 45-day-old hotel photo still counts as art',
   const gone = destinationItem({ name: 'Udaipur', keys: ['udaipur'], iata: 'udr' }, [F(1)], [H(3, 70)]);
   assert.strictEqual(gone, null, '70d-old row dropped — window is 60d, not unbounded');
 });
+
+// ---- Owner 23 Oct: 'top destination mai 6 cities bola tha... abhi 1 hi dikh raha hai' ----
+// Regression: per-city pools + bucketing so one freshly-warmed city cannot
+// starve the other five out of the global newest-N window.
+import { bucketRowsByCity } from '../server/home/showcase';
+
+test('bucketRowsByCity buckets rows by first matching city key, capped per city', () => {
+  const cities = [
+    { name: 'Jaipur', keys: ['jaipur'] },
+    { name: 'Goa', keys: ['goa'] },
+  ];
+  const rows: any[] = [
+    { title: 'Indore to Jaipur flight', location_city: 'Indore' },
+    { title: 'Jaipur hotel deal', location_city: 'Jaipur' },
+    { title: 'goa beach resort', location_city: 'Goa' },
+    { title: 'unrelated', location_city: 'Indore' },
+  ];
+  const m = bucketRowsByCity(rows, cities, 2);
+  assert.strictEqual(m.get('Jaipur')!.length, 2);
+  assert.strictEqual(m.get('Goa')!.length, 1);
+  assert.ok(!m.get('Goa')!.some((r: any) => r.title === 'unrelated'));
+});
+
+test('bucketRowsByCity respects the per-city cap keeping the newest-first order', () => {
+  const cities = [{ name: 'Mumbai', keys: ['mumbai'] }];
+  const rows: any[] = [1, 2, 3].map((i) => ({ title: `mumbai row ${i}`, location_city: 'x' }));
+  const m = bucketRowsByCity(rows, cities, 2);
+  assert.strictEqual(m.get('Mumbai')!.length, 2);
+  assert.strictEqual(m.get('Mumbai')![0].title, 'mumbai row 1');
+});
+
+test('regression: a city evicted from the global pool still yields a destination card', () => {
+  // What production looked like 23 Oct: global flights pool had ONLY the
+  // freshly-warmed Mumbai fare; Jaipur's recorded fare lived outside the pool.
+  const globalFlights: any[] = [{
+    id: 1, vertical: 'flights', title: 'Indore to Mumbai flight', brand: null, attributes: null,
+    vendor: 'Cleartrip', seller: 'Cleartrip', seller_url: 'https://www.cleartrip.com/',
+    list_price: null, mandatory_total: 4200, effective_price: 4200,
+    validation_status: 'VALID', fetched_at: new Date().toISOString(), location_city: 'Indore',
+  }];
+  const jaipurFareOutsidePool: any = {
+    id: 2, vertical: 'flights', title: 'Indore to Jaipur flight', brand: null, attributes: null,
+    vendor: 'Yatra', seller: 'Yatra', seller_url: 'https://www.yatra.com/',
+    list_price: null, mandatory_total: 3100, effective_price: 3100,
+    validation_status: 'VALID', fetched_at: new Date().toISOString(), location_city: 'Indore',
+  };
+  const jaipurHotelOutsidePool: any = {
+    id: 3, vertical: 'hotels', title: 'Hotel in Jaipur', brand: null,
+    attributes: { image_url: 'https://cf.bstatic.com/jaipur.jpg' },
+    vendor: 'Booking.com', seller: 'Booking.com', seller_url: 'https://www.booking.com/',
+    list_price: null, mandatory_total: 2400, effective_price: 2400,
+    validation_status: 'VALID', fetched_at: new Date().toISOString(), location_city: 'Jaipur',
+  };
+  const live = new Set(['https://cf.bstatic.com/jaipur.jpg']);
+  // The fix merges per-city rows ahead of the global pool; the merged array is
+  // exactly what buildShowcase now feeds destinationItem.
+  const merged = { flights: [jaipurFareOutsidePool, ...globalFlights], hotels: [jaipurHotelOutsidePool] };
+  const card = destinationItem(
+    { name: 'Jaipur', keys: ['jaipur'], iata: 'jai' },
+    merged.flights, merged.hotels, live);
+  assert.ok(card, 'Jaipur must render from its own recorded rows even when the global pool is flooded');
+  assert.strictEqual(card!.price, 3100);
+  assert.strictEqual(card!.image, 'https://cf.bstatic.com/jaipur.jpg');
+});
