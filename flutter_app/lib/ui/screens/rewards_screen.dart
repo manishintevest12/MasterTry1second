@@ -760,16 +760,48 @@ class _ReferralTab extends StatefulWidget {
 class _ReferralTabState extends State<_ReferralTab> {
   final _state = AppState.instance;
   final _auth = AuthService.instance;
+  String? _code;
   String? _link;
+  int _referredCount = 0;
+  int _points = 0;
+  String? _referredByCode;
   String? _error;
   bool _busy = false;
+  final _applyCtl = TextEditingController();
+  String? _applyMsg;
+  bool _applyOk = false;
+  bool _applying = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _applyCtl.dispose();
+    super.dispose();
+  }
+
+  /// Owner 23 Oct: real referral codes — GET /api/rewards/referral/me mints a
+  /// T1S-XXXXXX idempotently and returns the wallet stats.
   Future<void> _load() async {
-    if (!_auth.signedIn || _auth.token == null) return;
+    final t = _auth.token;
+    if (!_auth.signedIn || t == null) return;
     setState(() => _busy = true);
     try {
-      final l = await _state.api.referralLink(_auth.token!);
-      if (mounted) setState(() { _link = l; _error = null; });
+      final me = await _state.api.referralMe(t);
+      if (mounted) {
+        setState(() {
+          _code = me?['code']?.toString();
+          _link = me?['link']?.toString();
+          _referredCount = (me?['referredCount'] as num?)?.toInt() ?? 0;
+          _points = (me?['points'] as num?)?.toInt() ?? 0;
+          _referredByCode = me?['referredByCode']?.toString();
+          _error = me == null ? 'Could not reach the referral engine — tap Refresh.' : null;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e'.replaceFirst('Exception: ', ''));
     } finally {
@@ -777,53 +809,169 @@ class _ReferralTabState extends State<_ReferralTab> {
     }
   }
 
+  /// Apply a friend's code (once per account) — +1 point to the friend.
+  Future<void> _apply() async {
+    final t = _auth.token;
+    final code = _applyCtl.text.trim().toUpperCase();
+    if (t == null || code.isEmpty || _applying) return;
+    setState(() => _applying = true);
+    final err = await _state.api.referralApply(t, code);
+    if (mounted) {
+      setState(() {
+        _applying = false;
+        _applyOk = err == null;
+        _applyMsg = err ?? 'Done! $code credited +1 point to your friend.';
+        if (err == null) {
+          _referredByCode = code;
+          _applyCtl.clear();
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final dark = isDark(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
+        // ── Your referral code card (web parity: ReferAndEarn) ──
         Box(
           padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.group_add_rounded, size: 18, color: T1SColors.orange500),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Refer & Earn', style: tx(context, 15, w: FontWeight.w900))),
-            ]),
-            const SizedBox(height: 8),
-            Text('Earn 1 Point for Every Referral. Spin at 100 Points.',
-                style: tx(context, 12.5, w: FontWeight.w800, h: 1.3)),
-            const SizedBox(height: 6),
-            Text('Invite friends using your personal Try1Second referral link. Every friend who joins accredits 1 point directly to your wallet.',
-                style: tx(context, 11, color: muted(context), h: 1.45)),
-            const SizedBox(height: 14),
-            if (!_auth.signedIn)
-              Text('Sign in from Profile to get your referral link.', style: tx(context, 11.5, color: muted(context)))
-            else ...[
-              if (_busy) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
-              if (_error != null) Text(_error!, style: tx(context, 11.5, color: T1SColors.red)),
-              if (_link != null) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50, borderRadius: BorderRadius.circular(10), border: Border.all(color: border(context))),
-                  child: Text(_link!, style: tx(context, 11, mono: true), maxLines: 2, overflow: TextOverflow.ellipsis),
-                ),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                    child: RedButton('Copy link', onTap: () { Clipboard.setData(ClipboardData(text: _link!)); toast(context, 'Referral link copied'); }, icon: Icons.copy_rounded),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.group_add_rounded, size: 18, color: T1SColors.orange500),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Refer & Earn', style: tx(context, 15, w: FontWeight.w900))),
+              ]),
+              const SizedBox(height: 8),
+              Text('Earn 1 Point for Every Referral. Spin at 100 Points.',
+                  style: tx(context, 12.5, w: FontWeight.w800, h: 1.3)),
+              const SizedBox(height: 6),
+              Text('Share your code — every friend who joins adds 1 point to your wallet.',
+                  style: tx(context, 11, color: muted(context), h: 1.45)),
+              const SizedBox(height: 14),
+              if (!_auth.signedIn)
+                Text('Sign in from Profile to get your T1S referral code.', style: tx(context, 11.5, color: muted(context)))
+              else ...[
+                if (_busy && _code == null)
+                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
+                if (_error != null) Text(_error!, style: tx(context, 11.5, color: T1SColors.red)),
+                if (_code != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: dark ? T1SColors.slate800 : T1SColors.slate50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: border(context)),
+                    ),
+                    child: Text(_code!, style: tx(context, 20, w: FontWeight.w900, ls: 3, color: T1SColors.red, mono: true)),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(child: T1SOutlineButton('Refresh', onTap: _load)),
-                ]),
+                  if (_link != null) ...[
+                    const SizedBox(height: 6),
+                    Text(_link!, style: tx(context, 10, mono: true, color: muted(context)), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    Expanded(
+                      child: RedButton(
+                        'Copy code & link',
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: '${_code ?? ''}\n${_link ?? ''}'));
+                          toast(context, 'Referral code & link copied');
+                        },
+                        icon: Icons.copy_rounded,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(child: T1SOutlineButton('Refresh', onTap: _load)),
+                  ]),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(
+                      child: Box(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Column(children: [
+                          Text('$_referredCount', style: tx(context, 17, w: FontWeight.w900)),
+                          const SizedBox(height: 2),
+                          Text('FRIENDS JOINED', style: tx(context, 9, w: FontWeight.w800, ls: .6, color: muted(context))),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Box(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Column(children: [
+                          Text('$_points', style: tx(context, 17, w: FontWeight.w900)),
+                          const SizedBox(height: 2),
+                          Text('VALID POINTS', style: tx(context, 9, w: FontWeight.w800, ls: .6, color: muted(context))),
+                        ]),
+                      ),
+                    ),
+                  ]),
+                ],
               ],
             ],
-          ]),
+          ),
+        ),
+        const SizedBox(height: 14),
+        // ── Apply a friend's code (once per account) ──
+        Box(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(Icons.card_giftcard_rounded, size: 16, color: T1SColors.red),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    !_auth.signedIn
+                        ? "Have a friend's code?"
+                        : (_referredByCode != null ? 'You joined with $_referredByCode' : "Have a friend's code?"),
+                    style: tx(context, 12.5, w: FontWeight.w900),
+                  ),
+                ),
+              ]),
+              if (_auth.signedIn && _referredByCode == null) ...[
+                const SizedBox(height: 10),
+                Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _applyCtl,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(
+                        hintText: 'T1S-XXXXXX',
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border(context))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border(context))),
+                      ),
+                      style: tx(context, 12, w: FontWeight.w800, ls: 1),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  RedButton('Apply', onTap: _applying ? null : _apply),
+                ]),
+              ],
+              if (_applyMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(_applyMsg!, style: tx(context, 11, w: FontWeight.w800, color: _applyOk ? T1SColors.green : T1SColors.red)),
+              ],
+            ],
+          ),
         ),
       ],
     );
   }
 }
+
+
 // ---------------------------------------------------------------------------
 // Top Picks rail (website RewardsTopPicks): one best pick per vertical.
 // Admin-curated picks first, live auto-picks from the real offers catalogue

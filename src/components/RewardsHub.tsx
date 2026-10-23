@@ -1,5 +1,5 @@
 import React from 'react';
-import { Gift, Tag, Sparkles, CreditCard, RotateCw } from 'lucide-react';
+import { Gift, Tag, Sparkles, CreditCard, RotateCw, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { RewardsSubTab } from '../types';
 import { CouponsHub } from './CouponsHub';
@@ -7,6 +7,7 @@ import { OffersHub } from './OffersHub';
 import { SpinAndEarnWheel } from './SpinAndEarnWheel';
 import { CardOptimizer } from './CardOptimizer';
 import { RewardsTopPicks } from './RewardsTopPicks';
+import { ReferAndEarn } from './ReferAndEarn';
 import { Crown } from 'lucide-react';
 
 export const RewardsHub: React.FC = () => {
@@ -79,6 +80,20 @@ export const RewardsHub: React.FC = () => {
           </button>
 
           {/* Credit Card Marketplace */}
+          {/* Refer & Earn — real T1S-XXXXXX referral codes (owner 23 Oct) */}
+          <button
+            type="button"
+            onClick={() => setRewardsSubTab('refer')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+              rewardsSubTab === 'refer'
+                ? 'bg-red-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Refer &amp; Earn</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setRewardsSubTab('cards')}
@@ -103,6 +118,7 @@ export const RewardsHub: React.FC = () => {
 
       {/* Subtab Contents */}
       <div>
+        {rewardsSubTab === 'refer' && <ReferAndEarn />}
         {rewardsSubTab === 'top' && <RewardsTopPicks />}
         {rewardsSubTab === 'spin' && <SpinAndEarnWheel />}
         {rewardsSubTab === 'coupons' && <CouponsHub />}

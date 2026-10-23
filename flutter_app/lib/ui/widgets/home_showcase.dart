@@ -5,6 +5,7 @@ import '../../core/session_cache.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
+import 'home_banner_strip.dart';
 
 /// Home Showcase (owner spec 21 Oct, reference restyle 22 Oct): the eight curated
 /// sections directly under the "Instant Launch Verticals" grid, now styled with
@@ -144,18 +145,26 @@ class _HomeShowcaseState extends State<HomeShowcase> {
         ),
         const SizedBox(height: 18),
 
-        for (final sec in homeSections) ...[
-          _SectionHeader(sec: sec),
+        for (final sec in homeSections.indexed) ...[
+          _SectionHeader(sec: sec.$2),
           const SizedBox(height: 10),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             gridDelegate: kShowcaseGridDelegate,
-            itemCount: sec.items.length,
-            itemBuilder: (c, i) => _isCouponItem(sec.items[i])
-                ? CouponCard(item: sec.items[i], state: widget.state)
-                : _ShowcaseCard(item: sec.items[i], state: widget.state),
+            itemCount: sec.$2.items.length,
+            itemBuilder: (c, i) => _isCouponItem(sec.$2.items[i])
+                ? CouponCard(item: sec.$2.items[i], state: widget.state)
+                : _ShowcaseCard(item: sec.$2.items[i], state: widget.state),
+          ),
+          const SizedBox(height: 20),
+          // Owner 23 Oct: admin-managed wide banner strip between EVERY section
+          // (parity with web HomeBannerStrip).
+          HomeBannerStrip(
+            api: widget.state.api,
+            slot: sec.$1 + 1,
+            onOpenVertical: (v) => widget.state.openVertical(v),
           ),
           const SizedBox(height: 20),
         ],

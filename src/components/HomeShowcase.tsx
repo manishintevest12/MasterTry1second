@@ -19,9 +19,10 @@
  * Associates tag and Myntra INR-Deals/Cuelinks routing are injected
  * server-side, exactly like every other Try1Second redirection.
  */
-import { useEffect, useState, type SyntheticEvent } from 'react';
+import React, { useEffect, useState, type SyntheticEvent } from 'react';
 import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, ArrowRight, Star, Plane } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { HomeBannerStrip } from './HomeBannerStrip';
 import { scaledImage } from '../utils/scaledImage';
 
 export interface ShowcaseItem {
@@ -334,7 +335,7 @@ export default function HomeShowcase() {
 
       {/* SECTIONS (reference: 2-col card grid on mobile) */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-        {sections.map((sec) => {
+        {sections.map((sec, idx) => {
           const Icon = SECTION_ICONS[sec.id] || Sparkles;
           // Owner 23 Oct ('6, 12' rule): rows render in complete blocks of 6 —
           // a section shows 6 items (one row) or 12 (two rows); anything
@@ -343,7 +344,11 @@ export default function HomeShowcase() {
           if (visible === 0) return null;
           const items = sec.items.slice(0, visible);
           return (
-            <div key={sec.id}>
+            <React.Fragment key={sec.id}>
+            {/* Owner 23 Oct: a dynamic admin banner strip sits between EVERY
+                section (e.g. between 'Picked Just for You' and 'Go Big'). */}
+            {idx > 0 && <HomeBannerStrip slot={idx + 1} onLaunchVertical={(v) => launchQuery('', v)} />}
+            <div>
               <div className="flex items-end justify-between mb-3 gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="w-8 h-8 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center shrink-0">
@@ -374,6 +379,7 @@ export default function HomeShowcase() {
                 )}
               </div>
             </div>
+            </React.Fragment>
           );
         })}
       </div>

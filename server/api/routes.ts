@@ -305,6 +305,11 @@ async function quickAppAllowList(): Promise<Set<string>> {
 // blurry DuckDuckGo fallback wherever one exists (owner logo rule).
 const QUICK_APP_HOME_SIX = ['zomato.com', 'flipkart.com', 'amazon.in', 'swiggy.com', 'bookmyshow.com', 'myntra.com'];
 
+/** Favicon host for admin-added custom quick apps (best-effort, never throws). */
+function safeHostIcon(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'example.com'; }
+}
+
 /** Owner 23 Oct: partner-first ordering for /api/quick-apps — the home rail
  * (old APK renders server order) shows exactly the six curated partner
  * domains; every other seller keeps registry order behind them. */
@@ -382,9 +387,62 @@ apiRouter.get('/quick-apps', async (_req, res) => {
         },
       };
     });
+    // Owner 23 Oct (screenshot follow-up): the FULL curated catalogue ships —
+    // the app's Quick Apps screen must list EVERY partner (Blinkit, Instamart,
+    // Zepto, BigBasket, Ola, ...), not just the six home-rail pins. The six
+    // pinned partners stay first; the rest of the curated catalogue follows.
+    const curatedRest = INITIAL_QUICK_APP_PARTNERS.filter((q) => !CURATED_HOME_SIX_IDS.includes(q.id));
+    const restLogos = await Promise.all(curatedRest.map((q) => resolveMerchantCrispLogo(q.name).catch(() => null)));
+    const curatedExtra = curatedRest.map((q, i) => ({
+      id: q.id,
+      name: q.name,
+      iconUrl: restLogos[i] || q.iconUrl,
+      category: q.category || 'Partner',
+      type: 'CPS',
+      deepLink: '',
+      webUrl: q.webUrl,
+      description: q.description || `Try1Second partner: live prices from ${q.name}.`,
+      payoutRate: 'Affiliate commission on every tracked sale',
+      payoutAmount: 0,
+      status: 'active',
+      rating: q.rating || 4.2,
+      downloadsOrUsers: q.downloadsOrUsers || '',
+      badge: q.badge || 'Partner',
+      bgColor: 'bg-slate-700',
+      createdAt: q.createdAt || new Date().toISOString().split('T')[0],
+      goUrl: createMaskingPointer(q.webUrl, { offerId: q.id, trusted: true }), // curated partner allow-list
+    }));
+    // Owner 23 Oct: admin-managed manual Quick Apps (quick_apps_custom, MySQL)
+    let customApps: any[] = [];
+    try {
+      const rows = await getStore().query<any>('SELECT * FROM quick_apps_custom');
+      customApps = rows
+        .filter((r) => Number(r.is_active ?? 1) === 1)
+        .sort((a, z) => Number(a.id) - Number(z.id))
+        .map((r) => ({
+          id: `qac-${r.id}`,
+          name: String(r.name).slice(0, 60),
+          iconUrl: r.icon_url ? String(r.icon_url) : `https://icons.duckduckgo.com/ip3/${safeHostIcon(String(r.web_url))}.ico`,
+          category: r.category ? String(r.category) : 'Partner',
+          type: 'CPS',
+          deepLink: '',
+          webUrl: String(r.web_url),
+          description: r.description ? String(r.description) : `Try1Second partner: live prices from ${r.name}.`,
+          payoutRate: 'Affiliate commission on every tracked sale',
+          payoutAmount: 0,
+          status: 'active',
+          rating: 4.2,
+          downloadsOrUsers: '',
+          badge: r.badge ? String(r.badge) : 'Partner',
+          bgColor: 'bg-slate-700',
+          createdAt: String(r.created_at || '').slice(0, 10),
+          goUrl: createMaskingPointer(String(r.web_url), { offerId: `qac-${r.id}`, trusted: true }), // owner-added merchant
+        }));
+    } catch { /* honest: table not present on pre-migration deploys */ }
+    const knownNames = new Set<string>([...homeSix, ...curatedExtra, ...customApps].map((x) => String(x.name).toLowerCase()));
     // Partner-first order (owner 23 Oct): the six curated partner domains lead
     // the array so the home rail shows them; remaining sellers keep registry order.
-    const ordered = quickAppsPartnerFirst(entries);
+    const ordered = quickAppsPartnerFirst(entries.filter((e) => !knownNames.has(e.name.toLowerCase())));
     // Crisp logo upgrade: admin/Wikidata P154 official art where available.
     const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
     const registryAffiliates = ordered
@@ -394,7 +452,7 @@ apiRouter.get('/quick-apps', async (_req, res) => {
         ...e.payload,
         iconUrl: logos[i] || e.payload.iconUrl,
       }));
-    res.json({ success: true, affiliates: [...homeSix, ...registryAffiliates] });
+    res.json({ success: true, affiliates: [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates] });
   } catch {
     res.status(500).json({ success: false, error: 'quick_apps_unavailable' });
   }
@@ -1712,12 +1770,38 @@ apiRouter.get('/out', async (req, res) => {
 apiRouter.post('/auth/register', async (req, res) => {
   const r = await registerUser(String(req.body.email || ''), String(req.body.password || ''), req.body.displayName);
   if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+  // Owner 23 Oct: signup with a referral code (?ref=T1S-XXXXXX) credits the
+  // referrer +1 point immediately. applyReferralCode is once-per-account.
+  const refCode = String(req.body.refCode || '').trim();
+  if (refCode && r.userId) {
+    try {
+      const { applyReferralCode } = await import('../rewards/rewardsEngine');
+      const ar = await applyReferralCode(Number(r.userId), refCode);
+      if (!ar.ok) log.warn('auth', 'referral_code_apply_failed', { refCode, error: ar.error });
+    } catch (e: any) {
+      log.warn('auth', 'referral_code_apply_error', { refCode, error: e?.message });
+    }
+  }
   res.json({ success: true, userId: r.userId });
 });
 
 apiRouter.post('/auth/login', async (req, res) => {
   const r = await loginUser(String(req.body.email || ''), String(req.body.password || ''));
   if (!r.ok) return res.status(401).json({ success: false, error: r.error });
+  // Owner 23 Oct: sign-in with a referral code credits the referrer +1 point
+  // exactly once (accounts that already have a referrer are untouched).
+  const refCode = String(req.body.refCode || '').trim();
+  if (refCode && r.user) {
+    try {
+      const { applyReferralCode } = await import('../rewards/rewardsEngine');
+      const ar = await applyReferralCode(Number(r.user.id), refCode);
+      if (!ar.ok && ar.error && !/already/i.test(String(ar.error))) {
+        log.warn('auth', 'referral_code_apply_failed', { refCode, error: ar.error });
+      }
+    } catch (e: any) {
+      log.warn('auth', 'referral_code_apply_error', { refCode, error: e?.message });
+    }
+  }
   res.json({ success: true, token: r.token, user: r.user });
 });
 
@@ -1770,6 +1854,18 @@ apiRouter.post('/auth/firebase', async (req, res) => {
 
   try {
     const { token, row } = await signInGoogleUser(claims);
+    // Owner 23 Oct: sign-in with a referral code (web ?ref=T1S-XXXXXX) credits
+    // the referrer +1 point exactly once per account.
+    const refCode = String(req.body?.refCode || '').trim();
+    if (refCode) {
+      try {
+        const { applyReferralCode } = await import('../rewards/rewardsEngine');
+        const ar = await applyReferralCode(Number(row.id), refCode);
+        if (!ar.ok) log.warn('FirebaseAuth', 'referral_code_apply_failed', { refCode, error: ar.error });
+      } catch (e: any) {
+        log.warn('FirebaseAuth', 'referral_code_apply_error', { refCode, error: e?.message });
+      }
+    }
     res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined } });
   } catch (err) {
     log.error('FirebaseAuth', `Account provisioning failed: ${(err as Error).message}`);
@@ -1790,6 +1886,18 @@ apiRouter.post('/auth/google-mobile', async (req, res) => {
 
   try {
     const { token, row } = await signInGoogleUser(claims);
+    // Owner 23 Oct: mobile Google sign-in with a referral code credits the
+    // referrer +1 point exactly once per account.
+    const refCode = String(req.body?.refCode || '').trim();
+    if (refCode) {
+      try {
+        const { applyReferralCode } = await import('../rewards/rewardsEngine');
+        const ar = await applyReferralCode(Number(row.id), refCode);
+        if (!ar.ok) log.warn('GoogleAuth', 'referral_code_apply_failed', { refCode, error: ar.error });
+      } catch (e: any) {
+        log.warn('GoogleAuth', 'referral_code_apply_error', { refCode, error: e?.message });
+      }
+    }
     res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || undefined, picture: claims.picture } });
   } catch (err) {
     log.error('GoogleAuth', `Account provisioning failed: ${(err as Error).message}`);
@@ -1860,6 +1968,57 @@ apiRouter.post('/rewards/referral', requireAuth, async (req, res) => {
   const r = await registerReferral(user.id, refereeId);
   if (!r.ok) return res.status(400).json({ success: false, error: r.error });
   res.json({ success: true, awarded: r.awarded });
+});
+
+// Owner 23 Oct: real referral CODES. GET /me mints the signed-in user's
+// T1S-XXXXXX code (idempotent) and returns the share link, referred count and
+// point balance; POST /apply credits a friend's code exactly once (+1 valid
+// point to the referrer, engine-idempotent).
+apiRouter.get('/rewards/referral/me', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { ensureReferralCode, referralStats, validPointBalance } = await import('../rewards/rewardsEngine');
+    const code = await ensureReferralCode(user.id);
+    const stats = await referralStats(user.id);
+    const points = await validPointBalance(user.id);
+    res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats.referredCount, referredByCode: stats.referredByCode, points });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'referral_unavailable' });
+  }
+});
+
+apiRouter.post('/rewards/referral/apply', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { applyReferralCode } = await import('../rewards/rewardsEngine');
+    const r = await applyReferralCode(user.id, String(req.body?.code || ''));
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    res.json({ success: true, awarded: !!r.awarded, referrerCode: r.referrerCode });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'referral_unavailable' });
+  }
+});
+
+// GET /api/home-banners — dynamic admin-managed banner strips between home
+// sections (owner 23 Oct). Wide landscape images; link is a vertical id
+// ('movies') or an https URL. Served to web + Flutter app alike.
+apiRouter.get('/home-banners', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT * FROM home_banners');
+    const banners = rows
+      .filter((r) => Number(r.is_active ?? 1) === 1)
+      .sort((a, z) => (Number(a.position ?? 0) - Number(z.position ?? 0)) || (Number(a.id) - Number(z.id)))
+      .map((r) => ({
+        id: Number(r.id),
+        imageUrl: String(r.image_url || ''),
+        link: String(r.link_url || 'movies'),
+        title: r.title ? String(r.title) : null,
+        subtitle: r.subtitle ? String(r.subtitle) : null,
+      }));
+    res.json({ success: true, banners });
+  } catch {
+    res.json({ success: true, banners: [] }); // honest: no banners configured
+  }
 });
 
 apiRouter.post('/rewards/eligibility/claim', requireAuth, async (req, res) => {

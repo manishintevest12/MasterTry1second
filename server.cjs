@@ -26092,6 +26092,21 @@ var init_firebaseAuth = __esm({
 });
 
 // server/rewards/rewardsEngine.ts
+var rewardsEngine_exports = {};
+__export(rewardsEngine_exports, {
+  applyReferralCode: () => applyReferralCode,
+  claimSpinEligibility: () => claimSpinEligibility,
+  eligibleSpinCount: () => eligibleSpinCount,
+  ensureReferralCode: () => ensureReferralCode,
+  executeSpin: () => executeSpin,
+  getSpinResult: () => getSpinResult,
+  listFulfilmentsForAdmin: () => listFulfilmentsForAdmin,
+  referralStats: () => referralStats,
+  registerReferral: () => registerReferral,
+  submitFulfilmentDetails: () => submitFulfilmentDetails,
+  updateFulfilmentStatus: () => updateFulfilmentStatus,
+  validPointBalance: () => validPointBalance
+});
 async function withUserLock(userId, fn) {
   const prev = userLocks.get(userId) || Promise.resolve();
   const run = prev.catch(() => void 0).then(fn);
@@ -26270,7 +26285,50 @@ async function updateFulfilmentStatus(recordId, status) {
   const res = await getStore().execute("UPDATE fulfilment_records SET status = ? WHERE id = ?", [status, recordId]);
   return res.affectedRows > 0;
 }
-var import_crypto25, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks;
+async function ensureReferralCode(userId) {
+  const store2 = getStore();
+  const rows = await store2.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+  const existing = rows[0]?.referral_code ? String(rows[0].referral_code) : "";
+  if (existing) return existing;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    let code = "T1S-";
+    const bytes = import_crypto25.default.randomBytes(6);
+    for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
+    try {
+      const res = await store2.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
+      if (res.affectedRows > 0) return code;
+      const again = await store2.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+      if (again[0]?.referral_code) return String(again[0].referral_code);
+    } catch (e) {
+      if (!/uq_referral_code|Duplicate/i.test(String(e?.message || ""))) throw e;
+    }
+  }
+  throw new Error("Could not allocate a referral code \u2014 please retry");
+}
+async function applyReferralCode(refereeId, rawCode) {
+  const code = String(rawCode || "").trim().toUpperCase();
+  if (!code) return { ok: false, error: "Enter a referral code" };
+  const store2 = getStore();
+  const rows = await store2.query("SELECT id FROM users WHERE referral_code = ?", [code]);
+  if (!rows.length) return { ok: false, error: "That referral code is not valid" };
+  const referrerId = Number(rows[0].id);
+  const r = await registerReferral(referrerId, refereeId);
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, awarded: r.awarded, referrerCode: code };
+}
+async function referralStats(userId) {
+  const store2 = getStore();
+  const referred = await store2.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
+  const by = await store2.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
+  let referredByCode = null;
+  const referrerId = by[0]?.referrer_id ? Number(by[0].referrer_id) : 0;
+  if (referrerId) {
+    const u = await store2.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
+    referredByCode = u[0]?.referral_code ? String(u[0].referral_code) : null;
+  }
+  return { referredCount: Number(referred[0]?.c || 0), referredByCode };
+}
+var import_crypto25, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
     import_crypto25 = __toESM(require("crypto"), 1);
@@ -26279,6 +26337,7 @@ var init_rewardsEngine = __esm({
     POINTS_PER_VALID_REFERRAL = 1;
     POINTS_PER_SPIN_ELIGIBILITY = 100;
     userLocks = /* @__PURE__ */ new Map();
+    REF_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   }
 });
 
@@ -26597,8 +26656,16 @@ function renderInterstitialPage(opts) {
   *{box-sizing:border-box}html,body{margin:0}
   body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);
        min-height:100vh;display:flex;flex-direction:column;align-items:center}
-  header{width:100%;padding:16px 20px 0;text-align:center}
-  .brand{font-weight:900;font-size:15px;color:var(--red);letter-spacing:-.2px}
+  /* Owner 23 Oct (restore): BLACK strip header with a WHITE tab naming the
+     destination store \u2014 the tab replaces every trace of browser chrome (no URL
+     bar, no third-party header above the fold). */
+  header{width:100%;background:#0b0e14;padding:12px 16px;text-align:center}
+  .tab{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#0f172a;font-weight:900;
+       font-size:13px;padding:9px 16px;border-radius:10px;box-shadow:0 2px 12px rgb(0 0 0 / .4);
+       max-width:82vw;vertical-align:middle}
+  .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex:0 0 auto}
+  .tab span.nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .brand{display:block;margin-top:6px;font-weight:800;font-size:10.5px;color:#8a93a6;letter-spacing:.4px}
   main{width:100%;max-width:560px;padding:10px 16px 40px;text-align:center}
   h1{font-size:17px;font-weight:800;margin:16px 0 4px}
   h2{font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 18px}
@@ -26622,7 +26689,7 @@ function renderInterstitialPage(opts) {
 </style>
 </head>
 <body>
-<header><span class="brand">Try1Second</span></header>
+<header><span class="tab"><span class="dot"></span><span class="nm">${esc(host) || "your store"}</span></span><span class="brand">via Try1Second</span></header>
 <main>
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
@@ -29440,6 +29507,13 @@ async function quickAppAllowList() {
   }
   return allow;
 }
+function safeHostIcon(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "example.com";
+  }
+}
 function quickAppsPartnerFirst(rows) {
   const pinned = new Map(QUICK_APP_HOME_SIX.map((d, i) => [d, i]));
   return [...rows].sort((a, z) => (pinned.get(a.dom) ?? QUICK_APP_HOME_SIX.length) - (pinned.get(z.dom) ?? QUICK_APP_HOME_SIX.length));
@@ -30030,13 +30104,61 @@ var init_routes = __esm({
             }
           };
         });
-        const ordered = quickAppsPartnerFirst(entries);
+        const curatedRest = INITIAL_QUICK_APP_PARTNERS2.filter((q3) => !CURATED_HOME_SIX_IDS.includes(q3.id));
+        const restLogos = await Promise.all(curatedRest.map((q3) => resolveMerchantCrispLogo(q3.name).catch(() => null)));
+        const curatedExtra = curatedRest.map((q3, i) => ({
+          id: q3.id,
+          name: q3.name,
+          iconUrl: restLogos[i] || q3.iconUrl,
+          category: q3.category || "Partner",
+          type: "CPS",
+          deepLink: "",
+          webUrl: q3.webUrl,
+          description: q3.description || `Try1Second partner: live prices from ${q3.name}.`,
+          payoutRate: "Affiliate commission on every tracked sale",
+          payoutAmount: 0,
+          status: "active",
+          rating: q3.rating || 4.2,
+          downloadsOrUsers: q3.downloadsOrUsers || "",
+          badge: q3.badge || "Partner",
+          bgColor: "bg-slate-700",
+          createdAt: q3.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          goUrl: createMaskingPointer(q3.webUrl, { offerId: q3.id, trusted: true })
+          // curated partner allow-list
+        }));
+        let customApps = [];
+        try {
+          const rows2 = await getStore().query("SELECT * FROM quick_apps_custom");
+          customApps = rows2.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.id) - Number(z.id)).map((r) => ({
+            id: `qac-${r.id}`,
+            name: String(r.name).slice(0, 60),
+            iconUrl: r.icon_url ? String(r.icon_url) : `https://icons.duckduckgo.com/ip3/${safeHostIcon(String(r.web_url))}.ico`,
+            category: r.category ? String(r.category) : "Partner",
+            type: "CPS",
+            deepLink: "",
+            webUrl: String(r.web_url),
+            description: r.description ? String(r.description) : `Try1Second partner: live prices from ${r.name}.`,
+            payoutRate: "Affiliate commission on every tracked sale",
+            payoutAmount: 0,
+            status: "active",
+            rating: 4.2,
+            downloadsOrUsers: "",
+            badge: r.badge ? String(r.badge) : "Partner",
+            bgColor: "bg-slate-700",
+            createdAt: String(r.created_at || "").slice(0, 10),
+            goUrl: createMaskingPointer(String(r.web_url), { offerId: `qac-${r.id}`, trusted: true })
+            // owner-added merchant
+          }));
+        } catch {
+        }
+        const knownNames = new Set([...homeSix, ...curatedExtra, ...customApps].map((x) => String(x.name).toLowerCase()));
+        const ordered = quickAppsPartnerFirst(entries.filter((e) => !knownNames.has(e.name.toLowerCase())));
         const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
         const registryAffiliates = ordered.filter((e) => !curatedDomains.has(e.dom)).map((e, i) => ({
           ...e.payload,
           iconUrl: logos[i] || e.payload.iconUrl
         }));
-        res.json({ success: true, affiliates: [...homeSix, ...registryAffiliates] });
+        res.json({ success: true, affiliates: [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates] });
       } catch {
         res.status(500).json({ success: false, error: "quick_apps_unavailable" });
       }
@@ -30934,11 +31056,33 @@ var init_routes = __esm({
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);
       if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+      const refCode = String(req.body.refCode || "").trim();
+      if (refCode && r.userId) {
+        try {
+          const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+          const ar = await applyReferralCode2(Number(r.userId), refCode);
+          if (!ar.ok) log.warn("auth", "referral_code_apply_failed", { refCode, error: ar.error });
+        } catch (e) {
+          log.warn("auth", "referral_code_apply_error", { refCode, error: e?.message });
+        }
+      }
       res.json({ success: true, userId: r.userId });
     });
     apiRouter.post("/auth/login", async (req, res) => {
       const r = await loginUser(String(req.body.email || ""), String(req.body.password || ""));
       if (!r.ok) return res.status(401).json({ success: false, error: r.error });
+      const refCode = String(req.body.refCode || "").trim();
+      if (refCode && r.user) {
+        try {
+          const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+          const ar = await applyReferralCode2(Number(r.user.id), refCode);
+          if (!ar.ok && ar.error && !/already/i.test(String(ar.error))) {
+            log.warn("auth", "referral_code_apply_failed", { refCode, error: ar.error });
+          }
+        } catch (e) {
+          log.warn("auth", "referral_code_apply_error", { refCode, error: e?.message });
+        }
+      }
       res.json({ success: true, token: r.token, user: r.user });
     });
     apiRouter.post("/auth/firebase", async (req, res) => {
@@ -30969,6 +31113,16 @@ var init_routes = __esm({
       const claims = result.claims;
       try {
         const { token, row } = await signInGoogleUser(claims);
+        const refCode = String(req.body?.refCode || "").trim();
+        if (refCode) {
+          try {
+            const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+            const ar = await applyReferralCode2(Number(row.id), refCode);
+            if (!ar.ok) log.warn("FirebaseAuth", "referral_code_apply_failed", { refCode, error: ar.error });
+          } catch (e) {
+            log.warn("FirebaseAuth", "referral_code_apply_error", { refCode, error: e?.message });
+          }
+        }
         res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0 } });
       } catch (err) {
         log.error("FirebaseAuth", `Account provisioning failed: ${err.message}`);
@@ -30985,6 +31139,16 @@ var init_routes = __esm({
       if (!claims) return res.status(401).json({ success: false, error: "Google sign-in could not be verified" });
       try {
         const { token, row } = await signInGoogleUser(claims);
+        const refCode = String(req.body?.refCode || "").trim();
+        if (refCode) {
+          try {
+            const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+            const ar = await applyReferralCode2(Number(row.id), refCode);
+            if (!ar.ok) log.warn("GoogleAuth", "referral_code_apply_failed", { refCode, error: ar.error });
+          } catch (e) {
+            log.warn("GoogleAuth", "referral_code_apply_error", { refCode, error: e?.message });
+          }
+        }
         res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0, picture: claims.picture } });
       } catch (err) {
         log.error("GoogleAuth", `Account provisioning failed: ${err.message}`);
@@ -31050,6 +31214,44 @@ var init_routes = __esm({
       const r = await registerReferral(user.id, refereeId);
       if (!r.ok) return res.status(400).json({ success: false, error: r.error });
       res.json({ success: true, awarded: r.awarded });
+    });
+    apiRouter.get("/rewards/referral/me", requireAuth, async (req, res) => {
+      try {
+        const user = req.user;
+        const { ensureReferralCode: ensureReferralCode2, referralStats: referralStats2, validPointBalance: validPointBalance2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+        const code = await ensureReferralCode2(user.id);
+        const stats = await referralStats2(user.id);
+        const points = await validPointBalance2(user.id);
+        res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats.referredCount, referredByCode: stats.referredByCode, points });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "referral_unavailable" });
+      }
+    });
+    apiRouter.post("/rewards/referral/apply", requireAuth, async (req, res) => {
+      try {
+        const user = req.user;
+        const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
+        const r = await applyReferralCode2(user.id, String(req.body?.code || ""));
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        res.json({ success: true, awarded: !!r.awarded, referrerCode: r.referrerCode });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "referral_unavailable" });
+      }
+    });
+    apiRouter.get("/home-banners", async (_req, res) => {
+      try {
+        const rows = await getStore().query("SELECT * FROM home_banners");
+        const banners = rows.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+          id: Number(r.id),
+          imageUrl: String(r.image_url || ""),
+          link: String(r.link_url || "movies"),
+          title: r.title ? String(r.title) : null,
+          subtitle: r.subtitle ? String(r.subtitle) : null
+        }));
+        res.json({ success: true, banners });
+      } catch {
+        res.json({ success: true, banners: [] });
+      }
     });
     apiRouter.post("/rewards/eligibility/claim", requireAuth, async (req, res) => {
       const user = req.user;
@@ -32962,6 +33164,118 @@ var init_adminRoutes = __esm({
         res.json({ success: true, scores });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Speed test failed" });
+      }
+    });
+    adminRouter.get("/home-banners", async (_req, res) => {
+      try {
+        const rows = await getStore().query("SELECT * FROM home_banners");
+        const banners = rows.sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+          id: Number(r.id),
+          imageUrl: String(r.image_url || ""),
+          link: String(r.link_url || "movies"),
+          title: r.title ? String(r.title) : null,
+          subtitle: r.subtitle ? String(r.subtitle) : null,
+          isActive: Number(r.is_active ?? 1) === 1,
+          position: Number(r.position ?? 0)
+        }));
+        res.json({ success: true, banners });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load banners" });
+      }
+    });
+    adminRouter.post("/home-banners", async (req, res) => {
+      try {
+        const imageUrl = String(req.body?.imageUrl || "").trim();
+        const link = String(req.body?.link || "movies").trim();
+        if (!/^https?:\/\/.+/.test(imageUrl) && !imageUrl.startsWith("/")) return res.status(400).json({ success: false, error: "A banner image URL is required" });
+        if (!/^https?:\/\/.+/.test(link) && !/^[a-z0-9_-]+$/i.test(link)) return res.status(400).json({ success: false, error: "Link must be a vertical id (e.g. movies) or an https URL" });
+        const title = req.body?.title ? String(req.body.title).slice(0, 120) : null;
+        const subtitle = req.body?.subtitle ? String(req.body.subtitle).slice(0, 200) : null;
+        const isActive3 = req.body?.isActive === false ? 0 : 1;
+        const position = Number(req.body?.position ?? 0) || 0;
+        const id = Number(req.body?.id || 0);
+        if (id) {
+          await getStore().execute(
+            "UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, is_active = ?, position = ? WHERE id = ?",
+            [imageUrl, link, title, subtitle, isActive3, position, id]
+          );
+          audit(req, "home_banner_update", String(id));
+        } else {
+          await getStore().execute(
+            "INSERT INTO home_banners (image_url, link_url, title, subtitle, is_active, position) VALUES (?, ?, ?, ?, ?, ?)",
+            [imageUrl, link, title, subtitle, isActive3, position]
+          );
+          audit(req, "home_banner_create", imageUrl.slice(0, 80));
+        }
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save banner" });
+      }
+    });
+    adminRouter.delete("/home-banners/:id", async (req, res) => {
+      try {
+        await getStore().execute("DELETE FROM home_banners WHERE id = ?", [Number(req.params.id)]);
+        audit(req, "home_banner_delete", String(req.params.id));
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete banner" });
+      }
+    });
+    adminRouter.get("/quick-apps", async (_req, res) => {
+      try {
+        const rows = await getStore().query("SELECT * FROM quick_apps_custom");
+        const apps = rows.sort((a, z) => Number(a.id) - Number(z.id)).map((r) => ({
+          id: Number(r.id),
+          name: String(r.name || ""),
+          webUrl: String(r.web_url || ""),
+          iconUrl: r.icon_url ? String(r.icon_url) : null,
+          category: r.category ? String(r.category) : null,
+          badge: r.badge ? String(r.badge) : null,
+          description: r.description ? String(r.description) : null,
+          isActive: Number(r.is_active ?? 1) === 1
+        }));
+        res.json({ success: true, apps });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load custom apps" });
+      }
+    });
+    adminRouter.post("/quick-apps", async (req, res) => {
+      try {
+        const name = String(req.body?.name || "").trim();
+        const webUrl = String(req.body?.webUrl || "").trim();
+        if (name.length < 2) return res.status(400).json({ success: false, error: "Merchant name is required" });
+        if (!/^https?:\/\/.+/.test(webUrl)) return res.status(400).json({ success: false, error: "Merchant URL must start with https://" });
+        const iconUrl = req.body?.iconUrl ? String(req.body.iconUrl).slice(0, 500) : null;
+        const category = req.body?.category ? String(req.body.category).slice(0, 60) : null;
+        const badge = req.body?.badge ? String(req.body.badge).slice(0, 40) : null;
+        const description = req.body?.description ? String(req.body.description).slice(0, 500) : null;
+        const isActive3 = req.body?.isActive === false ? 0 : 1;
+        const id = Number(req.body?.id || 0);
+        if (id) {
+          await getStore().execute(
+            "UPDATE quick_apps_custom SET name = ?, web_url = ?, icon_url = ?, category = ?, badge = ?, description = ?, is_active = ? WHERE id = ?",
+            [name, webUrl, iconUrl, category, badge, description, isActive3, id]
+          );
+          audit(req, "quick_app_update", String(id));
+        } else {
+          await getStore().execute(
+            "INSERT INTO quick_apps_custom (name, web_url, icon_url, category, badge, description, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [name, webUrl, iconUrl, category, badge, description, isActive3]
+          );
+          audit(req, "quick_app_create", name);
+        }
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not save merchant" });
+      }
+    });
+    adminRouter.delete("/quick-apps/:id", async (req, res) => {
+      try {
+        await getStore().execute("DELETE FROM quick_apps_custom WHERE id = ?", [Number(req.params.id)]);
+        audit(req, "quick_app_delete", String(req.params.id));
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not delete merchant" });
       }
     });
   }

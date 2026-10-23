@@ -29,6 +29,7 @@ import { PriceLens, PriceLensAndAssistant } from './PriceLensAndAssistant';
 const ChromeInstallSection = lazy(() => import('./ChromeInstallSection').then((m) => ({ default: m.ChromeInstallSection })));
 import { Deferred } from './Deferred';
 const HomeShowcase = lazy(() => import('./HomeShowcase'));
+import { HomeBannerStrip } from './HomeBannerStrip';
 const UpcomingMovies = lazy(() => import('./UpcomingMovies'));
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
@@ -151,14 +152,8 @@ export const HomeView: React.FC = () => {
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveNavTab('radar')}
-                className="px-5 py-3 bg-white/10 hover:bg-white/15 border border-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Radar className="w-4 h-4 text-emerald-400" />
-                <span>Open Live Scanner Radar</span>
-              </button>
+              {/* Owner 23 Oct: 'Open Live Scanner Radar' button hidden from the
+                  home hero per owner request (Radar stays reachable via nav). */}
             </div>
           </div>
         </div>
@@ -289,6 +284,9 @@ export const HomeView: React.FC = () => {
            Best in Tech & Gadgets, Steals, Famous Places to Visit, Best Cards, Top Destinations.
            All items are real; redirects go through /api/out (Amazon tag and
            Myntra INR-Deals/Cuelinks injected server-side). Deferred + lazy. */}
+      {/* Home banner strip (owner 23 Oct): dynamic admin banner between sections */}
+      <HomeBannerStrip slot={1} onLaunchVertical={(v) => handleLaunch(v as VerticalId)} />
+
       {/* 2b. UPCOMING MOVIES (owner 22 Oct): real BMS upcoming tab — posters,
           release dates, Watch Trailer. Sits right below the launch grid. */}
       <Deferred minHeight={260}>
@@ -296,6 +294,9 @@ export const HomeView: React.FC = () => {
       <UpcomingMovies />
       </Suspense>
       </Deferred>
+
+      {/* Home banner strip (owner 23 Oct): dynamic admin banner between sections */}
+      <HomeBannerStrip slot={0} onLaunchVertical={(v) => handleLaunch(v as VerticalId)} />
 
       <Deferred minHeight={420}>
       <Suspense fallback={null}>

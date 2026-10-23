@@ -826,6 +826,18 @@ class ProductOffer {
       );
 }
 
+
+/// Admin-managed home banner (owner 23 Oct): wide landscape strip between
+/// home sections. link is a vertical id ('movies') or an https URL.
+class HomeBanner {
+  const HomeBanner({required this.id, required this.imageUrl, required this.link, this.title, this.subtitle});
+  final int id;
+  final String imageUrl;
+  final String link;
+  final String? title;
+  final String? subtitle;
+}
+
 class Try1SecondApi {
   /// Device network fix (owner 22 Oct): Indian mobile carriers are IPv6-first
   /// (Jio/Airtel). dart:io's default HttpClient has NO connectionTimeout, so a
@@ -1238,7 +1250,57 @@ class Try1SecondApi {
       await Future<void>.delayed(const Duration(milliseconds: 600));
       res = await fn().timeout(_httpTimeout);
     }
-    return _decode(res);
+    // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an
+    // HTML error page (reproduced on /api/scrape/live hotels+loans). One quiet
+    // retry clears it; a second failure is reported honestly.
+    try {
+      return _decode(res);
+    } on Exception {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      try {
+        res = await fn().timeout(_httpTimeout);
+      } catch (_) { /* fall through: report the original failure */ }
+      return _decode(res);
+    }
+  }
+
+
+  /// Home banners (owner 23 Oct): admin-managed wide landscape strips between
+  /// every home section on the home tab.
+  Future<List<HomeBanner>> homeBanners() async {
+    final data = await _get('/api/home-banners');
+    final rows = data['banners'];
+    if (rows is! List) return const [];
+    return [
+      for (final r in rows)
+        HomeBanner(
+          id: (r['id'] as num?)?.toInt() ?? 0,
+          imageUrl: (r['imageUrl'] as String?) ?? '',
+          link: (r['link'] as String?) ?? 'movies',
+          title: r['title'] as String?,
+          subtitle: r['subtitle'] as String?,
+        ),
+    ];
+  }
+
+  /// Referral code of the signed-in user — mints a T1S-XXXXXX idempotently.
+  Future<Map<String, dynamic>?> referralMe(String token) async {
+    try {
+      return await _get('/api/rewards/referral/me', token: token);
+    } on Exception {
+      return null; // honest: signed-out or offline leaves the tab in guest mode
+    }
+  }
+
+  /// Apply a friend's referral code (once per account; +1 point to the friend).
+  /// Returns null on success, an error message otherwise.
+  Future<String?> referralApply(String token, String code) async {
+    try {
+      await _post('/api/rewards/referral/apply', {'code': code}, token: token);
+      return null;
+    } on Exception catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {

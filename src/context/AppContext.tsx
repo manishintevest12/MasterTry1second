@@ -2261,6 +2261,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       localStorage.setItem('t1s_quick_app_partners_v2', JSON.stringify(updated));
     } catch {}
+    // Owner 23 Oct: mirror admin-added merchants to MySQL (quick_apps_custom)
+    // so the Flutter app + other browsers see them too — fire and forget.
+    void (async () => {
+      try {
+        const t = localStorage.getItem('t1s_admin_token');
+        if (!t) return;
+        await fetch('/api/admin/quick-apps', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` },
+          body: JSON.stringify({
+            name: newPartner.name, webUrl: newPartner.webUrl, iconUrl: newPartner.iconUrl,
+            category: newPartner.category, badge: newPartner.badge, description: newPartner.description,
+          }),
+        });
+      } catch { /* honest: server copy fails silently, local list still works */ }
+    })();
     addToast('success', 'Quick App Registered', `Added partner "${newPartner.name}" with model ${newPartner.type}`);
     return newPartner;
   };
@@ -2280,6 +2296,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       localStorage.setItem('t1s_quick_app_partners_v2', JSON.stringify(updated));
     } catch {}
+    // Owner 23 Oct: when a custom MySQL app (qac-<id>) is deleted, remove it
+    // server-side too so the app stops listing it.
+    void (async () => {
+      try {
+        const m = /^qac-(\d+)$/.exec(id);
+        if (!m) return;
+        const t = localStorage.getItem('t1s_admin_token');
+        if (!t) return;
+        await fetch(`/api/admin/quick-apps/${m[1]}`, { method: 'DELETE', headers: { Authorization: `Bearer ${t}` } });
+      } catch { /* best-effort */ }
+    })();
     addToast('alert', 'Partner Removed', 'Quick App removed from directory.');
   };
 
@@ -2364,10 +2391,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return false;
       }
       const idToken = await signInWithGoogleAndGetToken();
+      // Owner 23 Oct: a ?ref=T1S-XXXXXX landing code travels with the FIRST
+      // sign-in and credits the referrer +1 point (once per account).
+      const urlRef = new URLSearchParams(window.location.search).get('ref');
+      const storedRef = localStorage.getItem('try1_ref_code');
+      const refCode = (urlRef || storedRef || '').trim().toUpperCase();
+      if (urlRef) localStorage.setItem('try1_ref_code', urlRef.trim().toUpperCase());
       const res = await fetch('/api/auth/firebase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken, refCode: refCode || undefined }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
@@ -2375,6 +2408,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return false;
       }
       persistSession(data.token, data.user);
+      // Referral landed and consumed — clear the stored code so a later sign-in
+      // never double-credits (the engine is once-per-account anyway).
+      localStorage.removeItem('try1_ref_code');
       refreshUserPoints();
       return true;
     } catch (err: any) {

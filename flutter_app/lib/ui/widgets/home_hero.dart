@@ -200,22 +200,8 @@ class _HomeHeroState extends State<HomeHero> {
               ]),
             ),
           ),
-          GestureDetector(
-            onTap: () => _state.openRadar(),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.radar_rounded, size: 15, color: T1SColors.emerald400),
-                const SizedBox(width: 7),
-                Text('Open Live Scanner Radar', style: tx(context, 11.5, w: FontWeight.w800, color: Colors.white)),
-              ]),
-            ),
-          ),
+          // Owner 23 Oct: 'Open Live Scanner Radar' button hidden from the home
+          // hero per owner request (Radar stays reachable via the nav tab).
         ]),
       ]),
     );

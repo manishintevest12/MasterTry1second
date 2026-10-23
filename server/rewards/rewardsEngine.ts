@@ -263,3 +263,57 @@ export async function updateFulfilmentStatus(recordId: number, status: string): 
   const res = await getStore().execute('UPDATE fulfilment_records SET status = ? WHERE id = ?', [status, recordId]);
   return (res as any).affectedRows > 0;
 }
+
+// ---------------- Referral codes (owner 23 Oct) ----------------
+// Each user gets a shareable T1S-XXXXXX code. A NEW user can enter a friend's
+// code anywhere (sign-in screen, Refer & Earn tab, ?ref= link) — the referrer
+// earns +1 point the moment the code is applied (idempotent via registerReferral).
+
+const REF_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // unambiguous: no 0/O, 1/I/L
+
+export async function ensureReferralCode(userId: number): Promise<string> {
+  const store = getStore();
+  const rows = await store.query<any>('SELECT referral_code FROM users WHERE id = ?', [userId]);
+  const existing = rows[0]?.referral_code ? String(rows[0].referral_code) : '';
+  if (existing) return existing;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    let code = 'T1S-';
+    const bytes = crypto.randomBytes(6);
+    for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
+    try {
+      const res = await store.execute('UPDATE users SET referral_code = ? WHERE id = ?', [code, userId]);
+      if ((res as any).affectedRows > 0) return code;
+      const again = await store.query<any>('SELECT referral_code FROM users WHERE id = ?', [userId]);
+      if (again[0]?.referral_code) return String(again[0].referral_code);
+    } catch (e: any) {
+      // unique collision (another user owns this code) — retry with a fresh code
+      if (!/uq_referral_code|Duplicate/i.test(String(e?.message || ''))) throw e;
+    }
+  }
+  throw new Error('Could not allocate a referral code — please retry');
+}
+
+export async function applyReferralCode(refereeId: number, rawCode: string): Promise<{ ok: boolean; error?: string; awarded?: boolean; referrerCode?: string }> {
+  const code = String(rawCode || '').trim().toUpperCase();
+  if (!code) return { ok: false, error: 'Enter a referral code' };
+  const store = getStore();
+  const rows = await store.query<any>('SELECT id FROM users WHERE referral_code = ?', [code]);
+  if (!rows.length) return { ok: false, error: 'That referral code is not valid' };
+  const referrerId = Number(rows[0].id);
+  const r = await registerReferral(referrerId, refereeId);
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, awarded: r.awarded, referrerCode: code };
+}
+
+export async function referralStats(userId: number): Promise<{ referredCount: number; referredByCode: string | null }> {
+  const store = getStore();
+  const referred = await store.query<any>('SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = \'valid\'', [userId]);
+  const by = await store.query<any>('SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1', [userId]);
+  let referredByCode: string | null = null;
+  const referrerId = by[0]?.referrer_id ? Number(by[0].referrer_id) : 0;
+  if (referrerId) {
+    const u = await store.query<any>('SELECT referral_code FROM users WHERE id = ?', [referrerId]);
+    referredByCode = u[0]?.referral_code ? String(u[0].referral_code) : null;
+  }
+  return { referredCount: Number(referred[0]?.c || 0), referredByCode };
+}

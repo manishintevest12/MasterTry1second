@@ -41,10 +41,24 @@ export const QuickAppsView: React.FC = () => {
     return () => { alive = false; };
   }, []);
 
-  const allPartners = useMemo(
-    () => [...quickAppPartners, ...affiliatePartners],
-    [quickAppPartners, affiliatePartners],
-  );
+  // Owner 23 Oct: server now ships the full curated catalogue too — dedupe by
+  // id first (curated qapp-* ids match the local list), then by merchant name so
+  // the View All grid never renders the same seller twice.
+  const allPartners = useMemo(() => {
+    const seenId = new Set<string>();
+    const seenName = new Set<string>();
+    const out: QuickAppPartner[] = [];
+    for (const p of [...quickAppPartners, ...affiliatePartners]) {
+      const key = String(p.id || '');
+      const nm = String(p.name || '').toLowerCase();
+      if (key && seenId.has(key)) continue;
+      if (nm && seenName.has(nm)) continue;
+      if (key) seenId.add(key);
+      if (nm) seenName.add(nm);
+      out.push(p);
+    }
+    return out;
+  }, [quickAppPartners, affiliatePartners]);
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');

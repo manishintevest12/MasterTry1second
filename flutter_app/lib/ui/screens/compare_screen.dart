@@ -1250,6 +1250,9 @@ class _SearchCard extends StatelessWidget {
                       onSelect: (_) => onSearch(),
                       onSubmitted: (_) => onSearch(),
                       trailing: browseBtn(() => onOpenPlacePicker(true)),
+                      // Owner 23 Oct (images 3/4): tap opens the full-screen
+                      // location picker (search + GPS + airport list inside).
+                      onFieldTap: () => onOpenPlacePicker(true),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -1279,6 +1282,9 @@ class _SearchCard extends StatelessWidget {
                       onSelect: (_) => onSearch(),
                       onSubmitted: (_) => onSearch(),
                       trailing: browseBtn(() => onOpenPlacePicker(false)),
+                      // Owner 23 Oct (images 3/4): tap opens the full-screen
+                      // location picker.
+                      onFieldTap: () => onOpenPlacePicker(false),
                     ),
                   ),
                 ],
@@ -1381,6 +1387,9 @@ class _SearchCard extends StatelessWidget {
               icon: Icons.search_rounded,
               onSelect: (_) => onSearch(),
               onSubmitted: (_) => onSearch(),
+              // Owner 23 Oct (images 3/4): tap opens the full-screen hotel
+              // picker (search + popular destinations inside).
+              onFieldTap: onOpenHotelPicker,
               trailing: IconButton(
                 onPressed: onOpenHotelPicker,
                 icon: Icon(Icons.manage_search_rounded, size: 18, color: muted(context)),
@@ -1881,8 +1890,15 @@ class _WarpLoaderState extends State<_WarpLoader> with SingleTickerProviderState
   @override
   void initState() {
     super.initState();
+    // Owner 23 Oct: the 3-2-1 countdown is ONE-SHOT — it ticks down once and
+    // holds on 1 until real rows arrive (never restarts at 3 mid-search).
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _count = _count > 1 ? _count - 1 : 3);
+      if (!mounted) return;
+      if (_count <= 1) {
+        _timer?.cancel();
+        return;
+      }
+      setState(() => _count = _count - 1);
     });
   }
 

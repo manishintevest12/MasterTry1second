@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/verticals.dart';
 import '../widgets/home_hero.dart';
 import '../widgets/kit.dart';
+import '../widgets/home_banner_strip.dart';
 import '../widgets/home_showcase.dart';
 import '../widgets/upcoming_movies_rail.dart';
 import '../widgets/home_lens_and_assistant.dart';
@@ -70,6 +71,12 @@ class _HomeScreenState extends State<HomeScreen> {
         // Home Showcase (owner spec 21 Oct): the eight curated sections under
         // the launch grid — real items only, redirects via /api/out.
         const SizedBox(height: 22),
+        // Owner 23 Oct: admin-managed wide banner strip above the showcase
+        // (parity with web: strips between every home section).
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: HomeBannerStrip(api: _state.api, slot: 0, onOpenVertical: (v) => _state.openVertical(v)),
+        ),
         HomeShowcase(state: _state),
         const SizedBox(height: 18),
         const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: _RadarTeaser()),

@@ -592,3 +592,102 @@ adminRouter.post('/speedtest/run', async (req, res) => {
     res.json({ success: true, scores });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Speed test failed' }); }
 });
+
+// ---- Home banners (owner 23 Oct): wide landscape strips rendered between
+// every home section on web + app. Admin controls image, link (vertical id or
+// https URL), title/subtitle, order and active state. ----
+adminRouter.get('/home-banners', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT * FROM home_banners');
+    const banners = rows
+      .sort((a, z) => (Number(a.position ?? 0) - Number(z.position ?? 0)) || (Number(a.id) - Number(z.id)))
+      .map((r) => ({
+        id: Number(r.id), imageUrl: String(r.image_url || ''), link: String(r.link_url || 'movies'),
+        title: r.title ? String(r.title) : null, subtitle: r.subtitle ? String(r.subtitle) : null,
+        isActive: Number(r.is_active ?? 1) === 1, position: Number(r.position ?? 0),
+      }));
+    res.json({ success: true, banners });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load banners' }); }
+});
+
+adminRouter.post('/home-banners', async (req, res) => {
+  try {
+    const imageUrl = String(req.body?.imageUrl || '').trim();
+    const link = String(req.body?.link || 'movies').trim();
+    if (!/^https?:\/\/.+/.test(imageUrl) && !imageUrl.startsWith('/')) return res.status(400).json({ success: false, error: 'A banner image URL is required' });
+    if (!/^https?:\/\/.+/.test(link) && !/^[a-z0-9_-]+$/i.test(link)) return res.status(400).json({ success: false, error: 'Link must be a vertical id (e.g. movies) or an https URL' });
+    const title = req.body?.title ? String(req.body.title).slice(0, 120) : null;
+    const subtitle = req.body?.subtitle ? String(req.body.subtitle).slice(0, 200) : null;
+    const isActive = req.body?.isActive === false ? 0 : 1;
+    const position = Number(req.body?.position ?? 0) || 0;
+    const id = Number(req.body?.id || 0);
+    if (id) {
+      await getStore().execute('UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, is_active = ?, position = ? WHERE id = ?',
+        [imageUrl, link, title, subtitle, isActive, position, id]);
+      audit(req, 'home_banner_update', String(id));
+    } else {
+      await getStore().execute('INSERT INTO home_banners (image_url, link_url, title, subtitle, is_active, position) VALUES (?, ?, ?, ?, ?, ?)',
+        [imageUrl, link, title, subtitle, isActive, position]);
+      audit(req, 'home_banner_create', imageUrl.slice(0, 80));
+    }
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save banner' }); }
+});
+
+adminRouter.delete('/home-banners/:id', async (req, res) => {
+  try {
+    await getStore().execute('DELETE FROM home_banners WHERE id = ?', [Number(req.params.id)]);
+    audit(req, 'home_banner_delete', String(req.params.id));
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete banner' }); }
+});
+
+// ---- Quick Apps custom merchants (owner 23 Oct): admin-managed manual entries
+// (MySQL quick_apps_custom) merged into /api/quick-apps for web + app. ----
+adminRouter.get('/quick-apps', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT * FROM quick_apps_custom');
+    const apps = rows
+      .sort((a, z) => Number(a.id) - Number(z.id))
+      .map((r) => ({
+        id: Number(r.id), name: String(r.name || ''), webUrl: String(r.web_url || ''),
+        iconUrl: r.icon_url ? String(r.icon_url) : null, category: r.category ? String(r.category) : null,
+        badge: r.badge ? String(r.badge) : null, description: r.description ? String(r.description) : null,
+        isActive: Number(r.is_active ?? 1) === 1,
+      }));
+    res.json({ success: true, apps });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load custom apps' }); }
+});
+
+adminRouter.post('/quick-apps', async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const webUrl = String(req.body?.webUrl || '').trim();
+    if (name.length < 2) return res.status(400).json({ success: false, error: 'Merchant name is required' });
+    if (!/^https?:\/\/.+/.test(webUrl)) return res.status(400).json({ success: false, error: 'Merchant URL must start with https://' });
+    const iconUrl = req.body?.iconUrl ? String(req.body.iconUrl).slice(0, 500) : null;
+    const category = req.body?.category ? String(req.body.category).slice(0, 60) : null;
+    const badge = req.body?.badge ? String(req.body.badge).slice(0, 40) : null;
+    const description = req.body?.description ? String(req.body.description).slice(0, 500) : null;
+    const isActive = req.body?.isActive === false ? 0 : 1;
+    const id = Number(req.body?.id || 0);
+    if (id) {
+      await getStore().execute('UPDATE quick_apps_custom SET name = ?, web_url = ?, icon_url = ?, category = ?, badge = ?, description = ?, is_active = ? WHERE id = ?',
+        [name, webUrl, iconUrl, category, badge, description, isActive, id]);
+      audit(req, 'quick_app_update', String(id));
+    } else {
+      await getStore().execute('INSERT INTO quick_apps_custom (name, web_url, icon_url, category, badge, description, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [name, webUrl, iconUrl, category, badge, description, isActive]);
+      audit(req, 'quick_app_create', name);
+    }
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save merchant' }); }
+});
+
+adminRouter.delete('/quick-apps/:id', async (req, res) => {
+  try {
+    await getStore().execute('DELETE FROM quick_apps_custom WHERE id = ?', [Number(req.params.id)]);
+    audit(req, 'quick_app_delete', String(req.params.id));
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete merchant' }); }
+});

@@ -47,6 +47,7 @@ class HintField extends StatefulWidget {
     this.onSubmitted,
     this.trailing,
     this.focusNode,
+    this.onFieldTap,
   });
 
   final TextEditingController controller;
@@ -61,6 +62,12 @@ class HintField extends StatefulWidget {
   final ValueChanged<String>? onSubmitted;
   final Widget? trailing;
   final FocusNode? focusNode;
+
+  /// Owner 23 Oct (images 3/4): when set, the whole field is a tappable
+  /// pseudo-field that opens the full-screen picker instead of the inline
+  /// dropdown. The picker itself has search/autocomplete, so the mandatory
+  /// autocomplete rule stays satisfied.
+  final VoidCallback? onFieldTap;
 
   @override
   State<HintField> createState() => _HintFieldState();
@@ -546,11 +553,7 @@ class _HintFieldState extends State<HintField> {
         (widget.controller.text.trim().isNotEmpty &&
             widget.source != HintSource.cities &&
             widget.source != HintSource.presets);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
+    Widget field = TextField(
           controller: widget.controller,
           focusNode: _focus,
           textInputAction: TextInputAction.search,
@@ -570,8 +573,20 @@ class _HintFieldState extends State<HintField> {
               borderSide: const BorderSide(color: T1SColors.red, width: 1.2),
             ),
           ),
-        ),
-        if (_showing && hasContent) _buildDropdown(context),
+        );
+        if (widget.onFieldTap != null) {
+          field = GestureDetector(
+            onTap: widget.onFieldTap,
+            behavior: HitTestBehavior.opaque,
+            child: IgnorePointer(child: field),
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            field,
+            if (_showing && hasContent && widget.onFieldTap == null) _buildDropdown(context),
       ],
     );
   }

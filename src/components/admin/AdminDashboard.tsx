@@ -51,6 +51,7 @@ import { DirectPartnersTab } from './DirectPartnersTab';
 import { MerchantVendorIdsTab } from './MerchantVendorIdsTab';
 import { PlatformTrafficTab } from './PlatformTrafficTab';
 import { QuickAppsAdminTab } from './QuickAppsAdminTab';
+import { HomeBannersTab } from './HomeBannersTab';
 import { PlacementsTab } from './PlacementsTab';
 import { AppLinksTab } from './AppLinksTab';
 import { NotificationsTab } from './NotificationsTab';
@@ -68,6 +69,7 @@ export type AdminTab =
   | 'site_speed'
   | 'traffic_performance'
   | 'quick_apps'
+  | 'home_banners'
   | 'merchant_vendors'
   | 'purchases'
   | 'payouts'
@@ -615,6 +617,16 @@ export const AdminDashboard: React.FC = () => {
               }`}
             >
               Leads
+            </button>
+            <button
+              onClick={() => setActiveTab('home_banners')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
+                activeTab === 'home_banners'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Home Banners
             </button>
             <button
               onClick={() => setActiveTab('merchant_logos')}
@@ -1338,6 +1350,7 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'direct_partners' && <DirectPartnersTab />}
         {activeTab === 'site_speed' && <SpeedTestTab />}
         {activeTab === 'leads' && <LeadsTab />}
+        {activeTab === 'home_banners' && <HomeBannersTab />}
         {activeTab === 'merchant_logos' && <MerchantLogosTab />}
         {activeTab === 'placements' && <PlacementsTab />}
         {activeTab === 'app_links' && <AppLinksTab />}

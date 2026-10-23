@@ -193,38 +193,56 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(52 + (_loading ? 2.5 : 0)),
+        preferredSize: Size.fromHeight(65 + (_loading ? 2.5 : 0)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Owner 23 Oct image-4 header: slim WHITE bar — magnifier, the
-            // seller's name (never the raw URL), X to close. The merchant's
-            // page starts immediately below, no dark app chrome above it.
-            SafeArea(
-              bottom: false,
-              child: SizedBox(
-                height: 52,
-                child: Row(children: [
-                  const SizedBox(width: 14),
-                  const Icon(Icons.travel_explore, size: 20, color: Color(0xFF1D4ED8)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.black87),
+            // Owner 23 Oct: DARK header strip (#131725) with merchant branding
+            // and the white pull tab — the payments-style in-app browser look
+            // the owner asked to restore (replaces the image-4 white bar).
+            Container(
+              color: const Color(0xFF131725),
+              child: SafeArea(
+                bottom: false,
+                child: SizedBox(
+                  height: 52,
+                  child: Row(children: [
+                    const SizedBox(width: 14),
+                    const Icon(Icons.travel_explore, size: 20, color: Colors.white70),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                      ),
                     ),
-                  ),
-                  // X — closes the embedded view immediately
-                  InkWell(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Icon(Icons.close, size: 22, color: Colors.black54),
+                    // X — closes the embedded view immediately
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Icon(Icons.close, size: 22, color: Colors.white70),
+                      ),
                     ),
+                  ]),
+                ),
+              ),
+            ),
+            // White tab handle centered under the dark strip (owner 23 Oct).
+            Container(
+              color: const Color(0xFF131725),
+              child: Center(
+                child: Container(
+                  width: 36,
+                  height: 4.5,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
                   ),
-                ]),
+                ),
               ),
             ),
             // Page-load hairline (only while navigating)

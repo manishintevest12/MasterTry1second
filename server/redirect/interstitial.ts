@@ -138,8 +138,16 @@ export function renderInterstitialPage(opts: {
   *{box-sizing:border-box}html,body{margin:0}
   body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);
        min-height:100vh;display:flex;flex-direction:column;align-items:center}
-  header{width:100%;padding:16px 20px 0;text-align:center}
-  .brand{font-weight:900;font-size:15px;color:var(--red);letter-spacing:-.2px}
+  /* Owner 23 Oct (restore): BLACK strip header with a WHITE tab naming the
+     destination store — the tab replaces every trace of browser chrome (no URL
+     bar, no third-party header above the fold). */
+  header{width:100%;background:#0b0e14;padding:12px 16px;text-align:center}
+  .tab{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#0f172a;font-weight:900;
+       font-size:13px;padding:9px 16px;border-radius:10px;box-shadow:0 2px 12px rgb(0 0 0 / .4);
+       max-width:82vw;vertical-align:middle}
+  .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex:0 0 auto}
+  .tab span.nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .brand{display:block;margin-top:6px;font-weight:800;font-size:10.5px;color:#8a93a6;letter-spacing:.4px}
   main{width:100%;max-width:560px;padding:10px 16px 40px;text-align:center}
   h1{font-size:17px;font-weight:800;margin:16px 0 4px}
   h2{font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 18px}
@@ -163,7 +171,7 @@ export function renderInterstitialPage(opts: {
 </style>
 </head>
 <body>
-<header><span class="brand">Try1Second</span></header>
+<header><span class="tab"><span class="dot"></span><span class="nm">${esc(host) || 'your store'}</span></span><span class="brand">via Try1Second</span></header>
 <main>
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
