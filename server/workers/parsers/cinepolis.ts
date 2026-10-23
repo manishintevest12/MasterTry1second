@@ -4,12 +4,15 @@
  * Cinepolis India (cinepolisindia.com) is a Next.js SPA. The listing page
  *   GET https://cinepolisindia.com/movie-list/{cityKey}
  * server-renders pageProps.comingSoonMoviesData[] (city-independent) into
- * __NEXT_DATA__; nowPlayingMoviesData stays {} until a valid numeric city id
- * is supplied client-side (ids come from api_new.cinepolisindia.com, which resets
- * non-Indian datacenter TLS connections — see data_note honesty below).
- * Movie images are served from api_new.cinepolisindia.com/uploads/... and are
- * loaded by the end-user browser (verified unreachable from our egress, but the
- * site itself ships these URLs).
+ * __NEXT_DATA__; nowPlayingMoviesData stays {} on that route.
+ *
+ * Owner 23 Oct upgrade (live-verified same day): the site's own JSON API
+ *   GET {API}/movies/cities?all=all          -> city_id list (Delhi=9 ... Mumbai=15, Jaipur=24)
+ *   GET {API}/movies/now-playing/?city_id=X  -> city-wise now-showing movies
+ *     (headers city_id + Origin/Referer, guest access, no auth) with images
+ *     served from api_new.cinepolisindia.com/uploads/... (HTTP 200 verified).
+ * The API list is richer than the SSR page (rating, format, cast, cinema ids),
+ * so the worker now prefers it and only falls back to the SSR scrape.
  *
  * Deeplink honesty: the site exposes no SSR-verified per-movie detail URL
  * (/movie-details/{id} is client-rendered and its param contract is unknown),
@@ -22,6 +25,95 @@ import { matchesQuery } from './bookmyshow';
 
 export const CINEPOLIS_BASE = 'https://cinepolisindia.com';
 export const CINEPOLIS_MOVIE_LIST_URL = `${CINEPOLIS_BASE}/movie-list/undefined`;
+export const CINEPOLIS_API_BASE = 'https://api_new.cinepolisindia.com/api';
+
+/** Guest JSON API headers the Next.js client itself sends (live-verified 23 Oct). */
+export const CINEPOLIS_API_HEADERS: Record<string, string> = {
+  Accept: 'application/json',
+  Origin: 'https://cinepolisindia.com',
+  Referer: 'https://cinepolisindia.com/',
+};
+
+const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Module cache of city_name -> city_id (24h TTL, self-healing on fetch failure). */
+let cinepolisCitiesCache: { at: number; map: Map<string, number> } | null = null;
+export const CINEPOLIS_CITIES_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Parse the /movies/cities payload into a normalized name -> id map. */
+export function parseCinepolisCities(json: any): Map<string, number> {
+  const map = new Map<string, number>();
+  const rows = json?.data;
+  if (!Array.isArray(rows)) return map;
+  for (const r of rows) {
+    const id = Number(r?.city_id);
+    const name = String(r?.city_name || '').trim();
+    if (Number.isFinite(id) && id > 0 && name) map.set(normName(name), id);
+  }
+  return map;
+}
+
+/** Resolve a user city (any casing/spelling) to a Cinepolis city id. */
+export function cinepolisCityIdFor(map: Map<string, number>, city: string | undefined): number | null {
+  const c = normName(String(city || ''));
+  if (!c) return null;
+  if (map.has(c)) return map.get(c)!;
+  // tolerate suffixes like "new mumbai" -> "mumbai" handled below via contains match
+  for (const [name, id] of map) if (name.includes(c) || c.includes(name)) return id;
+  return null;
+}
+
+/**
+ * Normalize one /movies/now-playing row to the CinepolisMovie shape used by
+ * parseCinepolisMovies (plus rating/format/cast carried through).
+ */
+export function normalizeNowPlayingRow(mv: any): CinepolisMovie & { rating?: string; format?: string; cast?: string; cinema_ids?: string; sessions_count?: number; is_coming_soon?: any } {
+  return {
+    Title: String(mv?.Title || mv?.movie_title || '').trim(),
+    movie_id: mv?.ID || mv?.movie_id,
+    movie_lang: mv?.movie_lang || null,
+    m_movie_genre_name: mv?.m_movie_genre_name || null,
+    run_time: typeof mv?.RunTime === 'number' ? mv.RunTime : (typeof mv?.run_time === 'number' ? mv.run_time : null),
+    movie_release_date: mv?.movie_release_date || null,
+    movie_trailer: mv?.movie_trailer && mv.movie_trailer !== 'NA' ? mv.movie_trailer : null,
+    movie_image_url_1: mv?.movie_image_url_1 || null,
+    movie_image_url_2: mv?.movie_image_url_2 || null,
+    rating: mv?.rating || null,
+    format: mv?.m_movie_format_name || null,
+    cast: mv?.movie_cast || null,
+    cinema_ids: typeof mv?.cinemaIdSessions === 'string' ? mv.cinemaIdSessions : null,
+    sessions_count: typeof mv?.sessions_count === 'number' ? mv.sessions_count : null,
+    is_coming_soon: mv?.is_coming_soon,
+  };
+}
+
+/**
+ * Split a now-playing API list into now-showing vs coming-soon.
+ * Live-verified 23 Oct: the site's is_coming_soon flag is USELESS (every row
+ * ships "Y", even day-of releases with live sessions), so availability is
+ * derived honestly from the release date: released (today or earlier) is
+ * now-showing; a future date is upcoming (with an advance-booking note when
+ * sessions already exist). Unknown dates stay now-showing only when the row
+ * carries bookable sessions.
+ */
+export function splitNowPlaying(rows: any[], today = new Date()): { nowPlaying: CinepolisMovie[]; comingSoon: CinepolisMovie[] } {
+  const nowPlaying: CinepolisMovie[] = [];
+  const comingSoon: CinepolisMovie[] = [];
+  const todayIso = today.toISOString().slice(0, 10);
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    if (!raw || typeof raw.Title !== 'string' || !raw.Title.trim()) continue;
+    const mv = normalizeNowPlayingRow(raw);
+    const rel = raw?.movie_release_date ? String(raw.movie_release_date).slice(0, 10) : '';
+    const sessions = Number(raw?.sessions_count) || 0;
+    if (!rel) {
+      if (sessions > 0) nowPlaying.push(mv); else comingSoon.push(mv);
+      continue;
+    }
+    if (rel <= todayIso) nowPlaying.push(mv);
+    else { (mv as any).advance_booking = sessions > 0 ? 'Advance booking open on Cinepolis India' : null; comingSoon.push(mv); }
+  }
+  return { nowPlaying, comingSoon };
+}
 
 export interface CinepolisMovie {
   Title?: string;
@@ -84,6 +176,7 @@ export function parseCinepolisMovies(
       const display = cinepolisDisplayTitle(rawTitle);
       const img = mv.movie_image_url_1 || mv.movie_image_url_2;
       const release = mv.movie_release_date ? String(mv.movie_release_date).slice(0, 10) : null;
+      const apiMv = mv as any;
       const attrs: Record<string, any> = {
         image_url: img ? encodeURI(String(img)) : null,
         language: mv.movie_lang || null,
@@ -93,6 +186,11 @@ export function parseCinepolisMovies(
         release_date: release,
         availability: g.availability,
         data_note: g.note,
+        // API-path extras (now-playing rows carry them; SSR rows stay null)
+        rating: apiMv.rating || null,
+        format: apiMv.format || null,
+        cast: apiMv.cast || null,
+        cinema_count: apiMv.cinema_ids ? String(apiMv.cinema_ids).split(',').filter(Boolean).length : null,
       };
       out.push(newRawItem(source, {
         title: display,

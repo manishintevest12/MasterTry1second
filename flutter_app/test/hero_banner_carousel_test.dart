@@ -69,7 +69,8 @@ void main() {
     expect(find.text('PREMIERE'), findsOneWidget);
     expect(find.text('Fall 2: Deadpoint'), findsOneWidget);
     expect(find.text('Watch Trailer'), findsOneWidget);
-    expect(find.text('Video Library'), findsOneWidget);
+    // Owner 23 Oct: the "Video Library" chip is REMOVED from every slide.
+    expect(find.text('Video Library'), findsNothing);
 
     // 3 pagination dots render (one active)
     expect(find.byKey(const ValueKey('hero-dot-0')), findsOneWidget);

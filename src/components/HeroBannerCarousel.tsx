@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play, Library, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Play, ArrowRight } from 'lucide-react';
 
 /**
  * HeroBannerCarousel (owner 23 Oct, BookMyShow reference): the big dark hero
@@ -97,18 +97,7 @@ export const HeroBannerCarousel: React.FC<{
       )}
       <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/60 to-black/85 pointer-events-none" />
 
-      {/* top-right "Video Library" style chip (reference) — launches movies vertical */}
-      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20">
-        <button
-          type="button"
-          onClick={() => onLaunch?.('movies', '')}
-          className="inline-flex items-center gap-1.5 bg-[#1a1a1a]/90 hover:bg-[#26262b] text-white text-[11px] sm:text-xs font-bold px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg border border-white/10 transition-colors"
-        >
-          <Library className="w-3.5 h-3.5" />
-          <span className="hidden xs:inline sm:inline">Video Library</span>
-          <ChevronRight className="w-3 h-3" />
-        </button>
-      </div>
+      {/* Owner 23 Oct: "Video Library" chip removed per request */}
 
       <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 lg:py-10">
         <div className="flex items-center gap-4 sm:gap-7 lg:gap-10">

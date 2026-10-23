@@ -10,7 +10,10 @@ import { getOverride, dynamicScannerEngine } from '../../acquisition/selfHeal';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery, effectiveMovieQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
-import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
+import {
+  parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL, CINEPOLIS_API_BASE, CINEPOLIS_API_HEADERS,
+  parseCinepolisCities, cinepolisCityIdFor, splitNowPlaying,
+} from '../parsers/cinepolis';
 import { parseDistrictMovies, parseDistrictOffers, districtPriceBands, DISTRICT_MOVIES_URL } from '../parsers/district';
 import { gwCitySlug, gwCityMovieAggregates, gwCritique, gwMatch, extractTrailerUrl, type GwMovieAgg } from '../parsers/districtGw';
 import { imdbRatingFor } from '../parsers/imdbRatings';
@@ -214,16 +217,46 @@ export const moviesWorker: VerticalWorker = {
         const entity = String(ctx.query.entityName || '').trim();
         const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
         const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean))) : '';
-        const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25_000 });
-        if (res.status === 403 || res.status === 429) {
-          throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `Cinepolis blocked: ${res.status}`, res.status);
+        // Owner 23 Oct: city-wise now-playing via Cinepolis's own guest JSON API
+        // (live-verified). Falls back to the SSR scrape (coming-soon only) when
+        // the API or the city lookup comes up empty — never invents movies.
+        let data: { nowPlaying: any[]; comingSoon: any[] } | null = null;
+        try {
+          const citiesRes = await cffiFetch(`${CINEPOLIS_API_BASE}/movies/cities?all=all`, { timeoutMs: 15_000, impersonate: 'chrome', headers: CINEPOLIS_API_HEADERS });
+          if (citiesRes.status === 200) {
+            const ids = parseCinepolisCities(JSON.parse(citiesRes.body || '{}'));
+            const cityId = cinepolisCityIdFor(ids, city);
+            if (cityId) {
+              const npRes = await cffiFetch(`${CINEPOLIS_API_BASE}/movies/now-playing/?city_id=${cityId}`, { timeoutMs: 20_000, impersonate: 'chrome', headers: { ...CINEPOLIS_API_HEADERS, city_id: String(cityId) } });
+              if (npRes.status === 200) {
+                const rows = JSON.parse(npRes.body || '{}')?.data || [];
+                if (Array.isArray(rows) && rows.length) data = splitNowPlaying(rows);
+              }
+            }
+          }
+        } catch { /* API hiccup -> SSR fallback below */ }
+        if (!data || (data.nowPlaying.length === 0 && data.comingSoon.length === 0)) {
+          const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25_000 });
+          if (res.status === 403 || res.status === 429) {
+            throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `Cinepolis blocked: ${res.status}`, res.status);
+          }
+          if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Cinepolis listing ${res.status}`, res.status);
+          const scraped = parseCinepolisPage(res.body);
+          if (scraped.nowPlaying.length || scraped.comingSoon.length) data = scraped;
         }
-        if (res.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Cinepolis listing ${res.status}`, res.status);
-        const data = parseCinepolisPage(res.body);
-        if (data.nowPlaying.length === 0 && data.comingSoon.length === 0) {
+        if (!data || (data.nowPlaying.length === 0 && data.comingSoon.length === 0)) {
           throw new AcquisitionError('EMPTY_RESPONSE', 'Cinepolis page carried no parseable movies');
         }
-        return parseCinepolisMovies(data, ctx.source, queryTerm);
+        const offers = parseCinepolisMovies(data, ctx.source, queryTerm);
+        // REAL seat prices: the District/TicketNew gw mesh exposes city-level
+        // area prices for the same movie (seller-agnostic). Same enrichment the
+        // TicketNew worker applies; honest no-price when the mesh has no match.
+        const tnKeys = ticketnewCityKeys(city);
+        if (tnKeys.length) {
+          const aggs = await gwCityMovieAggregates('ticketnew', tnKeys[0], 8).catch(() => null);
+          for (const o of offers.slice(0, 5)) await enrichWithGw(o, aggs, 'ticketnew', 'Cinepolis India');
+        }
+        return offers;
       },
     },
     {

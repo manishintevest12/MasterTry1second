@@ -103,7 +103,6 @@ class _HeroBannerCarouselState extends State<HeroBannerCarousel> {
                 posterW: posterW,
                 wide: wide,
                 onActivate: () => _activate(s),
-                onLibrary: () => widget.onLaunch('movies', ''),
               );
             },
           ),
@@ -139,13 +138,11 @@ class _HeroSlideView extends StatelessWidget {
     required this.posterW,
     required this.wide,
     required this.onActivate,
-    required this.onLibrary,
   });
   final HeroSlide slide;
   final double posterW;
   final bool wide;
   final VoidCallback onActivate;
-  final VoidCallback onLibrary;
 
   @override
   Widget build(BuildContext context) {
@@ -175,31 +172,7 @@ class _HeroSlideView extends StatelessWidget {
                 ),
               ),
             ),
-            // top-right Video Library chip (reference)
-            Positioned(
-              top: 10,
-              right: 12,
-              child: GestureDetector(
-                onTap: onLibrary,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xF21A1A1A),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white24, width: 0.5),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.video_library_outlined, size: 14, color: Colors.white),
-                      const SizedBox(width: 5),
-                      Text('Video Library', style: tx(context, wide ? 12 : 10, w: FontWeight.w700, color: Colors.white)),
-                      const Icon(Icons.chevron_right, size: 12, color: Colors.white),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            // Owner 23 Oct: "Video Library" chip removed per request
             // content row
             Padding(
               padding: EdgeInsets.fromLTRB(14, wide ? 26 : 22, 14, 12),

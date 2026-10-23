@@ -42,15 +42,20 @@ function secret(): string {
 function b64url(s: string): string { return Buffer.from(s, 'utf8').toString('base64url'); }
 function unb64url(s: string): string { return Buffer.from(s, 'base64url').toString('utf8'); }
 
-/** Mint the one-use opaque token for a FINAL (already affiliate-injected) URL. */
-export function createInterstitialPointer(url: string): string {
-  const payload = b64url(JSON.stringify({ d: url.slice(0, 3000), e: Date.now() + INTERSTITIAL_TTL_MS }));
+/**
+ * Mint the one-use opaque token for a FINAL (already affiliate-injected) URL.
+ * Owner 23 Oct: `partner` is the ORIGINAL merchant the user chose (e.g.
+ * "agoda.com") — the page displays ONLY that name, so affiliate converter
+ * domains (linkinr.com, ekaro, cuelinks...) never appear to the user.
+ */
+export function createInterstitialPointer(url: string, partner?: string | null): string {
+  const payload = b64url(JSON.stringify({ d: url.slice(0, 3000), p: String(partner || '').slice(0, 120), e: Date.now() + INTERSTITIAL_TTL_MS }));
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url').slice(0, 32);
   return `${payload}.${sig}`;
 }
 
 /** Verify + decode. Null on malformed signature, tampering or expiry. */
-export function resolveInterstitialPointer(token: string): string | null {
+export function resolveInterstitialMeta(token: string): { url: string; partner: string } | null {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ''));
   if (!m) return null;
   const expect = crypto.createHmac('sha256', secret()).update(m[1]).digest('base64url').slice(0, 32);
@@ -58,7 +63,7 @@ export function resolveInterstitialPointer(token: string): string | null {
   try {
     const j = JSON.parse(unb64url(m[1]));
     if (!j?.d || typeof j.d !== 'string' || Number(j.e) < Date.now()) return null;
-    return j.d;
+    return { url: j.d, partner: typeof j.p === 'string' ? j.p : '' };
   } catch { return null; }
 }
 
@@ -104,12 +109,17 @@ function errorPage(title: string, message: string): string {
 export function renderInterstitialPage(opts: {
   targetUrl: string;
   seconds?: number;
+  partner?: string | null;
   adSlot?: { provider?: string; adsense_client?: string | null; adsense_slot?: string | null; custom_html?: string | null } | null;
 }): string {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
   const target = opts.targetUrl;
   let host = '';
   try { host = new URL(target).hostname.replace(/^www\./, ''); } catch { /* validated earlier */ }
+  // Owner 23 Oct: NEVER show the affiliate hop domain (linkinr.com, ekaro...).
+  // Display ONLY the original partner the user picked; fall back to the target
+  // host only for legacy tokens minted before the partner field existed.
+  const shown = String(opts.partner || '').trim() || host || 'your store';
 
   const ad = opts.adSlot;
   let adBlock = '';
@@ -171,14 +181,14 @@ export function renderInterstitialPage(opts: {
 </style>
 </head>
 <body>
-<header><span class="tab"><span class="dot"></span><span class="nm">${esc(host) || 'your store'}</span></span><span class="brand">via Try1Second</span></header>
+<header><span class="tab"><span class="dot"></span><span class="nm">${esc(shown)}</span></span><span class="brand">Try1Second redirecting to ${esc(shown)} site</span></header>
 <main>
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
-  <h2>Sit tight — ${host ? esc(host) : 'your store'} is opening with your best price.</h2>
+  <h2>Sit tight — ${esc(shown)} is opening with your best price.</h2>
   ${adBlock}
   <div class="store" style="margin-top:18px">
-    <span class="dot"></span><span id="lbl">Opening ${esc(host)} in <span id="s">${seconds}</span>s</span>
+    <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
   <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now →</a>
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
@@ -219,13 +229,13 @@ export async function redirectRouteHandler(req: Request, res: Response): Promise
       'This redirect page was opened without a destination. Go back to Try1Second and tap a deal again.'));
     return;
   }
-  const target = resolveInterstitialPointer(k);
-  if (!target) {
+  const meta = resolveInterstitialMeta(k);
+  if (!meta) {
     res.status(410).send(errorPage('This link has expired',
       'Redirect links live for a few minutes for your safety. Run the search again and tap your deal for a fresh one.'));
     return;
   }
-  const check = validateDestination(target);
+  const check = validateDestination(meta.url);
   if (!check.valid) {
     log.warn('Redirect', 'Interstitial destination refused', { reason: check.reason });
     res.status(400).send(errorPage('This link couldn\u2019t be verified',
@@ -234,5 +244,5 @@ export async function redirectRouteHandler(req: Request, res: Response): Promise
   }
   let adSlot: any = null;
   try { adSlot = await getAdSlot('redirect_interstitial'); } catch { /* no fabrication: page renders without an ad */ }
-  res.status(200).type('html').send(renderInterstitialPage({ targetUrl: target, adSlot }));
+  res.status(200).type('html').send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, adSlot }));
 }

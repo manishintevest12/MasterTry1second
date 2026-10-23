@@ -10,32 +10,33 @@ import process from 'process';
 process.env.NODE_ENV = 'test';
 
 test('interstitial pointer: create -> resolve roundtrip keeps the exact URL', async () => {
-  const { createInterstitialPointer, resolveInterstitialPointer } = await import('../server/redirect/interstitial');
+  const { createInterstitialPointer, resolveInterstitialMeta } = await import('../server/redirect/interstitial');
   const url = 'https://www.flipkart.com/apple-iphone-15/p/itm?pid=MOBENG4H4FYFSZHD&affid=try1second';
-  const k = createInterstitialPointer(url);
+  const k = createInterstitialPointer(url, 'flipkart.com');
   assert.ok(k && k.length > 20);
   assert.ok(!k.includes('flipkart'), 'the destination stays masked in the token');
-  assert.equal(resolveInterstitialPointer(k), url);
+  assert.equal(resolveInterstitialMeta(k)?.url, url);
+  assert.equal(resolveInterstitialMeta(k)?.partner, 'flipkart.com', 'partner display name carried through');
 });
 
 test('interstitial pointer: tampered or malformed tokens are refused', async () => {
-  const { createInterstitialPointer, resolveInterstitialPointer } = await import('../server/redirect/interstitial');
+  const { createInterstitialPointer, resolveInterstitialMeta } = await import('../server/redirect/interstitial');
   const k = createInterstitialPointer('https://www.zomato.com/indore/restaurants');
   const [payload] = k.split('.');
-  assert.equal(resolveInterstitialPointer(`${payload}.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`), null, 'bad signature refused');
-  assert.equal(resolveInterstitialPointer(''), null);
-  assert.equal(resolveInterstitialPointer('not-a-token'), null);
-  assert.equal(resolveInterstitialPointer(k.replace(/./g, c => c === 'a' ? 'b' : c)), null, 'mutated payload refused');
+  assert.equal(resolveInterstitialMeta(`${payload}.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`), null, 'bad signature refused');
+  assert.equal(resolveInterstitialMeta(''), null);
+  assert.equal(resolveInterstitialMeta('not-a-token'), null);
+  assert.equal(resolveInterstitialMeta(k.replace(/./g, c => c === 'a' ? 'b' : c)), null, 'mutated payload refused');
 });
 
 test('interstitial pointer: expired tokens are refused (10-minute lifetime)', async () => {
-  const { resolveInterstitialPointer } = await import('../server/redirect/interstitial');
+  const { resolveInterstitialMeta } = await import('../server/redirect/interstitial');
   const crypto = await import('crypto');
   // Replicate the derivation (env unset in tests -> stable fallback secret).
   const secret = crypto.createHash('sha256').update('try1second#affiliate-pointer').digest('hex');
   const payload = Buffer.from(JSON.stringify({ d: 'https://www.ola.com/ride', e: Date.now() - 1000 }), 'utf8').toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url').slice(0, 32);
-  assert.equal(resolveInterstitialPointer(`${payload}.${sig}`), null, 'expired refused');
+  assert.equal(resolveInterstitialMeta(`${payload}.${sig}`), null, 'expired refused');
 });
 
 test('interstitial page: copy, countdown and masked-JS embed render per spec', async () => {
@@ -47,6 +48,27 @@ test('interstitial page: copy, countdown and masked-JS embed render per spec', a
   assert.ok(html.includes('"https://www.blinkit.com/s/prd/puri"'), 'decoded URL passed to the view');
   assert.ok(html.includes('window.location.replace(target)'), 'auto-redirects at 0');
   assert.ok(!html.includes('adsbygoogle'), 'no AdSense unit when the slot is not configured (no fabrication)');
+
+  // Owner 23 Oct: affiliate converter domains never surface — the page shows
+  // ONLY "Try1Second redirecting to <partner> site".
+  const masked = renderInterstitialPage({
+    targetUrl: 'https://linkinr.com/click?campaign_id=123&url=https%3A%2F%2Fwww.agoda.com%2Fhotels',
+    partner: 'agoda.com',
+  });
+  assert.ok(masked.includes('Try1Second redirecting to agoda.com site'), 'requested sentence shown');
+  // The hop URL must (of course) stay inside href/script targets so the
+  // redirect works — but NO user-visible label may name it. Strip attributes
+  // and the script block, then require the hop domain to be gone from copy.
+  const visibleCopy = masked
+    .replace(/<script[\s\S]*?<\/script>/g, '')
+    .replace(/<noscript>[\s\S]*?<\/noscript>/g, '')
+    .replace(/\shref="[^"]*"/g, '')
+    .replace(/\srel="[^"]*"/g, '');
+  assert.ok(!visibleCopy.includes('linkinr.com'), 'affiliate hop domain hidden from every visible label');
+  assert.ok(masked.includes('Sit tight — agoda.com is opening'), 'partner name in the sub-headline');
+  // legacy token (no partner) still degrades honestly to the target host
+  const legacy = renderInterstitialPage({ targetUrl: 'https://www.blinkit.com/s/prd/puri' });
+  assert.ok(legacy.includes('blinkit.com'), 'legacy tokens fall back to the target host');
 });
 
 test('interstitial page: configured AdSense slot renders a standard compliant unit above the fold', async () => {

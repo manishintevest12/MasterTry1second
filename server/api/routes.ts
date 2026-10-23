@@ -1776,7 +1776,12 @@ apiRouter.get('/out', async (req, res) => {
     res.redirect(302, dl.trackingUrl);
     return;
   }
-  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl)}`);
+  // Owner 23 Oct: the interstitial shows ONLY the ORIGINAL merchant the user
+  // picked (e.g. "agoda.com") — never the affiliate converter domain that
+  // buildSecureDeeplink may have hopped to (linkinr.com, fktr.in, ...).
+  let partnerHost = '';
+  try { partnerHost = new URL(resolved.destination).hostname.replace(/^www\./, ''); } catch { /* pointer already validated */ }
+  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost)}`);
 });
 
 // ============ Auth ============
