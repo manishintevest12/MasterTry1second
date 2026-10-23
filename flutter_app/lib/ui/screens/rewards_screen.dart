@@ -9,6 +9,7 @@ import '../../core/app_state.dart';
 import '../../core/auth.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
+import '../widgets/home_showcase.dart';
 /// Rewards Hub (website RewardsHub + OffersHub): wallet with OmniPoints and
 /// free spins, the real Spin & Earn wheel, referral link, and the Deals &
 /// Coupons hub with per-store tiles (UP TO X% OFF) and live deal cards.
@@ -83,6 +84,9 @@ class _DealsHub extends StatefulWidget {
 class _DealsHubState extends State<_DealsHub> {
   List<Deal>? _deals;
   List<RewardTopPick>? _picks; // Rewards Top Picks (owner 21 Oct): one per vertical
+  // Owner 23 Oct: 'Special Offers For You' lives HERE (Rewards tab), not on
+  // the homepage — the same showcase coupon section, rendered as CouponCards.
+  List<ShowcaseItem> _special = const [];
   Map<String, int> _counts = const {};
   String? _error;
   String? _merchant;
@@ -103,6 +107,10 @@ class _DealsHubState extends State<_DealsHub> {
     fetchRewardsTopPicks(widget.state.api).then((picks) {
       if (mounted) setState(() => _picks = picks);
     }).catchError((_) {}); // honest: rail simply stays hidden on failure
+    fetchHomeShowcase(widget.state.api).then((sections) {
+      final special = sections.where((x) => x.id == 'special').expand((x) => x.items).toList();
+      if (mounted && special.isNotEmpty) setState(() => _special = special);
+    }).catchError((_) {}); // honest: strip stays hidden on failure
   }
 
   Future<void> _load({String? merchant, String? vertical}) async {
@@ -177,6 +185,26 @@ class _DealsHubState extends State<_DealsHub> {
           if ((_picks ?? const []).isNotEmpty) ...[
             _TopPicksRail(picks: _picks!, state: widget.state),
             const SizedBox(height: 14),
+          ],
+          if (_special.isNotEmpty) ...[
+            SectionTitle('SPECIAL OFFERS FOR YOU',
+                trailing: Text('${_special.length} offers',
+                    style: tx(context, 10, color: muted(context)))),
+            SizedBox(
+              height: 164,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                itemCount: _special.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (c, i) => SizedBox(
+                  width: 150,
+                  height: 164,
+                  child: CouponCard(item: _special[i], state: widget.state),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
           ],
           Row(children: [
             Expanded(

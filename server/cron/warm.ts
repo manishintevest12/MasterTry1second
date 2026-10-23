@@ -59,16 +59,26 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string }> = 
  * recorded prices, nothing invented.
  */
 const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string }> = [
+  // Owner 23 Oct: the six homepage cities lead the rotation so their recorded
+  // fares + hotel art stay the freshest (Jaipur, Manali, Udaipur, Mumbai,
+  // Kolkata, Goa).
+  { query: 'Indore to Jaipur', vertical: 'flights', city: 'Indore' },
+  { query: 'jaipur', vertical: 'hotels' },
+  { query: 'Indore to Manali', vertical: 'flights', city: 'Indore' },
+  { query: 'manali', vertical: 'hotels' },
+  { query: 'Indore to Udaipur', vertical: 'flights', city: 'Indore' },
+  { query: 'udaipur', vertical: 'hotels' },
+  { query: 'Indore to Mumbai', vertical: 'flights', city: 'Indore' },
+  { query: 'mumbai', vertical: 'hotels' },
+  { query: 'Indore to Kolkata', vertical: 'flights', city: 'Indore' },
+  { query: 'kolkata', vertical: 'hotels' },
   { query: 'Indore to Goa', vertical: 'flights', city: 'Indore' },
+  { query: 'goa', vertical: 'hotels' },
+  { query: 'Indore to Delhi', vertical: 'flights', city: 'Indore' },
+  { query: 'delhi', vertical: 'hotels' },
   { query: 'goa', vertical: 'hotels' },
   { query: 'Indore to Mumbai', vertical: 'flights', city: 'Indore' },
   { query: 'mumbai', vertical: 'hotels' },
-  { query: 'Indore to Delhi', vertical: 'flights', city: 'Indore' },
-  { query: 'delhi', vertical: 'hotels' },
-  { query: 'Indore to Jaipur', vertical: 'flights', city: 'Indore' },
-  { query: 'jaipur', vertical: 'hotels' },
-  { query: 'Indore to Udaipur', vertical: 'flights', city: 'Indore' },
-  { query: 'udaipur', vertical: 'hotels' },
   { query: 'Indore to Bengaluru', vertical: 'flights', city: 'Indore' },
   { query: 'bengaluru', vertical: 'hotels' },
   { query: 'Indore to Hyderabad', vertical: 'flights', city: 'Indore' },

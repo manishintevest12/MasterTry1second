@@ -27,6 +27,7 @@ import {
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
+import { createInterstitialPointer, isInAppWebView } from '../redirect/interstitial';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { getStore } from '../common/db';
@@ -1603,7 +1604,15 @@ apiRouter.get('/out', async (req, res) => {
   }
   const dl = await buildSecureDeeplink(resolved.destination);
   await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
-  res.redirect(302, dl.trackingUrl);
+  // Monetizable exit (owner 23 Oct): real browsers land on the /redirect
+  // interstitial (4s countdown + AdSense above the fold), then hop to the
+  // merchant. In-app webviews (our Flutter app) skip it — AdSense for Content
+  // must not render inside an application webview, and app exits stay instant.
+  if (isInAppWebView(req.headers['user-agent'])) {
+    res.redirect(302, dl.trackingUrl);
+    return;
+  }
+  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl)}`);
 });
 
 // ============ Auth ============

@@ -157,6 +157,14 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
     _nav = BrowserNavStack(widget.url);
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      // UA marker (owner 23 Oct): the server's /api/out recognizes this and
+      // skips the AdSense /redirect interstitial for OUR app — AdSense for
+      // Content may not render inside an application webview (publisher
+      // policy), and in-app exits must stay instant. Stock Android WebView
+      // already carries "; wv)"; this marker makes iOS deterministic too.
+      ..setUserAgent(
+          'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) '
+          'Chrome/128.0.0.0 Mobile Safari/537.36 Try1SecondApp/1.8')
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (url) => _set(url: url, loading: true),
         onPageFinished: (url) => _syncState(url: url, loading: false),

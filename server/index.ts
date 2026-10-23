@@ -72,6 +72,13 @@ export async function createApp(): Promise<express.Express> {
     });
   }
 
+  // Monetizable exit interstitial (owner 23 Oct): GET /redirect?k=<signed token>
+  // serves the standalone "Connecting to the cheapest store..." page (4s
+  // countdown + AdSense above the fold). Mounted BEFORE the static SPA so the
+  // SPA fallback never swallows it.
+  const { redirectRouteHandler } = await import('./redirect/interstitial');
+  app.get('/redirect', redirectRouteHandler);
+
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');
   if (fs.existsSync(dist)) {

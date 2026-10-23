@@ -58,7 +58,11 @@ class _HomeShowcaseState extends State<HomeShowcase> {
     final sections = _sections;
     if (sections == null || sections.isEmpty) return const SizedBox.shrink();
 
-    final heroArts = sections
+    // Owner 23 Oct: 'Special Offers For You' belongs in the REWARDS tab, not
+    // the homepage — filtered out here, rendered by RewardsScreen instead.
+    final homeSections = sections.where((s) => s.id != 'special').toList();
+
+    final heroArts = homeSections
         .expand((s) => s.items)
         .where((i) => (i.image ?? '').isNotEmpty)
         .take(3)
@@ -134,7 +138,7 @@ class _HomeShowcaseState extends State<HomeShowcase> {
         ),
         const SizedBox(height: 18),
 
-        for (final sec in sections) ...[
+        for (final sec in homeSections) ...[
           _SectionHeader(sec: sec),
           const SizedBox(height: 10),
           GridView.builder(
@@ -144,7 +148,7 @@ class _HomeShowcaseState extends State<HomeShowcase> {
             gridDelegate: kShowcaseGridDelegate,
             itemCount: sec.items.length,
             itemBuilder: (c, i) => _isCouponItem(sec.items[i])
-                ? _CouponCard(item: sec.items[i], state: widget.state)
+                ? CouponCard(item: sec.items[i], state: widget.state)
                 : _ShowcaseCard(item: sec.items[i], state: widget.state),
           ),
           const SizedBox(height: 20),
@@ -160,8 +164,10 @@ class _HomeShowcaseState extends State<HomeShowcase> {
 bool _isCouponItem(ShowcaseItem item) =>
     (item.badge ?? '').startsWith('Code: ');
 
-class _CouponCard extends StatelessWidget {
-  const _CouponCard({required this.item, required this.state});
+/// Owner 23 Oct: public so RewardsScreen renders the relocated Special Offers
+/// section with the identical card (logo tile + code pill).
+class CouponCard extends StatelessWidget {
+  const CouponCard({super.key, required this.item, required this.state});
   final ShowcaseItem item;
   final AppState state;
 

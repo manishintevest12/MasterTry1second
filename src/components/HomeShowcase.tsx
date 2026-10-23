@@ -24,7 +24,7 @@ import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, Arro
 import { useApp } from '../context/AppContext';
 import { scaledImage } from '../utils/scaledImage';
 
-interface ShowcaseItem {
+export interface ShowcaseItem {
   id: string;
   title: string;
   merchant: string;
@@ -39,7 +39,7 @@ interface ShowcaseItem {
   launch?: { vertical: string; query: string } | null;
 }
 
-interface ShowcaseSection {
+export interface ShowcaseSection {
   id: string;
   title: string;
   subtitle: string;
@@ -130,7 +130,9 @@ function onArtError(e: SyntheticEvent<HTMLImageElement>, item: ShowcaseItem, ini
   }
 }
 
-function CouponCard({ item }: { item: ShowcaseItem }) {
+/** Owner 23 Oct: exported — RewardsHub renders the relocated 'Special Offers
+ * For You' section with the identical card the homepage used to show. */
+export function CouponCard({ item }: { item: ShowcaseItem }) {
   // Owner 22 Oct (reference screenshot): this section is ALL merchant logos —
   // a logo never goes through the product-image pipeline (no cover-crop, no
   // image tile). Each card is a pure LOGO card: logo centered at a fixed
@@ -250,7 +252,11 @@ export default function HomeShowcase() {
     let alive = true;
     fetch('/api/home/showcase')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d?.sections) setSections(d.sections); })
+      .then((d) => {
+        // Owner 23 Oct: 'Special Offers For You' moved to the REWARDS hub —
+        // the homepage never renders it anymore.
+        if (alive && d?.sections) setSections(d.sections.filter((s: ShowcaseSection) => s.id !== 'special'));
+      })
       .catch(() => {/* honest: no showcase rather than mock cards */});
     return () => { alive = false; };
   }, []);

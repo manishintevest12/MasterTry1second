@@ -1871,12 +1871,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start2 = -1, inStr = false, esc = false;
+  let depth = 0, start2 = -1, inStr = false, esc2 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
+      if (esc2) esc2 = false;
+      else if (ch === "\\") esc2 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -1991,12 +1991,12 @@ function parseMyntra(html, source, pageUrl) {
     const start2 = /window\.__myx\s*=\s*\{/.exec(html);
     if (start2) {
       const from = start2.index + start2[0].length - 1;
-      let depth = 0, inStr = false, esc = false, end = -1;
+      let depth = 0, inStr = false, esc2 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc) esc = false;
-          else if (ch === "\\") esc = true;
+          if (esc2) esc2 = false;
+          else if (ch === "\\") esc2 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -2886,12 +2886,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc = false, end = -1;
+  let depth = 0, inStr = false, esc2 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
+      if (esc2) esc2 = false;
+      else if (ch === "\\") esc2 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -4624,12 +4624,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc = false, end = -1;
+  let depth = 0, inStr = false, esc2 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
+      if (esc2) esc2 = false;
+      else if (c === "\\") esc2 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -4760,12 +4760,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc = false, end = -1;
+    let depth = 0, inStr = false, esc2 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc) esc = false;
-        else if (c === "\\") esc = true;
+        if (esc2) esc2 = false;
+        else if (c === "\\") esc2 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -14019,8 +14019,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm3 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc}\\b`);
+  const esc2 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc2}\\b`);
   return cities.find((c) => norm3(c.name) === t) || cities.find((c) => rx.test(norm3(c.name))) || cities.find((c) => norm3(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -14258,11 +14258,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc2 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc(k)}\\b`).test(t) || new RegExp(`\\b${esc(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc2(k)}\\b`).test(t) || new RegExp(`\\b${esc2(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -26199,6 +26199,337 @@ var init_spendLens = __esm({
   }
 });
 
+// server/marketing/placements.ts
+var placements_exports = {};
+__export(placements_exports, {
+  deleteTopPick: () => deleteTopPick,
+  getAdSlot: () => getAdSlot,
+  listAdSlots: () => listAdSlots,
+  listTopPicks: () => listTopPicks,
+  upsertAdSlot: () => upsertAdSlot,
+  upsertTopPick: () => upsertTopPick
+});
+async function listTopPicks(vertical, includeInactive = false) {
+  const store2 = getStore();
+  const params = [];
+  let where = "";
+  if (!includeInactive) {
+    where += " WHERE is_active = 1";
+  }
+  if (vertical) {
+    where += where ? " AND vertical = ?" : " WHERE vertical = ?";
+    params.push(vert(vertical));
+  }
+  const rows = await store2.query(
+    `SELECT * FROM top_picks${where} ORDER BY position ASC, id ASC LIMIT 50`,
+    params
+  );
+  return rows.map((r) => ({ ...r, perks: safeParse(r.perks) }));
+}
+function safeParse(v) {
+  try {
+    const a = JSON.parse(String(v || "[]"));
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+async function upsertTopPick(input) {
+  const vertical = vert(input.vertical);
+  const partner_name = str(input.partner_name, 120);
+  const headline = str(input.headline, 200);
+  const destination = str(input.destination_url, 500);
+  if (!partner_name) return { ok: false, error: "Partner name is required" };
+  if (!headline) return { ok: false, error: "Headline is required" };
+  if (!destination) return { ok: false, error: "Destination URL is required" };
+  const check = validateDestination(destination);
+  if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
+  const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
+  const store2 = getStore();
+  const perks = JSON.stringify((input.perks || []).map((p) => String(p).slice(0, 120)).slice(0, 6));
+  const values = [
+    vertical,
+    partner_name,
+    str(input.partner_code, 16),
+    str(input.badge_text, 60) || "Sponsored Top Pick",
+    headline,
+    str(input.offer_text, 400),
+    str(input.price_badge, 60),
+    perks,
+    str(input.cta_text, 80) || "View Deal",
+    destination,
+    str(input.image_url, 500),
+    str(input.logo_bg, 40) || "bg-slate-900",
+    str(input.logo_text, 8),
+    rating,
+    Number(input.position ?? 0) || 0,
+    input.is_active === false ? 0 : 1
+  ];
+  if (input.id) {
+    await store2.execute(
+      `UPDATE top_picks SET vertical=?, partner_name=?, partner_code=?, badge_text=?, headline=?, offer_text=?,
+       price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
+       rating=?, position=?, is_active=? WHERE id=?`,
+      [...values, input.id]
+    );
+    return { ok: true, id: input.id };
+  }
+  const result = await store2.execute(
+    `INSERT INTO top_picks (vertical, partner_name, partner_code, badge_text, headline, offer_text,
+     price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    values
+  );
+  return { ok: true, id: Number(result?.insertId ?? 0) };
+}
+async function deleteTopPick(id) {
+  await getStore().execute("DELETE FROM top_picks WHERE id = ?", [Number(id)]);
+}
+async function getAdSlot(slotKey) {
+  const rows = await getStore().query(
+    "SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1",
+    [vert(slotKey)]
+  );
+  return rows[rows.length - 1] || null;
+}
+async function listAdSlots() {
+  return getStore().query(
+    "SELECT * FROM ad_slots ORDER BY slot_key ASC LIMIT 50"
+  );
+}
+async function upsertAdSlot(input) {
+  const slot_key = vert(input.slot_key);
+  if (!/^[a-z0-9_-]{2,60}$/.test(slot_key)) return { ok: false, error: "Slot key must be 2-60 chars (a-z, 0-9, -, _)" };
+  if (input.provider === "adsense") {
+    const client = str(input.adsense_client, 60);
+    const slot = str(input.adsense_slot, 60);
+    if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
+    if (!/^[0-9]{6,20}$/.test(slot || "")) return { ok: false, error: "AdSense slot id must be numeric" };
+    const store3 = getStore();
+    const existing2 = await store3.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+    if (existing2.length) {
+      await store3.execute(
+        "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
+        ["adsense", client, slot, input.is_active === false ? 0 : 1, slot_key]
+      );
+    } else {
+      await store3.execute(
+        "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
+        [slot_key, "adsense", client, slot, input.is_active === false ? 0 : 1]
+      );
+    }
+    return { ok: true };
+  }
+  const html = String(input.custom_html || "").slice(0, 8e3);
+  if (!html.trim()) return { ok: false, error: "Custom HTML is required for the custom_html provider" };
+  const store2 = getStore();
+  const existing = await store2.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+  if (existing.length) {
+    await store2.execute(
+      "UPDATE ad_slots SET provider=?, custom_html=?, adsense_client=NULL, adsense_slot=NULL, is_active=? WHERE slot_key=?",
+      ["custom_html", html, input.is_active === false ? 0 : 1, slot_key]
+    );
+  } else {
+    await store2.execute(
+      "INSERT INTO ad_slots (slot_key, provider, custom_html, is_active) VALUES (?, ?, ?, ?)",
+      [slot_key, "custom_html", html, input.is_active === false ? 0 : 1]
+    );
+  }
+  return { ok: true };
+}
+var vert, str;
+var init_placements = __esm({
+  "server/marketing/placements.ts"() {
+    init_db();
+    init_affiliateNetwork();
+    vert = (v) => String(v ?? "").trim().toLowerCase();
+    str = (v, max) => {
+      const s = String(v ?? "").trim();
+      return s ? s.slice(0, max) : null;
+    };
+  }
+});
+
+// server/redirect/interstitial.ts
+var interstitial_exports = {};
+__export(interstitial_exports, {
+  createInterstitialPointer: () => createInterstitialPointer,
+  isInAppWebView: () => isInAppWebView,
+  redirectRouteHandler: () => redirectRouteHandler,
+  renderInterstitialPage: () => renderInterstitialPage,
+  resolveInterstitialPointer: () => resolveInterstitialPointer
+});
+function secret2() {
+  return process.env.AFFILIATE_SECRET || import_crypto26.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+}
+function b64url2(s) {
+  return Buffer.from(s, "utf8").toString("base64url");
+}
+function unb64url2(s) {
+  return Buffer.from(s, "base64url").toString("utf8");
+}
+function createInterstitialPointer(url) {
+  const payload = b64url2(JSON.stringify({ d: url.slice(0, 3e3), e: Date.now() + INTERSTITIAL_TTL_MS }));
+  const sig = import_crypto26.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
+  return `${payload}.${sig}`;
+}
+function resolveInterstitialPointer(token) {
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
+  if (!m) return null;
+  const expect = import_crypto26.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
+  if (m[2].length !== expect.length || !import_crypto26.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
+  try {
+    const j = JSON.parse(unb64url2(m[1]));
+    if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
+    return j.d;
+  } catch {
+    return null;
+  }
+}
+function isInAppWebView(userAgent) {
+  const ua = String(userAgent || "");
+  return /Try1SecondApp|\bwv\)|WebView|com\.try1second/i.test(ua);
+}
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function jsStr(s) {
+  return JSON.stringify(s).replace(/</g, "\\u003c");
+}
+function errorPage(title, message) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
+}
+function renderInterstitialPage(opts) {
+  const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
+  const target = opts.targetUrl;
+  let host = "";
+  try {
+    host = new URL(target).hostname.replace(/^www\./, "");
+  } catch {
+  }
+  const ad = opts.adSlot;
+  let adBlock = "";
+  if (ad?.provider === "adsense" && ad.adsense_client && ad.adsense_slot) {
+    adBlock = `<div class="ad-wrap"><ins class="adsbygoogle" style="display:block" data-ad-client="${esc(ad.adsense_client)}" data-ad-slot="${esc(ad.adsense_slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins></div><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(ad.adsense_client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  } else if (ad?.provider === "custom" && ad.custom_html) {
+    adBlock = `<div class="ad-wrap">${ad.custom_html}</div>`;
+  }
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Connecting to the cheapest store\u2026 \xB7 Try1Second</title>
+<style>
+  :root{--red:#e11d48;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc}
+  *{box-sizing:border-box}html,body{margin:0}
+  body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);
+       min-height:100vh;display:flex;flex-direction:column;align-items:center}
+  header{width:100%;padding:16px 20px 0;text-align:center}
+  .brand{font-weight:900;font-size:15px;color:var(--red);letter-spacing:-.2px}
+  main{width:100%;max-width:560px;padding:10px 16px 40px;text-align:center}
+  h1{font-size:17px;font-weight:800;margin:16px 0 4px}
+  h2{font-size:12.5px;font-weight:600;color:var(--muted);margin:0 0 18px}
+  .ring{position:relative;width:64px;height:64px;margin:0 auto}
+  .ring .track{position:absolute;inset:0;border-radius:50%;border:5px solid var(--line)}
+  .ring .arc{position:absolute;inset:0;border-radius:50%;border:5px solid transparent;
+             border-top-color:var(--red);border-right-color:var(--red);animation:spin 1s linear infinite}
+  .ring .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+           font-weight:900;font-size:20px;color:var(--red)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .store{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);
+         border-radius:999px;padding:8px 16px;font-size:13px;font-weight:700;box-shadow:0 1px 2px rgb(15 23 42 / .05)}
+  .store img{width:16px;height:16px;border-radius:3px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#16a34a}
+  .go{display:inline-block;margin-top:16px;background:var(--red);color:#fff;font-weight:800;font-size:13.5px;
+      padding:12px 26px;border-radius:11px;text-decoration:none;box-shadow:0 4px 12px rgb(225 29 72 / .25)}
+  .go:active{transform:translateY(1px)}
+  .fine{font-size:11px;color:var(--muted);margin-top:14px}
+  .ad-wrap{margin:18px auto 0;max-width:560px;min-height:0}
+  @media(min-width:760px){h1{font-size:20px}main{padding-top:16px}}
+</style>
+</head>
+<body>
+<header><span class="brand">Try1Second</span></header>
+<main>
+  <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
+  <h1>Connecting to the cheapest store...</h1>
+  <h2>Sit tight \u2014 ${host ? esc(host) : "your store"} is opening with your best price.</h2>
+  ${adBlock}
+  <div class="store" style="margin-top:18px">
+    <span class="dot"></span><span id="lbl">Opening ${esc(host)} in <span id="s">${seconds}</span>s</span>
+  </div><br>
+  <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now \u2192</a>
+  <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
+</main>
+<noscript><meta http-equiv="refresh" content="${seconds};url=${esc(target)}"></noscript>
+<script>
+(function () {
+  var target = ${jsStr(target)};
+  var s = ${seconds};
+  var el = document.getElementById('s');
+  var ring = document.getElementById('n');
+  var t = setInterval(function () {
+    s -= 1;
+    if (el) el.textContent = s;
+    if (ring) ring.textContent = s;
+    if (s <= 0) { clearInterval(t); window.location.replace(target); }
+  }, 1000);
+  var go = document.getElementById('go');
+  if (go) go.addEventListener('click', function () { clearInterval(t); });
+})();
+</script>
+</body>
+</html>`;
+}
+async function redirectRouteHandler(req, res) {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  res.setHeader("Cache-Control", "no-store, must-revalidate");
+  const k = String(req.query.k || req.query.t || "");
+  if (!k) {
+    res.status(400).send(errorPage(
+      "No destination in this link",
+      "This redirect page was opened without a destination. Go back to Try1Second and tap a deal again."
+    ));
+    return;
+  }
+  const target = resolveInterstitialPointer(k);
+  if (!target) {
+    res.status(410).send(errorPage(
+      "This link has expired",
+      "Redirect links live for a few minutes for your safety. Run the search again and tap your deal for a fresh one."
+    ));
+    return;
+  }
+  const check = validateDestination(target);
+  if (!check.valid) {
+    log.warn("Redirect", "Interstitial destination refused", { reason: check.reason });
+    res.status(400).send(errorPage(
+      "This link couldn\u2019t be verified",
+      `For your safety we didn't open it (${check.reason}).`
+    ));
+    return;
+  }
+  let adSlot = null;
+  try {
+    adSlot = await getAdSlot("redirect_interstitial");
+  } catch {
+  }
+  res.status(200).type("html").send(renderInterstitialPage({ targetUrl: target, adSlot }));
+}
+var import_crypto26, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
+var init_interstitial = __esm({
+  "server/redirect/interstitial.ts"() {
+    import_crypto26 = __toESM(require("crypto"), 1);
+    init_placements();
+    init_affiliateNetwork();
+    init_logger();
+    INTERSTITIAL_TTL_MS = 10 * 60 * 1e3;
+    COUNTDOWN_SECONDS = 4;
+  }
+});
+
 // server/common/cabDeeplink.ts
 async function getCabDeeplinkConfig() {
   if (cache8 && Date.now() - cache8.at < CACHE_MS2) return cache8.v;
@@ -26923,11 +27254,16 @@ var init_showcase = __esm({
       [/tablet|ipad/i, "tablet"]
     ];
     FAMOUS = [
-      { name: "Goa", keys: ["goa"], iata: "goi" },
-      { name: "Mumbai", keys: ["mumbai"], iata: "bom" },
-      { name: "Delhi", keys: ["delhi"], iata: "del" },
+      // Owner 23 Oct: the homepage's six cities come first — Jaipur, Manali,
+      // Udaipur, Mumbai, Kolkata, Goa. Manali's airport is Kullu–Manali (KUU, city
+      // name 'Kulu' in OpenFlights) so both keys match; Kolkata keeps both names.
       { name: "Jaipur", keys: ["jaipur"], iata: "jai" },
+      { name: "Manali", keys: ["manali", "kullu", "kulu"], iata: "kuu" },
       { name: "Udaipur", keys: ["udaipur"], iata: "udr" },
+      { name: "Mumbai", keys: ["mumbai"], iata: "bom" },
+      { name: "Kolkata", keys: ["kolkata", "calcutta"], iata: "ccu" },
+      { name: "Goa", keys: ["goa"], iata: "goi" },
+      { name: "Delhi", keys: ["delhi"], iata: "del" },
       { name: "Dubai", keys: ["dubai"], iata: "dxb" },
       { name: "Bangkok", keys: ["bangkok"], iata: "bkk" },
       { name: "Singapore", keys: ["singapore"], iata: "sin" },
@@ -27809,157 +28145,6 @@ function parseMmtAutosuggest(body, kind) {
 }
 var init_mmtAutosuggest = __esm({
   "server/workers/parsers/mmtAutosuggest.ts"() {
-  }
-});
-
-// server/marketing/placements.ts
-var placements_exports = {};
-__export(placements_exports, {
-  deleteTopPick: () => deleteTopPick,
-  getAdSlot: () => getAdSlot,
-  listAdSlots: () => listAdSlots,
-  listTopPicks: () => listTopPicks,
-  upsertAdSlot: () => upsertAdSlot,
-  upsertTopPick: () => upsertTopPick
-});
-async function listTopPicks(vertical, includeInactive = false) {
-  const store2 = getStore();
-  const params = [];
-  let where = "";
-  if (!includeInactive) {
-    where += " WHERE is_active = 1";
-  }
-  if (vertical) {
-    where += where ? " AND vertical = ?" : " WHERE vertical = ?";
-    params.push(vert(vertical));
-  }
-  const rows = await store2.query(
-    `SELECT * FROM top_picks${where} ORDER BY position ASC, id ASC LIMIT 50`,
-    params
-  );
-  return rows.map((r) => ({ ...r, perks: safeParse(r.perks) }));
-}
-function safeParse(v) {
-  try {
-    const a = JSON.parse(String(v || "[]"));
-    return Array.isArray(a) ? a.map(String) : [];
-  } catch {
-    return [];
-  }
-}
-async function upsertTopPick(input) {
-  const vertical = vert(input.vertical);
-  const partner_name = str(input.partner_name, 120);
-  const headline = str(input.headline, 200);
-  const destination = str(input.destination_url, 500);
-  if (!partner_name) return { ok: false, error: "Partner name is required" };
-  if (!headline) return { ok: false, error: "Headline is required" };
-  if (!destination) return { ok: false, error: "Destination URL is required" };
-  const check = validateDestination(destination);
-  if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
-  const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
-  const store2 = getStore();
-  const perks = JSON.stringify((input.perks || []).map((p) => String(p).slice(0, 120)).slice(0, 6));
-  const values = [
-    vertical,
-    partner_name,
-    str(input.partner_code, 16),
-    str(input.badge_text, 60) || "Sponsored Top Pick",
-    headline,
-    str(input.offer_text, 400),
-    str(input.price_badge, 60),
-    perks,
-    str(input.cta_text, 80) || "View Deal",
-    destination,
-    str(input.image_url, 500),
-    str(input.logo_bg, 40) || "bg-slate-900",
-    str(input.logo_text, 8),
-    rating,
-    Number(input.position ?? 0) || 0,
-    input.is_active === false ? 0 : 1
-  ];
-  if (input.id) {
-    await store2.execute(
-      `UPDATE top_picks SET vertical=?, partner_name=?, partner_code=?, badge_text=?, headline=?, offer_text=?,
-       price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
-       rating=?, position=?, is_active=? WHERE id=?`,
-      [...values, input.id]
-    );
-    return { ok: true, id: input.id };
-  }
-  const result = await store2.execute(
-    `INSERT INTO top_picks (vertical, partner_name, partner_code, badge_text, headline, offer_text,
-     price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    values
-  );
-  return { ok: true, id: Number(result?.insertId ?? 0) };
-}
-async function deleteTopPick(id) {
-  await getStore().execute("DELETE FROM top_picks WHERE id = ?", [Number(id)]);
-}
-async function getAdSlot(slotKey) {
-  const rows = await getStore().query(
-    "SELECT slot_key, provider, adsense_client, adsense_slot, custom_html FROM ad_slots WHERE slot_key = ? AND is_active = 1",
-    [vert(slotKey)]
-  );
-  return rows[rows.length - 1] || null;
-}
-async function listAdSlots() {
-  return getStore().query(
-    "SELECT * FROM ad_slots ORDER BY slot_key ASC LIMIT 50"
-  );
-}
-async function upsertAdSlot(input) {
-  const slot_key = vert(input.slot_key);
-  if (!/^[a-z0-9_-]{2,60}$/.test(slot_key)) return { ok: false, error: "Slot key must be 2-60 chars (a-z, 0-9, -, _)" };
-  if (input.provider === "adsense") {
-    const client = str(input.adsense_client, 60);
-    const slot = str(input.adsense_slot, 60);
-    if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
-    if (!/^[0-9]{6,20}$/.test(slot || "")) return { ok: false, error: "AdSense slot id must be numeric" };
-    const store3 = getStore();
-    const existing2 = await store3.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
-    if (existing2.length) {
-      await store3.execute(
-        "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
-        ["adsense", client, slot, input.is_active === false ? 0 : 1, slot_key]
-      );
-    } else {
-      await store3.execute(
-        "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
-        [slot_key, "adsense", client, slot, input.is_active === false ? 0 : 1]
-      );
-    }
-    return { ok: true };
-  }
-  const html = String(input.custom_html || "").slice(0, 8e3);
-  if (!html.trim()) return { ok: false, error: "Custom HTML is required for the custom_html provider" };
-  const store2 = getStore();
-  const existing = await store2.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
-  if (existing.length) {
-    await store2.execute(
-      "UPDATE ad_slots SET provider=?, custom_html=?, adsense_client=NULL, adsense_slot=NULL, is_active=? WHERE slot_key=?",
-      ["custom_html", html, input.is_active === false ? 0 : 1, slot_key]
-    );
-  } else {
-    await store2.execute(
-      "INSERT INTO ad_slots (slot_key, provider, custom_html, is_active) VALUES (?, ?, ?, ?)",
-      [slot_key, "custom_html", html, input.is_active === false ? 0 : 1]
-    );
-  }
-  return { ok: true };
-}
-var vert, str;
-var init_placements = __esm({
-  "server/marketing/placements.ts"() {
-    init_db();
-    init_affiliateNetwork();
-    vert = (v) => String(v ?? "").trim().toLowerCase();
-    str = (v, max) => {
-      const s = String(v ?? "").trim();
-      return s ? s.slice(0, max) : null;
-    };
   }
 });
 
@@ -29022,7 +29207,7 @@ async function signInGoogleUser(claims) {
     rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
-  const token = import_crypto26.default.randomBytes(32).toString("hex");
+  const token = import_crypto27.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -29060,7 +29245,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto26, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, leadHits;
+var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -29076,11 +29261,12 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto26 = __toESM(require("crypto"), 1);
+    import_crypto27 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
     init_deeplink();
+    init_interstitial();
     init_cabDeeplink();
     init_showcase();
     init_db();
@@ -30231,7 +30417,11 @@ var init_routes = __esm({
       }
       const dl = await buildSecureDeeplink(resolved.destination);
       await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
-      res.redirect(302, dl.trackingUrl);
+      if (isInAppWebView(req.headers["user-agent"])) {
+        res.redirect(302, dl.trackingUrl);
+        return;
+      }
+      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl)}`);
     });
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);
@@ -30311,7 +30501,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto26.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto27.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -30319,7 +30509,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto26.default.randomBytes(32).toString("hex");
+      const token = import_crypto27.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -30466,12 +30656,12 @@ function parseMyx(html) {
   const start2 = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start2) return null;
   const from = start2.index + start2[0].length - 1;
-  let depth = 0, inStr = false, esc = false, end = -1;
+  let depth = 0, inStr = false, esc2 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
+      if (esc2) esc2 = false;
+      else if (ch === "\\") esc2 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -30533,7 +30723,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto27.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto28.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -30827,10 +31017,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto27, strip, clip, COUPON_TXT;
+var import_crypto28, strip, clip, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto27 = require("crypto");
+    import_crypto28 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();
@@ -32431,16 +32621,26 @@ var init_warm = __esm({
       { query: "washing machine", vertical: "ecommerce" }
     ];
     DESTINATION_WARM = [
+      // Owner 23 Oct: the six homepage cities lead the rotation so their recorded
+      // fares + hotel art stay the freshest (Jaipur, Manali, Udaipur, Mumbai,
+      // Kolkata, Goa).
+      { query: "Indore to Jaipur", vertical: "flights", city: "Indore" },
+      { query: "jaipur", vertical: "hotels" },
+      { query: "Indore to Manali", vertical: "flights", city: "Indore" },
+      { query: "manali", vertical: "hotels" },
+      { query: "Indore to Udaipur", vertical: "flights", city: "Indore" },
+      { query: "udaipur", vertical: "hotels" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
+      { query: "mumbai", vertical: "hotels" },
+      { query: "Indore to Kolkata", vertical: "flights", city: "Indore" },
+      { query: "kolkata", vertical: "hotels" },
       { query: "Indore to Goa", vertical: "flights", city: "Indore" },
+      { query: "goa", vertical: "hotels" },
+      { query: "Indore to Delhi", vertical: "flights", city: "Indore" },
+      { query: "delhi", vertical: "hotels" },
       { query: "goa", vertical: "hotels" },
       { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
       { query: "mumbai", vertical: "hotels" },
-      { query: "Indore to Delhi", vertical: "flights", city: "Indore" },
-      { query: "delhi", vertical: "hotels" },
-      { query: "Indore to Jaipur", vertical: "flights", city: "Indore" },
-      { query: "jaipur", vertical: "hotels" },
-      { query: "Indore to Udaipur", vertical: "flights", city: "Indore" },
-      { query: "udaipur", vertical: "hotels" },
       { query: "Indore to Bengaluru", vertical: "flights", city: "Indore" },
       { query: "bengaluru", vertical: "hotels" },
       { query: "Indore to Hyderabad", vertical: "flights", city: "Indore" },
@@ -33585,6 +33785,8 @@ async function createApp() {
       Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
     });
   }
+  const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
+  app.get("/redirect", redirectRouteHandler2);
   const dist = import_path6.default.resolve(__dirname2, "dist");
   if (import_fs5.default.existsSync(dist)) {
     app.use(import_express4.default.static(dist, {

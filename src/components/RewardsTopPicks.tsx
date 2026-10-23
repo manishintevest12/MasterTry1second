@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Crown, TrendingDown, ExternalLink, Store } from 'lucide-react';
+import { Crown, TrendingDown, ExternalLink, Store, Ticket } from 'lucide-react';
 import { AdBannerSlot } from './AdBannerSlot';
+import { CouponCard, ShowcaseItem } from './HomeShowcase';
 
 /**
  * Rewards → Top Picks (owner request 21 Oct): one best pick per vertical.
@@ -32,6 +33,22 @@ const VERTICAL_LABEL: Record<string, string> = {
 export const RewardsTopPicks: React.FC = () => {
   const [picks, setPicks] = useState<TopPick[] | null>(null);
   const [error, setError] = useState('');
+  // Owner 23 Oct: 'Special Offers For You' moved from the homepage to HERE —
+  // the same /api/home/showcase coupon section, identical CouponCard grid.
+  const [special, setSpecial] = useState<ShowcaseItem[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/home/showcase')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return;
+        const sec = (d?.sections || []).find((s: { id: string }) => s.id === 'special');
+        if (sec?.items?.length) setSpecial(sec.items);
+      })
+      .catch(() => {/* honest: strip stays hidden on failure */});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +69,19 @@ export const RewardsTopPicks: React.FC = () => {
   return (
     <div className="space-y-5">
       <AdBannerSlot slotKey="rewards_top" />
+
+      {special.length > 0 && (
+        <div>
+          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <Ticket className="w-5 h-5 text-red-600" />
+            Special Offers For You
+          </h2>
+          <p className="text-[11px] text-slate-500 mt-0.5 ml-7">auto-tested coupons from live registries — {special.length} offers</p>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {special.map((item) => <CouponCard key={item.id} item={item} />)}
+          </div>
+        </div>
+      )}
 
       <div>
         <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">

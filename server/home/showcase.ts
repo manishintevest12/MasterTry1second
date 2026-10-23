@@ -572,11 +572,16 @@ async function couponItems(): Promise<ShowcaseItem[]> {
  *  as a whole word — flight titles carry codes ("Indore → BOM") more often than
  *  city names, so without the code those fares never matched (owner 22 Oct). */
 const FAMOUS: Array<{ name: string; keys: string[]; iata?: string }> = [
-  { name: 'Goa', keys: ['goa'], iata: 'goi' },
-  { name: 'Mumbai', keys: ['mumbai'], iata: 'bom' },
-  { name: 'Delhi', keys: ['delhi'], iata: 'del' },
+  // Owner 23 Oct: the homepage's six cities come first — Jaipur, Manali,
+  // Udaipur, Mumbai, Kolkata, Goa. Manali's airport is Kullu–Manali (KUU, city
+  // name 'Kulu' in OpenFlights) so both keys match; Kolkata keeps both names.
   { name: 'Jaipur', keys: ['jaipur'], iata: 'jai' },
+  { name: 'Manali', keys: ['manali', 'kullu', 'kulu'], iata: 'kuu' },
   { name: 'Udaipur', keys: ['udaipur'], iata: 'udr' },
+  { name: 'Mumbai', keys: ['mumbai'], iata: 'bom' },
+  { name: 'Kolkata', keys: ['kolkata', 'calcutta'], iata: 'ccu' },
+  { name: 'Goa', keys: ['goa'], iata: 'goi' },
+  { name: 'Delhi', keys: ['delhi'], iata: 'del' },
   { name: 'Dubai', keys: ['dubai'], iata: 'dxb' },
   { name: 'Bangkok', keys: ['bangkok'], iata: 'bkk' },
   { name: 'Singapore', keys: ['singapore'], iata: 'sin' },
