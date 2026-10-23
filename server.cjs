@@ -28148,6 +28148,211 @@ var init_mmtAutosuggest = __esm({
   }
 });
 
+// server/cron/warm.ts
+var warm_exports = {};
+__export(warm_exports, {
+  bootWarm: () => bootWarm,
+  keepWarmDefaults: () => keepWarmDefaults,
+  keepWarmDestinations: () => keepWarmDestinations
+});
+async function keepWarmDestinations() {
+  if (DESTINATION_WARM.length === 0) return;
+  const slice = [];
+  for (let i = 0; i < 4; i++) {
+    slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
+  }
+  destWarmCursor = (destWarmCursor + 4) % DESTINATION_WARM.length;
+  await warmRows(slice, "DestWarm");
+}
+async function warmRows(rows, tag) {
+  let ok = 0;
+  for (const r of rows) {
+    try {
+      const res = await runSearch({
+        query: String(r.raw_query || r.query || ""),
+        vertical: r.v || r.vertical ? String(r.v || r.vertical) : void 0,
+        pincode: r.pincode ? String(r.pincode) : void 0,
+        city: r.city ? String(r.city) : void 0
+      });
+      ok += 1;
+      log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
+    } catch (e) {
+      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
+    }
+    await new Promise((r2) => setImmediate(r2));
+  }
+  log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
+}
+async function bootWarm() {
+  try {
+    await purgeStaleBankingOffers();
+    await purgePhotolessHotelOffers();
+    const store2 = getStore();
+    const rows = await store2.query(
+      `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
+       FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
+       GROUP BY raw_query, v, pincode, city
+       ORDER BY COUNT(*) DESC LIMIT 6`
+    ).catch(() => []);
+    const seen = /* @__PURE__ */ new Set();
+    const targets = [];
+    const push = (r) => {
+      const key = `${String(r.raw_query || r.query || "")}|${String(r.v || r.vertical || "")}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        targets.push(r);
+      }
+    };
+    (rows.length > 0 ? rows : []).forEach(push);
+    SEED_QUERIES.forEach(push);
+    log.info("Cron", `Boot-warm starting (${targets.length} queries: all vertical defaults + top searches, background)`);
+    void warmRows(targets, "BootWarm");
+  } catch (e) {
+    log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+async function keepWarmDefaults() {
+  await warmRows(SEED_QUERIES, "KeepWarm");
+}
+async function warmPass(limit, verticalFilter, forceSeed) {
+  const store2 = getStore();
+  const rows = await store2.query(
+    `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
+     FROM searches
+     WHERE created_at > (NOW() - INTERVAL 7 DAY)
+     ${verticalFilter ? "AND COALESCE(detected_vertical, vertical) = ?" : ""}
+     GROUP BY raw_query, v, pincode, city
+     ORDER BY n DESC
+     LIMIT ?`,
+    verticalFilter ? [verticalFilter, limit] : [limit]
+  ).catch(() => []);
+  const useSeed = forceSeed || rows.length === 0;
+  if (useSeed) {
+    log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
+    await warmRows(SEED_QUERIES, "Cron");
+    return;
+  }
+  await warmRows(rows, "Cron");
+}
+async function main() {
+  const args = process.argv.slice(2);
+  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
+  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
+  const forceSeed = args.includes("--seed");
+  const intervalArg = Number((args.find((a) => a.startsWith("--interval=")) || "--interval=0").split("=")[1]);
+  const intervalMin = intervalArg > 0 ? intervalArg : process.env.CRON_INTERVAL_MIN ? Number(process.env.CRON_INTERVAL_MIN) : 0;
+  await runMigrations();
+  if (!intervalMin || !Number.isFinite(intervalMin) || intervalMin <= 0) {
+    await warmPass(limit, verticalFilter, forceSeed);
+    process.exit(0);
+  }
+  log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
+  await warmPass(limit, verticalFilter, forceSeed);
+  setInterval(() => {
+    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
+      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
+    });
+  }, intervalMin * 6e4);
+}
+var SEED_QUERIES, DESTINATION_WARM, destWarmCursor, invokedAsScript;
+var init_warm = __esm({
+  "server/cron/warm.ts"() {
+    init_db();
+    init_searchOrchestrator();
+    init_logger();
+    init_catalogueService();
+    SEED_QUERIES = [
+      { query: "mobile phone", vertical: "ecommerce" },
+      { query: "milk", vertical: "grocery", city: "Indore" },
+      { query: "biryani", vertical: "food", city: "Indore" },
+      { query: "movies", vertical: "movies", city: "Indore" },
+      { query: "Indore to Bhopal", vertical: "bus", city: "Indore" },
+      { query: "Indore to Bhopal", vertical: "cab", city: "Indore" },
+      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore" },
+      { query: "Indore", vertical: "hotels", city: "Indore" },
+      { query: "personal loan", vertical: "loans" },
+      { query: "health insurance", vertical: "insurance" },
+      { query: "hdfc credit card", vertical: "creditcards" },
+      { query: "best credit card", vertical: "creditcards" },
+      { query: "iphone", vertical: "ecommerce" },
+      { query: "pizza", vertical: "food", city: "Indore" },
+      { query: "delhi to jaipur", vertical: "bus" },
+      { query: "goa", vertical: "hotels" },
+      { query: "savings account", vertical: "banking" },
+      { query: "demat account", vertical: "banking" },
+      // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
+      // phones — warm those catalogues so the section always has fresh rows to show.
+      { query: "laptop", vertical: "ecommerce" },
+      { query: "smart tv", vertical: "ecommerce" },
+      { query: "refrigerator", vertical: "ecommerce" },
+      { query: "washing machine", vertical: "ecommerce" }
+    ];
+    DESTINATION_WARM = [
+      // Owner 23 Oct: the six homepage cities lead the rotation so their recorded
+      // fares + hotel art stay the freshest (Jaipur, Manali, Udaipur, Mumbai,
+      // Kolkata, Goa).
+      { query: "Indore to Jaipur", vertical: "flights", city: "Indore" },
+      { query: "jaipur", vertical: "hotels" },
+      { query: "Indore to Manali", vertical: "flights", city: "Indore" },
+      { query: "manali", vertical: "hotels" },
+      { query: "Indore to Udaipur", vertical: "flights", city: "Indore" },
+      { query: "udaipur", vertical: "hotels" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
+      { query: "mumbai", vertical: "hotels" },
+      { query: "Indore to Kolkata", vertical: "flights", city: "Indore" },
+      { query: "kolkata", vertical: "hotels" },
+      { query: "Indore to Goa", vertical: "flights", city: "Indore" },
+      { query: "goa", vertical: "hotels" },
+      { query: "Indore to Delhi", vertical: "flights", city: "Indore" },
+      { query: "delhi", vertical: "hotels" },
+      { query: "goa", vertical: "hotels" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
+      { query: "mumbai", vertical: "hotels" },
+      { query: "Indore to Bengaluru", vertical: "flights", city: "Indore" },
+      { query: "bengaluru", vertical: "hotels" },
+      { query: "Indore to Hyderabad", vertical: "flights", city: "Indore" },
+      { query: "hyderabad", vertical: "hotels" },
+      { query: "Indore to Srinagar", vertical: "flights", city: "Indore" },
+      { query: "srinagar", vertical: "hotels" },
+      { query: "Indore to Dubai", vertical: "flights", city: "Indore" },
+      { query: "dubai", vertical: "hotels" },
+      { query: "Indore to Bangkok", vertical: "flights", city: "Indore" },
+      { query: "bangkok", vertical: "hotels" },
+      { query: "Indore to Singapore", vertical: "flights", city: "Indore" },
+      { query: "singapore", vertical: "hotels" },
+      { query: "Indore to Shimla", vertical: "flights", city: "Indore" },
+      { query: "shimla", vertical: "hotels" },
+      // Owner 22 Oct (min 6 destination cards): wider candidate pool — every extra
+      // destination still needs its own real fare + real hotel art before a card
+      // renders; the rotation just keeps them fresh like the original twelve.
+      { query: "Indore to Ahmedabad", vertical: "flights", city: "Indore" },
+      { query: "ahmedabad", vertical: "hotels" },
+      { query: "Indore to Pune", vertical: "flights", city: "Indore" },
+      { query: "pune", vertical: "hotels" },
+      { query: "Indore to Kochi", vertical: "flights", city: "Indore" },
+      { query: "kochi", vertical: "hotels" },
+      { query: "Indore to Varanasi", vertical: "flights", city: "Indore" },
+      { query: "varanasi", vertical: "hotels" },
+      { query: "Indore to Amritsar", vertical: "flights", city: "Indore" },
+      { query: "amritsar", vertical: "hotels" },
+      { query: "Indore to Lucknow", vertical: "flights", city: "Indore" },
+      { query: "lucknow", vertical: "hotels" },
+      { query: "Indore to Chandigarh", vertical: "flights", city: "Indore" },
+      { query: "chandigarh", vertical: "hotels" },
+      { query: "Indore to Dehradun", vertical: "flights", city: "Indore" },
+      { query: "dehradun", vertical: "hotels" }
+    ];
+    destWarmCursor = 0;
+    invokedAsScript = /cron/.test(String(process.argv[1] || ""));
+    if (invokedAsScript) {
+      main().catch((e) => {
+        log.error("Cron", "Warmer crashed", { error: String(e) });
+        process.exit(1);
+      });
+    }
+  }
+});
+
 // server/marketing/partners.ts
 var partners_exports = {};
 __export(partners_exports, {
@@ -29245,7 +29450,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, leadHits;
+var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -29612,6 +29817,13 @@ var init_routes = __esm({
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
       const response = await runSearch(input);
+      if (String(response.state?.servedFrom || "") !== "cache") {
+        const now = Date.now();
+        if (now - _lastEmergencyWarmAt > 10 * 6e4) {
+          _lastEmergencyWarmAt = now;
+          void Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ keepWarmDefaults: keepWarmDefaults2 }) => keepWarmDefaults2()).catch(() => void 0);
+        }
+      }
       if (process.env.LOG_LEVEL === "debug") {
         const vc = {};
         for (const o of response.results) vc[String(o.vendor || o.seller || "?")] = (vc[String(o.vendor || o.seller || "?")] || 0) + 1;
@@ -29636,6 +29848,7 @@ var init_routes = __esm({
       w_hotels_osm: "OpenStreetMap (ODbL)",
       w_hotels_wikidata: "Wikidata (CC0)"
     };
+    _lastEmergencyWarmAt = 0;
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
@@ -29675,6 +29888,13 @@ var init_routes = __esm({
         }
       }
       const response = await runSearch(input);
+      if (String(response.state?.servedFrom || "") !== "cache") {
+        const now = Date.now();
+        if (now - _lastEmergencyWarmAt > 10 * 6e4) {
+          _lastEmergencyWarmAt = now;
+          void Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ keepWarmDefaults: keepWarmDefaults2 }) => keepWarmDefaults2()).catch(() => void 0);
+        }
+      }
       if (process.env.LOG_LEVEL === "debug") {
         console.error(JSON.stringify({ dbg: "scrape/live runSearch", q: input.query, v: String(input.vertical), n: response.results.length, servedFrom: response.state.servedFrom }));
       }
@@ -32481,211 +32701,6 @@ var init_bootstrap = __esm({
   }
 });
 
-// server/cron/warm.ts
-var warm_exports = {};
-__export(warm_exports, {
-  bootWarm: () => bootWarm,
-  keepWarmDefaults: () => keepWarmDefaults,
-  keepWarmDestinations: () => keepWarmDestinations
-});
-async function keepWarmDestinations() {
-  if (DESTINATION_WARM.length === 0) return;
-  const slice = [];
-  for (let i = 0; i < 4; i++) {
-    slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
-  }
-  destWarmCursor = (destWarmCursor + 4) % DESTINATION_WARM.length;
-  await warmRows(slice, "DestWarm");
-}
-async function warmRows(rows, tag) {
-  let ok = 0;
-  for (const r of rows) {
-    try {
-      const res = await runSearch({
-        query: String(r.raw_query || r.query || ""),
-        vertical: r.v || r.vertical ? String(r.v || r.vertical) : void 0,
-        pincode: r.pincode ? String(r.pincode) : void 0,
-        city: r.city ? String(r.city) : void 0
-      });
-      ok += 1;
-      log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
-    } catch (e) {
-      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
-    }
-    await new Promise((r2) => setImmediate(r2));
-  }
-  log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
-}
-async function bootWarm() {
-  try {
-    await purgeStaleBankingOffers();
-    await purgePhotolessHotelOffers();
-    const store2 = getStore();
-    const rows = await store2.query(
-      `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
-       FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
-       GROUP BY raw_query, v, pincode, city
-       ORDER BY COUNT(*) DESC LIMIT 6`
-    ).catch(() => []);
-    const seen = /* @__PURE__ */ new Set();
-    const targets = [];
-    const push = (r) => {
-      const key = `${String(r.raw_query || r.query || "")}|${String(r.v || r.vertical || "")}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        targets.push(r);
-      }
-    };
-    (rows.length > 0 ? rows : []).forEach(push);
-    SEED_QUERIES.forEach(push);
-    log.info("Cron", `Boot-warm starting (${targets.length} queries: all vertical defaults + top searches, background)`);
-    void warmRows(targets, "BootWarm");
-  } catch (e) {
-    log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
-  }
-}
-async function keepWarmDefaults() {
-  await warmRows(SEED_QUERIES, "KeepWarm");
-}
-async function warmPass(limit, verticalFilter, forceSeed) {
-  const store2 = getStore();
-  const rows = await store2.query(
-    `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
-     FROM searches
-     WHERE created_at > (NOW() - INTERVAL 7 DAY)
-     ${verticalFilter ? "AND COALESCE(detected_vertical, vertical) = ?" : ""}
-     GROUP BY raw_query, v, pincode, city
-     ORDER BY n DESC
-     LIMIT ?`,
-    verticalFilter ? [verticalFilter, limit] : [limit]
-  ).catch(() => []);
-  const useSeed = forceSeed || rows.length === 0;
-  if (useSeed) {
-    log.info("Cron", `Warmer: pre-warming ${SEED_QUERIES.length} seed queries (fresh install / --seed)`);
-    await warmRows(SEED_QUERIES, "Cron");
-    return;
-  }
-  await warmRows(rows, "Cron");
-}
-async function main() {
-  const args = process.argv.slice(2);
-  const limit = Number((args.find((a) => a.startsWith("--limit=")) || "--limit=20").split("=")[1]);
-  const verticalFilter = args.find((a) => a.startsWith("--vertical="))?.split("=")[1];
-  const forceSeed = args.includes("--seed");
-  const intervalArg = Number((args.find((a) => a.startsWith("--interval=")) || "--interval=0").split("=")[1]);
-  const intervalMin = intervalArg > 0 ? intervalArg : process.env.CRON_INTERVAL_MIN ? Number(process.env.CRON_INTERVAL_MIN) : 0;
-  await runMigrations();
-  if (!intervalMin || !Number.isFinite(intervalMin) || intervalMin <= 0) {
-    await warmPass(limit, verticalFilter, forceSeed);
-    process.exit(0);
-  }
-  log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
-  await warmPass(limit, verticalFilter, forceSeed);
-  setInterval(() => {
-    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
-      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
-    });
-  }, intervalMin * 6e4);
-}
-var SEED_QUERIES, DESTINATION_WARM, destWarmCursor, invokedAsScript;
-var init_warm = __esm({
-  "server/cron/warm.ts"() {
-    init_db();
-    init_searchOrchestrator();
-    init_logger();
-    init_catalogueService();
-    SEED_QUERIES = [
-      { query: "mobile phone", vertical: "ecommerce" },
-      { query: "milk", vertical: "grocery", city: "Indore" },
-      { query: "biryani", vertical: "food", city: "Indore" },
-      { query: "movies", vertical: "movies", city: "Indore" },
-      { query: "Indore to Bhopal", vertical: "bus", city: "Indore" },
-      { query: "Indore to Bhopal", vertical: "cab", city: "Indore" },
-      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore" },
-      { query: "Indore", vertical: "hotels", city: "Indore" },
-      { query: "personal loan", vertical: "loans" },
-      { query: "health insurance", vertical: "insurance" },
-      { query: "hdfc credit card", vertical: "creditcards" },
-      { query: "best credit card", vertical: "creditcards" },
-      { query: "iphone", vertical: "ecommerce" },
-      { query: "pizza", vertical: "food", city: "Indore" },
-      { query: "delhi to jaipur", vertical: "bus" },
-      { query: "goa", vertical: "hotels" },
-      { query: "savings account", vertical: "banking" },
-      { query: "demat account", vertical: "banking" },
-      // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
-      // phones — warm those catalogues so the section always has fresh rows to show.
-      { query: "laptop", vertical: "ecommerce" },
-      { query: "smart tv", vertical: "ecommerce" },
-      { query: "refrigerator", vertical: "ecommerce" },
-      { query: "washing machine", vertical: "ecommerce" }
-    ];
-    DESTINATION_WARM = [
-      // Owner 23 Oct: the six homepage cities lead the rotation so their recorded
-      // fares + hotel art stay the freshest (Jaipur, Manali, Udaipur, Mumbai,
-      // Kolkata, Goa).
-      { query: "Indore to Jaipur", vertical: "flights", city: "Indore" },
-      { query: "jaipur", vertical: "hotels" },
-      { query: "Indore to Manali", vertical: "flights", city: "Indore" },
-      { query: "manali", vertical: "hotels" },
-      { query: "Indore to Udaipur", vertical: "flights", city: "Indore" },
-      { query: "udaipur", vertical: "hotels" },
-      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
-      { query: "mumbai", vertical: "hotels" },
-      { query: "Indore to Kolkata", vertical: "flights", city: "Indore" },
-      { query: "kolkata", vertical: "hotels" },
-      { query: "Indore to Goa", vertical: "flights", city: "Indore" },
-      { query: "goa", vertical: "hotels" },
-      { query: "Indore to Delhi", vertical: "flights", city: "Indore" },
-      { query: "delhi", vertical: "hotels" },
-      { query: "goa", vertical: "hotels" },
-      { query: "Indore to Mumbai", vertical: "flights", city: "Indore" },
-      { query: "mumbai", vertical: "hotels" },
-      { query: "Indore to Bengaluru", vertical: "flights", city: "Indore" },
-      { query: "bengaluru", vertical: "hotels" },
-      { query: "Indore to Hyderabad", vertical: "flights", city: "Indore" },
-      { query: "hyderabad", vertical: "hotels" },
-      { query: "Indore to Srinagar", vertical: "flights", city: "Indore" },
-      { query: "srinagar", vertical: "hotels" },
-      { query: "Indore to Dubai", vertical: "flights", city: "Indore" },
-      { query: "dubai", vertical: "hotels" },
-      { query: "Indore to Bangkok", vertical: "flights", city: "Indore" },
-      { query: "bangkok", vertical: "hotels" },
-      { query: "Indore to Singapore", vertical: "flights", city: "Indore" },
-      { query: "singapore", vertical: "hotels" },
-      { query: "Indore to Shimla", vertical: "flights", city: "Indore" },
-      { query: "shimla", vertical: "hotels" },
-      // Owner 22 Oct (min 6 destination cards): wider candidate pool — every extra
-      // destination still needs its own real fare + real hotel art before a card
-      // renders; the rotation just keeps them fresh like the original twelve.
-      { query: "Indore to Ahmedabad", vertical: "flights", city: "Indore" },
-      { query: "ahmedabad", vertical: "hotels" },
-      { query: "Indore to Pune", vertical: "flights", city: "Indore" },
-      { query: "pune", vertical: "hotels" },
-      { query: "Indore to Kochi", vertical: "flights", city: "Indore" },
-      { query: "kochi", vertical: "hotels" },
-      { query: "Indore to Varanasi", vertical: "flights", city: "Indore" },
-      { query: "varanasi", vertical: "hotels" },
-      { query: "Indore to Amritsar", vertical: "flights", city: "Indore" },
-      { query: "amritsar", vertical: "hotels" },
-      { query: "Indore to Lucknow", vertical: "flights", city: "Indore" },
-      { query: "lucknow", vertical: "hotels" },
-      { query: "Indore to Chandigarh", vertical: "flights", city: "Indore" },
-      { query: "chandigarh", vertical: "hotels" },
-      { query: "Indore to Dehradun", vertical: "flights", city: "Indore" },
-      { query: "dehradun", vertical: "hotels" }
-    ];
-    destWarmCursor = 0;
-    invokedAsScript = /cron/.test(String(process.argv[1] || ""));
-    if (invokedAsScript) {
-      main().catch((e) => {
-        log.error("Cron", "Warmer crashed", { error: String(e) });
-        process.exit(1);
-      });
-    }
-  }
-});
-
 // server/workers/refreshWorker.ts
 var refreshWorker_exports = {};
 __export(refreshWorker_exports, {
@@ -33778,12 +33793,24 @@ async function createApp() {
   await bootstrapBackend2();
   if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
-    await runSingleton2("background", async () => {
+    const startBackgroundDuties = async () => {
       startWorkers2();
       bootstrapAffiliateSync2();
       Promise.resolve().then(() => (init_prune(), prune_exports)).then(({ startCatalogueRetention: startCatalogueRetention2 }) => startCatalogueRetention2()).catch(() => void 0);
       Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
-    });
+    };
+    const owned = await runSingleton2("background", startBackgroundDuties);
+    if (!owned) {
+      const takeover = setInterval(() => {
+        void runSingleton2("background", startBackgroundDuties).then((now) => {
+          if (now) {
+            clearInterval(takeover);
+            log2.info("Bootstrap", "Background lock takeover: this instance now runs the keep-warm workers");
+          }
+        }).catch(() => void 0);
+      }, 12 * 6e4);
+      if (takeover.unref) takeover.unref();
+    }
   }
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
   app.get("/redirect", redirectRouteHandler2);

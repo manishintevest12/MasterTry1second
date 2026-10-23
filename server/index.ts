@@ -59,7 +59,7 @@ export async function createApp(): Promise<express.Express> {
     // 13 Oct): the app supervisor can start two instances; only the lock holder runs
     // the refresh workers, affiliate sync and boot-warm. Everyone still serves HTTP.
     const { runSingleton } = await import('./common/singleton');
-    await runSingleton('background', async () => {
+    const startBackgroundDuties = async () => {
       startWorkers();
       bootstrapAffiliateSync();
       // CATALOGUE RETENTION (owner fix, 21 Oct — "database size limit reached"):
@@ -69,7 +69,25 @@ export async function createApp(): Promise<express.Express> {
       // Instant first paint: pre-warm the most popular searches in the background
       // so page-load searches hit warm cache (Section 8 cron-warmer).
       import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
-    });
+    };
+    const owned = await runSingleton('background', startBackgroundDuties);
+    // SELF-HEAL (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results bahut late"):
+    // production served every vertical COLD because the instance that won the
+    // background lock at boot had died/been reaped and the survivors NEVER retried
+    // (runSingleton ran once, at boot). GET_LOCK auto-releases when its holder
+    // dies, so a periodic re-attempt lets a surviving instance take over within
+    // <=12 min — keep-warm can never silently die forever again.
+    if (!owned) {
+      const takeover = setInterval(() => {
+        void runSingleton('background', startBackgroundDuties).then((now) => {
+          if (now) {
+            clearInterval(takeover);
+            log.info('Bootstrap', 'Background lock takeover: this instance now runs the keep-warm workers');
+          }
+        }).catch(() => undefined);
+      }, 12 * 60_000);
+      if (takeover.unref) takeover.unref();
+    }
   }
 
   // Monetizable exit interstitial (owner 23 Oct): GET /redirect?k=<signed token>

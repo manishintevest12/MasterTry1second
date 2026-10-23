@@ -413,6 +413,20 @@ apiRouter.post('/search', async (req, res) => {
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
   const response = await runSearch(input);
+  // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
+  // bahut late"): a search that did NOT come from the warm cache means the
+  // background keep-warm rotation is dead (every vertical default should be
+  // cache-warm within its 12-min cadence). Re-trigger the default warm pass
+  // fire-and-forget, bounded to at most once per 10 minutes process-wide so a
+  // burst of cold searches can never stampede the sources. Real searches only,
+  // same honesty rules as the cron warmer.
+  if (String(response.state?.servedFrom || '') !== 'cache') {
+    const now = Date.now();
+    if (now - _lastEmergencyWarmAt > 10 * 60_000) {
+      _lastEmergencyWarmAt = now;
+      void import('../cron/warm').then(({ keepWarmDefaults }) => keepWarmDefaults()).catch(() => undefined);
+    }
+  }
   if (process.env.LOG_LEVEL === 'debug') {
     const vc: Record<string, number> = {};
     for (const o of response.results as any[]) vc[String((o as any).vendor || (o as any).seller || '?')] = (vc[String((o as any).vendor || (o as any).seller || '?')] || 0) + 1;
@@ -651,6 +665,9 @@ function offerToComparisonItem(o: any) {
 }
 
 /** Legacy-compatible endpoint used by the existing frontend. */
+/** Emergency keep-warm cooldown (self-heal safety net, owner 23 Oct). */
+let _lastEmergencyWarmAt = 0;
+
 apiRouter.post('/scrape/live', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || ''),
@@ -688,6 +705,20 @@ apiRouter.post('/scrape/live', async (req, res) => {
     }
   }
   const response = await runSearch(input);
+  // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
+  // bahut late"): a search that did NOT come from the warm cache means the
+  // background keep-warm rotation is dead (every vertical default should be
+  // cache-warm within its 12-min cadence). Re-trigger the default warm pass
+  // fire-and-forget, bounded to at most once per 10 minutes process-wide so a
+  // burst of cold searches can never stampede the sources. Real searches only,
+  // same honesty rules as the cron warmer.
+  if (String(response.state?.servedFrom || '') !== 'cache') {
+    const now = Date.now();
+    if (now - _lastEmergencyWarmAt > 10 * 60_000) {
+      _lastEmergencyWarmAt = now;
+      void import('../cron/warm').then(({ keepWarmDefaults }) => keepWarmDefaults()).catch(() => undefined);
+    }
+  }
   if (process.env.LOG_LEVEL === 'debug') {
     console.error(JSON.stringify({ dbg: 'scrape/live runSearch', q: input.query, v: String(input.vertical), n: response.results.length, servedFrom: response.state.servedFrom }));
   }
