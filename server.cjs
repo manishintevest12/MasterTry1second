@@ -26757,8 +26757,13 @@ function b64url2(s) {
 function unb64url2(s) {
   return Buffer.from(s, "base64url").toString("utf8");
 }
-function createInterstitialPointer(url, partner) {
-  const payload = b64url2(JSON.stringify({ d: url.slice(0, 3e3), p: String(partner || "").slice(0, 120), e: Date.now() + INTERSTITIAL_TTL_MS }));
+function createInterstitialPointer(url, partner, appScheme) {
+  const payload = b64url2(JSON.stringify({
+    d: url.slice(0, 3e3),
+    p: String(partner || "").slice(0, 120),
+    s: String(appScheme || "").slice(0, 500),
+    e: Date.now() + INTERSTITIAL_TTL_MS
+  }));
   const sig = import_crypto26.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
   return `${payload}.${sig}`;
 }
@@ -26770,7 +26775,7 @@ function resolveInterstitialMeta(token) {
   try {
     const j = JSON.parse(unb64url2(m[1]));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
-    return { url: j.d, partner: typeof j.p === "string" ? j.p : "" };
+    return { url: j.d, partner: typeof j.p === "string" ? j.p : "", appScheme: typeof j.s === "string" ? j.s : "" };
   } catch {
     return null;
   }
@@ -26859,6 +26864,7 @@ function renderInterstitialPage(opts) {
     <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
   <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now \u2192</a>
+  ${opts.appScheme ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app \u2192</a>` : ""}
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
 </main>
 <noscript><meta http-equiv="refresh" content="${seconds};url=${esc(target)}"></noscript>
@@ -26914,7 +26920,7 @@ async function redirectRouteHandler(req, res) {
     adSlot = await getAdSlot("redirect_interstitial");
   } catch {
   }
-  res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, adSlot }));
+  res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }
 var import_crypto26, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
 var init_interstitial = __esm({
@@ -26988,6 +26994,56 @@ function buildOlaBookUrl(opts) {
   if (opts.pickup.name) params.set("pickup_name", opts.pickup.name.slice(0, 120));
   const extra = sanitizeParams(opts.cfg.olaExtraParams);
   return `https://book.olacabs.com/?${params.toString()}${extra ? `&${extra}` : ""}`;
+}
+function buildUberAppSchemeUrl(opts) {
+  if (!opts.cfg.uberEnabled) return null;
+  const q3 = ["action=setPickup"];
+  if (opts.cfg.uberClientId) q3.push(`client_id=${encodeURIComponent(opts.cfg.uberClientId)}`);
+  q3.push(opts.pickup ? `pickup[latitude]=${opts.pickup.lat}&pickup[longitude]=${opts.pickup.lng}&pickup[nickname]=${encodeURIComponent(opts.pickup.name.slice(0, 120))}` : "pickup=my_location");
+  q3.push(`dropoff[latitude]=${opts.drop.lat}&dropoff[longitude]=${opts.drop.lng}&dropoff[nickname]=${encodeURIComponent(opts.drop.name.slice(0, 120))}`);
+  return `uber://?${q3.join("&")}`;
+}
+function buildOlaAppSchemeUrl(opts) {
+  if (!opts.cfg.olaEnabled) return null;
+  const params = new URLSearchParams({
+    lat: String(opts.pickup.lat),
+    lng: String(opts.pickup.lng),
+    drop_lat: String(opts.drop.lat),
+    drop_lng: String(opts.drop.lng),
+    drop_name: opts.drop.name.slice(0, 120),
+    pickup_name: opts.pickup.name.slice(0, 120)
+  });
+  return `olacabs://book?${params.toString()}`;
+}
+function cabWebUrlToAppScheme(url, cfg) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.replace(/^www\./, "") === "m.uber.com") {
+      const pickupRaw = u.searchParams.get("pickup");
+      const dropRaw = u.searchParams.get("drop[0]");
+      const drop = dropRaw ? JSON.parse(dropRaw) : null;
+      if (!drop || !Number.isFinite(drop.latitude) || !Number.isFinite(drop.longitude)) return null;
+      let pickup = null;
+      if (pickupRaw && pickupRaw !== "my_location") {
+        const p = JSON.parse(pickupRaw);
+        if (Number.isFinite(p.latitude) && Number.isFinite(p.longitude)) pickup = { lat: p.latitude, lng: p.longitude, name: String(p.addressLine1 || "Pickup") };
+      }
+      return buildUberAppSchemeUrl({ cfg, pickup, drop: { lat: drop.latitude, lng: drop.longitude, name: String(drop.addressLine1 || "Drop") } });
+    }
+    if (u.hostname.replace(/^www\./, "") === "book.olacabs.com") {
+      const lat = Number(u.searchParams.get("lat")), lng = Number(u.searchParams.get("lng"));
+      const dropLat = Number(u.searchParams.get("drop_lat")), dropLng = Number(u.searchParams.get("drop_lng"));
+      if (![lat, lng, dropLat, dropLng].every(Number.isFinite)) return null;
+      return buildOlaAppSchemeUrl({
+        cfg,
+        pickup: { lat, lng, name: u.searchParams.get("pickup_name") || "Pickup" },
+        drop: { lat: dropLat, lng: dropLng, name: u.searchParams.get("drop_name") || "Drop" }
+      });
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 function buildRapidoBookUrl(opts) {
   if (!opts.cfg.rapidoEnabled) return null;
@@ -31372,6 +31428,18 @@ var init_routes = __esm({
         const rurl = buildRapidoBookUrl({ cfg });
         if (!rurl) return res.status(422).send("Rapido booking link is disabled by the admin.");
         const rp = createMaskingPointer(rurl, { offerId: String(req.query.offerId || "") });
+        if (String(req.query.json || "") === "1" || isInAppWebView(req.headers["user-agent"])) {
+          const rawTok = rp.startsWith("/api/out?t=") ? decodeURIComponent(rp.slice("/api/out?t=".length)) : rp;
+          try {
+            const resolved = resolveMaskingPointer(rawTok);
+            if (resolved) {
+              const dl = await buildSecureDeeplink(resolved.destination);
+              await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+            }
+          } catch {
+          }
+          return res.json({ success: true, provider, appUrl: null, webUrl: `${req.protocol}://${req.get("host")}${rp}` });
+        }
         return res.redirect(302, rp.startsWith("/api/out") ? rp : `/api/out?t=${encodeURIComponent(rp)}`);
       }
       if (!dropName) return res.status(400).send("Missing drop location.");
@@ -31390,6 +31458,24 @@ var init_routes = __esm({
         provider === "uber" && !pickup ? "We could not resolve your pickup location. Please open the app directly." : "In-app booking for this provider is currently disabled by the admin. Please try again later."
       );
       const pointer = createMaskingPointer(url, { offerId: String(req.query.offerId || "") });
+      if (String(req.query.json || "") === "1" || isInAppWebView(req.headers["user-agent"])) {
+        const appUrl = provider === "uber" ? buildUberAppSchemeUrl({ cfg, pickup, drop }) : provider === "ola" && pickup ? buildOlaAppSchemeUrl({ cfg, pickup, drop }) : null;
+        try {
+          const rawTok = pointer.startsWith("/api/out?t=") ? decodeURIComponent(pointer.slice("/api/out?t=".length)) : pointer;
+          const resolved = resolveMaskingPointer(rawTok);
+          if (resolved) {
+            const dl = await buildSecureDeeplink(resolved.destination);
+            await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+          }
+        } catch {
+        }
+        return res.json({
+          success: true,
+          provider,
+          appUrl,
+          webUrl: pointer.startsWith("http") ? pointer : `${req.protocol}://${req.get("host")}${pointer}`
+        });
+      }
       res.redirect(302, pointer.startsWith("/api/out") ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
     });
     apiRouter.get("/out", async (req, res) => {
@@ -31413,7 +31499,12 @@ var init_routes = __esm({
         partnerHost = new URL(resolved.destination).hostname.replace(/^www\./, "");
       } catch {
       }
-      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost)}`);
+      let cabScheme = null;
+      try {
+        cabScheme = cabWebUrlToAppScheme(resolved.destination, await getCabDeeplinkConfig());
+      } catch {
+      }
+      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
     });
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);

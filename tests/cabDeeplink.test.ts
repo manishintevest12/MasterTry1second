@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildUberBookUrl, buildOlaBookUrl, type CabDeeplinkConfig } from '../server/common/cabDeeplink';
+import { buildUberBookUrl, buildOlaBookUrl, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme, type CabDeeplinkConfig } from '../server/common/cabDeeplink';
 
 const cfg = (over: Partial<CabDeeplinkConfig> = {}): CabDeeplinkConfig => ({
   uberClientId: 'test-client-1',
@@ -84,4 +84,80 @@ test('network layer: rapido.cc ride link stays direct (not claimed by LinkInR)',
   const r = await buildSecureDeeplink('https://rapido.cc/ride?utm_source=try1second');
   assert.notEqual(r.matchedProfile, 'linkinr');
   assert.ok(r.trackingUrl.startsWith('https://rapido.cc/ride'), r.trackingUrl);
+});
+
+
+// Owner 23 Oct ("deeplink site pr le jaa raha hai, app pr jana tha"): the https
+// booking links opened the provider's mobile SITE (browser chain); the app must
+// try the NATIVE app scheme first and fall back to the web link honestly.
+test('uber app scheme: uber://?action=setPickup with prefilled trip', () => {
+  const url = buildUberAppSchemeUrl({ cfg: cfg(), pickup, drop });
+  assert.ok(url);
+  assert.ok(url!.startsWith('uber://?action=setPickup'), url);
+  assert.ok(url!.includes('client_id=test-client-1'), url);
+  assert.ok(url!.includes('pickup[latitude]=28.6139'), url);
+  assert.ok(url!.includes('dropoff[latitude]=28.5355'), url);
+  assert.ok(url!.includes(`dropoff[nickname]=${encodeURIComponent(drop.name)}`), url);
+});
+
+test('uber app scheme: pickup=my_location fallback when coords unknown', () => {
+  const url = buildUberAppSchemeUrl({ cfg: cfg(), pickup: null, drop });
+  assert.ok(url!.includes('pickup=my_location'), url);
+});
+
+test('ola app scheme: olacabs://book with pickup + drop', () => {
+  const url = buildOlaAppSchemeUrl({ cfg: cfg(), pickup, drop });
+  assert.ok(url!.startsWith('olacabs://book?'), url);
+  assert.ok(url!.includes('lat=28.6139'), url);
+  assert.ok(url!.includes('drop_lat=28.5355'), url);
+  // URLSearchParams encodes spaces as '+': compare the decoded param value.
+  const q = new URLSearchParams(String(url).split('?')[1]);
+  assert.equal(q.get('drop_name'), drop.name);
+});
+
+test('cabWebUrlToAppScheme: converts the built web urls back to schemes, rapido honestly null', () => {
+  const c = cfg();
+  const uberWeb = buildUberBookUrl({ cfg: c, pickup, drop })!;
+  const uberScheme = cabWebUrlToAppScheme(uberWeb, c);
+  assert.ok(uberScheme && uberScheme.startsWith('uber://'), uberScheme!);
+  assert.ok(uberScheme!.includes('dropoff[latitude]=28.5355'), uberScheme!);
+  const olaWeb = buildOlaBookUrl({ cfg: c, pickup, drop })!;
+  const olaScheme = cabWebUrlToAppScheme(olaWeb, c);
+  assert.ok(olaScheme && olaScheme.startsWith('olacabs://book?'), olaScheme!);
+  // Rapido has no documented app scheme — never invented.
+  assert.equal(cabWebUrlToAppScheme('https://rapido.cc/ride', c), null);
+  // Non-cab urls stay null (generic interstitials unaffected).
+  assert.equal(cabWebUrlToAppScheme('https://www.agoda.com/hotel', c), null);
+});
+
+test('interstitial pointer carries the cab app scheme through the signed token', async () => {
+  const { createInterstitialPointer, resolveInterstitialMeta } = await import('../server/redirect/interstitial');
+  const k = createInterstitialPointer('https://m.uber.com/looking/?x=1', 'm.uber.com', 'uber://?action=setPickup');
+  const meta = resolveInterstitialMeta(k)!;
+  assert.equal(meta.url, 'https://m.uber.com/looking/?x=1');
+  assert.equal(meta.appScheme, 'uber://?action=setPickup');
+  // No scheme -> empty string, page renders exactly as before.
+  const plain = resolveInterstitialMeta(createInterstitialPointer('https://www.agoda.com/x', 'agoda.com'))!;
+  assert.equal(plain.appScheme, '');
+});
+
+test('/api/cab/book: json=1 app-first branch serves appUrl + tracked webUrl (owner 23 Oct)', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync('server/api/routes.ts', 'utf8');
+  // json=1 (or our app's webview UA) returns the native scheme + fallback.
+  const cabBranch = src.match(/apiRouter\.get\('\/cab\/book'[\s\S]*?\n\}\);/);
+  assert.ok(cabBranch, 'cab/book route present');
+  assert.ok(cabBranch[0].includes("req.query.json"), 'json mode honoured');
+  assert.ok(cabBranch[0].includes('isInAppWebView'), 'app webview UA gets the JSON flow too');
+  assert.ok(cabBranch[0].includes('buildUberAppSchemeUrl'), 'uber scheme served to the app');
+  assert.ok(cabBranch[0].includes('buildOlaAppSchemeUrl'), 'ola scheme served to the app');
+  assert.ok(cabBranch[0].includes('recordPointerClick'), 'click still tracked server-side');
+  assert.ok(cabBranch[0].includes('webUrl'), 'web fallback returned for app-not-installed');
+  // Rapido branch too (no scheme exists — tracked https link only).
+  const rapidoBranch = cabBranch[0].match(/provider === 'rapido'[\s\S]*?return res\.redirect/);
+  assert.ok(rapidoBranch, 'rapido branch present');
+  assert.ok(rapidoBranch[0].includes('json'), 'rapido honours json mode');
+  assert.ok(rapidoBranch[0].includes('appUrl: null'), 'rapido scheme honestly null');
+  // /api/out forwards the scheme to the interstitial for browser users.
+  assert.ok(src.includes('cabWebUrlToAppScheme(resolved.destination'), 'interstitial gets the app scheme');
 });

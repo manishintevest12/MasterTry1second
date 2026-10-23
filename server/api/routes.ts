@@ -28,7 +28,7 @@ import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetw
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
 import { createInterstitialPointer, isInAppWebView } from '../redirect/interstitial';
-import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam } from '../common/cabDeeplink';
+import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
@@ -1722,6 +1722,20 @@ apiRouter.get('/cab/book', async (req, res) => {
     const rurl = buildRapidoBookUrl({ cfg });
     if (!rurl) return res.status(422).send('Rapido booking link is disabled by the admin.');
     const rp = createMaskingPointer(rurl, { offerId: String(req.query.offerId || '') });
+    // Owner 23 Oct app-first flow: Rapido has no documented app scheme, so the
+    // app launches this tracked https link externally (Android App Links can
+    // still resolve it to the installed Rapido app).
+    if (String(req.query.json || '') === '1' || isInAppWebView(req.headers['user-agent'])) {
+      const rawTok = rp.startsWith('/api/out?t=') ? decodeURIComponent(rp.slice('/api/out?t='.length)) : rp;
+      try {
+        const resolved = resolveMaskingPointer(rawTok);
+        if (resolved) {
+          const dl = await buildSecureDeeplink(resolved.destination);
+          await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+        }
+      } catch { /* best-effort tracking */ }
+      return res.json({ success: true, provider, appUrl: null, webUrl: `${req.protocol}://${req.get('host')}${rp}` });
+    }
     return res.redirect(302, rp.startsWith('/api/out') ? rp : `/api/out?t=${encodeURIComponent(rp)}`);
   }
   if (!dropName) return res.status(400).send('Missing drop location.');
@@ -1748,6 +1762,33 @@ apiRouter.get('/cab/book', async (req, res) => {
       : 'In-app booking for this provider is currently disabled by the admin. Please try again later.');
   // createMaskingPointer already returns the full masked path (/api/out?t=...).
   const pointer = createMaskingPointer(url, { offerId: String(req.query.offerId || '') });
+
+  // Owner 23 Oct ("deeplink site pr le jaa raha hai, app pr jana tha"): our
+  // Flutter app must land in the NATIVE Uber/Ola app, not a browser tab that
+  // ends on the mobile site. With ?json=1 the app gets the provider's app
+  // scheme URL (opens the installed app with the trip prefilled) plus the
+  // tracked pointer as the honest fallback when the app is not installed.
+  // The click is still recorded server-side here (same as the 302 flow) so
+  // affiliate/analytics parity holds.
+  if (String(req.query.json || '') === '1' || isInAppWebView(req.headers['user-agent'])) {
+    const appUrl = provider === 'uber'
+      ? buildUberAppSchemeUrl({ cfg, pickup, drop })
+      : provider === 'ola' && pickup ? buildOlaAppSchemeUrl({ cfg, pickup, drop }) : null;
+    try {
+      const rawTok = pointer.startsWith('/api/out?t=') ? decodeURIComponent(pointer.slice('/api/out?t='.length)) : pointer;
+      const resolved = resolveMaskingPointer(rawTok);
+      if (resolved) {
+        const dl = await buildSecureDeeplink(resolved.destination);
+        await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+      }
+    } catch { /* tracking best-effort: the app launch still proceeds honestly */ }
+    return res.json({
+      success: true,
+      provider,
+      appUrl,
+      webUrl: pointer.startsWith('http') ? pointer : `${req.protocol}://${req.get('host')}${pointer}`,
+    });
+  }
   res.redirect(302, pointer.startsWith('/api/out') ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
 });
 
@@ -1781,7 +1822,12 @@ apiRouter.get('/out', async (req, res) => {
   // buildSecureDeeplink may have hopped to (linkinr.com, fktr.in, ...).
   let partnerHost = '';
   try { partnerHost = new URL(resolved.destination).hostname.replace(/^www\./, ''); } catch { /* pointer already validated */ }
-  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost)}`);
+  // Owner 23 Oct ("app pr jana tha"): cab exits get the provider's native app
+  // scheme (uber:// / olacabs://) into the interstitial so a browser user can
+  // hop straight into the installed app; non-cab destinations unchanged.
+  let cabScheme: string | null = null;
+  try { cabScheme = cabWebUrlToAppScheme(resolved.destination, await getCabDeeplinkConfig()); } catch { /* web-only nicety */ }
+  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
 });
 
 // ============ Auth ============

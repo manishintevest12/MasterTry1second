@@ -141,6 +141,86 @@ export function buildOlaBookUrl(opts: {
 }
 
 /**
+ * Owner 23 Oct ("deeplink site pr le jaa raha hai, app pr jana tha"): the
+ * https booking links (m.uber.com / book.olacabs.com) opened the provider's
+ * MOBILE SITE because the whole chain ran inside a browser tab — the native
+ * app was never asked. These builders emit the providers' documented APP
+ * SCHEMES so a tap asks the OS for the installed app first; the https link
+ * stays the honest fallback when the app is missing.
+ *
+ *   Uber: uber://?action=setPickup&client_id=X&pickup[latitude]=..
+ *         &pickup[longitude]=..&pickup[nickname]=..&dropoff[latitude]=..
+ *         &dropoff[longitude]=..&dropoff[nickname]=..   (or pickup=my_location)
+ *   Ola : olacabs://book?lat=..&lng=..&drop_lat=..&drop_lng=..
+ * Rapido has no documented scheme — its https link stays the only hop.
+ */
+export function buildUberAppSchemeUrl(opts: {
+  cfg: CabDeeplinkConfig;
+  pickup?: CabPlace | null;
+  drop: CabPlace;
+}): string | null {
+  if (!opts.cfg.uberEnabled) return null;
+  const q: string[] = ['action=setPickup'];
+  if (opts.cfg.uberClientId) q.push(`client_id=${encodeURIComponent(opts.cfg.uberClientId)}`);
+  q.push(opts.pickup
+    ? `pickup[latitude]=${opts.pickup.lat}&pickup[longitude]=${opts.pickup.lng}` +
+      `&pickup[nickname]=${encodeURIComponent(opts.pickup.name.slice(0, 120))}`
+    : 'pickup=my_location');
+  q.push(`dropoff[latitude]=${opts.drop.lat}&dropoff[longitude]=${opts.drop.lng}` +
+    `&dropoff[nickname]=${encodeURIComponent(opts.drop.name.slice(0, 120))}`);
+  return `uber://?${q.join('&')}`;
+}
+
+export function buildOlaAppSchemeUrl(opts: {
+  cfg: CabDeeplinkConfig;
+  pickup: CabPlace;
+  drop: CabPlace;
+}): string | null {
+  if (!opts.cfg.olaEnabled) return null;
+  const params = new URLSearchParams({
+    lat: String(opts.pickup.lat), lng: String(opts.pickup.lng),
+    drop_lat: String(opts.drop.lat), drop_lng: String(opts.drop.lng),
+    drop_name: opts.drop.name.slice(0, 120), pickup_name: opts.pickup.name.slice(0, 120),
+  });
+  return `olacabs://book?${params.toString()}`;
+}
+
+/**
+ * Web booking URL -> matching app scheme (for the browser interstitial's
+ * "try the app first" attempt). Returns null when the URL is not a cab
+ * provider booking link or the provider has no documented scheme (Rapido).
+ * Coordinates are read back out of the built https URL, never re-geocoded.
+ */
+export function cabWebUrlToAppScheme(url: string, cfg: CabDeeplinkConfig): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.replace(/^www\./, '') === 'm.uber.com') {
+      const pickupRaw = u.searchParams.get('pickup');
+      const dropRaw = u.searchParams.get('drop[0]');
+      const drop = dropRaw ? JSON.parse(dropRaw) : null;
+      if (!drop || !Number.isFinite(drop.latitude) || !Number.isFinite(drop.longitude)) return null;
+      let pickup: CabPlace | null = null;
+      if (pickupRaw && pickupRaw !== 'my_location') {
+        const p = JSON.parse(pickupRaw);
+        if (Number.isFinite(p.latitude) && Number.isFinite(p.longitude)) pickup = { lat: p.latitude, lng: p.longitude, name: String(p.addressLine1 || 'Pickup') };
+      }
+      return buildUberAppSchemeUrl({ cfg, pickup, drop: { lat: drop.latitude, lng: drop.longitude, name: String(drop.addressLine1 || 'Drop') } });
+    }
+    if (u.hostname.replace(/^www\./, '') === 'book.olacabs.com') {
+      const lat = Number(u.searchParams.get('lat')), lng = Number(u.searchParams.get('lng'));
+      const dropLat = Number(u.searchParams.get('drop_lat')), dropLng = Number(u.searchParams.get('drop_lng'));
+      if (![lat, lng, dropLat, dropLng].every(Number.isFinite)) return null;
+      return buildOlaAppSchemeUrl({
+        cfg,
+        pickup: { lat, lng, name: u.searchParams.get('pickup_name') || 'Pickup' },
+        drop: { lat: dropLat, lng: dropLng, name: u.searchParams.get('drop_name') || 'Drop' },
+      });
+    }
+    return null; // rapido.cc has no documented app scheme — https link only
+  } catch { return null; }
+}
+
+/**
  * Rapido: owner-supplied universal link (https://rapido.cc/ride). Rapido has no
  * documented pickup/drop prefill format, so NOTHING is invented: the link opens
  * Rapido's ride screen (app if installed, else its web/store page) and only the

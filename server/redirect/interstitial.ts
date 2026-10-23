@@ -48,14 +48,21 @@ function unb64url(s: string): string { return Buffer.from(s, 'base64url').toStri
  * "agoda.com") — the page displays ONLY that name, so affiliate converter
  * domains (linkinr.com, ekaro, cuelinks...) never appear to the user.
  */
-export function createInterstitialPointer(url: string, partner?: string | null): string {
-  const payload = b64url(JSON.stringify({ d: url.slice(0, 3000), p: String(partner || '').slice(0, 120), e: Date.now() + INTERSTITIAL_TTL_MS }));
+export function createInterstitialPointer(url: string, partner?: string | null, appScheme?: string | null): string {
+  // Owner 23 Oct: cab exits carry the provider's native app scheme (uber://,
+  // olacabs://) so the interstitial can offer a direct "open the app" hop.
+  const payload = b64url(JSON.stringify({
+    d: url.slice(0, 3000),
+    p: String(partner || '').slice(0, 120),
+    s: String(appScheme || '').slice(0, 500),
+    e: Date.now() + INTERSTITIAL_TTL_MS,
+  }));
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url').slice(0, 32);
   return `${payload}.${sig}`;
 }
 
 /** Verify + decode. Null on malformed signature, tampering or expiry. */
-export function resolveInterstitialMeta(token: string): { url: string; partner: string } | null {
+export function resolveInterstitialMeta(token: string): { url: string; partner: string; appScheme: string } | null {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ''));
   if (!m) return null;
   const expect = crypto.createHmac('sha256', secret()).update(m[1]).digest('base64url').slice(0, 32);
@@ -63,7 +70,7 @@ export function resolveInterstitialMeta(token: string): { url: string; partner: 
   try {
     const j = JSON.parse(unb64url(m[1]));
     if (!j?.d || typeof j.d !== 'string' || Number(j.e) < Date.now()) return null;
-    return { url: j.d, partner: typeof j.p === 'string' ? j.p : '' };
+    return { url: j.d, partner: typeof j.p === 'string' ? j.p : '', appScheme: typeof j.s === 'string' ? j.s : '' };
   } catch { return null; }
 }
 
@@ -110,6 +117,7 @@ export function renderInterstitialPage(opts: {
   targetUrl: string;
   seconds?: number;
   partner?: string | null;
+  appScheme?: string | null;
   adSlot?: { provider?: string; adsense_client?: string | null; adsense_slot?: string | null; custom_html?: string | null } | null;
 }): string {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -191,6 +199,7 @@ export function renderInterstitialPage(opts: {
     <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
   <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now →</a>
+  ${opts.appScheme ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app →</a>` : ''}
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
 </main>
 <noscript><meta http-equiv="refresh" content="${seconds};url=${esc(target)}"></noscript>
@@ -244,5 +253,5 @@ export async function redirectRouteHandler(req: Request, res: Response): Promise
   }
   let adSlot: any = null;
   try { adSlot = await getAdSlot('redirect_interstitial'); } catch { /* no fabrication: page renders without an ad */ }
-  res.status(200).type('html').send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, adSlot }));
+  res.status(200).type('html').send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }

@@ -44,5 +44,20 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Owner 23 Oct (cab Book opens the NATIVE app): package-visibility
+             declarations so canLaunchUrl() can see the Uber/Ola/Rapido
+             handlers on Android 11+ before we try their app schemes. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="uber"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="olacabs"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="rapido"/>
+        </intent>
     </queries>
 </manifest>

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -400,6 +401,44 @@ class FinanceLogoTile extends StatelessWidget {
   }
 }
 
+/// Owner 23 Oct ("deeplink site pr le jaa raha hai, app pr jana tha"): the cab
+/// Book button must open the NATIVE Uber/Ola app with the trip prefilled, not
+/// a browser tab that ends on m.uber.com / book.olacabs.com. Ask
+/// /api/cab/book?json=1 (click tracked server-side, same as the web flow) for
+/// the provider's app scheme + tracked web fallback; launch the scheme when the
+/// app is installed, honestly fall back to the web link when it is not.
+Future<void> _launchCabAppBooking(String appBookUrl) async {
+  final api = AppState.instance.api;
+  var path = appBookUrl;
+  if (path.startsWith('http')) path = path.replaceFirst(api.baseUrl, '');
+  final sep = path.contains('?') ? '&' : '?';
+  Map<String, dynamic> res;
+  try {
+    res = await api.getJson('$path${sep}json=1');
+  } catch (_) {
+    // Old server without the JSON mode: previous external launch, unchanged.
+    final abs = appBookUrl.startsWith('http')
+        ? appBookUrl
+        : '${api.baseUrl}$appBookUrl';
+    await launchUrl(Uri.parse(abs), mode: LaunchMode.externalApplication);
+    return;
+  }
+  final appUrl = res['appUrl'];
+  if (appUrl is String && appUrl.isNotEmpty) {
+    final uri = Uri.parse(appUrl);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    } catch (_) {/* app missing: fall through to the web link */}
+  }
+  final webUrl = res['webUrl'];
+  if (webUrl is String && webUrl.isNotEmpty) {
+    await launchUrl(Uri.parse(webUrl), mode: LaunchMode.externalApplication);
+  }
+}
+
 /// Every Book/Buy tap first opens the redirect sheet: it confirms the direct
 /// price and surfaces the seller's real best offer/coupon before leaving.
 void _openRedirect(
@@ -422,10 +461,7 @@ void _openRedirect(
   // fine on the web, but launchUrl() needs an ABSOLUTE url. Prefix the app's
   // API base so the cab Book button actually redirects from the app.
   if (appBookUrl != null && appBookUrl.isNotEmpty) {
-    final abs = appBookUrl.startsWith('http')
-        ? appBookUrl
-        : '${AppState.instance.api.baseUrl}$appBookUrl';
-    launchUrl(Uri.parse(abs), mode: LaunchMode.externalApplication);
+    unawaited(_launchCabAppBooking(appBookUrl));
     return;
   }
 
