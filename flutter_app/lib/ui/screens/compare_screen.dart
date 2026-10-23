@@ -244,7 +244,16 @@ class _CompareScreenState extends State<CompareScreen> {
     _bgPoll?.cancel();
     try {
       _res = await _state.live(_meta.id, q, depart: _iso(_date), force: force);
+
       _shownCacheKey = _state.cacheQuery[_meta.id];
+      // Owner 23 Oct (loans/hotels 'results nahi dikhte' on device): the
+      // await above resuming does NOT schedule a frame on its own —
+      // AppState's notifyListeners fired INSIDE live() before _res/_shownCacheKey
+      // were assigned, so the _onState 'fresh adoption' branch skipped, and a
+      // warm-cache response (pendingRefresh=false, no poll timer to force a
+      // repaint later) left the screen on the loader/form FOREVER until the
+      // user happened to touch it. Repaint explicitly the moment rows land.
+      if (mounted) setState(() {});
       // Progressive cold-start: real catalogue rows arrived instantly and the
       // server is still scanning live sources. Poll the same search quietly
       // until the full live set replaces the partial rows (max ~25s of polls,
@@ -2116,15 +2125,41 @@ class _FeedBody {
       if (meta.id == 'cab' && groups.isNotEmpty && {
         for (final g in groups) cmp.cabVehicleClassOf(g.lead),
       }.length > 1) {
+        // Owner 23 Oct ('cab mai load more ni dikh raha'): the shared
+        // widget-pair math below counted SECTION HEADERS and gaps as
+        // 'groups', so the multi-class feed was cut mid-section (whole
+        // Auto/Cab sections could hide behind the pill) and the pill's
+        // remaining count was nonsense. Multi-class cab now paginates by
+        // real GROUPS: the first `visibleCount` groups build COMPLETE
+        // sections, the pill reveals +4 groups and the sections re-form.
+        var shown = groups;
+        var extraGroups = 0;
+        if (groups.length > visibleCount) {
+          shown = groups.take(visibleCount).toList();
+          extraGroups = groups.length - visibleCount;
+        }
         const sectionOrder = ['bike', 'auto', 'cab'];
         final sections = <String, List<cmp.OfferGroup>>{};
-        for (final g in groups) {
+        for (final g in shown) {
           (sections[cmp.cabVehicleClassOf(g.lead)] ??= []).add(g);
         }
         all = [
           for (final cls in sectionOrder.where(sections.containsKey))
             ..._cabSection(context, cls, sections[cls]!, meta),
         ];
+        if (extraGroups > 0) {
+          all.addAll([
+            _LoadMoreButton(
+              remaining: extraGroups,
+              noun: 'deals',
+              onTap: onLoadMore,
+            ),
+            const SizedBox(height: 12),
+          ]);
+        }
+        // Multi-class pagination is fully handled above — never re-enter the
+        // shared pair math (it would double-paginate widget lists).
+        return all;
       } else {
         all = [
           for (final g in groups) ...[

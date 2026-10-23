@@ -192,77 +192,34 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: PreferredSize(
-        preferredSize: Size.fromHeight(65 + (_loading ? 2.5 : 0)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Owner 23 Oct: DARK header strip (#131725) with merchant branding
-            // and the white pull tab — the payments-style in-app browser look
-            // the owner asked to restore (replaces the image-4 white bar).
-            Container(
-              color: const Color(0xFF131725),
-              child: SafeArea(
-                bottom: false,
-                child: SizedBox(
-                  height: 52,
-                  child: Row(children: [
-                    const SizedBox(width: 14),
-                    const Icon(Icons.travel_explore, size: 20, color: Colors.white70),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
-                      ),
-                    ),
-                    // X — closes the embedded view immediately
-                    InkWell(
-                      onTap: () => Navigator.of(context).pop(),
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Icon(Icons.close, size: 22, color: Colors.white70),
-                      ),
-                    ),
-                  ]),
-                ),
+      // Owner 23 Oct (image-5 follow-up): the merchant page must feel OPENED
+      // INSIDE the app — the partner's own menubar/logo bar hides BEHIND our
+      // dark strip. The WebView is FULL-BLEED (fills the whole screen) and the
+      // #131725 header overlays on top, so the partner's sticky top menubar
+      // sits physically underneath the black header instead of peeking below.
+      body: Stack(
+        children: [
+          if (_controller != null)
+            Positioned.fill(
+              child: WebViewWidget(
+                controller: _controller!,
+                gestureRecognizers: {
+                  Factory<VerticalDragGestureRecognizer>(() => VerticalDragGestureRecognizer()),
+                },
               ),
             ),
-            // White tab handle centered under the dark strip (owner 23 Oct).
-            Container(
-              color: const Color(0xFF131725),
-              child: Center(
-                child: Container(
-                  width: 36,
-                  height: 4.5,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: _HeaderOverlay(
+              name: name,
+              loading: _loading,
+              onClose: () => Navigator.of(context).pop(),
             ),
-            // Page-load hairline (only while navigating)
-            if (_loading)
-              const LinearProgressIndicator(
-                minHeight: 2.5,
-                backgroundColor: Colors.transparent,
-                valueColor: AlwaysStoppedAnimation(Color(0xFFE60000)),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
-      body: _controller == null
-          ? const SizedBox.shrink()
-          : WebViewWidget(
-              controller: _controller!,
-              gestureRecognizers: {
-                Factory<VerticalDragGestureRecognizer>(() => VerticalDragGestureRecognizer()),
-              },
-            ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -335,6 +292,79 @@ class _BottomToolBar extends StatelessWidget {
             _btn(Icons.bar_chart_rounded, 'Price history', onPriceHistory, highlight: true),
             _btn(Icons.open_in_full, 'Expand', onExpand),
           ]),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Full-width dark overlay header (owner 23 Oct): the merchant name strip +
+/// white pull tab + load hairline, drawn ON TOP of the full-bleed WebView so
+/// the partner site's own menubar/logo stays hidden behind it.
+class _HeaderOverlay extends StatelessWidget {
+  const _HeaderOverlay({required this.name, required this.loading, required this.onClose});
+  final String name;
+  final bool loading;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF131725),
+          boxShadow: [BoxShadow(color: Color(0x44000000), blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 52,
+                child: Row(children: [
+                  const SizedBox(width: 14),
+                  const Icon(Icons.travel_explore, size: 20, color: Colors.white70),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: onClose,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Icon(Icons.close, size: 22, color: Colors.white70),
+                    ),
+                  ),
+                ]),
+              ),
+              // White tab handle centered under the dark strip (owner 23 Oct).
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4.5,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              if (loading)
+                const LinearProgressIndicator(
+                  minHeight: 2.5,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation(Color(0xFFE60000)),
+                ),
+            ],
+          ),
         ),
       ),
     );

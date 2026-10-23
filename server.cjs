@@ -28908,7 +28908,8 @@ var init_quickAppsData = __esm({
 // server/home/heroBanners.ts
 var heroBanners_exports = {};
 __export(heroBanners_exports, {
-  buildHeroBanners: () => buildHeroBanners
+  buildHeroBanners: () => buildHeroBanners,
+  buildSectionBanners: () => buildSectionBanners
 });
 async function upcomingMovies() {
   const key = "default";
@@ -29037,7 +29038,47 @@ async function buildHeroBanners() {
   if (slides.length) heroCache = { at: Date.now(), slides };
   return slides;
 }
-var HERO_TTL_MS, heroCache, upcomingCache;
+async function buildSectionBanners() {
+  if (sectionCache && Date.now() - sectionCache.at < HERO_TTL_MS) return sectionCache.banners;
+  const [movies, food, ecom] = await Promise.all([
+    upcomingMovies().catch(() => []),
+    fetchVerticalOffers("food", 200).catch(() => []),
+    fetchVerticalOffers("ecommerce", 600).catch(() => [])
+  ]);
+  const out = [];
+  for (const m of movies.filter((x) => x.poster).slice(0, 3)) {
+    out.push({
+      id: `sb-movie-${m.title}`,
+      imageUrl: m.poster,
+      link: "movies",
+      title: m.title,
+      subtitle: [m.genres, m.likes].filter(Boolean).join(" \u2022 ") || "Upcoming release \u2014 book tickets on Try1Second"
+    });
+  }
+  const foodRows = food.filter((r) => servableRow(r, 14) && imageFromAttributes(r.attributes)).sort((a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime()).slice(0, 2);
+  for (const r of foodRows) {
+    out.push({
+      id: `sb-food-${r.id}`,
+      imageUrl: imageFromAttributes(r.attributes),
+      link: "food",
+      title: r.title,
+      subtitle: [r.seller, r.location_city].filter(Boolean).join(" \xB7 ") || "Live offers from top kitchens"
+    });
+  }
+  const ecomRows = ecom.filter((r) => servableRow(r, 14) && imageFromAttributes(r.attributes) && pctOf(r) >= 0.4).sort((a, b) => pctOf(b) - pctOf(a)).slice(0, 3);
+  for (const r of ecomRows) {
+    out.push({
+      id: `sb-ecom-${r.id}`,
+      imageUrl: imageFromAttributes(r.attributes),
+      link: "ecommerce",
+      title: r.title,
+      subtitle: `${Math.round(pctOf(r) * 100)}% OFF \xB7 now \u20B9${priceOf(r).toLocaleString("en-IN")}`
+    });
+  }
+  if (out.length) sectionCache = { at: Date.now(), banners: out };
+  return out;
+}
+var HERO_TTL_MS, heroCache, upcomingCache, sectionCache;
 var init_heroBanners = __esm({
   "server/home/heroBanners.ts"() {
     init_curlCffiFetch();
@@ -29048,6 +29089,7 @@ var init_heroBanners = __esm({
     HERO_TTL_MS = 10 * 6e4;
     heroCache = null;
     upcomingCache = /* @__PURE__ */ new Map();
+    sectionCache = null;
   }
 });
 
@@ -31422,13 +31464,24 @@ var init_routes = __esm({
     apiRouter.get("/home-banners", async (_req, res) => {
       try {
         const rows = await getStore().query("SELECT * FROM home_banners");
-        const banners = rows.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+        const admin = rows.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
           id: Number(r.id),
           imageUrl: String(r.image_url || ""),
           link: String(r.link_url || "movies"),
           title: r.title ? String(r.title) : null,
           subtitle: r.subtitle ? String(r.subtitle) : null
         }));
+        let live = [];
+        try {
+          const { buildSectionBanners: buildSectionBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
+          live = (await buildSectionBanners2()).filter((b) => b.imageUrl && b.link).map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
+        } catch {
+        }
+        const seen = new Set(admin.map((b) => b.imageUrl));
+        const banners = [
+          ...admin,
+          ...live.filter((b) => !seen.has(b.imageUrl)).map((b, i) => ({ id: 1e6 + i, ...b }))
+        ];
         res.json({ success: true, banners });
       } catch {
         res.json({ success: true, banners: [] });

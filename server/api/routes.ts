@@ -2018,7 +2018,7 @@ apiRouter.post('/rewards/referral/apply', requireAuth, async (req, res) => {
 apiRouter.get('/home-banners', async (_req, res) => {
   try {
     const rows = await getStore().query<any>('SELECT * FROM home_banners');
-    const banners = rows
+    const admin = rows
       .filter((r) => Number(r.is_active ?? 1) === 1)
       .sort((a, z) => (Number(a.position ?? 0) - Number(z.position ?? 0)) || (Number(a.id) - Number(z.id)))
       .map((r) => ({
@@ -2028,6 +2028,23 @@ apiRouter.get('/home-banners', async (_req, res) => {
         title: r.title ? String(r.title) : null,
         subtitle: r.subtitle ? String(r.subtitle) : null,
       }));
+    // Owner 23 Oct follow-up: the section strips are NOT a movie-only strip —
+    // append LIVE mixed-content banners (movies + food + ecom deals) behind the
+    // admin-authored ones so every section gap cycles different real content.
+    let live: { imageUrl: string; link: string; title: string | null; subtitle: string | null }[] = [];
+    try {
+      const { buildSectionBanners } = await import('../home/heroBanners');
+      live = (await buildSectionBanners())
+        .filter((b) => b.imageUrl && b.link)
+        .map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
+    } catch { /* honest: live pool unavailable, admin banners still serve */ }
+    const seen = new Set(admin.map((b) => b.imageUrl));
+    const banners = [
+      ...admin,
+      ...live
+        .filter((b) => !seen.has(b.imageUrl))
+        .map((b, i) => ({ id: 1_000_000 + i, ...b })),
+    ];
     res.json({ success: true, banners });
   } catch {
     res.json({ success: true, banners: [] }); // honest: no banners configured

@@ -239,23 +239,31 @@ class AppState extends ChangeNotifier {
   }
 
   /// The single acquisition pipeline used by live() and stale revalidation.
+  /// Owner 23 Oct: this used to be a bare api.live().then(...).whenComplete(...)
+  /// chain, which measurably STALLED in the Dart VM (the completion hops never
+  /// ran — the loader hung forever with rows already in cache) unless
+  /// incidental statements were added to the callback. Re-expressed as a
+  /// plain async function with try/finally: the await/return path is the
+  /// well-trodden async machinery, and the in-flight map is ALWAYS cleared.
   Future<LiveResponse> _fetchAndStore(
     String key,
     String cacheKey,
     String q, {
     String? depart,
     String? returnDate,
-  }) {
-    return api
-        .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate)
-        .then((res) {
+  }) async {
+    try {
+      final res = await api
+          .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate);
       cache[key] = res;
       cacheQuery[key] = cacheKey;
       cacheAt[key] = _nowMs;
       if (!res.pendingRefresh) _scheduleDiskSave();
       notifyListeners();
       return res;
-    }).whenComplete(() => _inFlight.remove(cacheKey));
+    } finally {
+      _inFlight.remove(cacheKey);
+    }
   }
 
   // -- on-disk live cache ---------------------------------------------------

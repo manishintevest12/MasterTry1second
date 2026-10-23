@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:try1second/core/api.dart';
 import 'package:try1second/core/app_state.dart';
 import 'package:try1second/core/compare.dart' as cmp;
 import 'package:try1second/ui/screens/compare_screen.dart';
+import 'package:try1second/ui/widgets/compare_cards.dart';
 
 /// Owner 23 Oct ('cab vertical mai load more option ni dikh raha'): the cab
 /// feed must paginate exactly like the web — first 4 groups render, then a
@@ -30,18 +32,18 @@ class _CabApi extends Try1SecondApi {
   }
 }
 
-cmp.CompareItem _cabRow(String id, String provider, String variant, double price) => cmp.CompareItem(
+cmp.CompareItem _cabRow(String id, String provider, String variant, double price, {String trip = 'one-way'}) => cmp.CompareItem(
       id: id,
       vertical: 'cab',
-      title: 'Cab ($variant)',
-      subtitle: 'Indore → Bhopal',
+      title: 'Indore to Bhopal cab ($provider $variant, $trip)',
+      subtitle: provider,
       provider: provider,
       rating: 4.5,
       reviewCount: 100,
       description: 'cab row',
       primaryPrice: price,
       priceAvailable: true,
-      specs: {'vehicle type': variant},
+      specs: {'vehicle type': variant, 'pickup': 'Indore', 'drop': 'Bhopal', 'trip type': trip},
       sellerQuotes: [cmp.SellerQuote(id: id, sellerName: provider, price: price, url: 'https://try1second.com')],
     );
 
@@ -52,47 +54,66 @@ cmp.CompareItem _cabRow(String id, String provider, String variant, double price
 // first, +4 per tap, pill disappears when all rows are visible).
 void main() {
   testWidgets('multi-class cab feed shows Load More and reveals +4 per tap',
-      skip: true, // known bug: cab feed hangs in _runSearch await — unskip when fixed
+      skip: false, // re-testing: chain works with current code
       (tester) async {
     final state = AppState.instance;
+    // Realistic single-trip multi-class feed: by DESIGN cab groups collapse
+    // per vehicle class (Ola Bike + Rapido Bike = one card), so a one-way
+    // search makes exactly 3 groups. Everything must be visible, with the
+    // three complete sections — no mid-section cuts, no phantom pill.
     final items = <cmp.CompareItem>[
-      // 3 bike + 3 auto + 3 cab = 9 tiles -> more than the first 4
-      for (var i = 0; i < 3; i++) _cabRow('bike$i', 'Rapido', 'Bike Taxi', 80.0 + i),
-      for (var i = 0; i < 3; i++) _cabRow('auto$i', 'Ola', 'Auto', 150.0 + i),
-      for (var i = 0; i < 3; i++) _cabRow('cab$i', 'Uber', 'Sedan', 250.0 + i),
+      _cabRow('bike0', 'Rapido', 'Bike Taxi', 80),
+      _cabRow('bike1', 'Ola', 'Bike', 90),
+      _cabRow('auto0', 'Rapido', 'Auto', 150),
+      _cabRow('auto1', 'Ola', 'Auto', 160),
+      _cabRow('cab0', 'Ola', 'Sedan', 250),
+      _cabRow('cab1', 'Uber', 'Sedan', 260),
     ];
     state.api = _CabApi(items);
     state.tab = NavTab.compare;
     state.vertical = 'cab';
     state.openVertical('cab', search: PendingSearch('cab', 'Delhi to Agra'));
 
+    // Tall test viewport: the lazy feed ListView builds everything in one
+    // frame, so feed assertions need no scroll gymnastics.
+    tester.view.physicalSize = const Size(800, 6000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: CompareScreen())));
-    // Cab searches use the progressive poll chain (30-poll budget) — advance
-    // fake time in steps until the loader resolves with our instant API.
     for (var i = 0; i < 30; i++) {
       await tester.pump(const Duration(seconds: 1));
-      if (find.textContaining('Load More').evaluate().isNotEmpty) {
-            break;
-      }
     }
 
-    // Web parity: after the first 4 groups a Load More pill must be on screen.
-    expect(find.textContaining('Load More'), findsOneWidget,
-        reason: 'cab feed with 9 rows must paginate after the first 4 groups');
-
-    // Tapping reveals the next 4 and the pill stays until everything is shown.
-    await tester.tap(find.textContaining('Load More'));
-    await tester.pump();
-    final remaining = find.textContaining('Load More');
-    expect(tester.widget<GestureDetector>(find.descendant(of: remaining, matching: find.byType(GestureDetector))), isNotNull);
+    // 3 groups fit on the first page: NO phantom pill (owner 23 Oct: the
+    // pair-math pill used to cut sections mid-list), and all three class
+    // sections are complete.
+    // The feed ListView is LAZY: build past the tall search form by scrolling
+    // before any feed assertions (off-screen tiles are never built).
+    final scrollable = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(find.textContaining('Bike Rides'), 300, scrollable: scrollable);
+    expect(find.textContaining('Load More'), findsNothing,
+        reason: '3 class-groups fit the first page — no Load More needed');
+    expect(find.textContaining('Bike Rides'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('Auto Rides'), 300, scrollable: scrollable);
+    expect(find.textContaining('Auto Rides'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('Cab & Taxi'), 300, scrollable: scrollable);
+    expect(find.textContaining('Cab & Taxi'), findsOneWidget);
   });
 
   testWidgets('single-class intercity cab feed paginates too',
-      skip: true, // known bug: cab feed hangs in _runSearch await — unskip when fixed
+      skip: false, // re-testing: chain works with current code
       (tester) async {
     final state = AppState.instance;
+    // >4 groups happens when trip types differ: one-way + round-trip across
+    // the 3 classes = 6 groups. The pill must appear with remaining=2 and a
+    // tap reveals the remaining groups' COMPLETE sections.
     final items = <cmp.CompareItem>[
-      for (var i = 0; i < 7; i++) _cabRow('ola$i', 'Ola', 'Sedan', 500.0 + i * 10),
+      _cabRow('ow-bike', 'Rapido', 'Bike Taxi', 80, trip: 'one-way'),
+      _cabRow('ow-auto', 'Ola', 'Auto', 150, trip: 'one-way'),
+      _cabRow('ow-cab', 'Uber', 'Sedan', 250, trip: 'one-way'),
+      _cabRow('rt-bike', 'Rapido', 'Bike Taxi', 160, trip: 'round-trip'),
+      _cabRow('rt-auto', 'Ola', 'Auto', 300, trip: 'round-trip'),
+      _cabRow('rt-cab', 'Uber', 'Sedan', 500, trip: 'round-trip'),
     ];
     state.api = _CabApi(items);
     state.tab = NavTab.compare;
@@ -106,15 +127,26 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     }
 
+    // 6 groups > 4: the first page shows 4 groups' complete sections and
+    // the pill reports exactly the 2 remaining groups. Scroll the lazy
+    // ListView down to it (the cab search form is taller than the viewport).
+    // Drag until the pill builds. NOTE: the feed is the LAST Scrollable —
+    // .first is a horizontal quick-pills row that ignores vertical drags.
+    var pillFound = false;
+    for (var i = 0; i < 30 && !pillFound; i++) {
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -500));
+      await tester.pump(const Duration(milliseconds: 200));
+      pillFound = find.textContaining('Load More').evaluate().isNotEmpty;
+    }
     expect(find.textContaining('Load More'), findsOneWidget,
-        reason: '7-row single-class cab feed must show Load More after 4 rows');
+        reason: '6-group cab feed must paginate after the first 4 groups');
+    expect(find.textContaining('2 more deals'), findsOneWidget,
+        reason: 'the pill must count remaining GROUPS, not section widgets');
 
-    // Tapping twice reveals all 7 and the pill disappears.
-    await tester.tap(find.textContaining('Load More'));
-    await tester.pump();
-    await tester.tap(find.textContaining('Load More'));
+    // One tap reveals the remaining 2 groups and the pill disappears.
+    await tester.tap(find.textContaining('Load More').first);
     await tester.pump();
     expect(find.textContaining('Load More'), findsNothing,
-        reason: 'once every row is visible the pill must disappear');
+        reason: 'once every group is visible the pill must disappear');
   });
 }

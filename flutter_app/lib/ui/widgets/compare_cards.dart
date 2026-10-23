@@ -392,8 +392,14 @@ void _openRedirect(
   // prefilled, so the user sees the real in-app fare and books directly there.
   // The link routes through /api/cab/book -> /api/out server-side: the admin-
   // configured affiliate params are injected and the click tracked there.
+  // Owner 23 Oct fix: the server emits RELATIVE paths (/api/cab/book?...) —
+  // fine on the web, but launchUrl() needs an ABSOLUTE url. Prefix the app's
+  // API base so the cab Book button actually redirects from the app.
   if (appBookUrl != null && appBookUrl.isNotEmpty) {
-    launchUrl(Uri.parse(appBookUrl), mode: LaunchMode.externalApplication);
+    final abs = appBookUrl.startsWith('http')
+        ? appBookUrl
+        : '${AppState.instance.api.baseUrl}$appBookUrl';
+    launchUrl(Uri.parse(abs), mode: LaunchMode.externalApplication);
     return;
   }
 
@@ -690,10 +696,21 @@ class HotelCard extends StatelessWidget {
             // Owner 23 Oct fix: StackFit.expand — portrait photos used to size
             // to their intrinsic aspect (a narrow ~25% column at the left)
             // leaving blank space to the right of the photo header.
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                NetImage(g.image ?? g.gallery.firstOrNull, height: 155, fallbackIcon: Icons.hotel_rounded),
+            // REAL ROOT CAUSE of 'hotel results nahi aa rahe' (23 Oct): the
+            // expand-fit Stack sat DIRECTLY in this Column, which a ListView
+            // sizes with UNBOUNDED height — StackFit.expand then tried to be
+            // infinitely tall and EVERY hotel card threw 'BoxConstraints
+            // forces an infinite height', blanking the whole hotels feed in
+            // the app (site kept working, so it looked like missing data).
+            // Bounding the header in a fixed 155px box makes the expand fit
+            // legal: photo fills edge-to-edge, cards never crash.
+            child: SizedBox(
+              height: 155,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  NetImage(g.image ?? g.gallery.firstOrNull, fit: BoxFit.cover, fallbackIcon: Icons.hotel_rounded),
                 // Top-left: white photo-count badge (reference image)
                 Positioned(
                   top: 8,
@@ -765,6 +782,7 @@ class HotelCard extends StatelessWidget {
                   ),
                 ),
               ],
+              ),
             ),
           ),
           // -- info block -----------------------------------------------------
@@ -1346,6 +1364,11 @@ class GroupCard extends StatelessWidget {
                 ] else if (g.best.item.bestQuote == null) ...[
                   const SizedBox.shrink(),
                 ] else if (!_isFinance(vertical) && g.best.item.bestQuote!.url.isEmpty) ...[
+                  const SizedBox.shrink(),
+                ] else if (vertical == 'ecommerce') ...[
+                  // Owner 23 Oct (duplicate Order Now screenshot): the pair
+                  // above already renders Compare + Order Now for EVERY ecom
+                  // card — the generic single CTA must NOT repeat the button.
                   const SizedBox.shrink(),
                 ] else ...[
                   RedButton(

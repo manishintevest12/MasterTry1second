@@ -1125,28 +1125,54 @@ class _ReferralTab extends StatefulWidget {
 class _ReferralTabState extends State<_ReferralTab> {
   final _state = AppState.instance;
   final _auth = AuthService.instance;
+  final _wallet = RewardsWallet.instance;
   String? _code;
   String? _link;
-  int _referredCount = 0;
-  int _points = 0;
   String? _referredByCode;
   String? _error;
   bool _busy = false;
   final _applyCtl = TextEditingController();
+  final _nameCtl = TextEditingController();
+  final _emailCtl = TextEditingController();
   String? _applyMsg;
   bool _applyOk = false;
   bool _applying = false;
+  VoidCallback? _unsub;
 
   @override
   void initState() {
     super.initState();
+    _wallet.load();
+    _unsub = _wallet.listen(() {
+      if (mounted) setState(() {});
+    });
     _load();
   }
 
   @override
   void dispose() {
+    _unsub?.call();
     _applyCtl.dispose();
+    _nameCtl.dispose();
+    _emailCtl.dispose();
     super.dispose();
+  }
+
+  /// Owner 23 Oct (image-3/4 design): Simulate Friend Sign-up (+1 Point) —
+  /// names a friend, credits +1 point to the wallet, exactly like the web card.
+  void _sendInvite() {
+    final name = _nameCtl.text.trim().isEmpty ? 'Friend' : _nameCtl.text.trim();
+    _wallet.referFriend(name, _emailCtl.text.trim());
+    _nameCtl.clear();
+    _emailCtl.clear();
+    toast(context, '+1 point — $name joined Try1Second!');
+  }
+
+  /// Share the referral link straight into WhatsApp (image-3: green button).
+  Future<void> _shareWhatsApp() async {
+    final link = _link ?? 'https://www.try1second.com';
+    final codeTxt = _code != null ? ' (code $_code)' : '';
+    await Share.share('Join me on Try1Second$codeTxt — compare flights, hotels, food, groceries & more in one app! $link');
   }
 
   /// Owner 23 Oct: real referral codes — GET /api/rewards/referral/me mints a
@@ -1161,8 +1187,6 @@ class _ReferralTabState extends State<_ReferralTab> {
         setState(() {
           _code = me?['code']?.toString();
           _link = me?['link']?.toString();
-          _referredCount = (me?['referredCount'] as num?)?.toInt() ?? 0;
-          _points = (me?['points'] as num?)?.toInt() ?? 0;
           _referredByCode = me?['referredByCode']?.toString();
           _error = me == null ? 'Could not reach the referral engine — tap Refresh.' : null;
         });
@@ -1197,94 +1221,235 @@ class _ReferralTabState extends State<_ReferralTab> {
   @override
   Widget build(BuildContext context) {
     final dark = isDark(context);
+    final w = _wallet;
+    final pct = (w.points / kSpinCostPoints).clamp(0.0, 1.0);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        // ── Your referral code card (web parity: ReferAndEarn) ──
+        // ── Wallet card (image 2: balance + progress to next spin) ──
         Box(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text.rich(
+                TextSpan(
+                  text: 'Wallet Balance: ',
+                  style: tx(context, 13, w: FontWeight.w900),
+                  children: [
+                    TextSpan(text: '${w.points} pts', style: tx(context, 13, w: FontWeight.w900, color: T1SColors.orange500)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text('${w.pointsToNextSpin} referrals to next spin', style: tx(context, 10.5, color: muted(context))),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  minHeight: 6,
+                  backgroundColor: dark ? T1SColors.slate800 : T1SColors.slate100,
+                  valueColor: const AlwaysStoppedAnimation(T1SColors.orange500),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // ── Orange gradient hero (image 4: referral program hero) ──
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFEE5B20), Color(0xFFF97316), Color(0xFFFB923C)],
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(999)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.group_add_rounded, size: 12, color: Colors.white),
+                  const SizedBox(width: 5),
+                  Text('Referral Rewards Program', style: tx(context, 10, w: FontWeight.w800, color: Colors.white)),
+                ]),
+              ),
+              const SizedBox(height: 10),
+              Text('Invite Friends · Earn 1 Point Each', style: tx(context, 19, w: FontWeight.w900, color: Colors.white, h: 1.15)),
+              const SizedBox(height: 6),
+              Text(
+                '1 friend joined = 1 point accredited to your wallet. Collect 100 points to unlock an instant spin on our prize wheel for gift cards, vouchers & cashback.',
+                style: tx(context, 11.5, w: FontWeight.w600, color: Colors.white, h: 1.45),
+              ),
+              const SizedBox(height: 12),
+              Container(height: 1, color: Colors.white38),
+              const SizedBox(height: 12),
+              Text('Simulate Referrals:', style: tx(context, 11, w: FontWeight.w700, color: Color(0xFFFED7AA))),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _heroPill('+1 Referral (Sneha)', Colors.white24, Colors.white, () => _wallet.referFriend('Sneha Kapoor', 'sneha.k@gmail.com')),
+                  _heroPill('+3 Referrals', Colors.white24, Colors.white, () {
+                    _wallet.referFriend('Karan Johar', 'karan@gmail.com');
+                    _wallet.referFriend('Priya Sharma', 'priya@gmail.com');
+                    _wallet.referFriend('Arjun Nair', 'arjun@gmail.com');
+                  }),
+                  _heroPill('Unlock 100-Pt Spin', Colors.white, const Color(0xFFEA580C), () {
+                    _wallet.addPoints(kSpinCostPoints);
+                    toast(context, '100 points added — go spin the wheel!');
+                  }),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // ── Invite card: referral link + Copy + WhatsApp (image 3/4) ──
+        Box(
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                const Icon(Icons.group_add_rounded, size: 18, color: T1SColors.orange500),
+                const Icon(Icons.person_add_alt_rounded, size: 16, color: T1SColors.orange500),
                 const SizedBox(width: 8),
-                Expanded(child: Text('Refer & Earn', style: tx(context, 15, w: FontWeight.w900))),
+                Expanded(child: Text('Invite Friends · Earn 1 Point Each', style: tx(context, 13.5, w: FontWeight.w900))),
               ]),
-              const SizedBox(height: 8),
-              Text('Earn 1 Point for Every Referral. Spin at 100 Points.',
-                  style: tx(context, 12.5, w: FontWeight.w800, h: 1.3)),
-              const SizedBox(height: 6),
-              Text('Share your code — every friend who joins adds 1 point to your wallet.',
-                  style: tx(context, 11, color: muted(context), h: 1.45)),
+              const SizedBox(height: 4),
+              Text('1 friend joined = 1 point accredited to your wallet', style: tx(context, 11, color: muted(context))),
               const SizedBox(height: 14),
               if (!_auth.signedIn)
-                Text('Sign in from Profile to get your T1S referral code.', style: tx(context, 11.5, color: muted(context)))
+                Text('Sign in from Profile to get your T1S referral link.', style: tx(context, 11.5, color: muted(context)))
               else ...[
+                Text('YOUR REFERRAL LINK:', style: tx(context, 9, w: FontWeight.w800, ls: .8, color: muted(context))),
+                const SizedBox(height: 6),
                 if (_busy && _code == null)
-                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red)),
-                if (_error != null) Text(_error!, style: tx(context, 11.5, color: T1SColors.red)),
-                if (_code != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: dark ? T1SColors.slate800 : T1SColors.slate50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: border(context)),
-                    ),
-                    child: Text(_code!, style: tx(context, 20, w: FontWeight.w900, ls: 3, color: T1SColors.red, mono: true)),
-                  ),
-                  if (_link != null) ...[
-                    const SizedBox(height: 6),
-                    Text(_link!, style: tx(context, 10, mono: true, color: muted(context)), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  ],
-                  const SizedBox(height: 10),
+                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.red))
+                else if (_error != null)
+                  Text(_error!, style: tx(context, 11.5, color: T1SColors.red))
+                else ...[
                   Row(children: [
                     Expanded(
-                      child: RedButton(
-                        'Copy code & link',
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: '${_code ?? ''}\n${_link ?? ''}'));
-                          toast(context, 'Referral code & link copied');
-                        },
-                        icon: Icons.copy_rounded,
+                      child: Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          color: dark ? T1SColors.slate800 : T1SColors.slate50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: border(context)),
+                        ),
+                        child: Text(
+                          _link ?? 'https://www.try1second.com',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tx(context, 10.5, mono: true, w: FontWeight.w700),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(child: T1SOutlineButton('Refresh', onTap: _load)),
-                  ]),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                      child: Box(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Column(children: [
-                          Text('$_referredCount', style: tx(context, 17, w: FontWeight.w900)),
-                          const SizedBox(height: 2),
-                          Text('FRIENDS JOINED', style: tx(context, 9, w: FontWeight.w800, ls: .6, color: muted(context))),
-                        ]),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Box(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Column(children: [
-                          Text('$_points', style: tx(context, 17, w: FontWeight.w900)),
-                          const SizedBox(height: 2),
-                          Text('VALID POINTS', style: tx(context, 9, w: FontWeight.w800, ls: .6, color: muted(context))),
-                        ]),
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: '${_code ?? ''}\n${_link ?? ''}'));
+                        toast(context, 'Referral link copied');
+                      },
+                      child: Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(color: T1SColors.orange500, borderRadius: BorderRadius.circular(10)),
+                        child: Text('Copy', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
                       ),
                     ),
                   ]),
+                  const SizedBox(height: 10),
+                  // Green WhatsApp share (image 3)
+                  GestureDetector(
+                    onTap: _shareWhatsApp,
+                    child: Container(
+                      width: double.infinity,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF059669),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [BoxShadow(color: Color(0x22059669), blurRadius: 6, offset: Offset(0, 2))],
+                      ),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.chat_bubble_rounded, size: 17, color: Colors.white),
+                        const SizedBox(width: 8),
+                        Text('Share Referral Link on WhatsApp', style: tx(context, 12.5, w: FontWeight.w900, color: Colors.white)),
+                      ]),
+                    ),
+                  ),
                 ],
               ],
             ],
           ),
         ),
         const SizedBox(height: 14),
+
+        // ── Simulate Friend Sign-up module (image 3) ──
+        Box(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.group_rounded, size: 16, color: T1SColors.red),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Simulate Friend Sign-up (+1 Point)', style: tx(context, 12.5, w: FontWeight.w900))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: const Color(0xFFD1FAE5), borderRadius: BorderRadius.circular(999)),
+                  child: Text('${w.friends.length} Friends Joined', style: tx(context, 9.5, w: FontWeight.w900, color: Color(0xFF065F46))),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(
+                  child: _miniField(_nameCtl, "Friend's Name..."),
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: _miniField(_emailCtl, 'Email (optional)...')),
+              ]),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: _sendInvite,
+                child: Container(
+                  width: double.infinity,
+                  height: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: const Color(0xFF111827), borderRadius: BorderRadius.circular(12)),
+                  child: Text('Send Invite (+1 Pt)', style: tx(context, 12.5, w: FontWeight.w900, color: Colors.white)),
+                ),
+              ),
+              if (w.friends.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Recent: ' + w.friends.take(3).map((f) => '${f.name} +${f.pointsAwarded} pt').join(' | '),
+                  style: tx(context, 10.5, color: muted(context), h: 1.4),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
         // ── Apply a friend's code (once per account) ──
         Box(
           padding: const EdgeInsets.all(16),
@@ -1331,11 +1496,57 @@ class _ReferralTabState extends State<_ReferralTab> {
             ],
           ),
         ),
+        const SizedBox(height: 14),
+
+        // ── Points rule (image 1: Try1Second Referral Points Rule) ──
+        Box(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Try1Second Referral Points Rule', style: tx(context, 11.5, w: FontWeight.w900)),
+              const SizedBox(height: 6),
+              Text(
+                'Every friend who joins Try1Second with your referral link or code adds 1 point to your wallet. '
+                'At 100 points you unlock one spin of the prize wheel (Amazon vouchers, flight cash, grocery credits, '
+                'Ola/Uber rides, movie tickets and more). Points never expire and spins never carry over.',
+                style: tx(context, 10.5, color: muted(context), h: 1.5),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
-}
 
+  /// Hero pill button (image-4 style) shared by the referral simulate row.
+  Widget _heroPill(String label, Color bg, Color fg, VoidCallback onTap, {IconData icon = Icons.add_rounded}) => ElevatedButton.icon(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: fg,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+          side: BorderSide(color: fg.withValues(alpha: .35), width: .8),
+        ),
+        icon: Icon(icon, size: 14, color: fg),
+        label: Text(label, style: tx(context, 10.5, w: FontWeight.w800, color: fg)),
+      );
+
+  /// Small input used by the Simulate Friend Sign-up row.
+  Widget _miniField(TextEditingController ctl, String hint) => TextField(
+        controller: ctl,
+        style: tx(context, 11.5, w: FontWeight.w700),
+        decoration: InputDecoration(
+          hintText: hint,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border(context))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: border(context))),
+        ),
+      );
+}
 
 // ---------------------------------------------------------------------------
 // Top Picks rail (website RewardsTopPicks): one best pick per vertical.

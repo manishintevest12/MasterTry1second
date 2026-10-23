@@ -150,17 +150,26 @@ class AppStore {
   }
 
   Future<void> liveDiskCacheSave(Map<String, dynamic> doc) async {
-    final p = await _p;
+    // Whole-body guard (owner 23 Oct hotels/cab hang): SharedPreferences
+    // getInstance() itself can throw (missing plugin in tests, corrupted prefs
+    // on some ROMs). Disk persistence is a pure optimization, so ANY failure
+    // must swallow silently — an escaped error becomes an unhandled zone error
+    // that silently poisons the in-flight async chain and hangs the loader.
     try {
+      final p = await _p;
       await p.setString(_kLiveCache, jsonEncode(doc));
     } catch (_) {
       // Storage full / too large: drop the cache rather than crash.
-      await p.remove(_kLiveCache);
+      try {
+        await (await _p).remove(_kLiveCache);
+      } catch (_) {}
     }
   }
 
   Future<void> liveDiskCacheClear() async {
-    await (await _p).remove(_kLiveCache);
+    try {
+      await (await _p).remove(_kLiveCache);
+    } catch (_) {}
   }
 
   Future<void> toggleTrack(TrackedItem item) async {

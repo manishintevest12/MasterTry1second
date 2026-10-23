@@ -176,3 +176,68 @@ export async function buildHeroBanners(): Promise<HeroSlide[]> {
   if (slides.length) heroCache = { at: Date.now(), slides };
   return slides;
 }
+
+/**
+ * SECTION banners (owner 23 Oct follow-up: "banners sirf movie ka nahi dikh
+ * sakta" — the section strips must be MIXED content like the hero). Composes
+ * wide strip banners from the same LIVE pools: up to 3 movies, 2 food offers
+ * and 3 e-commerce deals, so /api/home-banners can cycle a different real
+ * banner into every section gap. Never mock — a pool that is unreachable is
+ * honestly skipped and retried on the next cache window.
+ */
+export interface SectionBanner {
+  id: string;
+  imageUrl: string;
+  link: string; // vertical id
+  title: string | null;
+  subtitle: string | null;
+}
+
+let sectionCache: { at: number; banners: SectionBanner[] } | null = null;
+
+export async function buildSectionBanners(): Promise<SectionBanner[]> {
+  if (sectionCache && Date.now() - sectionCache.at < HERO_TTL_MS) return sectionCache.banners;
+  const [movies, food, ecom] = await Promise.all([
+    upcomingMovies().catch(() => [] as any[]),
+    fetchVerticalOffers('food', 200).catch(() => [] as OfferRow[]),
+    fetchVerticalOffers('ecommerce', 600).catch(() => [] as OfferRow[]),
+  ]);
+  const out: SectionBanner[] = [];
+  for (const m of movies.filter((x: any) => x.poster).slice(0, 3)) {
+    out.push({
+      id: `sb-movie-${m.title}`,
+      imageUrl: m.poster,
+      link: 'movies',
+      title: m.title,
+      subtitle: [m.genres, m.likes].filter(Boolean).join(' • ') || 'Upcoming release — book tickets on Try1Second',
+    });
+  }
+  const foodRows = food
+    .filter((r: OfferRow) => servableRow(r, 14) && imageFromAttributes(r.attributes))
+    .sort((a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime())
+    .slice(0, 2);
+  for (const r of foodRows) {
+    out.push({
+      id: `sb-food-${r.id}`,
+      imageUrl: imageFromAttributes(r.attributes) as string,
+      link: 'food',
+      title: r.title,
+      subtitle: [r.seller, r.location_city].filter(Boolean).join(' · ') || 'Live offers from top kitchens',
+    });
+  }
+  const ecomRows = ecom
+    .filter((r: OfferRow) => servableRow(r, 14) && imageFromAttributes(r.attributes) && pctOf(r) >= 0.40)
+    .sort((a, b) => pctOf(b) - pctOf(a))
+    .slice(0, 3);
+  for (const r of ecomRows) {
+    out.push({
+      id: `sb-ecom-${r.id}`,
+      imageUrl: imageFromAttributes(r.attributes) as string,
+      link: 'ecommerce',
+      title: r.title,
+      subtitle: `${Math.round(pctOf(r) * 100)}% OFF · now ₹${priceOf(r).toLocaleString('en-IN')}`,
+    });
+  }
+  if (out.length) sectionCache = { at: Date.now(), banners: out };
+  return out;
+}
