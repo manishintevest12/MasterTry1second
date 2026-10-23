@@ -667,6 +667,23 @@ const SHOWCASE_TTL_MS = 10 * 60 * 1000;
 const TECH_RX = /mobile|phone|laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook|headphone|earbud|airdopes|smartwatch|tablet|ipad|camera|speaker|soundbar|television|\btv\b|qled|gaming|console|charger|power bank|ssd|keyboard|mouse|refrigerator|fridge|washing machine|air conditioner|air cooler|microwave|mixer|grinder|geyser|induction|air fryer|purifier|oven|dishwasher/i;
 const TECH_BRAND_RX = /apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|\bhp\b|asus|acer|xiaomi|realme|vivo|oppo|nothing/i;
 
+// Owner 23 Oct: a transient CDN flake must never evict a whole Top Destinations
+// card (the section vanished between rebuilds when one probe batch failed).
+// A URL that ever answered with real image bytes stays TRUSTED for 7 days;
+// re-probe only after that. A URL that just probed fine is trusted immediately.
+// Same honest policy as before: a URL that NEVER verified is still excluded.
+const ART_TRUST_MS = 7 * 24 * 60 * 60 * 1000;
+const artTrust = new Map<string, number>(); // url -> last verified epoch ms
+
+async function destinationArtSet(urls: string[]): Promise<Set<string>> {
+  const unique = [...new Set(urls)];
+  const now = Date.now();
+  const toProbe = unique.filter((u) => (artTrust.get(u) || 0) < now - ART_TRUST_MS);
+  const results = await Promise.all(toProbe.map((u) => logoAnswers(u)));
+  toProbe.forEach((u, i) => { if (results[i]) artTrust.set(u, now); });
+  return new Set(unique.filter((u) => (artTrust.get(u) || 0) >= now - ART_TRUST_MS));
+}
+
 export async function buildShowcase(): Promise<ShowcaseSection[]> {
   if (cached && Date.now() - cached.at < SHOWCASE_TTL_MS) return cached.sections;
 
@@ -715,8 +732,10 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
     hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes))
       .map((r) => imageFromAttributes(r.attributes)!),
   )].slice(0, 40);
-  const artResults = await Promise.all(hotelArtUrls.map((u) => logoAnswers(u)));
-  const liveArt = new Set(hotelArtUrls.filter((u, i) => artResults[i]));
+  // Trust-cache probe (owner 23 Oct): previously verified art is not
+  // re-probed every 10-min rebuild, so one flaky CDN round cannot blank the
+  // whole section the way the per-rebuild batch could.
+  const liveArt = await destinationArtSet(hotelArtUrls);
   const destinations = FAMOUS
     .map((d) => destinationItem(d, flights, hotels, liveArt))
     .filter((x): x is ShowcaseItem => x !== null)

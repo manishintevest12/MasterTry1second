@@ -27147,6 +27147,16 @@ function pickTopOfferRow(rows) {
   const pool2 = withImg.length ? withImg : servable;
   return pool2.reduce((best, r) => pctOf(r) > pctOf(best) ? r : best, pool2[0]);
 }
+async function destinationArtSet(urls) {
+  const unique = [...new Set(urls)];
+  const now = Date.now();
+  const toProbe = unique.filter((u) => (artTrust.get(u) || 0) < now - ART_TRUST_MS);
+  const results = await Promise.all(toProbe.map((u) => logoAnswers(u)));
+  toProbe.forEach((u, i) => {
+    if (results[i]) artTrust.set(u, now);
+  });
+  return new Set(unique.filter((u) => (artTrust.get(u) || 0) >= now - ART_TRUST_MS));
+}
 async function buildShowcase() {
   if (cached && Date.now() - cached.at < SHOWCASE_TTL_MS) return cached.sections;
   const [ecom, hotels, cardsPool, flights, couponSpecial, partner] = await Promise.all([
@@ -27179,8 +27189,7 @@ async function buildShowcase() {
   const hotelArtUrls = [...new Set(
     hotels.filter((r) => ageDays(r) <= 60 && imageFromAttributes(r.attributes)).map((r) => imageFromAttributes(r.attributes))
   )].slice(0, 40);
-  const artResults = await Promise.all(hotelArtUrls.map((u) => logoAnswers(u)));
-  const liveArt = new Set(hotelArtUrls.filter((u, i) => artResults[i]));
+  const liveArt = await destinationArtSet(hotelArtUrls);
   const destinations = FAMOUS.map((d) => destinationItem(d, flights, hotels, liveArt)).filter((x) => x !== null).slice(0, 12);
   const placesFinal = finalizeSection(places);
   const sections = [
@@ -27203,7 +27212,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX;
+var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -27287,6 +27296,8 @@ var init_showcase = __esm({
     SHOWCASE_TTL_MS = 10 * 60 * 1e3;
     TECH_RX = /mobile|phone|laptop|macbook|notebook|thinkpad|ideapad|vivobook|ultrabook|headphone|earbud|airdopes|smartwatch|tablet|ipad|camera|speaker|soundbar|television|\btv\b|qled|gaming|console|charger|power bank|ssd|keyboard|mouse|refrigerator|fridge|washing machine|air conditioner|air cooler|microwave|mixer|grinder|geyser|induction|air fryer|purifier|oven|dishwasher/i;
     TECH_BRAND_RX = /apple|samsung|oneplus|sony|boat|jbl|lenovo|dell|\bhp\b|asus|acer|xiaomi|realme|vivo|oppo|nothing/i;
+    ART_TRUST_MS = 7 * 24 * 60 * 60 * 1e3;
+    artTrust = /* @__PURE__ */ new Map();
   }
 });
 
