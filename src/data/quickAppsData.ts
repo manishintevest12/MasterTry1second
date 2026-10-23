@@ -4,7 +4,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-swiggy',
     name: 'Swiggy Food & Instamart',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=swiggy.com&sz=128',
+    iconUrl: 'https://cdn.jsdelivr.net/npm/simple-icons@13/icons/swiggy.svg',
     category: 'Food Delivery & Groceries',
     type: 'CPI - Android',
     deepLink: 'swiggy://open?utm_source=try1second&utm_medium=affiliate',
@@ -22,7 +22,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-zomato',
     name: 'Zomato Dining & Delivery',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=zomato.com&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Zomato_Logo.svg?width=256',
     category: 'Food Delivery & Dining',
     type: 'CPC',
     deepLink: 'zomato://order?ref=try1second',
@@ -58,7 +58,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   {
     id: 'qapp-amazon',
     name: 'Amazon India Shopping & Pay',
-    iconUrl: 'https://www.google.com/s2/favicons?domain=amazon.in&sz=128',
+    iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Amazon_logo.svg?width=256',
     category: 'E-Commerce & Gadgets',
     type: 'CPS',
     deepLink: 'amazon://home?tag=try1sec-21',
@@ -280,7 +280,7 @@ export const INITIAL_QUICK_APP_PARTNERS: QuickAppPartner[] = [
   { id: 'qapp-dominos', name: 'Dominos Pizza Order Online', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Dominos_2025.svg?width=256', category: 'Food Delivery & Dining', type: 'Vertical Source', deepLink: 'dominos://open?utm_source=try1second', webUrl: 'https://www.dominos.co.in', description: 'Menu prices from our Food vertical, cooked by live web acquisition.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.4, downloadsOrUsers: '50M+ Downloads', badge: 'Food Vertical', bgColor: 'bg-blue-600', createdAt: '2026-10-17' },
   { id: 'qapp-bigbasket', name: 'BigBasket & BB Now', iconUrl: '/brand-logos/bigbasket.png', category: '10-Min Quick Grocery', type: 'Vertical Source', deepLink: 'bigbasket://open?utm_source=try1second', webUrl: 'https://www.bigbasket.com', description: 'Grocery prices from BigBasket and BB Now inside our Grocery vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '50M+ Downloads', badge: 'Grocery Vertical', bgColor: 'bg-emerald-600', createdAt: '2026-10-17' },
   { id: 'qapp-nykaa', name: 'Nykaa Beauty & Fashion', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Nykaa.png?width=256', category: 'E-Commerce & Electronics', type: 'Vertical Source', deepLink: 'nykaa://open?utm_source=try1second', webUrl: 'https://www.nykaa.com', description: 'Beauty and fashion prices scanned live into our E-Commerce vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.3, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-pink-600', createdAt: '2026-10-17' },
-  { id: 'qapp-myntra', name: 'Myntra Fashion Store', iconUrl: 'https://www.google.com/s2/favicons?domain=myntra.com&sz=128', category: 'E-Commerce & Electronics', type: 'Vertical Source', deepLink: 'myntra://open?utm_source=try1second', webUrl: 'https://www.myntra.com', description: 'Live fashion prices powering our E-Commerce comparison cards.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-fuchsia-600', createdAt: '2026-10-17' },
+  { id: 'qapp-myntra', name: 'Myntra Fashion Store', iconUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Myntra_Logo.png?width=256', category: 'E-Commerce & Electronics', type: 'Vertical Source', deepLink: 'myntra://open?utm_source=try1second', webUrl: 'https://www.myntra.com', description: 'Live fashion prices powering our E-Commerce comparison cards.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.2, downloadsOrUsers: '100M+ Downloads', badge: 'Live Source', bgColor: 'bg-fuchsia-600', createdAt: '2026-10-17' },
   { id: 'qapp-paisabazaar', name: 'Paisabazaar Loans & Cards', iconUrl: 'https://www.google.com/s2/favicons?domain=paisabazaar.com&sz=128', category: 'Banking & Personal Loans', type: 'Vertical Source', deepLink: 'paisabazaar://open?utm_source=try1second', webUrl: 'https://www.paisabazaar.com', description: 'Personal loan rates compared live in our Loans vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.1, downloadsOrUsers: '10M+ Users', badge: 'Loans Vertical', bgColor: 'bg-orange-600', createdAt: '2026-10-17' },
   { id: 'qapp-bankbazaar', name: 'BankBazaar Loans & Cards', iconUrl: 'https://www.google.com/s2/favicons?domain=bankbazaar.com&sz=128', category: 'Banking & Personal Loans', type: 'Vertical Source', deepLink: 'bankbazaar://open?utm_source=try1second', webUrl: 'https://www.bankbazaar.com', description: 'Loan and card offers scanned live into Loans and Credit Card verticals.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 4.0, downloadsOrUsers: '10M+ Users', badge: 'Loans Vertical', bgColor: 'bg-cyan-700', createdAt: '2026-10-17' },
   { id: 'qapp-oyo', name: 'OYO Budget Hotels', iconUrl: 'https://www.google.com/s2/favicons?domain=oyorooms.com&sz=128', category: 'Hotels & Stays', type: 'Vertical Source', deepLink: 'oyorooms://open?utm_source=try1second', webUrl: 'https://www.oyorooms.com', description: 'Budget hotel rates scanned live into our Hotels vertical.', payoutRate: 'Direct partnership pending', payoutAmount: 0, status: 'active', rating: 3.9, downloadsOrUsers: '100M+ Downloads', badge: 'Hotels Vertical', bgColor: 'bg-red-600', createdAt: '2026-10-17' },

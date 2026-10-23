@@ -314,6 +314,37 @@ export function quickAppsPartnerFirst<T extends { dom: string }>(rows: T[]): T[]
 }
 apiRouter.get('/quick-apps', async (_req, res) => {
   try {
+    // Owner 23 Oct: the six CURATED partners (Zomato, Flipkart, Amazon, Swiggy,
+    // BookMyShow, Myntra) are not registry sellers — the registry holds niche
+    // merchants (Libas, Asus, ...). The home rail must show the six partner
+    // logos, so they are prepended from the curated catalogue (same source as
+    // the web rail) with crisp logos + masking pointers; registry sellers follow.
+    const CURATED_HOME_SIX_IDS = ['qapp-zomato', 'qapp-flipkart', 'qapp-amazon', 'qapp-swiggy', 'qapp-bookmyshow', 'qapp-myntra'];
+    const { INITIAL_QUICK_APP_PARTNERS } = await import('../../src/data/quickAppsData');
+    const curatedSix = CURATED_HOME_SIX_IDS
+      .map((id) => INITIAL_QUICK_APP_PARTNERS.find((q) => q.id === id))
+      .filter((q): q is NonNullable<typeof q> => !!q);
+    const curatedLogos = await Promise.all(curatedSix.map((q) => resolveMerchantCrispLogo(q.name).catch(() => null)));
+    const homeSix = curatedSix.map((q, i) => ({
+      id: q.id,
+      name: q.name,
+      iconUrl: curatedLogos[i] || q.iconUrl,
+      category: q.category || 'Partner',
+      type: 'CPS',
+      deepLink: '',
+      webUrl: q.webUrl,
+      description: q.description || `Try1Second partner: live prices from ${q.name}.`,
+      payoutRate: 'Affiliate commission on every tracked sale',
+      payoutAmount: 0,
+      status: 'active',
+      rating: q.rating || 4.2,
+      downloadsOrUsers: q.downloadsOrUsers || '',
+      badge: q.badge || 'Partner',
+      bgColor: 'bg-slate-700',
+      createdAt: q.createdAt || new Date().toISOString().split('T')[0],
+      goUrl: createMaskingPointer(q.webUrl, { offerId: q.id, trusted: true }), // curated partner allow-list
+    }));
+    const curatedDomains = new Set(QUICK_APP_HOME_SIX);
     const rows = await fetchAffiliateRows(600);
     const seen = new Set<string>();
     const byName = new Map<string, { domains: Set<string>; category: string }>();
@@ -356,11 +387,14 @@ apiRouter.get('/quick-apps', async (_req, res) => {
     const ordered = quickAppsPartnerFirst(entries);
     // Crisp logo upgrade: admin/Wikidata P154 official art where available.
     const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
-    const affiliates = ordered.map((e, i) => ({
-      ...e.payload,
-      iconUrl: logos[i] || e.payload.iconUrl,
-    }));
-    res.json({ success: true, affiliates });
+    const registryAffiliates = ordered
+      // curated partners are already first as homeSix — drop registry dupes
+      .filter((e) => !curatedDomains.has(e.dom))
+      .map((e, i) => ({
+        ...e.payload,
+        iconUrl: logos[i] || e.payload.iconUrl,
+      }));
+    res.json({ success: true, affiliates: [...homeSix, ...registryAffiliates] });
   } catch {
     res.status(500).json({ success: false, error: 'quick_apps_unavailable' });
   }

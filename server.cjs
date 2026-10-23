@@ -28234,6 +28234,424 @@ var init_mmtAutosuggest = __esm({
   }
 });
 
+// src/data/quickAppsData.ts
+var quickAppsData_exports = {};
+__export(quickAppsData_exports, {
+  INITIAL_QUICK_APP_PARTNERS: () => INITIAL_QUICK_APP_PARTNERS,
+  INITIAL_REDIRECTION_LOGS: () => INITIAL_REDIRECTION_LOGS
+});
+var INITIAL_QUICK_APP_PARTNERS, INITIAL_REDIRECTION_LOGS;
+var init_quickAppsData = __esm({
+  "src/data/quickAppsData.ts"() {
+    INITIAL_QUICK_APP_PARTNERS = [
+      {
+        id: "qapp-swiggy",
+        name: "Swiggy Food & Instamart",
+        iconUrl: "https://cdn.jsdelivr.net/npm/simple-icons@13/icons/swiggy.svg",
+        category: "Food Delivery & Groceries",
+        type: "CPI - Android",
+        deepLink: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
+        webUrl: "https://www.swiggy.com",
+        description: "Order restaurant food and 10-minute grocery delivery (Instamart) across Indian cities.",
+        payoutRate: "\u20B945 / Android Install",
+        payoutAmount: 45,
+        status: "active",
+        rating: 4.6,
+        downloadsOrUsers: "100M+ Downloads",
+        badge: "Trending",
+        bgColor: "bg-orange-500",
+        createdAt: "2026-09-01"
+      },
+      {
+        id: "qapp-zomato",
+        name: "Zomato Dining & Delivery",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Zomato_Logo.svg?width=256",
+        category: "Food Delivery & Dining",
+        type: "CPC",
+        deepLink: "zomato://order?ref=try1second",
+        webUrl: "https://www.zomato.com",
+        description: "Restaurant discovery, food delivery and dining-out savings across 500+ Indian cities.",
+        payoutRate: "\u20B918 / Click",
+        payoutAmount: 18,
+        status: "active",
+        rating: 4.5,
+        downloadsOrUsers: "100M+ Users",
+        badge: "Hot Offer",
+        bgColor: "bg-rose-600",
+        createdAt: "2026-09-02"
+      },
+      {
+        id: "qapp-flipkart",
+        name: "Flipkart Online Shopping",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Flipkart_logo_(2026).svg?width=256",
+        category: "E-Commerce & Electronics",
+        type: "CPS",
+        deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
+        webUrl: "https://www.flipkart.com",
+        description: "Shop smartphones, fashion, electronics and more on the large Indian homegrown marketplace.",
+        payoutRate: "8.5% CPS / Sale",
+        payoutAmount: 120,
+        status: "active",
+        rating: 4.4,
+        downloadsOrUsers: "500M+ Downloads",
+        badge: "Top Cashback",
+        bgColor: "bg-blue-600",
+        createdAt: "2026-09-03"
+      },
+      {
+        id: "qapp-amazon",
+        name: "Amazon India Shopping & Pay",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Amazon_logo.svg?width=256",
+        category: "E-Commerce & Gadgets",
+        type: "CPS",
+        deepLink: "amazon://home?tag=try1sec-21",
+        webUrl: "https://www.amazon.in",
+        description: "Prime 1-day delivery on 10 million products, Amazon Pay UPI cashback & electronics.",
+        payoutRate: "9.0% CPS / Sale",
+        payoutAmount: 150,
+        status: "active",
+        rating: 4.4,
+        downloadsOrUsers: "500M+ Users",
+        badge: "Verified Partner",
+        bgColor: "bg-slate-900",
+        createdAt: "2026-09-04"
+      },
+      {
+        id: "qapp-blinkit",
+        name: "Blinkit Instant Groceries",
+        iconUrl: "https://www.google.com/s2/favicons?domain=blinkit.com&sz=128",
+        category: "10-Min Quick Grocery",
+        type: "CPI - Android",
+        deepLink: "blinkit://explore?source=try1second",
+        webUrl: "https://www.blinkit.com",
+        description: "Farm-fresh milk, bread, fruits, electronics & home essentials delivered in 10 minutes.",
+        payoutRate: "\u20B950 / Android Install",
+        payoutAmount: 50,
+        status: "active",
+        rating: 4.7,
+        downloadsOrUsers: "50M+ Downloads",
+        badge: "Lightning 10m",
+        bgColor: "bg-amber-400",
+        createdAt: "2026-09-05"
+      },
+      {
+        id: "qapp-zepto",
+        name: "Zepto 10-Min Supermarket",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Zepto_Logo.svg?width=256",
+        category: "10-Min Quick Grocery",
+        type: "CPI - IOS",
+        deepLink: "zepto://home?utm_campaign=try1second_ios",
+        webUrl: "https://www.zeptonow.com",
+        description: "Zero surge delivery fees, super saver deals & fresh groceries in under 10 minutes on iOS.",
+        payoutRate: "\u20B965 / iOS Install",
+        payoutAmount: 65,
+        status: "active",
+        rating: 4.8,
+        downloadsOrUsers: "20M+ iOS Users",
+        badge: "iOS Exclusive",
+        bgColor: "bg-purple-700",
+        createdAt: "2026-09-06"
+      },
+      {
+        id: "qapp-cred",
+        name: "CRED Credit Card Payments & Perks",
+        iconUrl: "https://www.google.com/s2/favicons?domain=cred.club&sz=128",
+        category: "Fintech & Credit Cards",
+        type: "CPI - IOS",
+        deepLink: "cred://home?invite=TRY1SEC",
+        webUrl: "https://cred.club",
+        description: "Pay credit card bills, win guaranteed cashbacks & unlock premium members-only luxury rewards.",
+        payoutRate: "\u20B990 / iOS Install",
+        payoutAmount: 90,
+        status: "inactive",
+        // owner 17 Oct: not present in any of our 13 verticals
+        rating: 4.7,
+        downloadsOrUsers: "15M+ High Net Worth",
+        badge: "HNI Premium",
+        bgColor: "bg-black",
+        createdAt: "2026-09-07"
+      },
+      {
+        id: "qapp-tataneu",
+        name: "Tata Neu Super App",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Tata_Neu_Logo.svg?width=256",
+        category: "Super App & Retail",
+        type: "CPI - Windows",
+        deepLink: "tataneu://explore?ref=try1second_win",
+        webUrl: "https://www.tataneu.com",
+        description: "One stop for BigBasket, Croma, Air India, Taj Hotels & Westside with 5% NeuCoins reward.",
+        payoutRate: "\u20B935 / Windows Install",
+        payoutAmount: 35,
+        status: "inactive",
+        // owner 17 Oct: not present in any of our 13 verticals
+        rating: 4.2,
+        downloadsOrUsers: "50M+ Downloads",
+        badge: "Windows Super App",
+        bgColor: "bg-purple-900",
+        createdAt: "2026-09-08"
+      },
+      {
+        id: "qapp-makemytrip",
+        name: "MakeMyTrip Flights & Hotels",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Makemytrip_logo.svg?width=256",
+        category: "Travel & Flights",
+        type: "CPC",
+        deepLink: "makemytrip://flightsearch?affil=try1second",
+        webUrl: "https://www.makemytrip.com",
+        description: "Compare non-stop flight fares, zero cancellation fee hotels & bus tickets across India.",
+        payoutRate: "\u20B925 / Click",
+        payoutAmount: 25,
+        status: "active",
+        rating: 4.5,
+        downloadsOrUsers: "100M+ Bookings",
+        badge: "Cheapest Flights",
+        bgColor: "bg-red-600",
+        createdAt: "2026-09-09"
+      },
+      {
+        id: "qapp-policybazaar",
+        name: "PolicyBazaar Health & Term Cover",
+        iconUrl: "https://www.google.com/s2/favicons?domain=policybazaar.com&sz=128",
+        category: "Insurance & Healthcare",
+        type: "CPL",
+        deepLink: "policybazaar://quotes?source=try1sec_cpl",
+        webUrl: "https://www.policybazaar.com",
+        description: "Compare 50+ life, health & motor insurance plans side-by-side with 100% cashless claims.",
+        payoutRate: "\u20B9450 / Qualified Lead",
+        payoutAmount: 450,
+        status: "active",
+        rating: 4.6,
+        downloadsOrUsers: "40M+ Policies",
+        badge: "High Payout CPL",
+        bgColor: "bg-blue-700",
+        createdAt: "2026-09-10"
+      },
+      {
+        id: "qapp-hdfcloans",
+        name: "HDFC Bank Express Loans",
+        iconUrl: "/brand-logos/hdfc-bank.svg",
+        category: "Banking & Personal Loans",
+        type: "CPL",
+        deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
+        webUrl: "https://www.hdfcbank.com",
+        description: "Pre-approved instant personal loans up to \u20B940 Lakhs with 10.5% interest & zero paperwork.",
+        payoutRate: "\u20B9650 / Disbursal Lead",
+        payoutAmount: 650,
+        status: "inactive",
+        // owner 17 Oct: not present in any of our 13 verticals
+        rating: 4.7,
+        downloadsOrUsers: "India\u2019s #1 Private Bank",
+        badge: "High Value CPL",
+        bgColor: "bg-blue-900",
+        createdAt: "2026-09-11"
+      },
+      {
+        id: "qapp-uber",
+        name: "Uber Cabs & City Rides",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Uber_logo_2018.svg?width=256",
+        category: "Cabs & Ride-Hailing",
+        type: "CPC",
+        deepLink: "uber://?client_id=try1second&action=setPickup",
+        webUrl: "https://www.uber.com",
+        description: "Instant reliable cabs, airport express rides & moto bikes in 120+ Indian cities in 3 minutes.",
+        payoutRate: "\u20B920 / Click",
+        payoutAmount: 20,
+        status: "active",
+        rating: 4.5,
+        downloadsOrUsers: "Global #1 Mobility",
+        badge: "Fast Pickup",
+        bgColor: "bg-slate-950",
+        createdAt: "2026-09-12"
+      },
+      {
+        id: "qapp-bookmyshow",
+        name: "BookMyShow Cinema & Concerts",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Bookmyshow-logoid.png?width=256",
+        category: "Movies & Entertainment",
+        type: "CPS",
+        deepLink: "bookmyshow://home?campaign=try1second_cps",
+        webUrl: "https://in.bookmyshow.com",
+        description: "Book IMAX movies, live music festivals, standup comedy & sports tickets with zero convenience fee.",
+        payoutRate: "6.0% CPS / Sale",
+        payoutAmount: 40,
+        status: "active",
+        rating: 4.6,
+        downloadsOrUsers: "50M+ Moviegoers",
+        badge: "Blockbuster",
+        bgColor: "bg-red-700",
+        createdAt: "2026-09-13"
+      },
+      {
+        id: "qapp-groww",
+        name: "Groww Stocks & Mutual Funds",
+        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Groww_app_logo.png?width=256",
+        category: "Fintech & Investments",
+        type: "CPI - Android",
+        deepLink: "groww://app?referrer=try1second",
+        webUrl: "https://groww.in",
+        description: "Zero brokerage Demat account, direct mutual fund SIPs, IPO bidding & intraday stock trades.",
+        payoutRate: "\u20B975 / Android Install",
+        payoutAmount: 75,
+        status: "inactive",
+        // owner 17 Oct: not present in any of our 13 verticals
+        rating: 4.7,
+        downloadsOrUsers: "40M+ Investors",
+        badge: "Top Demat App",
+        bgColor: "bg-emerald-600",
+        createdAt: "2026-09-14"
+      },
+      {
+        id: "qapp-microsoft",
+        name: "Microsoft Store & PC Deals",
+        iconUrl: "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
+        category: "Software & Productivity",
+        type: "CPI - Windows",
+        deepLink: "ms-windows-store://home?referrer=try1second",
+        webUrl: "https://www.microsoft.com/store",
+        description: "Download essential PC apps, Xbox games, Windows utilities & cloud office suites seamlessly.",
+        payoutRate: "\u20B940 / Windows Install",
+        payoutAmount: 40,
+        status: "inactive",
+        // owner 17 Oct: not present in any of our 13 verticals
+        rating: 4.3,
+        downloadsOrUsers: "Windows PC Official",
+        badge: "Windows Verified",
+        bgColor: "bg-sky-600",
+        createdAt: "2026-09-15"
+      },
+      // ---- Added 17 Oct: brands with real presence in our 13 verticals ----
+      { id: "qapp-ola", name: "Ola Cabs City Rides", iconUrl: "/brand-logos/ola.png", category: "Cabs & Ride-Hailing", type: "Vertical Source", deepLink: "olacabs://open?utm_source=try1second", webUrl: "https://www.olacabs.com", description: "Book city cabs, autos and bikes with live fares compared in our Cab vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Cab Vertical", bgColor: "bg-green-600", createdAt: "2026-10-17" },
+      { id: "qapp-easemytrip", name: "EaseMyTrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=easemytrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "easemytrip://open?utm_source=try1second", webUrl: "https://www.easemytrip.com", description: "Flight fares and hotel rates scanned live across our Flights and Hotels verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "50M+ Downloads", badge: "Live Source", bgColor: "bg-sky-600", createdAt: "2026-10-17" },
+      { id: "qapp-yatra", name: "Yatra Flights Hotels & Bus", iconUrl: "https://www.google.com/s2/favicons?domain=yatra.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "yatra://open?utm_source=try1second", webUrl: "https://www.yatra.com", description: "Live flight, hotel and bus inventory powering three Try1Second verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Downloads", badge: "3 Verticals", bgColor: "bg-indigo-600", createdAt: "2026-10-17" },
+      { id: "qapp-cleartrip", name: "Cleartrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=cleartrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "cleartrip://open?utm_source=try1second", webUrl: "https://www.cleartrip.com", description: "Flight and hotel prices scanned live into our travel comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Downloads", badge: "Live Source", bgColor: "bg-teal-600", createdAt: "2026-10-17" },
+      { id: "qapp-redbus", name: "redBus InterCity Tickets", iconUrl: "/brand-logos/redbus.svg", category: "Bus & Travel", type: "Vertical Source", deepLink: "redbus://open?utm_source=try1second", webUrl: "https://www.redbus.in", description: "India-wide bus inventory with boarding points compared in our Bus vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "50M+ Downloads", badge: "Bus Vertical", bgColor: "bg-rose-600", createdAt: "2026-10-17" },
+      { id: "qapp-dominos", name: "Dominos Pizza Order Online", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Dominos_2025.svg?width=256", category: "Food Delivery & Dining", type: "Vertical Source", deepLink: "dominos://open?utm_source=try1second", webUrl: "https://www.dominos.co.in", description: "Menu prices from our Food vertical, cooked by live web acquisition.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "50M+ Downloads", badge: "Food Vertical", bgColor: "bg-blue-600", createdAt: "2026-10-17" },
+      { id: "qapp-bigbasket", name: "BigBasket & BB Now", iconUrl: "/brand-logos/bigbasket.png", category: "10-Min Quick Grocery", type: "Vertical Source", deepLink: "bigbasket://open?utm_source=try1second", webUrl: "https://www.bigbasket.com", description: "Grocery prices from BigBasket and BB Now inside our Grocery vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "50M+ Downloads", badge: "Grocery Vertical", bgColor: "bg-emerald-600", createdAt: "2026-10-17" },
+      { id: "qapp-nykaa", name: "Nykaa Beauty & Fashion", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Nykaa.png?width=256", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "nykaa://open?utm_source=try1second", webUrl: "https://www.nykaa.com", description: "Beauty and fashion prices scanned live into our E-Commerce vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-pink-600", createdAt: "2026-10-17" },
+      { id: "qapp-myntra", name: "Myntra Fashion Store", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Myntra_Logo.png?width=256", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "myntra://open?utm_source=try1second", webUrl: "https://www.myntra.com", description: "Live fashion prices powering our E-Commerce comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-fuchsia-600", createdAt: "2026-10-17" },
+      { id: "qapp-paisabazaar", name: "Paisabazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=paisabazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "paisabazaar://open?utm_source=try1second", webUrl: "https://www.paisabazaar.com", description: "Personal loan rates compared live in our Loans vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-orange-600", createdAt: "2026-10-17" },
+      { id: "qapp-bankbazaar", name: "BankBazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=bankbazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "bankbazaar://open?utm_source=try1second", webUrl: "https://www.bankbazaar.com", description: "Loan and card offers scanned live into Loans and Credit Card verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-cyan-700", createdAt: "2026-10-17" },
+      { id: "qapp-oyo", name: "OYO Budget Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=oyorooms.com&sz=128", category: "Hotels & Stays", type: "Vertical Source", deepLink: "oyorooms://open?utm_source=try1second", webUrl: "https://www.oyorooms.com", description: "Budget hotel rates scanned live into our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 3.9, downloadsOrUsers: "100M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-red-600", createdAt: "2026-10-17" },
+      { id: "qapp-booking", name: "Booking.com Stays", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Booking.com_Logo.svg?width=256", category: "Hotels & Stays", type: "Vertical Source", deepLink: "booking://open?utm_source=try1second", webUrl: "https://www.booking.com", description: "Global hotel inventory compared live in our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "500M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-blue-700", createdAt: "2026-10-17" },
+      { id: "qapp-agoda", name: "Agoda Hotel Deals", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Agoda_logo_2019.svg?width=256", category: "Hotels & Stays", type: "Vertical Source", deepLink: "agoda://open?utm_source=try1second", webUrl: "https://www.agoda.com", description: "Hotel rates and galleries acquired live for our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-violet-700", createdAt: "2026-10-17" }
+    ];
+    INITIAL_REDIRECTION_LOGS = [
+      {
+        id: "redr-101",
+        partnerId: "qapp-swiggy",
+        partnerName: "Swiggy Food & Instamart",
+        partnerIconUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - Android",
+        deepLink: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
+        targetUrl: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
+        timestamp: "Today, 10:14 AM",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8)",
+        payoutAmount: 45,
+        status: "opened_app"
+      },
+      {
+        id: "redr-102",
+        partnerId: "qapp-flipkart",
+        partnerName: "Flipkart Online Shopping",
+        partnerIconUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPS",
+        deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
+        targetUrl: "flipkart://open?affid=try1second&affExtParam1=instant",
+        timestamp: "Today, 09:42 AM",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 13; SM-S918B)",
+        payoutAmount: 120,
+        status: "converted"
+      },
+      {
+        id: "redr-103",
+        partnerId: "qapp-zepto",
+        partnerName: "Zepto 10-Min Supermarket",
+        partnerIconUrl: "https://images.unsplash.com/photo-1518843875459-f738682238a6?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - IOS",
+        deepLink: "zepto://home?utm_campaign=try1second_ios",
+        targetUrl: "zepto://home?utm_campaign=try1second_ios",
+        timestamp: "Today, 08:30 AM",
+        devicePlatform: "iOS",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)",
+        payoutAmount: 65,
+        status: "opened_app"
+      },
+      {
+        id: "redr-104",
+        partnerId: "qapp-policybazaar",
+        partnerName: "PolicyBazaar Health & Term Cover",
+        partnerIconUrl: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPL",
+        deepLink: "policybazaar://quotes?source=try1sec_cpl",
+        targetUrl: "policybazaar://quotes?source=try1sec_cpl",
+        timestamp: "Yesterday, 11:15 PM",
+        devicePlatform: "Web",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0",
+        payoutAmount: 450,
+        status: "converted"
+      },
+      {
+        id: "redr-105",
+        partnerId: "qapp-zomato",
+        partnerName: "Zomato Dining & Delivery",
+        partnerIconUrl: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPC",
+        deepLink: "zomato://order?ref=try1second",
+        targetUrl: "zomato://order?ref=try1second",
+        timestamp: "Yesterday, 07:45 PM",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 14; OnePlus 12)",
+        payoutAmount: 18,
+        status: "redirected"
+      },
+      {
+        id: "redr-106",
+        partnerId: "qapp-cred",
+        partnerName: "CRED Credit Card Payments & Perks",
+        partnerIconUrl: "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - IOS",
+        deepLink: "cred://home?invite=TRY1SEC",
+        targetUrl: "cred://home?invite=TRY1SEC",
+        timestamp: "Yesterday, 04:20 PM",
+        devicePlatform: "iOS",
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X)",
+        payoutAmount: 90,
+        status: "opened_app"
+      },
+      {
+        id: "redr-107",
+        partnerId: "qapp-tataneu",
+        partnerName: "Tata Neu Super App",
+        partnerIconUrl: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPI - Windows",
+        deepLink: "tataneu://explore?ref=try1second_win",
+        targetUrl: "tataneu://explore?ref=try1second_win",
+        timestamp: "Yesterday, 02:10 PM",
+        devicePlatform: "Windows",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/123.0",
+        payoutAmount: 35,
+        status: "opened_app"
+      },
+      {
+        id: "redr-108",
+        partnerId: "qapp-hdfcloans",
+        partnerName: "HDFC Bank Express Loans",
+        partnerIconUrl: "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=120&auto=format&fit=crop&q=80",
+        partnerType: "CPL",
+        deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
+        targetUrl: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
+        timestamp: "2 days ago",
+        devicePlatform: "Android",
+        userAgent: "Mozilla/5.0 (Linux; Android 14; Galaxy S24)",
+        payoutAmount: 650,
+        status: "converted"
+      }
+    ];
+  }
+});
+
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
@@ -28733,424 +29151,6 @@ var init_appLinks = __esm({
   "server/marketing/appLinks.ts"() {
     init_db();
     APP_LINK_KEYS = ["chrome_extension", "android_app", "ios_app"];
-  }
-});
-
-// src/data/quickAppsData.ts
-var quickAppsData_exports = {};
-__export(quickAppsData_exports, {
-  INITIAL_QUICK_APP_PARTNERS: () => INITIAL_QUICK_APP_PARTNERS,
-  INITIAL_REDIRECTION_LOGS: () => INITIAL_REDIRECTION_LOGS
-});
-var INITIAL_QUICK_APP_PARTNERS, INITIAL_REDIRECTION_LOGS;
-var init_quickAppsData = __esm({
-  "src/data/quickAppsData.ts"() {
-    INITIAL_QUICK_APP_PARTNERS = [
-      {
-        id: "qapp-swiggy",
-        name: "Swiggy Food & Instamart",
-        iconUrl: "https://www.google.com/s2/favicons?domain=swiggy.com&sz=128",
-        category: "Food Delivery & Groceries",
-        type: "CPI - Android",
-        deepLink: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
-        webUrl: "https://www.swiggy.com",
-        description: "Order restaurant food and 10-minute grocery delivery (Instamart) across Indian cities.",
-        payoutRate: "\u20B945 / Android Install",
-        payoutAmount: 45,
-        status: "active",
-        rating: 4.6,
-        downloadsOrUsers: "100M+ Downloads",
-        badge: "Trending",
-        bgColor: "bg-orange-500",
-        createdAt: "2026-09-01"
-      },
-      {
-        id: "qapp-zomato",
-        name: "Zomato Dining & Delivery",
-        iconUrl: "https://www.google.com/s2/favicons?domain=zomato.com&sz=128",
-        category: "Food Delivery & Dining",
-        type: "CPC",
-        deepLink: "zomato://order?ref=try1second",
-        webUrl: "https://www.zomato.com",
-        description: "Restaurant discovery, food delivery and dining-out savings across 500+ Indian cities.",
-        payoutRate: "\u20B918 / Click",
-        payoutAmount: 18,
-        status: "active",
-        rating: 4.5,
-        downloadsOrUsers: "100M+ Users",
-        badge: "Hot Offer",
-        bgColor: "bg-rose-600",
-        createdAt: "2026-09-02"
-      },
-      {
-        id: "qapp-flipkart",
-        name: "Flipkart Online Shopping",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Flipkart_logo_(2026).svg?width=256",
-        category: "E-Commerce & Electronics",
-        type: "CPS",
-        deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
-        webUrl: "https://www.flipkart.com",
-        description: "Shop smartphones, fashion, electronics and more on the large Indian homegrown marketplace.",
-        payoutRate: "8.5% CPS / Sale",
-        payoutAmount: 120,
-        status: "active",
-        rating: 4.4,
-        downloadsOrUsers: "500M+ Downloads",
-        badge: "Top Cashback",
-        bgColor: "bg-blue-600",
-        createdAt: "2026-09-03"
-      },
-      {
-        id: "qapp-amazon",
-        name: "Amazon India Shopping & Pay",
-        iconUrl: "https://www.google.com/s2/favicons?domain=amazon.in&sz=128",
-        category: "E-Commerce & Gadgets",
-        type: "CPS",
-        deepLink: "amazon://home?tag=try1sec-21",
-        webUrl: "https://www.amazon.in",
-        description: "Prime 1-day delivery on 10 million products, Amazon Pay UPI cashback & electronics.",
-        payoutRate: "9.0% CPS / Sale",
-        payoutAmount: 150,
-        status: "active",
-        rating: 4.4,
-        downloadsOrUsers: "500M+ Users",
-        badge: "Verified Partner",
-        bgColor: "bg-slate-900",
-        createdAt: "2026-09-04"
-      },
-      {
-        id: "qapp-blinkit",
-        name: "Blinkit Instant Groceries",
-        iconUrl: "https://www.google.com/s2/favicons?domain=blinkit.com&sz=128",
-        category: "10-Min Quick Grocery",
-        type: "CPI - Android",
-        deepLink: "blinkit://explore?source=try1second",
-        webUrl: "https://www.blinkit.com",
-        description: "Farm-fresh milk, bread, fruits, electronics & home essentials delivered in 10 minutes.",
-        payoutRate: "\u20B950 / Android Install",
-        payoutAmount: 50,
-        status: "active",
-        rating: 4.7,
-        downloadsOrUsers: "50M+ Downloads",
-        badge: "Lightning 10m",
-        bgColor: "bg-amber-400",
-        createdAt: "2026-09-05"
-      },
-      {
-        id: "qapp-zepto",
-        name: "Zepto 10-Min Supermarket",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Zepto_Logo.svg?width=256",
-        category: "10-Min Quick Grocery",
-        type: "CPI - IOS",
-        deepLink: "zepto://home?utm_campaign=try1second_ios",
-        webUrl: "https://www.zeptonow.com",
-        description: "Zero surge delivery fees, super saver deals & fresh groceries in under 10 minutes on iOS.",
-        payoutRate: "\u20B965 / iOS Install",
-        payoutAmount: 65,
-        status: "active",
-        rating: 4.8,
-        downloadsOrUsers: "20M+ iOS Users",
-        badge: "iOS Exclusive",
-        bgColor: "bg-purple-700",
-        createdAt: "2026-09-06"
-      },
-      {
-        id: "qapp-cred",
-        name: "CRED Credit Card Payments & Perks",
-        iconUrl: "https://www.google.com/s2/favicons?domain=cred.club&sz=128",
-        category: "Fintech & Credit Cards",
-        type: "CPI - IOS",
-        deepLink: "cred://home?invite=TRY1SEC",
-        webUrl: "https://cred.club",
-        description: "Pay credit card bills, win guaranteed cashbacks & unlock premium members-only luxury rewards.",
-        payoutRate: "\u20B990 / iOS Install",
-        payoutAmount: 90,
-        status: "inactive",
-        // owner 17 Oct: not present in any of our 13 verticals
-        rating: 4.7,
-        downloadsOrUsers: "15M+ High Net Worth",
-        badge: "HNI Premium",
-        bgColor: "bg-black",
-        createdAt: "2026-09-07"
-      },
-      {
-        id: "qapp-tataneu",
-        name: "Tata Neu Super App",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Tata_Neu_Logo.svg?width=256",
-        category: "Super App & Retail",
-        type: "CPI - Windows",
-        deepLink: "tataneu://explore?ref=try1second_win",
-        webUrl: "https://www.tataneu.com",
-        description: "One stop for BigBasket, Croma, Air India, Taj Hotels & Westside with 5% NeuCoins reward.",
-        payoutRate: "\u20B935 / Windows Install",
-        payoutAmount: 35,
-        status: "inactive",
-        // owner 17 Oct: not present in any of our 13 verticals
-        rating: 4.2,
-        downloadsOrUsers: "50M+ Downloads",
-        badge: "Windows Super App",
-        bgColor: "bg-purple-900",
-        createdAt: "2026-09-08"
-      },
-      {
-        id: "qapp-makemytrip",
-        name: "MakeMyTrip Flights & Hotels",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Makemytrip_logo.svg?width=256",
-        category: "Travel & Flights",
-        type: "CPC",
-        deepLink: "makemytrip://flightsearch?affil=try1second",
-        webUrl: "https://www.makemytrip.com",
-        description: "Compare non-stop flight fares, zero cancellation fee hotels & bus tickets across India.",
-        payoutRate: "\u20B925 / Click",
-        payoutAmount: 25,
-        status: "active",
-        rating: 4.5,
-        downloadsOrUsers: "100M+ Bookings",
-        badge: "Cheapest Flights",
-        bgColor: "bg-red-600",
-        createdAt: "2026-09-09"
-      },
-      {
-        id: "qapp-policybazaar",
-        name: "PolicyBazaar Health & Term Cover",
-        iconUrl: "https://www.google.com/s2/favicons?domain=policybazaar.com&sz=128",
-        category: "Insurance & Healthcare",
-        type: "CPL",
-        deepLink: "policybazaar://quotes?source=try1sec_cpl",
-        webUrl: "https://www.policybazaar.com",
-        description: "Compare 50+ life, health & motor insurance plans side-by-side with 100% cashless claims.",
-        payoutRate: "\u20B9450 / Qualified Lead",
-        payoutAmount: 450,
-        status: "active",
-        rating: 4.6,
-        downloadsOrUsers: "40M+ Policies",
-        badge: "High Payout CPL",
-        bgColor: "bg-blue-700",
-        createdAt: "2026-09-10"
-      },
-      {
-        id: "qapp-hdfcloans",
-        name: "HDFC Bank Express Loans",
-        iconUrl: "/brand-logos/hdfc-bank.svg",
-        category: "Banking & Personal Loans",
-        type: "CPL",
-        deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
-        webUrl: "https://www.hdfcbank.com",
-        description: "Pre-approved instant personal loans up to \u20B940 Lakhs with 10.5% interest & zero paperwork.",
-        payoutRate: "\u20B9650 / Disbursal Lead",
-        payoutAmount: 650,
-        status: "inactive",
-        // owner 17 Oct: not present in any of our 13 verticals
-        rating: 4.7,
-        downloadsOrUsers: "India\u2019s #1 Private Bank",
-        badge: "High Value CPL",
-        bgColor: "bg-blue-900",
-        createdAt: "2026-09-11"
-      },
-      {
-        id: "qapp-uber",
-        name: "Uber Cabs & City Rides",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Uber_logo_2018.svg?width=256",
-        category: "Cabs & Ride-Hailing",
-        type: "CPC",
-        deepLink: "uber://?client_id=try1second&action=setPickup",
-        webUrl: "https://www.uber.com",
-        description: "Instant reliable cabs, airport express rides & moto bikes in 120+ Indian cities in 3 minutes.",
-        payoutRate: "\u20B920 / Click",
-        payoutAmount: 20,
-        status: "active",
-        rating: 4.5,
-        downloadsOrUsers: "Global #1 Mobility",
-        badge: "Fast Pickup",
-        bgColor: "bg-slate-950",
-        createdAt: "2026-09-12"
-      },
-      {
-        id: "qapp-bookmyshow",
-        name: "BookMyShow Cinema & Concerts",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Bookmyshow-logoid.png?width=256",
-        category: "Movies & Entertainment",
-        type: "CPS",
-        deepLink: "bookmyshow://home?campaign=try1second_cps",
-        webUrl: "https://in.bookmyshow.com",
-        description: "Book IMAX movies, live music festivals, standup comedy & sports tickets with zero convenience fee.",
-        payoutRate: "6.0% CPS / Sale",
-        payoutAmount: 40,
-        status: "active",
-        rating: 4.6,
-        downloadsOrUsers: "50M+ Moviegoers",
-        badge: "Blockbuster",
-        bgColor: "bg-red-700",
-        createdAt: "2026-09-13"
-      },
-      {
-        id: "qapp-groww",
-        name: "Groww Stocks & Mutual Funds",
-        iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Groww_app_logo.png?width=256",
-        category: "Fintech & Investments",
-        type: "CPI - Android",
-        deepLink: "groww://app?referrer=try1second",
-        webUrl: "https://groww.in",
-        description: "Zero brokerage Demat account, direct mutual fund SIPs, IPO bidding & intraday stock trades.",
-        payoutRate: "\u20B975 / Android Install",
-        payoutAmount: 75,
-        status: "inactive",
-        // owner 17 Oct: not present in any of our 13 verticals
-        rating: 4.7,
-        downloadsOrUsers: "40M+ Investors",
-        badge: "Top Demat App",
-        bgColor: "bg-emerald-600",
-        createdAt: "2026-09-14"
-      },
-      {
-        id: "qapp-microsoft",
-        name: "Microsoft Store & PC Deals",
-        iconUrl: "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
-        category: "Software & Productivity",
-        type: "CPI - Windows",
-        deepLink: "ms-windows-store://home?referrer=try1second",
-        webUrl: "https://www.microsoft.com/store",
-        description: "Download essential PC apps, Xbox games, Windows utilities & cloud office suites seamlessly.",
-        payoutRate: "\u20B940 / Windows Install",
-        payoutAmount: 40,
-        status: "inactive",
-        // owner 17 Oct: not present in any of our 13 verticals
-        rating: 4.3,
-        downloadsOrUsers: "Windows PC Official",
-        badge: "Windows Verified",
-        bgColor: "bg-sky-600",
-        createdAt: "2026-09-15"
-      },
-      // ---- Added 17 Oct: brands with real presence in our 13 verticals ----
-      { id: "qapp-ola", name: "Ola Cabs City Rides", iconUrl: "/brand-logos/ola.png", category: "Cabs & Ride-Hailing", type: "Vertical Source", deepLink: "olacabs://open?utm_source=try1second", webUrl: "https://www.olacabs.com", description: "Book city cabs, autos and bikes with live fares compared in our Cab vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Cab Vertical", bgColor: "bg-green-600", createdAt: "2026-10-17" },
-      { id: "qapp-easemytrip", name: "EaseMyTrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=easemytrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "easemytrip://open?utm_source=try1second", webUrl: "https://www.easemytrip.com", description: "Flight fares and hotel rates scanned live across our Flights and Hotels verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "50M+ Downloads", badge: "Live Source", bgColor: "bg-sky-600", createdAt: "2026-10-17" },
-      { id: "qapp-yatra", name: "Yatra Flights Hotels & Bus", iconUrl: "https://www.google.com/s2/favicons?domain=yatra.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "yatra://open?utm_source=try1second", webUrl: "https://www.yatra.com", description: "Live flight, hotel and bus inventory powering three Try1Second verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Downloads", badge: "3 Verticals", bgColor: "bg-indigo-600", createdAt: "2026-10-17" },
-      { id: "qapp-cleartrip", name: "Cleartrip Flights & Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=cleartrip.com&sz=128", category: "Travel & Flights", type: "Vertical Source", deepLink: "cleartrip://open?utm_source=try1second", webUrl: "https://www.cleartrip.com", description: "Flight and hotel prices scanned live into our travel comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Downloads", badge: "Live Source", bgColor: "bg-teal-600", createdAt: "2026-10-17" },
-      { id: "qapp-redbus", name: "redBus InterCity Tickets", iconUrl: "/brand-logos/redbus.svg", category: "Bus & Travel", type: "Vertical Source", deepLink: "redbus://open?utm_source=try1second", webUrl: "https://www.redbus.in", description: "India-wide bus inventory with boarding points compared in our Bus vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "50M+ Downloads", badge: "Bus Vertical", bgColor: "bg-rose-600", createdAt: "2026-10-17" },
-      { id: "qapp-dominos", name: "Dominos Pizza Order Online", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Dominos_2025.svg?width=256", category: "Food Delivery & Dining", type: "Vertical Source", deepLink: "dominos://open?utm_source=try1second", webUrl: "https://www.dominos.co.in", description: "Menu prices from our Food vertical, cooked by live web acquisition.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "50M+ Downloads", badge: "Food Vertical", bgColor: "bg-blue-600", createdAt: "2026-10-17" },
-      { id: "qapp-bigbasket", name: "BigBasket & BB Now", iconUrl: "/brand-logos/bigbasket.png", category: "10-Min Quick Grocery", type: "Vertical Source", deepLink: "bigbasket://open?utm_source=try1second", webUrl: "https://www.bigbasket.com", description: "Grocery prices from BigBasket and BB Now inside our Grocery vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "50M+ Downloads", badge: "Grocery Vertical", bgColor: "bg-emerald-600", createdAt: "2026-10-17" },
-      { id: "qapp-nykaa", name: "Nykaa Beauty & Fashion", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Nykaa.png?width=256", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "nykaa://open?utm_source=try1second", webUrl: "https://www.nykaa.com", description: "Beauty and fashion prices scanned live into our E-Commerce vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-pink-600", createdAt: "2026-10-17" },
-      { id: "qapp-myntra", name: "Myntra Fashion Store", iconUrl: "https://www.google.com/s2/favicons?domain=myntra.com&sz=128", category: "E-Commerce & Electronics", type: "Vertical Source", deepLink: "myntra://open?utm_source=try1second", webUrl: "https://www.myntra.com", description: "Live fashion prices powering our E-Commerce comparison cards.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.2, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-fuchsia-600", createdAt: "2026-10-17" },
-      { id: "qapp-paisabazaar", name: "Paisabazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=paisabazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "paisabazaar://open?utm_source=try1second", webUrl: "https://www.paisabazaar.com", description: "Personal loan rates compared live in our Loans vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.1, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-orange-600", createdAt: "2026-10-17" },
-      { id: "qapp-bankbazaar", name: "BankBazaar Loans & Cards", iconUrl: "https://www.google.com/s2/favicons?domain=bankbazaar.com&sz=128", category: "Banking & Personal Loans", type: "Vertical Source", deepLink: "bankbazaar://open?utm_source=try1second", webUrl: "https://www.bankbazaar.com", description: "Loan and card offers scanned live into Loans and Credit Card verticals.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4, downloadsOrUsers: "10M+ Users", badge: "Loans Vertical", bgColor: "bg-cyan-700", createdAt: "2026-10-17" },
-      { id: "qapp-oyo", name: "OYO Budget Hotels", iconUrl: "https://www.google.com/s2/favicons?domain=oyorooms.com&sz=128", category: "Hotels & Stays", type: "Vertical Source", deepLink: "oyorooms://open?utm_source=try1second", webUrl: "https://www.oyorooms.com", description: "Budget hotel rates scanned live into our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 3.9, downloadsOrUsers: "100M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-red-600", createdAt: "2026-10-17" },
-      { id: "qapp-booking", name: "Booking.com Stays", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Booking.com_Logo.svg?width=256", category: "Hotels & Stays", type: "Vertical Source", deepLink: "booking://open?utm_source=try1second", webUrl: "https://www.booking.com", description: "Global hotel inventory compared live in our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.4, downloadsOrUsers: "500M+ Downloads", badge: "Hotels Vertical", bgColor: "bg-blue-700", createdAt: "2026-10-17" },
-      { id: "qapp-agoda", name: "Agoda Hotel Deals", iconUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Agoda_logo_2019.svg?width=256", category: "Hotels & Stays", type: "Vertical Source", deepLink: "agoda://open?utm_source=try1second", webUrl: "https://www.agoda.com", description: "Hotel rates and galleries acquired live for our Hotels vertical.", payoutRate: "Direct partnership pending", payoutAmount: 0, status: "active", rating: 4.3, downloadsOrUsers: "100M+ Downloads", badge: "Live Source", bgColor: "bg-violet-700", createdAt: "2026-10-17" }
-    ];
-    INITIAL_REDIRECTION_LOGS = [
-      {
-        id: "redr-101",
-        partnerId: "qapp-swiggy",
-        partnerName: "Swiggy Food & Instamart",
-        partnerIconUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPI - Android",
-        deepLink: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
-        targetUrl: "swiggy://open?utm_source=try1second&utm_medium=affiliate",
-        timestamp: "Today, 10:14 AM",
-        devicePlatform: "Android",
-        userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8)",
-        payoutAmount: 45,
-        status: "opened_app"
-      },
-      {
-        id: "redr-102",
-        partnerId: "qapp-flipkart",
-        partnerName: "Flipkart Online Shopping",
-        partnerIconUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPS",
-        deepLink: "flipkart://open?affid=try1second&affExtParam1=instant",
-        targetUrl: "flipkart://open?affid=try1second&affExtParam1=instant",
-        timestamp: "Today, 09:42 AM",
-        devicePlatform: "Android",
-        userAgent: "Mozilla/5.0 (Linux; Android 13; SM-S918B)",
-        payoutAmount: 120,
-        status: "converted"
-      },
-      {
-        id: "redr-103",
-        partnerId: "qapp-zepto",
-        partnerName: "Zepto 10-Min Supermarket",
-        partnerIconUrl: "https://images.unsplash.com/photo-1518843875459-f738682238a6?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPI - IOS",
-        deepLink: "zepto://home?utm_campaign=try1second_ios",
-        targetUrl: "zepto://home?utm_campaign=try1second_ios",
-        timestamp: "Today, 08:30 AM",
-        devicePlatform: "iOS",
-        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)",
-        payoutAmount: 65,
-        status: "opened_app"
-      },
-      {
-        id: "redr-104",
-        partnerId: "qapp-policybazaar",
-        partnerName: "PolicyBazaar Health & Term Cover",
-        partnerIconUrl: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPL",
-        deepLink: "policybazaar://quotes?source=try1sec_cpl",
-        targetUrl: "policybazaar://quotes?source=try1sec_cpl",
-        timestamp: "Yesterday, 11:15 PM",
-        devicePlatform: "Web",
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0",
-        payoutAmount: 450,
-        status: "converted"
-      },
-      {
-        id: "redr-105",
-        partnerId: "qapp-zomato",
-        partnerName: "Zomato Dining & Delivery",
-        partnerIconUrl: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPC",
-        deepLink: "zomato://order?ref=try1second",
-        targetUrl: "zomato://order?ref=try1second",
-        timestamp: "Yesterday, 07:45 PM",
-        devicePlatform: "Android",
-        userAgent: "Mozilla/5.0 (Linux; Android 14; OnePlus 12)",
-        payoutAmount: 18,
-        status: "redirected"
-      },
-      {
-        id: "redr-106",
-        partnerId: "qapp-cred",
-        partnerName: "CRED Credit Card Payments & Perks",
-        partnerIconUrl: "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPI - IOS",
-        deepLink: "cred://home?invite=TRY1SEC",
-        targetUrl: "cred://home?invite=TRY1SEC",
-        timestamp: "Yesterday, 04:20 PM",
-        devicePlatform: "iOS",
-        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X)",
-        payoutAmount: 90,
-        status: "opened_app"
-      },
-      {
-        id: "redr-107",
-        partnerId: "qapp-tataneu",
-        partnerName: "Tata Neu Super App",
-        partnerIconUrl: "https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPI - Windows",
-        deepLink: "tataneu://explore?ref=try1second_win",
-        targetUrl: "tataneu://explore?ref=try1second_win",
-        timestamp: "Yesterday, 02:10 PM",
-        devicePlatform: "Windows",
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/123.0",
-        payoutAmount: 35,
-        status: "opened_app"
-      },
-      {
-        id: "redr-108",
-        partnerId: "qapp-hdfcloans",
-        partnerName: "HDFC Bank Express Loans",
-        partnerIconUrl: "https://images.unsplash.com/photo-1541354329998-f4d9a9f9297f?w=120&auto=format&fit=crop&q=80",
-        partnerType: "CPL",
-        deepLink: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
-        targetUrl: "https://www.hdfcbank.com/personal/borrow/popular-loans/personal-loan?utm=try1sec",
-        timestamp: "2 days ago",
-        devicePlatform: "Android",
-        userAgent: "Mozilla/5.0 (Linux; Android 14; Galaxy S24)",
-        payoutAmount: 650,
-        status: "converted"
-      }
-    ];
   }
 });
 
@@ -29805,6 +29805,31 @@ var init_routes = __esm({
     QUICK_APP_HOME_SIX = ["zomato.com", "flipkart.com", "amazon.in", "swiggy.com", "bookmyshow.com", "myntra.com"];
     apiRouter.get("/quick-apps", async (_req, res) => {
       try {
+        const CURATED_HOME_SIX_IDS = ["qapp-zomato", "qapp-flipkart", "qapp-amazon", "qapp-swiggy", "qapp-bookmyshow", "qapp-myntra"];
+        const { INITIAL_QUICK_APP_PARTNERS: INITIAL_QUICK_APP_PARTNERS2 } = await Promise.resolve().then(() => (init_quickAppsData(), quickAppsData_exports));
+        const curatedSix = CURATED_HOME_SIX_IDS.map((id) => INITIAL_QUICK_APP_PARTNERS2.find((q3) => q3.id === id)).filter((q3) => !!q3);
+        const curatedLogos = await Promise.all(curatedSix.map((q3) => resolveMerchantCrispLogo(q3.name).catch(() => null)));
+        const homeSix = curatedSix.map((q3, i) => ({
+          id: q3.id,
+          name: q3.name,
+          iconUrl: curatedLogos[i] || q3.iconUrl,
+          category: q3.category || "Partner",
+          type: "CPS",
+          deepLink: "",
+          webUrl: q3.webUrl,
+          description: q3.description || `Try1Second partner: live prices from ${q3.name}.`,
+          payoutRate: "Affiliate commission on every tracked sale",
+          payoutAmount: 0,
+          status: "active",
+          rating: q3.rating || 4.2,
+          downloadsOrUsers: q3.downloadsOrUsers || "",
+          badge: q3.badge || "Partner",
+          bgColor: "bg-slate-700",
+          createdAt: q3.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          goUrl: createMaskingPointer(q3.webUrl, { offerId: q3.id, trusted: true })
+          // curated partner allow-list
+        }));
+        const curatedDomains = new Set(QUICK_APP_HOME_SIX);
         const rows = await fetchAffiliateRows(600);
         const seen = /* @__PURE__ */ new Set();
         const byName = /* @__PURE__ */ new Map();
@@ -29847,11 +29872,11 @@ var init_routes = __esm({
         });
         const ordered = quickAppsPartnerFirst(entries);
         const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
-        const affiliates = ordered.map((e, i) => ({
+        const registryAffiliates = ordered.filter((e) => !curatedDomains.has(e.dom)).map((e, i) => ({
           ...e.payload,
           iconUrl: logos[i] || e.payload.iconUrl
         }));
-        res.json({ success: true, affiliates });
+        res.json({ success: true, affiliates: [...homeSix, ...registryAffiliates] });
       } catch {
         res.status(500).json({ success: false, error: "quick_apps_unavailable" });
       }
