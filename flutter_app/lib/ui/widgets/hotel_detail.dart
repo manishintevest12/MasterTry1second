@@ -155,9 +155,13 @@ class _PhotoGrid extends StatelessWidget {
         for (var i = 0; i < shown.length; i++)
           GestureDetector(
             onTap: () => _openLightbox(context, photos, i),
+            // Owner 23 Oct fix: height infinity crashed the decode-budget math
+            // (.round() on infinity) in release builds -> every grid cell rendered
+            // as a blank ErrorWidget rectangle. The GridView cell already gives
+            // tight constraints; the image just fills them with cover fit.
             child: NetImage(
               shown[i],
-              height: double.infinity,
+              fit: BoxFit.cover,
               fallbackIcon: Icons.hotel_rounded,
               radius: 10,
             ),

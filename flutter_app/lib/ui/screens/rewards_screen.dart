@@ -895,7 +895,10 @@ class TopPickCard extends StatelessWidget {
           SizedBox(
             height: 84,
             width: double.infinity,
-            child: Stack(children: [
+            // Owner 23 Oct fix: StackFit.expand forces the photo to FILL the
+            // 84px hero box — square CDN thumbs used to render as small
+            // centered thumbnails with white space around them.
+            child: Stack(fit: StackFit.expand, children: [
               NetImage(pick.image, fit: BoxFit.cover, bg: dark ? T1SColors.slate800 : T1SColors.slate50),
               Positioned(
                 top: 6, left: 6,

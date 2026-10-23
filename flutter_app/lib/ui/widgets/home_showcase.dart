@@ -398,7 +398,10 @@ class _ShowcaseCard extends StatelessWidget {
           SizedBox(
             height: 86,
             width: double.infinity,
-            child: Stack(children: [
+            // Owner 23 Oct: StackFit.expand — art fills the tile edge-to-edge on
+            // EVERY card (square/p portrait art like credit cards used to render
+            // as a small centered thumbnail with white space around it).
+            child: Stack(fit: StackFit.expand, children: [
               // Owner 22 Oct: real product/hotel photos fill the tile edge-to-edge
               // (BoxFit.cover at a high decode budget = sharp); merchant-logo
               // fallback keeps contain so logos never crop.

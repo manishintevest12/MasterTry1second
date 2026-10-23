@@ -180,7 +180,11 @@ function ShowcaseCard({ item, onLaunch }: { item: ShowcaseItem; onLaunch?: (q: s
           height={160}
           loading="lazy"
           decoding="async"
-          className="w-full h-full object-contain p-3 group-hover:scale-105 transition-transform duration-300"
+          /* Owner 23 Oct: images OCCUPY the card edge-to-edge like the hotel photos
+           (object-contain + padding left portrait credit-card art floating small
+           in a sea of white). Cover fills the tile; wide product/hotel art is
+           unaffected visually. */
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           onError={(e) => onArtError(e, item, fallback)}
         />
         {item.discountPct ? (

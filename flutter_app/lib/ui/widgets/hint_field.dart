@@ -10,9 +10,13 @@ import 'kit.dart';
 
 /// Reference-style hint dropdown (owner 22 Oct: "jaise site mai autocomplete hai
 /// hr vertical mai — place ho ya naam ya date — waise hi app mai hints MANDATORY
-/// har vertical pr"). White rounded card under the field, header line
+/// har vertical pr"). White rounded card directly under the field, header line
 /// ("LIVE HOTELS • DESTINATIONS & PROPERTIES" left, "↕ TO NAVIGATE • ↵ SELECT"
 /// right), rows: icon, bold title, grey subtitle, badge pill on the right.
+/// Owner 23 Oct fix: the dropdown previously floated in a root Overlay via a
+/// LayerLink; on device it rendered far below its field (misaligned card over
+/// the results). It is now rendered INLINE directly beneath the field — in-flow
+/// layout can never detach from its anchor.
 /// Data sources are REAL registries only — no invented rows:
 ///   cities  : local flight city/airport list (kAutoCities mirror of web)
 ///   bus     : LIVE redBus registry via /api/bus/locations (towns + boarding points)
@@ -63,8 +67,6 @@ class HintField extends StatefulWidget {
 
 class _HintFieldState extends State<HintField> {
   final FocusNode _ownFocus = FocusNode();
-  final LayerLink _link = LayerLink();
-  OverlayEntry? _overlay;
   Timer? _debounce;
   List<HintRow> _rows = const [];
   bool _loading = false;
@@ -88,14 +90,14 @@ class _HintFieldState extends State<HintField> {
     widget.controller.removeListener(_onChanged);
     _focus.removeListener(_onFocus);
     _focus.onKeyEvent = null;
-    _removeOverlay();
+    _showing = false;
     _ownFocus.dispose();
     super.dispose();
   }
 
   void _onFocus() {
     if (!_focus.hasFocus) {
-      _removeOverlay();
+      _hide();
     } else if (widget.controller.text.trim().isNotEmpty) {
       _onChanged();
     }
@@ -107,12 +109,10 @@ class _HintFieldState extends State<HintField> {
     if (e is KeyDownEvent || e is KeyRepeatEvent) {
       if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
         setState(() => _highlight = (_highlight + 1) % _rows.length);
-        _repaint();
         return KeyEventResult.handled;
       }
       if (e.logicalKey == LogicalKeyboardKey.arrowUp) {
         setState(() => _highlight = _highlight <= 0 ? _rows.length - 1 : _highlight - 1);
-        _repaint();
         return KeyEventResult.handled;
       }
       if (e.logicalKey == LogicalKeyboardKey.enter || e.logicalKey == LogicalKeyboardKey.numpadEnter) {
@@ -130,15 +130,13 @@ class _HintFieldState extends State<HintField> {
       _rows = _localRows('');
       _loading = false;
       _highlight = -1;
-      _showing = true;
-      _repaint();
+      _show();
       return;
     }
     if (widget.source == HintSource.cities || widget.source == HintSource.presets) {
       _rows = _localRows(q);
       _highlight = -1;
-      _showing = true;
-      _repaint();
+      _show();
       return;
     }
     // Remote sources (bus / hotels): debounced LIVE fetch.
@@ -146,7 +144,7 @@ class _HintFieldState extends State<HintField> {
     if (q.length < 2) {
       _rows = const [];
       _loading = false;
-      _repaint();
+      _show();
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 300), _fetch);
@@ -198,10 +196,7 @@ class _HintFieldState extends State<HintField> {
         _loading = false;
         _highlight = -1;
       });
-      if (_focus.hasFocus) {
-        _showing = true;
-        _repaint();
-      }
+      if (_focus.hasFocus) _show();
     } catch (_) {
       if (mounted && seq == _seq) setState(() => _loading = false);
     }
@@ -254,7 +249,7 @@ class _HintFieldState extends State<HintField> {
   }
 
   void _choose(HintRow r) {
-    _removeOverlay();
+    _hide();
     _focus.unfocus();
     widget.controller.text = r.value;
     widget.controller.selection = TextSelection.collapsed(offset: r.value.length);
@@ -262,38 +257,37 @@ class _HintFieldState extends State<HintField> {
   }
 
   void _submit() {
-    _removeOverlay();
+    _hide();
     _focus.unfocus();
     widget.onSubmitted?.call(widget.controller.text);
   }
 
-  void _removeOverlay() {
-    _overlay?.remove();
-    _overlay = null;
-    _showing = false;
+  void _show() {
+    if (!mounted) return;
+    // Always setState: the inline dropdown re-renders from _rows/_loading on
+    // every keystroke. Skipping the repaint when _showing was already true
+    // left the card showing the previous (often empty-query) rows forever.
+    setState(() => _showing = true);
   }
 
-  void _repaint() {
-    if (!_focus.hasFocus) return;
-    _removeOverlay();
-    _overlay = OverlayEntry(builder: _buildDropdown);
-    Overlay.of(context).insert(_overlay!);
-    _showing = true;
+  void _hide() {
+    if (!mounted) return;
+    if (_showing) {
+      setState(() => _showing = false);
+    }
   }
 
+  /// The inline dropdown card. Rendered in-flow under the field so it can
+  /// never float detached (owner 23 Oct overlay misalignment fix).
   Widget _buildDropdown(BuildContext c) {
     final dark = isDark(c);
     final card = dark ? T1SColors.slate800 : Colors.white;
     final titleColor = dark ? T1SColors.slate50 : Colors.black;
     final mutedColor = dark ? T1SColors.slate400 : T1SColors.slate500;
-    return CompositedTransformFollower(
-      link: _link,
-      showWhenUnlinked: false,
-      targetAnchor: Alignment.bottomLeft,
-      followerAnchor: Alignment.topLeft,
-      offset: const Offset(0, 4),
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Material(
-        elevation: 12,
+        elevation: 6,
         borderRadius: BorderRadius.circular(12),
         color: card,
         clipBehavior: Clip.antiAlias,
@@ -302,7 +296,7 @@ class _HintFieldState extends State<HintField> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: dark ? T1SColors.slate700 : T1SColors.slate200),
           ),
-          constraints: const BoxConstraints(maxHeight: 320, maxWidth: 380),
+          constraints: const BoxConstraints(maxHeight: 300),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -435,29 +429,37 @@ class _HintFieldState extends State<HintField> {
 
   @override
   Widget build(BuildContext context) {
-    return CompositedTransformTarget(
-      link: _link,
-      child: TextField(
-        controller: widget.controller,
-        focusNode: _focus,
-        textInputAction: TextInputAction.search,
-        onSubmitted: (_) => _submit(),
-        decoration: InputDecoration(
-          hintText: widget.hint,
-          isDense: true,
-          prefixIcon: widget.icon == null ? null : Icon(widget.icon, size: 16),
-          suffixIcon: widget.trailing,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: border(context)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: T1SColors.red, width: 1.2),
+    final hasContent = _loading || _rows.isNotEmpty ||
+        (widget.controller.text.trim().isNotEmpty &&
+            widget.source != HintSource.cities &&
+            widget.source != HintSource.presets);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: widget.controller,
+          focusNode: _focus,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => _submit(),
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            isDense: true,
+            prefixIcon: widget.icon == null ? null : Icon(widget.icon, size: 16),
+            suffixIcon: widget.trailing,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: border(context)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: T1SColors.red, width: 1.2),
+            ),
           ),
         ),
-      ),
+        if (_showing && hasContent) _buildDropdown(context),
+      ],
     );
   }
 }

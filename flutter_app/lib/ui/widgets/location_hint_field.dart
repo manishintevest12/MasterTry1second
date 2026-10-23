@@ -7,10 +7,13 @@ import '../../core/theme.dart';
 import 'kit.dart';
 
 /// Uber-style location hint field (mirror of web LocationHintInput, owner request 17 Oct).
-/// Editable pickup/drop input with a live suggestion dropdown from GET /api/geo/search
+/// Editable pickup/drop input with a live suggestion list from GET /api/geo/search
 /// (Nominatim proxy, India-bounded). Rows show a pin icon, bold place name, grey address
 /// line; a "Search in a different city" footer keeps the raw typed text. Never invents
 /// places — empty state says try a nearby landmark.
+/// Owner 23 Oct fix: the suggestion list previously floated in a root Overlay via a
+/// LayerLink and rendered detached from its field on device; it now renders INLINE
+/// directly beneath the field box, so it can never misalign.
 class LocationHintField extends StatefulWidget {
   const LocationHintField({
     super.key,
@@ -46,12 +49,12 @@ class LocationHintField extends StatefulWidget {
 
 class _LocationHintFieldState extends State<LocationHintField> {
   final FocusNode _focus = FocusNode();
-  final LayerLink _link = LayerLink();
-  OverlayEntry? _overlay;
   Timer? _debounce;
   List<Map<String, dynamic>> _rows = const [];
   bool _loading = false;
+  bool _empty = false;
   int _seq = 0;
+  bool _showing = false;
 
   @override
   void initState() {
@@ -66,12 +69,12 @@ class _LocationHintFieldState extends State<LocationHintField> {
     widget.controller.removeListener(_onChanged);
     _focus.removeListener(_onFocus);
     _focus.dispose();
-    _removeOverlay();
+    _showing = false;
     super.dispose();
   }
 
   void _onFocus() {
-    if (!_focus.hasFocus) _removeOverlay();
+    if (!_focus.hasFocus) _hide();
   }
 
   void _onChanged() {
@@ -80,7 +83,8 @@ class _LocationHintFieldState extends State<LocationHintField> {
       _debounce?.cancel();
       if (_loading) setState(() => _loading = false);
       _rows = const [];
-      _removeOverlay();
+      _empty = false;
+      _hide();
       return;
     }
     _debounce?.cancel();
@@ -98,31 +102,22 @@ class _LocationHintFieldState extends State<LocationHintField> {
       setState(() {
         _rows = rows.take(6).toList();
         _loading = false;
+        _empty = _rows.isEmpty;
+        _showing = true;
       });
-      if (_focus.hasFocus) _showOverlay();
     } catch (_) {
       // Geo hints are best-effort; typing still works.
       if (mounted && seq == _seq) setState(() => _loading = false);
     }
   }
 
-  void _removeOverlay() {
-    _overlay?.remove();
-    _overlay = null;
-  }
-
-  void _showOverlay() {
-    _removeOverlay();
-    if (_rows.isEmpty) {
-      _overlay = OverlayEntry(builder: (c) => _buildDropdown(c, empty: true));
-    } else {
-      _overlay = OverlayEntry(builder: _buildDropdown);
-    }
-    Overlay.of(context).insert(_overlay!);
+  void _hide() {
+    if (!mounted) return;
+    if (_showing) setState(() => _showing = false);
   }
 
   void _choose(Map<String, dynamic>? place) {
-    _removeOverlay();
+    _hide();
     _focus.unfocus();
     if (place == null) {
       widget.onSubmitted?.call(widget.controller.text); // "search in a different city": keep raw text
@@ -136,20 +131,17 @@ class _LocationHintFieldState extends State<LocationHintField> {
     widget.onSelect?.call(short, place);
   }
 
-  Widget _buildDropdown(BuildContext c, {bool empty = false}) {
-    return CompositedTransformFollower(
-      link: _link,
-      showWhenUnlinked: false,
-      targetAnchor: Alignment.bottomLeft,
-      followerAnchor: Alignment.topLeft,
-      offset: const Offset(0, 4),
+  /// Inline suggestion card, rendered in-flow under the field box.
+  Widget _buildDropdown(BuildContext c) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
       child: Material(
-        elevation: 12,
+        elevation: 6,
         borderRadius: BorderRadius.circular(12),
         color: isDark(c) ? T1SColors.slate800 : Colors.white,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 300, maxWidth: 360),
-          child: empty
+          constraints: const BoxConstraints(maxHeight: 300),
+          child: _rows.isEmpty
               ? Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -259,79 +251,85 @@ class _LocationHintFieldState extends State<LocationHintField> {
   Widget build(BuildContext context) {
     final dotColor =
         widget.mode == 'pickup' ? const Color(0xFF34D399) : T1SColors.red;
-    return CompositedTransformTarget(
-      link: _link,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        // Whole box focuses the field: a thin 26px TextField strip was the hard-to-hit target.
-        onTap: () => _focus.requestFocus(),
-        child: Container(
-          key: ValueKey('hintfield-box-${widget.mode}'),
-          constraints: BoxConstraints(minHeight: widget.large ? 60 : 0),
-          padding: EdgeInsets.symmetric(horizontal: widget.large ? 14 : 10, vertical: widget.large ? 8 : 4),
-          decoration: BoxDecoration(
-            color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-            borderRadius: BorderRadius.circular(widget.large ? 14 : 10),
-            border: Border.all(color: border(context)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: widget.large ? 10 : 8,
-                height: widget.large ? 10 : 8,
-                margin: EdgeInsets.only(right: widget.large ? 12 : 8),
-                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
-              ),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.label.toUpperCase(),
-                      style: tx(context, widget.large ? 10 : 8, color: muted(context), w: FontWeight.w800),
-                    ),
-                    SizedBox(height: widget.large ? 2 : 0),
-                    TextField(
-                      controller: widget.controller,
-                      focusNode: _focus,
-                      style: tx(context, widget.large ? 16 : 12, w: FontWeight.w800),
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (v) => widget.onSubmitted?.call(v),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: widget.large ? 6 : 0),
-                        border: InputBorder.none,
-                        hintText: widget.placeholder,
-                        hintStyle: tx(context, widget.large ? 14 : 11, color: muted(context)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // Whole box focuses the field: a thin 26px TextField strip was the hard-to-hit target.
+          onTap: () => _focus.requestFocus(),
+          child: Container(
+            key: ValueKey('hintfield-box-${widget.mode}'),
+            constraints: BoxConstraints(minHeight: widget.large ? 60 : 0),
+            padding: EdgeInsets.symmetric(horizontal: widget.large ? 14 : 10, vertical: widget.large ? 8 : 4),
+            decoration: BoxDecoration(
+              color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+              borderRadius: BorderRadius.circular(widget.large ? 14 : 10),
+              border: Border.all(color: border(context)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: widget.large ? 10 : 8,
+                  height: widget.large ? 10 : 8,
+                  margin: EdgeInsets.only(right: widget.large ? 12 : 8),
+                  decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+                ),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.label.toUpperCase(),
+                        style: tx(context, widget.large ? 10 : 8, color: muted(context), w: FontWeight.w800),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              if (_loading)
-                const SizedBox(
-                  width: 14, height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              if (widget.controller.text.isNotEmpty)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    widget.controller.clear();
-                    _rows = const [];
-                    _removeOverlay();
-                  },
-                  child: Padding(
-                    padding: EdgeInsets.all(widget.large ? 8 : 2),
-                    child: Icon(Icons.cancel, size: widget.large ? 20 : 15, color: muted(context)),
+                      SizedBox(height: widget.large ? 2 : 0),
+                      TextField(
+                        controller: widget.controller,
+                        focusNode: _focus,
+                        style: tx(context, widget.large ? 16 : 12, w: FontWeight.w800),
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (v) => widget.onSubmitted?.call(v),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: widget.large ? 6 : 0),
+                          border: InputBorder.none,
+                          hintText: widget.placeholder,
+                          hintStyle: tx(context, widget.large ? 14 : 11, color: muted(context)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              if (widget.trailing != null) ...[SizedBox(width: widget.large ? 8 : 6), widget.trailing!],
-            ],
+                if (_loading)
+                  const SizedBox(
+                    width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                if (widget.controller.text.isNotEmpty)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      widget.controller.clear();
+                      _rows = const [];
+                      _empty = false;
+                      _hide();
+                    },
+                    child: Padding(
+                      padding: EdgeInsets.all(widget.large ? 8 : 2),
+                      child: Icon(Icons.cancel, size: widget.large ? 20 : 15, color: muted(context)),
+                    ),
+                  ),
+                if (widget.trailing != null) ...[SizedBox(width: widget.large ? 8 : 6), widget.trailing!],
+              ],
+            ),
           ),
         ),
-      ),
+        // Inline hint list (owner 23 Oct): in-flow under the field, never detached.
+        if (_showing && (_rows.isNotEmpty || _empty)) _buildDropdown(context),
+      ],
     );
   }
 }

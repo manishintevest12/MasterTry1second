@@ -127,10 +127,13 @@ class NetImage extends StatelessWidget {
   /// Physical-pixel decode budget from the logical box size (1.25x headroom so
   /// pinch/overscroll never rasterises a soft image).
   int? _decodeBudget(BuildContext context) {
+    // Guard (owner 23 Oct): double.infinity here crashed .round() in release,
+    // blanking whole image grids. Non-finite sizes fall back to the default budget.
+    final dpr = MediaQuery.devicePixelRatioOf(context);
     final w = width;
-    if (w != null) return (w * MediaQuery.devicePixelRatioOf(context) * 1.25).round();
+    if (w != null && w.isFinite) return (w * dpr * 1.25).round();
     final h = height;
-    if (h != null) return (h * MediaQuery.devicePixelRatioOf(context) * 1.25).round();
+    if (h != null && h.isFinite) return (h * dpr * 1.25).round();
     return null;
   }
 }

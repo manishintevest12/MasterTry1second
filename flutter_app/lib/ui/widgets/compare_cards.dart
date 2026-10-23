@@ -157,16 +157,28 @@ class _SiteRow extends StatelessWidget {
           Pill('BEST PRICE', bg: T1SColors.greenBg, fg: T1SColors.green, size: 8.5),
         ],
         const SizedBox(width: 8),
-        Text(
-          row.priceAvailable ? formatPrice(vertical, row.price) : 'Price on site',
-          style: tx(
-            context,
-            12.5,
-            w: FontWeight.w900,
-            color: row.priceAvailable ? ink(context) : muted(context),
-            mono: true,
-          ),
-        ),
+        // Owner 23 Oct: cab rows whose price is app-only (Uber/Rapido never
+        // publish web fares) show the web-parity 'Fare on app' label instead of
+        // a misleading 'Price on site' — the price exists, inside the provider
+        // app (spec price_basis = app_only_fares, mirrors TravelDealRow.tsx).
+        Builder(builder: (context) {
+          final appOnlyFares =
+              vertical == 'cab' && row.item.spec('price basis', 'price_basis') == 'app_only_fares';
+          return Text(
+            !appOnlyFares && row.priceAvailable
+                ? formatPrice(vertical, row.price)
+                : appOnlyFares
+                    ? 'Fare on app'
+                    : 'Price on site',
+            style: tx(
+              context,
+              appOnlyFares ? 10.5 : 12.5,
+              w: FontWeight.w900,
+              color: appOnlyFares || !row.priceAvailable ? muted(context) : ink(context),
+              mono: !appOnlyFares,
+            ),
+          );
+        }),
         const SizedBox(width: 8),
         GestureDetector(
           onTap: row.item.bestQuote != null &&
@@ -678,7 +690,11 @@ class HotelCard extends StatelessWidget {
           // -- photo header ---------------------------------------------------
           GestureDetector(
             onTap: () => showHotelDetail(context, g),
+            // Owner 23 Oct fix: StackFit.expand — portrait photos used to size
+            // to their intrinsic aspect (a narrow ~25% column at the left)
+            // leaving blank space to the right of the photo header.
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 NetImage(g.image ?? g.gallery.firstOrNull, height: 155, fallbackIcon: Icons.hotel_rounded),
                 // Top-left: white photo-count badge (reference image)
