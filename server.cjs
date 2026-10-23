@@ -24799,6 +24799,7 @@ var init_affiliateNetwork = __esm({
 // server/search/searchOrchestrator.ts
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
+  routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch
 });
 function parseCatalogueAttributes(raw) {
@@ -24889,12 +24890,31 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2
     totalSearchLatencyMs: Date.now() - start2
   };
 }
+function routeFloorMatches(rawQuery, offer) {
+  const q3 = String(rawQuery || "").toLowerCase();
+  const sides = q3.split(/\s+to\s+/);
+  if (sides.length < 2) return true;
+  const parens = /\([^)]*\)/g;
+  const tokens2 = (side) => side.replace(parens, " ").replace(/[^a-z\s]/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !["the", "and"].includes(t));
+  const dest = tokens2(sides[sides.length - 1]);
+  const origin = sides.length > 2 ? tokens2(sides[1]) : tokens2(sides[0]);
+  if (!dest.length) return true;
+  const attrs = offer.attributes || {};
+  const text = `${offer.title || ""} ${offer.subtitle || ""} ${offer.travel?.route || ""} ${String(attrs.route || "")} ${String(attrs.destination || "")}`.toLowerCase();
+  const hits = (toks2) => toks2.some((t) => text.includes(t));
+  if (!hits(dest)) return false;
+  if (origin.length && !hits(origin)) return false;
+  return true;
+}
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
   let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
+  }
+  if (vertical === "bus" || vertical === "flights") {
+    offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
   }
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
 }

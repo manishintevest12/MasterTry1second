@@ -184,6 +184,36 @@ async function progressiveCatalogueResponse(
  */
 const RELEVANCE_GATED_CATALOGUE = new Set(['ecommerce', 'grocery', 'food', 'movies', 'movie']);
 
+/** Owner 23 Oct (destination-matrix audit): the bus/flights cold-start floor
+ * borrowed ANY recent row from the origin city — 'Indore to Shirdi' painted
+ * Indore->Bhopal/Goa buses until the live pass landed. A borrowed row must now
+ * carry the queried DESTINATION (and origin) in its route text; no honest
+ * match -> no borrowed rows (the first live row paints instead — never a
+ * wrong-route row). Non-route queries keep the previous behaviour untouched. */
+export function routeFloorMatches(
+  rawQuery: string | undefined,
+  offer: { title?: string; subtitle?: string; travel?: { route?: string }; attributes?: Record<string, unknown> | null },
+): boolean {
+  const q = String(rawQuery || '').toLowerCase();
+  const sides = q.split(/\s+to\s+/);
+  if (sides.length < 2) return true; // not a route query -> old behaviour
+  const parens = /\([^)]*\)/g;
+  const tokens = (side: string) => side
+    .replace(parens, ' ')
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !['the', 'and'].includes(t));
+  const dest = tokens(sides[sides.length - 1]);
+  const origin = sides.length > 2 ? tokens(sides[1]) : tokens(sides[0]);
+  if (!dest.length) return true;
+  const attrs = offer.attributes || ({} as Record<string, unknown>);
+  const text = `${offer.title || ''} ${offer.subtitle || ''} ${offer.travel?.route || ''} ${String(attrs.route || '')} ${String(attrs.destination || '')}`.toLowerCase();
+  const hits = (toks: string[]) => toks.some((t) => text.includes(t));
+  if (!hits(dest)) return false;
+  if (origin.length && !hits(origin)) return false;
+  return true;
+}
+
 async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery, maxAgeSec = 3600): Promise<any[]> {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
@@ -192,6 +222,12 @@ async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed
     .map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
+  }
+  // Route-aware floor (owner 23 Oct): bus/flights borrowed rows must name the
+  // queried route, or the floor is skipped for that row — never show a
+  // wrong-route bus/flight during the cold-start window.
+  if (vertical === 'bus' || vertical === 'flights') {
+    offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
   }
   // Bank search bar (owner 21 Oct): a query that NAMES a provider must not serve every
   // other bank's catalogue rows during the instant cold-start window. Apply the SAME
