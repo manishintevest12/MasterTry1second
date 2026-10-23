@@ -69,6 +69,52 @@ export function rapidoCityLookup(cities: RapidoCity[], city: string): RapidoCity
   return cities.find((c) => canonCity(c.name) === t) || null;
 }
 
+/**
+ * Owner 23 Oct ("rapido ni aa raha"): on INTERCITY queries (e.g. Indore -> Bhopal)
+ * Rapido silently vanished from the compare feed while Uber kept an app-booking
+ * row — the owner read the gap as a bug. Rapido publishes NO intercity service,
+ * so instead of fake intercity rows we emit ONE honest presence row that says
+ * exactly that: city rides in the served origin/destination cities, priced
+ * "available only on app", with Rapido's own city page as the evidence link.
+ * No fare, no intercity claim, nothing invented.
+ */
+export function buildRapidoIntercityNotice(inp: {
+  source: SourceConfig;
+  from: string;
+  to: string;
+  fromCity: string;
+  toCity: string;
+  mainPageUrl: string;
+}): RawSourceItem[] {
+  const route = `${inp.from} → ${inp.to}`;
+  return [newRawItem(inp.source, {
+    title: `${inp.from} to ${inp.to} cab (Rapido — city rides only, app booking)`,
+    currency: 'INR',
+    seller: 'Rapido',
+    sellerUrl: inp.mainPageUrl,
+    availability: 'unknown',
+    travel: { route },
+    location: { city: inp.fromCity },
+    identifiers: { sku: `rapido-intercity-${rapidoCitySlug(inp.fromCity)}` },
+    attributes: {
+      pickup: inp.from,
+      drop: inp.to,
+      vehicle_type: 'City rides (Bike / Auto / Cab)',
+      price_basis: 'app_only_fares',
+      app_only: 'true',
+      data_note:
+        `Rapido publishes intra-city rides only — it has no published intercity service or fare for ${inp.from} → ${inp.to}. ` +
+        `City rides are available in Rapido's served cities (${inp.fromCity} and ${inp.toCity}). ` +
+        'This row exists so the route compare stays honest about what each app offers; fares are calculated in the Rapido app.',
+    },
+    evidence: {
+      extractedFields: ['title', 'seller', 'currency'],
+      sourceUrl: inp.mainPageUrl,
+      sourceReference: 'rapido.bike served-city registry — no intercity coverage published',
+    },
+  })];
+}
+
 export interface RapidoAvailabilityInput {
   source: SourceConfig;
   from: string; // raw UI endpoint text ("Terminal 3 Airport (110037)")

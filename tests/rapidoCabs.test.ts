@@ -5,6 +5,7 @@ import { validateOffer } from '../server/pipeline/validation';
 import type { NormalizedOffer } from '../server/types';
 import {
   buildRapidoAvailability,
+  buildRapidoIntercityNotice,
   rapidoCityLookup,
   rapidoCitySlug,
   rapidoServedCities,
@@ -114,4 +115,52 @@ test('frontend labels app-only rows "Fare on app" (spec keys are space-normalise
   const ui = readFileSync('src/components/TravelDealRow.tsx', 'utf8');
   assert.ok(ui.includes("'price basis', 'price_basis'"), 'both spec key spellings checked');
   assert.ok(ui.includes('Fare on app'));
+});
+
+
+test('owner 23 Oct "rapido ni aa raha": intercity emits ONE honest city-rides-only presence row', () => {
+  const rows = buildRapidoIntercityNotice({
+    source: src,
+    from: 'Indore',
+    to: 'Bhopal',
+    fromCity: 'Indore',
+    toCity: 'Bhopal',
+    mainPageUrl: 'https://www.rapido.bike/Indore/main-page',
+  });
+  assert.equal(rows.length, 1);
+  const r = rows[0];
+  // Exactly ONE row (not 3 fake intercity service rows), seller Rapido,
+  // fare honestly unpriced, app-only basis.
+  assert.equal(r.seller, 'Rapido');
+  assert.equal(r.attributes?.price_basis, 'app_only_fares');
+  assert.equal(r.attributes?.app_only, 'true');
+  // The title and data note must SAY city-rides-only — never claim intercity.
+  assert.match(r.title, /city rides only/);
+  const note = String(r.attributes?.data_note || '');
+  assert.match(note, /no published intercity service/);
+  assert.match(note, /Indore → Bhopal/);
+  assert.doesNotMatch(note, /intercity fare/i);
+  // Evidence points at Rapido's own served-city page.
+  assert.equal(r.evidence?.sourceUrl, 'https://www.rapido.bike/Indore/main-page');
+});
+
+test('intercity notice row passes offer validation (schema-honest)', () => {
+  const rows = buildRapidoIntercityNotice({
+    source: src,
+    from: 'Indore',
+    to: 'Bhopal',
+    fromCity: 'Indore',
+    toCity: 'Bhopal',
+    mainPageUrl: 'https://www.rapido.bike/Indore/main-page',
+  });
+  const notice = {
+    id: 'notice1', vertical: 'cab', title: rows[0].title, seller: 'Rapido',
+    prices: { currency: 'INR' },
+    attributes: rows[0].attributes as Record<string, string>,
+    availability: 'unknown',
+  } as unknown as NormalizedOffer;
+  const validated = validateOffer(notice);
+  assert.notEqual(validated.status, 'INVALID',
+    `app_only_fares intercity notice must validate: ${JSON.stringify(validated).slice(0, 200)}`);
+  assert.ok(!validated.unverified.includes('fare'), 'app_only_fares counts as an answer, not a missing field');
 });

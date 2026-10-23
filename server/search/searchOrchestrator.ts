@@ -255,7 +255,12 @@ async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed
   // Route-aware floor (owner 23 Oct): bus/flights borrowed rows must name the
   // queried route, or the floor is skipped for that row — never show a
   // wrong-route bus/flight during the cold-start window.
-  if (vertical === 'bus' || vertical === 'flights') {
+  if (vertical === 'bus' || vertical === 'flights' || vertical === 'cab') {
+    // Owner 23 Oct ("rapido ni aa raha" follow-up): the cab cold-start floor
+    // borrowed ANY recent intra-city row from the same city — "Bhawarkuan to
+    // Rajwada" painted "Palasia to Rajwada" rows. Same strict route gate as
+    // bus/flights: a borrowed cab row must name the queried origin AND
+    // destination, or the floor is skipped for that row.
     offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
   }
   // Bank search bar (owner 21 Oct): a query that NAMES a provider must not serve every

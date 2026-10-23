@@ -34,3 +34,22 @@ test('non-route query keeps the old behaviour (no filtering)', () => {
 test('lowercase/iata variants still match', () => {
   assert.equal(routeFloorMatches('indore idr to delhi del', { title: 'Air India AI-806', subtitle: '', travel: { route: 'New Delhi to Indore' }, attributes: {} }), true);
 });
+
+
+// Owner 23 Oct cab follow-up: intra-city cab floor borrowed a DIFFERENT route's rows
+// from the same city ("Bhawarkuan to Rajwada" painted "Palasia to Rajwada"). The cab
+// vertical now uses the same strict origin+destination gate as bus/flights.
+test('cab intra-city: borrowed floor row with the WRONG origin is rejected', () => {
+  const olaRow = { title: 'Palasia to Rajwada Indore cab (Ola Bike, one-way)', subtitle: 'Ola', travel: { route: 'Palasia to Rajwada Indore' }, attributes: {} };
+  assert.equal(routeFloorMatches('Bhawarkuan to Rajwada, Indore', olaRow), false);
+});
+
+test('cab intra-city: floor row matching the queried origin+destination passes', () => {
+  const olaRow = { title: 'Bhawarkuan to Rajwada Indore cab (Ola Bike, one-way)', subtitle: 'Ola', travel: { route: 'Bhawarkuan to Rajwada Indore' }, attributes: {} };
+  assert.equal(routeFloorMatches('Bhawarkuan to Rajwada, Indore', olaRow), true);
+});
+
+test('cab intercity: Indore to Bhopal floor rows keep passing (no regression)', () => {
+  const bharatRow = { title: 'Indore to Bhopal cab (Maruti Swift Dzire, one-way)', subtitle: 'Bharat Taxi', travel: { route: 'Indore to Bhopal' }, attributes: {} };
+  assert.equal(routeFloorMatches('Indore to Bhopal', bharatRow), true);
+});

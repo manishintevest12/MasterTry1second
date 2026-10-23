@@ -14224,6 +14224,32 @@ function rapidoCityLookup(cities, city) {
   const t = canonCity(city);
   return cities.find((c) => canonCity(c.name) === t) || null;
 }
+function buildRapidoIntercityNotice(inp) {
+  const route = `${inp.from} \u2192 ${inp.to}`;
+  return [newRawItem(inp.source, {
+    title: `${inp.from} to ${inp.to} cab (Rapido \u2014 city rides only, app booking)`,
+    currency: "INR",
+    seller: "Rapido",
+    sellerUrl: inp.mainPageUrl,
+    availability: "unknown",
+    travel: { route },
+    location: { city: inp.fromCity },
+    identifiers: { sku: `rapido-intercity-${rapidoCitySlug(inp.fromCity)}` },
+    attributes: {
+      pickup: inp.from,
+      drop: inp.to,
+      vehicle_type: "City rides (Bike / Auto / Cab)",
+      price_basis: "app_only_fares",
+      app_only: "true",
+      data_note: `Rapido publishes intra-city rides only \u2014 it has no published intercity service or fare for ${inp.from} \u2192 ${inp.to}. City rides are available in Rapido's served cities (${inp.fromCity} and ${inp.toCity}). This row exists so the route compare stays honest about what each app offers; fares are calculated in the Rapido app.`
+    },
+    evidence: {
+      extractedFields: ["title", "seller", "currency"],
+      sourceUrl: inp.mainPageUrl,
+      sourceReference: "rapido.bike served-city registry \u2014 no intercity coverage published"
+    }
+  })];
+}
 function buildRapidoAvailability(inp) {
   const route = `${inp.from} \u2192 ${inp.to}`;
   return SERVICES.map((svc, i) => newRawItem(inp.source, {
@@ -17120,7 +17146,16 @@ var init_cab = __esm({
             if (!a) a = await osmCity(rt.from, b?.name);
             if (!b) b = await osmCity(rt.to, a?.name);
             if (!a || !b) return [];
-            if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) return [];
+            if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) {
+              return buildRapidoIntercityNotice({
+                source: ctx.source,
+                from: rt.from,
+                to: rt.to,
+                fromCity: a.name,
+                toCity: b.name,
+                mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`
+              });
+            }
             return buildRapidoAvailability({
               source: ctx.source,
               from: rt.from,
@@ -18771,6 +18806,65 @@ var init_ticketnew = __esm({
 });
 
 // server/workers/parsers/cinepolis.ts
+function parseCinepolisCities(json) {
+  const map = /* @__PURE__ */ new Map();
+  const rows = json?.data;
+  if (!Array.isArray(rows)) return map;
+  for (const r of rows) {
+    const id = Number(r?.city_id);
+    const name = String(r?.city_name || "").trim();
+    if (Number.isFinite(id) && id > 0 && name) map.set(normName(name), id);
+  }
+  return map;
+}
+function cinepolisCityIdFor(map, city) {
+  const c = normName(String(city || ""));
+  if (!c) return null;
+  if (map.has(c)) return map.get(c);
+  for (const [name, id] of map) if (name.includes(c) || c.includes(name)) return id;
+  return null;
+}
+function normalizeNowPlayingRow(mv) {
+  return {
+    Title: String(mv?.Title || mv?.movie_title || "").trim(),
+    movie_id: mv?.ID || mv?.movie_id,
+    movie_lang: mv?.movie_lang || null,
+    m_movie_genre_name: mv?.m_movie_genre_name || null,
+    run_time: typeof mv?.RunTime === "number" ? mv.RunTime : typeof mv?.run_time === "number" ? mv.run_time : null,
+    movie_release_date: mv?.movie_release_date || null,
+    movie_trailer: mv?.movie_trailer && mv.movie_trailer !== "NA" ? mv.movie_trailer : null,
+    movie_image_url_1: mv?.movie_image_url_1 || null,
+    movie_image_url_2: mv?.movie_image_url_2 || null,
+    rating: mv?.rating || null,
+    format: mv?.m_movie_format_name || null,
+    cast: mv?.movie_cast || null,
+    cinema_ids: typeof mv?.cinemaIdSessions === "string" ? mv.cinemaIdSessions : null,
+    sessions_count: typeof mv?.sessions_count === "number" ? mv.sessions_count : null,
+    is_coming_soon: mv?.is_coming_soon
+  };
+}
+function splitNowPlaying(rows, today2 = /* @__PURE__ */ new Date()) {
+  const nowPlaying = [];
+  const comingSoon = [];
+  const todayIso = today2.toISOString().slice(0, 10);
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    if (!raw || typeof raw.Title !== "string" || !raw.Title.trim()) continue;
+    const mv = normalizeNowPlayingRow(raw);
+    const rel = raw?.movie_release_date ? String(raw.movie_release_date).slice(0, 10) : "";
+    const sessions = Number(raw?.sessions_count) || 0;
+    if (!rel) {
+      if (sessions > 0) nowPlaying.push(mv);
+      else comingSoon.push(mv);
+      continue;
+    }
+    if (rel <= todayIso) nowPlaying.push(mv);
+    else {
+      mv.advance_booking = sessions > 0 ? "Advance booking open on Cinepolis India" : null;
+      comingSoon.push(mv);
+    }
+  }
+  return { nowPlaying, comingSoon };
+}
 function parseCinepolisPage(body) {
   const m = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(body);
   if (!m) return { nowPlaying: [], comingSoon: [] };
@@ -18803,6 +18897,7 @@ function parseCinepolisMovies(data, source, queryTerm) {
       const display = cinepolisDisplayTitle(rawTitle);
       const img = mv.movie_image_url_1 || mv.movie_image_url_2;
       const release = mv.movie_release_date ? String(mv.movie_release_date).slice(0, 10) : null;
+      const apiMv = mv;
       const attrs = {
         image_url: img ? encodeURI(String(img)) : null,
         language: mv.movie_lang || null,
@@ -18811,7 +18906,12 @@ function parseCinepolisMovies(data, source, queryTerm) {
         trailer_url: mv.movie_trailer && mv.movie_trailer !== "NA" ? mv.movie_trailer : null,
         release_date: release,
         availability: g.availability,
-        data_note: g.note
+        data_note: g.note,
+        // API-path extras (now-playing rows carry them; SSR rows stay null)
+        rating: apiMv.rating || null,
+        format: apiMv.format || null,
+        cast: apiMv.cast || null,
+        cinema_count: apiMv.cinema_ids ? String(apiMv.cinema_ids).split(",").filter(Boolean).length : null
       };
       out.push(newRawItem(source, {
         title: display,
@@ -18830,13 +18930,21 @@ function parseCinepolisMovies(data, source, queryTerm) {
   }
   return out;
 }
-var CINEPOLIS_BASE, CINEPOLIS_MOVIE_LIST_URL;
+var CINEPOLIS_BASE, CINEPOLIS_MOVIE_LIST_URL, CINEPOLIS_API_BASE, CINEPOLIS_API_HEADERS, normName, CINEPOLIS_CITIES_TTL_MS;
 var init_cinepolis = __esm({
   "server/workers/parsers/cinepolis.ts"() {
     init_contract();
     init_bookmyshow();
     CINEPOLIS_BASE = "https://cinepolisindia.com";
     CINEPOLIS_MOVIE_LIST_URL = `${CINEPOLIS_BASE}/movie-list/undefined`;
+    CINEPOLIS_API_BASE = "https://api_new.cinepolisindia.com/api";
+    CINEPOLIS_API_HEADERS = {
+      Accept: "application/json",
+      Origin: "https://cinepolisindia.com",
+      Referer: "https://cinepolisindia.com/"
+    };
+    normName = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    CINEPOLIS_CITIES_TTL_MS = 24 * 60 * 60 * 1e3;
   }
 });
 
@@ -19423,16 +19531,41 @@ var init_movies = __esm({
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
             const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean))) : "";
-            const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25e3 });
-            if (res.status === 403 || res.status === 429) {
-              throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `Cinepolis blocked: ${res.status}`, res.status);
+            let data = null;
+            try {
+              const citiesRes = await cffiFetch(`${CINEPOLIS_API_BASE}/movies/cities?all=all`, { timeoutMs: 15e3, impersonate: "chrome", headers: CINEPOLIS_API_HEADERS });
+              if (citiesRes.status === 200) {
+                const ids = parseCinepolisCities(JSON.parse(citiesRes.body || "{}"));
+                const cityId = cinepolisCityIdFor(ids, city);
+                if (cityId) {
+                  const npRes = await cffiFetch(`${CINEPOLIS_API_BASE}/movies/now-playing/?city_id=${cityId}`, { timeoutMs: 2e4, impersonate: "chrome", headers: { ...CINEPOLIS_API_HEADERS, city_id: String(cityId) } });
+                  if (npRes.status === 200) {
+                    const rows = JSON.parse(npRes.body || "{}")?.data || [];
+                    if (Array.isArray(rows) && rows.length) data = splitNowPlaying(rows);
+                  }
+                }
+              }
+            } catch {
             }
-            if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Cinepolis listing ${res.status}`, res.status);
-            const data = parseCinepolisPage(res.body);
-            if (data.nowPlaying.length === 0 && data.comingSoon.length === 0) {
+            if (!data || data.nowPlaying.length === 0 && data.comingSoon.length === 0) {
+              const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25e3 });
+              if (res.status === 403 || res.status === 429) {
+                throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `Cinepolis blocked: ${res.status}`, res.status);
+              }
+              if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Cinepolis listing ${res.status}`, res.status);
+              const scraped = parseCinepolisPage(res.body);
+              if (scraped.nowPlaying.length || scraped.comingSoon.length) data = scraped;
+            }
+            if (!data || data.nowPlaying.length === 0 && data.comingSoon.length === 0) {
               throw new AcquisitionError("EMPTY_RESPONSE", "Cinepolis page carried no parseable movies");
             }
-            return parseCinepolisMovies(data, ctx.source, queryTerm);
+            const offers = parseCinepolisMovies(data, ctx.source, queryTerm);
+            const tnKeys = ticketnewCityKeys(city);
+            if (tnKeys.length) {
+              const aggs = await gwCityMovieAggregates("ticketnew", tnKeys[0], 8).catch(() => null);
+              for (const o of offers.slice(0, 5)) await enrichWithGw(o, aggs, "ticketnew", "Cinepolis India");
+            }
+            return offers;
           }
         },
         {
@@ -25062,7 +25195,7 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
-  if (vertical === "bus" || vertical === "flights") {
+  if (vertical === "bus" || vertical === "flights" || vertical === "cab") {
     offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
   }
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
@@ -26613,7 +26746,7 @@ __export(interstitial_exports, {
   isInAppWebView: () => isInAppWebView,
   redirectRouteHandler: () => redirectRouteHandler,
   renderInterstitialPage: () => renderInterstitialPage,
-  resolveInterstitialPointer: () => resolveInterstitialPointer
+  resolveInterstitialMeta: () => resolveInterstitialMeta
 });
 function secret2() {
   return process.env.AFFILIATE_SECRET || import_crypto26.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
@@ -26624,12 +26757,12 @@ function b64url2(s) {
 function unb64url2(s) {
   return Buffer.from(s, "base64url").toString("utf8");
 }
-function createInterstitialPointer(url) {
-  const payload = b64url2(JSON.stringify({ d: url.slice(0, 3e3), e: Date.now() + INTERSTITIAL_TTL_MS }));
+function createInterstitialPointer(url, partner) {
+  const payload = b64url2(JSON.stringify({ d: url.slice(0, 3e3), p: String(partner || "").slice(0, 120), e: Date.now() + INTERSTITIAL_TTL_MS }));
   const sig = import_crypto26.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
   return `${payload}.${sig}`;
 }
-function resolveInterstitialPointer(token) {
+function resolveInterstitialMeta(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
   const expect = import_crypto26.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
@@ -26637,7 +26770,7 @@ function resolveInterstitialPointer(token) {
   try {
     const j = JSON.parse(unb64url2(m[1]));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
-    return j.d;
+    return { url: j.d, partner: typeof j.p === "string" ? j.p : "" };
   } catch {
     return null;
   }
@@ -26663,6 +26796,7 @@ function renderInterstitialPage(opts) {
     host = new URL(target).hostname.replace(/^www\./, "");
   } catch {
   }
+  const shown = String(opts.partner || "").trim() || host || "your store";
   const ad = opts.adSlot;
   let adBlock = "";
   if (ad?.provider === "adsense" && ad.adsense_client && ad.adsense_slot) {
@@ -26715,14 +26849,14 @@ function renderInterstitialPage(opts) {
 </style>
 </head>
 <body>
-<header><span class="tab"><span class="dot"></span><span class="nm">${esc(host) || "your store"}</span></span><span class="brand">via Try1Second</span></header>
+<header><span class="tab"><span class="dot"></span><span class="nm">${esc(shown)}</span></span><span class="brand">Try1Second redirecting to ${esc(shown)} site</span></header>
 <main>
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
-  <h2>Sit tight \u2014 ${host ? esc(host) : "your store"} is opening with your best price.</h2>
+  <h2>Sit tight \u2014 ${esc(shown)} is opening with your best price.</h2>
   ${adBlock}
   <div class="store" style="margin-top:18px">
-    <span class="dot"></span><span id="lbl">Opening ${esc(host)} in <span id="s">${seconds}</span>s</span>
+    <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
   <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now \u2192</a>
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
@@ -26758,15 +26892,15 @@ async function redirectRouteHandler(req, res) {
     ));
     return;
   }
-  const target = resolveInterstitialPointer(k);
-  if (!target) {
+  const meta = resolveInterstitialMeta(k);
+  if (!meta) {
     res.status(410).send(errorPage(
       "This link has expired",
       "Redirect links live for a few minutes for your safety. Run the search again and tap your deal for a fresh one."
     ));
     return;
   }
-  const check = validateDestination(target);
+  const check = validateDestination(meta.url);
   if (!check.valid) {
     log.warn("Redirect", "Interstitial destination refused", { reason: check.reason });
     res.status(400).send(errorPage(
@@ -26780,7 +26914,7 @@ async function redirectRouteHandler(req, res) {
     adSlot = await getAdSlot("redirect_interstitial");
   } catch {
   }
-  res.status(200).type("html").send(renderInterstitialPage({ targetUrl: target, adSlot }));
+  res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, adSlot }));
 }
 var import_crypto26, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
 var init_interstitial = __esm({
@@ -31274,7 +31408,12 @@ var init_routes = __esm({
         res.redirect(302, dl.trackingUrl);
         return;
       }
-      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl)}`);
+      let partnerHost = "";
+      try {
+        partnerHost = new URL(resolved.destination).hostname.replace(/^www\./, "");
+      } catch {
+      }
+      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost)}`);
     });
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);

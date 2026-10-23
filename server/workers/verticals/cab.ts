@@ -12,7 +12,7 @@ import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace } from '../parsers/osmTravel';
 import { geoSearch, geoReverse } from '../../common/geoProxy';
-import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability } from '../parsers/rapidoCabs';
+import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability, buildRapidoIntercityNotice } from '../parsers/rapidoCabs';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { AcquisitionError } from '../../common/httpClient';
 
@@ -565,7 +565,21 @@ export const cabWorker: VerticalWorker = {
         if (!a) a = await osmCity(rt.from, b?.name);
         if (!b) b = await osmCity(rt.to, a?.name);
         if (!a || !b) return []; // Rapido does not serve one of the cities — honestly no rows
-        if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) return []; // intercity: no published coverage
+        if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) {
+          // Owner 23 Oct ("rapido ni aa raha"): intercity queries showed Uber's
+          // app-booking row but Rapido silently vanished. Rapido publishes no
+          // intercity service, so emit ONE honest presence row that SAYS city
+          // rides only (both cities served) instead of disappearing — no fare
+          // and no intercity claim is invented.
+          return buildRapidoIntercityNotice({
+            source: ctx.source,
+            from: rt.from,
+            to: rt.to,
+            fromCity: a.name,
+            toCity: b.name,
+            mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`,
+          });
+        }
         return buildRapidoAvailability({
           source: ctx.source,
           from: rt.from,
