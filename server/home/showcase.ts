@@ -387,23 +387,41 @@ export async function fetchVerticalOffersByCity(
   const hit = cityPoolCache.get(cacheKey);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
   const store = getStore();
-  let rows: OfferRow[] = [];
-  try {
-    const keys = [...new Set(cities.flatMap((c) => c.keys))];
-    const like = keys.map(() => '(title LIKE ? OR location_city LIKE ?)').join(' OR ');
-    const params: unknown[] = [`%${keys[0]}%`];
-    for (const k of keys) params.push(`%${k}%`, `%${k}%`);
-    params.shift();
-    rows = await store.query<OfferRow>(
-      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
+  // Owner 23 Oct: the union query with one global LIMIT (cities*perCityLimit)
+  // still let fast-cycling city floods evict a slower city's rows out of the
+  // window (Mumbai hotels batch 11:31 evicted within 40min by 2000 newer
+  // rows; Udaipur fares likewise) — the 'per-city' pool wasn't per-city.
+  // Fix: ONE query PER CITY, each with its own LIMIT, so every city's newest
+  // rows are guaranteed regardless of how much other cities record. Same
+  // honest gates downstream (matches/servableRow/age) still apply per row.
+  const perCitySql = (like: string) => `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
-       FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${cities.length * perCityLimit}`,
-      [vertical, ...params]);
+       FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${perCityLimit}`;
+  const map = new Map<string, OfferRow[]>();
+  try {
+    const perCity = await Promise.all(cities.map(async (c) => {
+      const like = c.keys.map(() => '(title LIKE ? OR location_city LIKE ?)').join(' OR ');
+      const params: unknown[] = [vertical];
+      for (const k of c.keys) params.push(`%${k}%`, `%${k}%`);
+      try {
+        return [c.name, (await store.query<OfferRow>(perCitySql(like), params)).slice(0, perCityLimit)] as const;
+      } catch (e: any) {
+        log.debug('Showcase', 'per-city pool query failed', { vertical, city: c.name, error: String(e).slice(0, 100) });
+        return [c.name, [] as OfferRow[]] as const;
+      }
+    }));
+    for (const [name, rows] of perCity) map.set(name, rows);
   } catch (e: any) {
     log.debug('Showcase', 'by-city pool query failed', { vertical, error: String(e).slice(0, 100) });
-    rows = [];
   }
-  const map = bucketRowsByCity(rows, cities, perCityLimit);
+  if (map.size === 0) {
+    // Dev/file-store fallback: global pool bucketed in JS (old behavior).
+    try {
+      const rows = await fetchVerticalOffers(vertical, cities.length * perCityLimit);
+      const bucketed = bucketRowsByCity(rows, cities, perCityLimit);
+      for (const [k, v] of bucketed) map.set(k, v);
+    } catch { /* empty map is fine — sections render honestly thin */ }
+  }
   cityPoolCache.set(cacheKey, { at: Date.now(), map });
   return map;
 }
@@ -847,7 +865,11 @@ export async function buildShowcase(): Promise<ShowcaseSection[]> {
     },
     { id: 'cards', title: 'Best Cards For You', subtitle: 'fees & rewards, straight from the banks', items: finalizeSection(cards) },
     { id: 'destinations', title: 'Top Destinations', subtitle: 'famous places to visit — cheapest recorded fares, tap for live flight search', items: destinations },
-  ].filter(s => s.items.length > 0); // honesty: never render an empty section
+  // Owner 23 Oct ('6, 12' rule): homepage section rows come in complete
+  // blocks of 6 (one row) or 12 (two rows) — a section with fewer than 6
+  // honest items hides ENTIRELY (never a half-empty row).
+  ].filter(s => s.items.length >= 6);
+  for (const s of sections) s.items = s.items.slice(0, 12);
 
   cached = { at: Date.now(), sections };
   return sections;

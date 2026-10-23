@@ -191,8 +191,9 @@ export const HomeView: React.FC = () => {
 
           {/* Company Logos Only */}
           <div className="flex items-center gap-3.5 overflow-x-auto pb-1 scrollbar-none pt-1">
-            {/* Owner 23 Oct (screenshot): home rail shows exactly 6 partner tiles; View All keeps the full catalogue. */}
-            {quickAppPartners.slice(0, 6).map((partner) => (
+            {/* Owner 23 Oct: WEB rail shows 18 tiles (the Flutter home rail stays
+                at 6 — that limit is server-side per /api/quick-apps); View All keeps the full catalogue. */}
+            {quickAppPartners.slice(0, 18).map((partner) => (
               <button
                 key={`home-qapp-${partner.id}`}
                 type="button"

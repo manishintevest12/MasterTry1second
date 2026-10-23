@@ -23,51 +23,6 @@ import 'place_picker_screen.dart';
 import 'map_pin_picker_screen.dart';
 
 /// Small const map of lat/lng for top ~40 Indian cities for geolocator pre-fill
-const kCityCoords = <String, Map<String, double>>{
-  'Mumbai': {'lat': 19.0760, 'lng': 72.8777},
-  'New Delhi': {'lat': 28.6139, 'lng': 77.2090},
-  'Bengaluru': {'lat': 12.9716, 'lng': 77.5946},
-  'Hyderabad': {'lat': 17.3850, 'lng': 78.4867},
-  'Chennai': {'lat': 13.0827, 'lng': 80.2707},
-  'Kolkata': {'lat': 22.5726, 'lng': 88.3639},
-  'Pune': {'lat': 18.5204, 'lng': 73.8567},
-  'Ahmedabad': {'lat': 23.0225, 'lng': 72.5714},
-  'Goa': {'lat': 15.2993, 'lng': 74.1240},
-  'Jaipur': {'lat': 26.9124, 'lng': 75.7873},
-  'Chandigarh': {'lat': 30.7333, 'lng': 76.7794},
-  'Lucknow': {'lat': 26.8467, 'lng': 80.9462},
-  'Dehradun': {'lat': 30.3165, 'lng': 78.0322},
-  'Manali': {'lat': 32.2432, 'lng': 77.1892},
-  'Shimla': {'lat': 31.1048, 'lng': 77.1734},
-  'Srinagar': {'lat': 34.0837, 'lng': 74.7973},
-  'Leh': {'lat': 34.1526, 'lng': 77.5771},
-  'Agra': {'lat': 27.1767, 'lng': 78.0081},
-  'Varanasi': {'lat': 25.3176, 'lng': 82.9739},
-  'Surat': {'lat': 21.1702, 'lng': 72.8311},
-  'Vadodara': {'lat': 22.3072, 'lng': 73.1812},
-  'Nagpur': {'lat': 21.1458, 'lng': 79.0882},
-  'Nashik': {'lat': 20.0059, 'lng': 73.7898},
-  'Udaipur': {'lat': 24.5854, 'lng': 73.7125},
-  'Indore': {'lat': 22.7196, 'lng': 75.8577},
-  'Bhopal': {'lat': 23.2599, 'lng': 77.4126},
-  'Gwalior': {'lat': 26.2183, 'lng': 78.1828},
-  'Jabalpur': {'lat': 23.1815, 'lng': 79.9864},
-  'Ujjain': {'lat': 23.1765, 'lng': 75.7885},
-  'Patna': {'lat': 25.5941, 'lng': 85.1376},
-  'Bhubaneswar': {'lat': 20.2961, 'lng': 85.8245},
-  'Puri': {'lat': 19.8135, 'lng': 85.8312},
-  'Ranchi': {'lat': 23.3441, 'lng': 85.3096},
-  'Raipur': {'lat': 21.2514, 'lng': 81.6296},
-  'Kochi': {'lat': 9.9312, 'lng': 76.2673},
-  'Thiruvananthapuram': {'lat': 8.5241, 'lng': 76.9366},
-  'Coimbatore': {'lat': 11.0168, 'lng': 76.9558},
-  'Visakhapatnam': {'lat': 17.6868, 'lng': 83.2185},
-  'Vijayawada': {'lat': 16.5062, 'lng': 80.6480},
-  'Gurugram': {'lat': 28.4595, 'lng': 77.0266},
-  'Noida': {'lat': 28.5355, 'lng': 77.3910},
-  'Ludhiana': {'lat': 30.9010, 'lng': 75.8573},
-  'Amritsar': {'lat': 31.6340, 'lng': 74.8723},
-};
 
 String routeQuery(String from, String to) {
   String clean(String x) => x.replaceAll(RegExp(r'\s*\(\d{5,6}\)\s*$'), '').trim();
@@ -647,6 +602,8 @@ class _CityPickerScreenState extends State<_CityPickerScreen> {
   List<CitySuggestion> _filtered = kAutoCities;
   List<_PickerRow> _busRows = const [];
   Timer? _debounce;
+  bool _gpsBusy = false;
+  String? _gpsAddress;
 
   @override
   void initState() {
@@ -660,6 +617,79 @@ class _CityPickerScreenState extends State<_CityPickerScreen> {
     _c.removeListener(_onSearch);
     _c.dispose();
     super.dispose();
+  }
+
+  /// Owner 23 Oct (web parity): one-tap GPS auto-detect for the city picker.
+  /// GPS fix -> /api/geo/reverse for the real place name; falls back to the
+  /// nearest supported city from kCityCoords (the same registry the cab
+  /// location picker uses). Never invents a place.
+  Future<void> _detectLocation() async {
+    if (_gpsBusy) return;
+    setState(() => _gpsBusy = true);
+    try {
+      bool enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        if (mounted) toast(context, 'Location services are disabled', error: true);
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) toast(context, 'Location permission denied', error: true);
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) toast(context, 'Location permission permanently denied', error: true);
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: const Duration(seconds: 8),
+      );
+      // Real place name from the server's reverse-geocode (never invented).
+      String? detected;
+      try {
+        final place = await AppState.instance.api
+            .geoReverse(pos.latitude, pos.longitude);
+        final city = (place?['city'] ?? place?['name'] ?? '') as String;
+        if (city.isNotEmpty) {
+          detected = kAutoCities
+              .map((c) => c.text)
+              .firstWhere((t) => t.toLowerCase().contains(city.toLowerCase()), orElse: () => '');
+        }
+      } catch (_) {/* offline reverse-geocode -> nearest-city fallback below */}
+      if ((detected ?? '').isEmpty) {
+        String? nearestCity;
+        double minDistance = double.infinity;
+        for (final entry in kCityCoords.entries) {
+          final dist = Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, entry.value['lat']!, entry.value['lng']!,
+          );
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestCity = entry.key;
+          }
+        }
+        if (nearestCity != null && minDistance <= 150000) {
+          detected = kAutoCities
+              .map((c) => c.text)
+              .firstWhere((t) => t.toLowerCase().contains(nearestCity!.toLowerCase()), orElse: () => nearestCity!);
+        }
+      }
+      if (!mounted) return;
+      if ((detected ?? '').isNotEmpty) {
+        setState(() => _gpsAddress = detected);
+        Navigator.pop(context, detected);
+      } else {
+        toast(context, 'Could not detect a supported city here', error: true);
+      }
+    } catch (e) {
+      if (mounted) toast(context, 'Could not detect location: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _gpsBusy = false);
+    }
   }
 
   void _onSearch() {
@@ -810,16 +840,51 @@ class _CityPickerScreenState extends State<_CityPickerScreen> {
                   ? _buildBusRows()
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _filtered.length,
+                      itemCount: _filtered.length + 1, // +1: the GPS auto-detect row on top
                       separatorBuilder: (_, __) => Divider(height: 1, color: border(context)),
                       itemBuilder: (c, i) {
-                        final item = _filtered[i];
+                        // Owner 23 Oct (web parity): 'Use Exact Current Location (GPS)'
+                        // mint row — GPS probe + /api/geo/reverse, then Auto-Fill the field.
+                        if (i == 0) {
+                          return _GpsRow(
+                            busy: _gpsBusy,
+                            address: _gpsAddress,
+                            onTap: _detectLocation,
+                          );
+                        }
+                        final item = _filtered[i - 1];
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                          leading: Icon(item.icon, size: 18, color: T1SColors.red),
                           title: Text(item.text, style: tx(c, 13.5, w: FontWeight.w800)),
                           subtitle: item.subtext.isNotEmpty
-                              ? Text(item.subtext, style: tx(c, 11, color: muted(c)))
-                              : (item.badge.isNotEmpty ? Text(item.badge, style: tx(c, 11, color: T1SColors.red)) : null),
+                              ? Text(item.subtext, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(c, 10.5, color: muted(c)))
+                              : null,
+                          trailing: item.badge.isNotEmpty
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    // Owner 23 Oct reference: capital-class badges orange,
+                                    // every other badge gray-blue.
+                                    color: kCapitalBadges.contains(item.badge)
+                                        ? const Color(0xFFFFE0B2)
+                                        : (isDark(c) ? T1SColors.slate800 : const Color(0xFFECEFF1)),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: kCapitalBadges.contains(item.badge)
+                                          ? const Color(0xFFF5CBA7)
+                                          : border(c),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    item.badge,
+                                    style: tx(
+                                      c, 10, w: FontWeight.w800,
+                                      color: kCapitalBadges.contains(item.badge) ? const Color(0xFFCC5500) : muted(c),
+                                    ),
+                                  ),
+                                )
+                              : null,
                           onTap: () => Navigator.pop(c, item.text),
                         );
                       },
@@ -2119,5 +2184,91 @@ Future<void> showTrackSheet(
   }
   } finally {
     targetController.dispose();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Owner 23 Oct (web parity): one-tap GPS auto-detect row — mint-green card,
+// crosshair chip, LIVE + Auto-Fill pills, exactly like the web dropdown.
+// ---------------------------------------------------------------------------
+class _GpsRow extends StatelessWidget {
+  const _GpsRow({required this.busy, this.address, required this.onTap});
+  final bool busy;
+  final String? address;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = isDark(context);
+    return InkWell(
+      onTap: busy ? null : onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF0E2A22) : const Color(0xFFE6F4EA),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: .35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: CircularProgressIndicator(strokeWidth: 1.8, color: Colors.white),
+                    )
+                  : const Icon(Icons.my_location_rounded, size: 16, color: Colors.white),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Use Exact Current Location (GPS)',
+                    style: tx(context, 12.5, w: FontWeight.w900, color: const Color(0xFF1B5E20)),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    busy
+                        ? 'Detecting your exact location…'
+                        : (address != null ? address! : 'Detects your GPS position & Auto-Fills this field'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tx(context, 9.5, color: const Color(0xFF37623C)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text('LIVE', style: tx(context, 8, w: FontWeight.w900, color: Colors.white)),
+            ),
+            const SizedBox(width: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .75),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: .4)),
+              ),
+              child: Text('Auto-Fill', style: tx(context, 8, w: FontWeight.w900, color: const Color(0xFF1B5E20))),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/app_state.dart';
@@ -73,6 +74,84 @@ class _HintFieldState extends State<HintField> {
   int _seq = 0;
   int _highlight = -1;
   bool _showing = false;
+  bool _gpsBusy = false;
+
+  /// Owner 23 Oct (web parity): the web dropdown shows the one-tap GPS option
+  /// for city/location-style inputs — the Flutter hint field mirrors it for
+  /// the cities + hotels sources (bus locations are a live registry type).
+  bool get _isLocationLike =>
+      widget.source == HintSource.cities || widget.source == HintSource.hotels;
+
+  /// GPS fix -> /api/geo/reverse for the honest place name; falls back to the
+  /// nearest supported city (kCityCoords registry). Never invents a place.
+  Future<void> _detectLocation() async {
+    if (_gpsBusy) return;
+    setState(() => _gpsBusy = true);
+    try {
+      bool enabled = await Geolocator.isLocationServiceEnabled();
+      if (!enabled) {
+        if (mounted) toast(context, 'Location services are disabled', error: true);
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) toast(context, 'Location permission denied', error: true);
+          return;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) toast(context, 'Location permission permanently denied', error: true);
+        return;
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: const Duration(seconds: 8),
+      );
+      String? detected;
+      try {
+        final place = await AppState.instance.api.geoReverse(pos.latitude, pos.longitude);
+        final city = (place?['city'] ?? place?['name'] ?? '') as String;
+        if (city.isNotEmpty) {
+          detected = kAutoCities
+              .map((c) => c.text)
+              .firstWhere((t) => t.toLowerCase().contains(city.toLowerCase()), orElse: () => '');
+        }
+      } catch (_) {/* offline reverse-geocode -> nearest-city fallback below */}
+      if ((detected ?? '').isEmpty) {
+        String? nearestCity;
+        double minDistance = double.infinity;
+        for (final entry in kCityCoords.entries) {
+          final dist = Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, entry.value['lat']!, entry.value['lng']!,
+          );
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestCity = entry.key;
+          }
+        }
+        if (nearestCity != null && minDistance <= 150000) {
+          detected = kAutoCities
+              .map((c) => c.text)
+              .firstWhere((t) => t.toLowerCase().contains(nearestCity!.toLowerCase()), orElse: () => nearestCity ?? '');
+        }
+      }
+      if (!mounted) return;
+      final value = detected ?? '';
+      if (value.isNotEmpty) {
+        widget.controller.text = value;
+        widget.controller.selection = TextSelection.collapsed(offset: value.length);
+        widget.onSelect?.call(value);
+      } else {
+        toast(context, 'Could not detect a supported city here', error: true);
+      }
+    } catch (e) {
+      if (mounted) toast(context, 'Could not detect location: $e', error: true);
+    } finally {
+      if (mounted) setState(() => _gpsBusy = false);
+    }
+  }
 
   FocusNode get _focus => widget.focusNode ?? _ownFocus;
 
@@ -156,10 +235,22 @@ class _HintFieldState extends State<HintField> {
       final lq = q.toLowerCase();
       Iterable<CitySuggestion> list = kAutoCities;
       if (lq.isNotEmpty) {
-        list = list.where((c) =>
-            c.text.toLowerCase().contains(lq) ||
-            c.subtext.toLowerCase().contains(lq) ||
-            c.badge.toLowerCase().contains(lq));
+        // Owner 23 Oct: rich subtexts ('Indira Gandhi...', 'Industrial Hub')
+        // made loose substring matching swamp the direct city-name hits
+        // (typing 'ind' surfaced Delhi/Kanpur before Indore). Rank matches:
+        // text startsWith > text contains > subtext/badge contains.
+        final prefix = <CitySuggestion>[], contains = <CitySuggestion>[], fuzzy = <CitySuggestion>[];
+        for (final c in kAutoCities) {
+          final t = c.text.toLowerCase();
+          if (t.startsWith(lq)) {
+            prefix.add(c);
+          } else if (t.contains(lq)) {
+            contains.add(c);
+          } else if (c.subtext.toLowerCase().contains(lq) || c.badge.toLowerCase().contains(lq)) {
+            fuzzy.add(c);
+          }
+        }
+        list = [...prefix, ...contains, ...fuzzy];
       }
       return [
         for (final c in list.take(8))
@@ -167,7 +258,7 @@ class _HintFieldState extends State<HintField> {
               subtitle: c.subtext.isEmpty ? null : c.subtext,
               badge: c.badge,
               value: c.text,
-              icon: Icons.flight_takeoff_outlined),
+              icon: c.icon),
       ];
     }
     final lq = q.toLowerCase();
@@ -348,8 +439,17 @@ class _HintFieldState extends State<HintField> {
                   child: ListView.builder(
                     shrinkWrap: true,
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: _rows.length,
-                    itemBuilder: (c, i) => _row(c, _rows[i], i, dark, titleColor, mutedColor),
+                    itemCount: _rows.length + (_isLocationLike ? 1 : 0),
+                    itemBuilder: (c, i) {
+                      if (_isLocationLike && i == 0) {
+                        return _GpsTile(
+                          busy: _gpsBusy,
+                          onTap: _detectLocation,
+                        );
+                      }
+                      final row = _rows[_isLocationLike ? i - 1 : i];
+                      return _row(c, row, _isLocationLike ? i - 1 : i, dark, titleColor, mutedColor);
+                    },
                   ),
                 ),
               if (_rows.isNotEmpty)
@@ -410,16 +510,29 @@ class _HintFieldState extends State<HintField> {
             ),
             if (r.badge.isNotEmpty) ...[
               const SizedBox(width: 8),
-              Container(
-                margin: const EdgeInsets.only(top: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: dark ? T1SColors.slate900 : T1SColors.slate50,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: dark ? T1SColors.slate700 : T1SColors.slate200),
-                ),
-                child: Text(r.badge, style: tx(c, 9, w: FontWeight.w800, color: mutedColor)),
-              ),
+              Builder(builder: (c) {
+                final capital = kCapitalBadges.contains(r.badge);
+                return Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: capital
+                        ? const Color(0xFFFFE0B2)
+                        : (dark ? T1SColors.slate900 : const Color(0xFFECEFF1)),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: capital
+                          ? const Color(0xFFF5CBA7)
+                          : (dark ? T1SColors.slate700 : T1SColors.slate200),
+                    ),
+                  ),
+                  child: Text(
+                    r.badge,
+                    style: tx(c, 9, w: FontWeight.w800,
+                        color: capital ? const Color(0xFFCC5500) : mutedColor),
+                  ),
+                );
+              }),
             ],
           ],
         ),
@@ -460,6 +573,89 @@ class _HintFieldState extends State<HintField> {
         ),
         if (_showing && hasContent) _buildDropdown(context),
       ],
+    );
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Owner 23 Oct (web parity): the one-tap GPS tile shown at the top of the
+// city/location hint dropdown — mint-green card, crosshair chip, LIVE +
+// Auto-Fill pills, exactly like the web dropdown option.
+// ---------------------------------------------------------------------------
+class _GpsTile extends StatelessWidget {
+  const _GpsTile({required this.busy, required this.onTap});
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = isDark(context);
+    return InkWell(
+      onTap: busy ? null : onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: dark ? const Color(0xFF0E2A22) : const Color(0xFFE6F4EA),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: .35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(7),
+                      child: CircularProgressIndicator(strokeWidth: 1.6, color: Colors.white),
+                    )
+                  : const Icon(Icons.my_location_rounded, size: 14, color: Colors.white),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Use Exact Current Location (GPS)',
+                    style: tx(context, 11, w: FontWeight.w900, color: const Color(0xFF1B5E20)),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    busy ? 'Detecting…' : 'GPS probe + Auto-Fill',
+                    style: tx(context, 8.5, color: const Color(0xFF37623C)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text('LIVE', style: tx(context, 7.5, w: FontWeight.w900, color: Colors.white)),
+            ),
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .75),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: .4)),
+              ),
+              child: Text('Auto-Fill', style: tx(context, 7.5, w: FontWeight.w900, color: const Color(0xFF1B5E20))),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

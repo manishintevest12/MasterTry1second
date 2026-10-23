@@ -336,6 +336,12 @@ export default function HomeShowcase() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         {sections.map((sec) => {
           const Icon = SECTION_ICONS[sec.id] || Sparkles;
+          // Owner 23 Oct ('6, 12' rule): rows render in complete blocks of 6 —
+          // a section shows 6 items (one row) or 12 (two rows); anything
+          // between (or below) trims/hides so no half-empty row ever shows.
+          const visible = sec.items.length >= 12 ? 12 : sec.items.length >= 6 ? 6 : 0;
+          if (visible === 0) return null;
+          const items = sec.items.slice(0, visible);
           return (
             <div key={sec.id}>
               <div className="flex items-end justify-between mb-3 gap-3">
@@ -359,7 +365,7 @@ export default function HomeShowcase() {
                 </button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                {sec.items.map((item) =>
+                {items.map((item) =>
                   sec.id === 'special' ? (
                     <CouponCard key={item.id} item={item} />
                   ) : (

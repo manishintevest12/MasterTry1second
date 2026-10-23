@@ -763,6 +763,14 @@ class ProductPage {
   final String verdict; // great | good | fair | wait | unknown
   final int score;
   final String headline;
+  // Owner 23 Oct (web parity — reference product-comparison layout): the app
+  // now renders the web Deal Scanner: recorded-history stats + score breakup.
+  final bool hasHistory;
+  final int points;
+  final double? allTimeLow;
+  final double? allTimeHigh;
+  final double? average;
+  final List<DealBreakup> breakup;
   const ProductPage({
     required this.found,
     required this.title,
@@ -774,7 +782,21 @@ class ProductPage {
     this.verdict = 'unknown',
     this.score = 0,
     this.headline = '',
+    this.hasHistory = false,
+    this.points = 0,
+    this.allTimeLow,
+    this.allTimeHigh,
+    this.average,
+    this.breakup = const [],
   });
+}
+
+/// One line of the Deal Score Breakup (web parity: label + pts/max).
+class DealBreakup {
+  final String label;
+  final int pts;
+  final int max;
+  const DealBreakup(this.label, this.pts, this.max);
 }
 
 class ProductOffer {
@@ -785,7 +807,11 @@ class ProductOffer {
   final String? image;
   final double? rating;
   final String goUrl;
-  const ProductOffer(this.title, this.seller, this.price, this.listPrice, this.image, this.rating, this.goUrl);
+  final int reviews;
+  final String availability; // '' | 'out_of_stock' | ...
+  final int variantCount;
+  const ProductOffer(this.title, this.seller, this.price, this.listPrice, this.image, this.rating, this.goUrl,
+      {this.reviews = 0, this.availability = '', this.variantCount = 0});
   factory ProductOffer.fromJson(Map<String, dynamic> j) => ProductOffer(
         '${j['title'] ?? ''}',
         '${j['seller'] ?? ''}',
@@ -794,6 +820,9 @@ class ProductOffer {
         j['image'] is String ? j['image'] as String : null,
         (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
         '${j['goUrl'] ?? ''}',
+        reviews: (j['reviews'] is num) ? (j['reviews'] as num).toInt() : 0,
+        availability: '${j['availability'] ?? ''}',
+        variantCount: (j['variantCount'] is num) ? (j['variantCount'] as num).toInt() : 0,
       );
 }
 
@@ -1071,6 +1100,17 @@ class Try1SecondApi {
       verdict: '${deal['verdict'] ?? 'unknown'}',
       score: (deal['score'] is num) ? (deal['score'] as num).round() : 0,
       headline: '${deal['headline'] ?? deal['label'] ?? ''}',
+      hasHistory: deal['hasHistory'] == true,
+      points: (deal['points'] is num) ? (deal['points'] as num).toInt() : 0,
+      allTimeLow: (deal['allTimeLow'] is num) ? (deal['allTimeLow'] as num).toDouble() : null,
+      allTimeHigh: (deal['allTimeHigh'] is num) ? (deal['allTimeHigh'] as num).toDouble() : null,
+      average: (deal['average'] is num) ? (deal['average'] as num).toDouble() : null,
+      breakup: [
+        for (final b in (deal['breakup'] as List? ?? const []))
+          if (b is Map<String, dynamic>)
+            DealBreakup('${b['label'] ?? ''}', (b['pts'] is num) ? (b['pts'] as num).toInt() : 0,
+                (b['max'] is num) ? (b['max'] as num).toInt() : 0),
+      ],
     );
   }
 

@@ -134,7 +134,7 @@ class _CityOption extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(children: [
-          const Icon(Icons.flight_takeoff_rounded, size: 14, color: T1SColors.red),
+          Icon(c.icon, size: 14, color: T1SColors.red),
           const SizedBox(width: 9),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -145,7 +145,10 @@ class _CityOption extends StatelessWidget {
           ),
           if (c.badge.isNotEmpty) ...[
             const SizedBox(width: 8),
-            Pill(c.badge, fg: T1SColors.red, bg: T1SColors.red50, size: 8),
+            // Owner 23 Oct reference: capital-class badges are orange, others gray-blue.
+            kCapitalBadges.contains(c.badge)
+                ? Pill(c.badge, fg: const Color(0xFFCC5500), bg: const Color(0xFFFFE0B2), size: 8)
+                : Pill(c.badge, fg: const Color(0xFF37474F), bg: const Color(0xFFECEFF1), size: 8),
           ],
         ]),
       ),

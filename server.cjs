@@ -26999,24 +26999,34 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   const hit = cityPoolCache.get(cacheKey);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
   const store2 = getStore();
-  let rows = [];
-  try {
-    const keys = [...new Set(cities.flatMap((c) => c.keys))];
-    const like = keys.map(() => "(title LIKE ? OR location_city LIKE ?)").join(" OR ");
-    const params = [`%${keys[0]}%`];
-    for (const k of keys) params.push(`%${k}%`, `%${k}%`);
-    params.shift();
-    rows = await store2.query(
-      `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
+  const perCitySql = (like) => `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
-       FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${cities.length * perCityLimit}`,
-      [vertical, ...params]
-    );
+       FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${perCityLimit}`;
+  const map = /* @__PURE__ */ new Map();
+  try {
+    const perCity = await Promise.all(cities.map(async (c) => {
+      const like = c.keys.map(() => "(title LIKE ? OR location_city LIKE ?)").join(" OR ");
+      const params = [vertical];
+      for (const k of c.keys) params.push(`%${k}%`, `%${k}%`);
+      try {
+        return [c.name, (await store2.query(perCitySql(like), params)).slice(0, perCityLimit)];
+      } catch (e) {
+        log.debug("Showcase", "per-city pool query failed", { vertical, city: c.name, error: String(e).slice(0, 100) });
+        return [c.name, []];
+      }
+    }));
+    for (const [name, rows] of perCity) map.set(name, rows);
   } catch (e) {
     log.debug("Showcase", "by-city pool query failed", { vertical, error: String(e).slice(0, 100) });
-    rows = [];
   }
-  const map = bucketRowsByCity(rows, cities, perCityLimit);
+  if (map.size === 0) {
+    try {
+      const rows = await fetchVerticalOffers(vertical, cities.length * perCityLimit);
+      const bucketed = bucketRowsByCity(rows, cities, perCityLimit);
+      for (const [k, v] of bucketed) map.set(k, v);
+    } catch {
+    }
+  }
   cityPoolCache.set(cacheKey, { at: Date.now(), map });
   return map;
 }
@@ -27282,7 +27292,11 @@ async function buildShowcase() {
     },
     { id: "cards", title: "Best Cards For You", subtitle: "fees & rewards, straight from the banks", items: finalizeSection(cards) },
     { id: "destinations", title: "Top Destinations", subtitle: "famous places to visit \u2014 cheapest recorded fares, tap for live flight search", items: destinations }
-  ].filter((s) => s.items.length > 0);
+    // Owner 23 Oct ('6, 12' rule): homepage section rows come in complete
+    // blocks of 6 (one row) or 12 (two rows) — a section with fewer than 6
+    // honest items hides ENTIRELY (never a half-empty row).
+  ].filter((s) => s.items.length >= 6);
+  for (const s of sections) s.items = s.items.slice(0, 12);
   cached = { at: Date.now(), sections };
   return sections;
 }
