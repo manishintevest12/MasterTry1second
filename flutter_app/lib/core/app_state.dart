@@ -220,16 +220,36 @@ class AppState extends ChangeNotifier {
     }
     final flying = _inFlight[cacheKey];
     if (flying != null) return flying;
-    // Account vertical: real bank-account offers come from the admin-managed deals
-    // registry (/api/deals?kind=account) — same shape as the web feed, no scraping.
+    // Account vertical (owner 23 Oct 'abhi v ni khul raha hai'): WEB PARITY —
+    // the web account page runs triggerLiveLocationScrape() on the live search
+    // pipeline, NOT the deals registry. The old app-only /api/deals?kind=account
+    // path returned an empty registry on production, so the tab opened to a
+    // permanent empty screen. Primary = live scrape (server normalizes
+    // 'account' -> 'banking' catalogue, 40+ real bank rows); the admin deals
+    // registry stays as an enrichment fallback when the scrape honestly
+    // returns zero rows.
     if (key == 'account') {
-      final f = _accountFeed().then((res) {
-        cache[key] = res;
-        cacheQuery[key] = cacheKey;
-        cacheAt[key] = _nowMs;
-        notifyListeners();
-        return res;
-      }).whenComplete(() => _inFlight.remove(cacheKey));
+      final f = () async {
+        try {
+          // 1) WEB PARITY: live scrape pipeline first (banking catalogue).
+          var res = await api
+              .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate);
+          // 2) Enrichment fallback: admin deals registry only when the scrape
+          //    honestly returned zero rows (never mixed into a live result).
+          if (res.items.isEmpty) {
+            final deals = await _accountFeed();
+            if (deals.items.isNotEmpty) res = deals;
+          }
+          cache[key] = res;
+          cacheQuery[key] = cacheKey;
+          cacheAt[key] = _nowMs;
+          if (!res.pendingRefresh) _scheduleDiskSave();
+          notifyListeners();
+          return res;
+        } finally {
+          _inFlight.remove(cacheKey);
+        }
+      }();
       _inFlight[cacheKey] = f;
       return f;
     }

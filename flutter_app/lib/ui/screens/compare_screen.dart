@@ -54,6 +54,24 @@ class _CompareScreenState extends State<CompareScreen> {
   String _hotelGuests = '2 Adults · 1 Room';
 
   bool _loading = false;
+  // Owner 23 Oct ('loader lgao pr jaise hi 3 2 1 countdown khtm ho jaye usko
+  // hata do... abhi v repeat ho raha hai'): the WarpLoader is ONE-SHOT per
+  // fresh search — it plays the 3-2-1 countdown once and never reappears,
+  // even while quiet auto-polls keep topping up rows in the background.
+  bool _loaderDone = false;
+  Timer? _loaderTimer;
+
+  /// ONE-SHOT WarpLoader window (owner 23 Oct): arm the 3-2-1 countdown when
+  /// the screen mounts (fresh intent) and on every fresh user search — then
+  /// the loader is gone for the rest of that search; quiet auto-polls never
+  /// revive it, so the countdown can never loop.
+  void _armLoader() {
+    _loaderDone = false;
+    _loaderTimer?.cancel();
+    _loaderTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _loaderDone = true);
+    });
+  }
   Timer? _bgPoll;
   int _bgPollCount = 0;
   LiveResponse? _res;
@@ -73,6 +91,7 @@ class _CompareScreenState extends State<CompareScreen> {
     _meta = verticalById(_state.vertical);
     _state.addListener(_onState);
     _seedForm();
+    _armLoader(); // vertical open = fresh intent: one 3-2-1 countdown, once.
     _start();
   }
 
@@ -107,6 +126,7 @@ class _CompareScreenState extends State<CompareScreen> {
   @override
   void dispose() {
     _bgPoll?.cancel();
+    _loaderTimer?.cancel();
     _state.removeListener(_onState);
     _q.dispose();
     _from.dispose();
@@ -235,6 +255,7 @@ class _CompareScreenState extends State<CompareScreen> {
       _res = null;
       _shownCacheKey = null;
       _filterOpts = const FilterOptions();
+      _armLoader();
     }
     setState(() {
       _loading = true;
@@ -572,11 +593,11 @@ class _CompareScreenState extends State<CompareScreen> {
               ] else if (!_loading && _error == null) ...[
                 const SizedBox(height: 26),
                 _EmptyState(onSearch: () => _runSearch(force: true)),
-              ] else if (_loading && (_res == null || _res!.items.isEmpty)) ...[
+              ] else if (_loading && !_loaderDone && (_res == null || _res!.items.isEmpty)) ...[
                 // WarpLoader (owner 22 Oct): engaging 3-2-1 countdown while the live
                 // search runs in the background — results replace it automatically.
                 const SizedBox(height: 20),
-                const _WarpLoader(),
+                const _WarpLoader(key: ValueKey('warp-loader')),
               ],
               ];
 
@@ -1885,7 +1906,7 @@ class _SortBar extends StatelessWidget {
 /// countdown, progress bar and shimmering skeleton cards. Unmounts the moment
 /// real results arrive; the background fetch continues while it shows.
 class _WarpLoader extends StatefulWidget {
-  const _WarpLoader();
+  const _WarpLoader({super.key});
   @override
   State<_WarpLoader> createState() => _WarpLoaderState();
 }

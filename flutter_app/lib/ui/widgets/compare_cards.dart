@@ -74,6 +74,32 @@ String ctaLabelFor(String vertical) {
   return retail.contains(vertical) ? 'Order Now' : 'Book';
 }
 
+/// Owner 23 Oct: retail verticals (food / 10-min grocery / e-commerce) sell an
+/// order, and their CTAs must stay SMALL pills — web card parity.
+bool _isRetail(String vertical) => const {'food', 'grocery', 'ecommerce'}.contains(vertical);
+
+/// The compact red CTA pill shared by row-level CTAs, the ecom card pair and
+/// retail single-offer cards (owner 23 Oct size complaint): height 30, font 10,
+/// radius 8 — never the full-size RedButton.
+class _CompactCta extends StatelessWidget {
+  const _CompactCta({required this.label, this.onTap});
+  final String label;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 30,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
+        child: Text(label, style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
+      ),
+    );
+  }
+}
+
 class _SiteRows extends StatelessWidget {
   const _SiteRows({required this.rows, required this.vertical});
   final List<OfferRow> rows;
@@ -1370,6 +1396,28 @@ class GroupCard extends StatelessWidget {
                   // above already renders Compare + Order Now for EVERY ecom
                   // card — the generic single CTA must NOT repeat the button.
                   const SizedBox.shrink(),
+                ] else if (_isRetail(vertical)) ...[
+                  // Owner 23 Oct ('food/grocery ka Order Now bda hai, chota
+                  // kro'): retail single-offer cards get the same compact pill
+                  // as the row-level CTAs and the ecom pair — NOT the big
+                  // full-size RedButton.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _CompactCta(
+                      label: ctaLabelFor(vertical),
+                      onTap: () => _openRedirect(
+                        context,
+                        sellerName: sellerName,
+                        title: g.best.item.title,
+                        goUrl: g.best.item.bestQuote!.url,
+                        vertical: g.best.item.vertical,
+                        price: g.best.price > 0 ? g.best.price : null,
+                        image: g.best.item.imageUrl,
+                        isLowest: true,
+                        appOnly: (g.best.item.bestQuote?.badge ?? '').toLowerCase().contains('app'),
+                      ),
+                    ),
+                  ),
                 ] else ...[
                   RedButton(
                     it.isMovie
