@@ -587,6 +587,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   ? 'Check Eligibility & Match'
                   : item.vertical === 'insurance'
                   ? 'Instant Policy Match'
+                  : ['food', 'grocery', 'ecommerce'].includes(item.vertical)
+                  ? 'Order Now'
                   : 'Select Deal'}
               </span>
               <span className="text-[10px] bg-white/20 font-bold px-1.5 py-0.2 rounded-full">
@@ -805,6 +807,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                                   ? 'Check Eligibility'
                                   : item.vertical === 'insurance'
                                   ? 'Instant Match'
+                                  : ['food', 'grocery', 'ecommerce'].includes(item.vertical)
+                                  ? 'Order Now'
                                   : 'Select Deal'}
                               </span>
                               <span className="text-[10px] text-orange-300 font-bold">

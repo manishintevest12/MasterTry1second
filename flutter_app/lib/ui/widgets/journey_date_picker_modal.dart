@@ -155,7 +155,12 @@ class _JourneyDatePickerModalState extends State<_JourneyDatePickerModal> {
     final card = dark ? T1SColors.slate800 : Colors.white;
     final titleColor = dark ? T1SColors.slate50 : Colors.black;
     final mutedColor = dark ? T1SColors.slate400 : T1SColors.slate500;
-    final daysInMonth = DateTime(_viewYear, _viewMonth + 1, 0).day;
+    // Bug (found by the range test on 22-23 Oct): DateTime months are 1-based,
+    // so day-0 of month index (_viewMonth + 1) is the LAST day of the PREVIOUS
+    // month — October rendered only 1-30 and day 31 was unselectable in every
+    // 31-day month (hotel/flights month-end checkout). Day-0 of (_viewMonth + 2)
+    // is the true last day of the viewed month.
+    final daysInMonth = DateTime(_viewYear, _viewMonth + 2, 0).day;
     final startOffset = (DateTime(_viewYear, _viewMonth + 1, 1).weekday + 6) % 7;
     final canPrev = _viewYear > _today.year || (_viewYear == _today.year && _viewMonth >= _today.month);
 

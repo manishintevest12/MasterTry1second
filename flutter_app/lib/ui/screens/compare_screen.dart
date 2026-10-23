@@ -102,6 +102,7 @@ class _CompareScreenState extends State<CompareScreen> {
   Timer? _bgPoll;
   int _bgPollCount = 0;
   LiveResponse? _res;
+  int _visibleCount = 4; // Load More (owner 22 Oct): 4 groups first, +4 per tap
   /// The cache key of the response currently on screen; lets a background
   /// revalidation (stale TTL refresh) swap in newer prices without a spinner.
   String? _shownCacheKey;
@@ -194,6 +195,7 @@ class _CompareScreenState extends State<CompareScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _visibleCount = 4; // Load More: new search starts from the first 4 groups
     });
     _bgPoll?.cancel();
     try {
@@ -203,7 +205,9 @@ class _CompareScreenState extends State<CompareScreen> {
       // server is still scanning live sources. Poll the same search quietly
       // until the full live set replaces the partial rows (max ~25s of polls,
       // now 2s apart so live top-ups land progressively instead of one long wait).
-      if (mounted && _res?.pendingRefresh == true && _bgPollCount < 12) {
+      // Owner 22 Oct: poll budget 12 -> 30 (~60s coverage, 2s apart) so slow
+      // cold searches keep topping up like the web instead of stopping early.
+      if (mounted && _res?.pendingRefresh == true && _bgPollCount < 30) {
         _bgPoll = Timer(const Duration(milliseconds: 2000), () {
           if (!mounted) return;
           _bgPollCount += 1;
@@ -516,6 +520,8 @@ class _CompareScreenState extends State<CompareScreen> {
                       res: _res!,
                       sort: _sort,
                       filterOpts: _filterOpts,
+                      visibleCount: _visibleCount,
+                      onLoadMore: () => setState(() => _visibleCount += 4),
                     ).cards(bc)
                   : const <Widget>[];
 
@@ -1620,6 +1626,45 @@ class _StatusStrip extends StatelessWidget {
   }
 }
 
+/// Load More (owner 22 Oct, web parity): full-width white pill revealing the
+/// next 4 result groups — mirrors the site's 'Load More Results in X'
+/// button, shown only when 4+ groups are already visible and more remain.
+class _LoadMoreButton extends StatelessWidget {
+  const _LoadMoreButton({required this.remaining, required this.noun, this.onTap});
+  final int remaining;
+  final String noun;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: BoxDecoration(
+          color: isDark(context) ? T1SColors.slate900 : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isDark(context) ? T1SColors.slate700 : T1SColors.slate200),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_rounded, size: 15, color: T1SColors.red),
+            const SizedBox(width: 8),
+            Text(
+              'Load More Results ($remaining more $noun available)',
+              style: tx(context, 11.5, w: FontWeight.w800, color: muted(context)),
+            ),
+            const SizedBox(width: 7),
+            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: muted(context)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SortBar extends StatelessWidget {
   const _SortBar({required this.sort, required this.onSort});
   final cmp.SortMode sort;
@@ -1780,12 +1825,16 @@ class _FeedBody {
     required this.res,
     required this.sort,
     required this.filterOpts,
+    this.visibleCount = 1000000,
+    this.onLoadMore,
   });
 
   final VerticalMeta meta;
   final LiveResponse res;
   final cmp.SortMode sort;
   final FilterOptions filterOpts;
+  final int visibleCount;
+  final VoidCallback? onLoadMore;
 
   int? _parseHour(String depTime) {
     final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(depTime);
@@ -1858,54 +1907,66 @@ class _FeedBody {
       effectiveSort = cmp.SortMode.cheapest;
     }
 
+    List<Widget> all;
     if (meta.id == 'hotels') {
       var groups = cmp.groupHotels(items);
       groups = cmp.sortHotels(groups, effectiveSort);
       if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
         groups.sort((a, b) => b.best.price.compareTo(a.best.price));
       }
-      return [
+      all = [
         for (final g in groups) ...[HotelCard(g: g), const SizedBox(height: 12)],
       ];
-    }
-
-    var groups = cmp.groupOffers(items);
-    groups = cmp.sortGroups(groups, effectiveSort);
-    if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
-      groups.sort((a, b) => b.best.price.compareTo(a.best.price));
-    }
-
-    // Owner 22 Oct: cab prices must be segmented by ride type — Auto, Bike and
-    // Cab each get their own section so every class's fare is visible separately
-    // for the same trip (before this, every class sat in one long mixed list).
-    if (meta.id == 'cab' && groups.isNotEmpty) {
-      const sectionOrder = ['bike', 'auto', 'cab'];
-      final sections = <String, List<cmp.OfferGroup>>{};
-      for (final g in groups) {
-        (sections[cmp.cabVehicleClassOf(g.lead)] ??= []).add(g);
+    } else {
+      var groups = cmp.groupOffers(items);
+      groups = cmp.sortGroups(groups, effectiveSort);
+      if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
+        groups.sort((a, b) => b.best.price.compareTo(a.best.price));
       }
-      // A single class renders exactly like the old list, no headers needed.
-      if (sections.length <= 1) {
-        return [
-          for (final g in groups) ...[TravelTile(g: g, meta: meta), const SizedBox(height: 12)],
+
+      // Owner 22 Oct: cab prices must be segmented by ride type — Auto, Bike and
+      // Cab each get their own section so every class's fare is visible separately
+      // for the same trip (before this, every class sat in one long mixed list).
+      if (meta.id == 'cab' && groups.isNotEmpty && {
+        for (final g in groups) cmp.cabVehicleClassOf(g.lead),
+      }.length > 1) {
+        const sectionOrder = ['bike', 'auto', 'cab'];
+        final sections = <String, List<cmp.OfferGroup>>{};
+        for (final g in groups) {
+          (sections[cmp.cabVehicleClassOf(g.lead)] ??= []).add(g);
+        }
+        all = [
+          for (final cls in sectionOrder.where(sections.containsKey))
+            ..._cabSection(context, cls, sections[cls]!, meta),
+        ];
+      } else {
+        all = [
+          for (final g in groups) ...[
+            if (meta.id == 'creditcards')
+              CreditCardTile(g: g)
+            else if (const ['flights', 'bus', 'cab'].contains(meta.id))
+              TravelTile(g: g, meta: meta)
+            else
+              GroupCard(g: g, vertical: meta.id),
+            const SizedBox(height: 12),
+          ],
         ];
       }
-      return [
-        for (final cls in sectionOrder.where(sections.containsKey))
-          ..._cabSection(context, cls, sections[cls]!, meta),
-      ];
     }
 
+    // Load More pagination (owner 22 Oct, web parity): paint the first 4
+    // result groups instantly, then a 'Load More' button reveals +4 per tap —
+    // the feed feels instant on mobile and long result sets stay cheap to build.
+    final totalPairs = all.length ~/ 2;
+    if (totalPairs <= visibleCount) return all;
     return [
-      for (final g in groups) ...[
-        if (meta.id == 'creditcards')
-          CreditCardTile(g: g)
-        else if (const ['flights', 'bus', 'cab'].contains(meta.id))
-          TravelTile(g: g, meta: meta)
-        else
-          GroupCard(g: g, vertical: meta.id),
-        const SizedBox(height: 12),
-      ],
+      ...all.take(visibleCount * 2),
+      _LoadMoreButton(
+        remaining: totalPairs - visibleCount,
+        noun: meta.id == 'hotels' ? 'hotels' : 'deals',
+        onTap: onLoadMore,
+      ),
+      const SizedBox(height: 12),
     ];
   }
 

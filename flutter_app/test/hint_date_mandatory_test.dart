@@ -170,6 +170,10 @@ void main() {
       final din = today.add(const Duration(days: 5));
       final dout = today.add(const Duration(days: 8));
       // Tap the day numbers (unique on screen within the visible month).
+      // Tall surface so the whole month grid (incl. day 31 in 31-day months —
+      // the off-by-one daysInMonth bug this test caught) is built.
+      await tester.binding.setSurfaceSize(const Size(480, 1200));
+      await tester.pump();
       await tester.tap(find.text('${din.day}'));
       await tester.pump();
       expect(find.text('Step 2: Select Check-out'), findsOneWidget);

@@ -69,6 +69,14 @@ class _CompareButton extends StatelessWidget {
   }
 }
 
+/// Owner 22 Oct: retail verticals (food, 10-min grocery, e-commerce) sell an
+/// order, not a booking — every CTA that used to read 'Book' on those rows
+/// now reads 'Order Now', matching the web buttons.
+String ctaLabelFor(String vertical) {
+  const retail = {'food', 'grocery', 'ecommerce'};
+  return retail.contains(vertical) ? 'Order Now' : 'Book';
+}
+
 class _SiteRows extends StatelessWidget {
   const _SiteRows({required this.rows, required this.vertical});
   final List<OfferRow> rows;
@@ -178,7 +186,7 @@ class _SiteRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
-            child: Text('Book', style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
+            child: Text(ctaLabelFor(vertical), style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
           ),
         ),
       ],
@@ -590,7 +598,7 @@ class TravelTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'Book',
+                      ctaLabelFor(g.best.item.vertical),
                       style: tx(context, 10, w: FontWeight.w900, color: Colors.white),
                     ),
                   ),
@@ -642,9 +650,22 @@ class HotelCard extends StatelessWidget {
   const HotelCard({super.key, required this.g});
   final HotelGroup g;
 
+  // Owner 22 Oct reference design: full-width photo header with a white photo
+  // count badge, heart button and carousel dots; below it a clean info block
+  // (title, Details & photos link, location, rating chip), a per-seller price
+  // table, and a bottom bar with the savings capsule, best price and the big
+  // orange View Deal button.
   @override
   Widget build(BuildContext context) {
     final bestSeller = g.best.site.isNotEmpty ? g.best.site : 'Hotel Partner';
+    final sorted = [...g.rows]..sort((a, b) => a.price.compareTo(b.price));
+    // Honest savings capsule: only when a second real seller price exists and
+    // the best one is genuinely cheaper (never fabricate a percentage).
+    int? savingsPct;
+    if (sorted.length > 1 && sorted[0].price > 0 && sorted[1].price > sorted[0].price) {
+      savingsPct = (((sorted[1].price - sorted[0].price) / sorted[1].price) * 100).round();
+    }
+    final dotCount = g.gallery.length.clamp(2, 5);
 
     return Box(
       padding: EdgeInsets.zero,
@@ -654,159 +675,307 @@ class HotelCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // -- photo header ---------------------------------------------------
           GestureDetector(
             onTap: () => showHotelDetail(context, g),
             child: Stack(
-            children: [
-              NetImage(g.image ?? g.gallery.firstOrNull, height: 130, fallbackIcon: Icons.hotel_rounded),
-              if (g.gallery.length > 1)
+              children: [
+                NetImage(g.image ?? g.gallery.firstOrNull, height: 155, fallbackIcon: Icons.hotel_rounded),
+                // Top-left: white photo-count badge (reference image)
                 Positioned(
                   top: 8,
                   left: 8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.photo_library_rounded, size: 10, color: Colors.white70),
+                        const Icon(Icons.photo_library_rounded, size: 11, color: Color(0xFF2C3E50)),
                         const SizedBox(width: 3),
-                        Text('${g.gallery.length} photos', style: tx(context, 8.5, w: FontWeight.w800, color: Colors.white)),
+                        Text(
+                          g.gallery.isNotEmpty ? '${g.gallery.length}' : '',
+                          style: tx(context, 10.5, w: FontWeight.w900, color: const Color(0xFF2C3E50)),
+                        ),
                       ],
                     ),
                   ),
                 ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black.withValues(alpha: 0.6)],
+                // Top-right: heart in a white circle -> opens the full gallery
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: GestureDetector(
+                    onTap: () => showHotelDetail(context, g),
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      child: const Icon(Icons.favorite_rounded, size: 15, color: Color(0xFFE11D48)),
                     ),
                   ),
                 ),
-              ),
-              Positioned(
-                left: 10,
-                bottom: 8,
-                right: 10,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      g.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tx(context, 13.5, w: FontWeight.w900, color: Colors.white),
+                // Bottom-right: TOP RATED ribbon (only when honestly earned)
+                if ((g.rating10 ?? 0) >= 8.5)
+                  Positioned(
+                    right: 8,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: T1SColors.red,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text('TOP RATED', style: tx(context, 8, w: FontWeight.w900, color: Colors.white, ls: 0.6)),
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        if (g.locality != null) ...[
-                          const Icon(Icons.location_on_rounded, size: 10, color: Colors.white70),
-                          const SizedBox(width: 2),
-                          Flexible(
-                            child: Text(
-                              '${g.locality}${g.city.isNotEmpty ? ', ${g.city}' : ''}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: tx(context, 9.5, color: Colors.white70),
-                            ),
+                  ),
+                // Bottom-center: carousel dots
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var i = 0; i < dotCount; i++) ...[
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: i == 0 ? Colors.white : Colors.white.withValues(alpha: 0.55),
+                            shape: BoxShape.circle,
                           ),
-                        ],
+                        ),
+                        if (i < dotCount - 1) const SizedBox(width: 5),
                       ],
-                    ),
-                  ],
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(8),
+                    ],
                   ),
-                  child: Text('per night', style: tx(context, 9, w: FontWeight.w800, color: Colors.white)),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          ),
+          // -- info block -----------------------------------------------------
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 11, 12, 0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  g.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: tx(context, 13.5, w: FontWeight.w900, color: ink(context)),
+                ),
+                const SizedBox(height: 5),
+                // Details & photos link (orange, opens the lightbox gallery)
+                GestureDetector(
+                  onTap: () => showHotelDetail(context, g),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.image_rounded, size: 11, color: Color(0xFFE67E22)),
+                      const SizedBox(width: 3),
+                      Text(
+                        'Details & photos${g.gallery.isNotEmpty ? ' (${g.gallery.length})' : ''}',
+                        style: tx(context, 10, w: FontWeight.w800, color: const Color(0xFFE67E22)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 5),
                 Row(
                   children: [
-                    if (g.rating10 != null) ...[
-                      Pill(
-                        '${g.rating10}/10',
-                        bg: T1SColors.emerald500.withValues(alpha: 0.15),
-                        fg: T1SColors.emerald600,
-                        icon: Icons.star_rounded,
-                        size: 9,
+                    Icon(Icons.location_on_rounded, size: 11, color: muted(context)),
+                    const SizedBox(width: 2),
+                    Expanded(
+                      child: Text(
+                        [g.locality, g.city].whereType<String>().where((x) => x.isNotEmpty).join(', '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tx(context, 10, color: muted(context)),
                       ),
-                      const SizedBox(width: 6),
-                    ],
-                    if (g.ratingCount != null)
-                      Text('${g.ratingCount} reviews', style: tx(context, 9.5, color: muted(context))),
-                    const Spacer(),
-                    Pill('BEST PRICE', bg: T1SColors.greenBg, fg: T1SColors.green, size: 8.5),
-                    const SizedBox(width: 6),
-                    Text(formatPrice('hotels', g.best.price), style: tx(context, 16, w: FontWeight.w900, mono: true)),
+                    ),
                   ],
                 ),
-                if (g.amenities.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 7),
-                    child: Wrap(
-                      spacing: 5,
-                      runSpacing: 4,
-                      children: [
-                        for (final a in g.amenities.take(5))
-                          Pill(
-                            a,
-                            bg: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
-                            fg: muted(context),
-                            size: 8.5,
-                          ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 9),
-                _SiteRows(
-                  rows: [for (final r in g.rows) OfferRow(r.item, r.site, r.price, true)],
-                  vertical: 'hotels',
-                ),
-                if (g.best.item.bestQuote?.url.isNotEmpty == true) ...[
-                  const SizedBox(height: 8),
-                  RedButton(
-                    'Book',
-                    onTap: () => _openRedirect(
-                    context,
-                    sellerName: bestSeller,
-                    title: g.best.item.title,
-                    goUrl: g.best.item.bestQuote!.url,
-                    appBookUrl: g.best.item.appBookUrl,
-                    vertical: g.best.item.vertical,
-                    price: g.best.price > 0 ? g.best.price : null,
-                    image: g.best.item.imageUrl,
-                    isLowest: true,
-                    appOnly: (g.best.item.bestQuote?.badge ?? '').toLowerCase().contains('app'),
-                  ),
-                    dense: true,
+                if (g.rating10 != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF27AE60),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          g.rating10!.toStringAsFixed(1),
+                          style: tx(context, 10.5, w: FontWeight.w900, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      if (g.ratingCount != null)
+                        Text('(${g.ratingCount})', style: tx(context, 10, w: FontWeight.w600, color: muted(context))),
+                    ],
                   ),
                 ],
               ],
             ),
           ),
+          // -- per-seller price table ----------------------------------------
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+            decoration: BoxDecoration(
+              color: isDark(context) ? T1SColors.slate800 : T1SColors.slate50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                for (var i = 0; i < sorted.length && i < 4; i++)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                    child: _SellerPriceRow(
+                      row: sorted[i],
+                      isBest: i == 0,
+                      isLast: i == (sorted.length.clamp(0, 4) - 1),
+                    ),
+                  ),
+                if (sorted.length > 4)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Text('+${sorted.length - 4} more sites', style: tx(context, 9, w: FontWeight.w800, color: muted(context))),
+                  ),
+              ],
+            ),
+          ),
+          // -- bottom action bar ---------------------------------------------
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4EFDF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (savingsPct != null && savingsPct > 0)
+                        Text(
+                          '$savingsPct% less than other sites',
+                          style: tx(context, 9, w: FontWeight.w900, color: const Color(0xFF1E8449)),
+                        ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          if ((g.best.item.bestQuote?.sourceDomain ?? '').isNotEmpty) ...[
+                            SiteLogo(g.best.item.bestQuote!.sourceDomain ?? '', size: 14),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            '${formatPrice('hotels', g.best.price)} ',
+                            style: tx(context, 15, w: FontWeight.w900, color: ink(context), mono: true),
+                          ),
+                          Text('per night', style: tx(context, 9, color: muted(context))),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // View Deal: big orange CTA (reference image #F39C12)
+                GestureDetector(
+                  onTap: (g.best.item.bestQuote?.url.isNotEmpty == true || (g.best.item.appBookUrl ?? '').isNotEmpty)
+                      ? () => _openRedirect(
+                          context,
+                          sellerName: bestSeller,
+                          title: g.best.item.title,
+                          goUrl: g.best.item.bestQuote?.url ?? '',
+                          appBookUrl: g.best.item.appBookUrl,
+                          vertical: g.best.item.vertical,
+                          price: g.best.price > 0 ? g.best.price : null,
+                          image: g.best.item.imageUrl,
+                          isLowest: true,
+                          appOnly: (g.best.item.bestQuote?.badge ?? '').toLowerCase().contains('app'),
+                        )
+                      : () => showHotelDetail(context, g),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF39C12),
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Row(
+                      children: [
+                        Text('View Deal', style: tx(context, 11.5, w: FontWeight.w900, color: Colors.white)),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded, size: 13, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One row of the hotel price table (reference design): seller logo + name,
+/// "Standard rate" on the right of the name, price on the far right — green
+/// for the cheapest seller, ink for the rest. The whole row exits to that
+/// seller's site, same as the old per-row Book button.
+class _SellerPriceRow extends StatelessWidget {
+  const _SellerPriceRow({required this.row, required this.isBest, required this.isLast});
+  final HotelRow row;
+  final bool isBest;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final domain = row.item.bestQuote?.sourceDomain ?? '';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: (row.item.bestQuote?.url.isNotEmpty == true || (row.item.appBookUrl ?? '').isNotEmpty)
+          ? () => _openRedirect(
+              context,
+              sellerName: row.site,
+              title: row.item.title,
+              goUrl: row.item.bestQuote?.url ?? '',
+              appBookUrl: row.item.appBookUrl,
+              vertical: row.item.vertical,
+              price: row.price > 0 ? row.price : null,
+              image: row.item.imageUrl,
+              isLowest: isBest,
+            )
+          : null,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              if (domain.isNotEmpty) SiteLogo(domain, size: 20),
+              if (domain.isNotEmpty) const SizedBox(width: 7),
+              Text(row.site, style: tx(context, 11, w: FontWeight.w800, color: ink(context))),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Standard rate', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 9.5, color: muted(context))),
+              ),
+              Text(
+                row.price > 0 ? formatPrice('hotels', row.price) : 'Price on site',
+                style: tx(
+                  context,
+                  12.5,
+                  w: FontWeight.w900,
+                  color: row.price > 0 && isBest ? const Color(0xFF27AE60) : ink(context),
+                  mono: true,
+                ),
+              ),
+            ],
+          ),
+          if (!isLast) Divider(height: 12, color: isDark(context) ? T1SColors.slate700 : T1SColors.slate200),
         ],
       ),
     );
@@ -1128,7 +1297,7 @@ class GroupCard extends StatelessWidget {
                         ? 'Book tickets on $sellerName'
                         : _isFinance(vertical)
                             ? _financeCtaLabel(vertical, sellerName)
-                            : 'Book',
+                            : ctaLabelFor(vertical),
                     onTap: () => _openRedirect(
                     context,
                     sellerName: sellerName,

@@ -6,9 +6,13 @@
 /// these parsed API responses.
 library;
 
+import 'dart:async';
+
 import 'dart:convert';
+import 'dart:io' as io;
 
 import 'package:http/http.dart' as http;
+import 'package:http/io_client.dart';
 
 import 'compare.dart';
 
@@ -794,11 +798,27 @@ class ProductOffer {
 }
 
 class Try1SecondApi {
+  /// Device network fix (owner 22 Oct): Indian mobile carriers are IPv6-first
+  /// (Jio/Airtel). dart:io's default HttpClient has NO connectionTimeout, so a
+  /// silently-blackholed IPv6 route stalled every request for the full 60s
+  /// per-address before ever trying IPv4 — the browser (Happy Eyeballs) fell
+  /// back in ~300ms, which is exactly why the site was fast but the app looped
+  /// the 3-2-1 loader with zero results. A tight 6s connect deadline makes the
+  /// socket stack fail fast on dead addresses and dial IPv4 within the same
+  /// request, and the retry belt gives one more chance on flaky mobile links.
+  static http.Client _hardenedClient() {
+    final inner = io.HttpClient()
+      ..connectionTimeout = const Duration(seconds: 6)
+      ..idleTimeout = const Duration(seconds: 20)
+      ..maxConnectionsPerHost = 8;
+    return IOClient(inner);
+  }
+
   Try1SecondApi({String? baseUrl})
       : baseUrl = (baseUrl == null || baseUrl.trim().isEmpty)
             ? kDefaultApiBase
             : baseUrl.trim().replaceAll(RegExp(r'/+$'), ''),
-        _client = http.Client();
+        _client = _hardenedClient();
 
   Try1SecondApi.withClient(this.baseUrl, http.Client client) : _client = client;
 
@@ -1160,22 +1180,38 @@ class Try1SecondApi {
   /// (live search is progressive and returns within ~1s, worst cases included).
   static const _httpTimeout = Duration(seconds: 30);
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {
-    final res = await _client
-        .post(
-          Uri.parse('$baseUrl$path'),
-          headers: _headers(token),
-          body: jsonEncode(body),
-        )
-        .timeout(_httpTimeout);
+  /// One POST/GET attempt, with a single same-request retry belt for the
+  /// transient socket failures typical on mobile networks (device fix 22 Oct):
+  /// a dropped carrier link, a dead pooled connection or a connect that died
+  /// between addresses. Real API errors (HTTP status, error payloads) are NOT
+  /// retried — the retry is purely for transport blips.
+  Future<Map<String, dynamic>> _send(Future<http.Response> Function() fn, {String? token}) async {
+    http.Response res;
+    try {
+      res = await fn().timeout(_httpTimeout);
+    } on TimeoutException {
+      res = await fn().timeout(_httpTimeout);
+    } on http.ClientException {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      res = await fn().timeout(_httpTimeout);
+    } on io.SocketException {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      res = await fn().timeout(_httpTimeout);
+    }
     return _decode(res);
   }
 
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final h = _headers(token);
+    final b = jsonEncode(body);
+    return _send(() => _client.post(uri, headers: h, body: b), token: token);
+  }
+
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
-    final res = await _client
-        .get(Uri.parse('$baseUrl$path'), headers: _headers(token))
-        .timeout(_httpTimeout);
-    return _decode(res);
+    final uri = Uri.parse('$baseUrl$path');
+    final h = _headers(token);
+    return _send(() => _client.get(uri, headers: h), token: token);
   }
 
   Map<String, dynamic> _decode(http.Response res) {

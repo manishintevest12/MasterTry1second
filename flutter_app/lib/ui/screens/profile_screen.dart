@@ -75,6 +75,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
         children: [
+          // Owner 22 Oct: visible build stamp so the installed APK version can
+          // be verified on-device (Profile screen, always current build).
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              'Try1Second v1.8.12 · build 22 Oct',
+              textAlign: TextAlign.center,
+              style: tx(context, 9.5, w: FontWeight.w800, color: muted(context)),
+            ),
+          ),
           Box(
             padding: const EdgeInsets.all(18),
             child: Column(children: [
