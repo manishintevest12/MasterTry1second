@@ -118,7 +118,28 @@ class _CompareScreenState extends State<CompareScreen> {
     _meta = verticalById(_state.vertical);
     _state.addListener(_onState);
     _seedForm();
-    _runSearch(auto: true);
+    _start();
+  }
+
+  /// Owner 23 Oct (homepage pills 'results nahi aate'): MainShell mounts this
+  /// screen only while the compare tab is active (a switch body, not an
+  /// IndexedStack), so a pill / showcase / hero tap from the HOME tab sets a
+  /// PendingSearch BEFORE this screen exists — _onState's listener fires during
+  /// openVertical, before mount, so nothing consumed it and initState then ran
+  /// an EMPTY auto search: the compare tab opened with no loader and no results
+  /// at all. Consume the pending FIRST, exactly like the _onState path does.
+  void _start() {
+    final p = _state.takePending();
+    if (p == null) {
+      _runSearch(auto: true);
+      return;
+    }
+    if (p.productPage) {
+      _state.openProduct(p);
+      return;
+    }
+    _q.text = p.query;
+    _runSearch(query: p.query);
   }
 
   @override
@@ -140,7 +161,10 @@ class _CompareScreenState extends State<CompareScreen> {
       _res = _state.cache[_meta.id];
       _shownCacheKey = _state.cacheQuery[_meta.id];
       if (mounted) setState(() {});
-      _runSearch(auto: true);
+      // Owner 23 Oct: a vertical switch can carry a PendingSearch too (pill /
+      // hero tap while this screen was on another vertical). _start() consumes
+      // it first instead of returning before the pending check ever runs.
+      _start();
       return;
     }
     final pending = _state.takePending();
@@ -1772,11 +1796,14 @@ class _WarpLoaderState extends State<_WarpLoader> with SingleTickerProviderState
         const SizedBox(height: 18),
         // Skeleton cards — the page never looks dead while loading
         Row(children: [
+          // Owner 23 Oct: Interval end must stay <= 1.0 — the third card's
+          // (i*0.12)+0.88 = 1.12 tripped the 'end <= 1.0' assertion and killed
+          // the loading skeleton in debug builds. Clamp the stagger instead.
           for (int i = 0; i < 3; i++) ...[
             if (i > 0) const SizedBox(width: 8),
             Expanded(
               child: FadeTransition(
-                opacity: Tween<double>(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _pulse, curve: Interval(i * 0.12, (i * 0.12) + 0.88, curve: Curves.easeInOut))),
+                opacity: Tween<double>(begin: 0.45, end: 1.0).animate(CurvedAnimation(parent: _pulse, curve: Interval(i * 0.12, ((i * 0.12) + 0.88).clamp(0.0, 1.0), curve: Curves.easeInOut))),
                 child: Container(
                   height: 84,
                   decoration: BoxDecoration(color: dark ? T1SColors.slate800 : T1SColors.slate100, borderRadius: BorderRadius.circular(14)),

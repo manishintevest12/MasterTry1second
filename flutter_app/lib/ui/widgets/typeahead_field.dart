@@ -7,7 +7,12 @@ import 'kit.dart';
 /// Website's autocomplete dropdown, ported 1:1: city suggestions for route
 /// fields (from/to) and per-vertical preset lists for text search. Local
 /// dataset mirrors src/data/autocompleteData.ts exactly.
-class TypeaheadField extends StatelessWidget {
+/// Stateful (owner 23 Oct): RawAutocomplete requires focusNode and
+/// textEditingController to be BOTH set or BOTH null — a caller passing only
+/// the controller tripped its debug assert (and left autocomplete focus
+/// handling broken in release). The widget now owns a persistent FocusNode
+/// whenever the caller does not supply one.
+class TypeaheadField extends StatefulWidget {
   const TypeaheadField({
     super.key,
     required this.controller,
@@ -43,22 +48,37 @@ class TypeaheadField extends StatelessWidget {
   }
 
   @override
+  @override
+  State<TypeaheadField> createState() => _TypeaheadFieldState();
+}
+
+class _TypeaheadFieldState extends State<TypeaheadField> {
+  FocusNode? _own;
+
+  @override
+  void dispose() {
+    _own?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final focus = widget.focusNode ?? (_own ??= FocusNode());
     return RawAutocomplete<String>(
-      textEditingController: controller,
-      focusNode: focusNode,
-      optionsBuilder: (v) => _options(v.text),
+      textEditingController: widget.controller,
+      focusNode: focus,
+      optionsBuilder: (v) => widget._options(v.text),
       displayStringForOption: (s) => s,
       fieldViewBuilder: (c, ctrl, focus, onSub) => TextField(
         controller: ctrl,
         focusNode: focus,
-        onSubmitted: (v) { onSub(); onSubmitted?.call(v); },
+        onSubmitted: (v) { onSub(); widget.onSubmitted?.call(v); },
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: widget.hint,
           isDense: true,
-          prefixIcon: icon == null ? null : Icon(icon, size: 16),
-          suffixIcon: trailing,
+          prefixIcon: widget.icon == null ? null : Icon(widget.icon, size: 16),
+          suffixIcon: widget.trailing,
         ),
         style: tx(context, 13),
       ),
@@ -74,13 +94,13 @@ class TypeaheadField extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               shrinkWrap: true,
               children: [
-                if (cities)
+                if (widget.cities)
                   for (final o in options)
-                    _CityOption(option: o, onSelected: () { controller.text = o; onSelected(o); }),
-                if (!cities)
+                    _CityOption(option: o, onSelected: () { widget.controller.text = o; onSelected(o); }),
+                if (!widget.cities)
                   for (final o in options)
                     InkWell(
-                      onTap: () { controller.text = o; onSelected(o); },
+                      onTap: () { widget.controller.text = o; onSelected(o); },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
                         child: Row(children: [

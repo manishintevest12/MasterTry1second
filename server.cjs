@@ -16896,7 +16896,12 @@ var init_cab = __esm({
           name: "Cab worker: Ola India fare estimates (official API)",
           priority: 15,
           maxPerMinute: 10,
-          timeoutMs: 25e3,
+          // Owner 23 Oct: the rate-card fallback chain is serial (geocode both ends
+          // -> OSRM distance -> rate-card page -> pricing POST) and can exceed 25s on
+          // a slow network leg, killing the task right before rows land (live 'cab
+          // results nahi aa rahe'). 40s matches AbhiBus; the progressive floor
+          // still paints instantly, live rows just get a fair chance to arrive.
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const key = String(process.env.OLA_API_KEY || "").trim();
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
@@ -16956,7 +16961,7 @@ var init_cab = __esm({
           name: "Cab worker: Uber India fare estimates (official API)",
           priority: 15,
           maxPerMinute: 10,
-          timeoutMs: 25e3,
+          timeoutMs: 4e4,
           run: async (ctx) => {
             const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
             if (!rt) return [];
