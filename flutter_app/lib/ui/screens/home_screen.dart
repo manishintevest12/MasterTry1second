@@ -9,6 +9,7 @@ import '../widgets/kit.dart';
 import '../widgets/home_showcase.dart';
 import '../widgets/upcoming_movies_rail.dart';
 import '../widgets/home_lens_and_assistant.dart';
+import '../../core/session_cache.dart';
 
 /// Website HomeView: dark hero (engine pill, stat tiles, headline, Price Lens,
 /// launch buttons) + Ask Try1Second AI + Quick Apps rail + vertical cards grid
@@ -22,17 +23,21 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _state = AppState.instance;
-  List<QuickApp> _apps = [];
+  // Session cache (owner 23 Oct): one load per app process — returning to the
+  // Home tab from any vertical shows the rail instantly, never refetches.
+  List<QuickApp> _apps = SessionCache.has('home.quickApps')
+      ? SessionCache.get('home.quickApps', const <QuickApp>[])
+      : const <QuickApp>[];
 
   @override
   void initState() {
     super.initState();
-    _loadApps();
+    if (_apps.isEmpty) _loadApps();
   }
 
   Future<void> _loadApps() async {
     try {
-      final apps = await _state.api.quickApps();
+      final apps = await SessionCache.once('home.quickApps', () => _state.api.quickApps());
       if (mounted) setState(() => _apps = apps);
     } catch (_) {/* honest: rail stays empty */}
   }
@@ -158,7 +163,7 @@ class _VerticalGrid extends StatelessWidget {
       const SizedBox(height: 12),
       LayoutBuilder(builder: (c, cons) {
         // Owner reference design (21 Oct): 13 compact action cards (7+6 on wide
-        // screens) — icon + bold title + one-line description. 11 verticals plus
+        // screens) — icon + bold title + one-line description. 12 verticals plus
         // Coupons (rewards tab 0) and Rewards (rewards tab 1).
         final cols = cons.maxWidth > 1100 ? 7 : cons.maxWidth > 820 ? 5 : cons.maxWidth > 640 ? 4 : (cons.maxWidth > 420 ? 3 : 2);
         final w = (cons.maxWidth - 10 * (cols - 1)) / cols;

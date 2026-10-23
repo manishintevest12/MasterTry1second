@@ -552,7 +552,7 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
             Flag artificial MRP spikes, auto-apply winning coupon codes at checkout, and catch rain surcharges in sub-second speed.
           </p>
 
-          {/* Mode Selector Tabs: URL Link | Instant 10-Vertical Query (barcode removed 22 Oct per owner) */}
+          {/* Mode Selector Tabs: URL Link | Instant 12-Vertical Query (barcode removed 22 Oct per owner) */}
           <div className="flex items-center gap-2 pt-2">
             <button
               type="button"
@@ -1106,7 +1106,7 @@ const handleSelectPartnerPlatform = (partner: CrossPlatformItem) => {
       <div className="flex items-center justify-between flex-wrap gap-3 pb-2 border-b border-slate-200">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-            10-Vertical Predictive Insights & Yield Telemetry
+            12-Vertical Predictive Insights & Yield Telemetry
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
             Real-time algorithm monitoring airline yield curves, hotel rate parity, dark-store surges, and bank card stacks.

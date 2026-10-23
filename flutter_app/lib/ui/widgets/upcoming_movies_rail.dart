@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/session_cache.dart';
 import '../../core/theme.dart';
 import 'kit.dart';
 
@@ -25,12 +26,18 @@ class _UpcomingMoviesRailState extends State<UpcomingMoviesRail> {
   @override
   void initState() {
     super.initState();
+    // Session cache (owner 23 Oct): movies rail loads once per app session.
+    if (SessionCache.has('home.upcoming')) {
+      _movies = SessionCache.get('home.upcoming', const <UpcomingMovie>[]).take(12).toList();
+      _loading = false;
+      return;
+    }
     _load();
   }
 
   Future<void> _load() async {
     try {
-      final ms = await fetchUpcomingMovies(widget.api);
+      final ms = await SessionCache.once('home.upcoming', () => fetchUpcomingMovies(widget.api));
       if (!mounted) return;
       setState(() { _movies = ms.take(12).toList(); _loading = false; });
     } catch (_) {

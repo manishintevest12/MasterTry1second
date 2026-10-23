@@ -50,20 +50,17 @@ class _CompareButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 7),
-      child: GestureDetector(
-        onTap: () => _openComparePage(context, it: it, g: g),
-        child: Container(
-          height: 30,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            border: Border.all(color: T1SColors.red, width: 1.2),
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.transparent,
-          ),
-          child: Text(label, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),
+    return GestureDetector(
+      onTap: () => _openComparePage(context, it: it, g: g),
+      child: Container(
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(color: T1SColors.red, width: 1.2),
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.transparent,
         ),
+        child: Text(label, style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),
       ),
     );
   }
@@ -989,6 +986,14 @@ class _SellerPriceRow extends StatelessWidget {
                   mono: true,
                 ),
               ),
+              const SizedBox(width: 8),
+              // Owner 23 Oct: flight-parity small Book button on every hotel
+              // seller row (the whole row still exits on tap).
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
+                child: Text('Book', style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
+              ),
             ],
           ),
           if (!isLast) Divider(height: 12, color: isDark(context) ? T1SColors.slate700 : T1SColors.slate200),
@@ -1289,10 +1294,45 @@ class GroupCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (vertical == 'ecommerce')
-                  _CompareButton(
-                    it: it,
-                    g: g,
-                    label: g.rows.length > 1 ? 'Compare ${g.rows.length} sites' : 'Compare prices',
+                  // Owner 23 Oct: BOTH buttons small, side by side — Compare
+                  // (outlined) + Order Now (red) like the web card's pair.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Row(children: [
+                      Expanded(
+                        child: _CompareButton(
+                          it: it,
+                          g: g,
+                          label: g.rows.length > 1 ? 'Compare ${g.rows.length} sites' : 'Compare',
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: g.best.item.bestQuote != null && g.best.item.bestQuote!.url.isNotEmpty
+                              ? () => _openRedirect(
+                                    context,
+                                    sellerName: sellerName,
+                                    title: g.best.item.title,
+                                    goUrl: g.best.item.bestQuote!.url,
+                                    vertical: g.best.item.vertical,
+                                    price: g.best.price > 0 ? g.best.price : null,
+                                    image: g.best.item.imageUrl,
+                                    isLowest: true,
+                                  )
+                              : () => _openComparePage(context, it: it, g: g),
+                          child: Container(
+                            height: 30,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: T1SColors.red,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text('Order Now', style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
+                          ),
+                        ),
+                      ),
+                    ]),
                   ),
                 if (g.rows.length > 1 && vertical != 'ecommerce') ...[
                   Text('Compare ${g.rows.length} websites', style: tx(context, 10, w: FontWeight.w900, color: T1SColors.red)),

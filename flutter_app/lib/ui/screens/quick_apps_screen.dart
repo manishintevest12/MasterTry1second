@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/api.dart';
+import '../../core/session_cache.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
 import '../widgets/common.dart';
@@ -32,7 +33,8 @@ class _QuickAppsScreenState extends State<QuickAppsScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       final api = await _store.api();
-      final apps = await api.quickApps();
+      // Session cache (owner 23 Oct): quick apps load once per app session.
+      final apps = await SessionCache.once('home.quickApps', () => api.quickApps());
       if (!mounted) return;
       setState(() { _apps = apps; _loading = false; });
     } catch (e) {

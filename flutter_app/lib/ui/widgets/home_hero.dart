@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
+import '../../core/verticals.dart';
 import 'kit.dart';
 
 /// Website dark hero: #0D0714 background, dotted grid backdrop, engine pill,
@@ -130,18 +131,19 @@ class _HomeHeroState extends State<HomeHero> {
                 ),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _findCheapest,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(10)),
-                  child: Row(children: [
-                    _busy
-                        ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.search_rounded, size: 14, color: Colors.white),
-                    const SizedBox(width: 6),
-                    Text('Find Cheapest', style: tx(context, 11.5, w: FontWeight.w900, color: Colors.white)),
-                  ]),
+              // Owner 23 Oct: lens ICON ONLY (no 'Find Cheapest' text) —
+              // the paste area gets the freed horizontal space.
+              Tooltip(
+                message: 'Find Cheapest',
+                child: GestureDetector(
+                  onTap: _findCheapest,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+                    decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(10)),
+                    child: _busy
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.search_rounded, size: 20, color: Colors.white),
+                  ),
                 ),
               ),
             ]),
@@ -190,7 +192,9 @@ class _HomeHeroState extends State<HomeHero> {
                 boxShadow: [BoxShadow(color: T1SColors.red.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text('Launch 11-Vertical Search', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
+                // Owner 23 Oct: registry-driven count (kVerticals = 12) —
+                // the button can never show a stale count again.
+                Text('Launch ${kVerticals.length}-Vertical Search', style: tx(context, 12, w: FontWeight.w900, color: Colors.white)),
                 const SizedBox(width: 7),
                 const Icon(Icons.arrow_forward_rounded, size: 15, color: Colors.white),
               ]),

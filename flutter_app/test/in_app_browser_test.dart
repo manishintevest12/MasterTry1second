@@ -1,10 +1,11 @@
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:try1second/ui/screens/in_app_browser_screen.dart';
 
-/// 21 Oct image-3 in-app browser: seller-name resolution from the redirect
-/// host, honest "Buy now at ₹X" labels, and the JS that clicks the seller's
-/// own cart/buy buttons must all stay intact.
+/// 23 Oct image-4 embedded browser: seller-name resolution stays, and the
+/// purchase overlay (Add to cart / Buy now) must NOT come back — the
+/// merchant's own page buttons are the only checkout path.
 void main() {
   test('hostDisplayName maps the mandatory sellers to their real names', () {
     expect(hostDisplayName('https://www.flipkart.com/x?y=1'), 'Flipkart');
@@ -16,19 +17,15 @@ void main() {
     expect(hostDisplayName('not a url'), 'Website');
   });
 
-  test('buyNowLabel is honest with and without a verified price', () {
-    expect(buyNowLabel(null), 'Buy now');
-    expect(buyNowLabel(0), 'Buy now');
-    expect(buyNowLabel(195), 'Buy now at \u20B9195');
-    expect(buyNowLabel(138.85), 'Buy now at \u20B9138.85');
-  });
-
-  test('the JS clicker targets both cart and buy button labels', () {
-    expect(cartLabels, containsAll(<String>['add to cart', 'add to bag']));
-    expect(buyLabels, contains('buy now'));
-    // The injected script is an IIFE body that returns '1' or '0'.
-    expect(clickSellerButtonJs.contains('function(labelsRaw)'), isTrue);
-    expect(clickSellerButtonJs.contains("return '1'"), isTrue);
-    expect(clickSellerButtonJs.contains("return '0'"), isTrue);
+  test('the embedded browser has no purchase overlay (owner 23 Oct)', () {
+    final src = File('lib/ui/screens/in_app_browser_screen.dart').readAsStringSync();
+    // The 21 Oct bottom purchase bar and its JS clicker machinery are gone:
+    // the merchant page owns the only checkout path.
+    expect(src.contains('Add to cart'), isFalse);
+    expect(src.contains('Buy now'), isFalse);
+    expect(src.contains('cartLabels'), isFalse);
+    expect(src.contains('buyLabels'), isFalse);
+    expect(src.contains('buyNowLabel'), isFalse);
+    expect(src.contains('clickSellerButtonJs'), isFalse);
   });
 }

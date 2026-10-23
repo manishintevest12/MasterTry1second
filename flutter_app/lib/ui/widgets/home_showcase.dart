@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/session_cache.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../widgets/kit.dart';
@@ -26,7 +27,11 @@ class HomeShowcase extends StatefulWidget {
 }
 
 class _HomeShowcaseState extends State<HomeShowcase> {
-  List<ShowcaseSection>? _sections;
+  // Session cache (owner 23 Oct): showcase sections load once per app
+  // session — instant paint on every return to the Home tab.
+  List<ShowcaseSection>? _sections = SessionCache.has('home.showcase')
+      ? SessionCache.get('home.showcase', const <ShowcaseSection>[])
+      : null;
 
   /// Reference (Deal Drop) pill queries — each launches a real ecommerce search.
   static const _pillQueries = [
@@ -43,7 +48,8 @@ class _HomeShowcaseState extends State<HomeShowcase> {
   @override
   void initState() {
     super.initState();
-    fetchHomeShowcase(widget.state.api).then((s) {
+    if (_sections != null) return; // session cache hit — no refetch
+    SessionCache.once('home.showcase', () => fetchHomeShowcase(widget.state.api)).then((s) {
       if (mounted) setState(() => _sections = s);
     }).catchError((_) {
       if (mounted) setState(() => _sections = const []);
@@ -449,10 +455,10 @@ class _ShowcaseCard extends StatelessWidget {
                       border: Border.all(color: border(context)),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.star_rounded, size: 9, color: Color(0xFFFACC15)),
+                      const Icon(Icons.star_rounded, size: 9, color: T1SColors.emerald500),
                       const SizedBox(width: 1),
                       Text(item.rating!.toStringAsFixed(1),
-                          style: tx(context, 7.5, w: FontWeight.w900, color: dark ? Colors.white : T1SColors.slate700)),
+                          style: tx(context, 7.5, w: FontWeight.w900, color: T1SColors.emerald700)),
                     ]),
                   ),
                 ),
@@ -468,18 +474,31 @@ class _ShowcaseCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: tx(context, 9, w: FontWeight.w800, h: 1.1)),
+                  // Site parity (web HomeShowcase owner-22-Oct hierarchy):
+                  // product name in a REGULAR weight and slate gray — the
+                  // price is the bold hero of the card, not the title.
+                  Text(item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: tx(context, 9.5, w: FontWeight.w500, h: 1.25,
+                          color: dark ? T1SColors.slate300 : T1SColors.slate600)),
                   if (price != null)
                     Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                       Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-                        Flexible(child: Text('\u20B9${_rupee(price)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w900))),
+                        Flexible(child: Text('\u20B9${_rupee(price)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 12.5, w: FontWeight.w900, color: ink(context)))),
                         if (mrp != null) ...[
                           const SizedBox(width: 3),
-                          Flexible(child: Text('\u20B9${_rupee(mrp)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 8, color: muted(context)).copyWith(decoration: TextDecoration.lineThrough))),
+                          Flexible(child: Text('\u20B9${_rupee(mrp)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 8, color: T1SColors.slate400).copyWith(decoration: TextDecoration.lineThrough))),
+                        ],
+                        if (item.discountPct != null) ...[
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text('${item.discountPct}% Off',
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: tx(context, 8.5, w: FontWeight.w900, color: T1SColors.emerald600)),
+                          ),
                         ],
                       ]),
-                      if (item.discountPct != null)
-                        Text('${item.discountPct}% Off', maxLines: 1, style: tx(context, 8, w: FontWeight.w900, color: T1SColors.red)),
                     ])
                   else if (item.badge != null)
                     Text(item.badge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 9.5, w: FontWeight.w900, color: T1SColors.red)),
@@ -487,11 +506,11 @@ class _ShowcaseCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
-                        color: T1SColors.red50,
+                        color: T1SColors.emerald50,
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: T1SColors.red.withOpacity(.15)),
+                        border: Border.all(color: T1SColors.emerald200.withOpacity(.8)),
                       ),
-                      child: Text(_stealBadge!, maxLines: 1, style: tx(context, 7, w: FontWeight.w900, color: T1SColors.red)),
+                      child: Text(_stealBadge!, maxLines: 1, style: tx(context, 7, w: FontWeight.w900, color: T1SColors.emerald700)),
                     ),
                 ],
               ),

@@ -29,6 +29,11 @@ abstract final class T1SColors {
   static const greenBg = Color(0xFFF0FDF4);
   static const greenBorder = Color(0xFFBBF7D0);
 
+  // Tailwind emerald extras (web HomeShowcase accents: '% Off', badges, rating)
+  static const emerald50 = Color(0xFFECFDF5);
+  static const emerald200 = Color(0xFFA7F3D0);
+  static const emerald700 = Color(0xFF047857);
+
   // Website dark hero + accent palette (HomeView / FixedBottomBar spec)
   static const heroBg = Color(0xFF0D0714);
   static const heroGrid = Color(0xFF2A1B40);

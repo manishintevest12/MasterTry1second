@@ -73,11 +73,14 @@ export const PriceLens: React.FC = () => {
           )}
           <button
             type="submit"
+            aria-label="Find Cheapest"
+            title="Find Cheapest"
             disabled={!link.trim()}
             className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black cursor-pointer transition-colors"
           >
-            <Search className="w-3.5 h-3.5" />
-            <span>Find Cheapest</span>
+            {/* Owner 23 Oct: lens icon only — the paste area gets the space. */}
+            <Search className="w-4 h-4" />
+            <span className="sr-only">Find Cheapest</span>
           </button>
         </form>
 

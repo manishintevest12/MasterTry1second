@@ -13,7 +13,7 @@ String accountSearchQuery(String bank, String type) {
 }
 
 /// Vertical metadata mirrored 1:1 from the website's VERTICAL_META + VerticalNav
-/// (11 verticals, same ids and order). `movie` is the site's id; the backend
+/// (12 verticals, same ids and order). `movie` is the site's id; the backend
 /// accepts it and `movies`.
 class VerticalMeta {
   final String id;

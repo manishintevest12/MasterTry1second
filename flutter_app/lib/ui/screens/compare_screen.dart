@@ -86,6 +86,13 @@ class _CompareScreenState extends State<CompareScreen> {
   void _start() {
     final p = _state.takePending();
     if (p == null) {
+      // Owner 23 Oct mismatch fix: on (re)mount, if this vertical already has
+      // results, the form must show THAT query — the auto search revalidates
+      // what is on screen, never a different seed default.
+      final cachedQ = _queryFromCacheKey(_state.cacheQuery[_meta.id]);
+      if (_state.cache[_meta.id] != null && cachedQ.isNotEmpty) {
+        _syncFormFromQuery(cachedQ);
+      }
       _runSearch(auto: true);
       return;
     }
@@ -93,7 +100,7 @@ class _CompareScreenState extends State<CompareScreen> {
       _state.openProduct(p);
       return;
     }
-    _q.text = p.query;
+    _syncFormFromQuery(p.query); // route verticals need from/to, not the raw _q
     _runSearch(query: p.query);
   }
 
@@ -115,6 +122,10 @@ class _CompareScreenState extends State<CompareScreen> {
       _seedForm();
       _res = _state.cache[_meta.id];
       _shownCacheKey = _state.cacheQuery[_meta.id];
+      // Form/results mismatch fix: whatever rows we adopt, their query goes
+      // into the fields so the label on screen always matches the feed.
+      final shownQ = _queryFromCacheKey(_shownCacheKey);
+      if (_res != null && shownQ.isNotEmpty) _syncFormFromQuery(shownQ);
       if (mounted) setState(() {});
       // Owner 23 Oct: a vertical switch can carry a PendingSearch too (pill /
       // hero tap while this screen was on another vertical). _start() consumes
@@ -128,7 +139,7 @@ class _CompareScreenState extends State<CompareScreen> {
         _state.openProduct(pending);
         return;
       }
-      _q.text = pending.query;
+      _syncFormFromQuery(pending.query);
       _runSearch(query: pending.query);
       return;
     }
@@ -149,6 +160,43 @@ class _CompareScreenState extends State<CompareScreen> {
     _q.text = '';
     _from.text = _meta.defaultFrom;
     _to.text = _meta.defaultTo;
+  }
+
+  /// Owner 23 Oct ('results Indore to Mumbai, box Indore to New Delhi'): the
+  /// form must always mirror the query whose results are on screen. When a
+  /// cached response or a pending search is adopted, write its query back
+  /// into the visible fields instead of leaving the seed defaults behind.
+  void _syncFormFromQuery(String query) {
+    final raw = query.trim();
+    if (raw.isEmpty) return;
+    switch (_meta.kind) {
+      case SearchKind.route:
+      case SearchKind.dateRoute:
+      case SearchKind.cab:
+        final m =
+            RegExp('^(.*?)\\s+(?:to|\\u2192|->)\\s+(.+)\$', caseSensitive: false).firstMatch(raw);
+        if (m != null) {
+          _from.text = m.group(1)!.trim();
+          _to.text = m.group(2)!.trim();
+        } else {
+          _q.text = raw;
+        }
+        break;
+      case SearchKind.hotel:
+        _to.text = raw;
+        break;
+      case SearchKind.account:
+        break; // chip-driven: the bank box stays a browse-all filter
+      default:
+        _q.text = raw;
+    }
+  }
+
+  /// cacheQuery values are '<vertical>|<query>|<depart>' composites.
+  String _queryFromCacheKey(String? key) {
+    if (key == null) return '';
+    final parts = key.split('|');
+    return parts.length >= 2 ? parts[1] : '';
   }
 
   String _effectiveQuery() {
@@ -177,7 +225,17 @@ class _CompareScreenState extends State<CompareScreen> {
     // shows real data the moment it opens (owner 23 Oct complaint).
     final q = q0.isEmpty ? defaultQueryFor(_meta.id, _state.city) : q0;
     if (q.isEmpty) return;
-    if (!auto) _bgPollCount = 0; // fresh user search: full 30-poll budget again
+    if (!auto) {
+      _bgPollCount = 0; // fresh user search: full 30-poll budget again
+      // Owner 23 Oct (image-1 request): a NEW search is a new intent — drop
+      // the previous search's rows so the engaging full-screen WarpLoader
+      // (pulsing 3-2-1 core, progress bar, skeleton cards) holds the user,
+      // instead of stale rows under a thin yellow strip. Auto polls never
+      // clear: progressive rows keep growing in place.
+      _res = null;
+      _shownCacheKey = null;
+      _filterOpts = const FilterOptions();
+    }
     setState(() {
       _loading = true;
       _error = null;

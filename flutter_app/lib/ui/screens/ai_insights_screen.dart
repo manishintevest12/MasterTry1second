@@ -164,7 +164,8 @@ class _AiInsightsScreenState extends State<AiInsightsScreen> {
         const SizedBox(height: 14),
         _couponsCard(context),
         const SizedBox(height: 20),
-        Text('10-Vertical Predictive Insights & Yield Telemetry', style: tx(context, 17, w: FontWeight.w900, h: 1.2)),
+        // Owner 23 Oct: real registry count (12) — parity with the web heading.
+        Text('${kVerticals.length}-Vertical Predictive Insights & Yield Telemetry', style: tx(context, 17, w: FontWeight.w900, h: 1.2)),
         const SizedBox(height: 4),
         Text('Real-time algorithm monitoring airline yield curves, hotel rate parity, dark-store surges, and bank card stacks.', style: tx(context, 11.5, color: muted(context), h: 1.4)),
         const SizedBox(height: 12),

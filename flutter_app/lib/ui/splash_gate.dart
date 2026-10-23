@@ -16,7 +16,7 @@ import 'widgets/logo.dart';
 /// already keep-warms all seed queries on a 12-min cron, and verticals now
 /// render instantly from the on-disk live cache + skeleton, so the splash must
 /// never block on the warm-up. warmProgress only drives the progress label now.
-/// Behind the logo: soft floating icons of all 11 verticals (flights, food, ...).
+/// Behind the logo: soft floating icons of all 12 verticals (flights, food, ...).
 class SplashGate extends StatefulWidget {
   const SplashGate({
     super.key,

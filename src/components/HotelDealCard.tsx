@@ -136,6 +136,8 @@ export const HotelDealCard: React.FC<{ group: HotelGroup; nights?: number }> = (
                 {r.freeCancellation ? <span className="text-emerald-700 font-semibold">Free cancellation</span> : r.breakfast ? 'Breakfast included' : 'Standard rate'}
               </span>
               <span className={`text-sm font-black ${i === 0 ? 'text-emerald-700' : 'text-slate-900'}`}>₹{r.price.toLocaleString('en-IN')}</span>
+              {/* Owner 23 Oct: flight-parity small Book pill on every seller row */}
+              <span className="shrink-0 ml-2 px-2.5 py-1 bg-red-600 text-white text-[10px] font-black rounded-md tracking-wide">Book</span>
             </button>
           ))}
           {group.rows.length > 3 && (
