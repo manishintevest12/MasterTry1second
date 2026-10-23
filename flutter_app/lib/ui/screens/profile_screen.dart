@@ -80,7 +80,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Text(
-              'Try1Second v1.8.14 · build 23 Oct',
+              'Try1Second v1.8.15 · build 23 Oct',
               textAlign: TextAlign.center,
               style: tx(context, 9.5, w: FontWeight.w800, color: muted(context)),
             ),
