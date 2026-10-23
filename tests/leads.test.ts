@@ -19,7 +19,7 @@ test('leads: valid lead_form lead passes (account vertical, age captured)', () =
 test('leads: age outside 18-100 rejected', () => {
   assert.equal(validateLead({ firstName: 'A', lastName: 'B', age: 17, location: 'Pune', ...FULL }).ok, false);
   assert.equal(validateLead({ firstName: 'A', lastName: 'B', age: 101, location: 'Pune', ...FULL }).ok, false);
-  assert.equal(validateLead({ firstName: 'A', lastName: 'B', age: 'abc', location: 'Pune', ...FULL }).ok, false);
+  assert.equal(validateLead({ firstName: 'A', lastName: 'B', age: 'abc' as unknown as number, location: 'Pune', ...FULL }).ok, false);
 });
 
 test('leads: missing name or location rejected; negative salary rejected', () => {

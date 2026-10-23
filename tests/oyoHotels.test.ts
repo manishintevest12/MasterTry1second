@@ -57,9 +57,9 @@ test('oyo: offers — sold-out and price-less hotels never published', () => {
   assert.equal(o.listPrice, 8152);
   assert.equal(o.seller, 'OYO');
   assert.equal(o.sellerUrl, 'https://www.oyorooms.com/10179/'); // deeplink to the price owner
-  assert.ok(o.attributes.price_basis.includes('total ₹1559'));
-  assert.equal(o.attributes.rating, '4.3');
-  assert.ok(o.attributes.images.includes('|'));
+  assert.ok(o.attributes!.price_basis.includes('total ₹1559'));
+  assert.equal(o.attributes!.rating, '4.3');
+  assert.ok(o.attributes!.images.includes('|'));
   assert.ok(String(o.evidence.sourceUrl).includes('checkin=25/10/2026'));
 });
 

@@ -31,8 +31,8 @@ test('probe ladder fully resets on first success — gate lift re-activates fast
     for (let i = 0; i < 3; i++) recordFailure('w_probe_reset_src', 'ACCESS_CHALLENGE', 'gate');
   }
   // …then the gate lifts and the probe succeeds (2 successes = full health)…
-  recordSuccess('w_probe_reset_src', 150, 5);
-  recordSuccess('w_probe_reset_src', 120, 7);
+  recordSuccess('w_probe_reset_src', 150);
+  recordSuccess('w_probe_reset_src', 120);
   const ok = getHealth('w_probe_reset_src');
   assert.equal(ok.state, 'HEALTHY');
   // …the very next challenge must start from the 60s rung again, not 60min.

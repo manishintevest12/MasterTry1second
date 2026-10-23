@@ -47,9 +47,9 @@ test('via offer: exact requested date wins', () => {
   assert.equal(it.currency, 'INR');
   assert.equal(it.seller, 'Via.com');
   assert.ok(it.title.includes('on 2026-10-25'));
-  assert.ok(it.sellerUrl.startsWith('https://in.via.com/flight/search'));
-  assert.ok(it.sellerUrl.includes('destination=BOM'));
-  assert.equal(it.identifiers.sku, 'via-DEL-BOM-2026-10-25');
+  assert.ok(it.sellerUrl!.startsWith('https://in.via.com/flight/search'));
+  assert.ok(it.sellerUrl!.includes('destination=BOM'));
+  assert.equal(it.identifiers!.sku, 'via-DEL-BOM-2026-10-25');
   assert.deepEqual(it.evidence.extractedFields, ['cd[].dt', 'cd[].pr (INR)', 'cd[].prType']);
 });
 

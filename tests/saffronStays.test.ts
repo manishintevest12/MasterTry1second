@@ -63,8 +63,8 @@ test('saffron: offers — unavailable and unpriced villas never published', () =
   assert.equal(o.currency, 'INR');
   assert.equal(o.seller, 'SaffronStays');
   assert.equal(o.sellerUrl, 'https://www.saffronstays.com/villas/luxury-rooms-in-a-retreat-in-sindhudurg-with-sea-views');
-  assert.equal(o.attributes.rating, '4.6');
-  assert.ok(o.attributes.price_basis.includes('total ₹33984'));
-  assert.ok(o.attributes.images.includes('|'));
-  assert.equal(o.attributes.bedrooms, 7);
+  assert.equal(o.attributes!.rating, '4.6');
+  assert.ok(o.attributes!.price_basis.includes('total ₹33984'));
+  assert.ok(o.attributes!.images.includes('|'));
+  assert.equal(o.attributes!.bedrooms, 7);
 });

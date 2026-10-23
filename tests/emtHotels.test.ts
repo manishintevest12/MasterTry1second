@@ -59,8 +59,8 @@ test('emt: offers — unpriced hotels never published, deeplink joined by id', (
   assert.equal(o.currency, 'INR');
   assert.equal(o.seller, 'EaseMyTrip');
   assert.equal(o.sellerUrl, 'https://www.easemytrip.com/hotels/estrela-do-mar-beach-resort-a-beach-property-goa-100557/');
-  assert.equal(o.attributes.star_rating, '4');
-  assert.equal(o.attributes.property_id, '100557');
+  assert.equal(o.attributes!.star_rating, '4');
+  assert.equal(o.attributes!.property_id, '100557');
   assert.ok(String(o.evidence.sourceUrl).includes('checkin=25-10-2026'));
 });
 

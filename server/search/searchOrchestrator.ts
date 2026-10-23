@@ -182,6 +182,35 @@ async function progressiveCatalogueResponse(
  * route/city attributes the token gate cannot see, and they keep their own
  * strict filters.
  */
+/**
+ * Owner 23 Oct ('3-2-1 countdown khtm hote hi results aane chahiye'): a fully cold
+ * query whose sources are all still mid-flight must NOT hang the caller until the
+ * slowest source settles (ecom cold first rows took 30-40s -> the app's 30s HTTP
+ * timeout killed the search and the owner saw the empty state). When the 3s
+ * loader countdown ends with no live row yet and nothing honest to borrow from
+ * the catalogue, return this EMPTY pendingRefresh marker instead: the app polls
+ * every 2s and the PROGRESSIVE POLL branch streams partial rows in as each
+ * source lands. Nothing is fabricated — zero rows is the truth at this instant.
+ */
+async function stillAcquiringResponse(parsed: ParsedQuery, start: number): Promise<SearchResponse> {
+  return {
+    query: parsed,
+    results: [],
+    state: {
+      servedFrom: 'unavailable',
+      sourcesAttempted: [],
+      sourcesSucceeded: [],
+      sourcesFailed: [],
+      reusedCatalogue: false,
+      triggeredRefresh: true,
+      pendingRefresh: true,
+      honestNotice: 'Live sources are still scanning for exactly what you typed — results start arriving within seconds.',
+    },
+    latencyMs: Date.now() - start,
+    totalSearchLatencyMs: Date.now() - start,
+  } as SearchResponse;
+}
+
 const RELEVANCE_GATED_CATALOGUE = new Set(['ecommerce', 'grocery', 'food', 'movies', 'movie']);
 
 /** Owner 23 Oct (destination-matrix audit): the bus/flights cold-start floor
@@ -238,6 +267,33 @@ async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed
   // image) rendered blank. Attach the same brand/lender favicons the live pipeline
   // uses; the live pass then upgrades them to crisp Wikidata logos where available.
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName) as any[]) as any[];
+}
+
+/**
+ * Owner 23 Oct (3s-countdown sync): runSearch now returns a fast pendingRefresh
+ * marker/partial on cold queries instead of waiting for the slowest source.
+ * That is exactly right for the app/web feed (progressive polls top it up),
+ * but SERVER-SIDE consumers that build a COMPLETE view from one call — product
+ * page compare offers, scan competitor quotes, grocery basket compare, insight
+ * spreads — need the settled set. This wrapper polls the same query until the
+ * pipeline stops refreshing (or the bounded deadline), returning the fullest
+ * response seen. Polls are cheap: they coalesce onto the inflight pipeline and
+ * serve partial snapshots within 600ms.
+ */
+export async function runSearchPolled(input: SearchInput, deadlineMs = 15_000): Promise<SearchResponse> {
+  const deadline = Date.now() + deadlineMs;
+  let best = await runSearch(input);
+  while (Date.now() < deadline) {
+    const latestPending = (best.state && best.state.pendingRefresh) === true;
+    if (!latestPending) break;
+    await new Promise((r) => setTimeout(r, 1_500));
+    let next: SearchResponse;
+    try { next = await runSearch(input); } catch { break; }
+    // keep the fullest snapshot; a poll can never see fewer rows than the pipeline already produced
+    if ((next.results || []).length > (best.results || []).length) best = next;
+    if (next.state && next.state.pendingRefresh !== true) { if ((next.results || []).length > 0) best = next; break; }
+  }
+  return best;
 }
 
 export async function runSearch(input: SearchInput): Promise<SearchResponse> {
@@ -329,7 +385,11 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
     }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
-    return running; // nothing to show yet — this caller becomes the one that waits
+    // Owner 23 Oct: 'this caller waits' hung polls 30-40s on ecom cold searches —
+    // the app's poll timer then died on its HTTP timeout and results never painted.
+    // Serve the honest still-acquiring marker (pendingRefresh keeps the app polling;
+    // rows land via the partial memo above as sources settle).
+    return await stillAcquiringResponse(parsed, totalStart);
   }
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
   {
@@ -431,14 +491,30 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // Nothing to borrow either: no fixed second timer — the moment the FIRST real
   // live row lands (or the full pipeline completes) we return. A cold hotel city
   // paints when its first source settles instead of after the whole pipeline.
-  const next: RaceOutcome = await Promise.race([
-    full.then((r): RaceOutcome => ({ kind: 'full', r })),
-    firstRow,
+  type ColdOutcome = { kind: 'full'; r: SearchResponse } | { kind: 'partial'; snap: AcquisitionOutcome } | { kind: 'deadline' };
+  // HARD 3.2s deadline (owner 23 Oct, '3 second tho 30 sec kyun'): nothing real has
+  // arrived by now AND the catalogue had nothing honest to borrow. Waiting for the
+  // first live row unbounded meant 30-40s hangs (all sources slow/gated at once).
+  // At the deadline we serve whatever partial rows exist; if none, the honest
+  // pendingRefresh marker — the app's 2s polls then stream rows in progressively.
+  // Deadline is measured from the START of the search (not from after the floor
+  // lookup) so the whole cold path answers in ~3s, matching the app loader countdown.
+  const COLD_DEADLINE_MS = Number(process.env.T1S_COLD_DEADLINE_MS) || 3_200;
+  const deadlineRemaining = Math.max(0, COLD_DEADLINE_MS - (Date.now() - totalStart));
+  const next: ColdOutcome = await Promise.race([
+    full.then((r): ColdOutcome => ({ kind: 'full', r })),
+    firstRow as Promise<ColdOutcome>,
+    new Promise<ColdOutcome>((resolve) => { setTimeout(() => resolve({ kind: 'deadline' }), deadlineRemaining); }),
   ]);
   if (next.kind === 'full') return next.r;
   const p2 = await servePartial();
   if (p2) return p2;
-  return await full; // honest: nothing real ever arrived
+  // No live row by the deadline: return the honest marker instead of a 30s hang.
+  // The full pipeline keeps acquiring and caches the completed set (zero-result
+  // guard applies); the client's next polls pick it up.
+  const marker = await stillAcquiringResponse(parsed, totalStart);
+  cachePut(cacheKey, marker, 6, 6);
+  return marker;
 }
 
 /** Shared acquisition context (state flags + catalogue supplements + sources). */

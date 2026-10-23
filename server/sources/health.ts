@@ -26,7 +26,7 @@ const challengeOpenings = new Map<string, number>();
 // time. Probes now climb the SAME ACCESS_CHALLENGE ladder (1->5->25->60 min,
 // full reset on first success) — still self-detecting within at most 60 min of
 // the gate lifting, but no longer preventing the recovery they wait for.
-const PROBE_SOURCES = new Set(['w_hotels_goibibo', 'w_hotels_mmt', 'w_flights_makemytrip']);
+const PROBE_SOURCES = new Set(['w_hotels_goibibo', 'w_hotels_mmt', 'w_flights_makemytrip', 'w_food_zomato']);
 
 const health = new Map<string, SourceHealth>();
 

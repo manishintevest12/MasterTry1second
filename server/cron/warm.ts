@@ -11,7 +11,7 @@
  *     30 * * * * cd /home/uXXXXX/domains/try1second.com/app && node cron.cjs >> cron.log 2>&1
  */
 import { getStore, runMigrations } from '../common/db';
-import { runSearch } from '../search/searchOrchestrator';
+import { runSearchPolled } from '../search/searchOrchestrator';
 import { log } from '../common/logger';
 import { purgeStaleBankingOffers, purgePhotolessHotelOffers } from '../catalogue/catalogueService';
 
@@ -65,7 +65,7 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string; pinc
  * every ~4 hours (40 entries at 2 per cycle) — same honesty rules as every other warm: real searches,
  * recorded prices, nothing invented.
  */
-const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string }> = [
+const DESTINATION_WARM: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
   // Owner 23 Oct: the six homepage cities lead the rotation so their recorded
   // fares + hotel art stay the freshest (Jaipur, Manali, Udaipur, Mumbai,
   // Kolkata, Goa).
@@ -143,12 +143,12 @@ async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<
   let ok = 0;
   for (const r of rows) {
     try {
-      const res = await runSearch({
+      const res = await runSearchPolled({
         query: String(r.raw_query || r.query || ''),
         vertical: r.v || r.vertical ? String(r.v || r.vertical) : undefined,
         pincode: r.pincode ? String(r.pincode) : undefined,
         city: r.city ? String(r.city) : undefined,
-      });
+      }, 20_000);
       ok += 1;
       log.info(tag, 'Warmed', { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
     } catch (e: any) {

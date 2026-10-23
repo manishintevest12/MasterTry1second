@@ -46,17 +46,17 @@ test('goibibo: SSR journeys parse with real fares, times, stops, seller Goibibo,
   assert.equal(one.price, 6406);
   assert.equal(one.seller, 'Goibibo');
   assert.equal(one.sellerUrl, PAGE);
-  assert.equal(one.attributes.stops, '1');
-  assert.equal(one.attributes.departure, '06:00');
-  assert.equal(one.attributes.arrival, '10:55');
-  assert.equal(one.attributes.destination, 'BOM');
-  assert.equal(one.travel.date, '2026-10-20');
+  assert.equal(one.attributes!.stops, '1');
+  assert.equal(one.attributes!.departure, '06:00');
+  assert.equal(one.attributes!.arrival, '10:55');
+  assert.equal(one.attributes!.destination, 'BOM');
+  assert.equal(one.travel!.date, '2026-10-20');
   assert.ok(String(one.title).includes('Air India Express'));
-  assert.ok(String(one.attributes.data_note).includes('2026-10-20'));
+  assert.ok(String(one.attributes!.data_note).includes('2026-10-20'));
   assert.equal(two.brand, 'Akasa Air');
   assert.equal(two.price, 6675);
-  assert.equal(two.attributes.stops, '0');
-  assert.equal(two.attributes.departure, '06:50');
+  assert.equal(two.attributes!.stops, '0');
+  assert.equal(two.attributes!.departure, '06:50');
 });
 
 test('goibibo: missing journey segment or empty state returns empty, never throws', () => {

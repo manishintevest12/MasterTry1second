@@ -7,7 +7,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
-import { runSearch, type SearchInput } from '../search/searchOrchestrator';
+import { runSearch, runSearchPolled, type SearchInput } from '../search/searchOrchestrator';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
@@ -964,7 +964,7 @@ apiRouter.post('/scan/url', async (req, res) => {
 
   const vertical = verticalForScanUrl(url, product.domain);
   const scanQuery = searchableTitle(product.title);
-  const search = await runSearch({
+  const search = await runSearchPolled({
     query: scanQuery,
     vertical: vertical === 'movie' ? 'movies' : vertical,
     city: req.body?.city,
@@ -1048,7 +1048,7 @@ apiRouter.post('/lens', async (req, res) => {
     });
   }
   const lensQuery = searchableTitle(product.title);
-  const response = await runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput);
+  const response = await runSearchPolled({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput);
   const priced = response.results
     .map((o: any) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 }))
     .filter((x) => x.price > 0 && isSameProduct(lensQuery, String(x.o.title || '')));
@@ -1130,9 +1130,9 @@ apiRouter.post('/product-page', async (req, res) => {
     return keep && keep !== lensQuery ? keep : '';
   })();
   const searches: Array<Promise<any>> = [
-    runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput),
+    runSearchPolled({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput),
   ];
-  if (broadQuery) searches.push(runSearch({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput));
+  if (broadQuery) searches.push(runSearchPolled({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput));
   const responses = await Promise.all(searches);
   const seenIds = new Set<string>();
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
@@ -1458,7 +1458,7 @@ apiRouter.post('/smart-cart/compare', async (req, res) => {
 
     const searches = await Promise.all(items.map(async (it) => {
       try {
-        const response = await runSearch({ query: it.name, vertical: 'grocery', pincode: (req.body as any).pincode, city: (req.body as any).city, locality: (req.body as any).locality } as SearchInput);
+        const response = await runSearchPolled({ query: it.name, vertical: 'grocery', pincode: (req.body as any).pincode, city: (req.body as any).city, locality: (req.body as any).locality } as SearchInput);
         // Normalized offers carry prices.effectivePrice/mandatoryTotal (no `price`
         // field) — see unitPriceOf in smartcart/basket.ts (owner bug 22 Oct).
         const offers: StoreOfferIn[] = (response.results as any[])

@@ -62,7 +62,7 @@ test('yatra: hotels joined with rates by id, fields normalized', () => {
   assert.equal(h.city, 'Goa');
   assert.equal(h.area, 'Panjim');
   assert.equal(h.lat, 15.456358);
-  assert.equal(h.imageUrl.includes('imgcld.yatra.com'), true);
+  assert.equal(h.imageUrl!.includes('imgcld.yatra.com'), true);
   assert.equal(h.rackRate, 15446);
   assert.equal(h.bookable, true);
   assert.equal(h.roomsLeft, 5);
@@ -79,12 +79,12 @@ test('yatra: offers — unpriced and unbookable never published', () => {
   assert.equal(o.price, 5003);
   assert.equal(o.currency, 'INR');
   assert.equal(o.seller, 'Yatra');
-  assert.ok(o.sellerUrl.startsWith('https://hotel.yatra.com/nextui/hotel-search/dom/search?'));
-  assert.ok(o.sellerUrl.includes('checkinDate=25%2F10%2F2026'));
-  assert.ok(o.attributes.price_basis.includes('total ₹5003'));
-  assert.equal(o.attributes.rating, '4.9');
-  assert.equal(o.attributes.rooms_left, '5');
-  assert.equal(o.attributes.free_cancellation, 'true');
+  assert.ok(o.sellerUrl!.startsWith('https://hotel.yatra.com/nextui/hotel-search/dom/search?'));
+  assert.ok(o.sellerUrl!.includes('checkinDate=25%2F10%2F2026'));
+  assert.ok(o.attributes!.price_basis.includes('total ₹5003'));
+  assert.equal(o.attributes!.rating, '4.9');
+  assert.equal(o.attributes!.rooms_left, '5');
+  assert.equal(o.attributes!.free_cancellation, 'true');
 });
 
 test('yatra: SRP deeplink carries city + dates, dd/mm/yyyy helper', () => {

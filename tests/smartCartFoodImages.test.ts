@@ -122,7 +122,6 @@ test('ekaroTrackingUrl self-heals on 401 (falls back to null, caches negative)',
   const prev = process.env.EKARO_API_KEY;
   const realFetch = globalThis.fetch;
   process.env.EKARO_API_KEY = 'bad-key';
-  globalThis.fetch = (async () => ({ ok: false, status: 401, json: async () => ({ error: 1 }) }) as any)();
   globalThis.fetch = (async () => ({ ok: false, status: 401, json: async () => ({ error: 1 }) })) as any;
   assert.equal(await ekaroTrackingUrl('https://zepto.com/search?query=milk'), null);
   assert.equal(await ekaroTrackingUrl('https://zepto.com/search?query=atta'), null, 'negative cache: no second call');

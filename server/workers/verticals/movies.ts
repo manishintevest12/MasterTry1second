@@ -8,7 +8,7 @@ import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { AcquisitionError } from '../../common/httpClient';
 import { getOverride, dynamicScannerEngine } from '../../acquisition/selfHeal';
 import { cffiFetch } from '../../common/curlCffiFetch';
-import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery } from '../parsers/bookmyshow';
+import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery, effectiveMovieQuery } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import { parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL } from '../parsers/cinepolis';
 import { parseDistrictMovies, parseDistrictOffers, districtPriceBands, DISTRICT_MOVIES_URL } from '../parsers/district';
@@ -117,7 +117,7 @@ export const moviesWorker: VerticalWorker = {
         // Strip generic + location tokens so strict title matching compares the movie
         // name only ("jailer 2 movie tickets bengaluru" -> "jailer 2").
         const stripTokens = (normCity(region.regionName) + ' ' + normCity(String(ctx.query.location?.city || ''))).split(' ').filter(Boolean);
-        const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : '';
+        const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, stripTokens)) : '';
         const fingerprint = createHash('sha256').update(res.body).digest('hex').slice(0, 16);
         const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
         // BMS' own quickbook/session API is edge-blocked, so its cards had NO price. The same
@@ -178,7 +178,7 @@ export const moviesWorker: VerticalWorker = {
         const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
         const keys = ticketnewCityKeys(city);
         if (keys.length === 0) return []; // city unknown to TicketNew — honest empty, no substitute
-        const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
+        const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean))) : '';
         let lastErr: any = null;
         for (const key of keys.slice(0, 2)) {
           try {
@@ -213,7 +213,7 @@ export const moviesWorker: VerticalWorker = {
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
         const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
-        const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
+        const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean))) : '';
         const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25_000 });
         if (res.status === 403 || res.status === 429) {
           throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `Cinepolis blocked: ${res.status}`, res.status);
@@ -250,7 +250,7 @@ export const moviesWorker: VerticalWorker = {
       run: async (ctx) => {
         const entity = String(ctx.query.entityName || '').trim();
         const city = (await cityFromMovieQuery(String(ctx.query.rawQuery || ''), ctx.query.location?.city, fetchJsonNode)) || '';
-        const queryTerm = entity ? extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean)) : '';
+        const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, (normCity(city)).split(' ').filter(Boolean))) : '';
         const res = await cffiFetch(DISTRICT_MOVIES_URL, { timeoutMs: 25_000 });
         if (res.status === 403 || res.status === 429) {
           throw new AcquisitionError(res.status === 403 ? 'FORBIDDEN' : 'RATE_LIMITED', `District blocked: ${res.status}`, res.status);

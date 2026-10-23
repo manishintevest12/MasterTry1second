@@ -6,7 +6,7 @@
 import { registerVerticalWorker, looksLikeChallenge, type VerticalWorker } from '../verticalWorker';
 import { parseZomatoRestaurants, parseZomatoMenuPage } from '../parsers/zomato';
 import { newRawItem } from '../../sources/contract';
-import type { RawSourceItem } from '../../types';
+import type { RawSourceItem, SourceConfig } from '../../types';
 import { parseSwiggyDishes } from '../parsers/swiggy';
 import { AcquisitionError } from '../../common/httpClient';
 import { parseDominosMenu, dominosItems } from '../parsers/dominos';
@@ -48,6 +48,25 @@ function citySlug(city: string | undefined, raw: string): string | null {
     return c.replace(/\s+/g, '-');
   }
   return null;
+}
+
+function zomatoPresence(source: SourceConfig, slug: string, term: string, reason: string): RawSourceItem[] {
+  const q = encodeURIComponent(term || 'restaurants');
+  const url = `https://www.zomato.com/${slug}/restaurants?q=${q}`;
+  const label = term ? `\`${term}\`` : 'restaurants';
+  return [newRawItem(source, {
+    title: `Zomato: ${label} in ${slug} — browse menus & order on Zomato`.slice(0, 200),
+    seller: 'Zomato',
+    sellerUrl: url,
+    currency: 'INR',
+    attributes: {
+      platform: 'Zomato',
+      price_basis: 'app_only_fares',
+      data_note: `Zomato's edge blocked our listing crawl (${reason}); menus and live prices are on Zomato itself — this is a direct handoff, no prices invented.`,
+    },
+    identifiers: { sku: `zomato-search-${slug}-${(term || 'restaurants').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60)}` },
+    evidence: { sourceUrl: url, extractedFields: ['seller', 'deeplink'], sourceReference: 'Zomato search deeplink (availability handoff while the listing crawl is edge-gated)' },
+  })];
 }
 
 export const foodWorker: VerticalWorker = {
@@ -136,6 +155,19 @@ export const foodWorker: VerticalWorker = {
         return parseSwiggyDishes(r.body, ctx.source, url, ctx.query.location?.city || 'New Delhi');
       },
     },
+
+/**
+ * Honest Zomato presence row (owner 23 Oct: Zomato must ALWAYS be represented in
+ * food results). When Akamai's edge gates the listing crawl (403/202/429 or a
+ * challenge shell) we still know the deeplink works from the USER's device —
+ * the gate only bites datacenter IPs. The row claims availability only; menu
+ * prices stay unknown (price_basis app_only_fares passes validation with the
+ * fare flagged unverified, exactly like the Uber/Rapido presence rows).
+ * Meanwhile the listing attempt itself runs on EVERY search (the source never
+ * hides its circuit behind a challenge ladder), so the moment the edge samples
+ * a 200 through, real listings replace this row — self-healing by construction.
+ */
+
     {
       sourceId: 'w_food_zomato',
       name: 'Food worker: Zomato public restaurant listings',
@@ -146,15 +178,18 @@ export const foodWorker: VerticalWorker = {
         if (!slug) return [];
         const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
         const url = `https://www.zomato.com/${slug}/restaurants?q=${encodeURIComponent(term || 'restaurants')}`;
+        // Akamai SAMPLES datacenter crawls (403/202 alternate with full 200s — same
+        // pattern as Goibibo hotels): up to 3 bounded attempts with a short gap.
         let r = await ctx.fetch(url);
-        // Zomato's edge samples plain-HTTP crawls with 403/202: one bounded retry.
-        if (r.status === 403 || r.status === 202 || r.status === 429) {
-          await new Promise((res) => setTimeout(res, 1500));
+        for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429); attempt++) {
+          await new Promise((res) => setTimeout(res, 900));
           r = await ctx.fetch(url);
         }
-        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Zomato HTTP ${r.status}`, r.status);
+        // Owner rule 23 Oct: Zomato ALWAYS in results. An edge-gated listing falls
+        // back to the honest presence row instead of vanishing from the app.
+        if (r.status !== 200) return zomatoPresence(ctx.source, slug, term, `HTTP ${r.status}`);
         const items = parseZomatoRestaurants(r.body, ctx.source, url, 'Zomato');
-        if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError('ACCESS_CHALLENGE', 'Zomato presented a challenge page');
+        if (!items.length && looksLikeChallenge(r.body)) return zomatoPresence(ctx.source, slug, term, 'challenge shell');
         // Deep dive: the search listing carries no prices (which is why Zomato contributed
         // 0 offers to results). Follow the first 2 restaurants and pull DISH prices from
         // their pages' embedded JSON (JSON-LD hasMenu / __PRELOADED_STATE__). Priced dishes

@@ -46,17 +46,17 @@ test('yatra: batch parses per-flight offers with real fares, times, seller Yatra
   assert.equal(a.seller, 'Yatra');
   assert.equal(a.sellerUrl, SRP);
   assert.equal(a.brand, 'Akasa Air');
-  assert.equal(a.attributes.flight_number, 'QP1805');
-  assert.equal(a.attributes.departure, '2026-10-25 07:10');
-  assert.equal(a.attributes.arrival, '2026-10-25 09:30');
-  assert.equal(a.attributes.stops, '0');
+  assert.equal(a.attributes!.flight_number, 'QP1805');
+  assert.equal(a.attributes!.departure, '2026-10-25 07:10');
+  assert.equal(a.attributes!.arrival, '2026-10-25 09:30');
+  assert.equal(a.attributes!.stops, '0');
   assert.ok(String(a.identifiers?.sku).startsWith('DELBOMQP1805'));
   // 1-stop: arrival airport from the LAST segment
   const b = items[1];
   assert.equal(b.price, 7161);
-  assert.equal(b.attributes.stops, '1');
-  assert.equal(b.attributes.arrival, '2026-10-25 13:35');
-  assert.equal(b.attributes.destination, 'BOM');
+  assert.equal(b.attributes!.stops, '1');
+  assert.equal(b.attributes!.arrival, '2026-10-25 13:35');
+  assert.equal(b.attributes!.destination, 'BOM');
 });
 
 test('yatra: duplicate flight ids across batches are deduped, priceless flights skipped', () => {
@@ -98,8 +98,8 @@ test('yatra: calendar fallback emits one offer per airline for the requested dat
   const qp = items.find((i) => i.brand === 'Akasa Air')!;
   assert.equal(qp.price, 6675);
   assert.equal(qp.seller, 'Yatra');
-  assert.equal(qp.attributes.flight_number, 'QP1833');
-  assert.equal(qp.attributes.departure, '06:50');
+  assert.equal(qp.attributes!.flight_number, 'QP1833');
+  assert.equal(qp.attributes!.departure, '06:50');
   assert.ok(String(qp.sellerUrl).includes('flight.yatra.com'));
 });
 

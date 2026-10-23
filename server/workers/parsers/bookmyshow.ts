@@ -97,6 +97,34 @@ export function extractMovieQuery(entity: string, cityTokens: string[]): string 
   return clean.join(' ');
 }
 
+
+/** Owner 23 Oct ('koi v vertical results de hi ni raha app pr'): experience chips
+ * like "IMAX 3D evening show with recliner" or "Weekend tickets under ₹350" are
+ * NOT movie titles — strict title matching dropped every card and the whole
+ * movies vertical served zero for them. Such queries are treated as honest city
+ * discovery: every now-showing card is returned (the live sources already carry
+ * the format/showtime attributes the user asked for). Title-like queries keep
+ * the strict filter untouched. */
+const EXPERIENCE_TOKENS = new Set([
+  'imax', '3d', '2d', '4dx', 'dolby', 'atmos', 'recliner', 'recliners', 'recline',
+  'seat', 'seats', 'evening', 'morning', 'afternoon', 'night', 'weekend', 'weekday',
+  'show', 'shows', 'showtime', 'showtimes', 'under', 'below', 'within', 'price',
+  'prices', 'cheap', 'cheaper', 'budget', 'premium', 'luxury', 'luxe', 'with',
+  'experience', 'format', 'screen', 'screens', 'rs', 'inr', 'only', 'best', 'good',
+  // standard search stopwords (kept in sync with extractMovieQuery/matchesQuery)
+  'ticket', 'tickets', 'movie', 'movies', 'today', 'now', 'showing', 'latest',
+  'current', 'near', 'se', 'le', 'ki', 'ka', 'ke', 'aur', 'ya',
+]);
+export function isExperienceOnlyQuery(q: string): boolean {
+  const toks = normCity(q).split(' ').filter(Boolean);
+  if (!toks.length) return false;
+  return toks.every((t) => EXPERIENCE_TOKENS.has(t) || /^[\d.,\u20b9]+$/.test(t));
+}
+/** Strict title matching stays for real titles; experience-only chips become city discovery. */
+export function effectiveMovieQuery(q: string): string {
+  return isExperienceOnlyQuery(q) ? '' : q;
+}
+
 /** Strict token matching: every query token must appear in the title (owner mandate, no fuzzy substitutes). */
 export function matchesQuery(title: string, query: string): boolean {
   const toks = normCity(query).split(' ').filter((t) => t.length > 1 && !['in', 'near', 'movie', 'movies', 'tickets', 'ticket', 'show', 'shows', 'today', 'now', 'showing'].includes(t));

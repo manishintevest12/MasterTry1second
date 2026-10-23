@@ -13,6 +13,9 @@ const cfg = (over: Partial<CabDeeplinkConfig> = {}): CabDeeplinkConfig => ({
   olaExtraParams: 'utm_source=try1second',
   uberEnabled: true,
   olaEnabled: true,
+  rapidoBaseUrl: 'https://rapido.cc/ride',
+  rapidoExtraParams: '',
+  rapidoEnabled: true,
   ...over,
 });
 

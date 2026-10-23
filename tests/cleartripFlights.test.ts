@@ -55,18 +55,18 @@ test('cleartrip: v2 fare matrix parses to offers with real INR totals, coupon, s
   assert.equal(qp.brand, 'Akasa Air');
   assert.equal(qp.price, 6675);
   assert.equal(qp.seller, 'Cleartrip');
-  assert.equal(qp.attributes.departure, '07:10');
-  assert.equal(qp.attributes.arrival, '09:30');
-  assert.equal(qp.attributes.stops, '0');
-  assert.equal(qp.attributes.origin, 'DEL');
-  assert.equal(qp.attributes.destination, 'BOM');
-  assert.equal(qp.attributes.duration, '02h 20m');
-  assert.equal(qp.attributes.coupon, '₹934 off with BBDHDFC');
-  assert.equal(qp.travel.date, '2026-10-25');
+  assert.equal(qp.attributes!.departure, '07:10');
+  assert.equal(qp.attributes!.arrival, '09:30');
+  assert.equal(qp.attributes!.stops, '0');
+  assert.equal(qp.attributes!.origin, 'DEL');
+  assert.equal(qp.attributes!.destination, 'BOM');
+  assert.equal(qp.attributes!.duration, '02h 20m');
+  assert.equal(qp.attributes!.coupon, '₹934 off with BBDHDFC');
+  assert.equal(qp.travel!.date, '2026-10-25');
   assert.ok(String(qp.sellerUrl).startsWith('https://www.cleartrip.com/flights/results?from=DEL'));
   assert.equal(ix.brand, 'Air India Express');
   assert.equal(ix.price, 6844);
-  assert.ok(!('coupon' in ix.attributes)); // no coupon message -> no coupon attr
+  assert.ok(!('coupon' in ix.attributes!)); // no coupon message -> no coupon attr
 });
 
 test('cleartrip: broken/empty payloads return empty, never throw', () => {
@@ -104,14 +104,14 @@ test('cleartrip: new nested airport.time shape parses times + travel_date persis
   const fares = { [FARE_ID_QP]: { pricing: { totalPricing: { totalPrice: 4432 } } } };
   const rows = parseCleartripFlights(JSON.stringify({ cards: { J1: [card] }, subTravelOptions: subs, fares }), src, 'Delhi', 'Mumbai', '2026-10-29');
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].attributes.departure, '07:15');
-  assert.equal(rows[0].attributes.arrival, '09:35');
-  assert.equal(rows[0].attributes.travel_date, '2026-10-29');
-  assert.equal(rows[0].sellerUrl.startsWith('https://www.cleartrip.com/flights/results?'), true);
+  assert.equal(rows[0]!.attributes!.departure, '07:15');
+  assert.equal(rows[0]!.attributes!.arrival, '09:35');
+  assert.equal(rows[0]!.attributes!.travel_date, '2026-10-29');
+  assert.equal(rows[0]!.sellerUrl!.startsWith('https://www.cleartrip.com/flights/results?'), true);
 });
 
 test('cleartrip: legacy flat .time shape still parses (backward compatible)', () => {
   const rows = parseCleartripFlights(body(FIXTURE), src, 'Delhi', 'Mumbai', '2026-10-25');
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].attributes.departure, '07:10');
+  assert.equal(rows[0]!.attributes!.departure, '07:10');
 });

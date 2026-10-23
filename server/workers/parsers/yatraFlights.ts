@@ -185,7 +185,7 @@ export function yatraCalendarItems(
     return [];
   }
   if (typeof root === 'string') { try { root = JSON.parse(root); } catch { return []; } }
-  const day = root?.day;
+  const day: any = root?.day;
   if (!day || typeof day !== 'object') return [];
 
   const exact = day[depIso];
@@ -200,7 +200,7 @@ export function yatraCalendarItems(
   const dateLabel = targetKey === depIso ? `on ${targetKey}` : `(cheapest upcoming, ${targetKey})`;
   const srp = yatraSrpUrl(fromCode, toCode, targetKey);
   const items: RawSourceItem[] = [];
-  for (const [code, af] of Object.entries(day[targetKey].af)) {
+  for (const [code, af] of Object.entries((day[targetKey] as any).af as Record<string, any>)) {
     const price = Number(af?.tf);
     if (!Number.isFinite(price) || price <= 0) continue;
     const ow = Array.isArray(af.ow) ? af.ow[0] : null;

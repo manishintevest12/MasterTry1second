@@ -13503,6 +13503,24 @@ function citySlug(city, raw) {
   }
   return null;
 }
+function zomatoPresence(source, slug2, term, reason) {
+  const q3 = encodeURIComponent(term || "restaurants");
+  const url = `https://www.zomato.com/${slug2}/restaurants?q=${q3}`;
+  const label = term ? `\`${term}\`` : "restaurants";
+  return [newRawItem(source, {
+    title: `Zomato: ${label} in ${slug2} \u2014 browse menus & order on Zomato`.slice(0, 200),
+    seller: "Zomato",
+    sellerUrl: url,
+    currency: "INR",
+    attributes: {
+      platform: "Zomato",
+      price_basis: "app_only_fares",
+      data_note: `Zomato's edge blocked our listing crawl (${reason}); menus and live prices are on Zomato itself \u2014 this is a direct handoff, no prices invented.`
+    },
+    identifiers: { sku: `zomato-search-${slug2}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
+    evidence: { sourceUrl: url, extractedFields: ["seller", "deeplink"], sourceReference: "Zomato search deeplink (availability handoff while the listing crawl is edge-gated)" }
+  })];
+}
 var ZOMATO_SLUGS, CITY_COORDS, foodWorker;
 var init_food = __esm({
   "server/workers/verticals/food.ts"() {
@@ -13652,6 +13670,17 @@ var init_food = __esm({
             return parseSwiggyDishes(r.body, ctx.source, url, ctx.query.location?.city || "New Delhi");
           }
         },
+        /**
+         * Honest Zomato presence row (owner 23 Oct: Zomato must ALWAYS be represented in
+         * food results). When Akamai's edge gates the listing crawl (403/202/429 or a
+         * challenge shell) we still know the deeplink works from the USER's device —
+         * the gate only bites datacenter IPs. The row claims availability only; menu
+         * prices stay unknown (price_basis app_only_fares passes validation with the
+         * fare flagged unverified, exactly like the Uber/Rapido presence rows).
+         * Meanwhile the listing attempt itself runs on EVERY search (the source never
+         * hides its circuit behind a challenge ladder), so the moment the edge samples
+         * a 200 through, real listings replace this row — self-healing by construction.
+         */
         {
           sourceId: "w_food_zomato",
           name: "Food worker: Zomato public restaurant listings",
@@ -13663,13 +13692,13 @@ var init_food = __esm({
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
             const url = `https://www.zomato.com/${slug2}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
             let r = await ctx.fetch(url);
-            if (r.status === 403 || r.status === 202 || r.status === 429) {
-              await new Promise((res) => setTimeout(res, 1500));
+            for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429); attempt++) {
+              await new Promise((res) => setTimeout(res, 900));
               r = await ctx.fetch(url);
             }
-            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Zomato HTTP ${r.status}`, r.status);
+            if (r.status !== 200) return zomatoPresence(ctx.source, slug2, term, `HTTP ${r.status}`);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
-            if (!items.length && looksLikeChallenge(r.body)) throw new AcquisitionError("ACCESS_CHALLENGE", "Zomato presented a challenge page");
+            if (!items.length && looksLikeChallenge(r.body)) return zomatoPresence(ctx.source, slug2, term, "challenge shell");
             const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
             const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
@@ -18441,6 +18470,14 @@ function extractMovieQuery(entity, cityTokens) {
   const clean3 = entity.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !cityTokens.includes(w) && !["movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing", "near", "in", "the", "latest", "current"].includes(w));
   return clean3.join(" ");
 }
+function isExperienceOnlyQuery(q3) {
+  const toks2 = normCity(q3).split(" ").filter(Boolean);
+  if (!toks2.length) return false;
+  return toks2.every((t) => EXPERIENCE_TOKENS.has(t) || /^[\d.,\u20b9]+$/.test(t));
+}
+function effectiveMovieQuery(q3) {
+  return isExperienceOnlyQuery(q3) ? "" : q3;
+}
 function matchesQuery(title, query) {
   const toks2 = normCity(query).split(" ").filter((t) => t.length > 1 && !["in", "near", "movie", "movies", "tickets", "ticket", "show", "shows", "today", "now", "showing"].includes(t));
   if (!toks2.length) return true;
@@ -18548,7 +18585,7 @@ function parseUpcomingCards(payload, region) {
   }
   return out.slice(0, 20);
 }
-var REGIONS_URL, DISCOVER_BASE, DEFAULT_REGION, regionsCache, MOVIE_QUERY_NOISE;
+var REGIONS_URL, DISCOVER_BASE, DEFAULT_REGION, regionsCache, MOVIE_QUERY_NOISE, EXPERIENCE_TOKENS;
 var init_bookmyshow = __esm({
   "server/workers/parsers/bookmyshow.ts"() {
     init_contract();
@@ -18557,6 +18594,68 @@ var init_bookmyshow = __esm({
     DEFAULT_REGION = { regionCode: "BANG", regionSlug: "bengaluru", regionName: "Bengaluru" };
     regionsCache = null;
     MOVIE_QUERY_NOISE = /\b(movie|movies|ticket|tickets|show|shows|showing|showtime|showtimes|today|tonight|now|near|me|latest|current|cinema|cinemas|this|weekend|book|buy|watch|bms|near\s+me)\b/gi;
+    EXPERIENCE_TOKENS = /* @__PURE__ */ new Set([
+      "imax",
+      "3d",
+      "2d",
+      "4dx",
+      "dolby",
+      "atmos",
+      "recliner",
+      "recliners",
+      "recline",
+      "seat",
+      "seats",
+      "evening",
+      "morning",
+      "afternoon",
+      "night",
+      "weekend",
+      "weekday",
+      "show",
+      "shows",
+      "showtime",
+      "showtimes",
+      "under",
+      "below",
+      "within",
+      "price",
+      "prices",
+      "cheap",
+      "cheaper",
+      "budget",
+      "premium",
+      "luxury",
+      "luxe",
+      "with",
+      "experience",
+      "format",
+      "screen",
+      "screens",
+      "rs",
+      "inr",
+      "only",
+      "best",
+      "good",
+      // standard search stopwords (kept in sync with extractMovieQuery/matchesQuery)
+      "ticket",
+      "tickets",
+      "movie",
+      "movies",
+      "today",
+      "now",
+      "showing",
+      "latest",
+      "current",
+      "near",
+      "se",
+      "le",
+      "ki",
+      "ka",
+      "ke",
+      "aur",
+      "ya"
+    ]);
   }
 });
 
@@ -19203,7 +19302,7 @@ var init_movies = __esm({
             if (res.status !== 200) throw new AcquisitionError("SERVER_ERROR", `BMS discovery ${res.status}`, res.status);
             const payload = JSON.parse(res.body);
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
-            const queryTerm = entity ? extractMovieQuery(entity, stripTokens) : "";
+            const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, stripTokens)) : "";
             const fingerprint = (0, import_node_crypto3.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
             const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
             const gwCity = gwCitySlug(typedCity || region.regionName || "");
@@ -19258,7 +19357,7 @@ var init_movies = __esm({
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
             const keys = ticketnewCityKeys(city);
             if (keys.length === 0) return [];
-            const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
+            const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean))) : "";
             let lastErr = null;
             for (const key of keys.slice(0, 2)) {
               try {
@@ -19297,7 +19396,7 @@ var init_movies = __esm({
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
-            const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
+            const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean))) : "";
             const res = await cffiFetch(CINEPOLIS_MOVIE_LIST_URL, { timeoutMs: 25e3 });
             if (res.status === 403 || res.status === 429) {
               throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `Cinepolis blocked: ${res.status}`, res.status);
@@ -19333,7 +19432,7 @@ var init_movies = __esm({
           run: async (ctx) => {
             const entity = String(ctx.query.entityName || "").trim();
             const city = await cityFromMovieQuery(String(ctx.query.rawQuery || ""), ctx.query.location?.city, fetchJsonNode) || "";
-            const queryTerm = entity ? extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean)) : "";
+            const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, normCity(city).split(" ").filter(Boolean))) : "";
             const res = await cffiFetch(DISTRICT_MOVIES_URL, { timeoutMs: 25e3 });
             if (res.status === 403 || res.status === 429) {
               throw new AcquisitionError(res.status === 403 ? "FORBIDDEN" : "RATE_LIMITED", `District blocked: ${res.status}`, res.status);
@@ -24805,7 +24904,8 @@ var init_affiliateNetwork = __esm({
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
   routeFloorMatches: () => routeFloorMatches,
-  runSearch: () => runSearch
+  runSearch: () => runSearch,
+  runSearchPolled: () => runSearchPolled
 });
 function parseCatalogueAttributes(raw) {
   if (!raw) return {};
@@ -24895,6 +24995,24 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2
     totalSearchLatencyMs: Date.now() - start2
   };
 }
+async function stillAcquiringResponse(parsed, start2) {
+  return {
+    query: parsed,
+    results: [],
+    state: {
+      servedFrom: "unavailable",
+      sourcesAttempted: [],
+      sourcesSucceeded: [],
+      sourcesFailed: [],
+      reusedCatalogue: false,
+      triggeredRefresh: true,
+      pendingRefresh: true,
+      honestNotice: "Live sources are still scanning for exactly what you typed \u2014 results start arriving within seconds."
+    },
+    latencyMs: Date.now() - start2,
+    totalSearchLatencyMs: Date.now() - start2
+  };
+}
 function routeFloorMatches(rawQuery, offer) {
   const q3 = String(rawQuery || "").toLowerCase();
   const sides = q3.split(/\s+to\s+/);
@@ -24922,6 +25040,27 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
     offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
   }
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
+}
+async function runSearchPolled(input, deadlineMs = 15e3) {
+  const deadline = Date.now() + deadlineMs;
+  let best = await runSearch(input);
+  while (Date.now() < deadline) {
+    const latestPending = (best.state && best.state.pendingRefresh) === true;
+    if (!latestPending) break;
+    await new Promise((r) => setTimeout(r, 1500));
+    let next;
+    try {
+      next = await runSearch(input);
+    } catch {
+      break;
+    }
+    if ((next.results || []).length > (best.results || []).length) best = next;
+    if (next.state && next.state.pendingRefresh !== true) {
+      if ((next.results || []).length > 0) best = next;
+      break;
+    }
+  }
+  return best;
 }
 async function runSearch(input) {
   const totalStart = Date.now();
@@ -24995,7 +25134,7 @@ async function runSearch(input) {
     }
     const offers = await freshCatalogueOffers(vertical, input, parsed);
     if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
-    return running2;
+    return await stillAcquiringResponse(parsed, totalStart);
   }
   {
     const offers = await freshCatalogueOffers(vertical, input, parsed);
@@ -25072,14 +25211,21 @@ async function runSearch(input) {
   if (floorOffers.length > 0) {
     return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
   }
+  const COLD_DEADLINE_MS = Number(process.env.T1S_COLD_DEADLINE_MS) || 3200;
+  const deadlineRemaining = Math.max(0, COLD_DEADLINE_MS - (Date.now() - totalStart));
   const next = await Promise.race([
     full.then((r) => ({ kind: "full", r })),
-    firstRow
+    firstRow,
+    new Promise((resolve) => {
+      setTimeout(() => resolve({ kind: "deadline" }), deadlineRemaining);
+    })
   ]);
   if (next.kind === "full") return next.r;
   const p2 = await servePartial();
   if (p2) return p2;
-  return await full;
+  const marker = await stillAcquiringResponse(parsed, totalStart);
+  cachePut(cacheKey, marker, 6, 6);
+  return marker;
 }
 async function buildLiveCtx(parsedIn, input) {
   const parsed = parsedIn;
@@ -28686,12 +28832,12 @@ async function warmRows(rows, tag) {
   let ok = 0;
   for (const r of rows) {
     try {
-      const res = await runSearch({
+      const res = await runSearchPolled({
         query: String(r.raw_query || r.query || ""),
         vertical: r.v || r.vertical ? String(r.v || r.vertical) : void 0,
         pincode: r.pincode ? String(r.pincode) : void 0,
         city: r.city ? String(r.city) : void 0
-      });
+      }, 2e4);
       ok += 1;
       log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
     } catch (e) {
@@ -30146,7 +30292,7 @@ var init_routes = __esm({
       }
       const vertical = verticalForScanUrl(url, product.domain);
       const scanQuery = searchableTitle(product.title);
-      const search = await runSearch({
+      const search = await runSearchPolled({
         query: scanQuery,
         vertical: vertical === "movie" ? "movies" : vertical,
         city: req.body?.city,
@@ -30226,7 +30372,7 @@ var init_routes = __esm({
         });
       }
       const lensQuery = searchableTitle(product.title);
-      const response = await runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode });
+      const response = await runSearchPolled({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode });
       const priced = response.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0 && isSameProduct(lensQuery, String(x.o.title || "")));
       const results = priced.sort((a, b) => a.price - b.price).slice(0, 30).map(({ o, price }) => ({
         id: o.id,
@@ -30286,9 +30432,9 @@ var init_routes = __esm({
         return keep && keep !== lensQuery ? keep : "";
       })();
       const searches = [
-        runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode })
+        runSearchPolled({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode })
       ];
-      if (broadQuery) searches.push(runSearch({ query: broadQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }));
+      if (broadQuery) searches.push(runSearchPolled({ query: broadQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }));
       const responses = await Promise.all(searches);
       const seenIds = /* @__PURE__ */ new Set();
       const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
@@ -30591,7 +30737,7 @@ var init_routes = __esm({
         if (!items.length) return res.status(400).json({ success: false, error: "Add at least one product to the Smart Cart." });
         const searches = await Promise.all(items.map(async (it) => {
           try {
-            const response = await runSearch({ query: it.name, vertical: "grocery", pincode: req.body.pincode, city: req.body.city, locality: req.body.locality });
+            const response = await runSearchPolled({ query: it.name, vertical: "grocery", pincode: req.body.pincode, city: req.body.city, locality: req.body.locality });
             const offers = response.results.filter((o) => unitPriceOf(o) > 0 && o?.seller).map((o) => ({
               seller: String(o.seller).slice(0, 80),
               price: unitPriceOf(o),
@@ -32869,7 +33015,7 @@ function startWorkers() {
     void withLock("price-alerts", async () => {
       try {
         const { checkAlertsOnce: checkAlertsOnce2 } = await Promise.resolve().then(() => (init_priceAlerts(), priceAlerts_exports));
-        const { runSearch: runSearch2 } = await Promise.resolve().then(() => (init_searchOrchestrator(), searchOrchestrator_exports));
+        const { runSearchPolled: runSearch2 } = await Promise.resolve().then(() => (init_searchOrchestrator(), searchOrchestrator_exports));
         const { isSameProduct: isSameProduct2 } = await Promise.resolve().then(() => (init_sameProduct(), sameProduct_exports));
         const { createMaskingPointer: createMaskingPointer2 } = await Promise.resolve().then(() => (init_deeplink(), deeplink_exports));
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));

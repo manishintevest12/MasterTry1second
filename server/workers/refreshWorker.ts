@@ -45,7 +45,7 @@ export function startWorkers() {
     void withLock('price-alerts', async () => {
       try {
         const { checkAlertsOnce } = await import('../lens/priceAlerts');
-        const { runSearch } = await import('../search/searchOrchestrator');
+        const { runSearchPolled: runSearch } = await import('../search/searchOrchestrator');
         const { isSameProduct } = await import('../lens/sameProduct');
         const { createMaskingPointer } = await import('../affiliate/deeplink');
         const { settings } = await import('../common/settings');
