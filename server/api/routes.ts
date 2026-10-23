@@ -479,6 +479,19 @@ apiRouter.post('/quick-apps/go', async (req: any, res) => {
 
 // GET /api/home/showcase — the 8 curated homepage sections (owner spec 21 Oct).
 // Real rows only; empty sections are omitted. Cached in-process for 10 min.
+// GET /api/home/hero-banners — mixed-content hero carousel slides (owner 23
+// Oct: slide 1 movie, slide 2 food, slide 3 ecom deal — composed from LIVE
+// data, admin customs first). Web + Flutter consume the same payload.
+apiRouter.get('/home/hero-banners', async (_req, res) => {
+  try {
+    const { buildHeroBanners } = await import('../home/heroBanners');
+    const slides = await buildHeroBanners();
+    res.json({ success: true, slides });
+  } catch {
+    res.json({ success: true, slides: [] }); // honest: carousel hidden until data exists
+  }
+});
+
 apiRouter.get('/home/showcase', async (_req, res) => {
   try {
     const sections = await buildShowcase();

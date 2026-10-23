@@ -18,6 +18,9 @@ class SessionCache {
 
   static void put(String key, Object value) => _bag[key] = value;
 
+  /// Test-only: clears the session bag between widget tests.
+  static void reset() => _bag.clear();
+
   /// Returns the cached result instantly when present; otherwise awaits
   /// [fetch] and stores its value on success (never on throw).
   static Future<T> once<T extends Object>(String key, Future<T> Function() fetch) async {

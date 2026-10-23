@@ -1229,7 +1229,7 @@ function recordSuccess(sourceId, latencyMs) {
 function recordFailure(sourceId, failureClass, error) {
   const h = getHealth(sourceId);
   h.totalAttempts += 1;
-  if (failureClass === "RATE_LIMITED") {
+  if (failureClass === "RATE_LIMITED" || failureClass === "EMPTY_RESPONSE") {
     h.lastFailureAt = (/* @__PURE__ */ new Date()).toISOString();
     h.lastFailureClass = failureClass;
     h.state = h.state === "CIRCUIT_OPEN" ? h.state : "DEGRADED";
@@ -1568,7 +1568,14 @@ async function httpAcquire(url, opts) {
           await backoff(500 * Math.pow(2, attempt));
           continue;
         }
-        log.warn("HttpClient", `Acquisition failed for ${sourceId}`, { failureClass, error: String(err.message || err).slice(0, 200) });
+        const dedupeKey = `${sourceId}|${failureClass}`;
+        const lastWarnAt = acquisitionWarnDedupe.get(dedupeKey) || 0;
+        if (Date.now() - lastWarnAt > 3e5) {
+          log.warn("HttpClient", `Acquisition failed for ${sourceId}`, { failureClass, error: String(err.message || err).slice(0, 200) });
+          acquisitionWarnDedupe.set(dedupeKey, Date.now());
+        } else {
+          log.debug("HttpClient", `Acquisition failed for ${sourceId} (repeat, deduped from WARN)`, { failureClass });
+        }
         throw new AcquisitionError(failureClass, String(err.message || err), err?.httpStatus);
       }
     }
@@ -1591,12 +1598,13 @@ async function httpHealthCheck(url, sourceId) {
     return { healthy: false, latencyMs: 0, failureClass: e.failureClass || "UNKNOWN" };
   }
 }
-var AcquisitionError, buckets, inflightPerSource, globalInflight, DEFAULT_UA;
+var acquisitionWarnDedupe, AcquisitionError, buckets, inflightPerSource, globalInflight, DEFAULT_UA;
 var init_httpClient = __esm({
   "server/common/httpClient.ts"() {
     init_settings();
     init_logger();
     init_curlCffiFetch();
+    acquisitionWarnDedupe = /* @__PURE__ */ new Map();
     AcquisitionError = class extends Error {
       constructor(failureClass, message, httpStatus) {
         super(message);
@@ -5705,7 +5713,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
-var OYO_WEB_URL, ddmmyyyy2, agodaCityIdCache, hotelsWorker;
+var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy2, agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -5731,6 +5739,7 @@ var init_hotels = __esm({
     init_emtHotels();
     init_saffronStays();
     init_agodaHotels();
+    cleartripArtDeadUntil = 0;
     OYO_WEB_URL = "https://www.oyorooms.com";
     ddmmyyyy2 = (iso2) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
@@ -6023,22 +6032,28 @@ var init_hotels = __esm({
             const rows = parseCleartripOffers(hotels, ctx.source);
             const firstImg = rows.find((r) => r.attributes?.image_url || r.attributes?.image_urls)?.attributes?.image_url;
             if (firstImg) {
+              const cachedDead = cleartripArtDeadUntil > Date.now();
               let live = false;
-              try {
-                const ctl = new AbortController();
-                const t = setTimeout(() => ctl.abort(), 4e3);
-                const res = await fetch(firstImg, { signal: ctl.signal, redirect: "follow" });
-                clearTimeout(t);
-                live = res.status === 200 && String(res.headers.get("content-type") || "").startsWith("image/");
-              } catch {
-                live = false;
+              if (!cachedDead) {
+                try {
+                  const ctl = new AbortController();
+                  const t = setTimeout(() => ctl.abort(), 4e3);
+                  const res = await fetch(firstImg, { signal: ctl.signal, redirect: "follow" });
+                  clearTimeout(t);
+                  live = res.status === 200 && String(res.headers.get("content-type") || "").startsWith("image/");
+                } catch {
+                  live = false;
+                }
               }
               if (!live) {
+                if (!cachedDead) cleartripArtDeadUntil = Date.now() + 60 * 6e4;
                 for (const r of rows) {
                   if (r.attributes?.image_url) delete r.attributes.image_url;
                   if (r.attributes?.image_urls) delete r.attributes.image_urls;
                 }
-                log.warn("Hotels worker", "Cleartrip CDN art dead \u2014 images stripped for this batch (self-healing)", { probe: String(firstImg).slice(0, 80) });
+                if (!cachedDead) {
+                  log.warn("Hotels worker", "Cleartrip CDN art dead \u2014 images stripped; hourly re-probe will re-arm art (self-healing)", { probe: String(firstImg).slice(0, 80) });
+                }
               }
             }
             return rows;
@@ -17511,6 +17526,15 @@ var init_zeptoSsr = __esm({
 });
 
 // server/common/awsWafChallenge.ts
+async function makeQuietVirtualConsole() {
+  const { VirtualConsole } = await import("jsdom");
+  const vc = new VirtualConsole();
+  vc.on("jsdomError", (e) => {
+    const msg = String(e?.message || e);
+    if (!/not implemented|could not load/i.test(msg)) log.warn("AwsWaf", "jsdom error in WAF challenge", { error: msg.slice(0, 160) });
+  });
+  return vc;
+}
 function makeAwsWafSolver(cffiFetch2) {
   const serializeFormData = (fd) => {
     const boundary = "----WebKitFormBoundary" + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
@@ -17541,7 +17565,8 @@ ${v}\r
     const cj = await cffiFetch2(m[1], { impersonate: "chrome", timeoutMs: 25e3, headers: { "User-Agent": UA2 } });
     if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
     const { JSDOM } = await import("jsdom");
-    const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true });
+    const vc = await makeQuietVirtualConsole();
+    const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
     const w = dom.window;
     Object.defineProperty(w, "crypto", {
       value: { ...w.crypto || {}, subtle: import_node_crypto2.webcrypto.subtle, getRandomValues: (b) => import_node_crypto2.webcrypto.getRandomValues(b) },
@@ -17605,6 +17630,7 @@ var import_node_crypto2, UA2, CACHE_TTL_MS, tokenCache;
 var init_awsWafChallenge = __esm({
   "server/common/awsWafChallenge.ts"() {
     import_node_crypto2 = require("node:crypto");
+    init_logger();
     UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     CACHE_TTL_MS = 15e4;
     tokenCache = /* @__PURE__ */ new Map();
@@ -28879,6 +28905,152 @@ var init_quickAppsData = __esm({
   }
 });
 
+// server/home/heroBanners.ts
+var heroBanners_exports = {};
+__export(heroBanners_exports, {
+  buildHeroBanners: () => buildHeroBanners
+});
+async function upcomingMovies() {
+  const key = "default";
+  const hit = upcomingCache.get(key);
+  if (hit && Date.now() - hit.at < 30 * 6e4) return hit.movies;
+  const fetchJson = async (url) => {
+    const r2 = await cffiFetch(url, { impersonate: "safari", timeoutMs: 15e3, headers: { Accept: "application/json" } });
+    if (r2.status !== 200) throw new Error(`HTTP ${r2.status}`);
+    return JSON.parse(r2.body || "{}");
+  };
+  const region = await resolveBmsRegion(void 0, fetchJson);
+  let r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+  if (r.status !== 200) r = await cffiFetch(bmsUpcomingUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+  if (r.status !== 200) return [];
+  const movies = parseUpcomingCards(JSON.parse(r.body || "{}"), region).map((m) => ({
+    title: m.title,
+    genres: m.genres,
+    likes: m.likes,
+    releaseDate: m.releaseDate,
+    poster: m.poster,
+    pageUrl: m.pageUrl,
+    trailerUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent((m.title || "") + " official trailer")}`
+  }));
+  if (movies.length) upcomingCache.set(key, { at: Date.now(), movies });
+  return movies;
+}
+async function movieSlide() {
+  const movies = await upcomingMovies();
+  const m = movies.find((x) => x.poster);
+  if (!m) return null;
+  const metaBits = [m.genres, m.likes].filter(Boolean).join(" \u2022 ") || null;
+  return {
+    id: `movie-${m.title}`,
+    kind: "movie",
+    badge: "PREMIERE",
+    subheading: "Brand new releases every Friday",
+    heading: m.title,
+    meta: metaBits,
+    language: null,
+    synopsis: null,
+    // BMS's upcoming tab carries no plot text — honestly omitted
+    poster: m.poster,
+    backdrop: m.poster,
+    cta: "Watch Trailer",
+    url: m.trailerUrl,
+    launch: { vertical: "movies", query: m.title }
+  };
+}
+async function foodSlide() {
+  const rows = await fetchVerticalOffers("food", 200);
+  const c = rows.filter((r2) => servableRow(r2, 14) && imageFromAttributes(r2.attributes)).sort((a, b) => new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime());
+  const r = c[0];
+  if (!r) return null;
+  return {
+    id: `food-${r.id}`,
+    kind: "food",
+    badge: "FOOD PICK",
+    subheading: "Fresh dishes from top-rated kitchens near you",
+    heading: r.title,
+    meta: [r.seller, r.location_city].filter(Boolean).join(" \xB7 ") || null,
+    language: null,
+    synopsis: null,
+    poster: imageFromAttributes(r.attributes),
+    backdrop: imageFromAttributes(r.attributes),
+    cta: "Order Now",
+    url: null,
+    launch: { vertical: "food", query: r.title }
+  };
+}
+async function ecomSlide() {
+  const rows = await fetchVerticalOffers("ecommerce", 600);
+  const c = rows.filter((r2) => servableRow(r2, 14) && imageFromAttributes(r2.attributes) && pctOf(r2) >= 0.4).sort((a, b) => pctOf(b) - pctOf(a));
+  const r = c[0];
+  if (!r) return null;
+  const price = priceOf(r);
+  const pct = Math.round(pctOf(r) * 100);
+  return {
+    id: `ecom-${r.id}`,
+    kind: "ecommerce",
+    badge: "MEGA DEAL",
+    subheading: "Biggest savings, live-verified prices",
+    heading: r.title,
+    meta: `${pct}% OFF \xB7 now \u20B9${price.toLocaleString("en-IN")}`,
+    language: null,
+    synopsis: null,
+    poster: imageFromAttributes(r.attributes),
+    backdrop: imageFromAttributes(r.attributes),
+    cta: "Grab Deal",
+    url: null,
+    launch: { vertical: "ecommerce", query: r.title }
+  };
+}
+async function customSlides() {
+  try {
+    const rows = await getStore().query("SELECT * FROM home_banners WHERE poster_url IS NOT NULL AND (is_active = 1)");
+    return rows.sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+      id: `custom-${r.id}`,
+      kind: "custom",
+      badge: String(r.badge || "FEATURED"),
+      subheading: r.subheading ? String(r.subheading) : null,
+      heading: String(r.heading || r.title || "Featured"),
+      meta: r.meta ? String(r.meta) : null,
+      language: r.language ? String(r.language) : null,
+      synopsis: r.synopsis ? String(r.synopsis) : null,
+      poster: String(r.poster_url || ""),
+      backdrop: String(r.image_url || r.poster_url || ""),
+      cta: String(r.cta || "Explore"),
+      url: /^https?:\/\//.test(String(r.link_url || "")) ? String(r.link_url) : null,
+      launch: /^https?:\/\//.test(String(r.link_url || "")) ? null : { vertical: String(r.link_url || "ecommerce"), query: String(r.heading || r.title || "") }
+    }));
+  } catch (e) {
+    log.debug("HeroBanners", "custom slides unavailable", { error: String(e).slice(0, 100) });
+    return [];
+  }
+}
+async function buildHeroBanners() {
+  if (heroCache && Date.now() - heroCache.at < HERO_TTL_MS) return heroCache.slides;
+  const [custom, movie, food, ecom] = await Promise.all([
+    customSlides().catch(() => []),
+    movieSlide().catch(() => null),
+    foodSlide().catch(() => null),
+    ecomSlide().catch(() => null)
+  ]);
+  const live = [movie, food, ecom].filter((s) => !!s);
+  const slides = [...custom, ...live].slice(0, 8);
+  if (slides.length) heroCache = { at: Date.now(), slides };
+  return slides;
+}
+var HERO_TTL_MS, heroCache, upcomingCache;
+var init_heroBanners = __esm({
+  "server/home/heroBanners.ts"() {
+    init_curlCffiFetch();
+    init_bookmyshow();
+    init_showcase();
+    init_logger();
+    init_db();
+    HERO_TTL_MS = 10 * 6e4;
+    heroCache = null;
+    upcomingCache = /* @__PURE__ */ new Map();
+  }
+});
+
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
@@ -29775,7 +29947,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits;
+var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -29955,11 +30127,11 @@ var init_routes = __esm({
         return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
       }
     });
-    upcomingCache = /* @__PURE__ */ new Map();
+    upcomingCache2 = /* @__PURE__ */ new Map();
     apiRouter.get("/movies/upcoming", async (req, res) => {
       const city = String(req.query.city || "").slice(0, 60).trim();
       const cacheKey = (city || "default").toLowerCase();
-      const hit = upcomingCache.get(cacheKey);
+      const hit = upcomingCache2.get(cacheKey);
       if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies });
       try {
         const fetchJson = async (url) => {
@@ -29985,7 +30157,7 @@ var init_routes = __esm({
           // merchant redirect policy: every exit routes through /api/out via a masking pointer
           goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
         }));
-        if (movies.length) upcomingCache.set(cacheKey, { at: Date.now(), movies });
+        if (movies.length) upcomingCache2.set(cacheKey, { at: Date.now(), movies });
         return res.json({ movies });
       } catch (e) {
         return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
@@ -30178,6 +30350,15 @@ var init_routes = __esm({
         res.json({ success: true, goUrls });
       } catch {
         res.status(400).json({ success: false, error: "bad_request" });
+      }
+    });
+    apiRouter.get("/home/hero-banners", async (_req, res) => {
+      try {
+        const { buildHeroBanners: buildHeroBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
+        const slides = await buildHeroBanners2();
+        res.json({ success: true, slides });
+      } catch {
+        res.json({ success: true, slides: [] });
       }
     });
     apiRouter.get("/home/showcase", async (_req, res) => {

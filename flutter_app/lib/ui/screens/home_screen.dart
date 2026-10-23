@@ -8,6 +8,7 @@ import '../widgets/home_hero.dart';
 import '../widgets/kit.dart';
 import '../widgets/home_banner_strip.dart';
 import '../widgets/home_showcase.dart';
+import '../widgets/hero_banner_carousel.dart';
 import '../widgets/upcoming_movies_rail.dart';
 import '../widgets/home_lens_and_assistant.dart';
 import '../../core/session_cache.dart';
@@ -54,6 +55,14 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
           child: HomeLensAndAssistant(api: _state.api),
         ),
+        // Hero banner carousel (owner 23 Oct, BookMyShow reference): mixed
+        // movie / food / ecom-deal slides, clearly visible near the top.
+        HeroBannerCarousel(
+          api: _state.api,
+          onLaunch: (vertical, query) =>
+              _state.openVertical(vertical, search: query.isEmpty ? null : PendingSearch(vertical, query)),
+        ),
+        const SizedBox(height: 18),
         if (_apps.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),

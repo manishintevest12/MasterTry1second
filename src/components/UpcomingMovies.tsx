@@ -64,7 +64,7 @@ export const UpcomingMovies: React.FC = () => {
             rel="noopener noreferrer"
             className="rounded-xl border border-slate-200 bg-white overflow-hidden hover:shadow-lg transition-shadow"
           >
-            <div className="aspect-[2/3] bg-slate-100">
+            <div className="relative aspect-[2/3] bg-slate-100">
               {m.poster && (
                 <img
                   src={m.poster}
@@ -73,12 +73,20 @@ export const UpcomingMovies: React.FC = () => {
                   className="w-full h-full object-cover"
                 />
               )}
+              {m.releaseDate && (
+                <span className="absolute top-1.5 left-1.5 bg-black/85 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                  {m.releaseDate}
+                </span>
+              )}
+              {m.likes && (
+                <div className="absolute bottom-0 inset-x-0 bg-[#1a1a1a] px-2 py-1.5 flex items-center gap-1">
+                  <ThumbsUp className="w-3 h-3 text-emerald-500 fill-emerald-500 shrink-0" />
+                  <span className="text-[10px] font-bold text-white truncate">{m.likes.replace(/\s*Likes\s*$/i, ' Likes')}</span>
+                </div>
+              )}
             </div>
             <div className="p-2">
               <p className="text-[12px] font-bold text-slate-900 leading-tight line-clamp-1">{m.title}</p>
-              {m.releaseDate && (
-                <p className="mt-0.5 text-[10px] font-bold text-red-600">{m.releaseDate}</p>
-              )}
               <p className="mt-0.5 text-[10px] text-slate-500 line-clamp-1">{m.genres || ''}</p>
               <span className="mt-1.5 inline-flex items-center gap-1 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-md">
                 <PlayCircle className="w-3 h-3" /> Watch Trailer
@@ -94,8 +102,8 @@ export const UpcomingMovies: React.FC = () => {
             key={`d-${i}`}
             className="snap-start shrink-0 w-40 rounded-xl border border-slate-200 bg-white overflow-hidden hover:shadow-lg transition-shadow"
           >
-            <a href={m.goUrl} target="_blank" rel="noopener noreferrer" className="block">
-              <div className="aspect-[2/3] bg-slate-100">
+            <a href={m.goUrl} target="_blank" rel="noopener noreferrer" className="block relative">
+              <div className="relative aspect-[2/3] bg-slate-100">
                 {m.poster && (
                   <img
                     src={m.poster}
@@ -104,21 +112,22 @@ export const UpcomingMovies: React.FC = () => {
                     className="w-full h-full object-cover"
                   />
                 )}
+                {m.releaseDate && (
+                  <span className="absolute top-2 left-2 bg-black/85 text-white text-[10px] font-bold px-1.5 py-0.5 rounded z-10">
+                    {m.releaseDate}
+                  </span>
+                )}
+                {m.likes && (
+                  <div className="absolute bottom-0 inset-x-0 bg-[#1a1a1a] px-2.5 py-2 flex items-center gap-1.5 z-10">
+                    <ThumbsUp className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500 shrink-0" />
+                    <span className="text-[11px] font-bold text-white truncate">{m.likes.replace(/\s*Likes\s*$/i, ' Likes')}</span>
+                  </div>
+                )}
               </div>
             </a>
             <div className="p-2.5">
               <p className="text-[13px] font-bold text-slate-900 leading-tight line-clamp-1">{m.title}</p>
-              {m.releaseDate && (
-                <p className="mt-0.5 flex items-center gap-1 text-[10.5px] font-bold text-red-600">
-                  <CalendarDays className="w-3 h-3" /> {m.releaseDate}
-                </p>
-              )}
               <p className="mt-0.5 text-[10.5px] text-slate-500 line-clamp-1">{m.genres || ''}</p>
-              {m.likes && (
-                <p className="mt-0.5 flex items-center gap-1 text-[10.5px] text-slate-400">
-                  <ThumbsUp className="w-3 h-3" /> {m.likes.replace(/\s*Likes\s*$/i, '')}
-                </p>
-              )}
               <div className="mt-2 flex items-center gap-1.5">
                 <a
                   href={m.trailerUrl}

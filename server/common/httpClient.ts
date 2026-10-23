@@ -12,6 +12,9 @@ import { log } from './logger';
 import type { FailureClass } from '../types';
 import { cffiFetch } from './curlCffiFetch';
 
+/** Repeat-failure WARN dedupe (owner 23 Oct): first failure per (source,class) warns, repeats inside 5min go to DEBUG. */
+const acquisitionWarnDedupe = new Map<string, number>();
+
 export class AcquisitionError extends Error {
   constructor(public failureClass: FailureClass, message: string, public httpStatus?: number) {
     super(message);
@@ -204,7 +207,20 @@ export async function httpAcquire(url: string, opts: HttpOptions): Promise<HttpR
           await backoff(500 * Math.pow(2, attempt));
           continue;
         }
-        log.warn('HttpClient', `Acquisition failed for ${sourceId}`, { failureClass, error: String(err.message || err).slice(0, 200) });
+        // (owner 23 Oct, prod log audit: 46 identical redBus tarpit failures/hour)
+        // The FIRST failure for a (source, class) pair logs at WARN so operators
+        // see the breakage; repeats inside 5 minutes demote to DEBUG — the
+        // circuit breaker already records every failure for the health panel,
+        // and a tarpitting source retried every warm cycle must not drown the
+        // runtime log. Any different failure class resets the dedupe window.
+        const dedupeKey = `${sourceId}|${failureClass}`;
+        const lastWarnAt = acquisitionWarnDedupe.get(dedupeKey) || 0;
+        if (Date.now() - lastWarnAt > 300_000) {
+          log.warn('HttpClient', `Acquisition failed for ${sourceId}`, { failureClass, error: String(err.message || err).slice(0, 200) });
+          acquisitionWarnDedupe.set(dedupeKey, Date.now());
+        } else {
+          log.debug('HttpClient', `Acquisition failed for ${sourceId} (repeat, deduped from WARN)`, { failureClass });
+        }
         throw new AcquisitionError(failureClass, String(err.message || err), err?.httpStatus);
       }
     }

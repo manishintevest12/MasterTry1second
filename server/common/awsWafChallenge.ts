@@ -27,6 +27,7 @@
  * caller treats a 202 after this as "re-mint once, retry".
  */
 import { webcrypto } from 'node:crypto';
+import { log } from './logger';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 const CACHE_TTL_MS = 150_000; // 2.5 min — observed tokens go stale within minutes
@@ -38,6 +39,27 @@ const tokenCache = new Map<string, CacheEntry>();
 
 interface CffiResult { status: number; body: string }
 type Cffi = (url: string, opts: Record<string, any>) => Promise<CffiResult>;
+
+/**
+ * jsdom's default console forwards every "Not implemented" virtual-console
+ * error straight to stderr — challenge.js touches canvas.getContext() on every
+ * mint, which flooded production logs with 120 "installing the canvas npm
+ * package" errors an hour. We deliberately run WITHOUT the native canvas
+ * package (getContext() returning null still passes the challenge — shared
+ * hosting must not need node-gyp): a VirtualConsole that swallows the
+ * known-harmless "not implemented" family silences the noise without
+ * changing a byte of the solver. Anything else still reaches the server log.
+ * Exported so the regression test can pin the exact filter behaviour.
+ */
+export async function makeQuietVirtualConsole(): Promise<any> {
+  const { VirtualConsole } = await import('jsdom');
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', (e: any) => {
+    const msg = String(e?.message || e);
+    if (!/not implemented|could not load/i.test(msg)) log.warn('AwsWaf', 'jsdom error in WAF challenge', { error: msg.slice(0, 160) });
+  });
+  return vc;
+}
 
 /** Curl-impersonate transport, injected so the module has no import cycles. */
 export function makeAwsWafSolver(cffiFetch: Cffi) {
@@ -68,7 +90,17 @@ export function makeAwsWafSolver(cffiFetch: Cffi) {
     if (!cj.body) throw new Error(`challenge.js fetch failed (HTTP ${cj.status})`);
 
     const { JSDOM } = await import('jsdom');
-    const dom = new JSDOM(html.replace(m[0], ''), { url, runScripts: 'outside-only', pretendToBeVisual: true });
+    const vc = await makeQuietVirtualConsole();
+    // jsdom's default console forwards every "Not implemented" virtual-console
+    // error straight to stderr — challenge.js touches canvas.getContext() on
+    // every mint, which flooded production logs with 120 "installing the canvas
+    // npm package" errors an hour. We deliberately run WITHOUT the native
+    // canvas package (getContext() returning null still passes the challenge —
+    // shared hosting must not need node-gyp): a VirtualConsole that swallows
+    // the known-harmless "not implemented" family silences the noise without
+    // changing a byte of the solver. Anything else (real script errors) still
+    // reaches the server log.
+    const dom = new JSDOM(html.replace(m[0], ''), { url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
     const w = dom.window as any;
     Object.defineProperty(w, 'crypto', {
       value: { ...(w.crypto || {}), subtle: webcrypto.subtle, getRandomValues: (b: any) => webcrypto.getRandomValues(b) },

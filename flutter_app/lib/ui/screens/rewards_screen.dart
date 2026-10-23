@@ -8,7 +8,10 @@ import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/auth.dart';
 import '../../core/theme.dart';
+import '../../core/rewards_wallet.dart';
 import '../widgets/kit.dart';
+import '../widgets/spin_wheel.dart';
+import 'package:share_plus/share_plus.dart';
 import '../widgets/home_showcase.dart';
 /// Rewards Hub (website RewardsHub + OffersHub): wallet with OmniPoints and
 /// free spins, the real Spin & Earn wheel, referral link, and the Deals &
@@ -47,8 +50,8 @@ class _RewardsScreenState extends State<RewardsScreen> {
             indicatorColor: T1SColors.red,
             labelStyle: tx(context, 12.5, w: FontWeight.w900),
             tabs: const [
-              Tab(icon: Icon(Icons.local_offer_rounded, size: 15), text: 'Deals & Coupons'),
-              Tab(icon: Icon(Icons.casino_rounded, size: 15), text: 'Spin & Earn'),
+              Tab(icon: Icon(Icons.local_offer_rounded, size: 15), text: 'Top Picks'),
+              Tab(icon: Icon(Icons.casino_rounded, size: 15), text: 'Spin & Earn (100 Pts)'),
               Tab(icon: Icon(Icons.group_add_rounded, size: 15), text: 'Refer & Earn'),
             ],
           ),
@@ -606,144 +609,506 @@ class _SpinTab extends StatefulWidget {
 }
 
 class _SpinTabState extends State<_SpinTab> with SingleTickerProviderStateMixin {
-  final _state = AppState.instance;
-  final _auth = AuthService.instance;
-  RewardsSummary? _summary;
-  SpinPrize? _prize;
+  final _wallet = RewardsWallet.instance;
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 3500));
+  double _rotation = 0;
+  double _spinTarget = 0;
+  SpinSlice? _lastPrize;
   bool _spinning = false;
-  bool _busy = false;
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3));
+  bool _copied = false;
+  late final VoidCallback _unsub;
+  final _nameCtl = TextEditingController();
+  final _emailCtl = TextEditingController();
+  String? _refCode;
 
   @override
   void initState() {
     super.initState();
-    _auth.addListener(_load);
-    _load();
+    _wallet.load();
+    _unsub = _wallet.listen(_onWallet);
+    _c.addListener(() {
+      if (mounted) setState(() => _rotation = _c.value * _spinTarget);
+    });
+    _refreshReferralCode();
   }
 
   @override
   void dispose() {
     _c.dispose();
-    _auth.removeListener(_load);
+    _nameCtl.dispose();
+    _emailCtl.dispose();
+    _unsub();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    if (!_auth.signedIn || _auth.token == null) {
-      if (mounted) setState(() => _summary = null);
-      return;
-    }
-    try {
-      final s = await _state.api.rewards(_auth.token!);
-      if (mounted) setState(() => _summary = s);
-      _state.points = s.validPoints;
-      _state.spinsAvailable = s.availableSpins;
-      _state.refreshUi();
-    } catch (_) {/* honest: keep last wallet */}
+  void _onWallet() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> _spin() async {
-    if (_busy || _spinning) return;
-    if (!_auth.signedIn || _auth.token == null) {
-      toast(context, 'Sign in to spin the wheel', error: true);
-      return;
-    }
-    if ((_summary?.availableSpins ?? 0) < 1) {
-      toast(context, 'You need ${_summary?.pointsPerSpin ?? 100} points for a spin');
-      return;
-    }
-    setState(() { _spinning = true; _prize = null; });
-    _c.forward(from: 0);
+  Future<void> _refreshReferralCode() async {
+    final auth = AuthService.instance;
+    if (!auth.signedIn || auth.token == null) return;
     try {
-      final p = await _state.api.spin(_auth.token!);
-      await Future.delayed(const Duration(milliseconds: 3100));
-      if (mounted) setState(() { _prize = p; _spinning = false; });
-      await _load();
-      await _state.refreshBadges();
-    } catch (e) {
-      if (mounted) setState(() => _spinning = false);
-      toast(context, '$e'.replaceFirst('Exception: ', ''), error: true);
+      final me = await AppState.instance.api.referralMe(auth.token!);
+      if (mounted) setState(() => _refCode = me?['code'] as String?);
+    } catch (_) {/* honest: link falls back to the plain site URL */}
+  }
+
+  String get _referralLink =>
+      'https://www.try1second.com/?ref=${_refCode ?? "T1S-WELCOME"}';
+
+  void _sendInvite() {
+    final name = _nameCtl.text.trim();
+    if (name.isEmpty) {
+      toast(context, 'Enter a friend name first', error: true);
+      return;
     }
+    _wallet.referFriend(name, _emailCtl.text.trim());
+    _nameCtl.clear();
+    _emailCtl.clear();
+    toast(context, '🎉 Referral Successful: +1 Point Earned!');
+  }
+
+  Future<void> _copyLink() async {
+    await Clipboard.setData(ClipboardData(text: _referralLink));
+    if (mounted) setState(() => _copied = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  Future<void> _shareWhatsApp() async {
+    final text =
+        'Compare prices in 1 second across Amazon, Blinkit, Zomato, Cleartrip & more! '
+        'Sign up with my link to get verified lowest deals: $_referralLink';
+    await Share.share(text);
+  }
+
+  void _spin() {
+    if (_spinning) return;
+    if (_wallet.points < kSpinCostPoints) {
+      toast(context, 'You currently have ${_wallet.points} points. Make ${_wallet.pointsToNextSpin} more referrals to spin.');
+      return;
+    }
+    setState(() { _spinning = true; _lastPrize = null; });
+    // Web parity: 5 full rotations ease-out to a random slice.
+    _spinTarget = 360.0 * 5 + math.Random().nextInt(360);
+    _c.forward(from: 0).then((_) {
+      final prize = _wallet.executeSpin();
+      if (mounted) setState(() { _spinning = false; _lastPrize = prize; });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final s = _summary;
+    final w = _wallet;
+    final slices = kSpinSlices;
+    final progress = w.points >= kSpinCostPoints ? 100.0 : (w.points % kSpinCostPoints) / kSpinCostPoints * 100;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       children: [
-        Box(
-          padding: const EdgeInsets.all(18),
-          child: Column(children: [
-            Row(children: [
-              Expanded(child: _wallet('OmniPoints', '${s?.validPoints ?? _state.points}', T1SColors.red, 22)),
-              Expanded(child: _wallet('Free Spins', '${s?.availableSpins ?? 0}', T1SColors.emerald600, 22)),
-            ]),
-            if (s != null) ...[
-              const SizedBox(height: 6),
-              Text('${s.pointsPerSpin} points = 1 spin', style: tx(context, 10, color: muted(context))),
-            ],
-          ]),
-        ),
-        const SizedBox(height: 18),
-        Box(
-          padding: const EdgeInsets.all(22),
-          child: Column(children: [
-            RotationTransition(
-              turns: _spinning
-                  ? Tween(begin: 0.0, end: 5.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutExpo))
-                  : const AlwaysStoppedAnimation<double>(0.0),
-              child: Container(
-                width: 168,
-                height: 168,
-                decoration: const BoxDecoration(shape: BoxShape.circle, gradient: T1SColors.badgeGradient, boxShadow: [BoxShadow(color: Color(0x33E7000B), blurRadius: 26, spreadRadius: 3)]),
-                child: const Icon(Icons.casino_rounded, size: 64, color: Colors.white),
-              ),
+        // ---- Gradient hero: Referral Rewards Program (web parity) ----
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFFF97316), Color(0xFFEA580C), Color(0xFFE64A19)],
             ),
-            const SizedBox(height: 16),
-            Text(_prize != null ? 'You won: ${_prize!.name}' : (_spinning ? 'Spinning…' : 'Spin & Earn'),
-                style: tx(context, 15, w: FontWeight.w900, color: _prize != null ? T1SColors.emerald600 : ink(context))),
-            if (_prize?.description != null) ...[
-              const SizedBox(height: 4),
-              Text(_prize!.description!, textAlign: TextAlign.center, style: tx(context, 11.5, color: muted(context))),
-            ],
-            const SizedBox(height: 16),
-            RedButton(_spinning ? 'Spinning…' : 'SPIN THE WHEEL', onTap: _spin, loading: _spinning, expand: true),
-            if (!_auth.signedIn) ...[
-              const SizedBox(height: 8),
-              Text('Sign in from Profile to unlock spins.', style: tx(context, 10, color: muted(context))),
-            ],
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(999)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.group_rounded, size: 13, color: Color(0xFFFEF3C7)),
+                const SizedBox(width: 5),
+                Text('Referral Rewards Program', style: tx(context, 10, w: FontWeight.w800, color: Colors.white)),
+              ]),
+            ),
+            const SizedBox(height: 10),
+            Text('Spin & Earn Reward Wheel', style: tx(context, 21, w: FontWeight.w900, color: Colors.white, h: 1.15)),
+            const SizedBox(height: 6),
+            Text(
+              'Earn 1 Point for every new referral you make to Try1Second! Collect $kSpinCostPoints Points to unlock an instant spin on our prize wheel for gift cards, vouchers & cashback.',
+              style: tx(context, 11.5, w: FontWeight.w500, color: const Color(0xFFFFEDD5), h: 1.4),
+            ),
+            const Divider(height: 26, color: Colors.white24),
+            // Simulate Referrals toolbar (web parity test buttons)
+            Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 8, children: [
+              Text('Simulate Referrals:', style: tx(context, 11, w: FontWeight.w700, color: Color(0xFFFED7AA))),
+              _simPill('+1 Referral (Sneha)', Colors.white24, Colors.white, () => _wallet.referFriend('Sneha Kapoor', 'sneha.k@gmail.com')),
+              _simPill('+3 Referrals', Colors.white30, Colors.white, () {
+                _wallet.referFriend('Karan Johar', 'karan@gmail.com');
+                _wallet.referFriend('Priya Sharma', 'priya@gmail.com');
+                _wallet.referFriend('Arjun Nair', 'arjun@gmail.com');
+              }),
+              _simPill('Unlock 100-Pt Spin', Colors.white, const Color(0xFFEA580C), () {
+                _wallet.addPoints(kSpinCostPoints);
+                toast(context, '🎉 100 points added — spin unlocked!');
+              }, icon: Icons.bolt_rounded),
+            ]),
           ]),
         ),
         const SizedBox(height: 16),
-        Box(
+
+        // ---- Refer & Earn active program card (image 1) ----
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFFED7AA))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('HOW EARNING WORKS', style: tx(context, 10.5, w: FontWeight.w900, ls: 0.7, color: muted(context))),
+            Row(children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: const Color(0xFFFFEDD5), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.person_add_alt_rounded, size: 20, color: Color(0xFFEA580C)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Invite Friends · Earn 1 Point Each', style: tx(context, 13.5, w: FontWeight.w900, color: T1SColors.slate900)),
+                const SizedBox(height: 2),
+                Text('1 friend joined = 1 point accredited to your wallet', style: tx(context, 10.5, color: T1SColors.slate500)),
+              ])),
+            ]),
+            const SizedBox(height: 12),
+            Text('YOUR REFERRAL LINK:', style: tx(context, 9.5, w: FontWeight.w900, ls: 0.8, color: T1SColors.slate400)),
+            const SizedBox(height: 5),
+            Row(children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12)),
+                  child: Text(_referralLink, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10.5, w: FontWeight.w600, color: T1SColors.slate800)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: _copyLink,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6600),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+                icon: Icon(_copied ? Icons.check : Icons.copy_rounded, size: 14),
+                label: Text(_copied ? 'Copied' : 'Copy', style: tx(context, 11, w: FontWeight.w800)),
+              ),
+            ]),
             const SizedBox(height: 10),
-            _row('1', 'Every merchant redirection earns 1 OmniPoint.'),
-            _row('2', 'Every friend who joins via your referral link adds 1 point.'),
-            _row('3', 'Redeem ${s?.pointsPerSpin ?? 100} points per spin for vouchers & cashback.'),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _shareWhatsApp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00875A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                icon: const Icon(Icons.share_rounded, size: 15),
+                label: Text('Share Referral Link on WhatsApp', style: tx(context, 11, w: FontWeight.w800)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            // Simulate Friend Sign-up box
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Row(children: [
+                    const Icon(Icons.group_rounded, size: 15, color: Color(0xFFEA580C)),
+                    const SizedBox(width: 5),
+                    Expanded(child: Text('Simulate Friend Sign-up (+1 Point)', style: tx(context, 11.5, w: FontWeight.w900, color: T1SColors.slate900))),
+                  ])),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: const Color(0xFFD4F8E5), borderRadius: BorderRadius.circular(999)),
+                    child: Text('${w.friends.length} Friends Joined', style: tx(context, 9.5, w: FontWeight.w800, color: const Color(0xFF006644))),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _inviteField(_nameCtl, "Friend's Name...")),
+                  const SizedBox(width: 8),
+                  Expanded(child: _inviteField(_emailCtl, 'Email (optional)...')),
+                ]),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _sendInvite,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF171C26),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Icons.send_rounded, size: 14, color: Color(0xFFFBBF24)),
+                    label: Text('Send Invite (+1 Pt)', style: tx(context, 11, w: FontWeight.w800)),
+                  ),
+                ),
+                if (w.friends.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 24,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: math.min(4, w.friends.length),
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, i) {
+                        final f = w.friends[i];
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(6)),
+                          child: Row(children: [
+                            Text(f.name, style: tx(context, 9.5, w: FontWeight.w600, color: T1SColors.slate700)),
+                            const SizedBox(width: 4),
+                            Text('+${f.pointsAwarded} pt', style: tx(context, 9.5, w: FontWeight.w800, color: const Color(0xFFEA580C))),
+                          ]),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+
+        // ---- Wallet bar ----
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999), border: Border.all(color: Colors.grey.shade200)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            RichText(text: TextSpan(style: tx(context, 12), children: [
+              TextSpan(text: 'Wallet: ', style: tx(context, 12, w: FontWeight.w700, color: T1SColors.slate900)),
+              TextSpan(text: '${w.points} pts', style: tx(context, 12, w: FontWeight.w900, color: const Color(0xFFD32F2F))),
+            ])),
+            const SizedBox(width: 6),
+            Text('(+1 pt per new referral)', style: tx(context, 10, color: T1SColors.slate500)),
+          ]),
+        ),
+        const SizedBox(height: 16),
+
+        // ---- The wheel card ----
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+          child: Column(children: [
+            Row(children: [
+              Expanded(
+                child: RichText(text: TextSpan(children: [
+                  TextSpan(text: 'Wallet Balance: ', style: tx(context, 11, w: FontWeight.w700, color: T1SColors.slate800)),
+                  TextSpan(text: '${w.points}', style: tx(context, 14, w: FontWeight.w900, color: const Color(0xFFEA580C), mono: true)),
+                  TextSpan(text: ' pts', style: tx(context, 11, w: FontWeight.w700, color: T1SColors.slate800)),
+                ])),
+              ),
+              Text(
+                w.spinsAvailable > 0
+                    ? '🎉 ${w.spinsAvailable} Spin${w.spinsAvailable > 1 ? 's' : ''} Ready!'
+                    : '${w.pointsToNextSpin} referrals to next spin',
+                style: tx(context, 10.5, w: FontWeight.w700, color: w.spinsAvailable > 0 ? const Color(0xFF059669) : T1SColors.slate500),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: SizedBox(
+                height: 12,
+                child: LinearProgressIndicator(
+                  value: progress / 100,
+                  backgroundColor: Colors.grey.shade100,
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFFF97316)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Center(child: SpinWheel(rotation: _rotation, onSpin: _spin, enabled: w.points >= kSpinCostPoints && !_spinning, spinning: _spinning)),
+            const SizedBox(height: 16),
+            if (_lastPrize != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFA7F3D0))),
+                child: Column(children: [
+                  Text('🎉 You won: ${_lastPrize!.title}', style: tx(context, 13, w: FontWeight.w900, color: const Color(0xFF065F46))),
+                  const SizedBox(height: 3),
+                  Text(_lastPrize!.description, textAlign: TextAlign.center, style: tx(context, 10.5, color: const Color(0xFF047857))),
+                ]),
+              ),
+              const SizedBox(height: 10),
+            ],
+            Text(
+              w.spinsAvailable > 0
+                  ? 'You have ${w.spinsAvailable} spin${w.spinsAvailable > 1 ? 's' : ''} available! Tap the center button to spin.'
+                  : 'Need ${w.pointsToNextSpin} more points. Every new referral adds +1 point!',
+              textAlign: TextAlign.center,
+              style: tx(context, 11, color: T1SColors.slate500),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+
+        // ---- Prize pool (8 slices) ----
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.card_giftcard_rounded, size: 14, color: Color(0xFFEA580C)),
+              const SizedBox(width: 5),
+              Text('PRIZE POOL ON THE WHEEL (${slices.length} SLICES)', style: tx(context, 10, w: FontWeight.w900, ls: 0.6, color: T1SColors.slate900)),
+            ]),
+            const SizedBox(height: 10),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              childAspectRatio: 4.2,
+              children: [
+                for (final p in slices)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade100), borderRadius: BorderRadius.circular(8)),
+                    child: Row(children: [
+                      Container(width: 11, height: 11, decoration: BoxDecoration(color: p.asColor, shape: BoxShape.circle)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10, w: FontWeight.w800, color: T1SColors.slate900)),
+                          Text(p.value, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 8.5, color: T1SColors.slate500)),
+                        ]),
+                      ),
+                    ]),
+                  ),
+              ],
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+
+        // ---- My claimed vouchers ----
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.badge_rounded, size: 14, color: Color(0xFFF59E0B)),
+              const SizedBox(width: 5),
+              Text('MY CLAIMED VOUCHERS (${w.wonRewards.length})', style: tx(context, 10, w: FontWeight.w900, ls: 0.6, color: T1SColors.slate900)),
+            ]),
+            const SizedBox(height: 10),
+            if (w.wonRewards.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 22),
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid), borderRadius: BorderRadius.circular(12)),
+                child: Column(children: [
+                  const Icon(Icons.card_giftcard_outlined, size: 30, color: Color(0xFFCBD5E1)),
+                  const SizedBox(height: 6),
+                  Text('No vouchers won yet', style: tx(context, 11.5, w: FontWeight.w800, color: T1SColors.slate700)),
+                  const SizedBox(height: 3),
+                  Text('Reach $kSpinCostPoints points via referrals or use simulator buttons above to spin!', textAlign: TextAlign.center, style: tx(context, 10, color: T1SColors.slate400)),
+                ]),
+              )
+            else
+              Column(children: [
+                for (final won in w.wonRewards.take(6))
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: const Color(0xFFF0FDF4), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFA7F3D0))),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Expanded(child: Text(won.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11, w: FontWeight.w800, color: T1SColors.slate900))),
+                        Text('Active', style: tx(context, 8.5, w: FontWeight.w800, color: const Color(0xFF059669))),
+                      ]),
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(6)),
+                            child: Text(won.voucherCode, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 10, w: FontWeight.w800, color: T1SColors.slate800, mono: true)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(onTap: () => Clipboard.setData(ClipboardData(text: won.voucherCode)), child: const Icon(Icons.copy_rounded, size: 15, color: Color(0xFF059669))),
+                        const Spacer(),
+                        Text('Expires: ${won.expiresAt}', style: tx(context, 8.5, color: T1SColors.slate400)),
+                      ]),
+                    ]),
+                  ),
+              ]),
+          ]),
+        ),
+        const SizedBox(height: 16),
+
+        // ---- Rule explainer ----
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.info_outline_rounded, size: 14, color: T1SColors.slate500),
+              const SizedBox(width: 5),
+              Text('Try1Second Referral Points Rule', style: tx(context, 11.5, w: FontWeight.w900, color: T1SColors.slate900)),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              'Users earn 1 Point for every new friend referred to Try1Second. Points are awarded upon friend sign-up or verification and do not depend on purchases or merchant redirections. Points never expire and unlock guaranteed prizes on the prize wheel!',
+              style: tx(context, 10.5, color: T1SColors.slate500, h: 1.4),
+            ),
           ]),
         ),
       ],
     );
   }
 
-  Widget _row(String n, String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(width: 18, height: 18, alignment: Alignment.center, decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(6)), child: Text(n, style: tx(context, 9, w: FontWeight.w900, color: Colors.white))),
-          const SizedBox(width: 8),
-          Expanded(child: Text(t, style: tx(context, 11.5, color: muted(context)))),
-        ]),
+  Widget _simPill(String label, Color bg, Color fg, VoidCallback onTap, {IconData icon = Icons.add_rounded}) => ElevatedButton.icon(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: fg,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        icon: Icon(icon, size: 13),
+        label: Text(label, style: tx(context, 10, w: FontWeight.w800)),
       );
 
-  Widget _wallet(String label, String value, Color color, double size) =>
-      Builder(builder: (c) => Column(children: [
-            Text(value, style: tx(c, size, w: FontWeight.w900, color: color, mono: true)),
-            const SizedBox(height: 2),
-            Text(label, style: tx(c, 10, w: FontWeight.w800, color: muted(c))),
-          ]));
+  Widget _inviteField(TextEditingController ctl, String hint) => TextField(
+        controller: ctl,
+        style: tx(context, 11, w: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: tx(context, 10.5, color: T1SColors.slate400),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade200)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFF97316))),
+        ),
+      );
 }
 
 // ---------------------------------------------------------------------------

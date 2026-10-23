@@ -30,6 +30,7 @@ const ChromeInstallSection = lazy(() => import('./ChromeInstallSection').then((m
 import { Deferred } from './Deferred';
 const HomeShowcase = lazy(() => import('./HomeShowcase'));
 import { HomeBannerStrip } from './HomeBannerStrip';
+const HeroBannerCarousel = lazy(() => import('./HeroBannerCarousel'));
 const UpcomingMovies = lazy(() => import('./UpcomingMovies'));
 
 const VERTICAL_ICONS: Record<string, React.ElementType> = {
@@ -61,6 +62,7 @@ const VERTICAL_COVER_IMAGES: Record<string, string> = {
 export const HomeView: React.FC = () => {
   const {
     setVertical,
+    setPendingAssistantSearch,
     setActiveNavTab,
     setRewardsSubTab,
     items,
@@ -70,6 +72,14 @@ export const HomeView: React.FC = () => {
 
   const handleLaunch = (vId: VerticalId) => {
     setVertical(vId);
+    setActiveNavTab('compare');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Hero carousel launch: vertical + (optional) prefilled search query.
+  const launchHero = (vertical: string, query: string) => {
+    setVertical(vertical as VerticalId);
+    if (query) setPendingAssistantSearch({ vertical, query });
     setActiveNavTab('compare');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -161,6 +171,14 @@ export const HomeView: React.FC = () => {
 
       {/* AI ASSISTANT (text/voice) */}
       <PriceLensAndAssistant />
+
+      {/* HERO BANNER CAROUSEL (owner 23 Oct, BookMyShow reference): mixed
+          movie / food / ecom-deal slides, clearly visible at the top. */}
+      <HeroBannerCarousel
+        onLaunch={(vertical, query) => {
+          launchHero(vertical, query);
+        }}
+      />
 
       {/* QUICK APPS SECTION - COMPANY LOGOS ONLY (deferred: below fold) */}
       <Deferred minHeight={180}>

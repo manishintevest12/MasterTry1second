@@ -838,6 +838,41 @@ class HomeBanner {
   final String? subtitle;
 }
 
+/// Hero carousel slide (owner 23 Oct, BookMyShow reference): mixed content —
+/// movie / food / ecom-deal slides composed live by /api/home/hero-banners.
+class HeroSlide {
+  const HeroSlide({
+    required this.id,
+    required this.kind,
+    required this.badge,
+    required this.heading,
+    required this.cta,
+    this.subheading,
+    this.meta,
+    this.language,
+    this.synopsis,
+    this.poster,
+    this.backdrop,
+    this.url,
+    this.launchVertical,
+    this.launchQuery,
+  });
+  final String id;
+  final String kind; // movie | food | ecommerce | custom
+  final String badge;
+  final String heading;
+  final String cta;
+  final String? subheading;
+  final String? meta;
+  final String? language;
+  final String? synopsis;
+  final String? poster;
+  final String? backdrop;
+  final String? url;
+  final String? launchVertical;
+  final String? launchQuery;
+}
+
 class Try1SecondApi {
   /// Device network fix (owner 22 Oct): Indian mobile carriers are IPv6-first
   /// (Jio/Airtel). dart:io's default HttpClient has NO connectionTimeout, so a
@@ -1267,6 +1302,31 @@ class Try1SecondApi {
 
   /// Home banners (owner 23 Oct): admin-managed wide landscape strips between
   /// every home section on the home tab.
+  Future<List<HeroSlide>> heroBanners() async {
+    final data = await _get('/api/home/hero-banners');
+    final rows = data['slides'];
+    if (rows is! List) return const [];
+    return [
+      for (final r in rows)
+        HeroSlide(
+          id: (r['id'] as String?) ?? '',
+          kind: (r['kind'] as String?) ?? 'custom',
+          badge: (r['badge'] as String?) ?? 'FEATURED',
+          subheading: r['subheading'] as String?,
+          heading: (r['heading'] as String?) ?? '',
+          meta: r['meta'] as String?,
+          language: r['language'] as String?,
+          synopsis: r['synopsis'] as String?,
+          poster: r['poster'] as String?,
+          backdrop: r['backdrop'] as String?,
+          cta: (r['cta'] as String?) ?? 'Explore',
+          url: r['url'] as String?,
+          launchVertical: (r['launch'] as Map<String, dynamic>?)?['vertical'] as String?,
+          launchQuery: (r['launch'] as Map<String, dynamic>?)?['query'] as String?,
+        ),
+    ];
+  }
+
   Future<List<HomeBanner>> homeBanners() async {
     final data = await _get('/api/home-banners');
     final rows = data['banners'];

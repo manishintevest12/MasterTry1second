@@ -95,7 +95,18 @@ export function recordFailure(sourceId: string, failureClass: FailureClass, erro
   // RATE_LIMITED is OUR OWN limiter backpressure, not an upstream failure —
   // it must never trip the circuit breaker (which would silently hide a
   // healthy source from searches for a minute).
-  if (failureClass === 'RATE_LIMITED') {
+  //
+  // EMPTY_RESPONSE (owner 23 Oct, prod log audit: 224 circuit-OPEN warnings/hour)
+  // is an HONEST "no rows for THIS query" outcome, not a source failure:
+  // Rapido intercity returns 0 rows by design, OSM/Wikidata reference workers
+  // only fire on name-specific queries, OTA flight workers (budgetair/gotogate/
+  // happyeasygo) legitimately return nothing for Indian routes. Tripping a
+  // 1-minute circuit on it (a) spams the log and (b) HIDES a healthy source
+  // from the next user search that WOULD have results — the opposite of the
+  // owner's self-healing rule. Sources that return empty because they are
+  // actually gated/broken classify as ACCESS_CHALLENGE / SERVER_ERROR /
+  // TIMEOUT / MALFORMED_RESPONSE and still trip the breaker as before.
+  if (failureClass === 'RATE_LIMITED' || failureClass === 'EMPTY_RESPONSE') {
     h.lastFailureAt = new Date().toISOString();
     h.lastFailureClass = failureClass;
     h.state = h.state === 'CIRCUIT_OPEN' ? h.state : 'DEGRADED';

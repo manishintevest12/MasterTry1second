@@ -1662,7 +1662,6 @@ class _SearchCard extends StatelessWidget {
   }
 }
 
-
 class _DateChip extends StatelessWidget {
   const _DateChip({required this.date, required this.onTap, this.label = 'Date'});
   final DateTime date;

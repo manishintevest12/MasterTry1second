@@ -12,6 +12,9 @@ import { parseExpediaGroup, EXPEDIA_GRAPHQL_QUERY } from '../parsers/expediaGrou
 import { usdToInrRate } from '../../common/fxRates';
 import { wikidataHotelQuery, parseWikidataHotels, WIKIDATA_ENDPOINT } from '../parsers/wikidataHotels';
 import { parseCleartripHotels, parseCleartripOffers } from '../parsers/cleartripHotels';
+
+/** Cleartrip CDN-art dead verdict cache (owner 23 Oct): epoch-ms until which art is assumed dead. */
+let cleartripArtDeadUntil = 0;
 import { parseHermesHotels } from '../parsers/goibiboHermes';
 import { extractAirbnbSearchResults, parseAirbnbStays, parseAirbnbOffers } from '../parsers/airbnbHotels';
 import { parseIxigoHotels, ixigoHotelsSlug } from '../parsers/ixigoHotels';
@@ -398,20 +401,31 @@ export const hotelsWorker: VerticalWorker = {
         const firstImg = (rows as any[]).find((r) => (r.attributes?.image_url) || (r.attributes?.image_urls))
           ?.attributes?.image_url;
         if (firstImg) {
+          // (owner 23 Oct, prod log audit: 36 identical warnings/hour) While the
+          // CDN is known-dead we (a) skip the 4s probe entirely — every batch
+          // re-probing just burns the search budget — and (b) strip silently,
+          // re-probing at most once per hour so recovery is detected within the
+          // hour without log spam. A live probe re-arms the cache instantly.
+          const cachedDead = cleartripArtDeadUntil > Date.now();
           let live = false;
-          try {
-            const ctl = new AbortController();
-            const t = setTimeout(() => ctl.abort(), 4000);
-            const res = await fetch(firstImg, { signal: ctl.signal, redirect: 'follow' });
-            clearTimeout(t);
-            live = res.status === 200 && String(res.headers.get('content-type') || '').startsWith('image/');
-          } catch { live = false; }
+          if (!cachedDead) {
+            try {
+              const ctl = new AbortController();
+              const t = setTimeout(() => ctl.abort(), 4000);
+              const res = await fetch(firstImg, { signal: ctl.signal, redirect: 'follow' });
+              clearTimeout(t);
+              live = res.status === 200 && String(res.headers.get('content-type') || '').startsWith('image/');
+            } catch { live = false; }
+          }
           if (!live) {
+            if (!cachedDead) cleartripArtDeadUntil = Date.now() + 60 * 60_000;
             for (const r of rows as any[]) {
               if (r.attributes?.image_url) delete r.attributes.image_url;
               if (r.attributes?.image_urls) delete r.attributes.image_urls;
             }
-            log.warn('Hotels worker', 'Cleartrip CDN art dead — images stripped for this batch (self-healing)', { probe: String(firstImg).slice(0, 80) });
+            if (!cachedDead) {
+              log.warn('Hotels worker', 'Cleartrip CDN art dead — images stripped; hourly re-probe will re-arm art (self-healing)', { probe: String(firstImg).slice(0, 80) });
+            }
           }
         }
         return rows;

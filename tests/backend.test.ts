@@ -395,6 +395,26 @@ test('resilience: single failure does not open the circuit (transient errors tol
   assert.equal(canAttempt(sid), true);
 });
 
+// (owner 23 Oct, prod log audit: 224 circuit-OPEN warnings/hour) EMPTY_RESPONSE
+// is an honest "no rows for THIS query" outcome (Rapido intercity, OTA sources
+// off their covered routes, reference workers on city queries) — it must never
+// trip the breaker, which would hide a healthy source from the next search
+// that WOULD have results.
+test('resilience: EMPTY_RESPONSE never opens the circuit (honest empty, not a failure)', async () => {
+  const { recordFailure, getHealth, canAttempt } = await import('../server/sources/health.ts');
+  const sid = `cb-empty-${Math.random()}`;
+  for (let i = 0; i < 10; i++) recordFailure(sid, 'EMPTY_RESPONSE', 'no rows for this query');
+  const h = getHealth(sid);
+  assert.notEqual(h.state, 'CIRCUIT_OPEN', 'empty responses must never trip the breaker');
+  assert.equal(h.consecutiveFailures, 0, 'empty responses must not accumulate failure count');
+  assert.equal(canAttempt(sid), true, 'source stays searchable after honest empties');
+  assert.equal(h.lastFailureClass, 'EMPTY_RESPONSE', 'diagnostic info still recorded');
+  // A real failure afterwards still trips normally (breaker intact)
+  recordFailure(sid, 'TIMEOUT', 'real timeout');
+  const h2 = getHealth(sid);
+  assert.equal(h2.consecutiveFailures, 1);
+});
+
 // ---------------- Optional provider policy (Sections 2.3, 24) ----------------
 test('searchapi: disabled / credential-free provider never blocks and never invents results', async () => {
   const { SearchProviderAdapter } = await import('../server/sources/adapters/feedAndApiAdapters.ts');

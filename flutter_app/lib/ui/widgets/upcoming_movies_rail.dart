@@ -94,26 +94,56 @@ class _UpcomingCard extends StatelessWidget {
     return SizedBox(
       width: 132,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Poster (taps through the /api/out masking pointer)
+        // Poster (taps through the /api/out masking pointer) with date pill
+        // and black likes bar overlay (owner 23 Oct, image-3 reference).
         Expanded(
           child: GestureDetector(
             onTap: () { if (movie.goUrl.isNotEmpty) openDeal(movie.goUrl, sellerName: 'BookMyShow'); },
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: movie.poster == null
-                  ? Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.movie, color: Colors.grey)))
-                  : Image.network(movie.poster!, fit: BoxFit.cover, width: double.infinity,
-                      errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.movie, color: Colors.grey)))),
+              child: Stack(fit: StackFit.expand, children: [
+                movie.poster == null
+                    ? Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.movie, color: Colors.grey)))
+                    : Image.network(movie.poster!, fit: BoxFit.cover, width: double.infinity,
+                        errorBuilder: (_, __, ___) => Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.movie, color: Colors.grey)))),
+                if (movie.releaseDate != null)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(4)),
+                      child: Text(movie.releaseDate!, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white)),
+                    ),
+                  ),
+                if (movie.likes != null && movie.likes!.isNotEmpty)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      color: const Color(0xFF1A1A1A),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                      child: Row(children: [
+                        const Icon(Icons.thumb_up, size: 11, color: Color(0xFF10B981)),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            movie.likes!.replaceAll(RegExp(r'\s*Likes\s*$', caseSensitive: false), ' Likes'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ]),
             ),
           ),
         ),
         const SizedBox(height: 6),
         Text(movie.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
-        if (movie.releaseDate != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(movie.releaseDate!, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: T1SColors.red)),
-          ),
         if (movie.genres != null && movie.genres!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2),
