@@ -1,0 +1,650 @@
+{
+ "response": {
+  "data": {
+   "trips": [
+    {
+     "origin": "DEL",
+     "destination": "BOM",
+     "journeysAvailable": [
+      {
+       "flightType": 1,
+       "stops": 0,
+       "designator": {
+        "destination": "BOM",
+        "origin": "DEL",
+        "arrival": "2026-10-28T21:40:00",
+        "departure": "2026-10-28T19:20:00",
+        "originFullName": "Delhi",
+        "destinationFullName": "Mumbai"
+       },
+       "fares": {
+        "MH5VfiB_U0d_VVNBVn41NTExfn4wfjY4OH5_WCEwOjUwNTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMDA-": {
+         "fareAvailabilityKey": "MH5VfiB_U0d_VVNBVn41NTExfn4wfjY4OH5_WCEwOjUwNTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMDA-",
+         "fareCode": "USAV",
+         "availableCount": 16,
+         "isSumOfSector": false,
+         "classOfService": "U"
+        },
+        "MH5VfiB_U0d_VVNNRn41NTI3fn4wfjYzOX5_WCEwOjU0NTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMjA-": {
+         "fareAvailabilityKey": "MH5VfiB_U0d_VVNNRn41NTI3fn4wfjYzOX5_WCEwOjU0NTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMjA-",
+         "fareCode": "USMF",
+         "availableCount": 16,
+         "isSumOfSector": false,
+         "classOfService": "U"
+        },
+        "MH5VfiB_U0d_VVNNWH41NTE3fn4wfjY3MH5_WCEwOjYzMDA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozNjQ-": {
+         "fareAvailabilityKey": "MH5VfiB_U0d_VVNNWH41NTE3fn4wfjY3MH5_WCEwOjYzMDA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozNjQ-",
+         "fareCode": "USMX",
+         "availableCount": 16,
+         "isSumOfSector": false,
+         "classOfService": "U"
+        }
+       },
+       "journeyKey": "U0d_IDYxMn4gfn5ERUx_MTAvMjgvMjAyNiAxOToyMH5CT01_MTAvMjgvMjAyNiAyMTo0MH5_",
+       "segments": [
+        {
+         "isBlocked": false,
+         "isHosted": true,
+         "isChangeOfGauge": false,
+         "designator": {
+          "destination": "BOM",
+          "origin": "DEL",
+          "arrival": "2026-10-28T21:40:00",
+          "departure": "2026-10-28T19:20:00",
+          "originFullName": "Delhi",
+          "destinationFullName": "Mumbai"
+         },
+         "isSeatmapViewable": true,
+         "segmentKey": "U0d_IDYxMn4gfn5ERUx_MTAvMjgvMjAyNiAxOToyMH5CT01_MTAvMjgvMjAyNiAyMTo0MH5_",
+         "identifier": {
+          "identifier": "612",
+          "carrierCode": "SG",
+          "opSuffix": null
+         },
+         "cabinOfService": null,
+         "externalIdentifier": null,
+         "changeReasonCode": 0,
+         "segmentType": 0,
+         "international": false,
+         "legs": [
+          {
+           "legKey": "NjM5Mjg4MTIwMDAwMDAwMDAwIVNHITYxMiEgIURFTCFCT00hMTM0NDkxMzk4MA--",
+           "operationsInfo": {
+            "arrivalGate": {
+             "estimatedGate": null,
+             "actualGate": null
+            },
+            "estimatedArrivalTime": null,
+            "departureGate": {
+             "estimatedGate": null,
+             "actualGate": null
+            },
+            "actualOffBlockTime": null,
+            "actualOnBlockTime": null,
+            "actualTouchDownTime": null,
+            "airborneTime": null,
+            "arrivalNote": null,
+            "arrivalStatus": 0,
+            "baggageClaim": null,
+            "departureNote": null,
+            "departureStatus": 0,
+            "departureTimes": {
+             "scheduled": "2026-10-28T19:20:00",
+             "estimated": null
+            },
+            "standardArrivalTime": "2026-10-28T21:40:00",
+            "tailNumber": null
+           },
+           "designator": {
+            "destination": "BOM",
+            "origin": "DEL",
+            "arrival": "2026-10-28T21:40:00",
+            "departure": "2026-10-28T19:20:00",
+            "originFullName": "Delhi",
+            "destinationFullName": "Mumbai"
+           },
+           "legInfo": {
+            "departureTimeUtc": "2026-10-28T13:50:00Z",
+            "arrivalTimeUtc": "2026-10-28T16:10:00Z",
+            "adjustedCapacity": 0,
+            "arrivalTerminal": "T-1",
+            "arrivalTimeVariant": 330,
+            "backMoveDays": 0,
+            "capacity": 0,
+            "changeOfDirection": false,
+            "codeShareIndicator": 0,
+            "departureTerminal": "T-1D",
+            "departureTimeVariant": 330,
+            "equipmentType": "73H",
+            "equipmentTypeSuffix": "A01",
+            "eTicket": true,
+            "irop": false,
+            "lid": 0,
+            "marketingCode": null,
+            "marketingOverride": false,
+            "onTime": null,
+            "operatedByText": null,
+            "operatingCarrier": null,
+            "operatingFlightNumber": null,
+            "operatingOpSuffix": null,
+            "outMoveDays": 0,
+            "arrivalTime": "2026-10-28T21:40:00",
+            "departureTime": "2026-10-28T19:20:00",
+            "prbcCode": "737A01",
+            "scheduleServiceType": "J",
+            "sold": 0,
+            "status": 0,
+            "subjectToGovtApproval": false
+           },
+           "nests": [],
+           "ssrs": [
+            {
+             "available": 10,
+             "ssrNestCode": "DFNS",
+             "lid": 10,
+             "sold": 0,
+             "unitSold": 0
+            },
+            {
+             "available": 10,
+             "ssrNestCode": "HCPF",
+             "lid": 10,
+             "sold": 0,
+             "unitSold": 0
+            },
+            {
+             "available": 7,
+             "ssrNestCode": "SNST",
+             "lid": 10,
+             "sold": 3,
+             "unitSold": 3
+            },
+            {
+             "available": 10,
+             "ssrNestCode": "STUD",
+             "lid": 10,
+             "sold": 0,
+             "unitSold": 0
+            },
+            {
+             "available": 4,
+             "ssrNestCode": "UNMR",
+             "lid": 4,
+             "sold": 0,
+             "unitSold": 0
+            },
+            {
+             "available": 10,
+             "ssrNestCode": "WMSF",
+             "lid": 10,
+             "sold": 0,
+             "unitSold": 0
+            }
+           ],
+           "seatmapReference": "U0chIDYxMiEgITYzOTI4ODEyMDAwMDAwMDAwMCFERUwhQk9N",
+           "flightReference": null,
+           "viaInfo": {},
+           "flightDuration": "2h 20m",
+           "arrivalTime": "21:40",
+           "departureTime": "19:20",
+           "arrivalDateDifference": 0,
+           "carrierString": "SG 612",
+           "departureDateString": "Wed, 28 Oct",
+           "arrivalDateString": "Wed, 28 Oct"
+          }
+         ],
+         "stopInfo": {},
+         "flightDuration": "2h 20m",
+         "arrivalTime": "21:40",
+         "arrivalDateDifference": 0,
+         "departureTime": "19:20",
+         "carrierString": "SG 612",
+         "departureDateString": "Wed, 28 Oct",
+         "arrivalDateString": "Wed, 28 Oct"
+        }
+       ],
+       "notForGeneralUser": false,
+       "carrierString": "SG 612",
+       "departureTime": "19:20",
+       "arrivalDateDifference": 0,
+       "arrivalTime": "21:40",
+       "flightDuration": "2h 20m",
+       "departureDateString": "Wed, 28 Oct",
+       "arrivalDateString": "Wed, 28 Oct",
+       "isInternational": false
+      }
+     ],
+     "destinationFullName": "Mumbai",
+     "originFullName": "Delhi",
+     "departureDateStringWithYear": "Wed, 28 Oct 2026"
+    }
+   ],
+   "faresAvailable": {
+    "MH5VfiB_U0d_VVNBVn41NTExfn4wfjY4OH5_WCEwOjUwNTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMDA-": {
+     "isGoverning": true,
+     "downgradeAvailable": false,
+     "fareAvailabilityKey": "MH5VfiB_U0d_VVNBVn41NTExfn4wfjY4OH5_WCEwOjUwNTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMDA-",
+     "fareCode": "USAV",
+     "isSumOfSector": false,
+     "classOfService": "U",
+     "classType": null,
+     "fareApplicationType": 0,
+     "fareClassOfService": "U",
+     "fareSequence": 688,
+     "fareStatus": 0,
+     "inboundOutBound": 0,
+     "isAllotmentMarketFare": false,
+     "productClass": "RS",
+     "ruleNumber": "5511",
+     "ruleTariff": null,
+     "travelClassCode": null,
+     "passengerFares": [
+      {
+       "fareDiscountCode": null,
+       "passengerDiscountCode": null,
+       "passengerType": "ADT",
+       "fareAmount": 6787,
+       "revenueFare": 5050,
+       "publishedFare": 5050,
+       "loyaltyPoints": 0,
+       "discountedFare": 5050,
+       "serviceCharges": [
+        {
+         "amount": 5050,
+         "code": null,
+         "detail": null,
+         "type": 0,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 5050,
+         "ticketCode": null
+        },
+        {
+         "amount": 100,
+         "code": "RCS",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 100,
+         "ticketCode": "RCS"
+        },
+        {
+         "amount": 85,
+         "code": "TRF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 85,
+         "ticketCode": "TRF"
+        },
+        {
+         "amount": 775,
+         "code": "YQ",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 775,
+         "ticketCode": "YQ"
+        },
+        {
+         "amount": 236,
+         "code": "ASF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 236,
+         "ticketCode": "ASF"
+        },
+        {
+         "amount": 152,
+         "code": "UDF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 152,
+         "ticketCode": "UDF"
+        },
+        {
+         "amount": 89,
+         "code": "AAT",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 89,
+         "ticketCode": "AAT"
+        },
+        {
+         "amount": 300,
+         "code": null,
+         "detail": "TaxSum",
+         "type": 5,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 300,
+         "ticketCode": null
+        }
+       ],
+       "multiplier": 1
+      }
+     ]
+    },
+    "MH5VfiB_U0d_VVNNRn41NTI3fn4wfjYzOX5_WCEwOjU0NTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMjA-": {
+     "isGoverning": true,
+     "downgradeAvailable": false,
+     "fareAvailabilityKey": "MH5VfiB_U0d_VVNNRn41NTI3fn4wfjYzOX5_WCEwOjU0NTA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozMjA-",
+     "fareCode": "USMF",
+     "isSumOfSector": false,
+     "classOfService": "U",
+     "classType": null,
+     "fareApplicationType": 0,
+     "fareClassOfService": "U",
+     "fareSequence": 639,
+     "fareStatus": 0,
+     "inboundOutBound": 0,
+     "isAllotmentMarketFare": false,
+     "productClass": "SF",
+     "ruleNumber": "5527",
+     "ruleTariff": null,
+     "travelClassCode": null,
+     "passengerFares": [
+      {
+       "fareDiscountCode": null,
+       "passengerDiscountCode": null,
+       "passengerType": "ADT",
+       "fareAmount": 7207,
+       "revenueFare": 5450,
+       "publishedFare": 5450,
+       "loyaltyPoints": 0,
+       "discountedFare": 5450,
+       "serviceCharges": [
+        {
+         "amount": 5450,
+         "code": null,
+         "detail": null,
+         "type": 0,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 5450,
+         "ticketCode": null
+        },
+        {
+         "amount": 100,
+         "code": "RCS",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 100,
+         "ticketCode": "RCS"
+        },
+        {
+         "amount": 85,
+         "code": "TRF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 85,
+         "ticketCode": "TRF"
+        },
+        {
+         "amount": 775,
+         "code": "YQ",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 775,
+         "ticketCode": "YQ"
+        },
+        {
+         "amount": 236,
+         "code": "ASF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 236,
+         "ticketCode": "ASF"
+        },
+        {
+         "amount": 152,
+         "code": "UDF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 152,
+         "ticketCode": "UDF"
+        },
+        {
+         "amount": 89,
+         "code": "AAT",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 89,
+         "ticketCode": "AAT"
+        },
+        {
+         "amount": 320,
+         "code": null,
+         "detail": "TaxSum",
+         "type": 5,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 320,
+         "ticketCode": null
+        }
+       ],
+       "multiplier": 1
+      }
+     ]
+    },
+    "MH5VfiB_U0d_VVNNWH41NTE3fn4wfjY3MH5_WCEwOjYzMDA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozNjQ-": {
+     "isGoverning": true,
+     "downgradeAvailable": false,
+     "fareAvailabilityKey": "MH5VfiB_U0d_VVNNWH41NTE3fn4wfjY3MH5_WCEwOjYzMDA0OjEwMDQ6ODU0Ojc3NTQ6MjM2NDoxNTI0Ojg5NTozNjQ-",
+     "fareCode": "USMX",
+     "isSumOfSector": false,
+     "classOfService": "U",
+     "classType": null,
+     "fareApplicationType": 0,
+     "fareClassOfService": "U",
+     "fareSequence": 670,
+     "fareStatus": 0,
+     "inboundOutBound": 0,
+     "isAllotmentMarketFare": false,
+     "productClass": "SC",
+     "ruleNumber": "5517",
+     "ruleTariff": null,
+     "travelClassCode": null,
+     "passengerFares": [
+      {
+       "fareDiscountCode": null,
+       "passengerDiscountCode": null,
+       "passengerType": "ADT",
+       "fareAmount": 8101,
+       "revenueFare": 6300,
+       "publishedFare": 6300,
+       "loyaltyPoints": 0,
+       "discountedFare": 6300,
+       "serviceCharges": [
+        {
+         "amount": 6300,
+         "code": null,
+         "detail": null,
+         "type": 0,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 6300,
+         "ticketCode": null
+        },
+        {
+         "amount": 100,
+         "code": "RCS",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 100,
+         "ticketCode": "RCS"
+        },
+        {
+         "amount": 85,
+         "code": "TRF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 85,
+         "ticketCode": "TRF"
+        },
+        {
+         "amount": 775,
+         "code": "YQ",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 775,
+         "ticketCode": "YQ"
+        },
+        {
+         "amount": 236,
+         "code": "ASF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 236,
+         "ticketCode": "ASF"
+        },
+        {
+         "amount": 152,
+         "code": "UDF",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 152,
+         "ticketCode": "UDF"
+        },
+        {
+         "amount": 89,
+         "code": "AAT",
+         "detail": "DEL-BOM",
+         "type": 4,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 89,
+         "ticketCode": "AAT"
+        },
+        {
+         "amount": 364,
+         "code": null,
+         "detail": "TaxSum",
+         "type": 5,
+         "collectType": 0,
+         "currencyCode": "INR",
+         "foreignCurrencyCode": "INR",
+         "foreignAmount": 364,
+         "ticketCode": null
+        }
+       ],
+       "multiplier": 1
+      }
+     ]
+    }
+   },
+   "currencyCode": "INR",
+   "includeTaxesAndFees": true,
+   "searchParams": {
+    "origin": {
+     "stationCode": "DEL",
+     "fullName": "Delhi",
+     "locationDetails": {
+      "countryCode": "IN"
+     },
+     "currency": "INR",
+     "originCurrency": "INR"
+    },
+    "destination": {
+     "stationCode": "BOM",
+     "fullName": "Mumbai",
+     "locationDetails": {
+      "countryCode": "IN"
+     },
+     "currency": "INR"
+    },
+    "onWardDate": "2026-10-28T00:00:00.000Z",
+    "returnDate": "",
+    "pax": {
+     "adult": 1,
+     "child": 0,
+     "infant": 0,
+     "srCitizen": 0
+    },
+    "tripType": "1",
+    "redirectTo": "/",
+    "isChanged": false,
+    "onWardDateObject": "2026-10-28T00:00:00.000Z",
+    "returnDateObject": "",
+    "onWardDateFormattedString": "28 Oct 2026",
+    "returnDateFormattedString": "",
+    "onWardDateFormattedStringDDMM": "28 Oct",
+    "returnDateFormattedStringDDMM": "",
+    "returnDateFormattedStringDDMMYYYY": "",
+    "timeZoneCodes": {
+     "DEL": 330,
+     "BOM": 330
+    }
+   },
+   "stationsFullName": {
+    "DEL": "Delhi",
+    "BOM": "Mumbai"
+   },
+   "stationCodeTimeZoneOffsets": {
+    "DEL": 330,
+    "BOM": 330
+   },
+   "airportNames": {
+    "DEL": "Indira Gandhi International Airport",
+    "BOM": "Chhatrapati Shivaji Maharaj International Airport"
+   }
+  }
+ },
+ "capturedAt": "2026-10-24",
+ "route": "DEL-BOM",
+ "date": "2026-10-28"
+}

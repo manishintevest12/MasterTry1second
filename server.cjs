@@ -8490,6 +8490,171 @@ var init_aixLowFares = __esm({
   }
 });
 
+// server/workers/parsers/spiceJetDotRez.ts
+function spiceJetBaseHeaders(authorization, referer) {
+  return {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "content-type": "application/json",
+    os: "web",
+    authorization,
+    accept: "*/*",
+    "accept-language": "en-US,en;q=0.9",
+    "accept-encoding": "gzip, deflate, br, zstd",
+    referer,
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    priority: "u=1, i",
+    // CleverTap web cookie the SPA always carries; the edge rejects cookieless search POSTs.
+    cookie: "WZRK_G=5e7907422c4f40edb3a313c5a70eedd2"
+  };
+}
+function spiceJetTokenHeaders() {
+  return {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "content-type": "application/json",
+    os: "web",
+    authorization: "null",
+    accept: "*/*",
+    "accept-language": "en-US,en;q=0.9",
+    referer: "https://www.spicejet.com/",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    cookie: "WZRK_G=5e7907422c4f40edb3a313c5a70eedd2"
+  };
+}
+function spiceJetLowFareBody(origin, destination, centerDate) {
+  return JSON.stringify({
+    pax: { journeyClass: "ff", adult: 1, child: 0, infant: 0, srCitizen: 0 },
+    codes: { currency: "INR" },
+    origin,
+    destination,
+    centerDate
+  });
+}
+function spiceJetAvailabilityBody(origin, destination, onWardDate) {
+  return JSON.stringify({
+    destinationStationCode: destination,
+    originStationCode: origin,
+    onWardDate,
+    currency: "INR",
+    pax: { journeyClass: "ff", adult: 1, child: 0, infant: 0, srCitizen: 0 }
+  });
+}
+function spiceJetSearchUrl(fromCode, toCode, depIso) {
+  return `https://www.spicejet.com/search?from=${fromCode}&to=${toCode}&tripType=1&departure=${depIso}&adult=1&child=0&srCitizen=0&infant=0&currency=INR`;
+}
+function parseSpiceJetLowFare(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const rows = d?.data?.lowFareDateMarkets;
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    const dt = String(row?.departureDate || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) continue;
+    const amt = row?.lowestFareAmount || {};
+    const fare = Number(amt?.fareAmount);
+    const points = Number(amt?.farePointAmount);
+    const taxes = Number(amt?.taxesAndFeesAmount);
+    const total = fare + (Number.isFinite(points) ? points : 0) + (Number.isFinite(taxes) ? taxes : 0);
+    if (!Number.isFinite(fare) || fare <= 0 || !Number.isFinite(total) || total <= 0) continue;
+    out.push({
+      dt,
+      pr: Math.round(total),
+      fare: Math.round(fare),
+      taxes: Number.isFinite(taxes) ? Math.round(taxes) : void 0
+    });
+  }
+  return out;
+}
+function parseSpiceJetAvailability(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const trips = d?.data?.trips;
+  if (!Array.isArray(trips)) return [];
+  const out = [];
+  for (const trip of trips) {
+    const journeys = trip?.journeysAvailable;
+    if (!Array.isArray(journeys)) continue;
+    for (const j of journeys) {
+      const des = j?.designator || {};
+      const carrier = String(j?.carrierString || "").trim();
+      const departure = String(des?.departure || "");
+      const arrival = String(des?.arrival || "");
+      if (!carrier || !/^\d{4}-\d{2}-\d{2}T/.test(departure)) continue;
+      let seats;
+      const fares = j?.fares;
+      if (fares && typeof fares === "object") {
+        const counts = Object.values(fares).map((f) => Number(f?.availableCount)).filter((n) => Number.isFinite(n));
+        if (counts.length) seats = Math.min(...counts);
+      }
+      out.push({
+        carrier,
+        departure,
+        arrival,
+        duration: j?.flightDuration ? String(j.flightDuration) : void 0,
+        seatsAvailable: seats
+      });
+    }
+  }
+  return out;
+}
+function spiceJetDayFareItems(fares, journeys, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const upcoming = [...fares].filter((f) => f.dt >= today2).sort((a, b) => a.pr - b.pr);
+  const exact = upcoming.find((f) => f.dt === depIso);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const j = journeys.find((x) => x.departure.slice(0, 10) === chosen.dt);
+  const meta = j ? ` First flight: ${j.carrier}, departs ${j.departure.slice(11, 16)}${j.duration ? `, duration ${j.duration}` : ""}${j.seatsAvailable !== void 0 ? `, lowest-fare seats reported: ${j.seatsAvailable}` : ""}.` : "";
+  const taxesNote = chosen.taxes !== void 0 ? ` (taxes+fees component \u20B9${chosen.taxes})` : "";
+  return [newRawItem(source, {
+    title: `SpiceJet ${routeLabel} ${isExact ? `on ${chosen.dt}` : `(cheapest upcoming, ${chosen.dt})`} from \u20B9${chosen.pr}`,
+    brand: "SpiceJet",
+    price: chosen.pr,
+    currency: "INR",
+    seller: "SpiceJet",
+    sellerUrl: spiceJetSearchUrl(fromCode, toCode, chosen.dt),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.dt },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.dt,
+      departure_date: chosen.dt,
+      airline: "SpiceJet",
+      ...j ? { flight_number: j.carrier, departure_time: j.departure.slice(11, 16), arrival_time: j.arrival.slice(11, 16), flight_duration: j.duration || "" } : {},
+      fare_detail: `lowest SpiceJet economy fare (incl. taxes) published on the airline's own fare calendar for ${chosen.dt}${taxesNote}`,
+      fare_class: "lowest economy fare on SpiceJet's own fare calendar",
+      price_basis: `SpiceJet dotREZ API price for this route${isExact ? " and date" : " within the returned calendar window"} on ${today2}`,
+      data_note: `Fare acquired from SpiceJet's own API on ${today2}.${meta || " Flight numbers/times for this date were not returned; booking continues on the airline's own website."}`,
+      image: ""
+    },
+    identifiers: { sku: `spicejet-${fromCode}-${toCode}-${chosen.dt}` },
+    evidence: {
+      sourceUrl: `${SJ_API_BASE}/api/v2/search/lowfare`,
+      extractedFields: ["lowFareDateMarkets[].lowestFareAmount.fareAmount", "taxesAndFeesAmount", "departureDate", "journeysAvailable[].carrierString"]
+    }
+  })];
+}
+var SJ_API_BASE;
+var init_spiceJetDotRez = __esm({
+  "server/workers/parsers/spiceJetDotRez.ts"() {
+    init_contract();
+    SJ_API_BASE = "https://www.spicejet.com";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -12574,7 +12739,7 @@ async function expediaFlightsSearch(ctx, rt, dIso) {
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `expedia.com GraphQL returned no priced flight listings for ${from}-${to} on ${dIso}`);
   return items;
 }
-var URL_AP, flightsWorker;
+var sjTokenCache, URL_AP, flightsWorker;
 var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
     init_verticalWorker();
@@ -12592,11 +12757,13 @@ var init_flights = __esm({
     init_goibiboFlights();
     init_mmtFareCalendar();
     init_aixLowFares();
+    init_spiceJetDotRez();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
     init_fxRates();
     init_curlCffiFetch();
+    sjTokenCache = /* @__PURE__ */ new Map();
     URL_AP = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
     flightsWorker = {
       vertical: "flights",
@@ -12927,6 +13094,121 @@ var init_flights = __esm({
             const fares = parseAixLowFares(body);
             if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Air India Express fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
             return aixDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+          }
+        },
+        {
+          // SpiceJet LIVE (24 Oct 2026): www.spicejet.com is a Navitaire dotREZ
+          // backend. Browser-assisted discovery (Puppeteer) captured the search
+          // page's XHRs; the production recipe replays them browserless with
+          // curl_cffi: (1) POST /api/v1/token with authorization:"null" + os:web
+          // mints a fresh dotREZ NSK JWT (idle timeout 10 min, cached 8 min);
+          // (2) POST /api/v2/search/lowfare returns a ~7-day INR fare calendar;
+          // (3) POST /api/v3/search/availability adds real flight metadata
+          // (carrier "SG 612", times, duration) but no prices. The edge 403s
+          // minimal header sets — the FULL Chrome header set (os, sec-fetch-*,
+          // priority, CleverTap cookie) is required. Verified live browserless
+          // 24 Oct: DEL-BOM 28 Oct = SG 612 19:20->21:40, calendar total
+          // incl. taxes. Ladder chrome -> safari -> chrome-h1 for self-healing.
+          sourceId: "w_flights_spicejet",
+          name: "Flights worker: SpiceJet dotREZ fare calendar (airline API)",
+          priority: 14,
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const ref = spiceJetSearchUrl(fromA.code, toA.code, dep);
+            let token = "";
+            const cached2 = sjTokenCache.get("token");
+            if (cached2 && cached2.expires > Date.now()) {
+              token = cached2.value;
+            } else {
+              let tBody = "";
+              let tStatus = 0;
+              const tErr = [];
+              for (const a of ["chrome", "safari17_0", "chrome"]) {
+                try {
+                  const r = await cffiFetch(`${"https://www.spicejet.com"}/api/v1/token`, {
+                    method: "POST",
+                    impersonate: a,
+                    timeoutMs: 18e3,
+                    headers: spiceJetTokenHeaders(),
+                    body: "{}"
+                  });
+                  tBody = r.body || "";
+                  tStatus = r.status;
+                  if (tStatus === 200) break;
+                  tErr.push(`${a}: HTTP ${tStatus}`);
+                } catch (e) {
+                  tErr.push(`${a}: ${String(e?.message || e).slice(0, 90)}`);
+                }
+              }
+              if (tStatus !== 200) {
+                throw new AcquisitionError("ACCESS_CHALLENGE", `SpiceJet token endpoint failed (HTTP ${tStatus}: ${tErr.join(" | ")})`, tStatus || void 0);
+              }
+              try {
+                token = String(JSON.parse(tBody).data?.token || "");
+              } catch {
+                token = "";
+              }
+              if (!token) throw new AcquisitionError("EMPTY_RESPONSE", "SpiceJet token endpoint returned no token");
+              sjTokenCache.set("token", { value: token, expires: Date.now() + 8 * 6e4 });
+            }
+            const headers = () => spiceJetBaseHeaders(token, ref);
+            let body = "";
+            let status = 0;
+            const lastErr = [];
+            const lfPayload = spiceJetLowFareBody(fromA.code, toA.code, dep);
+            for (const a of [
+              { label: "chrome-h2", imp: "chrome", hv: void 0 },
+              { label: "safari-h2", imp: "safari17_0", hv: void 0 },
+              { label: "chrome-h1", imp: "chrome", hv: "1.1" }
+            ]) {
+              try {
+                const r = await cffiFetch("https://www.spicejet.com/api/v2/search/lowfare", {
+                  method: "POST",
+                  impersonate: a.imp,
+                  timeoutMs: 2e4,
+                  headers: headers(),
+                  body: lfPayload,
+                  ...a.hv ? { httpVersion: a.hv } : {}
+                });
+                body = r.body || "";
+                status = r.status;
+                if (status > 0 && status !== 429 && status < 500) break;
+                lastErr.push(`${a.label}: HTTP ${status}`);
+              } catch (e) {
+                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+                status = 0;
+              }
+            }
+            if (status === 0) throw new AcquisitionError("SERVER_ERROR", `SpiceJet fare-calendar unreachable after 3 attempts (${lastErr.join(" | ")})`);
+            if (status === 401 || status === 403) {
+              sjTokenCache.delete("token");
+              throw new AcquisitionError("ACCESS_CHALLENGE", `SpiceJet fare-calendar access challenge (HTTP ${status})`, status);
+            }
+            if (status === 429) throw new AcquisitionError("RATE_LIMITED", "SpiceJet fare-calendar rate-limited this IP", 429);
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `SpiceJet fare-calendar HTTP ${status}`, status);
+            const fares = parseSpiceJetLowFare(body);
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `SpiceJet fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+            let journeys = [];
+            try {
+              const r = await cffiFetch("https://www.spicejet.com/api/v3/search/availability", {
+                method: "POST",
+                impersonate: "chrome",
+                timeoutMs: 2e4,
+                headers: headers(),
+                body: spiceJetAvailabilityBody(fromA.code, toA.code, dep)
+              });
+              if (r.status === 200) journeys = parseSpiceJetAvailability(r.body || "");
+            } catch {
+            }
+            return spiceJetDayFareItems(fares, journeys, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
         {

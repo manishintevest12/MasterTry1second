@@ -22,6 +22,10 @@ import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraC
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
 import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
+import { spiceJetLowFareBody, spiceJetAvailabilityBody, spiceJetBaseHeaders, spiceJetTokenHeaders, spiceJetSearchUrl, parseSpiceJetLowFare, parseSpiceJetAvailability, spiceJetDayFareItems } from '../parsers/spiceJetDotRez';
+// SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
+const sjTokenCache = new Map<string, { value: string; expires: number }>();
+
 import { parseCleartripFlights, cleartripSearchUrl } from '../parsers/cleartripFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
@@ -426,6 +430,132 @@ export const flightsWorker: VerticalWorker = {
         const fares = parseAixLowFares(body);
         if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Air India Express fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
         return aixDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+      },
+    },
+    {
+      // SpiceJet LIVE (24 Oct 2026): www.spicejet.com is a Navitaire dotREZ
+      // backend. Browser-assisted discovery (Puppeteer) captured the search
+      // page's XHRs; the production recipe replays them browserless with
+      // curl_cffi: (1) POST /api/v1/token with authorization:"null" + os:web
+      // mints a fresh dotREZ NSK JWT (idle timeout 10 min, cached 8 min);
+      // (2) POST /api/v2/search/lowfare returns a ~7-day INR fare calendar;
+      // (3) POST /api/v3/search/availability adds real flight metadata
+      // (carrier "SG 612", times, duration) but no prices. The edge 403s
+      // minimal header sets — the FULL Chrome header set (os, sec-fetch-*,
+      // priority, CleverTap cookie) is required. Verified live browserless
+      // 24 Oct: DEL-BOM 28 Oct = SG 612 19:20->21:40, calendar total
+      // incl. taxes. Ladder chrome -> safari -> chrome-h1 for self-healing.
+      sourceId: 'w_flights_spicejet',
+      name: 'Flights worker: SpiceJet dotREZ fare calendar (airline API)',
+      priority: 14,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const ref = spiceJetSearchUrl(fromA.code, toA.code, dep);
+
+        // --- Step 1: dotREZ NSK token (module cache, 8 min; idle timeout is 10 min server-side).
+        let token = '';
+        const cached = sjTokenCache.get('token');
+        if (cached && cached.expires > Date.now()) {
+          token = cached.value;
+        } else {
+          let tBody = '';
+          let tStatus = 0;
+          const tErr: string[] = [];
+          for (const a of ['chrome', 'safari17_0', 'chrome']) {
+            try {
+              const r = await cffiFetch(`${'https://www.spicejet.com'}/api/v1/token`, {
+                method: 'POST',
+                impersonate: a,
+                timeoutMs: 18_000,
+                headers: spiceJetTokenHeaders(),
+                body: '{}',
+              });
+              tBody = r.body || '';
+              tStatus = r.status;
+              if (tStatus === 200) break;
+              tErr.push(`${a}: HTTP ${tStatus}`);
+            } catch (e: any) {
+              tErr.push(`${a}: ${String(e?.message || e).slice(0, 90)}`);
+            }
+          }
+          if (tStatus !== 200) {
+            throw new AcquisitionError('ACCESS_CHALLENGE', `SpiceJet token endpoint failed (HTTP ${tStatus}: ${tErr.join(' | ')})`, tStatus || undefined);
+          }
+          try {
+            token = String(JSON.parse(tBody).data?.token || '');
+          } catch {
+            token = '';
+          }
+          if (!token) throw new AcquisitionError('EMPTY_RESPONSE', 'SpiceJet token endpoint returned no token');
+          sjTokenCache.set('token', { value: token, expires: Date.now() + 8 * 60_000 });
+        }
+
+        // --- Step 2: lowfare calendar (self-healing fingerprint ladder).
+        const headers = () => spiceJetBaseHeaders(token, ref);
+        let body = '';
+        let status = 0;
+        const lastErr: string[] = [];
+        const lfPayload = spiceJetLowFareBody(fromA.code, toA.code, dep);
+        for (const a of [
+          { label: 'chrome-h2', imp: 'chrome', hv: undefined },
+          { label: 'safari-h2', imp: 'safari17_0', hv: undefined },
+          { label: 'chrome-h1', imp: 'chrome', hv: '1.1' as const },
+        ]) {
+          try {
+            const r = await cffiFetch('https://www.spicejet.com/api/v2/search/lowfare', {
+              method: 'POST',
+              impersonate: a.imp,
+              timeoutMs: 20_000,
+              headers: headers(),
+              body: lfPayload,
+              ...(a.hv ? { httpVersion: a.hv } : {}),
+            });
+            body = r.body || '';
+            status = r.status;
+            if (status > 0 && status !== 429 && status < 500) break; // definitive answer
+            lastErr.push(`${a.label}: HTTP ${status}`);
+          } catch (e: any) {
+            lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+            status = 0;
+          }
+        }
+        if (status === 0) throw new AcquisitionError('SERVER_ERROR', `SpiceJet fare-calendar unreachable after 3 attempts (${lastErr.join(' | ')})`);
+        if (status === 401 || status === 403) {
+          // Token may have idled out server-side: drop the cache so the next
+          // run re-mints it (self-healing, owner rule 21 Oct).
+          sjTokenCache.delete('token');
+          throw new AcquisitionError('ACCESS_CHALLENGE', `SpiceJet fare-calendar access challenge (HTTP ${status})`, status);
+        }
+        if (status === 429) throw new AcquisitionError('RATE_LIMITED', 'SpiceJet fare-calendar rate-limited this IP', 429);
+        if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `SpiceJet fare-calendar HTTP ${status}`, status);
+        const fares = parseSpiceJetLowFare(body);
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `SpiceJet fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+
+        // --- Step 3: availability metadata for the depart date (best-effort).
+        let journeys: ReturnType<typeof parseSpiceJetAvailability> = [];
+        try {
+          const r = await cffiFetch('https://www.spicejet.com/api/v3/search/availability', {
+            method: 'POST',
+            impersonate: 'chrome',
+            timeoutMs: 20_000,
+            headers: headers(),
+            body: spiceJetAvailabilityBody(fromA.code, toA.code, dep),
+          });
+          if (r.status === 200) journeys = parseSpiceJetAvailability(r.body || '');
+        } catch {
+          // metadata only — never fail the fare row for this
+        }
+        return spiceJetDayFareItems(fares, journeys, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
     {
