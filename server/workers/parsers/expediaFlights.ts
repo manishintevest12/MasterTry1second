@@ -199,9 +199,11 @@ export function parseExpediaFlights(
       price, currency,
       seller: 'Expedia',
       sellerUrl: srpUrl,
-      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
+      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso },
       attributes: {
         route: routeLabel,
+        ...(flightNo ? { flight_number: flightNo } : {}),
+        departure_date: dateIso,
         travel_date: dateIso,
         departure: dep,
         arrival: arr,
