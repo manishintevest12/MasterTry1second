@@ -15,6 +15,10 @@ interface GeoSuggestion {
   label: string; // full display name
   lat: number;
   lng: number;
+  street?: string; // colony/street-level parts (owner 24 Oct)
+  colony?: string;
+  city?: string;
+  pincode?: string;
 }
 
 interface LocationHintInputProps {
@@ -29,11 +33,13 @@ interface LocationHintInputProps {
   className?: string;
   /** Extra buttons rendered inside the field row, right of the clear X. */
   rightExtra?: React.ReactNode;
+  /** User coordinates: biases the colony/street typeahead near the user. */
+  coords?: { lat: number; lng: number } | null;
 }
 
 export const LocationHintInput: React.FC<LocationHintInputProps> = ({
   value, onChange, onSelect, placeholder, label, mode = 'drop', onEnter,
-  inputClassName = '', className = '', rightExtra,
+  inputClassName = '', className = '', rightExtra, coords = null,
 }) => {
   const [suggestions, setSuggestions] = useState<GeoSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -50,18 +56,18 @@ export const LocationHintInput: React.FC<LocationHintInputProps> = ({
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/geo/search?q=${encodeURIComponent(q)}`);
+        // Owner 24 Oct: colony/street typeahead (/api/geo/suggest, Photon/OSM).
+        const bias = coords ? `&lat=${coords.lat.toFixed(5)}&lng=${coords.lng.toFixed(5)}` : '';
+        const r = await fetch(`/api/geo/suggest?q=${encodeURIComponent(q)}${bias}`);
         const j = await r.json();
         if (seq !== seqRef.current) return; // a newer keystroke won the race
-        const rows: GeoSuggestion[] = (j.results || []).map((p: any) => {
-          const label = String(p.label || '');
-          const comma = label.indexOf(',');
-          return {
-            name: comma > 0 ? label.slice(0, comma) : label,
-            address: comma > 0 ? label.slice(comma + 1).trim() : '',
-            label, lat: p.lat, lng: p.lng,
-          };
-        });
+        const rows: GeoSuggestion[] = (j.results || []).map((p: any) => ({
+          name: String(p.name || ''),
+          address: String(p.address || ''),
+          label: [p.name, p.address].filter(Boolean).join(', '),
+          lat: p.lat, lng: p.lng,
+          street: p.street, colony: p.colony, city: p.city, pincode: p.pincode,
+        }));
         setSuggestions(rows);
         setActive(rows.length ? 0 : -1);
         setOpen(true);

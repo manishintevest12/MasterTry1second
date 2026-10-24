@@ -97,7 +97,10 @@ class _LocationHintFieldState extends State<LocationHintField> {
     if (q.length < 2) return;
     final seq = ++_seq;
     try {
-      final rows = await AppState.instance.api.geoSearch(q);
+      // Owner 24 Oct: colony/street-level typeahead (/api/geo/suggest, Photon/OSM)
+      // replaces the city-level geoSearch, biased near the user's coordinates.
+      final state = AppState.instance;
+      final rows = await state.api.geoSuggest(q, lat: state.pickLat, lng: state.pickLng);
       if (!mounted || seq != _seq) return;
       setState(() {
         _rows = rows.take(6).toList();
@@ -123,8 +126,11 @@ class _LocationHintFieldState extends State<LocationHintField> {
       widget.onSubmitted?.call(widget.controller.text); // "search in a different city": keep raw text
       return;
     }
-    final label = (place['label'] ?? '').toString();
-    final short = label.contains(',') ? label.split(',').first.trim() : label;
+    // Owner 24 Oct: suggest rows carry a structured name + granular address.
+    final label = (place['label'] ?? place['name'] ?? '').toString();
+    final short = (place['name'] ?? '').toString().isNotEmpty
+        ? (place['name'] as String).trim()
+        : (label.contains(',') ? label.split(',').first.trim() : label);
     widget.controller.text = short;
     widget.controller.selection =
         TextSelection.collapsed(offset: widget.controller.text.length);
@@ -174,12 +180,15 @@ class _LocationHintFieldState extends State<LocationHintField> {
                       );
                     }
                     final p = _rows[i];
-                    final full = (p['label'] ?? '').toString();
-                    final name =
-                        full.contains(',') ? full.split(',').first.trim() : full;
-                    final addr = full.contains(',')
-                        ? full.split(',').skip(1).join(',').trim()
-                        : '';
+                    final name = (p['name'] ?? '').toString().isNotEmpty
+                        ? (p['name'] as String)
+                        : ((p['label'] ?? '').toString());
+                    var addr = (p['address'] ?? '').toString();
+                    final km = (p['distanceKm'] as num?)?.toDouble();
+                    if (km != null) {
+                      final dist = km < 1 ? '\${(km * 1000).round()} m' : '\$km km';
+                      addr = addr.isEmpty ? dist : '\$addr \u00b7 \$dist';
+                    }
                     return _row(
                       c,
                       icon: Icons.location_on_outlined,

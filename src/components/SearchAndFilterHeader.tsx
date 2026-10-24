@@ -619,6 +619,7 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <LocationHintInput
                 value={cabPickupValue}
                 mode="pickup"
+                coords={userLocation.coordinates}
                 label="Pickup Location"
                 placeholder="Enter pickup point (e.g. Chappan Dukan)..."
                 onChange={(v) => setCabPickup(v)}
@@ -672,6 +673,7 @@ const handleSelectJourneyDate = (formattedDate: string) => {
               <LocationHintInput
                 value={cabDrop}
                 mode="drop"
+                coords={userLocation.coordinates}
                 label="Drop Destination"
                 placeholder="Enter drop destination (e.g. Martand Chowk, IGI Airport)..."
                 onChange={(v) => {

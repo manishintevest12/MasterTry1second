@@ -20,6 +20,7 @@ import '../widgets/typeahead_field.dart';
 import 'hotel_picker_screen.dart';
 import 'smart_cart_screen.dart';
 import 'place_picker_screen.dart';
+import 'address_picker_screen.dart';
 import 'map_pin_picker_screen.dart';
 
 /// Small const map of lat/lng for top ~40 Indian cities for geolocator pre-fill
@@ -663,34 +664,42 @@ class _CompareScreenState extends State<CompareScreen> {
     final lat = (place['lat'] as num?)?.toDouble();
     final lng = (place['lng'] as num?)?.toDouble();
     if (lat == null || lng == null) return;
-    final rev = await AppState.instance.api.geoReverse(lat, lng);
-    final city = (rev?['city'] as String?)?.isNotEmpty == true ? rev!['city'] as String : _state.city;
-    final pin = (rev?['pincode'] as String?)?.isNotEmpty == true ? rev!['pincode'] as String : _state.pincode;
-    await _state.setLocation(city, pin);
+    // Owner 24 Oct: suggest rows already carry the granular structured address
+    // (colony/street/city/pincode) — use it directly; reverse-geocode only when
+    // the city is missing so city/pincode stay real (never guessed).
+    var city = (place['city'] as String?)?.isNotEmpty == true ? place['city'] as String : '';
+    var pin = (place['pincode'] as String?)?.isNotEmpty == true ? place['pincode'] as String : '';
+    if (city.isEmpty || pin.isEmpty) {
+      final rev = await AppState.instance.api.geoReverse(lat, lng);
+      city = city.isNotEmpty ? city : ((rev?['city'] as String?)?.isNotEmpty == true ? rev!['city'] as String : _state.city);
+      pin = pin.isNotEmpty ? pin : ((rev?['pincode'] as String?)?.isNotEmpty == true ? rev!['pincode'] as String : _state.pincode);
+    }
+    // Exact picked point becomes the user's location; every live search now
+    // carries its coordinates (api.live -> /api/scrape/live `coordinates`).
+    await _state.setLocation(city, pin, lat: lat, lng: lng);
     if (mounted) await _runSearch(force: true);
   }
 
+  /// Owner 24 Oct: the plain city/pincode dialog is replaced by the full-screen
+  /// granular AddressPickerScreen (reference screenshots) — search-as-you-type
+  /// over /api/geo/suggest (colony/street level), GPS, or map pin. Used by the
+  /// 10-min delivery (grocery), food and every vertical's location chip.
   Future<void> _pickCity() async {
-    final ctrl = TextEditingController(text: _state.city);
-    final pin = TextEditingController(text: _state.pincode);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text('Your location', style: tx(c, 16, w: FontWeight.w900)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'City')),
-          const SizedBox(height: 8),
-          TextField(controller: pin, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Pincode')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          RedButton('Save', onTap: () => Navigator.pop(c, true), dense: true),
-        ],
+    final spot = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AddressPickerScreen(title: 'Select Your Location'),
       ),
     );
-    if (ok == true) {
-      await _state.setLocation(ctrl.text, pin.text);
-      if (mounted) await _runSearch(force: true);
+    if (spot == null || spot is! Map<String, dynamic>) return;
+    final lat = (spot['lat'] as num?)?.toDouble();
+    final lng = (spot['lng'] as num?)?.toDouble();
+    final city = (spot['city'] as String?)?.isNotEmpty == true ? spot['city'] as String : _state.city;
+    final pin = (spot['pincode'] as String?)?.isNotEmpty == true ? spot['pincode'] as String : _state.pincode;
+    await _state.setLocation(city, pin, lat: lat, lng: lng);
+    if (mounted) {
+      toast(context, 'Location set to ${spot['address'] ?? city}');
+      await _runSearch(force: true);
     }
   }
 }

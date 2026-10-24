@@ -27,6 +27,10 @@ interface GeoSuggestion {
   label: string;
   lat: number;
   lng: number;
+  street?: string; // colony/street-level parts (owner 24 Oct)
+  colony?: string;
+  city?: string;
+  pincode?: string;
 }
 
 interface FoodLocationHintProps {
@@ -62,14 +66,18 @@ export const FoodLocationHint: React.FC<FoodLocationHintProps> = ({
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/geo/search?q=${encodeURIComponent(q)}`);
+        // Owner 24 Oct: colony/street typeahead (/api/geo/suggest, Photon/OSM) —
+        // "apna sw" resolves to Apna Sweets + full street/colony/pincode.
+        const r = await fetch(`/api/geo/suggest?q=${encodeURIComponent(q)}`);
         const j = await r.json();
         if (seq !== seqRef.current) return;
-        const rows: GeoSuggestion[] = (j.results || []).map((p: any) => {
-          const label = String(p.label || '');
-          const comma = label.indexOf(',');
-          return { name: comma > 0 ? label.slice(0, comma) : label, address: comma > 0 ? label.slice(comma + 1).trim() : '', label, lat: p.lat, lng: p.lng };
-        });
+        const rows: GeoSuggestion[] = (j.results || []).map((p: any) => ({
+          name: String(p.name || ''),
+          address: String(p.address || ''),
+          label: [p.name, p.address].filter(Boolean).join(', '),
+          lat: p.lat, lng: p.lng,
+          street: p.street, colony: p.colony, city: p.city, pincode: p.pincode,
+        }));
         setSuggestions(rows);
         setExpanded(false);
         setActive(rows.length ? 0 : -1);
@@ -91,8 +99,22 @@ export const FoodLocationHint: React.FC<FoodLocationHintProps> = ({
 
   const choose = async (s: GeoSuggestion) => {
     setOpen(false);
+    const full = `${s.name}${s.address ? `, ${s.address}` : ''}`;
+    // Owner 24 Oct: the suggest row already carries the granular structured
+    // address (street/colony/city/pincode) - pick it directly, no extra hop.
+    if (s.city && (s.pincode || s.colony)) {
+      onChange(s.name);
+      onPicked({
+        lat: s.lat, lng: s.lng,
+        address: full,
+        locality: [s.colony, s.street].filter(Boolean).join(', ') || s.name,
+        city: s.city,
+        pincode: s.pincode,
+      });
+      return;
+    }
     onChange(s.name);
-    // Reverse-geocode the picked point so pincode/city stay real (never guessed).
+    // Fallback: reverse-geocode the picked point so city/pincode stay real.
     setResolving(true);
     try {
       const r = await fetch(`/api/geo/reverse?lat=${s.lat.toFixed(6)}&lng=${s.lng.toFixed(6)}`);
@@ -100,13 +122,13 @@ export const FoodLocationHint: React.FC<FoodLocationHintProps> = ({
       const place = d?.place || {};
       onPicked({
         lat: s.lat, lng: s.lng,
-        address: place.address || s.label,
+        address: place.address || full,
         locality: place.locality || s.name,
-        city: place.city || '',
-        pincode: place.pincode,
+        city: place.city || s.city || '',
+        pincode: place.pincode || s.pincode,
       });
     } catch {
-      onPicked({ lat: s.lat, lng: s.lng, address: s.label, locality: s.name, city: '', pincode: undefined });
+      onPicked({ lat: s.lat, lng: s.lng, address: full, locality: s.name, city: s.city || '', pincode: s.pincode });
     } finally { setResolving(false); }
   };
 

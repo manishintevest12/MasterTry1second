@@ -1248,6 +1248,18 @@ class Try1SecondApi {
     return [for (final r in (res['results'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
   }
 
+  /// GET /api/geo/suggest — colony/street-level address typeahead (Photon/OSM,
+  /// owner 24 Oct). Rows carry name + granular structured address (street, colony,
+  /// city, pincode) + exact coords, optional distance when user coords are given.
+  Future<List<Map<String, dynamic>>> geoSuggest(String q, {double? lat, double? lng}) async {
+    var path = '/api/geo/suggest?q=\${Uri.encodeQueryComponent(q)}';
+    if (lat != null && lng != null) {
+      path += '&lat=\${lat.toStringAsFixed(5)}&lng=\${lng.toStringAsFixed(5)}';
+    }
+    final res = await _get(path);
+    return [for (final r in (res['results'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
+  }
+
   /// GET /api/hotels/locations — LIVE hotel-name + destination typeahead
   /// (TravelGuru autosuggest proxy, same registry Yatra's hotel site uses).
   /// Returns [{name, type: HOTEL|CITY, cityName, stateName, propertyType, sourceId}].

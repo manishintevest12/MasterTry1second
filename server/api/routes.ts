@@ -12,7 +12,7 @@ import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
 import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
-import { geoSearch, geoReverse } from '../common/geoProxy';
+import { geoSearch, geoReverse, geoSuggest } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
@@ -255,6 +255,24 @@ apiRouter.get('/geo/search', async (req, res) => {
   const q = String(req.query.q || '').slice(0, 120);
   if (q.trim().length < 2) return res.json({ results: [] });
   const results = await geoSearch(q, 6);
+  res.json({ results });
+});
+
+// GET /geo/suggest — colony/street-level address typeahead (Photon/OSM, owner 24 Oct).
+// q + optional user lat/lng (bias + distance). Used by the 10-min delivery, food
+// and cab address inputs on web + Flutter: rows carry name + granular structured
+// address (street, colony, city, pincode) plus exact coordinates.
+apiRouter.get('/geo/suggest', async (req, res) => {
+  const q = String(req.query.q || '').slice(0, 120);
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  const limit = Number(req.query.limit) || undefined;
+  if (q.trim().length < 2) return res.json({ results: [] });
+  const results = await geoSuggest(q, {
+    lat: Number.isFinite(lat) ? lat : undefined,
+    lng: Number.isFinite(lng) ? lng : undefined,
+    limit: Number.isFinite(limit as number) ? limit : undefined,
+  });
   res.json({ results });
 });
 

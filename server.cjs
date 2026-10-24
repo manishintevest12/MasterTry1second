@@ -14365,7 +14365,86 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
-var UA, NOMINATIM, cache5, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS;
+async function throttledPhoton(path13) {
+  const hit = cache5.get(path13);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastPhotonAt = Date.now();
+  try {
+    const r = await fetch(`${PHOTON}${path13}`, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(6e3)
+    });
+    if (!r.ok) {
+      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path13.slice(0, 60)}`);
+      return null;
+    }
+    const value = await r.json();
+    if (cache5.size >= CACHE_MAX) cache5.delete(cache5.keys().next().value);
+    cache5.set(`photon:${path13}`, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    log.warn("GeoProxy", `Photon unreachable: ${String(e?.message || e).slice(0, 80)}`);
+    return null;
+  }
+}
+function photonFeatureToPlace(f, near) {
+  const c = Array.isArray(f?.geometry?.coordinates) ? f.geometry.coordinates : [];
+  if (c.length < 2) return null;
+  const p = f.properties || {};
+  const name = String(p.name || "").trim();
+  const street = String(p.street || "").trim() || void 0;
+  const colony = String(p.district || "").trim() || String(p.locality || "").trim() || String(p.suburb || "").trim() || String(p.neighbourhood || "").trim() || void 0;
+  const city = String(p.city || p.county || "").trim() || void 0;
+  const state = String(p.state || "").trim() || void 0;
+  const pincode = /^\d{6}$/.test(String(p.postcode || "")) ? String(p.postcode) : void 0;
+  const hn = String(p.housenumber || "").trim();
+  const parts = [];
+  const push = (v) => {
+    const t = String(v || "").trim();
+    if (t && !parts.some((x) => x.toLowerCase() === t.toLowerCase())) parts.push(t);
+  };
+  if (hn && street) push(`${hn}, ${street}`);
+  else push(hn || street);
+  push(colony);
+  push(city);
+  push(state);
+  const lat = Number(c[1]);
+  const lng = Number(c[0]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const place = {
+    name: name || street || colony || city || "Unnamed place",
+    address: parts.join(", ").slice(0, 240),
+    street,
+    colony,
+    city,
+    state,
+    pincode,
+    lat,
+    lng,
+    kind: String(p.type || p.osm_value || "").slice(0, 40)
+  };
+  if (near && Number.isFinite(near.lat) && Number.isFinite(near.lng)) {
+    const R = 6371;
+    const dLat = (lat - near.lat) * Math.PI / 180;
+    const dLng = (lng - near.lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(near.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    place.distanceKm = Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 10) / 10;
+  }
+  return place;
+}
+async function geoSuggest(q3, opts = {}) {
+  const clean3 = q3.trim().slice(0, 120);
+  if (clean3.length < 2) return [];
+  const limit = Math.min(Math.max(opts.limit ?? 8, 1), 10);
+  const bias = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) && Math.abs(opts.lat) <= 90 ? `&lat=${opts.lat.toFixed(5)}&lon=${opts.lng.toFixed(5)}` : "";
+  const data = await throttledPhoton(`?q=${encodeURIComponent(clean3)}&limit=${limit}&lang=en${bias}`);
+  const feats = Array.isArray(data?.features) ? data.features : [];
+  const near = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) ? { lat: opts.lat, lng: opts.lng } : void 0;
+  return feats.map((f) => photonFeatureToPlace(f, near)).filter((p) => p !== null).slice(0, limit);
+}
+var UA, NOMINATIM, cache5, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
 var init_geoProxy = __esm({
   "server/common/geoProxy.ts"() {
     init_logger();
@@ -14376,6 +14455,9 @@ var init_geoProxy = __esm({
     CACHE_MAX = 800;
     lastCallAt = 0;
     MIN_INTERVAL_MS = 1100;
+    PHOTON = "https://photon.komoot.io/api/";
+    lastPhotonAt = 0;
+    PHOTON_MIN_INTERVAL_MS = 120;
   }
 });
 
@@ -31003,6 +31085,19 @@ var init_routes = __esm({
       const q3 = String(req.query.q || "").slice(0, 120);
       if (q3.trim().length < 2) return res.json({ results: [] });
       const results = await geoSearch(q3, 6);
+      res.json({ results });
+    });
+    apiRouter.get("/geo/suggest", async (req, res) => {
+      const q3 = String(req.query.q || "").slice(0, 120);
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const limit = Number(req.query.limit) || void 0;
+      if (q3.trim().length < 2) return res.json({ results: [] });
+      const results = await geoSuggest(q3, {
+        lat: Number.isFinite(lat) ? lat : void 0,
+        lng: Number.isFinite(lng) ? lng : void 0,
+        limit: Number.isFinite(limit) ? limit : void 0
+      });
       res.json({ results });
     });
     apiRouter.get("/geo/reverse", async (req, res) => {
