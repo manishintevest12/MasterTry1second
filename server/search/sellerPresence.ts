@@ -93,7 +93,11 @@ function presenceOffer(seller: string, sourceId: string, srp: string, note: stri
 /** Presence rows for every mandatory flight seller that contributed nothing to
  *  this response. Ephemeral: injected after acquisition, never persisted to the
  *  catalogue, regenerated honestly per search. */
-export async function buildFlightSellerPresence(parsed: ParsedQuery, combined: NormalizedOffer[]): Promise<NormalizedOffer[]> {
+export async function buildFlightSellerPresence(
+  parsed: ParsedQuery,
+  combined: NormalizedOffer[],
+  succeededSourceIds?: string[],
+): Promise<NormalizedOffer[]> {
   const raw = String(parsed.rawQuery || parsed.entityName || '');
   const rt0 = routeFromQuery(raw);
   if (!rt0) return [];
@@ -116,8 +120,18 @@ export async function buildFlightSellerPresence(parsed: ParsedQuery, combined: N
       .filter(Boolean),
   );
   const out: NormalizedOffer[] = [];
+  // HONEST NO-SERVICE (owner 24 Oct): when a seller's own live source SUCCEEDED
+  // this search (its API answered us) yet returned no priced row, that is a
+  // truthful zero — e.g. Akasa's API answers INVALID_STATION for a route it
+  // does not fly. Showing a "feed unreachable / Price unavailable" card for a
+  // carrier that simply has no service here is misleading, so the presence
+  // row is skipped. Presence rows remain ONLY for genuinely gated/broken
+  // sources (seller's source failed this search), which is what the owner's
+  // brand-visibility rule (22 Oct) was written for.
+  const succeeded = new Set((succeededSourceIds || []).map((x) => String(x)));
   for (const cfg of PRESENCE_SELLERS) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
+    if (succeeded.has(cfg.sourceId)) continue; // honest empty from the seller's own API
     out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
   }
   return out;

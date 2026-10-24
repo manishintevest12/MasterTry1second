@@ -7654,6 +7654,9 @@ function akasaFareCalendarUrl(fromCode, toCode, depIso) {
   const start2 = `${depIso}T00:00:00%2B05:30`;
   return `${AKASA_API_BASE}/availability/v2/search?origin=${fromCode}&destination=${toCode}&startDate=${start2}&numberOfPassengers=1&channel=WEB&currencyCode=INR`;
 }
+function akasaHonestNoService(status, body) {
+  return status === 422 && /INVALID_STATION/i.test(body || "");
+}
 function parseAkasaFareCalendar(xml) {
   const out = [];
   const blocks = xml.match(/<data>[\s\S]*?<\/data>/g) || [];
@@ -12361,13 +12364,22 @@ async function expediaFlightsSearch(ctx, rt, dIso) {
   if (!from || !to) return [];
   const srpUrl = `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}&from=${encodeURIComponent(`${rt.from} (${from})`)}&to=${encodeURIComponent(`${rt.to} (${to})`)}&search-type=arsed&mode=search`;
   let cookies;
-  const primed = await cffiFetch(srpUrl, {
-    impersonate: "safari",
-    timeoutMs: 3e4,
-    returnCookies: true,
-    cookies,
-    headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
-  });
+  const primeAttempts = [
+    { label: "safari-h2", opts: { impersonate: "safari", timeoutMs: 3e4, returnCookies: true, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } } },
+    { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 3e4, returnCookies: true, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } } },
+    { label: "safari-h1", opts: { impersonate: "safari", timeoutMs: 3e4, returnCookies: true, httpVersion: "1.1", headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } } }
+  ];
+  let primed;
+  for (const a of primeAttempts) {
+    try {
+      primed = await cffiFetch(srpUrl, { ...a.opts, cookies });
+      if (primed.status !== 429) break;
+    } catch {
+      primed = void 0;
+    }
+    if (a !== primeAttempts[primeAttempts.length - 1]) await new Promise((res) => setTimeout(res, 2e3));
+  }
+  if (!primed) throw new AcquisitionError("SERVER_ERROR", "expedia.com SRP unreachable on all ladder rungs (transport errors)");
   cookies = primed.cookies || cookies;
   if (primed.status === 429 || primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4e3))) {
     throw new AcquisitionError("ACCESS_CHALLENGE", `expedia.com SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
@@ -12789,7 +12801,30 @@ var init_flights = __esm({
               Referer: "https://flight.yatra.com/air-search-ui/dom2/trigger",
               "X-Requested-With": "XMLHttpRequest"
             };
-            const t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), { impersonate: "chrome", timeoutMs: 3e4, headers: hdrs });
+            const yatraAttempts = [
+              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 3e4, headers: hdrs } },
+              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 4e4, headers: hdrs, httpVersion: "1.1" } },
+              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 3e4, headers: hdrs } }
+            ];
+            let t0;
+            const yatraErrs = [];
+            for (const a of yatraAttempts) {
+              try {
+                t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), a.opts);
+                yatraErrs.push("");
+                break;
+              } catch (e) {
+                yatraErrs.push(`${a.label}: ${String(e?.message || e).slice(0, 110)}`);
+                t0 = void 0;
+              }
+            }
+            if (!t0) {
+              throw new AcquisitionError(
+                "SERVER_ERROR",
+                `Yatra air-service unreachable on all ladder rungs (${yatraErrs.filter(Boolean).join(" | ") || "transport errors"}); edge reset/tarpit.`,
+                void 0
+              );
+            }
             if (t0.status === 403 || t0.status === 429) {
               throw new AcquisitionError(t0.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Yatra air-service edge-blocked (HTTP ${t0.status}).`, t0.status);
             }
@@ -12911,22 +12946,30 @@ var init_flights = __esm({
               tripleSeatSelected: false,
               selectedTripIndex: 0
             });
+            const indigoHeaders = {
+              "user_key": "43b557c03fc85cc213e91df0f526cc7a",
+              // static app key shipped inside the public APK
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            };
+            const indigoAttempts = [
+              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 28e3, method: "POST", body, headers: indigoHeaders } },
+              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 28e3, method: "POST", body, headers: indigoHeaders } },
+              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 28e3, method: "POST", body, headers: indigoHeaders, httpVersion: "1.1" } }
+            ];
             let r;
-            try {
-              r = await cffiFetch("https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search", {
-                impersonate: "chrome",
-                timeoutMs: 28e3,
-                method: "POST",
-                body,
-                headers: {
-                  "user_key": "43b557c03fc85cc213e91df0f526cc7a",
-                  // static app key shipped inside the public APK
-                  "Content-Type": "application/json",
-                  "Accept": "application/json"
-                }
-              });
-            } catch (e) {
-              throw new AcquisitionError("SERVER_ERROR", `IndiGo API unreachable: ${String(e?.message || e)}`);
+            const indigoErrs = [];
+            for (const a of indigoAttempts) {
+              try {
+                r = await cffiFetch("https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search", a.opts);
+                break;
+              } catch (e) {
+                indigoErrs.push(`${a.label}: ${String(e?.message || e).slice(0, 110)}`);
+                r = void 0;
+              }
+            }
+            if (!r) {
+              throw new AcquisitionError("SERVER_ERROR", `IndiGo API unreachable on all ladder rungs (${indigoErrs.filter(Boolean).join(" | ") || "transport errors"})`);
             }
             if (r.status === 403 || r.status === 429) {
               try {
@@ -12995,6 +13038,9 @@ var init_flights = __esm({
                 `Akasa Air fare-calendar API edge-blocked (HTTP ${r.status}).`,
                 r.status
               );
+            }
+            if (akasaHonestNoService(r.status, r.body)) {
+              return [];
             }
             if (r.status === 400 || r.status >= 500) {
               throw new AcquisitionError("SERVER_ERROR", `Akasa Air API HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 180)}`, r.status);
@@ -24665,7 +24711,7 @@ function presenceOffer(seller, sourceId, srp, note, from, to, dIso) {
     }
   };
 }
-async function buildFlightSellerPresence(parsed, combined) {
+async function buildFlightSellerPresence(parsed, combined, succeededSourceIds) {
   const raw = String(parsed.rawQuery || parsed.entityName || "");
   const rt0 = routeFromQuery(raw);
   if (!rt0) return [];
@@ -24678,8 +24724,10 @@ async function buildFlightSellerPresence(parsed, combined) {
     combined.filter((o) => (Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0) > 0).map((o) => `${o.seller || ""}`.toLowerCase().trim()).filter(Boolean)
   );
   const out = [];
+  const succeeded = new Set((succeededSourceIds || []).map((x) => String(x)));
   for (const cfg of PRESENCE_SELLERS) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
+    if (succeeded.has(cfg.sourceId)) continue;
     out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
   }
   return out;
@@ -25808,7 +25856,8 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
   if (String(vertical) === "flights") {
-    combined = [...combined, ...await buildFlightSellerPresence(parsed, combined)];
+    const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId);
+    combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
   }
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);

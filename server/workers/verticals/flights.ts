@@ -16,7 +16,7 @@ import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus
 import { resolveAirport, IATA } from '../../common/airportLookup';
 import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
-import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
+import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaHonestNoService } from '../parsers/akasaFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
@@ -73,10 +73,27 @@ async function expediaFlightsSearch(ctx: any, rt: { from: string; to: string; fr
   const srpUrl = `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}` +
     `&from=${encodeURIComponent(`${rt.from} (${from})`)}&to=${encodeURIComponent(`${rt.to} (${to})`)}&search-type=arsed&mode=search`;
   let cookies: Record<string, string> | undefined;
-  const primed = await cffiFetch(srpUrl, {
-    impersonate: 'safari', timeoutMs: 30_000, returnCookies: true, cookies,
-    headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
-  });
+  // Self-healing retry ladder (owner 21 Oct rule): the SRP edge rate-limits
+  // per TLS fingerprint + IP. Ladder: safari -> (2s pause) chrome ->
+  // safari/HTTP1.1, stopping at the first definitive non-429 answer. A 429 on
+  // every rung stays an honest ACCESS_CHALLENGE (presence row + challenge
+  // backoff ladder take over), never fabricated rows.
+  const primeAttempts: Array<{ label: string; opts: any }> = [
+    { label: 'safari-h2', opts: { impersonate: 'safari', timeoutMs: 30_000, returnCookies: true, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } } },
+    { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 30_000, returnCookies: true, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } } },
+    { label: 'safari-h1', opts: { impersonate: 'safari', timeoutMs: 30_000, returnCookies: true, httpVersion: '1.1' as const, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } } },
+  ];
+  let primed: any;
+  for (const a of primeAttempts) {
+    try {
+      primed = await cffiFetch(srpUrl, { ...a.opts, cookies });
+      if (primed.status !== 429) break; // definitive answer
+    } catch {
+      primed = undefined; // transport error — try the next rung
+    }
+    if (a !== primeAttempts[primeAttempts.length - 1]) await new Promise((res) => setTimeout(res, 2_000));
+  }
+  if (!primed) throw new AcquisitionError('SERVER_ERROR', 'expedia.com SRP unreachable on all ladder rungs (transport errors)');
   cookies = primed.cookies || cookies;
   if (primed.status === 429 || (primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4000)))) {
     throw new AcquisitionError('ACCESS_CHALLENGE', `expedia.com SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
@@ -442,8 +459,34 @@ export const flightsWorker: VerticalWorker = {
           'X-Requested-With': 'XMLHttpRequest',
         };
 
-        // 1) trigger = search init + first batch
-        const t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), { impersonate: 'chrome', timeoutMs: 30_000, headers: hdrs });
+        // 1) trigger = search init + first batch.
+        // Self-healing retry ladder (owner 21 Oct rule, same pattern as Goibibo):
+        // the Yatra edge intermittently resets HTTP/2 streams (prod curl 92,
+        // "stream 1 reset") or tarpits a first hit. Ladder: chrome/h2 ->
+        // chrome/HTTP1.1 (40s for tarpits) -> safari/h2, so a transient reset
+        // never drops Yatra fares from a search. A definitive HTTP answer on
+        // any rung stops the ladder; only transport failures escalate.
+        const yatraAttempts: Array<{ label: string; opts: any }> = [
+          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 30_000, headers: hdrs } },
+          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 40_000, headers: hdrs, httpVersion: '1.1' as const } },
+          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 30_000, headers: hdrs } },
+        ];
+        let t0: any;
+        const yatraErrs: string[] = [];
+        for (const a of yatraAttempts) {
+          try {
+            t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), a.opts);
+            yatraErrs.push('');
+            break; // any definitive HTTP answer (200/403/429/5xx) is classified below
+          } catch (e: any) {
+            yatraErrs.push(`${a.label}: ${String(e?.message || e).slice(0, 110)}`);
+            t0 = undefined;
+          }
+        }
+        if (!t0) {
+          throw new AcquisitionError('SERVER_ERROR',
+            `Yatra air-service unreachable on all ladder rungs (${yatraErrs.filter(Boolean).join(' | ') || 'transport errors'}); edge reset/tarpit.`, undefined);
+        }
         if (t0.status === 403 || t0.status === 429) {
           throw new AcquisitionError(t0.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Yatra air-service edge-blocked (HTTP ${t0.status}).`, t0.status);
         }
@@ -575,17 +618,34 @@ export const flightsWorker: VerticalWorker = {
           tripleSeatSelected: false,
           selectedTripIndex: 0,
         });
-        let r;
-        try {
-          r = await cffiFetch('https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search', {
-            impersonate: 'chrome', timeoutMs: 28_000, method: 'POST', body,
-            headers: {
-              'user_key': '43b557c03fc85cc213e91df0f526cc7a', // static app key shipped inside the public APK
-              'Content-Type': 'application/json', 'Accept': 'application/json',
-            },
-          });
-        } catch (e: any) {
-          throw new AcquisitionError('SERVER_ERROR', `IndiGo API unreachable: ${String(e?.message || e)}`);
+        // Self-healing retry ladder (owner 21 Oct rule): the Akamai edge in
+        // front of the mobile API is fingerprint-sensitive — chrome may be
+        // 403-challenged while safari passes on a different egress, and vice
+        // versa. Ladder: chrome -> safari -> chrome/HTTP1.1, stopping at the
+        // first definitive answer; the web fare-calendar fallback below still
+        // catches routes the calendar serves when the API stays gated.
+        const indigoHeaders = {
+          'user_key': '43b557c03fc85cc213e91df0f526cc7a', // static app key shipped inside the public APK
+          'Content-Type': 'application/json', 'Accept': 'application/json',
+        };
+        const indigoAttempts: Array<{ label: string; opts: any }> = [
+          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 28_000, method: 'POST', body, headers: indigoHeaders } },
+          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 28_000, method: 'POST', body, headers: indigoHeaders } },
+          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 28_000, method: 'POST', body, headers: indigoHeaders, httpVersion: '1.1' as const } },
+        ];
+        let r: any;
+        const indigoErrs: string[] = [];
+        for (const a of indigoAttempts) {
+          try {
+            r = await cffiFetch('https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search', a.opts);
+            break; // definitive answer from the edge (200/400/403/429/5xx)
+          } catch (e: any) {
+            indigoErrs.push(`${a.label}: ${String(e?.message || e).slice(0, 110)}`);
+            r = undefined;
+          }
+        }
+        if (!r) {
+          throw new AcquisitionError('SERVER_ERROR', `IndiGo API unreachable on all ladder rungs (${indigoErrs.filter(Boolean).join(' | ') || 'transport errors'})`);
         }
         if (r.status === 403 || r.status === 429) {
           // Akamai edge block on the mobile search API is the expected case from
@@ -653,6 +713,17 @@ export const flightsWorker: VerticalWorker = {
         if (r.status === 403 || r.status === 429) {
           throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED',
             `Akasa Air fare-calendar API edge-blocked (HTTP ${r.status}).`, r.status);
+        }
+        // HONEST NO-SERVICE (owner 24 Oct): the fare-calendar API answers 422
+        // {"code":"INVALID_STATION","message":"Invalid Origin"} for every route
+        // Akasa Air does not fly (verified live: IDR-x always 422, DEL-BOM 200
+        // with fares). That is a SUCCESSFUL acquisition proving "no Akasa
+        // service on this route" — an honest [] that keeps the circuit closed,
+        // never a SERVER_ERROR (which would damage health + inject a misleading
+        // "feed unreachable" presence card for a carrier that simply does not
+        // fly here).
+        if (akasaHonestNoService(r.status, r.body)) {
+          return [];
         }
         if (r.status === 400 || r.status >= 500) {
           throw new AcquisitionError('SERVER_ERROR', `Akasa Air API HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 180)}`, r.status);

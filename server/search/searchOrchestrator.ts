@@ -684,7 +684,14 @@ async function finalizeLive(
   // price claimed, skipped automatically the moment the seller's live rows
   // return. Ephemeral: never persisted, circuits and probes untouched.
   if (String(vertical) === 'flights') {
-    combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined))];
+    // EMPTY_RESPONSE failures are honest "seller answered, no rows" outcomes
+    // (health.ts policy, 23 Oct) — same as a succeeded source for presence
+    // purposes: e.g. Akasa's fare calendar returning zero bookable days on a
+    // route it does not fly must NOT spawn a "feed unreachable" card.
+    const honestEmpty = (outcome.failed || [])
+      .filter((f: any) => f.failureClass === 'EMPTY_RESPONSE')
+      .map((f: any) => f.sourceId);
+    combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined, [...(outcome.succeeded || []), ...honestEmpty]))];
   }
 
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules

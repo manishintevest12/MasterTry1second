@@ -70,3 +70,16 @@ test('presence: route filter compatibility — engine routeFilter keeps the rows
   const kept = routeFilter(rows, parsed());
   assert.equal(kept.length, 4, 'presence rows must survive the flights route filter');
 });
+
+test('presence: seller whose source SUCCEEDED with honest zero rows is skipped (no-service route)', async () => {
+  // Akasa's own API answered INVALID_STATION => no service on this route:
+  // a "feed unreachable" card would be misleading, so no presence row.
+  const rows = await buildFlightSellerPresence(parsed(), [], ['w_flights_akasa']);
+  assert.ok(!rows.some((r) => r.seller === 'Akasa Air'), 'honest no-service seller must not get a presence card');
+  assert.equal(rows.length, 3, 'the other gated sellers keep their cards');
+});
+
+test('presence: a FAILED seller keeps its presence card even when other sources succeeded', async () => {
+  const rows = await buildFlightSellerPresence(parsed(), [], ['w_flights_kiwi', 'w_flights_ixigo']);
+  assert.equal(rows.length, 4, 'none of the presence sellers succeeded, so all four cards stay');
+});

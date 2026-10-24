@@ -36,6 +36,18 @@ export function akasaFareCalendarUrl(fromCode: string, toCode: string, depIso: s
     + `&startDate=${start}&numberOfPassengers=1&channel=WEB&currencyCode=INR`;
 }
 
+/**
+ * Honest no-service detector (owner 24 Oct): the fare-calendar API answers
+ * 422 {"code":"INVALID_STATION", "message":"Invalid Origin"|"Invalid Destination"}
+ * for every route Akasa Air does not fly (verified live: IDR-x always 422 while
+ * DEL-BOM returns a priced 200). Such an answer is a SUCCESSFUL acquisition
+ * proving there is no Akasa service on the route — the worker returns [] and
+ * neither the circuit nor a misleading "feed unreachable" presence card fires.
+ */
+export function akasaHonestNoService(status: number, body: string): boolean {
+  return status === 422 && /INVALID_STATION/i.test(body || '');
+}
+
 /** Parse the XML fare-calendar document into per-day fares (no data invented). */
 export function parseAkasaFareCalendar(xml: string): AkasaDayFare[] {
   const out: AkasaDayFare[] = [];

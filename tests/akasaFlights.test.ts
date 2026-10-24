@@ -58,3 +58,12 @@ test('akasa: no-flights dates are skipped; cheapest upcoming day is the fallback
 test('akasa: empty calendar yields an honest empty, never a fabricated fare', () => {
   assert.deepEqual(akasaDayFareItems([], src, 'Delhi', 'Mumbai', 'DEL', 'BOM', '2026-10-21'), []);
 });
+
+test('akasa: 422 INVALID_STATION is an honest no-service answer, not an error', async () => {
+  const { akasaHonestNoService } = await import('../server/workers/parsers/akasaFlights');
+  const live422 = '{"error":{"code":"INVALID_STATION","message":"Invalid Origin","status":"UNPROCESSABLE_ENTITY"}}';
+  assert.equal(akasaHonestNoService(422, live422), true, 'INVALID_STATION 422 = no Akasa service on route');
+  assert.equal(akasaHonestNoService(422, '{"error":{"code":"SOME_OTHER","message":"x"}}'), false, 'other 422 shapes stay errors');
+  assert.equal(akasaHonestNoService(403, live422), false, '403 is still an access challenge');
+  assert.equal(akasaHonestNoService(200, '<APIResponse></APIResponse>'), false);
+});
