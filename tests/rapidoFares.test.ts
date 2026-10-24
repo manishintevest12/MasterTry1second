@@ -64,12 +64,12 @@ test('buildRapidoFareRows: known services priced, unknown skipped, window in att
   });
   // Indore catalog maps 4 services: Bike / Auto / Cab Economy / Cab Premium.
   assert.equal(rows.length, 4);
-  const vehicles = rows.map((r) => r.attributes.vehicle_type).sort();
+  const vehicles = rows.map((r) => (r.attributes ?? {}).vehicle_type).sort();
   assert.deepEqual(vehicles, ['Auto', 'Bike', 'Cab Economy', 'Cab Premium']);
-  const bike = rows.find((r) => r.attributes.vehicle_type === 'Bike')!;
+  const bike = rows.find((r) => (r.attributes ?? {}).vehicle_type === 'Bike')!;
   assert.equal(bike.price, 27); // midpoint of 25-28
-  assert.equal(bike.attributes.fare_range, 'Rs 25 - Rs 28');
-  assert.match(String(bike.attributes.price_basis), /Rapido live fare estimate on \d{4}-\d{2}-\d{2}/);
+  assert.equal((bike.attributes ?? {}).fare_range, 'Rs 25 - Rs 28');
+  assert.match(String((bike.attributes ?? {}).price_basis), /Rapido live fare estimate on \d{4}-\d{2}-\d{2}/);
   assert.equal(bike.currency, 'INR');
   assert.equal(bike.sellerUrl, 'https://m.rapido.bike');
   assert.equal(bike.evidence.sourceUrl, 'https://m.rapido.bike/pwa/api/unup/scc/fareEstimate');

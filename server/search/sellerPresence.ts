@@ -20,6 +20,7 @@
 import type { NormalizedOffer, ParsedQuery } from '../types';
 import { resolveAirport } from '../common/airportLookup';
 import { routeFromQuery } from '../workers/verticals/flights';
+import { getHealth } from '../sources/health';
 import { yatraSrpUrl } from '../workers/parsers/yatraFlights';
 import { AKASA_WEB } from '../workers/parsers/akasaFlights';
 
@@ -132,6 +133,16 @@ export async function buildFlightSellerPresence(
   for (const cfg of PRESENCE_SELLERS) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
     if (succeeded.has(cfg.sourceId)) continue; // honest empty from the seller's own API
+    // CATALOGUE PARTIAL (24 Oct owner report): the instant cache-paint has no
+    // acquisition outcome, so the check above never fires and "Price unavailable"
+    // cards appeared for carriers that simply do not fly the route (Akasa on
+    // IDR-DEL). The seller's own source health carries its LATEST honest
+    // outcome: EMPTY_RESPONSE means the API answered us with a truthful zero
+    // (no service / sold out) — no "feed unreachable" card for that seller. A
+    // gated source's latest class becomes ACCESS_CHALLENGE/RATE_LIMITED and
+    // the presence card returns automatically (self-healing).
+    const h = getHealth(cfg.sourceId);
+    if (h.lastFailureClass === 'EMPTY_RESPONSE') continue;
     out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
   }
   return out;

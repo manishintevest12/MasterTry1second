@@ -188,12 +188,18 @@ class _SiteRow extends StatelessWidget {
         Builder(builder: (context) {
           final appOnlyFares =
               vertical == 'cab' && row.item.spec('price basis', 'price_basis') == 'app_only_fares';
+          // Flight presence rows (gated seller, price_basis=live_fares_unreachable)
+          // say the honest 'Fare on seller site' — mirrors TravelDealRow.tsx.
+          final fareOnSellerSite = row.item.spec('price basis', 'price_basis') ==
+              'live_fares_unavailable';
           return Text(
-            !appOnlyFares && row.priceAvailable
+            !appOnlyFares && !fareOnSellerSite && row.priceAvailable
                 ? formatPrice(vertical, row.price)
                 : appOnlyFares
                     ? 'Fare on app'
-                    : 'Price on site',
+                    : fareOnSellerSite
+                        ? 'Fare on seller site'
+                        : 'Price on site',
             style: tx(
               context,
               appOnlyFares ? 10.5 : 12.5,
@@ -1400,7 +1406,11 @@ class GroupCard extends StatelessWidget {
                                           // Owner 24 Oct: app-only groups (Uber/Rapido cab catalog,
                                           // price_basis=app_only_fares) show the honest 'Fare on
                                           // app' label, matching the row-level fix + web parity.
-                                          : (it.spec('price basis', 'price_basis') == 'app_only_fares' ? 'Fare on app' : 'Price on site'),
+                                          : (it.spec('price basis', 'price_basis') == 'app_only_fares'
+                                              ? 'Fare on app'
+                                              : it.spec('price basis', 'price_basis') == 'live_fares_unavailable'
+                                                  ? 'Fare on seller site'
+                                                  : 'Price on site'),
                                       style: tx(
                                         context,
                                         16,

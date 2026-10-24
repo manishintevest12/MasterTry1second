@@ -73,6 +73,9 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
   const hasTimes = !!(dep && arr);
   const priceNote = item.vertical === 'cab' ? 'estimated fare' : item.vertical === 'bus' ? 'per seat, from' : 'per adult, from';
   const appOnlyFares = spec(item, 'price basis', 'price_basis') === 'app_only_fares';
+  // Flight presence rows (gated seller, price_basis=live_fares_unreachable): the
+  // fare exists on the seller's own site — honest label, never 'Price unavailable'.
+  const fareOnSellerSite = spec(item, 'price basis', 'price_basis') === 'live_fares_unavailable';
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs hover:shadow-md hover:border-slate-300 transition-all overflow-hidden">
@@ -140,6 +143,8 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
             </>
           ) : appOnlyFares ? (
             <p className="text-sm font-bold text-slate-500">Fare on app</p>
+          ) : fareOnSellerSite ? (
+            <p className="text-sm font-bold text-slate-500">Fare on seller site</p>
           ) : (
             <p className="text-sm font-bold text-slate-500">Price unavailable</p>
           )}
@@ -189,7 +194,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
                   {/* Owner 24 Oct: app-only rows (Uber/Rapido, price_basis=app_only_fares) say
                       "Fare on app" — the same honest label as the main price and the app. */}
                   <p className={`text-base font-black ${i === 0 && r.priceAvailable ? 'text-emerald-700' : 'text-slate-900'}`}>
-                    {r.priceAvailable ? `₹${r.price.toLocaleString('en-IN')}` : spec(r.item, 'price basis', 'price_basis') === 'app_only_fares' ? 'Fare on app' : 'Price on site'}
+                    {r.priceAvailable ? `₹${r.price.toLocaleString('en-IN')}` : spec(r.item, 'price basis', 'price_basis') === 'app_only_fares' ? 'Fare on app' : spec(r.item, 'price basis', 'price_basis') === 'live_fares_unavailable' ? 'Fare on seller site' : 'Price on site'}
                   </p>
                   <button
                     type="button"

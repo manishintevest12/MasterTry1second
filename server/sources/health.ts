@@ -30,6 +30,11 @@ const PROBE_SOURCES = new Set(['w_hotels_goibibo', 'w_hotels_mmt', 'w_flights_ma
 
 const health = new Map<string, SourceHealth>();
 
+/** Test-only: wipe in-memory health so presence/circuit tests are deterministic. */
+export function resetHealthForTests(): void {
+  health.clear();
+}
+
 function blank(sourceId: string): SourceHealth {
   return {
     sourceId,

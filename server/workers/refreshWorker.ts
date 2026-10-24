@@ -23,6 +23,18 @@ export function startWorkers() {
   if (running) return;
   running = true;
 
+  // SOURCE RECOVERY SCANNER (owner 24 Oct "kabhi band na ho" rule): every 10 min,
+  // probe sources that look down (circuit-open past cooldown, degraded with a
+  // gating failure, never-verified, quietly stale). The moment an upstream
+  // starts serving data again the source is auto-activated: ladder reset,
+  // recovery logged + persisted, vertical re-warmed — no user search needed.
+  try {
+    const mod = require('../sources/recoveryScanner') as { startRecoveryScanner: () => void };
+    mod.startRecoveryScanner();
+  } catch (e: any) {
+    log.warn('Worker', 'Recovery scanner failed to arm', { error: String(e?.message || e).slice(0, 120) });
+  }
+
   // Keep-warm (13 Oct): every 12 min re-warm ALL vertical default queries so a page
   // open never lands on a cold cache (instant results on every vertical's first paint).
   const keepWarmTimer = setInterval(() => {

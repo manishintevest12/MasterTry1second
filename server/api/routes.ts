@@ -541,6 +541,21 @@ apiRouter.get('/home/showcase', async (_req, res) => {
   }
 });
 
+// Owner 24 Oct ("kabhi band na ho"): automatic source-recovery audit trail —
+// every source the background scanner re-activated on its own, newest first.
+apiRouter.get('/sources/recovery-log', async (_req, res) => {
+  try {
+    const { getStore } = await import('../common/db');
+    const rows = await getStore().query(
+      `SELECT source_id, source_name, vertical, prior_state, prior_failure_class, probe_query, rows_found, detected_at
+       FROM source_recovery_log ORDER BY detected_at DESC LIMIT 100`,
+    );
+    res.json({ success: true, recoveries: rows });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 120) });
+  }
+});
+
 apiRouter.get('/status', (_req, res) => {
   res.json({
     success: true,

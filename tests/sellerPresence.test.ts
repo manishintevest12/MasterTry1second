@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { buildFlightSellerPresence } from '../server/search/sellerPresence';
+import { recordFailure, resetHealthForTests } from '../server/sources/health';
 import type { NormalizedOffer, ParsedQuery } from '../server/types';
+
+// Deterministic presence gating: the catalogue-path health check reads the
+// LIVE in-memory health map, so each test starts from a clean slate.
+resetHealthForTests();
 
 const parsed = (q = 'Indore to Delhi'): ParsedQuery => ({
   rawQuery: q, vertical: 'flights', verticalConfidence: 1, entityName: null,
@@ -82,4 +87,21 @@ test('presence: seller whose source SUCCEEDED with honest zero rows is skipped (
 test('presence: a FAILED seller keeps its presence card even when other sources succeeded', async () => {
   const rows = await buildFlightSellerPresence(parsed(), [], ['w_flights_kiwi', 'w_flights_ixigo']);
   assert.equal(rows.length, 4, 'none of the presence sellers succeeded, so all four cards stay');
+});
+
+test('presence: CATALOGUE path — seller whose own API last answered EMPTY_RESPONSE (no-service route) is skipped', async () => {
+  // Cache-paint has NO acquisition outcome; the only signal is the source's
+  // latest health. Akasa's calendar answered an honest zero on this route, so
+  // no "Price unavailable" card for it (owner 24 Oct screenshot).
+  recordFailure('w_flights_akasa', 'EMPTY_RESPONSE', 'no bookable fares on this route');
+  const rows = await buildFlightSellerPresence(parsed(), []);
+  assert.ok(!rows.some((r) => r.seller === 'Akasa Air'), 'no-service carrier must not get a presence card on the catalogue path');
+  assert.equal(rows.length, 3, 'genuinely gated sellers keep their cards');
+});
+
+test('presence: a gated class (ACCESS_CHALLENGE) brings the card back — self-healing', async () => {
+  recordFailure('w_flights_akasa', 'ACCESS_CHALLENGE', 'edge challenge');
+  const rows = await buildFlightSellerPresence(parsed(), []);
+  assert.equal(rows.length, 4, 'a gated carrier keeps brand visibility');
+  assert.ok(rows.every((r) => (r.attributes?.price_basis ?? '') === 'live_fares_unavailable'), 'honest price basis');
 });

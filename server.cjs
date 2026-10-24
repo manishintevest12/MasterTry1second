@@ -32,6 +32,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // server/common/settings.ts
 var settings_exports = {};
@@ -1224,8 +1225,12 @@ __export(health_exports, {
   markDisabled: () => markDisabled,
   recordAttempt: () => recordAttempt,
   recordFailure: () => recordFailure,
-  recordSuccess: () => recordSuccess
+  recordSuccess: () => recordSuccess,
+  resetHealthForTests: () => resetHealthForTests
 });
+function resetHealthForTests() {
+  health.clear();
+}
 function blank(sourceId) {
   return {
     sourceId,
@@ -1758,7 +1763,7 @@ function looksLikeChallenge(body) {
   return markers.test(head) && !/application\/ld\+json/i.test(head) || shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
-  const started2 = Date.now();
+  const started3 = Date.now();
   const fetchedAt = (/* @__PURE__ */ new Date()).toISOString();
   const ctx = {
     query,
@@ -1785,18 +1790,18 @@ async function runTask(worker, task, source, query) {
       new Promise((_, rej) => setTimeout(() => rej(new AcquisitionError("TIMEOUT", `worker task exceeded ${(task.timeoutMs ?? 18e3) / 1e3}s`)), task.timeoutMs ?? 18e3))
     ]);
     if (!rawItems.length) {
-      return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started2);
+      return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started3);
     }
-    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started2, fetchedAt };
+    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started3, fetchedAt };
   } catch (e) {
     const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
     log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });
     const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ""));
     if (fixtures.length) {
       log.warn("VerticalWorker", `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
-      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started2, fetchedAt };
+      return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started3, fetchedAt };
     }
-    return failedResult(source, fc, String(e?.message || e).slice(0, 200), Date.now() - started2, e?.httpStatus);
+    return failedResult(source, fc, String(e?.message || e).slice(0, 200), Date.now() - started3, e?.httpStatus);
   }
 }
 function registerVerticalWorker(worker) {
@@ -25408,7 +25413,7 @@ var init_browserRenderAdapter = __esm({
       }
       async search(ctx) {
         const { source, query } = ctx;
-        const started2 = Date.now();
+        const started3 = Date.now();
         let playwright;
         try {
           playwright = await import(
@@ -25420,12 +25425,12 @@ var init_browserRenderAdapter = __esm({
             source,
             "CAPABILITY_UNAVAILABLE",
             "Headless browser fallback unavailable: Playwright/Chromium not installed on this runtime",
-            Date.now() - started2
+            Date.now() - started3
           );
         }
         const url = String(source.config.url || source.config.baseUrl || "");
         if (!/^https:\/\//i.test(url)) {
-          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started2);
+          return failedResult(source, "MISSING_REQUIRED_FIELD", "Browser render requires an https:// target URL", Date.now() - started3);
         }
         let browser = null;
         try {
@@ -25438,7 +25443,7 @@ var init_browserRenderAdapter = __esm({
               source,
               res && res.status() === 429 ? "QUOTA_EXHAUSTED" : "SERVER_ERROR",
               `Rendered page HTTP ${res ? res.status() : "unknown"}`,
-              Date.now() - started2,
+              Date.now() - started3,
               res && res.status ? res.status() : void 0
             );
           }
@@ -25454,13 +25459,13 @@ var init_browserRenderAdapter = __esm({
             const title = document.title || "";
             return { jsonLd: out, title, htmlLen: document.documentElement.outerHTML.length, html: document.documentElement.outerHTML.slice(0, maxLen) };
           }, MAX_HTML);
-          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started2);
+          const rawItems = this.mapJsonLd(extracted.jsonLd, source, url, started3);
           if (rawItems.length === 0) {
             return failedResult(
               source,
               "EMPTY_RESPONSE",
               "Page rendered but exposed no public structured product data",
-              Date.now() - started2,
+              Date.now() - started3,
               res.status()
             );
           }
@@ -25470,13 +25475,13 @@ var init_browserRenderAdapter = __esm({
             sourceMethod: this.method,
             rawItems,
             httpStatus: res.status(),
-            latencyMs: Date.now() - started2,
+            latencyMs: Date.now() - started3,
             fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
           };
         } catch (e) {
           const msg = String(e?.message || e).slice(0, 160);
           const klass = /Timeout|timed out/i.test(msg) ? "TIMEOUT" : /net::|ERR_/.test(msg) ? "CONNECTION_FAILURE" : "PARSER_FAILURE";
-          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started2);
+          return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started3);
         } finally {
           if (browser) {
             try {
@@ -25487,7 +25492,7 @@ var init_browserRenderAdapter = __esm({
         }
       }
       /** JSON-LD → RawSourceItem. Only evidence-backed fields are extracted. */
-      mapJsonLd(blocks, source, url, started2) {
+      mapJsonLd(blocks, source, url, started3) {
         const items = [];
         const push = (node) => {
           if (!node || typeof node !== "object") return;
@@ -28233,6 +28238,8 @@ async function buildFlightSellerPresence(parsed, combined, succeededSourceIds) {
   for (const cfg of PRESENCE_SELLERS) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
     if (succeeded.has(cfg.sourceId)) continue;
+    const h = getHealth(cfg.sourceId);
+    if (h.lastFailureClass === "EMPTY_RESPONSE") continue;
     out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
   }
   return out;
@@ -28242,6 +28249,7 @@ var init_sellerPresence = __esm({
   "server/search/sellerPresence.ts"() {
     init_airportLookup();
     init_flights();
+    init_health();
     init_yatraFlights();
     init_akasaFlights();
     PRESENCE_SELLERS = [
@@ -34741,6 +34749,18 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: "showcase_unavailable" });
       }
     });
+    apiRouter.get("/sources/recovery-log", async (_req, res) => {
+      try {
+        const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const rows = await getStore3().query(
+          `SELECT source_id, source_name, vertical, prior_state, prior_failure_class, probe_query, rows_found, detected_at
+       FROM source_recovery_log ORDER BY detected_at DESC LIMIT 100`
+        );
+        res.json({ success: true, recoveries: rows });
+      } catch (e) {
+        res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 120) });
+      }
+    });
     apiRouter.get("/status", (_req, res) => {
       res.json({
         success: true,
@@ -34956,7 +34976,7 @@ var init_routes = __esm({
     apiRouter.post("/scan/url", async (req, res) => {
       const url = String(req.body.url || "").trim();
       if (!url || !/^https?:\/\//i.test(url)) return res.status(400).json({ success: false, error: "A valid http(s) URL is required." });
-      const started2 = Date.now();
+      const started3 = Date.now();
       const product = await resolveProductFromLink(url);
       if (!product.title) {
         return res.json({
@@ -35023,14 +35043,14 @@ var init_routes = __esm({
         sellerQuotes,
         isLiveScraped: true,
         scrapedTimestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        scrapedLatencyMs: Date.now() - started2
+        scrapedLatencyMs: Date.now() - started3
       };
       saveItemToCatalogue(catalogueItem);
       res.json({
         success: true,
         found: true,
         item: catalogueItem,
-        rawScan: { vertical, title: product.title, titleSource: product.titleSource, fetchStatus: product.fetchStatus, latencyMs: Date.now() - started2 }
+        rawScan: { vertical, title: product.title, titleSource: product.titleSource, fetchStatus: product.fetchStatus, latencyMs: Date.now() - started3 }
       });
     });
     apiRouter.post("/lens", async (req, res) => {
@@ -38046,6 +38066,205 @@ var init_bootstrap = __esm({
   }
 });
 
+// server/sources/recoveryScanner.ts
+var recoveryScanner_exports = {};
+__export(recoveryScanner_exports, {
+  recoveryScanPass: () => recoveryScanPass,
+  resetRecoveryScannerForTests: () => resetRecoveryScannerForTests,
+  selectRecoveryCandidates: () => selectRecoveryCandidates,
+  startRecoveryScanner: () => startRecoveryScanner
+});
+function selectRecoveryCandidates(sources2, healths, opts) {
+  const seeds = opts.seeds ?? RECOVERY_SEEDS;
+  const bySeed = /* @__PURE__ */ new Map();
+  for (const s of seeds) if (!bySeed.has(s.vertical)) bySeed.set(s.vertical, s);
+  const out = [];
+  for (const source of sources2) {
+    if (!source.enabled) continue;
+    if (source.id.includes("#")) continue;
+    if (opts.skipSources?.has(source.id)) continue;
+    const seed = bySeed.get(source.verticals?.[0]);
+    if (!seed) continue;
+    const h = healths.get(source.id);
+    if (!h) {
+      out.push({ source, seed, priorState: "UNVERIFIED", priorFailureClass: null, reason: "never_verified" });
+      continue;
+    }
+    if (h.state === "DISABLED") continue;
+    if (h.state === "CIRCUIT_OPEN") {
+      const until = h.circuitOpenUntil ? new Date(h.circuitOpenUntil).getTime() : 0;
+      if (until > opts.now) continue;
+      out.push({ source, seed, priorState: h.state, priorFailureClass: h.lastFailureClass, reason: "circuit_half_open" });
+      continue;
+    }
+    if (h.state === "DEGRADED") {
+      const lastFail = h.lastFailureAt ? new Date(h.lastFailureAt).getTime() : 0;
+      const lastOk = h.lastSuccessAt ? new Date(h.lastSuccessAt).getTime() : 0;
+      const recentGating = h.lastFailureClass != null && DOWN_CLASSES.has(h.lastFailureClass) && opts.now - lastFail < STALE_AFTER_MS;
+      const staleSinceOk = h.totalSuccesses > 0 && opts.now - Math.max(lastOk, 0) > STALE_AFTER_MS;
+      if (!recentGating && !staleSinceOk) continue;
+      const lastProbe = opts.lastProbedAt.get(source.id) ?? 0;
+      if (opts.now - lastProbe < DEGRADED_REPROBE_GAP_MS) continue;
+      out.push({ source, seed, priorState: h.state, priorFailureClass: h.lastFailureClass, reason: "degraded_recent_failure" });
+      continue;
+    }
+    if (h.state === "HEALTHY" || h.state === "UNVERIFIED") {
+      const lastOk = h.lastSuccessAt ? new Date(h.lastSuccessAt).getTime() : 0;
+      if (h.state === "HEALTHY" && lastOk && opts.now - lastOk > STALE_AFTER_MS) {
+        const lastProbe = opts.lastProbedAt.get(source.id) ?? 0;
+        if (opts.now - lastProbe < STALE_AFTER_MS) continue;
+        out.push({ source, seed, priorState: h.state, priorFailureClass: h.lastFailureClass, reason: "quietly_stale" });
+      }
+      if (h.state === "UNVERIFIED" && h.totalAttempts === 0) {
+        out.push({ source, seed, priorState: h.state, priorFailureClass: null, reason: "never_verified" });
+      }
+    }
+  }
+  const order = { circuit_half_open: 0, degraded_recent_failure: 1, never_verified: 2, quietly_stale: 3 };
+  out.sort((a, b) => (order[a.reason] ?? 9) - (order[b.reason] ?? 9) || a.source.priority - b.source.priority);
+  return out.slice(0, MAX_PROBES_PER_PASS);
+}
+async function probeSource(candidate) {
+  const { source, seed } = candidate;
+  let parsed;
+  try {
+    parsed = understandQuery(seed.query, { city: seed.city, pincode: seed.pincode });
+    parsed.vertical = seed.vertical;
+  } catch {
+    return { recovered: false, rows: 0, error: "probe query parse failed" };
+  }
+  recordAttempt(source.id, 0);
+  const adapter = getAdapter(source);
+  let budgetTimer;
+  const budget = new Promise((_, rej) => {
+    budgetTimer = setTimeout(() => rej(new Error("probe budget cut")), PROBE_BUDGET_MS);
+  });
+  budget.catch(() => void 0);
+  try {
+    const result = await Promise.race([adapter.search({ query: parsed, source }), budget]);
+    if (result?.success && result.rawItems?.length > 0) {
+      recordSuccess(source.id, result.latencyMs ?? 0);
+      return { recovered: candidate.priorState !== "HEALTHY", rows: result.rawItems.length };
+    }
+    const failureClass = String(result?.failureClass || "EMPTY_RESPONSE");
+    recordFailure(source.id, failureClass, result?.error || "recovery probe: no items");
+    return { recovered: false, rows: 0, failureClass, error: result?.error || "no items" };
+  } catch (e) {
+    recordFailure(source.id, "TIMEOUT", String(e?.message || e).slice(0, 120));
+    return { recovered: false, rows: 0, failureClass: "TIMEOUT", error: String(e?.message || e).slice(0, 120) };
+  } finally {
+    if (budgetTimer) clearTimeout(budgetTimer);
+  }
+}
+async function persistRecovery(c, rows) {
+  try {
+    const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    await getStore3().execute(
+      `INSERT INTO source_recovery_log (source_id, source_name, vertical, prior_state, prior_failure_class, probe_query, rows_found)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [c.source.id, c.source.name, c.seed.vertical, c.priorState, c.priorFailureClass, c.seed.query, rows]
+    );
+  } catch {
+  }
+}
+async function warmRecoveredVertical(vertical) {
+  try {
+    const { runSearchPolled: runSearchPolled2 } = await Promise.resolve().then(() => (init_searchOrchestrator(), searchOrchestrator_exports));
+    const seeds = RECOVERY_SEEDS.filter((s) => s.vertical === vertical).slice(0, 2);
+    for (const s of seeds) {
+      await runSearchPolled2({ query: s.query, vertical: s.vertical, city: s.city, pincode: s.pincode }, 2e4);
+      await new Promise((r) => setImmediate(r));
+    }
+  } catch (e) {
+    log.debug("Recovery", "post-recovery warm skipped", { error: String(e?.message || e).slice(0, 100) });
+  }
+}
+async function recoveryScanPass(now = Date.now()) {
+  const sources2 = getSources().filter((s) => s.enabled);
+  const healths = new Map(getAllHealth().map((h) => [h.sourceId, h]));
+  const candidates = selectRecoveryCandidates(sources2, healths, { now, lastProbedAt });
+  let recovered = 0;
+  const recoveredSources = [];
+  for (const c of candidates) {
+    lastProbedAt.set(c.source.id, now);
+    const wasDown = c.reason === "circuit_half_open" || c.reason === "degraded_recent_failure";
+    const r = await probeSource(c);
+    if (r.recovered && wasDown) {
+      recovered += 1;
+      recoveredSources.push(c.source.id);
+      log.info("Recovery", `SOURCE RECOVERED automatically: ${c.source.id} (${c.source.name}) \u2014 was ${c.priorState}(${c.priorFailureClass ?? "n/a"}), probe returned ${r.rows} rows; ladder reset, vertical re-warming`, { vertical: c.seed.vertical });
+      await persistRecovery(c, r.rows);
+      await warmRecoveredVertical(c.seed.vertical);
+    } else if (r.recovered && c.reason === "quietly_stale") {
+      log.info("Recovery", `Source active again after staleness: ${c.source.id} (${r.rows} rows)`);
+      await persistRecovery(c, r.rows);
+    } else if (!r.recovered && wasDown) {
+      log.debug("Recovery", `Recovery probe still down: ${c.source.id} (${r.failureClass ?? "unknown"})`);
+    }
+    await new Promise((res) => setImmediate(res));
+  }
+  if (candidates.length) log.info("Recovery", `Scan pass: ${candidates.length} probed, ${recovered} recovered`);
+  return { probed: candidates.length, recovered, recoveredSources };
+}
+function startRecoveryScanner() {
+  if (started) return;
+  started = true;
+  const SCAN_MS = 10 * 6e4;
+  const timer = setInterval(() => {
+    void withLock("recovery-scanner", () => recoveryScanPass()).catch((e) => {
+      log.warn("Recovery", "Scan pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 120) });
+    });
+  }, SCAN_MS);
+  if (timer.unref) timer.unref();
+  setTimeout(() => {
+    void withLock("recovery-scanner", () => recoveryScanPass()).catch(() => void 0);
+  }, 9e4).unref?.();
+  log.info("Recovery", "Source recovery scanner armed (10-min cadence, probes respect challenge ladder, admin-disabled stays off)");
+}
+function resetRecoveryScannerForTests() {
+  lastProbedAt.clear();
+  started = false;
+}
+var DOWN_CLASSES, STALE_AFTER_MS, DEGRADED_REPROBE_GAP_MS, MAX_PROBES_PER_PASS, PROBE_BUDGET_MS, RECOVERY_SEEDS, lastProbedAt, started;
+var init_recoveryScanner = __esm({
+  "server/sources/recoveryScanner.ts"() {
+    init_logger();
+    init_cache();
+    init_health();
+    init_registry();
+    init_orchestrator();
+    init_queryUnderstanding();
+    DOWN_CLASSES = /* @__PURE__ */ new Set(["ACCESS_CHALLENGE", "TIMEOUT", "SERVER_ERROR", "MALFORMED_RESPONSE", "UNKNOWN", "DEADLINE_CUT", "EXPIRED_CREDENTIALS"]);
+    STALE_AFTER_MS = 24 * 36e5;
+    DEGRADED_REPROBE_GAP_MS = 10 * 6e4;
+    MAX_PROBES_PER_PASS = 3;
+    PROBE_BUDGET_MS = 35e3;
+    RECOVERY_SEEDS = [
+      { query: "biryani", vertical: "food", city: "Indore", pincode: "452001" },
+      { query: "pizza", vertical: "food", city: "Indore", pincode: "452001" },
+      { query: "mobile phone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "laptop", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "milk", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "atta", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "Indore to Bhopal", vertical: "bus", city: "Indore", pincode: "452001" },
+      { query: "delhi to jaipur", vertical: "bus", city: "Delhi" },
+      { query: "Indore to Bhopal", vertical: "cab", city: "Indore", pincode: "452001" },
+      { query: "Indore (IDR) to Delhi (DEL)", vertical: "flights", city: "Indore", pincode: "452001" },
+      { query: "Indore to Mumbai", vertical: "flights", city: "Indore", pincode: "452001" },
+      { query: "goa", vertical: "hotels", city: "Goa" },
+      { query: "indore", vertical: "hotels", city: "Indore" },
+      { query: "movies", vertical: "movies", city: "Indore", pincode: "452001" },
+      { query: "personal loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      { query: "home loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      { query: "health insurance", vertical: "insurance", city: "Indore", pincode: "452001" },
+      { query: "hdfc credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      { query: "savings account", vertical: "banking", city: "Indore", pincode: "452001" }
+    ];
+    lastProbedAt = /* @__PURE__ */ new Map();
+    started = false;
+  }
+});
+
 // server/workers/refreshWorker.ts
 var refreshWorker_exports = {};
 __export(refreshWorker_exports, {
@@ -38055,6 +38274,12 @@ __export(refreshWorker_exports, {
 function startWorkers() {
   if (running) return;
   running = true;
+  try {
+    const mod = (init_recoveryScanner(), __toCommonJS(recoveryScanner_exports));
+    mod.startRecoveryScanner();
+  } catch (e) {
+    log.warn("Worker", "Recovery scanner failed to arm", { error: String(e?.message || e).slice(0, 120) });
+  }
   const keepWarmTimer = setInterval(() => {
     void withLock("keep-warm", async () => {
       try {
@@ -38818,12 +39043,12 @@ function tick() {
   }
 }
 function startLoopWatchdog() {
-  if (started) return;
-  started = true;
+  if (started2) return;
+  started2 = true;
   setInterval(tick, TICK_MS).unref();
   log.info("Watchdog", `Event-loop watchdog armed (stall >${SINGLE_STALL_MS / 1e3}s or ${WINDOW_BUSY_RATIO * 100}% over ${WINDOW_MS / 1e3}s -> self-restart)`);
 }
-var TICK_MS, SINGLE_STALL_MS, WINDOW_MS, WINDOW_BUSY_RATIO, lastTick, windowStart, windowBlockedMs, started;
+var TICK_MS, SINGLE_STALL_MS, WINDOW_MS, WINDOW_BUSY_RATIO, lastTick, windowStart, windowBlockedMs, started2;
 var init_loopWatchdog = __esm({
   "server/common/loopWatchdog.ts"() {
     init_logger();
@@ -38834,7 +39059,7 @@ var init_loopWatchdog = __esm({
     lastTick = Date.now();
     windowStart = Date.now();
     windowBlockedMs = 0;
-    started = false;
+    started2 = false;
   }
 });
 

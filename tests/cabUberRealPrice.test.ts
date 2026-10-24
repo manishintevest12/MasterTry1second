@@ -25,11 +25,17 @@ test('cab.ts Ola deeplinks prefill pickup AND drop coordinates', () => {
 // Owner 24 Oct: app-only cab rows (Uber/Rapido catalog, price_basis=app_only_fares)
 // render the honest 'Fare on app' label in BOTH web tables and the Flutter
 // group card (web parity rule).
-test('web + Flutter render Fare on app for app_only_fares rows', () => {
+test('web + Flutter render Fare on app / Fare on seller site honestly', () => {
+  // 24 Oct: presence rows (price_basis=live_fares_unavailable) add the
+  // 'Fare on seller site' rung BETWEEN app-only and the last-resort label —
+  // the chain must keep both honest rungs in web AND Flutter (parity rule).
   const tdr = readFileSync('src/components/TravelDealRow.tsx', 'utf8');
-  assert.ok(tdr.includes("spec(r.item, 'price basis', 'price_basis') === 'app_only_fares' ? 'Fare on app' : 'Price on site'"), 'TravelDealRow extraRows label');
+  assert.ok(tdr.includes("=== 'app_only_fares' ? 'Fare on app'"), 'TravelDealRow app-only label');
+  assert.ok(tdr.includes("=== 'live_fares_unavailable' ? 'Fare on seller site'"), 'TravelDealRow presence label');
   const cc = readFileSync('src/components/ComparisonCard.tsx', 'utf8');
   assert.ok(cc.includes("'app_only_fares' ? 'Fare on app' : 'Price on site'"), 'ComparisonCard siteRows label');
   const dart = readFileSync('flutter_app/lib/ui/widgets/compare_cards.dart', 'utf8');
-  assert.ok(dart.includes("it.spec('price basis', 'price_basis') == 'app_only_fares' ? 'Fare on app' : 'Price on site'"), 'Flutter group card label');
+  assert.ok(dart.includes("== 'app_only_fares'"), 'Flutter app-only label');
+  assert.ok(dart.includes("'live_fares_unavailable'"), 'Flutter presence label');
+  assert.ok(dart.includes("'Fare on seller site'"), 'Flutter presence text');
 });
