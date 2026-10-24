@@ -14,6 +14,7 @@ import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace } from '..
 import { geoSearch, geoReverse } from '../../common/geoProxy';
 import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability, buildRapidoIntercityNotice } from '../parsers/rapidoCabs';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
+import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, type UberGoPlace } from '../parsers/uberGoProducts';
 import { AcquisitionError } from '../../common/httpClient';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
@@ -127,7 +128,94 @@ async function uberCityFares(slug: string, city: string): Promise<UberCityFare[]
 
 /** SSR city-guide fallback: emit the honest published average when the queried
  *  destination appears in Uber's own city fare table. Never fabricates. */
-async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reason: string): Promise<any[]> {
+
+// ---------------------------------------------------------------------------
+// Uber m.uber.com/go guest Products flow (discovered 24 Oct 2026; production =
+// curl_cffi replay, never a browser). Uber retired the legacy guest fare RPC
+// (loadFEEstimates); the price-estimate page now hands off to m.uber.com/go,
+// whose Apollo endpoint (POST /go/graphql, literal x-csrf-token: "x" -- their own
+// bundle sends exactly this) returns the real route-scoped product catalog for
+// pickup/drop coordinates once a guest session is primed (GET /go/looking for
+// the jwt-session cookie). ANONYMOUS fares/ETAs come back empty: Uber quotes
+// prices only post-login -- we never invent them. Every run re-requests fares,
+// so if Uber ever re-exposes guest prices the rows automatically carry them
+// (self-healing probe). On any failure the SSR city-guide fallback still runs.
+async function uberPudoPlace(bias: { lat: number; lon: number }, query: string, type: 'PICKUP' | 'DROPOFF'): Promise<UberGoPlace | null> {
+  try {
+    const r = await cffiFetch('https://www.uber.com/api/pudoLocationSearch', {
+      method: 'POST', impersonate: 'chrome', timeoutMs: 12_000,
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'x', Accept: 'application/json', Origin: 'https://www.uber.com', Referer: 'https://www.uber.com/global/en/price-estimate/' },
+      body: JSON.stringify({ latitude: bias.lat, longitude: bias.lon, query: query.slice(0, 120), type }),
+    });
+    if (r.status !== 200) return null;
+    const j = JSON.parse(r.body || '{}');
+    const hit = j?.data?.[0];
+    if (!hit?.addressLine1) return null;
+    return { lat: bias.lat, lng: bias.lon, name: String(hit.addressLine1).slice(0, 120) }; // Uber's search API returns no coordinates; geocode coords carry the route.
+  } catch { return null; }
+}
+
+/** Returns availability rows from Uber's own guest web catalog. Never throws. */
+async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promise<any[]> {
+  try {
+    const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    if (!a || !b) return [];
+    // Canonical Uber-side place names (best-effort refinement of the deeplink text).
+    const [pu, dr] = await Promise.all([uberPudoPlace(a, rt.from, 'PICKUP'), uberPudoPlace(b, rt.to, 'DROPOFF')]);
+    const pickup: UberGoPlace = pu ?? { lat: a.lat, lng: a.lon, name: rt.from.slice(0, 120) };
+    const drop: UberGoPlace = dr ?? { lat: b.lat, lng: b.lon, name: rt.to.slice(0, 120) };
+    // Ladder: chrome fingerprint, then safari (some Akamai edges rotate).
+    let graphql: { status: number; body: string } | null = null;
+    for (const fp of ['chrome', 'safari17_0']) {
+      const prime = await cffiFetch('https://m.uber.com/go/looking', {
+        impersonate: fp, timeoutMs: 20_000, returnCookies: true,
+        headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9', Referer: 'https://www.uber.com/global/en/price-estimate/' },
+      });
+      if (prime.status !== 200) continue;
+      const r = await cffiFetch('https://m.uber.com/go/graphql', {
+        method: 'POST', impersonate: fp, timeoutMs: 25_000,
+        cookies: prime.cookies || {},
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'x', Accept: 'application/json', Origin: 'https://m.uber.com', Referer: 'https://m.uber.com/go/product-selection' },
+        body: buildUberProductsRequestBody(pickup, drop),
+      });
+      if (r.status === 200 && (r.body || '').includes('"products"')) { graphql = r; break; }
+      if (r.status !== 403) break; // 403 -> rotate fingerprint; other failures are not fingerprint-shaped
+    }
+    if (!graphql) return [];
+    const products = parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10);
+    if (!products.length) return [];
+    const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
+    const today = new Date().toISOString().slice(0, 10);
+    const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);
+    const route = `${rt.from} to ${rt.to}`.toLowerCase();
+    return products.map((p) => newRawItem(ctx.source, {
+      title: `${rt.from} to ${rt.to} Uber ${p.displayName} (app quote)`,
+      brand: 'Uber',
+      ...(p.fare != null ? { price: p.fare, currency: 'INR' } : { currency: 'INR' }),
+      seller: 'Uber',
+      sellerUrl: bookUrl,
+      travel: { route, seatType: 'unknown' },
+      attributes: {
+        pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,
+        vehicle_type: p.displayName, trip_type: 'one-way',
+        ...(p.capacity ? { seat_capacity: String(p.capacity) } : {}),
+        ...(p.etaMinutes ? { eta_minutes: String(p.etaMinutes) } : {}),
+        ...(p.description ? { vehicle_description: p.description } : {}),
+        ...(p.tier ? { fare_tier: p.tier } : {}),
+        price_basis: p.fare != null ? `Uber guest web quote for this route on ${today}` : 'app_only_fares',
+        data_note: p.fare != null
+          ? `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+          : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`,
+      },
+      identifiers: { sku: `uber-go-${rt.from}-${rt.to}-${p.displayName}`.toLowerCase().replace(/\s+/g, '-') },
+      evidence: { sourceUrl: 'https://m.uber.com/go/graphql', extractedFields: ['products tiers', 'displayName', 'fares', 'capacity'], sourceReference: 'Uber guest ride web app Products query (ANONYMOUS)' },
+    }));
+  } catch { return []; } // SSR fallback is the caller's honest safety net
+}
+
+/** SSR city-guide fallback: emit the honest published average when the queried
+ *  destination appears in Uber's own city fare table. Never fabricates. */
+async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reason: string, goRows: any[] = []): Promise<any[]> {
   // City resolution: curated metro guides first (alias keys), then Uber's OWN sitemap-published
   // India city-page registry (2241 localities, scanned 17 Oct). A published page = real presence.
   const [fromCity, toCity] = await Promise.all([cityForPlace(rt.from), cityForPlace(rt.to)]);
@@ -136,7 +224,10 @@ async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reaso
   const registry = (fromCity && uberIndiaCityFor(fromCity)) || uberIndiaCityFor(rt.from)
     || (toCity && uberIndiaCityFor(toCity)) || uberIndiaCityFor(rt.to) || uberIndiaCityFor(cityFromRouteText(rt.to));
   const cityInfo = curated || registry;
-  if (!cityInfo) throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); no Uber city page exists for this city in Uber's own sitemap, and no live guest fare API is available without credentials.`);
+  if (!cityInfo) {
+    if (goRows.length) return goRows; // Uber's own guest app just served this route's catalog — real presence, no city page needed.
+    throw new AcquisitionError('EMPTY_RESPONSE', `Uber live fare unavailable (${reason}); no Uber city page exists for this city in Uber's own sitemap, and no live guest fare API is available without credentials.`);
+  }
   let fares: UberCityFare[] = [];
   let pricedRows: any[] | null = null;
   try {
@@ -196,8 +287,11 @@ async function uberSsrFallback(ctx: any, rt: { from: string; to: string }, reaso
     sellerUrl: ul.toString(),
     identifiers: { sku: `uber-ssr-${best.fare.slug}-${dropName}`.toLowerCase().replace(/\s+/g, '-') },
     evidence: { sourceUrl: best.fare.fetchedUrl, extractedFields: ['SSR city-guide fare table row'] },
-  })];
+  }), ...goRows];
   }
+
+  // Guest-app catalog rows (24 Oct) are richer than the generic presence row below.
+  if (goRows.length) return goRows;
 
   // Presence-only path (owner request 17 Oct: "Uber 96+ cities without API"). Uber's own
   // sitemap publishes a city page for this city (2241 Indian localities), but no web fare
@@ -460,13 +554,17 @@ export const cabWorker: VerticalWorker = {
           if (bearer) authHeaders = { Authorization: `Bearer ${bearer}` };
         }
         if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
-        if (!authHeaders) return uberSsrFallback(ctx, rt, 'official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)');
+        // Guest web-app catalog rows (m.uber.com/go, discovered 24 Oct) enrich every
+        // credential-less path: appended after an SSR published-average price row, or
+        // replacing the generic presence row entirely.
+        const noCredsPath = async (why: string) => uberSsrFallback(ctx, rt, why, await uberGoFlowSafe(ctx, rt));
+        if (!authHeaders) return noCredsPath('official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)');
         const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
         if (!a || !b) return [];
         const apiHost = String(process.env.UBER_API_HOST || 'api.uber.com').trim() || 'api.uber.com'; // set UBER_API_HOST=sandbox-api.uber.com to test against Uber's sandbox
         const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
         const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { ...authHeaders, Accept: 'application/json' } });
-        if (r.status === 401 || r.status === 403) return uberSsrFallback(ctx, rt, `official Uber API rejected credentials (HTTP ${r.status})`);
+        if (r.status === 401 || r.status === 403) return noCredsPath(`official Uber API rejected credentials (HTTP ${r.status})`);
         if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Uber API HTTP ${r.status}`, r.status);
         let j: any; try { j = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Uber API non-JSON'); }
         const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
@@ -504,7 +602,7 @@ export const cabWorker: VerticalWorker = {
             evidence: { sourceUrl: url, extractedFields: ['Uber API estimates/price'] },
           }));
         }
-        if (!items.length) return uberSsrFallback(ctx, rt, 'official Uber API returned no fare estimate for this route');
+        if (!items.length) return noCredsPath('official Uber API returned no fare estimate for this route');
         return items;
       },
     },

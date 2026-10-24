@@ -19435,6 +19435,73 @@ var init_uberIndiaCities = __esm({
   }
 });
 
+// server/workers/parsers/uberGoProducts.ts
+function buildUberProductsRequestBody(pickup, drop) {
+  return JSON.stringify({
+    operationName: "Products",
+    query: UBER_PRODUCTS_QUERY,
+    variables: {
+      includeRecommended: false,
+      destinations: [{ latitude: drop.lat, longitude: drop.lng }],
+      isHcv: false,
+      payment: { uberCashToggleOn: true },
+      pickup: { latitude: pickup.lat, longitude: pickup.lng },
+      targetProductType: "ANONYMOUS"
+    }
+  });
+}
+function parseUberProductsResponse(body) {
+  let j;
+  try {
+    j = JSON.parse(String(body || ""));
+  } catch {
+    return [];
+  }
+  const tiers = j?.data?.products?.tiers;
+  if (!Array.isArray(tiers)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const tier of tiers) {
+    for (const p of tier?.products || []) {
+      const displayName = String(p?.displayName || "").trim();
+      if (!displayName || seen.has(displayName)) continue;
+      seen.add(displayName);
+      const f = Array.isArray(p?.fares) ? p.fares[0] : null;
+      let fare = null;
+      if (f) {
+        const m = String(f.fare || "").replace(/[₹,\s]/g, "");
+        if (/^\d+(\.\d+)?$/.test(m)) fare = Math.round(Number(m));
+        else if (f.fareAmountE5 != null) fare = Math.round(Number(f.fareAmountE5) / 1e5);
+      }
+      const eta = p?.etaInMin != null ? Number(p.etaInMin) : null;
+      out.push({
+        tier: String(tier?.title || ""),
+        displayName,
+        description: String(p?.description || "").trim(),
+        capacity: f?.capacity != null ? Number(f.capacity) : null,
+        isAvailable: p?.isAvailable !== false,
+        productUuid: String(p?.productUuid || p?.id || ""),
+        fare: fare != null && Number.isFinite(fare) && fare > 0 ? fare : null,
+        etaMinutes: eta != null && Number.isFinite(eta) && eta > 0 ? eta : null
+      });
+    }
+  }
+  return out;
+}
+function buildUberGoBookUrl(clientId, pickup, drop) {
+  const q3 = [];
+  if (clientId) q3.push(`client_id=${encodeURIComponent(clientId)}`);
+  q3.push(`pickup=${encodeURIComponent(JSON.stringify({ latitude: pickup.lat, longitude: pickup.lng, addressLine1: pickup.name.slice(0, 120) }))}`);
+  q3.push(`drop[0]=${encodeURIComponent(JSON.stringify({ latitude: drop.lat, longitude: drop.lng, addressLine1: drop.name.slice(0, 120) }))}`);
+  return `https://m.uber.com/looking/?${q3.join("&")}`;
+}
+var UBER_PRODUCTS_QUERY;
+var init_uberGoProducts = __esm({
+  "server/workers/parsers/uberGoProducts.ts"() {
+    UBER_PRODUCTS_QUERY = "query Products($boostedVehicleId: String, $capacity: Int, $destinations: [InputCoordinate!]!, $hcvContext: InputRVWebCommonHCVContext, $includeRecommended: Boolean = false, $isHcv: Boolean, $isRiderCurrentUser: Boolean, $payment: InputPayment, $paymentProfileUUID: String, $pickup: InputCoordinate!, $pickupFormattedTime: String, $profileType: String, $profileUUID: String, $returnByFormattedTime: String, $stuntID: String, $targetProductType: EnumRVWebCommonTargetProductType) {\n  products(\n    boostedVehicleId: $boostedVehicleId\n    capacity: $capacity\n    destinations: $destinations\n    hcvContext: $hcvContext\n    includeRecommended: $includeRecommended\n    isHcv: $isHcv\n    isRiderCurrentUser: $isRiderCurrentUser\n    payment: $payment\n    paymentProfileUUID: $paymentProfileUUID\n    pickup: $pickup\n    pickupFormattedTime: $pickupFormattedTime\n    profileType: $profileType\n    profileUUID: $profileUUID\n    returnByFormattedTime: $returnByFormattedTime\n    stuntID: $stuntID\n    targetProductType: $targetProductType\n  ) {\n    ...ProductsFragment\n    __typename\n  }\n}\n\nfragment ProductsFragment on RVWebCommonProductsResponse {\n  defaultVVID\n  hourlyTiersWithMinimumFare {\n    ...HourlyTierFragment\n    __typename\n  }\n  intercity {\n    ...IntercityFragment\n    __typename\n  }\n  links {\n    iFrame\n    text\n    url\n    __typename\n  }\n  personalizationID\n  productsUnavailableMessage\n  tiers {\n    ...TierFragment\n    __typename\n  }\n  __typename\n}\n\nfragment BadgesFragment on RVWebCommonProductBadge {\n  backgroundColor\n  color\n  contentColor\n  icon\n  inactiveBackgroundColor\n  inactiveContentColor\n  text\n  __typename\n}\n\nfragment HourlyTierFragment on RVWebCommonHourlyTier {\n  description\n  distance\n  fare\n  fareAmountE5\n  farePerHour\n  minutes\n  packageVariantUUID\n  preAdjustmentValue\n  __typename\n}\n\nfragment IntercityFragment on RVWebCommonIntercityInfo {\n  oneWayIntercityConfig(destinations: $destinations, pickup: $pickup) {\n    ...IntercityConfigFragment\n    __typename\n  }\n  roundTripIntercityConfig(destinations: $destinations, pickup: $pickup) {\n    ...IntercityConfigFragment\n    __typename\n  }\n  __typename\n}\n\nfragment IntercityConfigFragment on RVWebCommonIntercityConfig {\n  description\n  onDemandAllowed\n  reservePickup {\n    ...IntercityTimePickerFragment\n    __typename\n  }\n  returnBy {\n    ...IntercityTimePickerFragment\n    __typename\n  }\n  __typename\n}\n\nfragment IntercityTimePickerFragment on RVWebCommonIntercityTimePicker {\n  bookingRange {\n    maximum\n    minimum\n    __typename\n  }\n  header {\n    subTitle\n    title\n    __typename\n  }\n  __typename\n}\n\nfragment TierFragment on RVWebCommonProductTier {\n  products {\n    ...ProductFragment\n    __typename\n  }\n  title\n  __typename\n}\n\nfragment ProductFragment on RVWebCommonProduct {\n  badges {\n    ...BadgesFragment\n    __typename\n  }\n  cityID\n  currencyCode\n  description\n  detailedDescription\n  discountPrimary\n  displayName\n  estimatedTripTime\n  etaInMin\n  etaMax\n  etaStringShort\n  fares {\n    capacity\n    discountPrimary\n    fare\n    fareAmountE5\n    hasPromo\n    hasRidePass\n    meta\n    preAdjustmentValue\n    suggestedUpfrontTipAmounts {\n      amount {\n        amountE5\n        currencyCode\n        __typename\n      }\n      displayString\n      __typename\n    }\n    __typename\n  }\n  hasPromo\n  hasRidePass\n  hasBenefitsOnFare\n  hourly {\n    tiers {\n      ...HourlyTierFragment\n      __typename\n    }\n    overageRates {\n      ...HourlyOverageRatesFragment\n      __typename\n    }\n    __typename\n  }\n  iconType\n  id\n  is3p\n  isAvailable\n  legalConsent {\n    ...ProductLegalConsentFragment\n    __typename\n  }\n  parentProductUuid\n  preAdjustmentValue\n  productClassificationTypeName\n  productImageUrl\n  productUuid\n  rankedPricingExplainerText\n  reserveEnabled\n  vehicleViewUuid\n  __typename\n}\n\nfragment ProductLegalConsentFragment on RVWebCommonProductLegalConsent {\n  header\n  image {\n    url\n    width\n    __typename\n  }\n  description\n  enabled\n  ctaUrl\n  ctaDisplayString\n  buttonLabel\n  showOnce\n  shouldBlockRequest\n  __typename\n}\n\nfragment HourlyOverageRatesFragment on RVWebCommonHourlyOverageRates {\n  perDistanceUnit\n  perTemporalUnit\n  __typename\n}\n";
+  }
+});
+
 // server/workers/verticals/cab.ts
 function routeFromQuery2(raw) {
   const cleaned = raw.replace(/\b(cab|taxi|ride|auto|uber|ola|rapido|book|a|an|the|price|fare|for|drop|pickup|from|need|want|go|going)\b/gi, " ").replace(/\s+/g, " ").trim();
@@ -19497,12 +19564,97 @@ async function uberCityFares(slug2, city) {
   }
   return out;
 }
-async function uberSsrFallback(ctx, rt, reason) {
+async function uberPudoPlace(bias, query, type) {
+  try {
+    const r = await cffiFetch("https://www.uber.com/api/pudoLocationSearch", {
+      method: "POST",
+      impersonate: "chrome",
+      timeoutMs: 12e3,
+      headers: { "Content-Type": "application/json", "x-csrf-token": "x", Accept: "application/json", Origin: "https://www.uber.com", Referer: "https://www.uber.com/global/en/price-estimate/" },
+      body: JSON.stringify({ latitude: bias.lat, longitude: bias.lon, query: query.slice(0, 120), type })
+    });
+    if (r.status !== 200) return null;
+    const j = JSON.parse(r.body || "{}");
+    const hit = j?.data?.[0];
+    if (!hit?.addressLine1) return null;
+    return { lat: bias.lat, lng: bias.lon, name: String(hit.addressLine1).slice(0, 120) };
+  } catch {
+    return null;
+  }
+}
+async function uberGoFlowSafe(ctx, rt) {
+  try {
+    const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    if (!a || !b) return [];
+    const [pu, dr] = await Promise.all([uberPudoPlace(a, rt.from, "PICKUP"), uberPudoPlace(b, rt.to, "DROPOFF")]);
+    const pickup = pu ?? { lat: a.lat, lng: a.lon, name: rt.from.slice(0, 120) };
+    const drop = dr ?? { lat: b.lat, lng: b.lon, name: rt.to.slice(0, 120) };
+    let graphql = null;
+    for (const fp of ["chrome", "safari17_0"]) {
+      const prime = await cffiFetch("https://m.uber.com/go/looking", {
+        impersonate: fp,
+        timeoutMs: 2e4,
+        returnCookies: true,
+        headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9", Referer: "https://www.uber.com/global/en/price-estimate/" }
+      });
+      if (prime.status !== 200) continue;
+      const r = await cffiFetch("https://m.uber.com/go/graphql", {
+        method: "POST",
+        impersonate: fp,
+        timeoutMs: 25e3,
+        cookies: prime.cookies || {},
+        headers: { "Content-Type": "application/json", "x-csrf-token": "x", Accept: "application/json", Origin: "https://m.uber.com", Referer: "https://m.uber.com/go/product-selection" },
+        body: buildUberProductsRequestBody(pickup, drop)
+      });
+      if (r.status === 200 && (r.body || "").includes('"products"')) {
+        graphql = r;
+        break;
+      }
+      if (r.status !== 403) break;
+    }
+    if (!graphql) return [];
+    const products = parseUberProductsResponse(graphql.body).filter((p) => p.isAvailable).slice(0, 10);
+    if (!products.length) return [];
+    const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
+    const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);
+    const route = `${rt.from} to ${rt.to}`.toLowerCase();
+    return products.map((p) => newRawItem(ctx.source, {
+      title: `${rt.from} to ${rt.to} Uber ${p.displayName} (app quote)`,
+      brand: "Uber",
+      ...p.fare != null ? { price: p.fare, currency: "INR" } : { currency: "INR" },
+      seller: "Uber",
+      sellerUrl: bookUrl,
+      travel: { route, seatType: "unknown" },
+      attributes: {
+        pickup: rt.from,
+        drop: rt.to,
+        route: `${rt.from} to ${rt.to}`,
+        vehicle_type: p.displayName,
+        trip_type: "one-way",
+        ...p.capacity ? { seat_capacity: String(p.capacity) } : {},
+        ...p.etaMinutes ? { eta_minutes: String(p.etaMinutes) } : {},
+        ...p.description ? { vehicle_description: p.description } : {},
+        ...p.tier ? { fare_tier: p.tier } : {},
+        price_basis: p.fare != null ? `Uber guest web quote for this route on ${today2}` : "app_only_fares",
+        data_note: p.fare != null ? `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today2}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+      },
+      identifiers: { sku: `uber-go-${rt.from}-${rt.to}-${p.displayName}`.toLowerCase().replace(/\s+/g, "-") },
+      evidence: { sourceUrl: "https://m.uber.com/go/graphql", extractedFields: ["products tiers", "displayName", "fares", "capacity"], sourceReference: "Uber guest ride web app Products query (ANONYMOUS)" }
+    }));
+  } catch {
+    return [];
+  }
+}
+async function uberSsrFallback(ctx, rt, reason, goRows = []) {
   const [fromCity, toCity] = await Promise.all([cityForPlace(rt.from), cityForPlace(rt.to)]);
   const curated = uberCitySlugFor(rt.from) || uberCitySlugFor(cityFromRouteText(rt.from)) || uberCitySlugFor(rt.to) || uberCitySlugFor(cityFromRouteText(rt.to));
   const registry = fromCity && uberIndiaCityFor(fromCity) || uberIndiaCityFor(rt.from) || toCity && uberIndiaCityFor(toCity) || uberIndiaCityFor(rt.to) || uberIndiaCityFor(cityFromRouteText(rt.to));
   const cityInfo = curated || registry;
-  if (!cityInfo) throw new AcquisitionError("EMPTY_RESPONSE", `Uber live fare unavailable (${reason}); no Uber city page exists for this city in Uber's own sitemap, and no live guest fare API is available without credentials.`);
+  if (!cityInfo) {
+    if (goRows.length) return goRows;
+    throw new AcquisitionError("EMPTY_RESPONSE", `Uber live fare unavailable (${reason}); no Uber city page exists for this city in Uber's own sitemap, and no live guest fare API is available without credentials.`);
+  }
   let fares = [];
   let pricedRows = null;
   try {
@@ -19555,8 +19707,9 @@ async function uberSsrFallback(ctx, rt, reason) {
       sellerUrl: ul.toString(),
       identifiers: { sku: `uber-ssr-${best.fare.slug}-${dropName}`.toLowerCase().replace(/\s+/g, "-") },
       evidence: { sourceUrl: best.fare.fetchedUrl, extractedFields: ["SSR city-guide fare table row"] }
-    })];
+    }), ...goRows];
   }
+  if (goRows.length) return goRows;
   const cityPage = `https://www.uber.com/global/en/r/cities/${cityInfo.slug}/`;
   return [newRawItem(ctx.source, {
     title: `${rt.from} to ${rt.to} Uber cab (app booking)`,
@@ -19707,6 +19860,7 @@ var init_cab = __esm({
     init_geoProxy();
     init_rapidoCabs();
     init_uberIndiaCities();
+    init_uberGoProducts();
     init_httpClient();
     _uberTokenCache = null;
     UBER_CITY_SLUGS = [
@@ -19833,13 +19987,14 @@ var init_cab = __esm({
               if (bearer) authHeaders = { Authorization: `Bearer ${bearer}` };
             }
             if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
-            if (!authHeaders) return uberSsrFallback(ctx, rt, "official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)");
+            const noCredsPath = async (why) => uberSsrFallback(ctx, rt, why, await uberGoFlowSafe(ctx, rt));
+            if (!authHeaders) return noCredsPath("official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)");
             const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
             if (!a || !b) return [];
             const apiHost = String(process.env.UBER_API_HOST || "api.uber.com").trim() || "api.uber.com";
             const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
             const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { ...authHeaders, Accept: "application/json" } });
-            if (r.status === 401 || r.status === 403) return uberSsrFallback(ctx, rt, `official Uber API rejected credentials (HTTP ${r.status})`);
+            if (r.status === 401 || r.status === 403) return noCredsPath(`official Uber API rejected credentials (HTTP ${r.status})`);
             if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Uber API HTTP ${r.status}`, r.status);
             let j;
             try {
@@ -19886,7 +20041,7 @@ var init_cab = __esm({
                 evidence: { sourceUrl: url, extractedFields: ["Uber API estimates/price"] }
               }));
             }
-            if (!items.length) return uberSsrFallback(ctx, rt, "official Uber API returned no fare estimate for this route");
+            if (!items.length) return noCredsPath("official Uber API returned no fare estimate for this route");
             return items;
           }
         },
