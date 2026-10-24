@@ -30,6 +30,7 @@ import { SL_HOME, SL_IBE_OVERRIDE, SL_IBE_SITE, SL_OVERRIDE_POST, slIsImpervaStu
 import { STAR_HOME, starAvailUrl, starValidDestinations, parseStarAirAvailability, starAirFlightItems } from '../parsers/starAirCrane';
 import { SIA_HOME, SIA_CHAT_PAGE, SIA_CHAT_API, siaChatPrompt, siaChatBody, parseSiaChatStream, siaRouteInvalid, siaIsGated, siaFareItems } from '../parsers/singaporeAirChat';
 import { QR_FARE_CALENDARS, QR_FLIGHT_OFFERS, qrHeaders, qrFareCalendarsBody, qrFlightOffersBody, parseQrFareCalendars, parseQrFlightOffers, qrFlightItems, qrCalendarItems } from '../parsers/qatarAirwaysNbx';
+import { ekSearchRequestUrl, EK_GATE_MARKER, parseEmiratesSrp, ekFlightItems } from '../parsers/emiratesSrp';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -1021,6 +1022,68 @@ export const flightsWorker: VerticalWorker = {
         const { requested } = parseQrFareCalendars(cal.body || '', dep);
         if (!requested) return []; // honest empty: no fare-cache entry for this route/date
         return qrCalendarItems(requested, ctx.source, rt.from, rt.to, fromA.code, toA.code);
+      },
+    },
+    {
+      // Emirates (24 Oct 2026): Cloudflare/Reblaze sensor-gated from datacenter
+      // IPs, but the SRP is fully SERVER-RENDERED: one GET with a base64
+      // searchRequest param returns complete flight cards in HTML (verified
+      // LIVE in-browser: DEL-DXB 28 Oct EK517 16:15->18:35 INR 22,130; EK511
+      // 10:35->13:00 INR 22,130; EK515 21:30->23:59 INR 22,130; EK513
+      // 04:10->06:35 INR 32,410; no client-side offers XHR exists - SSR only).
+      // SELF-DETECTING (owner standing rule): challenge page marker
+      // sec-if-cpt-container -> honest ACCESS_CHALLENGE; auto-activates on a
+      // clean production IP. 3-rung fingerprint ladder.
+      sourceId: 'w_flights_emirates',
+      name: 'Flights worker: Emirates direct booking site (SSR search-results)',
+      priority: 15,
+      maxPerMinute: 2,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+        const url = ekSearchRequestUrl(fromA.code, toA.code, dep);
+        const rungs: { imp: 'chrome' | 'safari' | 'chrome-h1'; label: string }[] = [
+          { imp: 'chrome', label: 'chrome' },
+          { imp: 'safari', label: 'safari' },
+          { imp: 'chrome-h1', label: 'chrome-h1' },
+        ];
+        let lastStatus = 0;
+        for (const rung of rungs) {
+          try {
+            const r = await cffiFetch(url, {
+              impersonate: rung.imp, timeoutMs: 35_000, method: 'GET',
+              headers: {
+                'User-Agent': UA,
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                Referer: 'https://www.emirates.com/in/english/',
+              },
+            });
+            lastStatus = r.status;
+            const body = r.body || '';
+            if (body.includes(EK_GATE_MARKER) || /Just a moment|cf-browser|challenge-platform/i.test(body.slice(0, 4000))) {
+              await new Promise(rr => setTimeout(rr, 1500));
+              continue; // next rung
+            }
+            if (r.status === 200) {
+              const flights = parseEmiratesSrp(body, dep);
+              if (flights.length) return ekFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+              return []; // reachable but no cards for this route/date: honest empty
+            }
+            if (r.status === 403 || r.status === 429) { await new Promise(rr => setTimeout(rr, 1500)); continue; }
+            break;
+          } catch { continue; }
+        }
+        throw new AcquisitionError('ACCESS_CHALLENGE', `Emirates sensor-gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
       },
     },
     {

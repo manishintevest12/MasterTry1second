@@ -9579,6 +9579,95 @@ var init_qatarAirwaysNbx = __esm({
   }
 });
 
+// server/workers/parsers/emiratesSrp.ts
+function ekSearchRequestUrl(from, to, dep) {
+  const payload = {
+    journeyType: "ONEWAY",
+    bookingType: "REVENUE",
+    passengers: [{ type: "ADT", count: 1 }],
+    segments: [{ departure: from, arrival: to, travelDate: dep, cabinClass: "Y" }],
+    referrer: "/in/english",
+    source: "flight-search-widget"
+  };
+  const b64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+  return `${EK_SRP_URL}${encodeURIComponent(b64)}`;
+}
+function parseEmiratesSrp(html, dep) {
+  const out = [];
+  const cardRe = /<div id="([A-Z]{3})_([A-Z]{3})_([A-Z0-9]{2}\d{1,4})_\d+" class="flight-card-collapsed__wrapper"/g;
+  let m;
+  while ((m = cardRe.exec(html)) !== null) {
+    const flightNumber = m[3];
+    const next = html.indexOf("flight-card-collapsed__wrapper", m.index + m[0].length + 30);
+    const seg = html.slice(m.index, next > 0 ? next : m.index + 14e3);
+    const times = [...seg.matchAll(/date-time-details__time">([\d:]+)</g)].map((x) => x[1]);
+    if (times.length < 2) continue;
+    const depTime = times[0];
+    const arrTime = times[1];
+    const arrDate = (seg.match(/Arrival on (\w+day), (\d+) (\w+) (\d{4})/) || []).slice(1, 5).join(" ");
+    const depDate = (seg.match(/Departure on (\w+day), (\d+) (\w+) (\d{4})/) || []).slice(1, 5).join(" ");
+    const arrNextDay = !!arrDate && !!depDate && arrDate !== depDate;
+    const durM = seg.match(/(\d+) hrs? (\d+) mins?/);
+    const durationText = durM ? durM[0] : "";
+    let durationMin = 0;
+    if (durM) {
+      const [dH, dM] = [Number(durM[1]), Number(durM[2])];
+      const [depH, depM] = depTime.split(":").map(Number);
+      const [arrH, arrM] = arrTime.split(":").map(Number);
+      const calc = (MIN(String(arrH), String(arrM)) - MIN(String(depH), String(depM)) + 1440) % 1440;
+      durationMin = calc === dH * 60 + dM ? calc : dH * 60 + dM;
+    }
+    const priceM = seg.match(/aria-label="[A-Za-z ]*Class\s+INR\s+([\d,]{4,9})/) || seg.match(/INR(?:<\/span>)?(?:&nbsp;)?\s*<?[^\d]{0,40}([\d,]{4,9})/) || seg.match(/>(\d{1,3},\d{3})</);
+    const priceInr = priceM ? Number(priceM[1].replace(/,/g, "")) : 0;
+    const cabin = /Business Class/.test(seg) ? "Business Class" : /First Class/.test(seg) ? "First Class" : "Economy Class";
+    const key = `${flightNumber}-${depTime}`;
+    if (!priceInr || out.some((o) => `${o.flightNumber}-${o.depTime}` === key)) continue;
+    out.push({ flightNumber, depTime, arrTime, arrNextDay, durationText, durationMin, priceInr, cabin });
+  }
+  return out;
+}
+function ekFlightItems(flights, source, fromCity, toCity, fromCode, toCode, dep) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return flights.map((o) => newRawItem(source, {
+    title: `Emirates ${o.flightNumber} ${fromCity} \u2192 ${toCity} ${o.depTime}\u2013${o.arrTime}${o.arrNextDay ? "+1" : ""} \xB7 \u20B9${o.priceInr.toLocaleString("en-IN")}`,
+    brand: "Emirates",
+    price: o.priceInr,
+    currency: "INR",
+    seller: "Emirates",
+    sellerUrl: ekSearchRequestUrl(fromCode, toCode, dep),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: dep },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: "Emirates",
+      flight_number: o.flightNumber,
+      travel_date: dep,
+      departure_date: dep,
+      departs: o.depTime,
+      arrives: o.arrTime,
+      duration: o.durationText,
+      stops: "non-stop",
+      fare_class: o.cabin.toLowerCase().replace(" class", ""),
+      price_basis: `Emirates live ${o.cabin.toLowerCase()} fare incl. taxes for 1 adult on ${dep} captured ${today2}`,
+      data_note: `Live per-flight data from Emirates' own booking site (server-rendered search results). Price is the lowest total incl. taxes for 1 adult.`,
+      image: ""
+    },
+    identifiers: { sku: `ek-${o.flightNumber}-${dep}` },
+    evidence: {
+      sourceUrl: EK_SRP_URL,
+      extractedFields: ["flight-card id (DEL_DXB_EK517_*)", "date-time-details__time", "hrs/mins duration", "lowest INR amount"]
+    }
+  }));
+}
+var EK_SRP_URL, EK_GATE_MARKER, MIN;
+var init_emiratesSrp = __esm({
+  "server/workers/parsers/emiratesSrp.ts"() {
+    init_contract();
+    EK_SRP_URL = "https://www.emirates.com/booking/search-results/?searchRequest=";
+    EK_GATE_MARKER = "sec-if-cpt-container";
+    MIN = (h, m) => Number(h) * 60 + Number(m);
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13691,6 +13780,7 @@ var init_flights = __esm({
     init_starAirCrane();
     init_singaporeAirChat();
     init_qatarAirwaysNbx();
+    init_emiratesSrp();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -14605,6 +14695,73 @@ var init_flights = __esm({
             const { requested } = parseQrFareCalendars(cal.body || "", dep);
             if (!requested) return [];
             return qrCalendarItems(requested, ctx.source, rt.from, rt.to, fromA.code, toA.code);
+          }
+        },
+        {
+          // Emirates (24 Oct 2026): Cloudflare/Reblaze sensor-gated from datacenter
+          // IPs, but the SRP is fully SERVER-RENDERED: one GET with a base64
+          // searchRequest param returns complete flight cards in HTML (verified
+          // LIVE in-browser: DEL-DXB 28 Oct EK517 16:15->18:35 INR 22,130; EK511
+          // 10:35->13:00 INR 22,130; EK515 21:30->23:59 INR 22,130; EK513
+          // 04:10->06:35 INR 32,410; no client-side offers XHR exists - SSR only).
+          // SELF-DETECTING (owner standing rule): challenge page marker
+          // sec-if-cpt-container -> honest ACCESS_CHALLENGE; auto-activates on a
+          // clean production IP. 3-rung fingerprint ladder.
+          sourceId: "w_flights_emirates",
+          name: "Flights worker: Emirates direct booking site (SSR search-results)",
+          priority: 15,
+          maxPerMinute: 2,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const url = ekSearchRequestUrl(fromA.code, toA.code, dep);
+            const rungs = [
+              { imp: "chrome", label: "chrome" },
+              { imp: "safari", label: "safari" },
+              { imp: "chrome-h1", label: "chrome-h1" }
+            ];
+            let lastStatus = 0;
+            for (const rung of rungs) {
+              try {
+                const r = await cffiFetch(url, {
+                  impersonate: rung.imp,
+                  timeoutMs: 35e3,
+                  method: "GET",
+                  headers: {
+                    "User-Agent": UA6,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    Referer: "https://www.emirates.com/in/english/"
+                  }
+                });
+                lastStatus = r.status;
+                const body = r.body || "";
+                if (body.includes(EK_GATE_MARKER) || /Just a moment|cf-browser|challenge-platform/i.test(body.slice(0, 4e3))) {
+                  await new Promise((rr) => setTimeout(rr, 1500));
+                  continue;
+                }
+                if (r.status === 200) {
+                  const flights = parseEmiratesSrp(body, dep);
+                  if (flights.length) return ekFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+                  return [];
+                }
+                if (r.status === 403 || r.status === 429) {
+                  await new Promise((rr) => setTimeout(rr, 1500));
+                  continue;
+                }
+                break;
+              } catch {
+                continue;
+              }
+            }
+            throw new AcquisitionError("ACCESS_CHALLENGE", `Emirates sensor-gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
           }
         },
         {
