@@ -150,7 +150,20 @@ class _HeroSlideView extends StatelessWidget {
     return GestureDetector(
       onTap: onActivate,
       child: Container(
-        color: const Color(0xFF0A0B1E),
+        // Owner 24 Oct ("abhi sb black banner hai, colourful v rakho"): the
+        // slide's own vibrant brand gradient replaces the old black card.
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: slide.gradient != null && slide.gradient!.length >= 2
+                ? [
+                    t1sHexColor(slide.gradient![0]) ?? const Color(0xFFE11D48),
+                    t1sHexColor(slide.gradient![1]) ?? const Color(0xFF9F1239),
+                  ]
+                : const [Color(0xFFE11D48), Color(0xFF9F1239)],
+          ),
+        ),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -168,7 +181,7 @@ class _HeroSlideView extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
-                  colors: [Color(0xF0000000), Color(0x99000000), Color(0xF0000000)],
+                  colors: [Color(0x8C000000), Color(0x4D000000), Color(0x8C000000)],
                 ),
               ),
             ),

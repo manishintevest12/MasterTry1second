@@ -83,11 +83,28 @@ class _HomeBannerStripState extends State<HomeBannerStrip> {
     final cta = _ctas[b.link] ?? 'Order Now';
     final wide = MediaQuery.of(context).size.width >= 480;
 
+    // Owner 24 Oct colourful banners: the strip's vibrant brand gradient
+    // replaces the old black background (API pair first, per-vertical pair
+    // next, brand red as the last resort).
+    final fallback = const <String, List<int>>{
+      'movies': [0xFFE11D48, 0xFF9F1239],
+      'food': [0xFFF97316, 0xFFC2410C],
+      'ecommerce': [0xFFE11D48, 0xFFFF6600],
+    };
+    final start = t1sHexColor(b.gradient != null && b.gradient!.isNotEmpty ? b.gradient![0] : null) ??
+        Color(fallback[b.link]?[0] ?? 0xFFDC2626);
+    final end = t1sHexColor(b.gradient != null && b.gradient!.length >= 2 ? b.gradient![1] : null) ??
+        Color(fallback[b.link]?[1] ?? 0xFF7F1D1D);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF0D0D0D),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [start, end],
+          ),
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2))],
         ),
@@ -126,7 +143,7 @@ class _HomeBannerStripState extends State<HomeBannerStrip> {
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(color: const Color(0xFF1A1A2E), borderRadius: BorderRadius.circular(999)),
+                            decoration: BoxDecoration(color: const Color(0x29000000), borderRadius: BorderRadius.circular(999)),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [

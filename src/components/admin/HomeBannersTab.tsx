@@ -18,7 +18,20 @@ type Banner = {
   section: string;
   isActive: boolean;
   position: number;
+  gradientStart: string | null;
+  gradientEnd: string | null;
 };
+
+// Owner 24 Oct ("colourful v rakho"): one-tap brand gradient presets; the
+// blank option keeps the per-vertical default (movie red / food orange / ecom
+// red-orange). Hex pair lands as gradient_start/gradient_end in MySQL 021.
+const GRADIENT_PRESETS: { label: string; start: string; end: string }[] = [
+  { label: 'Default (per-vertical)', start: '', end: '' },
+  { label: 'Brand red → orange', start: '#E11D48', end: '#FF6600' },
+  { label: 'Movie rose-red', start: '#E11D48', end: '#9F1239' },
+  { label: 'Food orange', start: '#F97316', end: '#C2410C' },
+  { label: 'Emerald green', start: '#10B981', end: '#065F46' },
+];
 
 export const HomeBannersTab: React.FC = () => {
   const [token] = useState(() => localStorage.getItem('t1s_admin_token') || '');
@@ -28,6 +41,7 @@ export const HomeBannersTab: React.FC = () => {
   const [link, setLink] = useState('movies');
   const [section, setSection] = useState('home');
   const [title, setTitle] = useState('');
+  const [gradientIdx, setGradientIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -88,7 +102,11 @@ export const HomeBannersTab: React.FC = () => {
       const res = await fetch('/api/admin/home-banners', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ imageUrl: imageUrl.trim(), link: link.trim(), title: title.trim() || null, section, position: rows.length }),
+        body: JSON.stringify({
+          imageUrl: imageUrl.trim(), link: link.trim(), title: title.trim() || null, section, position: rows.length,
+          gradientStart: GRADIENT_PRESETS[gradientIdx].start || null,
+          gradientEnd: GRADIENT_PRESETS[gradientIdx].end || null,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Could not save banner');
@@ -96,6 +114,7 @@ export const HomeBannersTab: React.FC = () => {
       setLink('movies');
       setTitle('');
       setSection('home');
+      setGradientIdx(0);
       setMsg({ ok: true, text: 'Banner saved — live on web + app instantly.' });
       await load();
     } catch (e: unknown) {
@@ -109,7 +128,7 @@ export const HomeBannersTab: React.FC = () => {
     await fetch('/api/admin/home-banners', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, section: b.section, isActive: !b.isActive, position: b.position }),
+      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, section: b.section, isActive: !b.isActive, position: b.position, gradientStart: b.gradientStart, gradientEnd: b.gradientEnd }),
     });
     await load();
   };
@@ -118,7 +137,7 @@ export const HomeBannersTab: React.FC = () => {
     await fetch('/api/admin/home-banners', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, section: b.section, isActive: b.isActive, position: Math.max(0, b.position + delta) }),
+      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, section: b.section, isActive: b.isActive, position: Math.max(0, b.position + delta), gradientStart: b.gradientStart, gradientEnd: b.gradientEnd }),
     });
     await load();
   };
@@ -171,6 +190,16 @@ export const HomeBannersTab: React.FC = () => {
         <div>
           <label className="text-[11px] font-black uppercase text-slate-500">Title (optional)</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Jailer" className={inputCls + ' mt-1'} />
+          <select
+            value={gradientIdx}
+            onChange={(e) => setGradientIdx(Number(e.target.value))}
+            className={inputCls + ' mt-1'}
+            aria-label="Banner gradient"
+          >
+            {GRADIENT_PRESETS.map((g, i) => (
+              <option key={g.label} value={i}>Gradient: {g.label}</option>
+            ))}
+          </select>
         </div>
         <div className="sm:col-span-2 flex items-center gap-3">
           <button type="button" onClick={save} disabled={busy || !imageUrl} className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50">

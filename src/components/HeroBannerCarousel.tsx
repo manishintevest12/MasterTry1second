@@ -11,6 +11,7 @@ import { ChevronLeft, ChevronRight, Play, ArrowRight } from 'lucide-react';
  */
 
 export interface HeroSlide {
+  gradient?: [string, string] | null;
   id: string;
   kind: 'movie' | 'food' | 'ecommerce' | 'custom';
   badge: string;
@@ -75,7 +76,11 @@ export const HeroBannerCarousel: React.FC<{
   return (
     <section
       className="relative w-full overflow-hidden select-none"
-      style={{ background: 'linear-gradient(135deg, #0a0b1e 0%, #000000 100%)' }}
+      style={{
+        background: s.gradient?.length === 2
+          ? `linear-gradient(135deg, ${s.gradient[0]} 0%, ${s.gradient[1]} 100%)`
+          : 'linear-gradient(135deg, #E11D48 0%, #9F1239 100%)',
+      }}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }}
@@ -95,7 +100,7 @@ export const HeroBannerCarousel: React.FC<{
           className="absolute inset-0 w-full h-full object-cover opacity-25 blur-[6px] scale-110 pointer-events-none"
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/60 to-black/85 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/30 to-black/55 pointer-events-none" />
 
       {/* Owner 23 Oct: "Video Library" chip removed per request */}
 

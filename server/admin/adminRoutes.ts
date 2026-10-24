@@ -618,6 +618,8 @@ adminRouter.get('/home-banners', async (_req, res) => {
         title: r.title ? String(r.title) : null, subtitle: r.subtitle ? String(r.subtitle) : null,
         section: BANNER_SECTIONS.includes(String(r.section || 'home')) ? String(r.section) : 'home',
         isActive: Number(r.is_active ?? 1) === 1, position: Number(r.position ?? 0),
+        gradientStart: r.gradient_start ? String(r.gradient_start) : null,
+        gradientEnd: r.gradient_end ? String(r.gradient_end) : null,
       }));
     res.json({ success: true, banners });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load banners' }); }
@@ -636,14 +638,18 @@ adminRouter.post('/home-banners', async (req, res) => {
     const id = Number(req.body?.id || 0);
     // Owner 24 Oct: banners can target home, the Rewards section or Quick Apps.
     const section = BANNER_SECTIONS.includes(String(req.body?.section || '')) ? String(req.body.section) : 'home';
+    // Owner 24 Oct: optional per-banner gradient override ('#RRGGBB' pair).
+    const gStart = /^#[0-9a-fA-F]{6}$/.test(String(req.body?.gradientStart || '')) ? String(req.body.gradientStart) : null;
+    const gEnd = /^#[0-9a-fA-F]{6}$/.test(String(req.body?.gradientEnd || '')) ? String(req.body.gradientEnd) : null;
     await ensureBannerSectionColumn();
+    try { await getStore().execute('ALTER TABLE home_banners ADD COLUMN gradient_start VARCHAR(9) NULL, ADD COLUMN gradient_end VARCHAR(9) NULL'); } catch { /* 021 already applied */ }
     if (id) {
-      await getStore().execute('UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, section = ?, is_active = ?, position = ? WHERE id = ?',
-        [imageUrl, link, title, subtitle, section, isActive, position, id]);
+      await getStore().execute('UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, section = ?, is_active = ?, position = ?, gradient_start = ?, gradient_end = ? WHERE id = ?',
+        [imageUrl, link, title, subtitle, section, isActive, position, gStart, gEnd, id]);
       audit(req, 'home_banner_update', String(id));
     } else {
-      await getStore().execute('INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [imageUrl, link, title, subtitle, section, isActive, position]);
+      await getStore().execute('INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position, gradient_start, gradient_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [imageUrl, link, title, subtitle, section, isActive, position, gStart, gEnd]);
       audit(req, 'home_banner_create', imageUrl.slice(0, 80));
     }
     purgeSectionCache(); // owner edit live on next request, never behind the 24h TTL

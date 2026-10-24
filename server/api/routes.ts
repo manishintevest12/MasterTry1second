@@ -26,7 +26,7 @@ import {
 } from '../rewards/rewardsEngine';
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
-import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick } from '../affiliate/deeplink';
+import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { createInterstitialPointer, isInAppWebView } from '../redirect/interstitial';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
@@ -631,7 +631,10 @@ function offerToComparisonItem(o: any) {
   const list = Number(o.prices?.listPrice ?? 0) || 0;
   // Module 4: masking pointer — affiliate tokens are built server-side at click
   // time and NEVER appear in API responses or the page source.
-  const rawDest = o.sellerUrl || '';
+  // Owner 24 Oct (payment-page deeplinks): rows without a product URL fall back
+  // to the merchant's own SEARCH page for this exact item — the user always
+  // lands where they can buy/pay; never a blank tab, never an invented URL.
+  const rawDest = String(o.sellerUrl || '') || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), String(o.vertical || ''));
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || '') }) : '';
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || 'Verified source'));
   const attrs: Record<string, string> = o.attributes || {};
@@ -727,7 +730,18 @@ function offerToComparisonItem(o: any) {
     const code = (/^([0-9]?[A-Z][A-Z0-9]?)/.exec(specs['flight number'] || '') || [])[1];
     if (code && !attrs['image_url']) attrs['image_url'] = `https://www.gstatic.com/flights/airline_logos/70px/${code}.png`;
   }
+  // Owner 24 Oct (flight comparison): the card's badge row leads with the facts a
+  // fare comparison actually needs — flight number, dep–arr clock, duration,
+  // stops — before the generic route pill. Fare-calendar rows (Via/MMT) publish
+  // none of these; they honestly show nothing rather than invented times.
+  const flightPills = String(o.vertical) === 'flights' ? [
+    ...(specs['flight number'] ? [specs['flight number']] : []),
+    ...(specs['departure time'] && specs['arrival time'] ? [`${specs['departure time']} – ${specs['arrival time']}`] : []),
+    ...(attrs['duration'] ? [String(attrs['duration'])] : []),
+    ...(String(attrs['stops'] || '') !== '' ? [Number(attrs['stops']) === 0 ? 'Non-stop' : `${attrs['stops']} stop${Number(attrs['stops']) > 1 ? 's' : ''}`] : []),
+  ] : [];
   const featurePills = [
+    ...(flightPills.length ? flightPills : []),
     ...(attrs['rating'] ? [`${attrs['rating']}★`] : []),
     ...(attrs['interest_rate_min'] ? [`${attrs['interest_rate_min']}–${attrs['interest_rate_max'] || attrs['interest_rate_min']}% p.a.`] : []),
     ...(attrs['loan_type'] ? [String(attrs['loan_type'])] : []),
@@ -1076,7 +1090,7 @@ apiRouter.post('/scan/url', async (req, res) => {
     sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf(String(x.o.sellerUrl || '')) || 'Verified source')),
     price: x.price,
     currency: '₹',
-    url: String(x.o.sellerUrl || '') ? createMaskingPointer(String(x.o.sellerUrl), { offerId: String(x.o.id || '') }) : '',
+    url: (String(x.o.sellerUrl || '') || merchantSearchFallback(String(x.o.vendor || x.o.seller || ''), String(x.o.title || ''), vertical)) ? createMaskingPointer(String(x.o.sellerUrl || '') || merchantSearchFallback(String(x.o.vendor || x.o.seller || ''), String(x.o.title || ''), vertical), { offerId: String(x.o.id || '') }) : '',
     isLowest: i === 0,
     isLiveScraped: true,
     sourceDomain: hostOf(String(x.o.sellerUrl || '')),
@@ -2118,6 +2132,11 @@ apiRouter.get('/home-banners', async (req, res) => {
   }
 });
 
+const validHex = (x: unknown): x is string => typeof x === 'string' && /^#[0-9a-fA-F]{6}$/.test(x);
+/** Owner 24 Oct colourful banners: admin-set gradient pair, else undefined (client falls back per link). */
+const bannerGradient = (r: any): [string, string] | undefined =>
+  validHex(r.gradient_start) && validHex(r.gradient_end) ? [r.gradient_start as string, r.gradient_end as string] : undefined;
+
 /** Admin-authored banners for ONE section (rewards / quickapps), no live padding. */
 async function buildSectionBannersOnly(section: string): Promise<any[]> {
   const rows = await getStore().query<any>('SELECT * FROM home_banners');
@@ -2131,6 +2150,7 @@ async function buildSectionBannersOnly(section: string): Promise<any[]> {
       link: String(r.link_url || 'movies'),
       title: r.title ? String(r.title) : null,
       subtitle: r.subtitle ? String(r.subtitle) : null,
+      gradient: bannerGradient(r),
     }));
 }
 
@@ -2150,16 +2170,17 @@ async function buildHomeBannersList(): Promise<any[]> {
         link: String(r.link_url || 'movies'),
         title: r.title ? String(r.title) : null,
         subtitle: r.subtitle ? String(r.subtitle) : null,
+        gradient: bannerGradient(r),
       }));
     // Owner 23 Oct follow-up: the section strips are NOT a movie-only strip —
     // append LIVE mixed-content banners (movies + food + ecom deals) behind the
     // admin-authored ones so every section gap cycles different real content.
-    let live: { imageUrl: string; link: string; title: string | null; subtitle: string | null }[] = [];
+    let live: { imageUrl: string; link: string; title: string | null; subtitle: string | null; gradient?: [string, string] }[] = [];
     try {
       const { buildSectionBanners } = await import('../home/heroBanners');
       live = (await buildSectionBanners())
         .filter((b) => b.imageUrl && b.link)
-        .map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
+        .map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, gradient: b.gradient }));
     } catch { /* honest: live pool unavailable, admin banners still serve */ }
     const seen = new Set(admin.map((b) => b.imageUrl));
     return [

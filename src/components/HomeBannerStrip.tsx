@@ -15,6 +15,9 @@ export type HomeBanner = {
   link: string; // vertical id ('movies') or an https URL
   title?: string | null;
   subtitle?: string | null;
+  /** Owner 24 Oct: colourful strip — vibrant brand gradient replaces the old
+   * black background. Server pairs it per vertical; fallback keeps brand red. */
+  gradient?: [string, string] | null;
 };
 
 // Module-level cache: every strip on the page shares ONE fetch per page load.// Owner 24 Oct: per-SECTION caches — home keeps the mixed strip, rewards and
@@ -83,11 +86,20 @@ export const HomeBannerStrip: React.FC<{ slot: number; section?: string; onLaunc
     else if (onLaunchVertical) onLaunchVertical(b.link);
   };
   const badge = BADGE[b.link] || 'TOP PICK';
+  const STRIP_GRADIENTS: Record<string, [string, string]> = {
+    movies: ['#E11D48', '#9F1239'],
+    food: ['#F97316', '#C2410C'],
+    ecommerce: ['#E11D48', '#FF6600'],
+  };
+  const grad = b.gradient?.length === 2 ? b.gradient : (STRIP_GRADIENTS[b.link] || (['#DC2626', '#7F1D1D'] as [string, string]));
   const cta = CTA[b.link] || 'Order Now';
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="relative w-full overflow-hidden rounded-2xl bg-[#0d0d0d] shadow-md">
+      <div
+        className="relative w-full overflow-hidden rounded-2xl shadow-md"
+        style={{ background: `linear-gradient(120deg, ${grad[0]} 0%, ${grad[1]} 100%)` }}
+      >
         <button type="button" onClick={onClick} className="flex w-full items-center gap-3 sm:gap-5 px-3 py-3 sm:px-6 sm:py-5 text-left cursor-pointer group">
           {/* left: rounded image */}
           <img
@@ -98,7 +110,7 @@ export const HomeBannerStrip: React.FC<{ slot: number; section?: string; onLaunc
           />
           {/* middle: badge + headline + sub + source */}
           <div className="min-w-0 flex-1">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#1a1a2e] text-[9px] sm:text-[10px] font-black tracking-wider text-white">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/25 text-[9px] sm:text-[10px] font-black tracking-wider text-white">
               <Play className="w-2.5 h-2.5 text-red-500 fill-red-500" />
               {badge}
             </span>

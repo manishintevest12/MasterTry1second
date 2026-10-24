@@ -21,6 +21,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Scale,
+  Plane,
 } from 'lucide-react';
 import { ComparisonItem, SellerQuote } from '../types';
 import { useApp } from '../context/AppContext';
@@ -100,23 +101,79 @@ function MovieShowtimes({ raw }: { raw: unknown }) {
     const h = Number(m[1]); const ap = h >= 12 ? 'PM' : 'AM'; const h12 = h % 12 || 12;
     return `${h12}:${m[2]} ${ap}`;
   };
+  // Owner 24 Oct (reference image): BookMyShow-style — shows GROUPED BY
+  // THEATRE (one header per hall, its time chips on one line) instead of
+  // repeating the theatre name on every single row.
+  const byTheatre = new Map<string, any[]>();
+  for (const sh of shows) {
+    const th = String(sh?.theatre || 'Cinema').trim() || 'Cinema';
+    if (!byTheatre.has(th)) byTheatre.set(th, []);
+    byTheatre.get(th)!.push(sh);
+  }
   return (
-    <div className="mt-1.5 space-y-1">
-      {shows.slice(0, 3).map((sh: any, i: number) => (
-        <div key={i} className="flex items-center gap-1.5 text-[10.5px] min-w-0">
-          <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-bold whitespace-nowrap shrink-0">{fmt(sh.time)}</span>
-          <span className="text-slate-500 truncate min-w-0">{String(sh.theatre || '')}</span>
-          {Array.isArray(sh.areas) && sh.areas.length > 0 && (
-            <span className="ml-auto flex items-center gap-1 whitespace-nowrap shrink-0">
-              {sh.areas.slice(0, 3).map((a: any, j: number) => (
-                <span key={j} className="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">
-                  {String(a.label || '')} ₹{a.price}
+    <div className="mt-1.5 space-y-1.5">
+      {[...byTheatre.entries()].slice(0, 3).map(([theatre, list]) => {
+        const areas = list.flatMap((sh: any) => (Array.isArray(sh.areas) ? sh.areas : [])).slice(0, 3);
+        return (
+          <div key={theatre} className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 truncate min-w-0">{theatre}</span>
+              {areas.length > 0 && (
+                <span className="ml-auto flex items-center gap-1 whitespace-nowrap shrink-0">
+                  {areas.map((a: any, j: number) => (
+                    <span key={j} className="px-1 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[10px]">
+                      {String(a.label || '')} ₹{a.price}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+              {list.slice(0, 6).map((sh: any, i: number) => (
+                <span key={i} className="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold text-[11px] whitespace-nowrap shrink-0 shadow-xs">
+                  {fmt(sh.time)}
                 </span>
               ))}
-            </span>
-          )}
-        </div>
-      ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Flights (owner 24 Oct): the timing facts a comparison needs, rendered as a
+ *  prominent strip: flight number + dep → arr clock + duration + stops. Renders
+ *  only when the source published them (Ixigo/EMT/Yatra/Goibibo/Cleartrip/Kiwi);
+ *  fare-calendar rows (Via/MMT) show nothing invented. */
+function FlightInfoStrip({ specs }: { specs: Record<string, string> }) {
+  const fn = specs['flight number'];
+  // Some sellers publish '2026-10-31 07:15' — the strip shows the clock only.
+  const hm = (v?: string) => String(v || '').replace(/^\d{4}-\d{2}-\d{2}[T ]/, '').replace(/:\d{2}$/, '');
+  const dep = hm(specs['departure time']);
+  const arr = hm(specs['arrival time']);
+  const dur = specs['duration'];
+  const stops = specs['stops'];
+  if (!fn && !dep && !arr) return null;
+  const stopLabel = stops !== undefined && stops !== '' ? (Number(stops) === 0 ? 'Non-stop' : `${stops} stop${Number(stops) > 1 ? 's' : ''}`) : '';
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {fn && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-white text-[10px] font-bold tracking-wide">
+          <Plane className="w-3 h-3" aria-hidden />
+          <span>{fn}</span>
+        </span>
+      )}
+      {(dep || arr) && (
+        <span className="text-[13px] font-extrabold text-slate-900 tabular-nums">
+          {dep || '--:--'} <span className="text-slate-400 font-bold">→</span> {arr || '--:--'}
+        </span>
+      )}
+      {(dur || stopLabel) && (
+        <span className="text-[11px] font-semibold text-slate-500">
+          {[dur, stopLabel].filter(Boolean).join(' · ')}
+        </span>
+      )}
     </div>
   );
 }
@@ -166,6 +223,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   // placeholder image. Owner 21 Oct: the Account vertical must render exactly like
   // Loans/Insurance — a bank logo tile, never the 'photo not published' placeholder.
   const isAccountVertical = item.vertical === 'account';
+  // Flights: the FlightInfoStrip carries fn + dep→arr + duration + stops; when it
+  // renders, the generic features pill row would repeat the same facts — skip it.
+  const _flightSpecs = ((item.specs as any) || {}) as Record<string, string>;
+  const flightStripOn = item.vertical === 'flights'
+    && !!(_flightSpecs['flight number'] || _flightSpecs['departure time'] || _flightSpecs['arrival time']);
   const isImageVertical = !['loans', 'insurance', 'account'].includes(item.vertical);
   // Bank-account savings rows carry the rate IN the unit ('% p.a. (highest slab)') —
   // a percentage, never rupees. Demat/current rows carry a rupee charge instead.
@@ -312,7 +374,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 {/* Honest vertical tag - describes the CATEGORY, never a claim we can't verify */}
                 <div className="absolute top-2 left-2">
                   <span className="px-2 py-0.5 rounded-md bg-slate-900/75 backdrop-blur-xs text-white text-[10px] font-bold uppercase tracking-wider">
-                    {({ 'hotels': 'Hotel', 'movie': 'Movie', 'food': 'Food', 'grocery': 'Grocery',
+                    {({ 'hotels': 'Hotel', 'movie': 'Movie', 'movies': 'Movie', 'food': 'Food', 'grocery': 'Grocery',
                       'flights': 'Flight', 'bus': 'Bus', 'ecommerce': 'Product' } as Record<string, string>)[item.vertical] || item.vertical}
                   </span>
                 </div>
@@ -371,7 +433,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     {item.description}
                   </p>
                 )}
-                {(item as any).vertical === 'movies' && (item.specs as any)?.showtimes && (
+                {['movies','movie'].includes((item as any).vertical) && (item.specs as any)?.showtimes && (
                   <MovieShowtimes raw={(item.specs as any).showtimes} />
                 )}
 
@@ -387,7 +449,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   </div>
                 )}
 
-                {/* Quick specs pill tags / badges */}
+                {/* Quick specs pill tags / badges (flights: replaced by FlightInfoStrip) */}
+                {!flightStripOn && (
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-2">
                   {item.features.slice(0, 3).map((feat, i) => (
                     <span key={i} className="flex items-center gap-1">
@@ -396,9 +459,13 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     </span>
                   ))}
                 </div>
+                )}
+                {item.vertical === 'flights' && (
+                  <FlightInfoStrip specs={((item.specs as any) || {}) as Record<string, string>} />
+                )}
 
                 {/* Movie extras: trailer / IMDb / critics / theatres — real data only; chips render only when the source published them */}
-                {item.vertical === 'movie' && (() => {
+                {['movies','movie'].includes(item.vertical) && (() => {
                   const sp: Record<string, string> = (item.specs as any) || {};
                   const trailer = sp['trailer url'] || sp['trailer_url'];
                   const imdb = sp['imdb rating'] || sp['imdb_rating'];
@@ -502,7 +569,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     {item.description}
                   </p>
                 )}
-                {(item as any).vertical === 'movies' && (item.specs as any)?.showtimes && (
+                {['movies','movie'].includes((item as any).vertical) && (item.specs as any)?.showtimes && (
                   <MovieShowtimes raw={(item.specs as any).showtimes} />
                 )}
 
@@ -516,7 +583,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   </div>
                 )}
 
-                {/* Quick specs pill tags / badges */}
+                {/* Quick specs pill tags / badges (flights: replaced by FlightInfoStrip) */}
+                {!flightStripOn && (
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-2">
                   {item.features.slice(0, 3).map((feat, i) => (
                     <span key={i} className="flex items-center gap-1">
@@ -525,6 +593,10 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     </span>
                   ))}
                 </div>
+                )}
+                {item.vertical === 'flights' && (
+                  <FlightInfoStrip specs={((item.specs as any) || {}) as Record<string, string>} />
+                )}
               </div>
             </div>
           )}

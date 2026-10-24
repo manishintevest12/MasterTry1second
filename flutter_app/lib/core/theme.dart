@@ -206,3 +206,13 @@ class T1SSearchSurface {
   static T1SSearchSurface of(String id) =>
       map[id] ?? const T1SSearchSurface(0xFFFFFFFF, 0xFF64748B, dark: false);
 }
+
+/// Owner 24 Oct colourful banners: turns '#E11D48' into Color(0xFFE11D48).
+/// Returns null for anything malformed so callers keep their fallback.
+Color? t1sHexColor(String? hex) {
+  if (hex == null) return null;
+  final h = hex.trim();
+  final m = RegExp(r'^#?([0-9a-fA-F]{6})$').firstMatch(h);
+  if (m == null) return null;
+  return Color(int.parse('FF${m.group(1)}', radix: 16));
+}

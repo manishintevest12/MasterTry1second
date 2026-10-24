@@ -222,3 +222,34 @@ export async function recordPointerClick(dest: string, offerId: string | undefin
   } catch (e) { log.debug('Affiliate', 'click recording skipped', {}); }
   return clickId;
 }
+
+/** Owner 24 Oct ("payment-page deeplinks"): when a scraped row ships without its
+ *  product URL, the Order Now pointer was EMPTY — web opened a blank tab and
+ *  Flutter dropped to the compare page, so the user never reached the merchant
+ *  page where they pay. This builds an HONEST per-merchant SEARCH deeplink for
+ *  the item title (a real published page pattern, never a fabricated product
+ *  URL): the user lands on the merchant's own search for exactly that item,
+ *  the affiliate converter (/api/out → Cuelinks/Ekaro) wraps it unchanged.
+ *  Unknown vendor -> '' (old behaviour, no invention). */
+export function merchantSearchFallback(vendor: string, title: string, vertical?: string): string {
+  const v = String(vendor || '').toLowerCase();
+  const q = encodeURIComponent(String(title || '').trim().slice(0, 80));
+  if (!v || !q) return '';
+  const has = (...keys: string[]) => keys.some((k) => v.includes(k));
+  if (has('amazon')) return `https://www.amazon.in/s?k=${q}`;
+  if (has('flipkart')) return `https://www.flipkart.com/search?q=${q}`;
+  if (has('meesho')) return `https://www.meesho.com/search?q=${q}`;
+  if (has('myntra')) return `https://www.myntra.com/${encodeURIComponent(String(title || '').trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-').slice(0, 60))}`;
+  if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
+  if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;
+  if (has('swiggy') && has('instamart')) return `https://www.swiggy.com/instamart/search?query=${q}`;
+  if (has('swiggy')) return `https://swiggy.com/search?query=${q}`;
+  if (has('blinkit')) return `https://blinkit.com/s/?q=${q}`;
+  if (has('zepto')) return `https://www.zepto.com/search?query=${q}`;
+  if (has('bigbasket', 'bb now')) return `https://www.bigbasket.com/ps/?q=${q}`;
+  if (has('zomato')) return `https://www.zomato.com/search?query=${q}`;
+  if (has('domino')) return `https://www.dominos.co.in/menu`;
+  if (has('bookmyshow')) return 'https://in.bookmyshow.com/explore/movies';
+  if (has('makemytrip')) return `https://www.makemytrip.com/${(vertical === 'flights' || vertical === 'bus') ? 'flights/' : ''}`;
+  return '';
+}

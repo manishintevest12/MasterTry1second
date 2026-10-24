@@ -23,6 +23,11 @@ import { getStore } from '../common/db';
 export interface HeroSlide {
   id: string;
   kind: 'movie' | 'food' | 'ecommerce' | 'custom';
+  /** Owner 24 Oct ("abhi sb black banner hai, colourful rakho"): every slide
+   * carries its OWN vibrant brand gradient ([startHex, endHex]) — the hero is a
+   * colourful strip, never the old black card. Brand family (red/orange), one
+   * pairing per kind; renderers build linear-gradient from these. */
+  gradient: [string, string];
   badge: string;          // PREMIERE / FOOD PICK / MEGA DEAL / admin text
   subheading: string | null; // e.g. "Brand new releases every Friday"
   heading: string;        // big title
@@ -35,6 +40,14 @@ export interface HeroSlide {
   url: string | null;     // external link (masking pointer) — optional
   launch: { vertical: string; query: string } | null; // in-app engine launch
 }
+
+const KIND_GRADIENTS: Record<string, [string, string]> = {
+  movie: ['#E11D48', '#9F1239'],      // rose-600 -> rose-800
+  food: ['#F97316', '#C2410C'],       // orange-500 -> orange-700
+  ecommerce: ['#E11D48', '#FF6600'],  // brand red -> brand orange
+  custom: ['#DC2626', '#7F1D1D'],    // red-600 -> red-900
+};
+const kindGradient = (kind: string): [string, string] => KIND_GRADIENTS[kind] || KIND_GRADIENTS.custom;
 
 const HERO_TTL_MS = 10 * 60_000;
 let heroCache: { at: number; slides: HeroSlide[] } | null = null;
@@ -71,6 +84,7 @@ async function movieSlide(): Promise<HeroSlide | null> {
   return {
     id: `movie-${m.title}`,
     kind: 'movie',
+    gradient: kindGradient('movie'),
     badge: 'PREMIERE',
     subheading: 'Brand new releases every Friday',
     heading: m.title,
@@ -95,6 +109,7 @@ async function foodSlide(): Promise<HeroSlide | null> {
   return {
     id: `food-${r.id}`,
     kind: 'food',
+    gradient: kindGradient('food'),
     badge: 'FOOD PICK',
     subheading: 'Fresh dishes from top-rated kitchens near you',
     heading: r.title,
@@ -121,6 +136,7 @@ async function ecomSlide(): Promise<HeroSlide | null> {
   return {
     id: `ecom-${r.id}`,
     kind: 'ecommerce',
+    gradient: kindGradient('ecommerce'),
     badge: 'MEGA DEAL',
     subheading: 'Biggest savings, live-verified prices',
     heading: r.title,
@@ -144,6 +160,9 @@ async function customSlides(): Promise<HeroSlide[]> {
       .map((r) => ({
         id: `custom-${r.id}`,
         kind: 'custom' as const,
+        gradient: /^#[0-9a-fA-F]{6}$/.test(String(r.gradient_start || '')) && /^#[0-9a-fA-F]{6}$/.test(String(r.gradient_end || ''))
+          ? [String(r.gradient_start), String(r.gradient_end)]
+          : kindGradient('custom'),
         badge: String(r.badge || 'FEATURED'),
         subheading: r.subheading ? String(r.subheading) : null,
         heading: String(r.heading || r.title || 'Featured'),
@@ -187,6 +206,7 @@ export async function buildHeroBanners(): Promise<HeroSlide[]> {
  */
 export interface SectionBanner {
   id: string;
+  gradient: [string, string];
   imageUrl: string;
   link: string; // vertical id
   title: string | null;
@@ -206,6 +226,7 @@ export async function buildSectionBanners(): Promise<SectionBanner[]> {
   for (const m of movies.filter((x: any) => x.poster).slice(0, 3)) {
     out.push({
       id: `sb-movie-${m.title}`,
+      gradient: kindGradient('movie'),
       imageUrl: m.poster,
       link: 'movies',
       title: m.title,
@@ -219,6 +240,7 @@ export async function buildSectionBanners(): Promise<SectionBanner[]> {
   for (const r of foodRows) {
     out.push({
       id: `sb-food-${r.id}`,
+      gradient: kindGradient('food'),
       imageUrl: imageFromAttributes(r.attributes) as string,
       link: 'food',
       title: r.title,
@@ -232,6 +254,7 @@ export async function buildSectionBanners(): Promise<SectionBanner[]> {
   for (const r of ecomRows) {
     out.push({
       id: `sb-ecom-${r.id}`,
+      gradient: kindGradient('ecommerce'),
       imageUrl: imageFromAttributes(r.attributes) as string,
       link: 'ecommerce',
       title: r.title,

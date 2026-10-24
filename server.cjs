@@ -22895,6 +22895,7 @@ __export(deeplink_exports, {
   buildSecureDeeplink: () => buildSecureDeeplink,
   createMaskingPointer: () => createMaskingPointer,
   cuelinksMerchantUrl: () => cuelinksMerchantUrl,
+  merchantSearchFallback: () => merchantSearchFallback,
   recordPointerClick: () => recordPointerClick,
   resolveMaskingPointer: () => resolveMaskingPointer,
   safeDomain: () => safeDomain
@@ -23037,6 +23038,28 @@ async function recordPointerClick(dest, offerId, network) {
     log.debug("Affiliate", "click recording skipped", {});
   }
   return clickId;
+}
+function merchantSearchFallback(vendor, title, vertical) {
+  const v = String(vendor || "").toLowerCase();
+  const q3 = encodeURIComponent(String(title || "").trim().slice(0, 80));
+  if (!v || !q3) return "";
+  const has = (...keys) => keys.some((k) => v.includes(k));
+  if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
+  if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
+  if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
+  if (has("myntra")) return `https://www.myntra.com/${encodeURIComponent(String(title || "").trim().toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, "-").slice(0, 60))}`;
+  if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
+  if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
+  if (has("swiggy") && has("instamart")) return `https://www.swiggy.com/instamart/search?query=${q3}`;
+  if (has("swiggy")) return `https://swiggy.com/search?query=${q3}`;
+  if (has("blinkit")) return `https://blinkit.com/s/?q=${q3}`;
+  if (has("zepto")) return `https://www.zepto.com/search?query=${q3}`;
+  if (has("bigbasket", "bb now")) return `https://www.bigbasket.com/ps/?q=${q3}`;
+  if (has("zomato")) return `https://www.zomato.com/search?query=${q3}`;
+  if (has("domino")) return `https://www.dominos.co.in/menu`;
+  if (has("bookmyshow")) return "https://in.bookmyshow.com/explore/movies";
+  if (has("makemytrip")) return `https://www.makemytrip.com/${vertical === "flights" || vertical === "bus" ? "flights/" : ""}`;
+  return "";
 }
 var import_crypto20, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
 var init_deeplink = __esm({
@@ -29287,6 +29310,7 @@ async function movieSlide() {
   return {
     id: `movie-${m.title}`,
     kind: "movie",
+    gradient: kindGradient("movie"),
     badge: "PREMIERE",
     subheading: "Brand new releases every Friday",
     heading: m.title,
@@ -29309,6 +29333,7 @@ async function foodSlide() {
   return {
     id: `food-${r.id}`,
     kind: "food",
+    gradient: kindGradient("food"),
     badge: "FOOD PICK",
     subheading: "Fresh dishes from top-rated kitchens near you",
     heading: r.title,
@@ -29332,6 +29357,7 @@ async function ecomSlide() {
   return {
     id: `ecom-${r.id}`,
     kind: "ecommerce",
+    gradient: kindGradient("ecommerce"),
     badge: "MEGA DEAL",
     subheading: "Biggest savings, live-verified prices",
     heading: r.title,
@@ -29351,6 +29377,7 @@ async function customSlides() {
     return rows.sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
       id: `custom-${r.id}`,
       kind: "custom",
+      gradient: /^#[0-9a-fA-F]{6}$/.test(String(r.gradient_start || "")) && /^#[0-9a-fA-F]{6}$/.test(String(r.gradient_end || "")) ? [String(r.gradient_start), String(r.gradient_end)] : kindGradient("custom"),
       badge: String(r.badge || "FEATURED"),
       subheading: r.subheading ? String(r.subheading) : null,
       heading: String(r.heading || r.title || "Featured"),
@@ -29392,6 +29419,7 @@ async function buildSectionBanners() {
   for (const m of movies.filter((x) => x.poster).slice(0, 3)) {
     out.push({
       id: `sb-movie-${m.title}`,
+      gradient: kindGradient("movie"),
       imageUrl: m.poster,
       link: "movies",
       title: m.title,
@@ -29402,6 +29430,7 @@ async function buildSectionBanners() {
   for (const r of foodRows) {
     out.push({
       id: `sb-food-${r.id}`,
+      gradient: kindGradient("food"),
       imageUrl: imageFromAttributes(r.attributes),
       link: "food",
       title: r.title,
@@ -29412,6 +29441,7 @@ async function buildSectionBanners() {
   for (const r of ecomRows) {
     out.push({
       id: `sb-ecom-${r.id}`,
+      gradient: kindGradient("ecommerce"),
       imageUrl: imageFromAttributes(r.attributes),
       link: "ecommerce",
       title: r.title,
@@ -29421,7 +29451,7 @@ async function buildSectionBanners() {
   if (out.length) sectionCache = { at: Date.now(), banners: out };
   return out;
 }
-var HERO_TTL_MS, heroCache, upcomingCache, sectionCache;
+var KIND_GRADIENTS, kindGradient, HERO_TTL_MS, heroCache, upcomingCache, sectionCache;
 var init_heroBanners = __esm({
   "server/home/heroBanners.ts"() {
     init_curlCffiFetch();
@@ -29429,6 +29459,17 @@ var init_heroBanners = __esm({
     init_showcase();
     init_logger();
     init_db();
+    KIND_GRADIENTS = {
+      movie: ["#E11D48", "#9F1239"],
+      // rose-600 -> rose-800
+      food: ["#F97316", "#C2410C"],
+      // orange-500 -> orange-700
+      ecommerce: ["#E11D48", "#FF6600"],
+      // brand red -> brand orange
+      custom: ["#DC2626", "#7F1D1D"]
+      // red-600 -> red-900
+    };
+    kindGradient = (kind) => KIND_GRADIENTS[kind] || KIND_GRADIENTS.custom;
     HERO_TTL_MS = 10 * 6e4;
     heroCache = null;
     upcomingCache = /* @__PURE__ */ new Map();
@@ -30240,7 +30281,7 @@ function hostOfPublic(u) {
 function offerToComparisonItem(o) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
-  const rawDest = o.sellerUrl || "";
+  const rawDest = String(o.sellerUrl || "") || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), String(o.vertical || ""));
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || "") }) : "";
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || "Verified source"));
   const attrs = o.attributes || {};
@@ -30319,7 +30360,14 @@ function offerToComparisonItem(o) {
     const code = (/^([0-9]?[A-Z][A-Z0-9]?)/.exec(specs["flight number"] || "") || [])[1];
     if (code && !attrs["image_url"]) attrs["image_url"] = `https://www.gstatic.com/flights/airline_logos/70px/${code}.png`;
   }
+  const flightPills = String(o.vertical) === "flights" ? [
+    ...specs["flight number"] ? [specs["flight number"]] : [],
+    ...specs["departure time"] && specs["arrival time"] ? [`${specs["departure time"]} \u2013 ${specs["arrival time"]}`] : [],
+    ...attrs["duration"] ? [String(attrs["duration"])] : [],
+    ...String(attrs["stops"] || "") !== "" ? [Number(attrs["stops"]) === 0 ? "Non-stop" : `${attrs["stops"]} stop${Number(attrs["stops"]) > 1 ? "s" : ""}`] : []
+  ] : [];
   const featurePills = [
+    ...flightPills.length ? flightPills : [],
     ...attrs["rating"] ? [`${attrs["rating"]}\u2605`] : [],
     ...attrs["interest_rate_min"] ? [`${attrs["interest_rate_min"]}\u2013${attrs["interest_rate_max"] || attrs["interest_rate_min"]}% p.a.`] : [],
     ...attrs["loan_type"] ? [String(attrs["loan_type"])] : [],
@@ -30525,7 +30573,8 @@ async function buildSectionBannersOnly(section) {
     imageUrl: String(r.image_url || ""),
     link: String(r.link_url || "movies"),
     title: r.title ? String(r.title) : null,
-    subtitle: r.subtitle ? String(r.subtitle) : null
+    subtitle: r.subtitle ? String(r.subtitle) : null,
+    gradient: bannerGradient(r)
   }));
 }
 async function buildHomeBannersList() {
@@ -30536,12 +30585,13 @@ async function buildHomeBannersList() {
       imageUrl: String(r.image_url || ""),
       link: String(r.link_url || "movies"),
       title: r.title ? String(r.title) : null,
-      subtitle: r.subtitle ? String(r.subtitle) : null
+      subtitle: r.subtitle ? String(r.subtitle) : null,
+      gradient: bannerGradient(r)
     }));
     let live = [];
     try {
       const { buildSectionBanners: buildSectionBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
-      live = (await buildSectionBanners2()).filter((b) => b.imageUrl && b.link).map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
+      live = (await buildSectionBanners2()).filter((b) => b.imageUrl && b.link).map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, gradient: b.gradient }));
     } catch {
     }
     const seen = new Set(admin.map((b) => b.imageUrl));
@@ -30583,7 +30633,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits;
+var import_express, import_crypto27, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -31137,7 +31187,7 @@ var init_routes = __esm({
         sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf2(String(x.o.sellerUrl || "")) || "Verified source")),
         price: x.price,
         currency: "\u20B9",
-        url: String(x.o.sellerUrl || "") ? createMaskingPointer(String(x.o.sellerUrl), { offerId: String(x.o.id || "") }) : "",
+        url: String(x.o.sellerUrl || "") || merchantSearchFallback(String(x.o.vendor || x.o.seller || ""), String(x.o.title || ""), vertical) ? createMaskingPointer(String(x.o.sellerUrl || "") || merchantSearchFallback(String(x.o.vendor || x.o.seller || ""), String(x.o.title || ""), vertical), { offerId: String(x.o.id || "") }) : "",
         isLowest: i === 0,
         isLiveScraped: true,
         sourceDomain: hostOf2(String(x.o.sellerUrl || "")),
@@ -31931,6 +31981,8 @@ var init_routes = __esm({
         res.json({ success: true, banners: [] });
       }
     });
+    validHex = (x) => typeof x === "string" && /^#[0-9a-fA-F]{6}$/.test(x);
+    bannerGradient = (r) => validHex(r.gradient_start) && validHex(r.gradient_end) ? [r.gradient_start, r.gradient_end] : void 0;
     apiRouter.post("/rewards/eligibility/claim", requireAuth, async (req, res) => {
       const user = req.user;
       const r = await claimSpinEligibility(user.id);
@@ -33864,7 +33916,9 @@ var init_adminRoutes = __esm({
           subtitle: r.subtitle ? String(r.subtitle) : null,
           section: BANNER_SECTIONS.includes(String(r.section || "home")) ? String(r.section) : "home",
           isActive: Number(r.is_active ?? 1) === 1,
-          position: Number(r.position ?? 0)
+          position: Number(r.position ?? 0),
+          gradientStart: r.gradient_start ? String(r.gradient_start) : null,
+          gradientEnd: r.gradient_end ? String(r.gradient_end) : null
         }));
         res.json({ success: true, banners });
       } catch (e) {
@@ -33883,17 +33937,23 @@ var init_adminRoutes = __esm({
         const position = Number(req.body?.position ?? 0) || 0;
         const id = Number(req.body?.id || 0);
         const section = BANNER_SECTIONS.includes(String(req.body?.section || "")) ? String(req.body.section) : "home";
+        const gStart = /^#[0-9a-fA-F]{6}$/.test(String(req.body?.gradientStart || "")) ? String(req.body.gradientStart) : null;
+        const gEnd = /^#[0-9a-fA-F]{6}$/.test(String(req.body?.gradientEnd || "")) ? String(req.body.gradientEnd) : null;
         await ensureBannerSectionColumn();
+        try {
+          await getStore().execute("ALTER TABLE home_banners ADD COLUMN gradient_start VARCHAR(9) NULL, ADD COLUMN gradient_end VARCHAR(9) NULL");
+        } catch {
+        }
         if (id) {
           await getStore().execute(
-            "UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, section = ?, is_active = ?, position = ? WHERE id = ?",
-            [imageUrl, link, title, subtitle, section, isActive3, position, id]
+            "UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, section = ?, is_active = ?, position = ?, gradient_start = ?, gradient_end = ? WHERE id = ?",
+            [imageUrl, link, title, subtitle, section, isActive3, position, gStart, gEnd, id]
           );
           audit(req, "home_banner_update", String(id));
         } else {
           await getStore().execute(
-            "INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [imageUrl, link, title, subtitle, section, isActive3, position]
+            "INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position, gradient_start, gradient_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [imageUrl, link, title, subtitle, section, isActive3, position, gStart, gEnd]
           );
           audit(req, "home_banner_create", imageUrl.slice(0, 80));
         }

@@ -513,8 +513,11 @@ class TravelTile extends StatelessWidget {
     }
     // 2) 'departure time' missing an arrival falls back to the 'departure' range
     //    ('02:30 AM → 08:30 AM' → dep 02:30, arr 08:30) exactly like the web card.
-    var depTime = it.spec('departure time');
-    var arrTime = it.spec('arrival time');
+    // Some sellers publish '2026-10-31 07:15' — keep the clock only (web parity).
+    String hm(String v) =>
+        v.replaceFirst(RegExp(r'^\d{4}-\d{2}-\d{2}[T ]'), '').replaceFirst(RegExp(r':\d{2}\$'), '');
+    var depTime = hm(it.spec('departure time'));
+    var arrTime = hm(it.spec('arrival time'));
     if (depTime.isNotEmpty && arrTime.isEmpty) {
       final range = it.spec('departure');
       final arrow = range.contains('→') ? range.split('→') : null;
@@ -537,12 +540,17 @@ class TravelTile extends StatelessWidget {
 
     // Owner 17 Oct: airline name visible on flight cards alongside the seller website.
     final airline = it.spec('airline');
+    // Flights: fn/dep→arr/duration/stops render in the prominent timing strip
+    // below the title — the pill row keeps only what the strip does not show.
+    final isFlight = meta.id == 'flights' || it.vertical == 'flights';
+    final stripOn = isFlight &&
+        (it.spec('flight number').isNotEmpty || depTime.isNotEmpty);
     final specs = [
       if (airline.isNotEmpty) airline,
-      if (it.spec('flight number').isNotEmpty) it.spec('flight number'),
-      if (durMin > 0) durMin < 60 ? '$durMin m' : '${durMin ~/ 60}h ${durMin % 60}m',
-      if (depTime.isNotEmpty) '$depTime → $arrTime',
-      if (it.spec('stops').isNotEmpty) (it.spec('stops') == '0' ? 'Non-stop' : '${it.spec('stops')} stop'),
+      if (!stripOn && it.spec('flight number').isNotEmpty) it.spec('flight number'),
+      if (!stripOn && durMin > 0) durMin < 60 ? '$durMin m' : '${durMin ~/ 60}h ${durMin % 60}m',
+      if (!stripOn && depTime.isNotEmpty) '$depTime → $arrTime',
+      if (!stripOn && it.spec('stops').isNotEmpty) (it.spec('stops') == '0' ? 'Non-stop' : '${it.spec('stops')} stop'),
       if (it.spec('operator').isNotEmpty) it.spec('operator'),
       if (vehicleType.isNotEmpty) vehicleType,
       if (seats.isNotEmpty) (seats.contains('Seat') ? seats : '$seats Seats'),
@@ -627,6 +635,55 @@ class TravelTile extends StatelessWidget {
               ),
             ],
           ),
+          // Owner 24 Oct: flight timing strip (web FlightInfoStrip parity) —
+          // flight-number chip + bold dep → arr clock + duration · stops. Renders
+          // only when the source published them; fare-calendar rows show nothing.
+          if (stripOn)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  if (it.spec('flight number').isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: ink(context),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.flight_takeoff_rounded, size: 10, color: Colors.white),
+                          const SizedBox(width: 3),
+                          Text(
+                            it.spec('flight number'),
+                            style: tx(context, 9, w: FontWeight.w900, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (depTime.isNotEmpty) ...[
+                    if (it.spec('flight number').isNotEmpty) const SizedBox(width: 6),
+                    Text(
+                      '$depTime → ${arrTime.isEmpty ? '--:--' : arrTime}',
+                      style: tx(context, 12.5, w: FontWeight.w900),
+                    ),
+                  ],
+                  if (durMin > 0 || it.spec('stops').isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Text(
+                      [
+                        if (durMin > 0)
+                          durMin < 60 ? '$durMin m' : '${durMin ~/ 60}h ${durMin % 60}m',
+                        if (it.spec('stops').isNotEmpty)
+                          it.spec('stops') == '0' ? 'Non-stop' : '${it.spec('stops')} stop',
+                      ].join(' · '),
+                      style: tx(context, 9.5, w: FontWeight.w700, color: muted(context)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           if (specs.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -1587,36 +1644,39 @@ class _MovieShowtimes extends StatelessWidget {
       return const SizedBox.shrink();
     }
     if (shows.isEmpty) return const SizedBox.shrink();
+    // Owner 24 Oct (reference image, web parity): BookMyShow-style — shows
+    // GROUPED BY THEATRE, one header per hall with its time chips in a row,
+    // instead of repeating the theatre name on every single row.
+    final byTheatre = <String, List<Map>>{};
+    for (final sh in shows) {
+      if (sh is! Map) continue;
+      final th = ('${sh['theatre'] ?? ''}'.trim().isEmpty) ? 'Cinema' : '${sh['theatre']}'.trim();
+      byTheatre.putIfAbsent(th, () => []).add(sh);
+    }
     return Padding(
       padding: const EdgeInsets.only(top: 7),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final sh in shows.take(3))
-            if (sh is Map)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 3),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                      decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(5)),
-                      child: Text(
-                        _fmt(sh['time']),
-                        style: tx(context, 9, w: FontWeight.w900, color: Colors.white),
+          for (final entry in byTheatre.entries.take(3))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          entry.key.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tx(context, 8.5, w: FontWeight.w900, color: muted(context), ls: 0.4),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        '${sh['theatre'] ?? ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: tx(context, 9, color: muted(context)),
-                      ),
-                    ),
-                    for (final a in ((sh['areas'] as List?) ?? const []).take(2))
-                      if (a is Map)
+                      for (final a in entry.value
+                          .expand((sh) => ((sh['areas'] as List?) ?? const []).whereType<Map>())
+                          .take(2))
                         Padding(
                           padding: const EdgeInsets.only(left: 4),
                           child: Container(
@@ -1632,9 +1692,34 @@ class _MovieShowtimes extends StatelessWidget {
                             ),
                           ),
                         ),
-                  ],
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final sh in entry.value.take(6))
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: T1SColors.red,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                _fmt(sh['time']),
+                                style: tx(context, 9.5, w: FontWeight.w900, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
+            ),
         ],
       ),
     );

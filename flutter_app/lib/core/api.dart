@@ -830,12 +830,16 @@ class ProductOffer {
 /// Admin-managed home banner (owner 23 Oct): wide landscape strip between
 /// home sections. link is a vertical id ('movies') or an https URL.
 class HomeBanner {
-  const HomeBanner({required this.id, required this.imageUrl, required this.link, this.title, this.subtitle});
+  const HomeBanner({required this.id, required this.imageUrl, required this.link, this.title, this.subtitle, this.gradient});
   final int id;
   final String imageUrl;
   final String link;
   final String? title;
   final String? subtitle;
+
+  /// Owner 24 Oct colourful banners: [startHex, endHex] served by the API;
+  /// null falls back to the per-vertical brand pair in the widget.
+  final List<String>? gradient;
 }
 
 /// Hero carousel slide (owner 23 Oct, BookMyShow reference): mixed content —
@@ -856,6 +860,7 @@ class HeroSlide {
     this.url,
     this.launchVertical,
     this.launchQuery,
+    this.gradient,
   });
   final String id;
   final String kind; // movie | food | ecommerce | custom
@@ -871,6 +876,9 @@ class HeroSlide {
   final String? url;
   final String? launchVertical;
   final String? launchQuery;
+
+  /// Owner 24 Oct colourful banners: [startHex, endHex] from the API.
+  final List<String>? gradient;
 }
 
 class Try1SecondApi {
@@ -1332,6 +1340,7 @@ class Try1SecondApi {
           url: r['url'] as String?,
           launchVertical: (r['launch'] as Map<String, dynamic>?)?['vertical'] as String?,
           launchQuery: (r['launch'] as Map<String, dynamic>?)?['query'] as String?,
+          gradient: (r['gradient'] as List?)?.whereType<String>().toList(),
         ),
     ];
   }
@@ -1352,6 +1361,7 @@ class Try1SecondApi {
           link: (r['link'] as String?) ?? 'movies',
           title: r['title'] as String?,
           subtitle: r['subtitle'] as String?,
+          gradient: (r['gradient'] as List?)?.whereType<String>().toList(),
         ),
     ];
   }

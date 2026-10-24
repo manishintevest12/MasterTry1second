@@ -59,6 +59,9 @@ export const RedirectionModal: React.FC = () => {
   const { item, quote, step } = redirectionState;
 
   const handleProceed = () => {
+    // Owner 24 Oct: no pointer at all (source published no link and no honest
+    // merchant-search fallback) -> close instead of opening a blank tab.
+    if (!String(quote.url || '')) { closeRedirection(); return; }
     // Masking pointer (Module 4): server-side hop already carries attribution;
     // never wrap it in a client-side tracking template.
     if (String(quote.url || '').startsWith('/api/out')) {
