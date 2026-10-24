@@ -9190,6 +9190,125 @@ var init_sriLankanPlnext = __esm({
   }
 });
 
+// server/workers/parsers/starAirCrane.ts
+function starDateParam(depIso) {
+  const m = depIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : depIso;
+}
+function starAvailUrl(fromCode, toCode, depIso) {
+  const p = new URLSearchParams();
+  p.set("lang", "en");
+  p.set("tripType", "ONE_WAY");
+  p.set("depPort", fromCode);
+  p.set("arrPort", toCode);
+  p.set("departureDate", starDateParam(depIso));
+  p.set("cabinClasses", "ECONOMY");
+  p.set("passengerQuantities[0][passengerType]", "ADLT");
+  p.set("passengerQuantities[0][quantity]", "1");
+  p.set("passengerQuantities[1][passengerType]", "CHLD");
+  p.set("passengerQuantities[1][quantity]", "0");
+  p.set("passengerQuantities[2][passengerType]", "INFT");
+  p.set("passengerQuantities[2][quantity]", "0");
+  return `${STAR_AVAIL}?${p.toString()}`;
+}
+function starIsoDate(dateText, epochMs) {
+  if (epochMs) {
+    const d = new Date(epochMs + 5.5 * 36e5);
+    return d.toISOString().slice(0, 10);
+  }
+  const m = String(dateText || "").match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/);
+  if (!m) return "";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mo = months.findIndex((x) => x.toLowerCase() === m[2].toLowerCase());
+  if (mo < 0) return "";
+  return `${m[3]}-${String(mo + 1).padStart(2, "0")}-${String(Number(m[1])).padStart(2, "0")}`;
+}
+function parseStarAirAvailability(html, depIso) {
+  const b = html || "";
+  const out = [];
+  const parts = b.split(/<div class="js-journey"/);
+  for (const part of parts.slice(1)) {
+    const chunk = part;
+    const attr = (name) => {
+      const m = chunk.match(new RegExp(`data-${name}="(\\d+)"`));
+      return m ? m[1] : "";
+    };
+    const stops = Number(attr("stop-count") ?? 0);
+    const durationSec = Number(attr("journey-duration") ?? 0);
+    const depEpoch = Number(attr("dep-date") ?? 0);
+    const arrEpoch = Number(attr("arr-date") ?? 0);
+    const flightNo2 = ((chunk.match(/class="flight-no">([^<]+)</) || [])[1] || "").replace(/\s+/g, "");
+    if (!flightNo2) continue;
+    const times = [...chunk.matchAll(/<span class="time">\s*(\d{1,2}:\d{2})\s*</g)].map((m) => m[1]);
+    const ports = [...chunk.matchAll(/class="port">\s*[^<]*?\(([A-Z]{3})\)\s*</g)].map((m) => m[1]);
+    const dateTexts = [...chunk.matchAll(/class="date">\s*([^<]+?)\s*</g)].map((m) => m[1]);
+    const depTime = times[0] || "";
+    const arrTime = times[times.length - 1] || "";
+    const fromCode = ports[0] || "";
+    const toCode = ports[ports.length - 1] || "";
+    const depDateIso = starIsoDate(dateTexts[0] || "", depEpoch || void 0);
+    if (!depTime || !arrTime || !fromCode || !toCode) continue;
+    if (depDateIso !== depIso) continue;
+    let fareEconomy = 0, fareBusiness = 0;
+    for (const fm of chunk.matchAll(/price-block\s+cabin-name-([^"]*)"[^>]*>\s*(?:<span[^>]*>\s*INR\s*<\/span>)?\s*<span[^>]*(?:price-best-offer|price)[^>]*>\s*([\d,]+)/g)) {
+      const cabin = fm[1].toUpperCase();
+      const amount = Number(fm[2].replace(/,/g, ""));
+      if (!amount) continue;
+      if (cabin.includes("BUSINESS")) {
+        if (!fareBusiness || amount < fareBusiness) fareBusiness = amount;
+      } else {
+        if (!fareEconomy || amount < fareEconomy) fareEconomy = amount;
+      }
+    }
+    const durationMin = durationSec ? Math.round(durationSec / 60) : 0;
+    out.push({ flightNo: flightNo2, depTime, arrTime, depDateIso, fromCode, toCode, stops, durationMin, fareEconomy, fareBusiness });
+  }
+  return out;
+}
+function starAirFlightItems(journeys, source, fromCity, toCity, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return journeys.map((j) => {
+    const price = j.fareEconomy || j.fareBusiness;
+    return newRawItem(source, {
+      title: `Star Air ${j.flightNo} ${fromCity} \u2192 ${toCity} on ${j.depDateIso} from \u20B9${price} (${j.depTime}\u2013${j.arrTime})`,
+      brand: "Star Air",
+      price,
+      currency: "INR",
+      seller: "Star Air",
+      sellerUrl: STAR_HOME,
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: j.depDateIso },
+      attributes: {
+        route: `${fromCity} \u2192 ${toCity}`,
+        airline: "Star Air",
+        flight_number: j.flightNo,
+        travel_date: j.depDateIso,
+        departure_date: j.depDateIso,
+        departure: j.depTime,
+        arrival: j.arrTime,
+        stops: String(j.stops),
+        ...j.durationMin ? { duration: j.durationMin >= 60 ? `${Math.floor(j.durationMin / 60)}h ${j.durationMin % 60}m` : `${j.durationMin}m` } : {},
+        ...j.fareEconomy ? { fare_class: `STAR REGULAR (economy best offer incl. taxes)${j.fareBusiness ? `; business from \u20B9${j.fareBusiness}` : ""}` } : {},
+        price_basis: `Star Air booking-engine fare for 1 adult on ${j.depDateIso} (economy \u20B9${j.fareEconomy}${j.fareBusiness ? `, business \u20B9${j.fareBusiness}` : ""}) captured ${today2}`,
+        data_note: `Fare and schedule from Star Air's own booking engine (Crane Aero) on ${today2}; booking continues on Star Air's own website. Fare may change at checkout.`,
+        image: ""
+      },
+      identifiers: { sku: `s5-${j.flightNo}-${j.depDateIso}-${j.fromCode}${j.toCode}` },
+      evidence: {
+        sourceUrl: STAR_AVAIL,
+        extractedFields: ["js-journey data-attrs (dep/arr epoch, stops, duration)", "flight-no", "price-block cabin fares (INR)"]
+      }
+    });
+  });
+}
+var STAR_HOME, STAR_AVAIL;
+var init_starAirCrane = __esm({
+  "server/workers/parsers/starAirCrane.ts"() {
+    init_contract();
+    STAR_HOME = "https://www.starair.in/";
+    STAR_AVAIL = "https://book-sdg.crane.aero/ibe/availability";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13299,6 +13418,7 @@ var init_flights = __esm({
     init_allianceAir();
     init_fly91Ibe();
     init_sriLankanPlnext();
+    init_starAirCrane();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -14040,6 +14160,45 @@ var init_flights = __esm({
             const parsed = parseSriLankanAvailability(ibe.body || "", dep);
             if (!parsed) return [];
             return sriLankanFlightItems(parsed.flights, parsed.cheapestFare, parsed.fareFamily, parsed.tax, parsed.base, parsed.seats, ctx.source, rt.from, rt.to, dep);
+          }
+        },
+        {
+          // Star Air LIVE (24 Oct 2026): Crane Aero IBE (hitit-ui) at
+          // book-sdg.crane.aero - fully OPEN, no gating, no tokens, cold-session
+          // browserless GET. Captured via Browserbase CDP: homepage form POST
+          // redirects to GET /ibe/availability?depPort&arrPort&departureDate=
+          // DD.MM.YYYY which is SERVER-RENDERED with full flight cards
+          // (js-journey data-attrs: dep/arr epoch ms, stops, duration; flight-no
+          // S5-164; per-cabin price-blocks INR). starair.in/home/LoadDestination
+          // validates routes (BOM->AMD,GOX,KLH,MDA...). Verified live 24 Oct:
+          // S5-164 BOM 10:35 -> KLH 11:40 from INR 4,563 (business 7,000);
+          // BOM-AMD S5-705+S5-629 (1 stop, 5h35m) from INR 7,199. Star Air is a
+          // regional carrier: many routes have no daily service - the availability
+          // GET honestly returns a no-flights page, which parses to 0 rows.
+          sourceId: "w_flights_starair",
+          name: "Flights worker: Star Air direct (Crane Aero booking engine)",
+          priority: 14,
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const H = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9",
+              Referer: STAR_HOME
+            };
+            const r = await cffiFetch(starAvailUrl(fromA.code, toA.code, dep), { impersonate: "chrome", timeoutMs: 25e3, headers: H });
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Star Air availability HTTP ${r.status}`, r.status);
+            const journeys = parseStarAirAvailability(r.body || "", dep);
+            if (!journeys.length) return [];
+            return starAirFlightItems(journeys, ctx.source, rt.from, rt.to, dep);
           }
         },
         {

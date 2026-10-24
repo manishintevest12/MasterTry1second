@@ -27,6 +27,7 @@ import { airIndiaFaresBody, airIndiaFaresHeaders, AI_FARES_URL, parseAirIndiaFar
 import { AA_HOME, allianceAirSearchBody, extractAaDataSchedule, parseAllianceAirSchedule, allianceAirFlightItems } from '../parsers/allianceAir';
 import { fly91BookingUrl, fly91EventBody, fly91FormAction, parseFly91Results, fly91FlightItems } from '../parsers/fly91Ibe';
 import { SL_HOME, SL_IBE_OVERRIDE, SL_IBE_SITE, SL_OVERRIDE_POST, slIsImpervaStub, slIdxxui, slOverrideBody, slEncFromOverridePage, parseSriLankanAvailability, sriLankanFlightItems } from '../parsers/sriLankanPlnext';
+import { STAR_HOME, starAvailUrl, starValidDestinations, parseStarAirAvailability, starAirFlightItems } from '../parsers/starAirCrane';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -854,6 +855,47 @@ export const flightsWorker: VerticalWorker = {
         const parsed = parseSriLankanAvailability(ibe.body || '', dep);
         if (!parsed) return []; // honest empty: route/date not served
         return sriLankanFlightItems(parsed.flights, parsed.cheapestFare, parsed.fareFamily, parsed.tax, parsed.base, parsed.seats, ctx.source, rt.from, rt.to, dep);
+      },
+    },
+    {
+      // Star Air LIVE (24 Oct 2026): Crane Aero IBE (hitit-ui) at
+      // book-sdg.crane.aero - fully OPEN, no gating, no tokens, cold-session
+      // browserless GET. Captured via Browserbase CDP: homepage form POST
+      // redirects to GET /ibe/availability?depPort&arrPort&departureDate=
+      // DD.MM.YYYY which is SERVER-RENDERED with full flight cards
+      // (js-journey data-attrs: dep/arr epoch ms, stops, duration; flight-no
+      // S5-164; per-cabin price-blocks INR). starair.in/home/LoadDestination
+      // validates routes (BOM->AMD,GOX,KLH,MDA...). Verified live 24 Oct:
+      // S5-164 BOM 10:35 -> KLH 11:40 from INR 4,563 (business 7,000);
+      // BOM-AMD S5-705+S5-629 (1 stop, 5h35m) from INR 7,199. Star Air is a
+      // regional carrier: many routes have no daily service - the availability
+      // GET honestly returns a no-flights page, which parses to 0 rows.
+      sourceId: 'w_flights_starair',
+      name: 'Flights worker: Star Air direct (Crane Aero booking engine)',
+      priority: 14,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const H = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          Referer: STAR_HOME,
+        };
+        const r = await cffiFetch(starAvailUrl(fromA.code, toA.code, dep), { impersonate: 'chrome', timeoutMs: 25_000, headers: H });
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Star Air availability HTTP ${r.status}`, r.status);
+        const journeys = parseStarAirAvailability(r.body || '', dep);
+        if (!journeys.length) return []; // honest empty: no service that day
+        return starAirFlightItems(journeys, ctx.source, rt.from, rt.to, dep);
       },
     },
     {
