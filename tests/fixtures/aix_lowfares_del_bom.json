@@ -1,0 +1,296 @@
+{
+  "request": {
+    "startDate": "2026-10-28",
+    "endDate": "2026-11-05",
+    "origin": "DEL",
+    "destination": "BOM",
+    "currencyCode": "INR",
+    "includeTaxesAndFees": true,
+    "numberOfPassengers": 1,
+    "fareType": "None"
+  },
+  "status": 200,
+  "response": {
+    "lowFares": [
+      {
+        "date": "2026-10-24T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 9,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-25T00:00:00",
+        "price": 7108,
+        "taxesAndFees": 1818,
+        "available": 9,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-26T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 26,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-27T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 26,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-28T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 37,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-29T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 44,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-30T00:00:00",
+        "price": 7108,
+        "taxesAndFees": 1818,
+        "available": 106,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-10-31T00:00:00",
+        "price": 6635,
+        "taxesAndFees": 1796,
+        "available": 53,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-01T00:00:00",
+        "price": 6635,
+        "taxesAndFees": 1796,
+        "available": 28,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-02T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 29,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-03T00:00:00",
+        "price": 6575,
+        "taxesAndFees": 1892,
+        "available": 55,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-04T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 48,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-05T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 65,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-06T00:00:00",
+        "price": 7108,
+        "taxesAndFees": 1818,
+        "available": 80,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-07T00:00:00",
+        "price": 6635,
+        "taxesAndFees": 1796,
+        "available": 23,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-08T00:00:00",
+        "price": 6635,
+        "taxesAndFees": 1796,
+        "available": 72,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-09T00:00:00",
+        "price": 6677,
+        "taxesAndFees": 1798,
+        "available": 75,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-10T00:00:00",
+        "price": 7108,
+        "taxesAndFees": 1818,
+        "available": 69,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-11T00:00:00",
+        "price": 7378,
+        "taxesAndFees": 1830,
+        "available": 70,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-12T00:00:00",
+        "price": 10678,
+        "taxesAndFees": 1988,
+        "available": 123,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-13T00:00:00",
+        "price": 11555,
+        "taxesAndFees": 2030,
+        "available": 102,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-14T00:00:00",
+        "price": 14188,
+        "taxesAndFees": 2154,
+        "available": 110,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-15T00:00:00",
+        "price": 22219,
+        "taxesAndFees": 2638,
+        "available": 70,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-16T00:00:00",
+        "price": 14198,
+        "taxesAndFees": 2256,
+        "available": 88,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-17T00:00:00",
+        "price": 10678,
+        "taxesAndFees": 1988,
+        "available": 104,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-18T00:00:00",
+        "price": 8089,
+        "taxesAndFees": 1864,
+        "available": 72,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-19T00:00:00",
+        "price": 9224,
+        "taxesAndFees": 2018,
+        "available": 14,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-20T00:00:00",
+        "price": 8593,
+        "taxesAndFees": 1888,
+        "available": 83,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-21T00:00:00",
+        "price": 9942,
+        "taxesAndFees": 1952,
+        "available": 85,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-22T00:00:00",
+        "price": 8593,
+        "taxesAndFees": 1888,
+        "available": 71,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      },
+      {
+        "date": "2026-11-23T00:00:00",
+        "price": 8593,
+        "taxesAndFees": 1888,
+        "available": 91,
+        "noFlights": false,
+        "soldOut": false,
+        "referenceFareKeys": null
+      }
+    ]
+  }
+}

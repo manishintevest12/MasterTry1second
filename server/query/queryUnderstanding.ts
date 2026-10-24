@@ -73,12 +73,48 @@ function extractLocation(q: string): ParsedQuery['location'] {
   return loc;
 }
 
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9,
+  september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+};
+
+/**
+ * Natural-language dates ("28 oct 2026", "on 5 nov", "3rd december", "dec 20")
+ * -> ISO YYYY-MM-DD. Without a year, the NEXT matching date from today wins
+ * (owner rule 24 Oct). Returns null when no valid month-name date is present.
+ */
+function extractMonthNameDate(q: string): string | null {
+  const lower = q.toLowerCase();
+  // day month [year]  — "28 oct", "28th oct 2026", "5 november"
+  let m = lower.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b(?:\s+(20\d{2}))?/);
+  // month day [year] — "dec 20", "december 3rd 2026"
+  if (!m) m = lower.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:\s+(20\d{2}))?/);
+  if (!m) return null;
+  let day: number, mon: number, year: number | undefined;
+  if (/^(\d{1,2})/.test(m[1]) && !MONTH_NAMES[m[1]]) {
+    day = Number(m[1]); mon = MONTH_NAMES[m[2]]; year = m[3] ? Number(m[3]) : undefined;
+  } else {
+    mon = MONTH_NAMES[m[1]]; day = Number(m[2]); year = m[3] ? Number(m[3]) : undefined;
+  }
+  if (!(day >= 1 && day <= 31) || !mon) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const [ty, tm] = today.split('-').map(Number);
+  if (!year) year = (mon < tm || (mon === tm && day < Number(today.slice(8, 10)))) ? ty + 1 : ty;
+  const iso = `${year}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  // sanity: reject impossible calendar dates (e.g. "31 feb")
+  const check = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(check.getTime()) || check.getUTCMonth() !== mon - 1 || check.getUTCDate() !== day) return null;
+  return iso;
+}
+
 function extractDates(q: string): ParsedQuery['travelDates'] | undefined {
   const dateMatch = q.match(/\b(20\d{2}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b/);
   const tomorrow = /\b(tomorrow|today|tonight)\b/i.test(q);
-  if (!dateMatch && !tomorrow) return undefined;
+  const monthName = extractMonthNameDate(q);
+  if (!dateMatch && !tomorrow && !monthName) return undefined;
   if (tomorrow) return { depart: /today|tonight/i.test(q) ? new Date().toISOString().slice(0, 10) : new Date(Date.now() + 86400000).toISOString().slice(0, 10) };
-  return { depart: dateMatch?.[1] };
+  return { depart: dateMatch?.[1] || monthName || undefined };
 }
 
 function extractParties(q: string): ParsedQuery['parties'] | undefined {

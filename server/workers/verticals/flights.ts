@@ -21,6 +21,7 @@ import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSear
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
+import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
 import { parseCleartripFlights, cleartripSearchUrl } from '../parsers/cleartripFlights';
 import { EXPEDIA_FLIGHTS_QUERY } from '../parsers/expediaFlightsQuery';
 import { parseExpediaFlights } from '../parsers/expediaFlights';
@@ -362,6 +363,69 @@ export const flightsWorker: VerticalWorker = {
         const fares = parseMmtFareCalendar(r.body);
         if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `MMT fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
         return mmtDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+      },
+    },
+    {
+      // Air India Express LIVE (24 Oct 2026): the airline's own Azure APIM
+      // gateway exposes a Navitaire low-fare calendar that is OPEN browserless
+      // with just the public web subscription key — no guest JWT chain needed
+      // (the v4/fsa per-flight search stays auth-gated; its recipe is documented
+      // in parsers/aixLowFares.ts for the day we mint the token). Verified live:
+      // DEL-BOM 31 per-date entries, real INR fares, seats-available counts.
+      // Same honest calendar pattern as the MMT/Via/Akasa workers: exact-date
+      // fare when published, else clearly-labelled cheapest upcoming date; a
+      // noFlights/soldOut date never becomes an offer.
+      sourceId: 'w_flights_aix',
+      name: 'Flights worker: Air India Express fare calendar (airline API)',
+      priority: 14,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const start = new Date().toISOString().slice(0, 10);
+        const end = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+        // Self-healing ladder (owner rule 21 Oct): the APIM edge can tarpit the
+        // first POST (stream resets from datacenter IPs). chrome-h2 -> chrome
+        // HTTP/1.1 -> safari, so a transient reset never drops AIX fares.
+        let body = '';
+        let status = 0;
+        const lastErr: string[] = [];
+        const aixPayload = aixLowFaresBody(fromA.code, toA.code, start, end);
+        for (const a of [
+          { label: 'chrome-h2', opts: { impersonate: 'chrome', timeoutMs: 22_000, headers: aixLowFaresHeaders(), httpVersion: undefined } },
+          { label: 'chrome-h1', opts: { impersonate: 'chrome', timeoutMs: 20_000, headers: aixLowFaresHeaders(), httpVersion: '1.1' as const } },
+          { label: 'safari-h2', opts: { impersonate: 'safari17_0', timeoutMs: 20_000, headers: aixLowFaresHeaders(), httpVersion: undefined } },
+        ]) {
+          try {
+            const r = await cffiFetch(aixLowFaresUrl(), { method: 'POST', body: aixPayload, ...a.opts });
+            body = r.body || '';
+            status = r.status;
+            if (status > 0 && status !== 429 && status < 500) break; // definitive answer
+            lastErr.push(`${a.label}: HTTP ${status}`);
+          } catch (e: any) {
+            lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+            status = 0;
+          }
+        }
+        if (status === 0) throw new AcquisitionError('SERVER_ERROR', `Air India Express fare-calendar unreachable after 3 attempts (${lastErr.join(' | ')})`);
+        if (status === 401 || status === 403) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', `Air India Express fare-calendar access challenge (HTTP ${status})`, status);
+        }
+        if (status === 429) {
+          throw new AcquisitionError('RATE_LIMITED', 'Air India Express fare-calendar rate-limited this IP', 429);
+        }
+        if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Air India Express fare-calendar HTTP ${status}`, status);
+        const fares = parseAixLowFares(body);
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Air India Express fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+        return aixDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
     {

@@ -355,6 +355,29 @@ test('query: location, date, party and configuration extraction', async () => {
   assert.equal(p.parties?.guests, 2);
 });
 
+test('query: natural-language month-name dates parse to ISO (24 Oct fix)', async () => {
+  const { understandQuery } = await import('../server/query/queryUnderstanding.ts');
+  // "delhi to mumbai flights on 28 oct 2026" previously fell back to the +7-day
+  // default because extractDates only knew ISO/numeric/tomorrow. Month-name
+  // dates must now parse; without a year the NEXT matching date wins.
+  const cases: Array<[string, string]> = [
+    ['delhi to mumbai flights on 28 oct 2026', '2026-10-28'],
+    ['delhi to mumbai flights on 28 oct', '2026-10-28'],      // next 28 Oct from 24 Oct 2026
+    ['delhi to mumbai 5 nov', '2026-11-05'],
+    ['dec 20 flights indore to pune', '2026-12-20'],
+    ['flights delhi to mumbai 3rd december 2026', '2026-12-03'],
+  ];
+  for (const [q, expected] of cases) {
+    const p = understandQuery(q);
+    assert.equal(p.travelDates?.depart, expected, `query "${q}" -> expected ${expected}, got ${p.travelDates?.depart}`);
+  }
+  // guard: impossible calendar dates and non-date queries stay undefined
+  assert.equal(understandQuery('hotels in goa 31 february').travelDates, undefined);
+  assert.equal(understandQuery('5 star hotels in mumbai').travelDates, undefined);
+  assert.equal(understandQuery('hotel in goa for 2 guests').travelDates, undefined);
+  assert.equal(understandQuery('blinkit 1 litre milk delivery').travelDates, undefined);
+});
+
 // ---------------- HTTP failure classification (Section 14) ----------------
 test('failures: http 403/401/404 are non-retryable denials, recorded not fought', async () => {
   const { httpAcquire } = await import('../server/common/httpClient.ts');

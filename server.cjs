@@ -480,12 +480,37 @@ function extractLocation(q3) {
   if (city) loc.city = city === "bengaluru" ? "Bengaluru" : city.charAt(0).toUpperCase() + city.slice(1);
   return loc;
 }
+function extractMonthNameDate(q3) {
+  const lower = q3.toLowerCase();
+  let m = lower.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\b(?:\s+(20\d{2}))?/);
+  if (!m) m = lower.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:\s+(20\d{2}))?/);
+  if (!m) return null;
+  let day, mon, year;
+  if (/^(\d{1,2})/.test(m[1]) && !MONTH_NAMES[m[1]]) {
+    day = Number(m[1]);
+    mon = MONTH_NAMES[m[2]];
+    year = m[3] ? Number(m[3]) : void 0;
+  } else {
+    mon = MONTH_NAMES[m[1]];
+    day = Number(m[2]);
+    year = m[3] ? Number(m[3]) : void 0;
+  }
+  if (!(day >= 1 && day <= 31) || !mon) return null;
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const [ty, tm] = today2.split("-").map(Number);
+  if (!year) year = mon < tm || mon === tm && day < Number(today2.slice(8, 10)) ? ty + 1 : ty;
+  const iso2 = `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const check = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+  if (Number.isNaN(check.getTime()) || check.getUTCMonth() !== mon - 1 || check.getUTCDate() !== day) return null;
+  return iso2;
+}
 function extractDates(q3) {
   const dateMatch = q3.match(/\b(20\d{2}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\b/);
   const tomorrow = /\b(tomorrow|today|tonight)\b/i.test(q3);
-  if (!dateMatch && !tomorrow) return void 0;
+  const monthName = extractMonthNameDate(q3);
+  if (!dateMatch && !tomorrow && !monthName) return void 0;
   if (tomorrow) return { depart: /today|tonight/i.test(q3) ? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) : new Date(Date.now() + 864e5).toISOString().slice(0, 10) };
-  return { depart: dateMatch?.[1] };
+  return { depart: dateMatch?.[1] || monthName || void 0 };
 }
 function extractParties(q3) {
   const pax = q3.match(/\b(\d+)\s*(?:passengers?|pax|guests?|people|adults?|seats?)\b/i);
@@ -566,7 +591,7 @@ Query: ${query.rawQuery}`;
     return query;
   }
 }
-var VERTICAL_KEYWORDS, PINCODE_RE, MAJOR_CITIES, STOPWORDS;
+var VERTICAL_KEYWORDS, PINCODE_RE, MAJOR_CITIES, STOPWORDS, MONTH_NAMES;
 var init_queryUnderstanding = __esm({
   "server/query/queryUnderstanding.ts"() {
     init_types();
@@ -608,6 +633,32 @@ var init_queryUnderstanding = __esm({
       "chandigarh"
     ];
     STOPWORDS = /* @__PURE__ */ new Set(["price", "best", "cheap", "cheapest", "compare", "comparison", "for", "in", "the", "a", "an", "of", "to", "near", "me", "under", "buy", "order", "book", "find", "show", "on", "and", "with", "under", "rs", "rupees", "today", "now", "deals", "deal", "offer", "offers"]);
+    MONTH_NAMES = {
+      jan: 1,
+      january: 1,
+      feb: 2,
+      february: 2,
+      mar: 3,
+      march: 3,
+      apr: 4,
+      april: 4,
+      may: 5,
+      jun: 6,
+      june: 6,
+      jul: 7,
+      july: 7,
+      aug: 8,
+      august: 8,
+      sep: 9,
+      sept: 9,
+      september: 9,
+      oct: 10,
+      october: 10,
+      nov: 11,
+      november: 11,
+      dec: 12,
+      december: 12
+    };
   }
 });
 
@@ -8335,6 +8386,110 @@ var init_mmtFareCalendar = __esm({
   }
 });
 
+// server/workers/parsers/aixLowFares.ts
+function aixLowFaresUrl() {
+  return `${AIX_API_BASE}/b2c-flightsearch/v2/lowFares`;
+}
+function aixLowFaresHeaders() {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Ocp-Apim-Subscription-Key": AIX_SUBSCRIPTION_KEY,
+    "client-id": "AIRASIA-WEB-APP",
+    "referring-client": "https://www.airindiaexpress.com",
+    Origin: "https://www.airindiaexpress.com",
+    Referer: "https://www.airindiaexpress.com/"
+  };
+}
+function aixLowFaresBody(origin, destination, startDate, endDate) {
+  return JSON.stringify({
+    startDate,
+    endDate,
+    origin,
+    destination,
+    currencyCode: "INR",
+    includeTaxesAndFees: true,
+    numberOfPassengers: 1,
+    fareType: "None"
+  });
+}
+function aixSearchUrl(fromCode, toCode, depIso) {
+  return `https://www.airindiaexpress.com/search-results?origin=${fromCode}&destination=${toCode}&triptype=OneWay&departureDate=${depIso}`;
+}
+function parseAixLowFares(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const rows = d?.lowFares;
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    const dt = String(row?.date || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) continue;
+    const pr = Number(row?.price);
+    if (!Number.isFinite(pr) || pr <= 0) continue;
+    const taxes = Number(row?.taxesAndFees);
+    const available = Number(row?.available);
+    out.push({
+      dt,
+      pr: Math.round(pr),
+      taxes: Number.isFinite(taxes) ? taxes : void 0,
+      available: Number.isFinite(available) ? available : void 0,
+      noFlights: Boolean(row?.noFlights),
+      soldOut: Boolean(row?.soldOut)
+    });
+  }
+  return out;
+}
+function aixDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const sellable = fares.filter((f) => !f.noFlights && !f.soldOut);
+  const exact = sellable.find((f) => f.dt === depIso);
+  const upcoming = [...sellable].filter((f) => f.dt >= today2).sort((a, b) => a.pr - b.pr);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const seats = chosen.available !== void 0 ? `, ${chosen.available} seats reported available` : "";
+  const taxesNote = chosen.taxes !== void 0 ? ` (taxes+fees component \u20B9${chosen.taxes})` : "";
+  return [newRawItem(source, {
+    title: `Air India Express ${routeLabel} ${isExact ? `on ${chosen.dt}` : `(cheapest upcoming, ${chosen.dt})`} from \u20B9${chosen.pr}`,
+    brand: "Air India Express",
+    price: chosen.pr,
+    currency: "INR",
+    seller: "Air India Express",
+    sellerUrl: aixSearchUrl(fromCode, toCode, chosen.dt),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.dt },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.dt,
+      departure_date: chosen.dt,
+      airline: "Air India Express",
+      fare_detail: `lowest Air India Express economy fare published on the airline's own fare calendar for ${chosen.dt}${taxesNote}`,
+      fare_class: "lowest economy fare on Air India Express's own fare calendar",
+      price_basis: `Air India Express fare-calendar API price for this route${isExact ? " and date" : " within the returned calendar window"} on ${today2}`,
+      data_note: `Fare acquired from Air India Express's own API on ${today2}${seats}. Flight numbers/times are NOT published by the fare calendar; booking continues on the airline's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `aix-${fromCode}-${toCode}-${chosen.dt}` },
+    evidence: {
+      sourceUrl: aixLowFaresUrl(),
+      extractedFields: ["lowFares[].date", "lowFares[].price (INR)", "lowFares[].taxesAndFees", "lowFares[].available"]
+    }
+  })];
+}
+var AIX_API_BASE, AIX_SUBSCRIPTION_KEY;
+var init_aixLowFares = __esm({
+  "server/workers/parsers/aixLowFares.ts"() {
+    init_contract();
+    AIX_API_BASE = "https://api.airindiaexpress.com";
+    AIX_SUBSCRIPTION_KEY = "fe65ec9eec2445d9802be1d6c0295158";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -12436,6 +12591,7 @@ var init_flights = __esm({
     init_yatraFlights();
     init_goibiboFlights();
     init_mmtFareCalendar();
+    init_aixLowFares();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -12713,6 +12869,64 @@ var init_flights = __esm({
             const fares = parseMmtFareCalendar(r.body);
             if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `MMT fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
             return mmtDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+          }
+        },
+        {
+          // Air India Express LIVE (24 Oct 2026): the airline's own Azure APIM
+          // gateway exposes a Navitaire low-fare calendar that is OPEN browserless
+          // with just the public web subscription key — no guest JWT chain needed
+          // (the v4/fsa per-flight search stays auth-gated; its recipe is documented
+          // in parsers/aixLowFares.ts for the day we mint the token). Verified live:
+          // DEL-BOM 31 per-date entries, real INR fares, seats-available counts.
+          // Same honest calendar pattern as the MMT/Via/Akasa workers: exact-date
+          // fare when published, else clearly-labelled cheapest upcoming date; a
+          // noFlights/soldOut date never becomes an offer.
+          sourceId: "w_flights_aix",
+          name: "Flights worker: Air India Express fare calendar (airline API)",
+          priority: 14,
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const start2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const end = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+            let body = "";
+            let status = 0;
+            const lastErr = [];
+            const aixPayload = aixLowFaresBody(fromA.code, toA.code, start2, end);
+            for (const a of [
+              { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 22e3, headers: aixLowFaresHeaders(), httpVersion: void 0 } },
+              { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 2e4, headers: aixLowFaresHeaders(), httpVersion: "1.1" } },
+              { label: "safari-h2", opts: { impersonate: "safari17_0", timeoutMs: 2e4, headers: aixLowFaresHeaders(), httpVersion: void 0 } }
+            ]) {
+              try {
+                const r = await cffiFetch(aixLowFaresUrl(), { method: "POST", body: aixPayload, ...a.opts });
+                body = r.body || "";
+                status = r.status;
+                if (status > 0 && status !== 429 && status < 500) break;
+                lastErr.push(`${a.label}: HTTP ${status}`);
+              } catch (e) {
+                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+                status = 0;
+              }
+            }
+            if (status === 0) throw new AcquisitionError("SERVER_ERROR", `Air India Express fare-calendar unreachable after 3 attempts (${lastErr.join(" | ")})`);
+            if (status === 401 || status === 403) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", `Air India Express fare-calendar access challenge (HTTP ${status})`, status);
+            }
+            if (status === 429) {
+              throw new AcquisitionError("RATE_LIMITED", "Air India Express fare-calendar rate-limited this IP", 429);
+            }
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Air India Express fare-calendar HTTP ${status}`, status);
+            const fares = parseAixLowFares(body);
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Air India Express fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+            return aixDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
         {
