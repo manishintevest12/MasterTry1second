@@ -6654,7 +6654,22 @@ function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
   if (fromTok.includes("_")) alts.push(fromTok.replace(/_/g, "-"));
   return { fromTok, toTok, alts };
 }
-function parseIxigoFlights(nextData) {
+function ixigoLegs(fn) {
+  const segs = String(fn || "").split("*").map((x) => x.trim()).filter(Boolean);
+  const legs = [];
+  for (const seg of segs) {
+    const m = seg.match(/^([A-Z]{3})-([A-Z]{3})-(.+)$/);
+    if (!m) return [];
+    legs.push({ from: m[1], to: m[2], flightNo: m[3] });
+  }
+  return legs;
+}
+function ixigoIsoDate(d) {
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(d || "").trim());
+  if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(String(d || "")) ? String(d).trim() : "";
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+function parseIxigoFlights(nextData, fromCode, toCode) {
   const entries = nextData?.props?.pageProps?.cheapFlightsData;
   if (!Array.isArray(entries)) return [];
   const flights = [];
@@ -6662,27 +6677,37 @@ function parseIxigoFlights(nextData) {
     const airline = String(e.airline || "").trim();
     const fare = Number(e.fare);
     if (!airline || !Number.isFinite(fare) || fare <= 0) continue;
-    let fn = String(e.flightNumber || "").trim();
-    fn = fn.replace(/^[A-Z]{3}-[A-Z]{3}-/, "");
+    const legs = ixigoLegs(String(e.flightNumber || ""));
+    if (!legs.length) continue;
+    if (fromCode && legs[0].from !== fromCode.toUpperCase()) continue;
+    if (toCode && legs[legs.length - 1].to !== toCode.toUpperCase()) continue;
+    const fn = legs.map((l) => l.flightNo).join("+");
     let duration = null;
     const dur = parseInt(String(e.duration ?? ""), 10);
     if (Number.isFinite(dur) && dur > 0) duration = dur;
     flights.push({
       airline,
       airlineCode: e.airlineCode ? String(e.airlineCode) : null,
-      flightNumber: fn || null,
+      flightNumber: fn,
       fare: Math.round(fare),
-      departureDate: String(e.departure_date || e.date || ""),
+      // ISO dates (owner 24 Oct): the old DD-MM-YYYY strings broke the
+      // flight-number+time compare grouping against other sellers' ISO dates.
+      departureDate: ixigoIsoDate(String(e.departure_date || e.date || "")),
       departureTime: e.departure_time ? String(e.departure_time) : null,
-      arrivalDate: e.arrival_date ? String(e.arrival_date) : null,
+      arrivalDate: e.arrival_date ? ixigoIsoDate(String(e.arrival_date)) : null,
       arrivalTime: e.arrival_time ? String(e.arrival_time) : null,
       durationMinutes: duration,
-      stops: Number.isFinite(Number(e.numOfStops)) ? Number(e.numOfStops) : null
+      stops: Number.isFinite(Number(e.numOfStops)) ? Number(e.numOfStops) : null,
+      legs
     });
   }
   return flights;
 }
-function parseIxigoOffers(flights, source, from, to, date, listingUrl = `${IXIGO_WEB}/search/flight/`) {
+function parseIxigoOffers(flights, source, from, to, date, listingUrl = `${IXIGO_WEB}/search/flight/`, iata = {}) {
+  const cityOfCode = /* @__PURE__ */ new Map();
+  for (const [city, code] of Object.entries(iata)) {
+    if (!cityOfCode.has(code)) cityOfCode.set(code, city.replace(/\b\w/g, (c) => c.toUpperCase()));
+  }
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const bestFare = /* @__PURE__ */ new Map();
@@ -6699,6 +6724,12 @@ function parseIxigoOffers(flights, source, from, to, date, listingUrl = `${IXIGO
     const key = `${f.airlineCode || f.airline}|${f.flightNumber}|${f.departureTime}`;
     if (!seen.has(key)) continue;
     seen.delete(key);
+    const isMulti = f.legs.length > 1;
+    const viaCities = f.legs.slice(0, -1).map((l) => cityOfCode.get(l.to) || l.to);
+    const viaLabel = isMulti ? ` via ${viaCities.join(", ")}` : "";
+    const stopsLabel = isMulti ? ` (${Math.max(1, f.legs.length - 1)} stop${f.legs.length > 2 ? "s" : ""})` : "";
+    const actualDate = f.departureDate || date;
+    const dateNote = actualDate && date && actualDate !== date ? ` Ixigo published fares for its own service date ${actualDate}; the searched date was ${date} \u2014 verify the date on Ixigo's page.` : "";
     const attrs = {
       airline: f.airline,
       airline_code: f.airlineCode,
@@ -6711,16 +6742,20 @@ function parseIxigoOffers(flights, source, from, to, date, listingUrl = `${IXIGO
       stops: f.stops,
       route: `${from} \u2192 ${to}`,
       price_basis: "cheapest observed total one-way fare for 1 adult (economy)",
-      data_note: `Fare observed via Ixigo at ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 16)}Z; the ticket is SOLD by Ixigo (seller), operating carrier ${f.airline}. Price may change at checkout.`
+      data_note: `Fare observed via Ixigo at ${(/* @__PURE__ */ new Date()).toISOString().slice(0, 16)}Z; the ticket is SOLD by Ixigo (seller), operating carrier ${f.airline}. Price may change at checkout.${dateNote}`
     };
+    if (isMulti) {
+      attrs.itinerary = f.legs.map((l) => `${l.from}-${l.to} ${l.flightNo}`).join(" * ");
+      attrs.via = viaCities.join(", ");
+    }
     out.push(newRawItem(source, {
-      title: `${f.airline} ${f.flightNumber} \xB7 ${from} \u2192 ${to}`,
+      title: `${f.airline} ${f.legs.map((l) => l.flightNo).join(" + ")}${viaLabel} \xB7 ${from} \u2192 ${to}${stopsLabel}`,
       seller: "Ixigo",
       sellerUrl: listingUrl,
       // deeplink to Ixigo's own SRP for this exact route/date
       currency: "INR",
       price: bestFare.get(key),
-      travel: { route: `${from} to ${to}`.toLowerCase(), date, seatType: "economy" },
+      travel: { route: `${from} to ${to}`.toLowerCase(), date: actualDate, seatType: "economy" },
       attributes: attrs,
       evidence: {
         sourceUrl: `${IXIGO_WEB}/search/flight/`,
@@ -8150,6 +8185,14 @@ function mmtDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depI
     attributes: {
       route: routeLabel,
       travel_date: chosen.dt,
+      // Owner 24 Oct ("makemytrip date aur flight number wagera details ni de
+      // raha"): the card now carries the service date + cheapest airline as
+      // first-class specs. Flight numbers/times are NOT published by the fare
+      // calendar (per-date lowest fare only) — the row says so honestly instead
+      // of fabricating a schedule.
+      departure_date: chosen.dt,
+      airline: chosen.airline || "",
+      fare_detail: chosen.airline ? `lowest ${chosen.airline} economy fare published by MakeMyTrip for ${chosen.dt}` : `lowest economy fare published by MakeMyTrip for ${chosen.dt}`,
       fare_class: chosen.airline ? `lowest economy fare on MakeMyTrip's calendar, flown by ${chosen.airline}` : "lowest economy fare on MakeMyTrip's fare calendar",
       price_basis: `lowest MakeMyTrip fare from the fare-calendar API on ${today2} for this route${isExact ? " and date" : " within the returned calendar window"}`,
       data_note: `Fare acquired from MakeMyTrip's fare calendar on ${today2} (date label "${chosen.label}"); booking continues on MakeMyTrip's own website.`,
@@ -12448,9 +12491,9 @@ var init_flights = __esm({
             } catch {
               throw new AcquisitionError("MALFORMED_RESPONSE", "Ixigo __NEXT_DATA__ not valid JSON");
             }
-            const flights = parseIxigoFlights(next);
+            const flights = parseIxigoFlights(next, fromA.code || rt.fromCode, toA.code || rt.toCode);
             if (flights.length === 0) throw new AcquisitionError("EMPTY_RESPONSE", "Ixigo SRP had no priced flights");
-            return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep, url);
+            return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep, url, IATA);
           }
         },
         {

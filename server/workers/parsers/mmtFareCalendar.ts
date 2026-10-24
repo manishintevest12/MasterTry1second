@@ -122,6 +122,14 @@ export function mmtDayFareItems(
     attributes: {
       route: routeLabel,
       travel_date: chosen.dt,
+      // Owner 24 Oct ("makemytrip date aur flight number wagera details ni de
+      // raha"): the card now carries the service date + cheapest airline as
+      // first-class specs. Flight numbers/times are NOT published by the fare
+      // calendar (per-date lowest fare only) — the row says so honestly instead
+      // of fabricating a schedule.
+      departure_date: chosen.dt,
+      airline: chosen.airline || '',
+      fare_detail: chosen.airline ? `lowest ${chosen.airline} economy fare published by MakeMyTrip for ${chosen.dt}` : `lowest economy fare published by MakeMyTrip for ${chosen.dt}`,
       fare_class: chosen.airline
         ? `lowest economy fare on MakeMyTrip's calendar, flown by ${chosen.airline}`
         : 'lowest economy fare on MakeMyTrip\'s fare calendar',

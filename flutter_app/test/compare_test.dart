@@ -71,6 +71,38 @@ void main() {
     expect(groups.first.best.price, 210);
   });
 
+  test('groupOffers: same flight groups across ISO and DD-MM-YYYY dates (owner 24 Oct)', () {
+    // One flight sold by two sellers, one emitting ISO and the other Ixigo's
+    // legacy DD-MM-YYYY format: they must land on ONE comparison card keyed by
+    // flight number + normalized date + departure time.
+    final emt = mk(
+        id: 'e1',
+        vertical: 'flights',
+        title: 'IndiGo 6E6627 · Indore → Delhi',
+        provider: 'EaseMyTrip',
+        price: 7400,
+        specs: {'flight number': '6E6627', 'departure date': '2026-10-25', 'departure time': '07:15'});
+    final ix = mk(
+        id: 'i1',
+        vertical: 'flights',
+        title: 'IndiGo 6E6627 · Indore → Delhi',
+        provider: 'Ixigo',
+        price: 7509,
+        specs: {'flight number': '6E6627', 'departure date': '25-10-2026', 'departure time': '07:15'});
+    final otherDay = mk(
+        id: 'o1',
+        vertical: 'flights',
+        title: 'IndiGo 6E6627 · Indore → Delhi',
+        provider: 'EaseMyTrip',
+        price: 8000,
+        specs: {'flight number': '6E6627', 'departure date': '2026-10-31', 'departure time': '07:15'});
+    final groups = groupOffers([emt, ix, otherDay]);
+    expect(groups.length, 2, reason: 'same date groups, different date stays separate');
+    final same = groups.firstWhere((g) => g.rows.length == 2);
+    expect(same.best.price, 7400);
+    expect(same.best.site, 'EaseMyTrip');
+  });
+
   test('groupOffers: flights key on flight number + date', () {
     final f1 = mk(
         id: 'f1',

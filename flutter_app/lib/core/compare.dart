@@ -252,6 +252,22 @@ String _tokens(String s) {
   return set.join(' ');
 }
 
+/// Date normalizer (owner 24 Oct flight compare fix): sellers emit either ISO
+/// (2026-10-25) or DD-MM-YYYY (Ixigo's legacy block format); both must produce
+/// the SAME grouping key so one flight's rows from different sellers compare.
+String _dateNorm(String v) {
+  final s = v.trim();
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(s);
+  if (iso != null) {
+    return '${iso.group(1)}-${iso.group(2)}-${iso.group(3)}';
+  }
+  final dmy = RegExp(r'^(\d{2})-(\d{2})-(\d{4})').firstMatch(s);
+  if (dmy != null) {
+    return '${dmy.group(3)}-${dmy.group(2)}-${dmy.group(1)}';
+  }
+  return _norm(s);
+}
+
 String _hhmm(String v) {
   final m = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)?', caseSensitive: false).firstMatch(v);
   if (m == null) return _norm(v);
@@ -267,7 +283,9 @@ String offerKey(CompareItem it) {
   switch (v) {
     case 'flights':
       final no = _norm(it.spec('flight number'));
-      final date = _norm(it.spec('departure date', 'travel date', 'date'));
+      // Same flight from different sellers compares when flight number + date +
+      // time all match (owner 24 Oct). Dates normalize across ISO/DD-MM-YYYY.
+      final date = _dateNorm(it.spec('departure date', 'travel date', 'date'));
       final dep = _hhmm(it.spec('departure time'));
       if (no.isNotEmpty) return 'f|$no|$date|$dep';
       return 'f|${_norm(it.provider)}|${_norm(it.spec('route'))}|$date|$dep|${_norm(it.title)}';

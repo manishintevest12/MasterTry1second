@@ -249,9 +249,11 @@ export const flightsWorker: VerticalWorker = {
         if (!m) throw new AcquisitionError('MALFORMED_RESPONSE', 'Ixigo SRP carried no __NEXT_DATA__');
         let next: any;
         try { next = JSON.parse(m[1]); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'Ixigo __NEXT_DATA__ not valid JSON'); }
-        const flights = parseIxigoFlights(next);
+        // Owner 24 Oct route guard: only itineraries that really run
+        // from->to survive (mixed-route inventory is skipped honestly).
+        const flights = parseIxigoFlights(next, fromA.code || rt.fromCode, toA.code || rt.toCode);
         if (flights.length === 0) throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo SRP had no priced flights');
-        return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep, url);
+        return parseIxigoOffers(flights, ctx.source, rt.from, rt.to, dep, url, IATA);
       },
     },
     {

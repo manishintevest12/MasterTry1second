@@ -48,6 +48,18 @@ const NOISE = /\b(the|a|an|of|and|with|for|by|new|latest|original|combo|pack|buy
 const tokens = (s: string): string =>
   [...new Set(norm(s).replace(NOISE, ' ').split(' ').filter(Boolean))].sort().join(' ');
 
+/** Date normalizer (owner 24 Oct flight compare fix): sellers emit either ISO
+ *  (2026-10-25) or DD-MM-YYYY (Ixigo's legacy block format); both must produce
+ *  the SAME grouping key so one flight's rows from different sellers compare. */
+const dateNorm = (v: string): string => {
+  const s = String(v || '').trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = s.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
+  return norm(s);
+};
+
 const hhmm = (v: string): string => {
   const m = v.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
   if (!m) return norm(v);
@@ -69,7 +81,9 @@ export function offerKey(it: ComparisonItem): string {
   const v = it.vertical;
   if (v === 'flights') {
     const no = norm(spec(it, 'flight number'));
-    const date = norm(spec(it, 'departure date', 'travel date', 'date'));
+    // Same flight from different sellers compares when flight number + date +
+    // time all match (owner 24 Oct). Dates normalize across ISO/DD-MM-YYYY.
+    const date = dateNorm(spec(it, 'departure date', 'travel date', 'date'));
     const dep = hhmm(spec(it, 'departure time'));
     if (no) return `f|${no}|${date}|${dep}`;
     const route = norm(spec(it, 'route'));
