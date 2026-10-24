@@ -6,6 +6,7 @@
  */
 import type { MatchState, NormalizedOffer, ParsedQuery, VerticalId } from '../types';
 import { getStore } from '../common/db';
+import { notifyWriteDenied } from '../catalogue/prune';
 import { log } from '../common/logger';
 
 export interface MatchDecision {
@@ -82,6 +83,7 @@ export async function resolveCanonicalEntity(offer: NormalizedOffer): Promise<Ma
       matchEvidence: 'new canonical entity created from first observed offer',
     };
   } catch (e: any) {
+    notifyWriteDenied(String(e));
     log.warn('Matching', 'Entity resolution store failure', { error: String(e).slice(0, 120) });
     return { canonicalEntityId: null, canonicalVariantId: null, matchState: 'REVIEW_REQUIRED', matchEvidence: 'store unavailable' };
   }

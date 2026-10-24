@@ -6,6 +6,7 @@
  * - Failed refresh never marks old data newly verified
  */
 import type { NormalizedOffer, RawSourceItem, SourceConfig } from '../types';
+import { notifyWriteDenied } from './prune';
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 import { buildEvidence, type EvidenceRecord } from '../pipeline/freshness';
@@ -46,6 +47,7 @@ export async function persistOffer(offer: NormalizedOffer, raw: RawSourceItem, s
 
     return res.insertId || 0;
   } catch (e: any) {
+    notifyWriteDenied(String(e));
     log.warn('Catalogue', 'Offer persist failed', { error: String(e).slice(0, 150) });
     return 0;
   }

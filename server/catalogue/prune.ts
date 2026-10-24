@@ -22,9 +22,9 @@ const DAY = 86_400_000;
 
 /** Retention windows — generous vs the 1h catalogue eligibility, tight vs the cap. */
 const RETENTION = {
-  offersDays: 2,          // catalogue rows older than this can never be served
-  evidenceDays: 2,        // mirrors offers
-  priceHistoryDays: 2,    // historical snapshots; 2 days is ample for trend display
+  offersDays: 1,          // catalogue rows older than this can never be served
+  evidenceDays: 1,        // mirrors offers
+  priceHistoryDays: 1,    // historical snapshots; 1 day is ample for trend display
   sourceHealthDays: 2,    // health probes fire constantly, tiny rows but millions of them
   searchesDays: 8,        // warm seeds read a 7-day window
   affiliateSeenDays: 7,   // affiliate offer not seen by any sync in 7d is dead
@@ -74,7 +74,8 @@ export async function pruneCatalogue(scale = 1): Promise<number> {
     // (PK source_id, updated_at ON UPDATE), not an append log. The old
     // created_at prune failed every pass ("Unknown column") and would have
     // deleted live circuit-breaker state had the column existed.
-    ['searches', 'DELETE FROM searches WHERE created_at < ?', [daysAgo(RETENTION.searchesDays, scale)]],
+    // searches: emergency scale must NEVER cut below the 7-day warm window
+    ['searches', 'DELETE FROM searches WHERE created_at < ?', [daysAgo(Math.max(RETENTION.searchesDays * scale, 8))]],
     ['affiliate_offers', 'DELETE FROM affiliate_offers WHERE last_seen_at < ?', [daysAgo(RETENTION.affiliateSeenDays, scale)]],
     ['deals (auto)', 'DELETE FROM deals WHERE source = ? AND last_seen_at < ?', ['auto', daysAgo(RETENTION.autoDealsSeenDays, scale)]],
     ['source_acceptance_tests', 'DELETE FROM source_acceptance_tests WHERE tested_at < ?', [daysAgo(RETENTION.acceptanceDays, scale)]],
@@ -142,8 +143,8 @@ export async function compactCatalogue(): Promise<void> {
  * This makes the banner structurally impossible: the DB is shrunk BEFORE it can
  * approach the host cap again, automatically, with no owner intervention.
  */
-const SOFT_CAP_MB = 2300; // start compacting (Hostinger cap: 3072 MB)
-const HARD_CAP_MB = 2850; // emergency: halve retention too
+const SOFT_CAP_MB = 1200; // start compacting (24 Oct prod: host flipped read-only at ~2335 MB)
+const HARD_CAP_MB = 1800; // emergency: halve retention too
 const COMPACTABLE = ['offers', 'source_evidence', 'price_history', 'source_health', 'affiliate_offers', 'deals'];
 
 /** Actual on-disk size of the app schema in MB (what the host quota measures). */
@@ -185,6 +186,61 @@ async function compactLargestTable(): Promise<string | null> {
     log.warn('Prune', 'size-gated compaction skipped', { error: String(e?.message || e).slice(0, 140) });
     return null;
   }
+}
+
+/**
+ * READ-ONLY SELF-HEAL (owner 24 Oct: runtime log showed 410x "INSERT command
+ * denied ... offers / canonical_entities" right after a restart).
+ *
+ * When Hostinger's database-size monitor flips a database into read-only mode
+ * it REVOKEs INSERT/UPDATE but deliberately keeps DELETE + ALTER/OPTIMIZE, so
+ * the customer can shrink back under the cap. Our hourly loop walks one table
+ * per hour — too slow while every persist is denied. This hook, called from the
+ * persist catch paths, detects the denial pattern and immediately:
+ *   1. prunes with halved retention,
+ *   2. OPTIMIZEs every compactable table back-to-back (the fastest legal way
+ *      to hand disk space back to the host quota),
+ *   then logs ONE loud diagnostic so the operator sees the root cause once.
+ * Privileges are restored automatically by the host once its re-check sees
+ * the shrunken database — no manual hPanel action needed, though the owner can
+ * accelerate it by running OPTIMIZE TABLE in phpMyAdmin.
+ * Throttled to one pass per 10 minutes so a denied write burst stays cheap.
+ */
+let lastEmergencyShrinkAt = 0;
+let emergencyShrinkRunning = false;
+
+export function notifyWriteDenied(err: string): void {
+  if (!/command denied|read.only/i.test(err)) return;
+  const now = Date.now();
+  if (emergencyShrinkRunning || now - lastEmergencyShrinkAt < 10 * 60_000) return;
+  lastEmergencyShrinkAt = now;
+  emergencyShrinkRunning = true;
+  log.error(
+    'Prune',
+    'Hostinger DB size cap engaged: INSERT/UPDATE denied (read-only). Auto-shrink started — writes resume automatically once the host re-checks size. Optional accelerant: OPTIMIZE TABLE on offers/source_evidence/price_history in phpMyAdmin.'
+  );
+  void (async () => {
+    const store = getStore();
+    try {
+      if (store.kind === 'mysql') {
+        await pruneCatalogue(0.5);
+        for (const table of COMPACTABLE) {
+          try {
+            await store.query(`OPTIMIZE TABLE \`${table}\``);
+            log.info('Prune', `Emergency compaction done: ${table}`);
+          } catch {
+            /* host may gate ALTER too — hourly loop retries */
+          }
+        }
+      }
+      const sizeMb = await databaseSizeMb();
+      log.info('Prune', `Emergency shrink pass complete (DB now ${sizeMb.toFixed(0)} MB)`);
+    } catch {
+      /* never break the caller — the hourly loop keeps retrying */
+    } finally {
+      emergencyShrinkRunning = false;
+    }
+  })();
 }
 
 /** Boot entry: the hourly size-aware retention loop (see watchdog block above). */
