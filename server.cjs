@@ -9309,6 +9309,113 @@ var init_starAirCrane = __esm({
   }
 });
 
+// server/workers/parsers/singaporeAirChat.ts
+function siaChatPrompt(fromCode, toCode, depIso, dateHuman) {
+  return `Cheapest one-way economy fare from ${fromCode} to ${toCode} on ${dateHuman} (${depIso}) for 1 adult.`;
+}
+function siaChatBody(prompt, uuid) {
+  return JSON.stringify({
+    id: uuid(),
+    message: { id: uuid(), role: "user", parts: [{ type: "text", text: prompt }] }
+  });
+}
+function parseSiaChatStream(stream) {
+  const rows = [];
+  const seen = /* @__PURE__ */ new Set();
+  const re = /data:\s*(\{[\s\S]*?\})\s*(?=\ndata:|$)/g;
+  let m;
+  while (m = re.exec(stream || "")) {
+    let e;
+    try {
+      e = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    if (e?.type !== "tool-output-available" || !e.output?.data?.results) continue;
+    for (const res of e.output.data.results) {
+      for (const d of res?.data || []) {
+        for (const f of d?.fares || []) {
+          const fare = Number(String(f.fare || "").replace(/[^\d.]/g, ""));
+          const dep = String(f.departureDate || "");
+          if (!fare || !/^\d{4}-\d{2}-\d{2}$/.test(dep)) continue;
+          const key = `${d.origin}-${d.destination}-${dep}-${d.cabin}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push({
+            origin: String(d.origin || ""),
+            destination: String(d.destination || ""),
+            cabin: String(d.cabin || "Y"),
+            tripType: String(d.tripType || "O"),
+            currency: String(d.currency || "INR"),
+            departureDate: dep,
+            fare,
+            redirectionUrl: String(f.redirectionUrl || "")
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+function siaRouteInvalid(stream) {
+  const re = /data:\s*(\{[\s\S]*?\})\s*(?=\ndata:|$)/g;
+  let m;
+  while (m = re.exec(stream || "")) {
+    let e;
+    try {
+      e = JSON.parse(m[1]);
+    } catch {
+      continue;
+    }
+    if (e?.type !== "tool-output-available" || !e.output?.data?.airportDetails) continue;
+    const det = e.output.data.airportDetails[0];
+    if (det && (det.originInfo?.isValidAirportCode === false || det.destinationInfo?.isValidAirportCode === false)) return true;
+  }
+  return false;
+}
+function siaIsGated(status, body) {
+  if (status === 403 || status === 429) return true;
+  const b = body || "";
+  return /Access Denied|Challenge Validation|edgesuite\.net/i.test(b) && b.length < 2e4;
+}
+function siaFareItems(rows, source, fromCity, toCity, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return rows.filter((r) => r.departureDate === depIso).map((r) => newRawItem(source, {
+    title: `Singapore Airlines ${fromCity} \u2192 ${toCity} on ${r.departureDate} from \u20B9${r.fare.toLocaleString("en-IN")} (economy)`,
+    brand: "Singapore Airlines",
+    price: r.fare,
+    currency: r.currency,
+    seller: "Singapore Airlines",
+    sellerUrl: r.redirectionUrl || SIA_HOME,
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: r.departureDate },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: "Singapore Airlines",
+      travel_date: r.departureDate,
+      departure_date: r.departureDate,
+      fare_class: "Economy (cabin Y)",
+      stops: "",
+      price_basis: `Singapore Airlines fare-cache lowest one-way economy fare for 1 adult on ${r.departureDate} captured ${today2}`,
+      data_note: `Fare from Singapore Airlines' own fare cache (via their AI Flight Finder), based on recent searches up to 4 days old - current fare may differ at booking. Booking link goes to Singapore Airlines' own website.`,
+      image: ""
+    },
+    identifiers: { sku: `sia-${r.origin}${r.destination}-${r.departureDate}-${r.cabin}` },
+    evidence: {
+      sourceUrl: SIA_CHAT_API,
+      extractedFields: ["getFareCache data.results[].data[].fares[] (departureDate, fare, redirectionUrl)"]
+    }
+  }));
+}
+var SIA_HOME, SIA_CHAT_PAGE, SIA_CHAT_API;
+var init_singaporeAirChat = __esm({
+  "server/workers/parsers/singaporeAirChat.ts"() {
+    init_contract();
+    SIA_HOME = "https://www.singaporeair.com/";
+    SIA_CHAT_PAGE = "https://www.singaporeair.com/ai-mode/chat";
+    SIA_CHAT_API = "https://www.singaporeair.com/ai-mode/api/chat";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13419,6 +13526,7 @@ var init_flights = __esm({
     init_fly91Ibe();
     init_sriLankanPlnext();
     init_starAirCrane();
+    init_singaporeAirChat();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -14199,6 +14307,65 @@ var init_flights = __esm({
             const journeys = parseStarAirAvailability(r.body || "", dep);
             if (!journeys.length) return [];
             return starAirFlightItems(journeys, ctx.source, rt.from, rt.to, dep);
+          }
+        },
+        {
+          // Singapore Airlines (24 Oct 2026): everything on singaporeair.com is
+          // Akamai-gated from datacenter IPs; classic booking flow
+          // (flightsearch/externalFlightSearch.form) needs reCAPTCHA; the homepage
+          // React widget refuses SEARCH under automation. The open surface is the
+          // AI Mode Flight Finder backend: POST /ai-mode/api/chat
+          // {id,message:{id,role:"user",parts:[{type:"text",text}]}} returns an
+          // SSE stream whose inline tool outputs carry STRUCTURED fare JSON:
+          // getFareCache data.results[].data[].fares[] = {departureDate, fare,
+          // redirectionUrl (ready booking deeplink with checkSum)} plus
+          // validateAirports route checks. Verified LIVE 24 Oct via in-page
+          // replay with cold random uuids: DEL->SIN 28 Oct economy INR 27,256;
+          // BOM->SIN 30 Oct INR 43,427. Fares are SIA's fare cache ("recent
+          // searches up to 4 days old") - disclosed in data_note; date-level
+          // rows (no flight numbers/times from this surface).
+          // SELF-DETECTING FULL-FLOW PROBE (MMT pattern): Akamai 403 expected
+          // from datacenter IPs -> ACCESS_CHALLENGE presence with backoff;
+          // full fare rows the moment a clean production IP runs it.
+          sourceId: "w_flights_sia",
+          name: "Flights worker: Singapore Airlines direct (AI Flight Finder fare cache)",
+          priority: 15,
+          maxPerMinute: 2,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const dateHuman = (/* @__PURE__ */ new Date(dep + "T00:00:00Z")).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const H = { "User-Agent": UA6, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const boot = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
+            if (siaIsGated(boot.status, boot.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "Singapore Airlines Akamai-gated from this IP (probe self-activates on a clean production IP)", boot.status);
+            const cookies = boot.cookies || {};
+            const uuid = () => typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+              const r2 = Math.random() * 16 | 0;
+              const v = c === "x" ? r2 : r2 & 3 | 8;
+              return v.toString(16);
+            });
+            const chat = await cffiFetch(SIA_CHAT_API, {
+              impersonate: "chrome",
+              timeoutMs: 4e4,
+              method: "POST",
+              body: siaChatBody(siaChatPrompt(fromA.code, toA.code, dep, dateHuman), uuid),
+              headers: { ...H, "Content-Type": "application/json", Origin: "https://www.singaporeair.com", Referer: SIA_CHAT_PAGE, Accept: "text/event-stream" },
+              cookies
+            });
+            const stream = chat.body || "";
+            if (siaIsGated(chat.status, stream)) throw new AcquisitionError("ACCESS_CHALLENGE", `SIA chat API gated (HTTP ${chat.status})`, chat.status);
+            if (chat.status !== 200) throw new AcquisitionError("SERVER_ERROR", `SIA chat API HTTP ${chat.status}`, chat.status);
+            if (siaRouteInvalid(stream)) return [];
+            const rows = parseSiaChatStream(stream);
+            if (!rows.length) return [];
+            return siaFareItems(rows, ctx.source, rt.from, rt.to, dep);
           }
         },
         {

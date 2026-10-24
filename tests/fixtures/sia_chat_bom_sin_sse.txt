@@ -1,0 +1,186 @@
+data: {"type":"start","messageId":"e39b489f-aae7-44e7-a9f9-1b7056d27a7f"}
+
+data: {"type":"start-step"}
+
+data: {"type":"tool-input-start","toolCallId":"agentsl-tool-1","toolName":"transfer_to_agent","dynamic":true}
+
+data: {"type":"tool-input-available","toolCallId":"agentsl-tool-1","toolName":"transfer_to_agent","input":{"agent_name":"tc_flight"},"dynamic":true}
+
+data: {"type":"tool-output-available","toolCallId":"agentsl-tool-1","output":null,"dynamic":true}
+
+data: {"type":"tool-input-start","toolCallId":"agentsl-tool-2","toolName":"validateAirports","dynamic":true}
+
+data: {"type":"tool-input-available","toolCallId":"agentsl-tool-2","toolName":"validateAirports","input":{"x_csl_client_id":"AIM","x_csl_client_uuid":"8e9f6f44-9bb0-4c18-8bc8-0ad2f3305d9b","airport_details":[{"originAirportCode":"BOM","destinationAirportCode":"SIN"}]},"dynamic":true}
+
+data: {"type":"tool-output-available","toolCallId":"agentsl-tool-2","output":{"status":"SUCCESS","statusCode":"CSLAAA0000","instructions":[],"data":{"airportDetails":[{"originAirportCode":"BOM","destinationAirportCode":"SIN","isValidCibOD":true,"isValidOrbOD":true,"originInfo":{"isValidAirportCode":true,"isValidCibOrigin":true,"isValidOrbOrigin":true,"airportCode":"BOM","airportName":"Chhatrapati Shivaji Intl","cityCode":"BOM","cityName":"Mumbai","countryCode":"IN","countryName":"India","pos":"BOM","timeZone":"Asia/Calcutta"},"destinationInfo":{"isValidAirportCode":true,"isValidCibDestination":true,"isValidOrbDestination":true,"airportCode":"SIN","airportName":"Changi","cityCode":"SIN","cityName":"Singapore","countryCode":"SG","countryName":"Singapore","pos":"SIN","timeZone":"Asia/Singapore"},"agentMessage":"Valid for both CIB and ORB flows. Proceed to call the CIB fare-cache endpoint for commercial fares or the ORB fare-cache endpoint for redemption fares."}]},"metadata":{"toolName":"airports-validate","toolVersion":"1.0.0","transactionId":"4a4acd62-3c64-42d2-bb68-3127fb1b35d2"}},"dynamic":true}
+
+data: {"type":"tool-input-start","toolCallId":"agentsl-tool-3","toolName":"getFareCache","dynamic":true}
+
+data: {"type":"tool-input-available","toolCallId":"agentsl-tool-3","toolName":"getFareCache","input":{"x_csl_client_id":"AIM","x_csl_client_uuid":"faf6f0ac-a684-4df3-bc1c-f98d56051e04","flight_details":{"airportDetails":[{"originAirportCode":"BOM","destinationAirportCode":"SIN"}],"departureDate":"2026-10-30","duration":0},"cabin_preferences":{"cabinClass":"Y"},"passenger_count":{"numAdults":1,"numChildren":0,"numInfants":0}},"dynamic":true}
+
+data: {"type":"tool-output-available","toolCallId":"agentsl-tool-3","output":{"status":"SUCCESS","statusCode":"CSLAAA0000","instructions":["Each fare includes a ready-to-use redirectionUrl booking link — render it as a normal hyperlink and always display the flight details (origin, destination, departureDate, and returnDate for round trips) alongside it. To build a link for a fare/date combination not listed, call the Redirection URL Generator tool."],"data":{"results":[{"queryType":"CIB","data":[{"origin":"BOM","destination":"SIN","cabin":"Y","tripType":"O","currency":"INR","fares":[{"departureDate":"2026-10-30","fare":"43427","redirectionUrl":"https://www.singaporeair.com/flightsearch/externalFlightSearch.form?searchType=commercial&ondCityCode[0].origin=BOM&ondCityCode[0].destination=SIN&ondCityCode[0].day=30&ondCityCode[0].month=10%2F2026&tripType=O&cabinClassCode=Y&numAdults=1&numChildren=0&numInfant=0&locale=en_UK&countryCode=&affiliate_id=11188&sourceType=SAA&deviceType=desktop&sessionId=77c0544b-02ed-46ad-b2fb-5aeadfbd783e&selectedFare=43427%20INR&checkSum=b39e75b333f53b909c22e3d8a54ae46fbb990b6ad0ee55334983190c26cf7661"}]}]}]},"metadata":{"toolName":"farecache-cib","toolVersion":"1.0.0","transactionId":"59923cd8-7fb6-496e-9df2-5e00d46a4a01"}},"dynamic":true}
+
+data: {"type":"text-start","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0"}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Here "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"is "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"the "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"lowest "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"available "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"one-way "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Economy "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"fare "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"for "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"1 "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"adult "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"from "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Mumbai "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Chhatrapati "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Shivaji "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"International "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"(BOM) "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"to "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Singapore "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Changi "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"(SIN) "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"on "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"30 "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"October "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"2026. "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Fares "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"shown "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"are "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"per "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"adult.\n\n"}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"You "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"can "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"continue "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"your "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"booking "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"through "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"the "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"fare "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"result "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"shown "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"above. "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"Please "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"note "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"that "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"the "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"final "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"fare "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"and "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"availability "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"may "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"change "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"at "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"the "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"time "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"of "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"booking.\n\n"}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"If "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"you’d "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"like "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"to "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"compare "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"fares "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"on "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"different "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"dates, "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"adjust "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"the "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"cabin "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"class, "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"or "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"add "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"more "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"passengers, "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"just "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"let "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"me "}
+
+data: {"type":"text-delta","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0","delta":"know!"}
+
+data: {"type":"text-end","id":"5740efc5-cad5-4e05-b210-200b07ec8444-text-0"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish","finishReason":"stop","messageMetadata":{"createdAt":"2026-10-24T19:27:04.837Z"}}
+
+data: [DONE]
+
