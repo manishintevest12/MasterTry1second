@@ -10,12 +10,11 @@ import {
   Copy,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { buildAffiliateDeepLink } from '../utils/deepLinkHelper';
 import { formatPrice, isRateVertical } from '../utils/formatPrice';
 import { DealCard, type PublicDeal } from './DealCard';
 
 export const RedirectionModal: React.FC = () => {
-  const { redirectionState, closeRedirection, userPoints, userLocation, affiliateIds, openSpendLens } = useApp();
+  const { redirectionState, closeRedirection, userPoints, openSpendLens } = useApp();
   const [sellerDeals, setSellerDeals] = useState<PublicDeal[]>([]);
   const [bestCoupon, setBestCoupon] = useState<PublicDeal | null>(null);
   const [couponCopied, setCouponCopied] = useState(false);
@@ -64,28 +63,9 @@ export const RedirectionModal: React.FC = () => {
     if (!String(quote.url || '')) { closeRedirection(); return; }
     // Masking pointer (Module 4): server-side hop already carries attribution;
     // never wrap it in a client-side tracking template.
-    if (String(quote.url || '').startsWith('/api/out')) {
-      window.open(quote.url, '_blank', 'noopener,noreferrer');
-      closeRedirection();
-      return;
-    }
-    // Find matching affiliate ID config if exists
-    const matchingAff = affiliateIds.find(
-      (a) => a.merchantOrNetwork.toLowerCase().includes(quote.sellerName.toLowerCase()) ||
-             quote.sellerName.toLowerCase().includes(a.merchantOrNetwork.toLowerCase())
-    );
-
-    const trackingDeepLink = buildAffiliateDeepLink({
-      rawUrl: quote.url,
-      sellerName: quote.sellerName,
-      affiliateNetwork: matchingAff?.merchantOrNetwork || 'Direct',
-      affiliateId: matchingAff?.affiliateId || 'TRY1_PARTNER',
-      subIdParam: matchingAff?.subIdParam,
-      userId: 'usr-active-session',
-      pincode: userLocation.pincode,
-    });
-
-    window.open(trackingDeepLink, '_blank', 'noopener,noreferrer');
+    // Owner 24 Oct: every quote URL is a server pointer (/api/out) or an honest
+    // absolute merchant fallback — attribution is applied SERVER-SIDE only.
+    window.open(quote.url, '_blank', 'noopener,noreferrer');
     closeRedirection();
   };
 

@@ -22,7 +22,6 @@ import {
   Bus,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { INITIAL_MERCHANT_METRICS } from '../../data/merchantData';
 import { VerticalId } from '../../types';
 
 interface SubCategoryBenchmark {
@@ -919,6 +918,25 @@ export const MerchantAnalyticsTab: React.FC = () => {
   // Determine active category based on authenticated vendor
   const vendorCategory: string = authenticatedVendor?.vertical || 'food';
   const categoryConfig = CATEGORY_ANALYTICS[vendorCategory] || CATEGORY_ANALYTICS.food;
+  // Owner 24 Oct: KPI values come from REAL MySQL traffic (/api/vendor/traffic)
+  // instead of the old fabricated impressions/CTR constants.
+  const [realTraffic, setRealTraffic] = useState<{
+    searches: number; leads: number; leadsApproved: number; clicks: number;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/vendor/traffic?vertical=${encodeURIComponent(vendorCategory)}&days=30`);
+        const d = await res.json();
+        if (!cancelled && d.success) {
+          setRealTraffic({ searches: d.searches, leads: d.leads, leadsApproved: d.leadsApproved, clicks: d.clicks });
+        }
+      } catch { /* honest zero shown */ }
+    })();
+    return () => { cancelled = true; };
+  }, [vendorCategory]);
+
 
   // Interactive ROI Calculator State initialized with category-tailored defaults
   const [calcLeadVolume, setCalcLeadVolume] = useState<number>(categoryConfig.roiDefaults.volume);
@@ -953,7 +971,14 @@ export const MerchantAnalyticsTab: React.FC = () => {
   };
 
   const categoryLeadsCount = cplLeads.filter((l) => l.vertical === vendorCategory).length;
-  const totalDelivered = categoryLeadsCount > 0 ? categoryLeadsCount : INITIAL_MERCHANT_METRICS.totalLeadsDelivered;
+  const totalDelivered = categoryLeadsCount + (realTraffic?.leads || 0); // REAL lead rows only
+  // Owner 24 Oct: funnel = REAL pipeline numbers (searches -> leads -> approved -> clicks)
+  const funnelReal = [
+    { count: (realTraffic?.searches ?? 0).toLocaleString('en-IN') },
+    { count: (realTraffic?.leads ?? 0).toLocaleString('en-IN') },
+    { count: (realTraffic?.leadsApproved ?? 0).toLocaleString('en-IN') },
+    { count: (realTraffic?.clicks ?? 0).toLocaleString('en-IN') },
+  ];
 
   return (
     <div className="space-y-6 text-slate-900">
@@ -1017,10 +1042,10 @@ export const MerchantAnalyticsTab: React.FC = () => {
             <Target className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-xl font-black text-slate-900 font-mono">
-            {INITIAL_MERCHANT_METRICS.totalImpressions.toLocaleString('en-IN')}
+            {(realTraffic?.searches ?? 0).toLocaleString('en-IN')}
           </div>
-          <span className="text-[10px] text-emerald-700 font-semibold block">
-            {categoryConfig.growthText}
+          <span className="text-[10px] text-slate-500 block">
+            Real searches, last 30 days (MySQL live)
           </span>
         </div>
 
@@ -1030,10 +1055,10 @@ export const MerchantAnalyticsTab: React.FC = () => {
             <TrendingUp className="w-4 h-4 text-orange-600" />
           </div>
           <div className="text-xl font-black text-orange-600 font-mono">
-            {INITIAL_MERCHANT_METRICS.ctrPercentage}% CTR
+            {(realTraffic?.leads ?? 0).toLocaleString('en-IN')}
           </div>
           <span className="text-[10px] text-slate-500 block">
-            {categoryConfig.ctrText}
+            Real {vendorCategory} leads, last 30 days
           </span>
         </div>
 
@@ -1069,10 +1094,10 @@ export const MerchantAnalyticsTab: React.FC = () => {
             <Zap className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-xl font-black text-amber-600 font-mono">
-            {categoryConfig.turnoverValue}
+            {(realTraffic?.clicks ?? 0).toLocaleString('en-IN')}
           </div>
           <span className="text-[10px] text-slate-500 block truncate">
-            {categoryConfig.turnoverSub}
+            Real outbound clicks, last 30 days
           </span>
         </div>
       </div>
@@ -1087,7 +1112,7 @@ export const MerchantAnalyticsTab: React.FC = () => {
               <span>{categoryConfig.breakdownTitle}</span>
             </h3>
             <span className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-bold">
-              Category Verified
+              Rate Card (Admin-set)
             </span>
           </div>
 
@@ -1127,7 +1152,7 @@ export const MerchantAnalyticsTab: React.FC = () => {
                   {categoryConfig.funnelSteps[0].label}
                 </span>
                 <strong className="text-sm font-mono font-bold text-slate-900">
-                  {categoryConfig.funnelSteps[0].count}
+                  {funnelReal[0].count}
                 </strong>
               </div>
               <span className="text-xs font-semibold text-slate-500 font-mono">
@@ -1141,7 +1166,7 @@ export const MerchantAnalyticsTab: React.FC = () => {
                   {categoryConfig.funnelSteps[1].label}
                 </span>
                 <strong className="text-sm font-mono font-bold text-orange-600">
-                  {categoryConfig.funnelSteps[1].count}
+                  {funnelReal[1].count}
                 </strong>
               </div>
               <span className="text-xs font-semibold text-orange-600 font-mono">
@@ -1155,7 +1180,7 @@ export const MerchantAnalyticsTab: React.FC = () => {
                   {categoryConfig.funnelSteps[2].label}
                 </span>
                 <strong className="text-sm font-mono font-bold text-emerald-700">
-                  {categoryConfig.funnelSteps[2].count}
+                  {funnelReal[2].count}
                 </strong>
               </div>
               <span className="text-xs font-semibold text-emerald-700 font-mono">
@@ -1169,7 +1194,7 @@ export const MerchantAnalyticsTab: React.FC = () => {
                   {categoryConfig.funnelSteps[3].label}
                 </span>
                 <strong className="text-sm font-mono font-bold text-amber-600">
-                  {categoryConfig.funnelSteps[3].count}
+                  {funnelReal[3].count}
                 </strong>
               </div>
               <span className="text-xs font-semibold text-amber-600 font-mono">

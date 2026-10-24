@@ -60,7 +60,6 @@ export const DirectPartnersTab: React.FC = () => {
     updateDirectPartner,
     toggleDirectPartnerStatus,
     deleteDirectPartner,
-    recordPartnerClick,
     addToast,
     setActiveNavTab,
   } = useApp();
@@ -210,7 +209,6 @@ export const DirectPartnersTab: React.FC = () => {
   };
 
   const handleTestNavigate = (partner: DirectPartnerItem) => {
-    recordPartnerClick(partner.id);
     addToast(
       'info',
       `Testing Partner Link: ${partner.name}`,

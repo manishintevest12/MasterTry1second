@@ -16,7 +16,7 @@ import { useApp } from '../context/AppContext';
 import { DirectPartnerItem } from '../types';
 
 export const AffiliatePartnersSection: React.FC = () => {
-  const { openPartnerModal, openInfoModal, directPartners, recordPartnerClick, addToast } = useApp();
+  const { openPartnerModal, openInfoModal, directPartners, addToast } = useApp();
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'travel' | 'retail' | 'food' | 'finance' | 'cabs'>('all');
 
   const activePartners = directPartners.filter((p) => p.status !== 'paused');
@@ -26,21 +26,34 @@ export const AffiliatePartnersSection: React.FC = () => {
       ? activePartners
       : activePartners.filter((p) => p.category === selectedFilter);
 
-  const handlePartnerClick = (partner: DirectPartnerItem) => {
-    recordPartnerClick(partner.id);
+  // Owner 24 Oct: partner exits now go through the server (/api/quick-apps/go
+  // mints a masking pointer) so affiliate injection + click tracking happen
+  // server-side — same rule as Quick Apps. Unknown domains fall back to the
+  // direct merchant link, exactly like the Quick Apps hub.
+  const handlePartnerClick = async (partner: DirectPartnerItem) => {
     let targetUrl = partner.websiteUrl.trim();
     if (!targetUrl.includes('://')) {
       targetUrl = `https://${targetUrl}`;
     }
+    let finalUrl = targetUrl;
+    try {
+      const res = await fetch('/api/quick-apps/go', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: partner.id, url: targetUrl }] }),
+      });
+      const d = await res.json();
+      if (d?.goUrls?.[partner.id]) finalUrl = d.goUrls[partner.id];
+    } catch { /* direct launch */ }
     addToast(
       'info',
       `Selected ${partner.name}`,
       `Opening direct deep link to ${partner.name}...`
     );
     try {
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      window.open(finalUrl, '_blank', 'noopener,noreferrer');
     } catch {
-      window.location.href = targetUrl;
+      window.location.href = finalUrl;
     }
   };
 

@@ -22806,6 +22806,13 @@ var init_lenderLogo = __esm({
 });
 
 // server/affiliate/linkinr/index.ts
+var linkinr_exports = {};
+__export(linkinr_exports, {
+  linkinrCampaignFor: () => linkinrCampaignFor,
+  linkinrEnabled: () => linkinrEnabled,
+  linkinrStats: () => linkinrStats,
+  linkinrTrackingUrl: () => linkinrTrackingUrl
+});
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -22929,6 +22936,10 @@ function linkinrTrackingUrl(dest) {
   const sub = process.env.LINKINR_SUB_ID || "try1second";
   const click = import_crypto19.default.randomBytes(4).toString("hex");
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
+}
+function linkinrStats() {
+  const m = loadRegistry();
+  return { campaigns: m.size, domains: m.size, enabled: linkinrEnabled() };
 }
 var import_fs2, import_path3, import_crypto19, import_url, import_meta2, campaignByDomain;
 var init_linkinr = __esm({
@@ -31831,6 +31842,57 @@ var init_routes = __esm({
       if (!decision.allowed) return res.status(400).json({ success: false, error: `Refused: ${decision.reason}` });
       res.json({ success: true, clickId: decision.clickId, redirectUrl: decision.destination, viaNetwork: decision.viaNetwork });
     });
+    apiRouter.get("/vendor/traffic", async (req, res) => {
+      try {
+        const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+        const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " ");
+        const sinceDay = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
+        const vert2 = String(req.query.vertical || "").trim();
+        const store2 = getStore();
+        const searches = vert2 ? await store2.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store2.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
+        const leads = vert2 ? await store2.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store2.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
+        const leadsApproved = vert2 ? await store2.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store2.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
+        const clicks = await store2.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
+        const clicksToday = await store2.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
+        const clicksByDay = await store2.query(
+          `SELECT DATE(created_at) AS day, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
+          [since]
+        );
+        const topDomains = await store2.query(
+          `SELECT vendor_domain AS domain, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY n DESC LIMIT 15`,
+          [since]
+        );
+        const recentClicks = await store2.query(
+          `SELECT c.vendor_domain AS domain, c.network_id AS network, c.created_at AS at,
+              o.merchant_name AS merchant, o.title AS offer
+       FROM affiliate_clicks c LEFT JOIN affiliate_offers o ON o.id = c.offer_id
+       WHERE c.created_at >= ? ORDER BY c.id DESC LIMIT 200`,
+          [since]
+        );
+        const conversions = await store2.query(
+          `SELECT v.network_id AS network, v.order_value AS value, v.commission AS commission, v.created_at AS at,
+              c.vendor_domain AS domain
+       FROM affiliate_conversions v LEFT JOIN affiliate_clicks c ON c.click_id = v.click_id
+       WHERE v.created_at >= ? ORDER BY v.id DESC LIMIT 100`,
+          [since]
+        );
+        res.json({
+          success: true,
+          days,
+          searches: Number(searches[0]?.n || 0),
+          leads: Number(leads[0]?.n || 0),
+          leadsApproved: Number(leadsApproved[0]?.n || 0),
+          clicks: Number(clicks[0]?.n || 0),
+          clicksToday: Number(clicksToday[0]?.n || 0),
+          clicksByDay: clicksByDay.map((r) => ({ day: r.day, n: Number(r.n) })),
+          topDomains: topDomains.map((r) => ({ domain: r.domain, n: Number(r.n) })),
+          recentClicks: recentClicks.map((r) => ({ ...r, at: r.at })),
+          conversions: conversions.map((r) => ({ ...r }))
+        });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load live traffic" });
+      }
+    });
     apiRouter.get("/cab/book", async (req, res) => {
       const pq = String(req.query.provider || "").toLowerCase();
       const provider = pq === "ola" ? "ola" : pq === "rapido" ? "rapido" : "uber";
@@ -33440,7 +33502,7 @@ async function ensureBannerSectionColumn() {
   } catch {
   }
 }
-var import_express2, adminRouter, audit, BANNER_SECTIONS;
+var import_express2, adminRouter, audit, BANNER_SECTIONS, sqlDate;
 var init_adminRoutes = __esm({
   "server/admin/adminRoutes.ts"() {
     import_express2 = require("express");
@@ -34168,6 +34230,140 @@ var init_adminRoutes = __esm({
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not delete merchant" });
+      }
+    });
+    sqlDate = (daysAgo2) => new Date(Date.now() - daysAgo2 * 864e5).toISOString().slice(0, 19).replace("T", " ");
+    adminRouter.get("/affiliate/clicks", async (req, res) => {
+      try {
+        const store2 = getStore();
+        const vendor = String(req.query.vendor || "").trim();
+        const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+        const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 500));
+        const since = sqlDate(days);
+        const params = [since];
+        let where = "WHERE created_at >= ?";
+        if (vendor) {
+          where += " AND vendor_domain LIKE ?";
+          params.push(`%${vendor}%`);
+        }
+        const clicks = await store2.query(
+          `SELECT id, offer_id, network_id, vendor_domain, destination_url, click_id, created_at
+       FROM affiliate_clicks ${where} ORDER BY id DESC LIMIT ${limit}`,
+          params
+        );
+        const byNetwork = await store2.query(
+          `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
+          [since]
+        );
+        const byVendor = await store2.query(
+          `SELECT vendor_domain, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY count DESC LIMIT 20`,
+          [since]
+        );
+        const daily = await store2.query(
+          `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
+          [since]
+        );
+        const total = byNetwork.reduce((s, r) => s + Number(r.count || 0), 0);
+        res.json({ success: true, clicks, summary: { windowDays: days, total, byNetwork, byVendor, daily } });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Click log unavailable" });
+      }
+    });
+    adminRouter.get("/affiliate/conversions", async (_req, res) => {
+      try {
+        const store2 = getStore();
+        const conversions = await store2.query(
+          `SELECT v.id, v.click_id, v.network_id, v.order_value, v.commission, v.confirmed_at, v.source_report, v.created_at, k.vendor_domain
+       FROM affiliate_conversions v LEFT JOIN affiliate_clicks k ON k.click_id = v.click_id
+       ORDER BY v.id DESC LIMIT 200`
+        );
+        res.json({ success: true, conversions });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Conversions unavailable" });
+      }
+    });
+    adminRouter.get("/traffic/real", async (req, res) => {
+      try {
+        const store2 = getStore();
+        const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+        const since = sqlDate(days);
+        const dailySearches = await store2.query(
+          `SELECT DATE(created_at) AS day, COUNT(*) AS count, AVG(latency_ms) AS avg_latency_ms, SUM(results_count > 0) AS with_results
+       FROM searches WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
+          [since]
+        );
+        const byVertical = await store2.query(
+          `SELECT COALESCE(NULLIF(vertical, ''), 'unknown') AS vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY vertical ORDER BY count DESC`,
+          [since]
+        );
+        const topQueries = await store2.query(
+          `SELECT raw_query, vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY raw_query, vertical ORDER BY count DESC LIMIT 20`,
+          [since]
+        );
+        const dailyClicks = await store2.query(
+          `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
+          [since]
+        );
+        const clicksByNetwork = await store2.query(
+          `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
+          [since]
+        );
+        const totals = await store2.query(
+          `SELECT
+         SUM(created_at >= ?) AS searches_window,
+         SUM(created_at >= ? AND results_count > 0) AS searches_with_results
+       FROM searches`,
+          [since, since]
+        );
+        res.json({
+          success: true,
+          traffic: {
+            windowDays: days,
+            dailySearches,
+            byVertical,
+            topQueries,
+            dailyClicks,
+            clicksByNetwork,
+            searchesWindow: Number(totals[0]?.searches_window || 0),
+            searchesWithResults: Number(totals[0]?.searches_with_results || 0)
+          }
+        });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Traffic data unavailable" });
+      }
+    });
+    adminRouter.get("/integrations", async (_req, res) => {
+      try {
+        const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
+        const { linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
+        const store2 = getStore();
+        const dbMode = store2.kind === "mysql" ? "mysql" : "file-fallback";
+        let links = [];
+        try {
+          links = await store2.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
+        } catch {
+          links = [];
+        }
+        res.json({
+          success: true,
+          integrations: {
+            mysql: { status: dbMode },
+            linkinr: linkinrStats2(),
+            cuelinks: {
+              enabled: Boolean(settings3.cuelinks?.enabled),
+              publisherId: settings3.cuelinks?.publisherId || "",
+              cid: settings3.cuelinks?.cid || "",
+              apiKeyConfigured: Boolean(settings3.cuelinks?.apiKey)
+            },
+            amazonAssociates: { tag: settings3.amazonAssociates?.tag || "" },
+            ekaro: { apiKeyConfigured: Boolean(process.env.EKARO_API_KEY) },
+            admitad: { credentialsConfigured: Boolean(settings3.admitad?.clientId && settings3.admitad?.clientSecret) },
+            vcommission: { credentialsConfigured: Boolean(process.env.VCOMMISSION_API_KEY) },
+            syncedAffiliateLinks: links
+          }
+        });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Integration status unavailable" });
       }
     });
   }

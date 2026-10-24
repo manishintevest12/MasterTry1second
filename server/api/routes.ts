@@ -1753,6 +1753,68 @@ apiRouter.get('/go', async (req, res) => {
 // ============ Masking-pointer redirect (Module 4) ============
 // GET /api/out?t=<signed pointer> -> validate -> build affiliate deeplink
 // server-side -> record click -> 302. Tokens never live in the browser.
+// ============ Merchant portal LIVE traffic (owner 24 Oct) ============
+// Real numbers only (MySQL searches / leads / affiliate_clicks /
+// affiliate_conversions). No PII is returned (user ids excluded); vendors see
+// platform-level, and vertical-level where the schema allows it. This is the
+// honest replacement for the old mock orders/metrics datasets.
+apiRouter.get('/vendor/traffic', async (req: any, res) => {
+  try {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+    const sinceDay = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const vert = String(req.query.vertical || '').trim();
+    const store = getStore();
+
+    // Vertical-scoped real demand: searches + submitted finance leads.
+    const searches = vert
+      ? await store.query<any>(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert, vert])
+      : await store.query<any>(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
+    const leads = vert
+      ? await store.query<any>(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert])
+      : await store.query<any>(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
+    const leadsApproved = vert
+      ? await store.query<any>(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert])
+      : await store.query<any>(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
+
+    // Outbound clicks: real /api/out click log (platform-wide — clicks have no
+    // vertical column, so this is honestly labelled platform-wide, not vertical).
+    const clicks = await store.query<any>(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
+    const clicksToday = await store.query<any>(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
+    const clicksByDay = await store.query<any>(
+      `SELECT DATE(created_at) AS day, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`, [since]);
+    const topDomains = await store.query<any>(
+      `SELECT vendor_domain AS domain, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY n DESC LIMIT 15`, [since]);
+    const recentClicks = await store.query<any>(
+      `SELECT c.vendor_domain AS domain, c.network_id AS network, c.created_at AS at,
+              o.merchant_name AS merchant, o.title AS offer
+       FROM affiliate_clicks c LEFT JOIN affiliate_offers o ON o.id = c.offer_id
+       WHERE c.created_at >= ? ORDER BY c.id DESC LIMIT 200`, [since]);
+
+    // Verified conversions (S2S postback records) — may legitimately be empty.
+    const conversions = await store.query<any>(
+      `SELECT v.network_id AS network, v.order_value AS value, v.commission AS commission, v.created_at AS at,
+              c.vendor_domain AS domain
+       FROM affiliate_conversions v LEFT JOIN affiliate_clicks c ON c.click_id = v.click_id
+       WHERE v.created_at >= ? ORDER BY v.id DESC LIMIT 100`, [since]);
+
+    res.json({
+      success: true, days,
+      searches: Number(searches[0]?.n || 0),
+      leads: Number(leads[0]?.n || 0),
+      leadsApproved: Number(leadsApproved[0]?.n || 0),
+      clicks: Number(clicks[0]?.n || 0),
+      clicksToday: Number(clicksToday[0]?.n || 0),
+      clicksByDay: clicksByDay.map((r: any) => ({ day: r.day, n: Number(r.n) })),
+      topDomains: topDomains.map((r: any) => ({ domain: r.domain, n: Number(r.n) })),
+      recentClicks: recentClicks.map((r: any) => ({ ...r, at: r.at })),
+      conversions: conversions.map((r: any) => ({ ...r })),
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load live traffic' });
+  }
+});
+
 // ============ Cab in-app booking (owner 22 Oct) ============
 // Uber/Ola rows link here; we resolve coordinates (caller-supplied first, else
 // the cached Nominatim geo proxy), apply the ADMIN-configured affiliate params,

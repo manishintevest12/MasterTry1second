@@ -1,340 +1,304 @@
-import { useState, useMemo, FC } from 'react';
+import { useState, useMemo, FC, useEffect, useCallback } from 'react';
 import {
   Search,
   Download,
-  Filter,
-  CheckCircle2,
-  Clock,
   ExternalLink,
-  Sparkles,
-  ShoppingBag,
-  IndianRupee,
-  MapPin,
+  TrendingUp,
   Building2,
   AlertCircle,
-  TrendingUp,
+  IndianRupee,
+  MousePointerClick,
+  BarChart3,
+  CheckCircle2,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { VERTICAL_META } from '../../data/mockData';
 import { VerticalId } from '../../types';
 
-export const MerchantOrdersTab: FC = () => {
-  const { authenticatedVendor, userPurchases, addToast } = useApp();
+interface LiveClick {
+  domain: string;
+  network: string;
+  at: string;
+  merchant: string | null;
+  offer: string | null;
+}
 
+interface LiveConversion {
+  network: string;
+  value: number | null;
+  commission: number | null;
+  at: string;
+  domain: string | null;
+}
+
+interface TrafficPayload {
+  success: boolean;
+  days: number;
+  searches: number;
+  leads: number;
+  leadsApproved: number;
+  clicks: number;
+  clicksToday: number;
+  clicksByDay: Array<{ day: string; n: number }>;
+  topDomains: Array<{ domain: string; n: number }>;
+  recentClicks: LiveClick[];
+  conversions: LiveConversion[];
+}
+
+// Owner 24 Oct: this tab used to render a MOCK order book (fake buyer names,
+// invented order values). It now shows the REAL traffic MySQL records — the
+// /api/out click log, verified S2S conversions, and vertical-scoped searches
+// and leads. E-commerce order-level data belongs to the merchant's own panel;
+// we never invent it here.
+export const MerchantOrdersTab: FC = () => {
+  const { authenticatedVendor, addToast } = useApp();
+
+  const [traffic, setTraffic] = useState<TrafficPayload | null>(null);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [selectedNetwork, setSelectedNetwork] = useState<string>('all');
+  const [days, setDays] = useState<number>(30);
 
   const vendorVertical = (authenticatedVendor?.vertical || 'food') as VerticalId;
-  const verticalMeta = VERTICAL_META[vendorVertical] || VERTICAL_META.food;
 
-  // Filter purchases strictly by the authenticated vendor's vertical and brand
-  const verticalPurchases = useMemo(() => {
-    return userPurchases.filter((order) => {
-      // Must match vertical
-      if (order.vertical !== vendorVertical) return false;
+  const loadTraffic = useCallback(async (windowDays: number) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/vendor/traffic?vertical=${encodeURIComponent(vendorVertical)}&days=${windowDays}`);
+      const data = await res.json();
+      if (data.success) setTraffic(data);
+      else addToast('alert', 'Live Traffic Unavailable', data.error || 'Could not load live traffic.');
+    } catch {
+      addToast('alert', 'Live Traffic Unavailable', 'Server se live traffic load nahi ho payi.');
+    } finally {
+      setLoading(false);
+    }
+  }, [vendorVertical, addToast]);
 
-      // If vendor has specific brandId, prefer matching their brand or vertical
-      if (authenticatedVendor?.brandId && authenticatedVendor.brandId !== 'all') {
-        const vendorBrandLower = authenticatedVendor.brandId.toLowerCase();
-        const orderMerchantLower = order.merchantName.toLowerCase();
-        // If there's an exact or partial brand match, prioritize it; otherwise show vertical benchmark orders
-        if (orderMerchantLower.includes(vendorBrandLower) || vendorBrandLower.includes(orderMerchantLower)) {
-          return true;
-        }
-      }
-      return true;
-    });
-  }, [userPurchases, vendorVertical, authenticatedVendor]);
+  useEffect(() => { void loadTraffic(days); }, [loadTraffic, days]);
 
-  // Apply UI Filters
-  const filteredOrders = useMemo(() => {
-    return verticalPurchases.filter((order) => {
-      const matchesStatus = selectedStatus === 'all' || order.status === selectedStatus;
-      const matchesCity = selectedCity === 'all' || order.userCity.toLowerCase() === selectedCity.toLowerCase();
+  const networks = useMemo(() => {
+    const set = new Set<string>((traffic?.recentClicks || []).map((c) => c.network || 'direct'));
+    return Array.from(set).sort();
+  }, [traffic]);
 
-      const q = searchQuery.toLowerCase().trim();
+  const filteredClicks = useMemo(() => {
+    const clicks = traffic?.recentClicks || [];
+    const q = searchQuery.toLowerCase().trim();
+    return clicks.filter((c) => {
+      const matchesNetwork = selectedNetwork === 'all' || c.network === selectedNetwork;
       const matchesQuery =
         !q ||
-        order.id.toLowerCase().includes(q) ||
-        order.orderId.toLowerCase().includes(q) ||
-        order.userName.toLowerCase().includes(q) ||
-        order.userEmail.toLowerCase().includes(q) ||
-        order.itemTitle.toLowerCase().includes(q) ||
-        order.merchantName.toLowerCase().includes(q) ||
-        order.userCity.toLowerCase().includes(q);
-
-      return matchesStatus && matchesCity && matchesQuery;
+        String(c.domain || '').toLowerCase().includes(q) ||
+        String(c.merchant || '').toLowerCase().includes(q) ||
+        String(c.offer || '').toLowerCase().includes(q);
+      return matchesNetwork && matchesQuery;
     });
-  }, [verticalPurchases, selectedStatus, selectedCity, searchQuery]);
+  }, [traffic, searchQuery, selectedNetwork]);
 
-  // Extract unique cities
-  const uniqueCities = useMemo(() => {
-    return Array.from(new Set(verticalPurchases.map((o) => o.userCity)));
-  }, [verticalPurchases]);
+  const conversions = traffic?.conversions || [];
+  const totalCommission = conversions.reduce((sum, c) => sum + Number(c.commission || 0), 0);
 
-  // Summary Metrics
-  const totalGmv = useMemo(() => {
-    return filteredOrders.reduce((sum, o) => sum + o.orderAmount, 0);
-  }, [filteredOrders]);
-
-  const totalCommission = useMemo(() => {
-    return filteredOrders.reduce((sum, o) => sum + o.commissionEarned, 0);
-  }, [filteredOrders]);
-
-  // 1-Click Export CSV
   const handleExportCsv = () => {
-    if (filteredOrders.length === 0) {
-      addToast('alert', 'No Orders Found', 'No orders match your active filter criteria.');
+    if (filteredClicks.length === 0) {
+      addToast('alert', 'No Clicks Found', 'No live clicks match your active filters.');
       return;
     }
-
-    const headers = [
-      'Order ID',
-      'Merchant Reference ID',
-      'Order Timestamp',
-      'Customer Name',
-      'Customer Email',
-      'Delivery City',
-      'Merchant Store',
-      'Item / SKU Title',
-      'Vertical Category',
-      'Order Value (INR)',
-      'Commission Rate',
-      'Commission Earned (INR)',
-      'Order Status',
-      'Network / Tracking',
-    ];
-
-    const rows = filteredOrders.map((o) => [
-      `"${o.id}"`,
-      `"${o.orderId}"`,
-      `"${o.timestamp}"`,
-      `"${o.userName}"`,
-      `"${o.userEmail}"`,
-      `"${o.userCity}"`,
-      `"${o.merchantName}"`,
-      `"${o.itemTitle.replace(/"/g, '""')}"`,
-      `"${o.vertical}"`,
-      o.orderAmount,
-      `"${o.commissionRate}"`,
-      o.commissionEarned,
-      `"${o.status}"`,
-      `"${o.affiliateNetwork || 'Direct API'}"`,
+    const headers = ['Merchant Domain', 'Merchant', 'Offer / Title', 'Network', 'Clicked At'];
+    const rows = filteredClicks.map((c) => [
+      `"${c.domain}"`,
+      `"${String(c.merchant || '—').replace(/"/g, '""')}"`,
+      `"${String(c.offer || '—').replace(/"/g, '""')}"`,
+      `"${c.network}"`,
+      `"${String(c.at || '').replace('T', ' ').slice(0, 19)}"`,
     ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${authenticatedVendor?.brandId || 'merchant'}_${vendorVertical}_orders_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    addToast('success', 'Orders Exported to CSV', `Exported ${filteredOrders.length} ${verticalMeta.name} orders successfully.`);
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `try1second-live-clicks-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    addToast('success', 'Export Ready', `${filteredClicks.length} live click records exported.`);
   };
 
+  const kpi = (label: string, value: string, sub: string, Icon: typeof TrendingUp) => (
+    <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs space-y-1">
+      <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
+        <span>{label}</span>
+        <Icon className="w-4 h-4 text-orange-600" />
+      </div>
+      <div className="text-xl font-black text-slate-900 font-mono">{value}</div>
+      <span className="text-[10px] text-slate-500 block">{sub}</span>
+    </div>
+  );
+
   return (
-    <div className="space-y-6 text-slate-900 font-sans">
-      {/* Top Banner: Strictly Scoped to Vendor's Category */}
-      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div className="space-y-6 text-slate-900">
+      {/* Header */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2 border border-blue-200">
-            <ShoppingBag className="w-3.5 h-3.5 text-blue-600" />
-            <span>Category-Scoped Feed: {verticalMeta.name}</span>
-          </div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Customer Orders & Redirection Attribution
+          <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <MousePointerClick className="w-5 h-5 text-orange-600" />
+            Live Traffic & Conversions (Real)
           </h2>
-          <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-            Real-time feed of purchases and metasearch click-through conversions generated for <strong>{authenticatedVendor?.companyName || verticalMeta.name}</strong>. Cross-vertical data from other categories is isolated.
+          <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+            Sirf REAL MySQL records — /api/out se hue outbound clicks, verified S2S conversions, aur aapke vertical (
+            <span className="font-bold uppercase">{vendorVertical}</span>) ki actual searches aur leads. Koi mock
+            order book nahi.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold"
+          >
+            <option value={7}>Last 7 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => void loadTraffic(days)}
+            className="px-3 py-2 text-xs font-bold text-orange-700 bg-orange-50 border border-orange-200 rounded-xl hover:bg-orange-100"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
 
-        {/* Action Button */}
+      {/* Real KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        {kpi('Outbound Clicks', String(traffic?.clicks ?? 0), `last ${days} days · platform-wide`, MousePointerClick)}
+        {kpi('Clicks Today', String(traffic?.clicksToday ?? 0), 'real /api/out clicks aaj', BarChart3)}
+        {kpi(`Searches (${vendorVertical})`, String(traffic?.searches ?? 0), `real searches · last ${days} days`, Search)}
+        {kpi(`Leads (${vendorVertical})`, String(traffic?.leads ?? 0), 'real submitted enquiries', Building2)}
+        {kpi('Verified Conversions', String(conversions.length), `₹${totalCommission.toLocaleString('en-IN')} commission verified`, CheckCircle2)}
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search merchant, domain ya offer..."
+            className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-hidden focus:border-orange-500"
+          />
+        </div>
+        <select
+          value={selectedNetwork}
+          onChange={(e) => setSelectedNetwork(e.target.value)}
+          className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold"
+        >
+          <option value="all">All Networks ({(traffic?.recentClicks || []).length})</option>
+          {networks.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={handleExportCsv}
-          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-md shadow-emerald-600/20 hover:scale-105 active:scale-95 shrink-0"
+          className="px-3 py-2 text-xs font-bold text-white bg-orange-600 hover:bg-orange-500 rounded-xl flex items-center justify-center gap-1.5"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Export Orders ({filteredOrders.length})</span>
+          Export CSV
         </button>
       </div>
 
-      {/* 3 Metric Summary Boxes */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-slate-500 block uppercase">
-            Total {verticalMeta.name} Orders
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              {filteredOrders.length}
-            </span>
-            <span className="text-xs text-slate-400">Transactions</span>
-          </div>
+      {/* Recent real clicks */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-900">Real Outbound Clicks (latest 200)</h3>
+          {loading && <span className="text-[10px] font-semibold text-orange-600 animate-pulse">loading live…</span>}
         </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-slate-500 block uppercase">
-            Gross Order Value (GMV)
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900 font-mono">
-              ₹{totalGmv.toLocaleString('en-IN')}
-            </span>
-            <span className="text-xs text-emerald-600 font-bold">Delivered</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-          <span className="text-[11px] font-semibold text-slate-500 block uppercase">
-            Commission / Partner Revenue
-          </span>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-700 font-mono">
-              ₹{totalCommission.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-xs text-slate-400">Attributed</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={`Search by order ID, customer name, SKU or city...`}
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:border-blue-500"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Status Filter */}
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-pointer focus:outline-hidden focus:border-blue-500"
-            >
-              <option value="all">All Order Statuses</option>
-              <option value="approved">Approved</option>
-              <option value="paid">Paid</option>
-              <option value="processing">Processing</option>
-            </select>
-
-            {/* City Filter */}
-            <select
-              value={selectedCity}
-              onChange={(e) => setSelectedCity(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-semibold cursor-pointer focus:outline-hidden focus:border-blue-500"
-            >
-              <option value="all">All Cities</option>
-              {uniqueCities.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Orders Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold text-[10px] tracking-wider">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] uppercase tracking-wider border-b border-slate-200">
               <tr>
-                <th className="py-3 px-3.5">Order / SKU Details</th>
-                <th className="py-3 px-3">Customer</th>
-                <th className="py-3 px-3">Location</th>
-                <th className="py-3 px-3 text-right">Order Value</th>
-                <th className="py-3 px-3 text-right">Commission</th>
-                <th className="py-3 px-3 text-center">Status</th>
-                <th className="py-3 px-3 text-right">Timestamp</th>
+                <th className="py-3 px-4 font-semibold">Merchant Domain</th>
+                <th className="py-3 px-4 font-semibold">Merchant</th>
+                <th className="py-3 px-4 font-semibold">Offer / Landing</th>
+                <th className="py-3 px-4 font-semibold">Network</th>
+                <th className="py-3 px-4 font-semibold">Clicked At</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-              {filteredOrders.length === 0 ? (
+            <tbody className="divide-y divide-slate-100">
+              {filteredClicks.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
-                    No {verticalMeta.name} orders match your active filter criteria.
+                  <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                    {loading ? 'Live clicks load ho rahe hain…' : 'Is window me abhi koi real outbound click record nahi hua.'}
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
-                    {/* SKU Details */}
-                    <td className="py-3 px-3.5">
-                      <div className="space-y-0.5">
-                        <span className="font-bold text-slate-900 block leading-tight">
-                          {order.itemTitle}
-                        </span>
-                        <div className="flex items-center gap-1.5 text-[10px]">
-                          <span className="font-mono text-blue-700 font-bold bg-blue-50 px-1 py-0.2 rounded border border-blue-100">
-                            {order.orderId}
-                          </span>
-                          <span className="text-slate-400">•</span>
-                          <span className="font-semibold text-slate-600">{order.merchantName}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Customer */}
-                    <td className="py-3 px-3">
-                      <span className="font-bold text-slate-800 block text-xs leading-tight">
-                        {order.userName}
-                      </span>
-                      <span className="text-[10px] text-slate-400 block font-mono">
-                        {order.userEmail}
+                filteredClicks.map((c, i) => (
+                  <tr key={`${c.domain}-${c.at}-${i}`} className="hover:bg-slate-50/70">
+                    <td className="py-2.5 px-4">
+                      <span className="font-bold text-slate-900 inline-flex items-center gap-1.5">
+                        <ExternalLink className="w-3 h-3 text-slate-400" />
+                        {c.domain}
                       </span>
                     </td>
-
-                    {/* Location */}
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-1 text-slate-700 font-medium text-xs">
-                        <MapPin className="w-3 h-3 text-slate-400" />
-                        <span>{order.userCity}</span>
-                      </div>
-                    </td>
-
-                    {/* Order Amount */}
-                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 text-xs">
-                      ₹{order.orderAmount.toLocaleString('en-IN')}
-                    </td>
-
-                    {/* Commission */}
-                    <td className="py-3 px-3 text-right">
-                      <span className="font-mono font-bold text-emerald-700 block text-xs">
-                        ₹{order.commissionEarned.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {order.commissionRate}
+                    <td className="py-2.5 px-4 text-slate-700">{c.merchant || '—'}</td>
+                    <td className="py-2.5 px-4 text-slate-600 max-w-[280px] truncate">{c.offer || 'Direct merchant page'}</td>
+                    <td className="py-2.5 px-4">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+                        {c.network || 'direct'}
                       </span>
                     </td>
+                    <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap font-mono">{String(c.at || '').replace('T', ' ').slice(0, 19)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-                    {/* Status */}
-                    <td className="py-3 px-3 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                          order.status === 'approved' || order.status === 'paid'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {order.status}
-                      </span>
-                    </td>
-
-                    {/* Timestamp */}
-                    <td className="py-3 px-3 text-right text-slate-400 text-[11px] font-mono">
-                      {order.timestamp}
-                    </td>
+      {/* Verified conversions */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <IndianRupee className="w-4 h-4 text-emerald-600" />
+            Verified Conversions (S2S records)
+          </h3>
+          <span className="text-[10px] text-slate-500 max-w-md text-right">
+            Note: networks ke apne dashboards (Cuelinks/Admitad etc.) me jo commissions aati hain wo authoritative hain;
+            yahan sirf wo conversions dikhte hain jo verified server-side report se confirm hue hain.
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600 text-[11px] uppercase tracking-wider border-b border-slate-200">
+              <tr>
+                <th className="py-3 px-4 font-semibold">Merchant Domain</th>
+                <th className="py-3 px-4 font-semibold">Network</th>
+                <th className="py-3 px-4 font-semibold">Order Value</th>
+                <th className="py-3 px-4 font-semibold">Commission</th>
+                <th className="py-3 px-4 font-semibold">Confirmed At</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {conversions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-500 text-xs">
+                    <span className="inline-flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                      Abhi koi verified conversion record nahi — network dashboard se report sync hone par yahan aayegi.
+                    </span>
+                  </td>
+                </tr>
+              ) : (
+                conversions.map((c, i) => (
+                  <tr key={`conv-${i}`} className="hover:bg-slate-50/70">
+                    <td className="py-2.5 px-4 font-bold text-slate-900">{c.domain || '—'}</td>
+                    <td className="py-2.5 px-4 text-slate-700 uppercase font-semibold">{c.network}</td>
+                    <td className="py-2.5 px-4 font-mono text-slate-900">₹{Number(c.value || 0).toLocaleString('en-IN')}</td>
+                    <td className="py-2.5 px-4 font-mono text-emerald-700 font-bold">₹{Number(c.commission || 0).toLocaleString('en-IN')}</td>
+                    <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap font-mono">{String(c.at || '').replace('T', ' ').slice(0, 19)}</td>
                   </tr>
                 ))
               )}

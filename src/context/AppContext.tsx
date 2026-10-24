@@ -275,21 +275,6 @@ interface AppContextType {
   openExtensionModal: () => void;
   closeExtensionModal: () => void;
 
-  // Admin Portal state and actions
-  userPurchases: UserPurchaseRecord[];
-  partnerPayouts: PartnerPayoutSummary[];
-  affiliateIds: AffiliateIdConfig[];
-  scrapers: CustomScraperConfig[];
-  apiIntegrations: ApiIntegrationConfig[];
-  affiliateNetworks: AffiliateNetworkHubConfig[];
-  addAffiliateId: (config: Omit<AffiliateIdConfig, 'id'>) => void;
-  toggleAffiliateIdStatus: (id: string) => void;
-  addCustomScraper: (scraper: Omit<CustomScraperConfig, 'id' | 'lastScrapeTime' | 'itemsScrapedLastRun'>) => void;
-  runScraperSimulation: (scraperId: string, testQuery?: string) => Promise<{ success: boolean; itemsFound: number; sampleTitle: string; samplePrice: number }>;
-  addApiIntegration: (api: Omit<ApiIntegrationConfig, 'id' | 'latencyMs'>) => void;
-  testApiPing: (apiId: string) => Promise<number>;
-  updateAffiliateNetwork: (id: string, updates: Partial<AffiliateNetworkHubConfig>) => void;
-  simulateNetworkPostback: (networkName: string) => void;
 
   // 100+ Direct Partners Directory & Management
   directPartners: DirectPartnerItem[];
@@ -297,13 +282,7 @@ interface AppContextType {
   updateDirectPartner: (id: string, updates: Partial<DirectPartnerItem>) => void;
   toggleDirectPartnerStatus: (id: string) => void;
   deleteDirectPartner: (id: string) => void;
-  recordPartnerClick: (id: string) => void;
 
-  // User Login & Session Auditing
-  userLogins: UserLoginSession[];
-  blockUserSession: (userId: string) => void;
-  unblockUserSession: (userId: string) => void;
-  creditBonusPointsToUser: (userId: string, pts: number) => void;
 
   // Spin & Earn Dynamic Management
   spinRewards: SpinReward[];
@@ -313,7 +292,7 @@ interface AppContextType {
   updateSpinReward: (id: string, updates: Partial<SpinReward>) => void;
   deleteSpinReward: (id: string) => void;
   toggleSpinRewardActive: (id: string) => void;
-  spinWinners: SpinWinnerLog[];
+  // (Winners are real fulfilments now — fetched by SpinEarnManagementTab from /api/admin/fulfilments)
 
   // Real-Time Native Web Scraper State
   isScrapingLive: boolean;
@@ -333,13 +312,6 @@ interface AppContextType {
   openProductPage: (req: { input?: string; query?: string; seed?: Array<{ seller: string; title: string; price: number; listPrice?: number; image?: string | null; url: string }>; gallery?: string[] }) => void;
   setPendingAssistantSearch: (p: { vertical: string; query: string; date?: string } | null) => void;
 
-  // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
-  proxies: ResidentialProxyConfig[];
-  addResidentialProxy: (proxy: Omit<ResidentialProxyConfig, 'id'>) => void;
-  bulkAddResidentialProxies: (rawText: string) => number;
-  toggleProxyStatus: (id: string) => void;
-  deleteProxy: (id: string) => void;
-  testProxyPing: (id: string) => Promise<{ latencyMs: number; success: boolean; ip: string }>;
 
   // Native CPL Lead Capture & Multi-Bank Matching (Loans & Insurance)
   leadCaptureState: LeadCaptureState;
@@ -408,7 +380,6 @@ interface AppContextType {
   authError: string | null;
   loginWithGoogle: () => Promise<boolean>;
   refreshUserPoints: () => Promise<void>;
-  hydrateAdminRecords: () => Promise<void>;
   hydratePartners: () => Promise<void>;
   hydrateMerchantData: () => Promise<void>;
   logoutUser: () => void;
@@ -450,13 +421,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const openExtensionModal = () => setIsExtensionModalOpen(true);
   const closeExtensionModal = () => setIsExtensionModalOpen(false);
 
-  // Admin state
-  const [userPurchases, setUserPurchases] = useState<UserPurchaseRecord[]>([]);
-  const [partnerPayouts, setPartnerPayouts] = useState<PartnerPayoutSummary[]>([]);
-  const [affiliateIds, setAffiliateIds] = useState<AffiliateIdConfig[]>([]);
-  const [scrapers, setScrapers] = useState<CustomScraperConfig[]>([]);
-  const [apiIntegrations, setApiIntegrations] = useState<ApiIntegrationConfig[]>([]);
-  const [affiliateNetworks, setAffiliateNetworks] = useState<AffiliateNetworkHubConfig[]>([]);
 
   // 100+ Direct Partners Directory & Management
   const [directPartners, setDirectPartners] = useState<DirectPartnerItem[]>([]);
@@ -495,31 +459,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addToast('alert', 'Partner Removed', 'Partner removed from 100+ directory.');
   };
 
-  const recordPartnerClick = (id: string) => {
-    setDirectPartners((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, clickCount: (p.clickCount || 0) + 1 } : p))
-    );
-  };
 
-  // User Login & Session state
-  const [userLogins, setUserLogins] = useState<UserLoginSession[]>([]);
-  // Admin mock records load ONLY when the Admin dashboard is opened (keeps ~40KB of
-  // admin-only arrays out of the eager bundle every visitor parses at boot).
-  const hydrateAdminRecords = useCallback(async () => {
-    if (userPurchases.length && partnerPayouts.length) return;
-    const m = await import('../data/adminMockData');
-    setUserPurchases(m.INITIAL_USER_PURCHASES);
-    setUserLogins(m.INITIAL_USER_LOGINS);
-    setPartnerPayouts(m.INITIAL_PARTNER_PAYOUTS);
-    setAffiliateIds(m.INITIAL_AFFILIATE_IDS);
-    setScrapers(m.INITIAL_SCRAPERS);
-    setApiIntegrations(m.INITIAL_API_INTEGRATIONS);
-    setAffiliateNetworks(m.INITIAL_AFFILIATE_NETWORKS);
-    setSpinWinners(m.INITIAL_SPIN_WINNERS);
-    const px = await import('../data/proxyData');
-    setProxies((prev) => (prev.length ? prev : px.INITIAL_RESIDENTIAL_PROXIES));
-    bulkParseFn = px.parseBulkProxies;
-  }, [userPurchases.length, partnerPayouts.length]);
   // Partner showcase list loads when the (already lazy) partners section mounts.
   const hydratePartners = useCallback(async () => {
     if (directPartners.length) return;
@@ -557,16 +497,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch { /* directory stays on built-ins when the API is unreachable */ }
     setDirectPartners(base);
   }, [directPartners.length]);
-  // Merchant-portal data (metrics, campaigns, leads, vendor accounts) loads only on portal mount.
+  // Merchant-portal data loads only on portal mount.
+  // Owner 24 Oct: NO mock hydration anymore — leads come from the real server
+  // store (/api/merchant/leads in LeadManagementTable, /api/vendor/traffic in
+  // the orders/analytics tabs). Campaigns + vendor accounts stay client-only
+  // (admin-created entries persist in localStorage); prepaid starts at a
+  // honest ₹0 until the vendor tops up.
   const hydrateMerchantData = useCallback(async () => {
-    const m = await import('../data/merchantData');
-    setMerchantPrepaidBalance((prev) => prev || m.INITIAL_MERCHANT_METRICS.prepaidBalance);
-    setCplLeads((prev) => (prev.length ? prev : m.INITIAL_CPL_LEADS));
-    setMerchantCampaigns((prev) => (prev.length ? prev : m.INITIAL_MERCHANT_CAMPAIGNS));
-    setVendorAccounts((prev) => {
-      const existing = new Set(prev.map((v) => v.vendorIdNumber));
-      return [...prev, ...m.INITIAL_VENDOR_ACCOUNTS.filter((v) => !existing.has(v.vendorIdNumber))];
-    });
+    setMerchantPrepaidBalance((prev) => prev || 0);
   }, []);
 
   // Dynamic Spin & Earn State
@@ -580,103 +518,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       isActive: true,
     }))
   );
-  const [spinWinners, setSpinWinners] = useState<SpinWinnerLog[]>([]);
-
-  // Residential Proxy Pool for Hard-Blocked Sites & Hostinger Deployment
-  const [proxies, setProxies] = useState<ResidentialProxyConfig[]>([]);
-
-  const addResidentialProxy = (proxy: Omit<ResidentialProxyConfig, 'id'>) => {
-    const newProxy: ResidentialProxyConfig = {
-      ...proxy,
-      id: `prx-${Date.now()}`,
-    };
-    setProxies((prev) => [newProxy, ...prev]);
-    addToast('success', 'Residential Proxy Added', `Proxy ${newProxy.host}:${newProxy.port} added to pool.`);
-  };
-
-  // parseBulkProxies lives in the admin-only proxyData module — resolved lazily by
-  // hydrateAdminRecords so its parser never lands in the eager bundle.
-  let bulkParseFn: ((t: string) => Omit<ResidentialProxyConfig, 'id'>[]) | null = null;
-  const parseBulkProxiesSync = (rawText: string): Omit<ResidentialProxyConfig, 'id'>[] => bulkParseFn ? bulkParseFn(rawText) : [];
-  const bulkAddResidentialProxies = (rawText: string): number => {
-    const parsed = parseBulkProxiesSync(rawText);
-    if (parsed.length === 0) {
-      addToast('alert', 'No Valid Proxies Found', 'Please provide proxies in host:port:user:pass or URL format.');
-      return 0;
-    }
-    const newProxies: ResidentialProxyConfig[] = parsed.map((p, idx) => ({
-      ...p,
-      id: `prx-bulk-${Date.now()}-${idx}`,
-    }));
-    setProxies((prev) => [...newProxies, ...prev]);
-    addToast('success', 'Bulk Proxies Ingested', `Successfully added ${newProxies.length} residential proxies to pool.`);
-    return newProxies.length;
-  };
-
-  const toggleProxyStatus = (id: string) => {
-    setProxies((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, status: p.status === 'active' ? 'cooldown' : 'active' }
-          : p
-      )
-    );
-  };
-
-  const deleteProxy = (id: string) => {
-    setProxies((prev) => prev.filter((p) => p.id !== id));
-    addToast('info', 'Proxy Removed', 'Proxy removed from the residential pool.');
-  };
-
-  const testProxyPing = async (id: string): Promise<{ latencyMs: number; success: boolean; ip: string }> => {
-    const target = proxies.find((p) => p.id === id);
-    if (!target) return { latencyMs: 0, success: false, ip: 'N/A' };
-
-    try {
-      const res = await fetch(`/api/proxies/${id}/test`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        setProxies((prev) =>
-          prev.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  latencyMs: data.latencyMs || p.latencyMs,
-                  status: data.success ? 'active' : 'cooldown',
-                  requestsCount: p.requestsCount + 1,
-                  lastUsedAt: 'Just now',
-                }
-              : p
-          )
-        );
-        return {
-          latencyMs: data.latencyMs || 120,
-          success: data.success !== false,
-          ip: data.ip || 'unknown',
-        };
-      }
-      // Backend responded but reported failure — record it honestly.
-      setProxies((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? { ...p, status: 'cooldown', lastUsedAt: 'Just now' }
-            : p
-        )
-      );
-      return { latencyMs: 0, success: false, ip: 'unreachable' };
-    } catch {
-      // Test request failed — report failure honestly, never invent a ping.
-      setProxies((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? { ...p, status: 'cooldown', lastUsedAt: 'Just now' }
-            : p
-        )
-      );
-      return { latencyMs: 0, success: false, ip: 'unreachable' };
-    }
-  };
-
   // ==========================================
   // NATIVE CPL LEAD CAPTURE & MULTI-BANK MATCH
   // ==========================================
@@ -1398,33 +1239,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       step: 'redirecting',
     });
 
-    // Automatically record live user purchase event for Admin Dashboard conversion tracker
-    const commissionVal = Math.max(15, Math.round(quote.price * 0.035));
-    const newRecord: UserPurchaseRecord = {
-      id: `ord-${Date.now()}`,
-      userId: 'usr-active-session',
-      userName: 'Live User (Current Session)',
-      userEmail: 'user.visitor@try1second.in',
-      userCity: userLocation.city || 'New Delhi',
-      userIp: '103.28.14.92',
-      merchantName: quote.sellerName,
-      vertical: item.vertical,
-      itemTitle: item.title,
-      orderId: `T1S-${quote.sellerName.substring(0, 3).toUpperCase()}-${Math.floor(100000 + Math.random() * 900000)}`,
-      orderAmount: quote.price,
-      commissionEarned: commissionVal,
-      commissionRate: '3.5% CPS',
-      pointsAwarded: 0, // Points are now earned only via new referrals per policy
-      status: 'tracked',
-      timestamp: 'Just now',
-      affiliateNetwork: 'Direct API',
-    };
-    setUserPurchases((prev) => [newRecord, ...prev]);
+    // Owner 24 Oct: real click tracking happens SERVER-SIDE (/api/out writes
+    // the actual click to MySQL affiliate_clicks). No client-side fabricated
+    // order/commission records are created anymore.
 
-    setTimeout(() => {
-      // Direct deal handshake completed without adding points
-      setRedirectionState((prev) => ({ ...prev, step: 'awarded' }));
-    }, 900);
   };
 
   const closeRedirection = () => {
@@ -1569,21 +1387,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setWonRewards((prev) => [newWon, ...prev]);
         setSelectedWonReward(newWon);
 
-        // Record in Admin Spin Winners Audit Log!
-        const newWinnerLog: SpinWinnerLog = {
-          id: `win-${Date.now()}`,
-          userId: 'usr-1042',
-          userName: 'Aakash Verma (Current User)',
-          userEmail: 'aakash.v@gmail.com',
-          rewardId: wonPrize.id,
-          rewardTitle: wonPrize.title,
-          voucherCode: newWon.voucherCode,
-          value: wonPrize.value,
-          pointsDeducted: spinCostPoints,
-          wonAt: 'Just now',
-          status: 'claimed',
-        };
-        setSpinWinners((prev) => [newWinnerLog, ...prev]);
+        // Owner 24 Oct: real prize fulfilments are recorded SERVER-SIDE
+        // (spins + fulfilment_records, MySQL) — the admin tab reads them live.
+
 
         try {
           fireConfetti({
@@ -1626,249 +1432,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // =================== ADMIN ENGINE METHODS ===================
 
-  const addAffiliateId = (config: Omit<AffiliateIdConfig, 'id'>) => {
-    const newId: AffiliateIdConfig = {
-      ...config,
-      id: `aff-${Date.now()}`,
-    };
-    setAffiliateIds((prev) => [newId, ...prev]);
-    addToast('success', 'Affiliate ID Added', `${config.merchantOrNetwork} (${config.affiliateId}) saved successfully.`);
-  };
-
-  const toggleAffiliateIdStatus = (id: string) => {
-    setAffiliateIds((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: a.status === 'active' ? 'inactive' : 'active' } : a))
-    );
-  };
-
-  const addCustomScraper = (scraper: Omit<CustomScraperConfig, 'id' | 'lastScrapeTime' | 'itemsScrapedLastRun'>) => {
-    const newScraper: CustomScraperConfig = {
-      ...scraper,
-      id: `scr-${Date.now()}`,
-      lastScrapeTime: 'Just configured',
-      itemsScrapedLastRun: 0,
-    };
-    setScrapers((prev) => [newScraper, ...prev]);
-    addToast('success', 'Web Scraper Configured', `Scraper for ${scraper.merchantName} created. Ready to harvest live prices.`);
-  };
-
-  const runScraperSimulation = async (
-    scraperId: string,
-    testQuery: string = 'flagship deals'
-  ): Promise<{ success: boolean; itemsFound: number; sampleTitle: string; samplePrice: number }> => {
-    const targetScraper = scrapers.find((s) => s.id === scraperId);
-    if (!targetScraper) {
-      return { success: false, itemsFound: 0, sampleTitle: '', samplePrice: 0 };
-    }
-
-    // REAL EXTRACTION ONLY (no-fabrication rule): we report exactly what the
-    // backend extracted. On failure we report the failure honestly and inject
-    // nothing — no invented titles, prices, ratings or reviews.
-    let itemsFound = 0;
-    let extractedPrice = 0;
-    let sampleTitle = '';
-    let latency = 0;
-
-    try {
-      const res = await fetch('/api/scrape/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetUrlTemplate: targetScraper.targetUrlTemplate,
-          query: testQuery,
-          priceSelector: targetScraper.priceSelector,
-          titleSelector: targetScraper.titleSelector,
-          ratingSelector: targetScraper.ratingSelector,
-          engineMode: targetScraper.engineMode,
-          location: `${userLocation.locality}, ${userLocation.city} (${userLocation.pincode})`,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.extractedTitle) sampleTitle = data.extractedTitle;
-        if (data.extractedPrice) extractedPrice = data.extractedPrice;
-        if (data.itemsCount) itemsFound = data.itemsCount;
-        if (data.latencyMs) latency = data.latencyMs;
-      }
-    } catch {
-      /* extraction failed -> honest failure below */
-    }
-
-    const extractionSucceeded = Boolean(sampleTitle) && extractedPrice > 0;
-
-    setScrapers((prev) =>
-      prev.map((s) =>
-        s.id === scraperId
-          ? {
-              ...s,
-              status: extractionSucceeded ? 'active' : s.status,
-              lastScrapeTime: 'Just now',
-              itemsScrapedLastRun: extractionSucceeded ? itemsFound : 0,
-            }
-          : s
-      )
-    );
-
-    // Auto-ingestion only when a REAL title+price pair was extracted, and the
-    // item carries only fields actually observed by the extraction.
-    if (extractionSucceeded && targetScraper.autoIngestIntoCompare) {
-      const sourceUrl = targetScraper.targetUrlTemplate.replace('{query}', encodeURIComponent(testQuery));
-      const newComparisonItem: ComparisonItem = {
-        id: `scraped-${targetScraper.id}-${Date.now()}`,
-        vertical: targetScraper.vertical,
-        title: sampleTitle,
-        subtitle: `Extracted via ${targetScraper.engineMode} from ${targetScraper.merchantName}`,
-        category: 'Live Scraped Deal',
-        provider: targetScraper.merchantName,
-        providerLogo: targetScraper.merchantName.substring(0, 3).toUpperCase(),
-        rating: 0,
-        reviewCount: 0,
-        sentimentSummary: `Price extracted live via the ${targetScraper.engineMode} engine. Rating data not captured by this scraper.`,
-        criteriaRatings: [],
-        primaryPrice: extractedPrice,
-        originalPrice: 0,
-        priceAvailable: true,
-        unit: 'deal price',
-        features: [
-          `Extracted via ${targetScraper.engineMode}`,
-          'Auto-synced on each scraper run',
-        ],
-        specs: {
-          SourceUrl: sourceUrl,
-          Engine: targetScraper.engineMode,
-          ScrapedAt: 'Just now',
-        },
-        pricePrediction: {
-          advice: 'fair_price',
-          headline: 'Newly tracked',
-          details: 'No price history yet — only real observations are charted, never generated.',
-          historicalLow: extractedPrice,
-          historicalHigh: extractedPrice,
-          priceHistory: [],
-        },
-        reviews: [],
-        sellerQuotes: [
-          {
-            id: `sq-scraped-${Date.now()}`,
-            sellerName: targetScraper.merchantName,
-            price: extractedPrice,
-            currency: '₹',
-            url: sourceUrl,
-            badge: 'Live Scraped Price',
-            isLowest: true,
-            isLiveScraped: true,
-            sourceDomain: targetScraper.merchantName.toLowerCase().replace(/\s+/g, '') + '.com',
-            scrapedLocation: `${userLocation.locality}, ${userLocation.city} (${userLocation.pincode})`,
-          },
-        ],
-        isLiveScraped: true,
-        scrapedLocation: `${userLocation.locality}, ${userLocation.city} (${userLocation.pincode})`,
-        scrapedTimestamp: 'Just now',
-        scrapedLatencyMs: latency,
-      };
-
-      setItems((prev) => [newComparisonItem, ...prev]);
-    }
-
-    if (extractionSucceeded) {
-      addToast(
-        'success',
-        '✓ Scraper Run Successful',
-        `Extracted ${itemsFound} item(s) from ${targetScraper.merchantName}.`
-      );
-    } else {
-      addToast(
-        'alert',
-        'Scraper Run Failed',
-        `${targetScraper.merchantName} returned no extractable title/price for "${testQuery}". Nothing was added.`
-      );
-    }
-
-    return {
-      success: extractionSucceeded,
-      itemsFound: extractionSucceeded ? itemsFound : 0,
-      sampleTitle,
-      samplePrice: extractedPrice,
-    };
-  };
-
-  const addApiIntegration = (api: Omit<ApiIntegrationConfig, 'id' | 'latencyMs'>) => {
-    const newApi: ApiIntegrationConfig = {
-      ...api,
-      id: `api-${Date.now()}`,
-      latencyMs: Math.floor(180 + Math.random() * 260),
-    };
-    setApiIntegrations((prev) => [newApi, ...prev]);
-    addToast('success', 'API Integration Saved', `Partner API ${api.partnerName} registered and connected.`);
-  };
-
-  const testApiPing = async (apiId: string): Promise<number> => {
-    await new Promise((r) => setTimeout(r, 600));
-    const latency = Math.floor(160 + Math.random() * 220);
-    setApiIntegrations((prev) =>
-      prev.map((a) => (a.id === apiId ? { ...a, status: 'active', latencyMs: latency } : a))
-    );
-    addToast('info', 'API Ping Latency Test', `Response received in ${latency}ms (Status: 200 OK)`);
-    return latency;
-  };
-
-  const updateAffiliateNetwork = (id: string, updates: Partial<AffiliateNetworkHubConfig>) => {
-    setAffiliateNetworks((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, ...updates, syncStatus: 'synced', lastSyncTime: 'Just now' } : n))
-    );
-    addToast('success', 'Network Configuration Updated', 'Credentials and postback URLs synchronized.');
-  };
-
-  // Admin-only TEST postback: records a clearly-labeled zero-commission test
-  // entry so real earnings are never mixed with simulated data (no-fabrication
-  // rule). No fake buyer identities, orders or commissions are invented.
-  const simulateNetworkPostback = (networkName: string) => {
-    const testRecord: UserPurchaseRecord = {
-      id: `postback-test-${Date.now()}`,
-      userId: 'TEST',
-      userName: 'TEST RECORD — no real user',
-      userEmail: 'test-record@local',
-      userCity: '—',
-      userIp: '0.0.0.0 (test)',
-      merchantName: `${networkName} TEST — not a real merchant`,
-      vertical: 'ecommerce',
-      itemTitle: 'TEST postback — no real order exists',
-      orderId: `TEST-${Date.now()}`,
-      orderAmount: 0,
-      commissionEarned: 0,
-      commissionRate: 'TEST — ₹0 recorded',
-      pointsAwarded: 0,
-      status: 'pending',
-      timestamp: 'TEST entry — just now (not a real order)',
-      affiliateNetwork: networkName,
-    };
-    setUserPurchases((prev) => [testRecord, ...prev]);
-    addToast('info', `TEST postback recorded (${networkName})`, 'Marked as a test entry with ₹0 commission — real network earnings come only from verified S2S conversions.');
-  };
-
-  const blockUserSession = (userId: string) => {
-    setUserLogins((prev) =>
-      prev.map((u) => (u.userId === userId ? { ...u, status: 'blocked' } : u))
-    );
-    addToast('alert', 'User Account Suspended', `User ${userId} has been restricted from spin and redemption.`);
-  };
-
-  const unblockUserSession = (userId: string) => {
-    setUserLogins((prev) =>
-      prev.map((u) => (u.userId === userId ? { ...u, status: 'active' } : u))
-    );
-    addToast('success', 'User Restored', `User ${userId} restored to active status.`);
-  };
-
-  const creditBonusPointsToUser = (userId: string, pts: number) => {
-    setUserLogins((prev) =>
-      prev.map((u) => (u.userId === userId ? { ...u, pointsBalance: u.pointsBalance + pts } : u))
-    );
-    if (userId === 'usr-1042') {
-      setUserPoints((p) => p + pts);
-    }
-    addToast('points', `+${pts} Points Credited!`, `Direct admin bonus granted to user ${userId}.`);
-  };
 
   const addSpinReward = (reward: Omit<SpinReward, 'id'>) => {
     const newReward: SpinReward = {
@@ -2530,7 +2093,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loginWithGoogle,
         logoutUser,
         refreshUserPoints,
-        hydrateAdminRecords,
         hydratePartners,
         hydrateMerchantData,
         vertical,
@@ -2606,30 +2168,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isExtensionModalOpen,
         openExtensionModal,
         closeExtensionModal,
-        userPurchases,
-        partnerPayouts,
-        affiliateIds,
-        scrapers,
-        apiIntegrations,
-        affiliateNetworks,
-        addAffiliateId,
-        toggleAffiliateIdStatus,
-        addCustomScraper,
-        runScraperSimulation,
-        addApiIntegration,
-        testApiPing,
-        updateAffiliateNetwork,
-        simulateNetworkPostback,
         directPartners,
         addDirectPartner,
         updateDirectPartner,
         toggleDirectPartnerStatus,
         deleteDirectPartner,
-        recordPartnerClick,
-        userLogins,
-        blockUserSession,
-        unblockUserSession,
-        creditBonusPointsToUser,
         spinRewards,
         spinCostPoints,
         setSpinCostPoints,
@@ -2637,7 +2180,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateSpinReward,
         deleteSpinReward,
         toggleSpinRewardActive,
-        spinWinners,
         isScrapingLive,
         lastScrapeInfo,
         sourcesReport,
@@ -2650,12 +2192,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           window.scrollTo({ top: 0, behavior: 'smooth' });
         },
         setPendingAssistantSearch,
-        proxies,
-        addResidentialProxy,
-        bulkAddResidentialProxies,
-        toggleProxyStatus,
-        deleteProxy,
-        testProxyPing,
         leadCaptureState,
         openLeadCapture,
         closeLeadCapture,

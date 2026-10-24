@@ -717,3 +717,118 @@ adminRouter.delete('/quick-apps/:id', async (req, res) => {
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete merchant' }); }
 });
+
+// --- Real-data affiliate & traffic reporting (owner 24 Oct: admin must show
+// ONLY real numbers from MySQL — no mock/fabricated records anywhere) ---
+const sqlDate = (daysAgo: number) => new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+
+adminRouter.get('/affiliate/clicks', async (req, res) => {
+  try {
+    const store = getStore() as any;
+    const vendor = String(req.query.vendor || '').trim();
+    const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 500));
+    const since = sqlDate(days);
+    const params: any[] = [since];
+    let where = 'WHERE created_at >= ?';
+    if (vendor) { where += ' AND vendor_domain LIKE ?'; params.push(`%${vendor}%`); }
+    const clicks = await store.query(
+      `SELECT id, offer_id, network_id, vendor_domain, destination_url, click_id, created_at
+       FROM affiliate_clicks ${where} ORDER BY id DESC LIMIT ${limit}`, params);
+    const byNetwork = await store.query(
+      `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`, [since]);
+    const byVendor = await store.query(
+      `SELECT vendor_domain, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY count DESC LIMIT 20`, [since]);
+    const daily = await store.query(
+      `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`, [since]);
+    const total = (byNetwork as any[]).reduce((s: number, r: any) => s + Number(r.count || 0), 0);
+    res.json({ success: true, clicks, summary: { windowDays: days, total, byNetwork, byVendor, daily } });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Click log unavailable' });
+  }
+});
+
+adminRouter.get('/affiliate/conversions', async (_req, res) => {
+  try {
+    const store = getStore() as any;
+    // Real conversions ONLY — imported from an authorized network report
+    // (affiliateNetwork.ts importConversion). Empty until a report exists.
+    const conversions = await store.query(
+      `SELECT v.id, v.click_id, v.network_id, v.order_value, v.commission, v.confirmed_at, v.source_report, v.created_at, k.vendor_domain
+       FROM affiliate_conversions v LEFT JOIN affiliate_clicks k ON k.click_id = v.click_id
+       ORDER BY v.id DESC LIMIT 200`);
+    res.json({ success: true, conversions });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Conversions unavailable' });
+  }
+});
+
+// Real traffic: every number comes from the searches / affiliate_clicks MySQL tables.
+adminRouter.get('/traffic/real', async (req, res) => {
+  try {
+    const store = getStore() as any;
+    const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+    const since = sqlDate(days);
+    const dailySearches = await store.query(
+      `SELECT DATE(created_at) AS day, COUNT(*) AS count, AVG(latency_ms) AS avg_latency_ms, SUM(results_count > 0) AS with_results
+       FROM searches WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`, [since]);
+    const byVertical = await store.query(
+      `SELECT COALESCE(NULLIF(vertical, ''), 'unknown') AS vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY vertical ORDER BY count DESC`, [since]);
+    const topQueries = await store.query(
+      `SELECT raw_query, vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY raw_query, vertical ORDER BY count DESC LIMIT 20`, [since]);
+    const dailyClicks = await store.query(
+      `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`, [since]);
+    const clicksByNetwork = await store.query(
+      `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`, [since]);
+    const totals = await store.query(
+      `SELECT
+         SUM(created_at >= ?) AS searches_window,
+         SUM(created_at >= ? AND results_count > 0) AS searches_with_results
+       FROM searches`, [since, since]);
+    res.json({
+      success: true,
+      traffic: {
+        windowDays: days,
+        dailySearches, byVertical, topQueries, dailyClicks, clicksByNetwork,
+        searchesWindow: Number(totals[0]?.searches_window || 0),
+        searchesWithResults: Number(totals[0]?.searches_with_results || 0),
+      },
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Traffic data unavailable' });
+  }
+});
+
+// Real integration status: what is actually configured RIGHT NOW. No invented rates.
+adminRouter.get('/integrations', async (_req, res) => {
+  try {
+    const { settings } = await import('../common/settings');
+    const { linkinrStats } = await import('../affiliate/linkinr');
+    const store = getStore() as any;
+    const dbMode = store.kind === 'mysql' ? 'mysql' : 'file-fallback';
+    let links: any[] = [];
+    try {
+      links = await store.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
+    } catch { links = []; }
+    res.json({
+      success: true,
+      integrations: {
+        mysql: { status: dbMode },
+        linkinr: linkinrStats(),
+        cuelinks: {
+          enabled: Boolean(settings.cuelinks?.enabled),
+          publisherId: settings.cuelinks?.publisherId || '',
+          cid: settings.cuelinks?.cid || '',
+          apiKeyConfigured: Boolean(settings.cuelinks?.apiKey),
+        },
+        amazonAssociates: { tag: settings.amazonAssociates?.tag || '' },
+        ekaro: { apiKeyConfigured: Boolean(process.env.EKARO_API_KEY) },
+        admitad: { credentialsConfigured: Boolean(settings.admitad?.clientId && settings.admitad?.clientSecret) },
+        vcommission: { credentialsConfigured: Boolean(process.env.VCOMMISSION_API_KEY) },
+        syncedAffiliateLinks: links,
+      },
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Integration status unavailable' });
+  }
+});
