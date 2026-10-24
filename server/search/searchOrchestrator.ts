@@ -113,6 +113,17 @@ function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
  */
 function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } {
   if (['flights', 'hotels', 'bus', 'cab', 'movies'].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
+  // Owner 23 Oct ("loan, insurance, credit card, bank account ka data change ni
+  // hota frequently — save kr ke result fast do, din me ek baar scrap krwao"):
+  // these finance segments publish rate/card/account tables that move at most
+  // daily, and the freshness engine already credits them 24h fresh
+  // (VERTICAL_DEFAULT_TTL 86400). The generic 15-min search TTL was forcing a
+  // full live re-scrape every 15 minutes for data that had not changed — the
+  // segment felt slow because each expiry meant a 5-20s pipeline. Now: 24h
+  // fresh + 48h stale-serve (stale-while-revalidate refreshes in the background
+  // on the first stale hit). User searches are instant cache hits; the keep-warm
+  // rotation performs the ONE daily live scrape per query.
+  if (['loans', 'insurance', 'creditcards', 'banking'].includes(vertical)) return { ttlSec: 86_400, staleSec: 172_800 };
   return { ttlSec: 900, staleSec: 2700 };
 }
 

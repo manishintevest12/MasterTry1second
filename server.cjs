@@ -25126,6 +25126,7 @@ function rowToOffer(row, isLiveNow) {
 }
 function searchCacheTtl(vertical) {
   if (["flights", "hotels", "bus", "cab", "movies"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
+  if (["loans", "insurance", "creditcards", "banking"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
   return { ttlSec: 900, staleSec: 2700 };
 }
 async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
@@ -29286,6 +29287,8 @@ var init_heroBanners = __esm({
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
+  FINANCE_DAILY_SEEDS: () => FINANCE_DAILY_SEEDS,
+  SEED_QUERIES: () => SEED_QUERIES,
   bootWarm: () => bootWarm,
   keepWarmDefaults: () => keepWarmDefaults,
   keepWarmDestinations: () => keepWarmDestinations
@@ -29347,7 +29350,7 @@ async function bootWarm() {
   }
 }
 async function keepWarmDefaults() {
-  await warmRows(SEED_QUERIES, "KeepWarm");
+  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS], "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
   const store2 = getStore();
@@ -29389,7 +29392,7 @@ async function main() {
     });
   }, intervalMin * 6e4);
 }
-var SEED_QUERIES, DESTINATION_WARM, destWarmCursor, invokedAsScript;
+var SEED_QUERIES, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, invokedAsScript;
 var init_warm = __esm({
   "server/cron/warm.ts"() {
     init_db();
@@ -29421,6 +29424,23 @@ var init_warm = __esm({
       { query: "smart tv", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "refrigerator", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "washing machine", vertical: "ecommerce", city: "Indore", pincode: "452001" }
+    ];
+    FINANCE_DAILY_SEEDS = [
+      // Loans — every BankBazaar loan-type page the worker routes to.
+      { query: "home loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      { query: "car loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      { query: "education loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      { query: "business loan", vertical: "loans", city: "Indore", pincode: "452001" },
+      // Insurance — term/health/car are the BankBazaar pages the worker serves.
+      { query: "term insurance", vertical: "insurance", city: "Indore", pincode: "452001" },
+      { query: "car insurance", vertical: "insurance", city: "Indore", pincode: "452001" },
+      // Credit cards — issuer queries users actually type.
+      { query: "sbi credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      { query: "icici credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      { query: "axis credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      // Bank accounts — the account vertical's most common intents.
+      { query: "current account", vertical: "banking", city: "Indore", pincode: "452001" },
+      { query: "zero balance account", vertical: "banking", city: "Indore", pincode: "452001" }
     ];
     DESTINATION_WARM = [
       // Owner 23 Oct: the six homepage cities lead the rotation so their recorded

@@ -24,27 +24,27 @@ const pickup = { lat: 28.6139, lng: 77.209, name: 'Connaught Place' };
 
 test('uber: owner-specified m.uber.com/looking format with JSON pickup + drop + affiliate', () => {
   const url = buildUberBookUrl({ cfg: cfg(), pickup, drop })!;
-  assert.ok(url.startsWith('https://m.uber.com/looking/?client_id=test-client-1&'), url);
-  assert.ok(url.includes(`pickup=${encodeURIComponent(JSON.stringify({ latitude: 28.6139, longitude: 77.209, addressLine1: 'Connaught Place' }))}`), url);
-  assert.ok(url.includes(`drop[0]=${encodeURIComponent(JSON.stringify({ latitude: 28.5355, longitude: 77.391, addressLine1: 'Noida Sector 18' }))}`), url);
+  assert.ok(url.startsWith('https://m.uber.com/looking/?client_id=test-client-1&'));
+  assert.ok(url.includes(`pickup=${encodeURIComponent(JSON.stringify({ latitude: 28.6139, longitude: 77.209, addressLine1: 'Connaught Place' }))}`));
+  assert.ok(url.includes(`drop[0]=${encodeURIComponent(JSON.stringify({ latitude: 28.5355, longitude: 77.391, addressLine1: 'Noida Sector 18' }))}`));
   assert.ok(url.includes('utm_source=try1second'), 'affiliate params appended');
 });
 
 test('uber: pickup=my_location fallback when pickup coords unknown (owner spec)', () => {
   const url = buildUberBookUrl({ cfg: cfg(), pickup: null, drop })!;
-  assert.ok(url.includes('pickup=my_location'), url);
+  assert.ok(url.includes('pickup=my_location'));
 });
 
 test('uber: admin affiliate params appended, malformed entries dropped', () => {
   const url = buildUberBookUrl({ cfg: cfg({ uberExtraParams: 'sub_id=abc123&===bad&javascript:alert(1)' }), pickup, drop })!;
-  assert.ok(url.includes('sub_id=abc123'), url);
-  assert.ok(!url.includes('javascript'), url);
+  assert.ok(url.includes('sub_id=abc123'));
+  assert.ok(!url.includes('javascript'));
   assert.ok(!url.includes('bad'), 'malformed pair dropped');
 });
 
 test('uber: client_id omitted when admin has not set one', () => {
   const url = buildUberBookUrl({ cfg: cfg({ uberClientId: '' }), pickup, drop })!;
-  assert.ok(!url.includes('client_id='), url);
+  assert.ok(!url.includes('client_id='));
 });
 
 test('disabled providers return null (honest, never a dead link)', () => {
@@ -54,11 +54,11 @@ test('disabled providers return null (honest, never a dead link)', () => {
 
 test('ola: book.olacabs.com deep link with coords + name + affiliate', () => {
   const url = buildOlaBookUrl({ cfg: cfg(), pickup, drop })!;
-  assert.ok(url.startsWith('https://book.olacabs.com/?'), url);
-  assert.ok(url.includes('lat=28.6139'), url);
-  assert.ok(url.includes('drop_lat=28.5355'), url);
-  assert.ok(url.includes('drop_name=Noida'), url);
-  assert.ok(url.includes('utm_source=try1second'), url);
+  assert.ok(url.startsWith('https://book.olacabs.com/?'));
+  assert.ok(url.includes('lat=28.6139'));
+  assert.ok(url.includes('drop_lat=28.5355'));
+  assert.ok(url.includes('drop_name=Noida'));
+  assert.ok(url.includes('utm_source=try1second'));
 });
 
 test('network layer: LinkInR must not claim prefilled cab booking links (trip would be lost)', async () => {
@@ -93,23 +93,23 @@ test('network layer: rapido.cc ride link stays direct (not claimed by LinkInR)',
 test('uber app scheme: uber://?action=setPickup with prefilled trip', () => {
   const url = buildUberAppSchemeUrl({ cfg: cfg(), pickup, drop });
   assert.ok(url);
-  assert.ok(url!.startsWith('uber://?action=setPickup'), url);
-  assert.ok(url!.includes('client_id=test-client-1'), url);
-  assert.ok(url!.includes('pickup[latitude]=28.6139'), url);
-  assert.ok(url!.includes('dropoff[latitude]=28.5355'), url);
-  assert.ok(url!.includes(`dropoff[nickname]=${encodeURIComponent(drop.name)}`), url);
+  assert.ok(url!.startsWith('uber://?action=setPickup'));
+  assert.ok(url!.includes('client_id=test-client-1'));
+  assert.ok(url!.includes('pickup[latitude]=28.6139'));
+  assert.ok(url!.includes('dropoff[latitude]=28.5355'));
+  assert.ok(url!.includes(`dropoff[nickname]=${encodeURIComponent(drop.name)}`));
 });
 
 test('uber app scheme: pickup=my_location fallback when coords unknown', () => {
   const url = buildUberAppSchemeUrl({ cfg: cfg(), pickup: null, drop });
-  assert.ok(url!.includes('pickup=my_location'), url);
+  assert.ok(url!.includes('pickup=my_location'));
 });
 
 test('ola app scheme: olacabs://book with pickup + drop', () => {
   const url = buildOlaAppSchemeUrl({ cfg: cfg(), pickup, drop });
-  assert.ok(url!.startsWith('olacabs://book?'), url);
-  assert.ok(url!.includes('lat=28.6139'), url);
-  assert.ok(url!.includes('drop_lat=28.5355'), url);
+  assert.ok(url!.startsWith('olacabs://book?'));
+  assert.ok(url!.includes('lat=28.6139'));
+  assert.ok(url!.includes('drop_lat=28.5355'));
   // URLSearchParams encodes spaces as '+': compare the decoded param value.
   const q = new URLSearchParams(String(url).split('?')[1]);
   assert.equal(q.get('drop_name'), drop.name);

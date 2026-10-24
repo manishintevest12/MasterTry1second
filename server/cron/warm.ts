@@ -28,7 +28,7 @@ import { purgeStaleBankingOffers, purgePhotolessHotelOffers } from '../catalogue
 // cache and went live every time (3-5s+). Seeds now warm the exact client
 // shape: city 'Indore', pincode '452001' — matching defaultQueryFor() and the
 // web's targetLoc default.
-const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
+export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
   { query: 'mobile phone', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'milk', vertical: 'grocery', city: 'Indore', pincode: '452001' },
   { query: 'biryani', vertical: 'food', city: 'Indore', pincode: '452001' },
@@ -56,7 +56,37 @@ const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string; pinc
 ];
 
 /**
- * FAMOUS DESTINATIONS WARM (owner 22 Oct): the homepage's Famous Destinations
+ * FINANCE DAILY REFRESH (owner 23 Oct: "loan, insurance, credit card, bank
+ * account ka data change ni hota frequently tho inko save kr ke result fast do
+ * aur din me ek baar scrap krwao"). These segments' rate/card/account tables
+ * move at most daily, so their search cache TTL is 24h (see searchCacheTtl).
+ * Warming them every keep-warm cycle is: a cache HIT the other 47 cycles of
+ * the day (free, no source hit), and exactly ONE live scrape per query per
+ * day when the 24h TTL expires — the daily scrape the owner asked for, with
+ * the segment always serving instantly from cache. Client-shape parity
+ * (city 'Indore', pincode '452001') so the warm key equals the default-search
+ * key the web + Flutter clients actually send.
+ */
+export const FINANCE_DAILY_SEEDS: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
+  // Loans — every BankBazaar loan-type page the worker routes to.
+  { query: 'home loan', vertical: 'loans', city: 'Indore', pincode: '452001' },
+  { query: 'car loan', vertical: 'loans', city: 'Indore', pincode: '452001' },
+  { query: 'education loan', vertical: 'loans', city: 'Indore', pincode: '452001' },
+  { query: 'business loan', vertical: 'loans', city: 'Indore', pincode: '452001' },
+  // Insurance — term/health/car are the BankBazaar pages the worker serves.
+  { query: 'term insurance', vertical: 'insurance', city: 'Indore', pincode: '452001' },
+  { query: 'car insurance', vertical: 'insurance', city: 'Indore', pincode: '452001' },
+  // Credit cards — issuer queries users actually type.
+  { query: 'sbi credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
+  { query: 'icici credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
+  { query: 'axis credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
+  // Bank accounts — the account vertical's most common intents.
+  { query: 'current account', vertical: 'banking', city: 'Indore', pincode: '452001' },
+  { query: 'zero balance account', vertical: 'banking', city: 'Indore', pincode: '452001' },
+];
+
+/**
+ * FAMOUS DESTINATIONS WARM (owner 22 Oct: the homepage's Famous Destinations
  * section needs (a) a recorded flight fare naming the city and (b) a hotel row
  * with real art. Users mostly search Indore routes, so without warm coverage
  * the section honestly stays empty (the owner's report). Two entries are
@@ -208,7 +238,10 @@ export async function bootWarm(): Promise<void> {
  * keeps the acquisition cost low: only genuinely expired queries re-hit sources.
  */
 export async function keepWarmDefaults(): Promise<void> {
-  await warmRows(SEED_QUERIES, 'KeepWarm');
+  // FINANCE_DAILY_SEEDS ride along on every keep-warm cycle: with their 24h
+  // search TTL this is a cache hit (free) all day and the ONE live daily scrape
+  // when they expire — the owner's "din me ek baar scrap" (23 Oct).
+  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS], 'KeepWarm');
 }
 
 /** One warm pass: fresh top queries from the last 7 days (or seeds). */
