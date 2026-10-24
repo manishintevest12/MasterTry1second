@@ -8749,6 +8749,138 @@ var init_airIndiaFares = __esm({
   }
 });
 
+// server/workers/parsers/allianceAir.ts
+function allianceAirSearchBody(origin, destination, depIso) {
+  const m = depIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const ddmm = m ? `${m[3]}/${m[2]}/${m[1]}` : depIso;
+  return new URLSearchParams({
+    org: origin,
+    des: destination,
+    dep_date: ddmm,
+    ret_date: "",
+    pax: "1 pax(s)",
+    adult: "1",
+    child: "0",
+    infant: "0",
+    ccy: "INR",
+    promo_code: "",
+    multi_route: "",
+    multi_date: ""
+  }).toString();
+}
+function allianceAirSearchUrl(fromCode, toCode, depIso) {
+  return `https://bookme.allianceair.in/search-schedule?org=${fromCode}&des=${toCode}&dep_date=${depIso}`;
+}
+function extractAaDataSchedule(pageHtml) {
+  const i = pageHtml.indexOf("this.dataSchedule = ");
+  if (i < 0) return null;
+  const start2 = pageHtml.indexOf("{", i + 20);
+  if (start2 < 0) return null;
+  let depth = 0, end = -1, inStr = false, esc2 = false;
+  for (let k = start2; k < pageHtml.length; k++) {
+    const c = pageHtml[k];
+    if (esc2) {
+      esc2 = false;
+      continue;
+    }
+    if (c === "\\") {
+      esc2 = true;
+      continue;
+    }
+    if (c === '"') {
+      inStr = !inStr;
+      continue;
+    }
+    if (inStr) continue;
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) {
+        end = k + 1;
+        break;
+      }
+    }
+  }
+  if (end < 0) return null;
+  try {
+    return JSON.parse(pageHtml.slice(start2, end));
+  } catch {
+    return null;
+  }
+}
+function parseAllianceAirSchedule(schedule, depIso) {
+  const rows = schedule?.departure_schedule;
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  for (const row of rows) {
+    const legs = row?.connecting_flight_routes || [];
+    const first = legs[0];
+    const last = legs[legs.length - 1];
+    if (!first || !last) continue;
+    const dep = first?.departure_date || {};
+    if (!dep?.day) continue;
+    const travelDate = `${dep.year}-${String(dep.month).padStart(2, "0")}-${String(dep.day).padStart(2, "0")}`;
+    if (travelDate !== depIso) continue;
+    const price = Number(row?.fare_info?.total_search_fare?.amount);
+    if (!Number.isFinite(price) || price <= 0) continue;
+    out.push({
+      flightNo: String(first.flight_number || ""),
+      aircraft: String(first.aircraft || ""),
+      depTime: `${String(dep.hour || "0").padStart(2, "0")}:${String(dep.minute || "0").padStart(2, "0")}`,
+      arrTime: `${String(last.arrival_date?.hour || "0").padStart(2, "0")}:${String(last.arrival_date?.minute || "0").padStart(2, "0")}`,
+      route: String(first.route || ""),
+      price: Math.round(price),
+      availability: Number(first.availability || 0),
+      travelDate,
+      stops: legs.length - 1,
+      baggageKg: first?.facilities?.baggage?.adult?.weight || void 0
+    });
+  }
+  return out;
+}
+function allianceAirFlightItems(flights, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return flights.map((f) => newRawItem(source, {
+    title: `Alliance Air ${fromCity} \u2192 ${toCity} on ${f.travelDate} from \u20B9${f.price} (${f.flightNo}, ${f.depTime}\u2013${f.arrTime})`,
+    brand: "Alliance Air",
+    price: f.price,
+    currency: "INR",
+    seller: "Alliance Air",
+    sellerUrl: allianceAirSearchUrl(fromCode, toCode, depIso),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: f.travelDate },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: "Alliance Air",
+      travel_date: f.travelDate,
+      departure_date: f.travelDate,
+      flight_number: f.flightNo,
+      departure_time: f.depTime,
+      arrival_time: f.arrTime,
+      aircraft: f.aircraft,
+      stops: String(f.stops),
+      seats_left: f.availability > 0 ? String(f.availability) : void 0,
+      baggage_kg: f.baggageKg ? String(f.baggageKg) : void 0,
+      fare_detail: `${f.stops === 0 ? "Direct" : `${f.stops}-stop`} Alliance Air ${f.aircraft} flight ${f.flightNo}, ${f.depTime} \u2192 ${f.arrTime}${f.baggageKg ? `, ${f.baggageKg}kg check-in included` : ""}, ${f.availability > 0 ? `${f.availability} seats left` : "limited seats"}`,
+      fare_class: "lowest published economy fare (incl. taxes) on Alliance Air's own booking engine",
+      price_basis: `Alliance Air booking-engine price for ${f.travelDate} captured ${today2}`,
+      data_note: `Fare and schedule acquired from Alliance Air's own booking engine on ${today2}; booking continues on Alliance Air's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `allianceair-${f.flightNo}-${f.travelDate}-${fromCode}${toCode}`.replace(/\s+/g, "") },
+    evidence: {
+      sourceUrl: AA_HOME,
+      extractedFields: ["departure_schedule[].connecting_flight_routes[].flight_number", "departure_date.hour/minute", "fare_info.total_search_fare.amount (INR)", "connecting_flight_routes[].availability"]
+    }
+  }));
+}
+var AA_HOME;
+var init_allianceAir = __esm({
+  "server/workers/parsers/allianceAir.ts"() {
+    init_contract();
+    AA_HOME = "https://bookme.allianceair.in/";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -12853,6 +12985,7 @@ var init_flights = __esm({
     init_aixLowFares();
     init_spiceJetDotRez();
     init_airIndiaFares();
+    init_allianceAir();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -13368,6 +13501,86 @@ var init_flights = __esm({
             const fares = parseAirIndiaFares(body);
             if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Air India fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
             return airIndiaDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+          }
+        },
+        {
+          // Alliance Air LIVE (24 Oct 2026): bookme.allianceair.in is a plain Yii
+          // PHP booking engine with NO WAF — the whole flow replays browserless.
+          // Recipe (captured via Browserbase CDP filling the widget): GET / for
+          // session cookies, then POST /search-schedule with the exact form body
+          // (dep_date MUST be DD/MM/YYYY; any other format silently re-renders the
+          // homepage; pax literally "1 pax(s)"). The rendered page embeds
+          // this.dataSchedule = ["","",{full week schedule JSON}"] with per-flight
+          // rows: flight_number, aircraft, availability, dep/arr times, baggage,
+          // and fare_info.total_search_fare.amount INR incl. taxes.
+          // Verified sandbox 24 Oct: DEL-BOM 27 Oct 9I841 ATR-72 15:25->18:30
+          // INR 7147 (Basic 5500 + taxes), 6 seats left.
+          sourceId: "w_flights_allianceair",
+          name: "Flights worker: Alliance Air direct booking engine",
+          priority: 14,
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            let page = "";
+            let status = 0;
+            const lastErr = [];
+            const body = allianceAirSearchBody(fromA.code, toA.code, dep);
+            for (const a of [
+              { label: "chrome-h2", imp: "chrome", hv: void 0 },
+              { label: "safari-h2", imp: "safari17_0", hv: void 0 },
+              { label: "chrome-h1", imp: "chrome", hv: "1.1" }
+            ]) {
+              try {
+                const g = await cffiFetch(AA_HOME, {
+                  impersonate: a.imp,
+                  timeoutMs: 15e3,
+                  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" },
+                  returnCookies: true
+                });
+                if (g.status !== 200) {
+                  lastErr.push(`${a.label}: home HTTP ${g.status}`);
+                  continue;
+                }
+                const cookies = g.cookies || {};
+                const r = await cffiFetch(`${AA_HOME}search-schedule`, {
+                  method: "POST",
+                  impersonate: a.imp,
+                  timeoutMs: 22e3,
+                  headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    Referer: AA_HOME,
+                    Origin: "https://bookme.allianceair.in",
+                    "Accept-Language": "en-US,en;q=0.9"
+                  },
+                  body,
+                  cookies
+                });
+                page = r.body || "";
+                status = r.status;
+                if (status > 0 && status !== 429 && status < 500) break;
+                lastErr.push(`${a.label}: HTTP ${status}`);
+              } catch (e) {
+                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+                status = 0;
+              }
+            }
+            if (status === 0) throw new AcquisitionError("SERVER_ERROR", `Alliance Air unreachable after 3 attempts (${lastErr.join(" | ")})`);
+            if (status === 401 || status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `Alliance Air access challenge (HTTP ${status})`, status);
+            if (status === 429) throw new AcquisitionError("RATE_LIMITED", "Alliance Air rate-limited this IP", 429);
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Alliance Air HTTP ${status}`, status);
+            const schedule = extractAaDataSchedule(page);
+            if (!schedule) throw new AcquisitionError("EMPTY_RESPONSE", "Alliance Air search page returned no embedded schedule (wrong dep_date format or route not served)");
+            const flights = parseAllianceAirSchedule(schedule, dep);
+            if (!flights.length) return [];
+            return allianceAirFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
         {

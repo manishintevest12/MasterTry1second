@@ -24,6 +24,7 @@ import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFar
 import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
 import { spiceJetLowFareBody, spiceJetAvailabilityBody, spiceJetBaseHeaders, spiceJetTokenHeaders, spiceJetSearchUrl, parseSpiceJetLowFare, parseSpiceJetAvailability, spiceJetDayFareItems } from '../parsers/spiceJetDotRez';
 import { airIndiaFaresBody, airIndiaFaresHeaders, AI_FARES_URL, parseAirIndiaFares, airIndiaDayFareItems } from '../parsers/airIndiaFares';
+import { AA_HOME, allianceAirSearchBody, extractAaDataSchedule, parseAllianceAirSchedule, allianceAirFlightItems } from '../parsers/allianceAir';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -623,6 +624,87 @@ export const flightsWorker: VerticalWorker = {
         const fares = parseAirIndiaFares(body);
         if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Air India fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
         return airIndiaDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+      },
+    },
+    {
+      // Alliance Air LIVE (24 Oct 2026): bookme.allianceair.in is a plain Yii
+      // PHP booking engine with NO WAF — the whole flow replays browserless.
+      // Recipe (captured via Browserbase CDP filling the widget): GET / for
+      // session cookies, then POST /search-schedule with the exact form body
+      // (dep_date MUST be DD/MM/YYYY; any other format silently re-renders the
+      // homepage; pax literally "1 pax(s)"). The rendered page embeds
+      // this.dataSchedule = ["","",{full week schedule JSON}"] with per-flight
+      // rows: flight_number, aircraft, availability, dep/arr times, baggage,
+      // and fare_info.total_search_fare.amount INR incl. taxes.
+      // Verified sandbox 24 Oct: DEL-BOM 27 Oct 9I841 ATR-72 15:25->18:30
+      // INR 7147 (Basic 5500 + taxes), 6 seats left.
+      sourceId: 'w_flights_allianceair',
+      name: 'Flights worker: Alliance Air direct booking engine',
+      priority: 14,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        let page = '';
+        let status = 0;
+        const lastErr: string[] = [];
+        const body = allianceAirSearchBody(fromA.code, toA.code, dep);
+        for (const a of [
+          { label: 'chrome-h2', imp: 'chrome', hv: undefined },
+          { label: 'safari-h2', imp: 'safari17_0', hv: undefined },
+          { label: 'chrome-h1', imp: 'chrome', hv: '1.1' as const },
+        ]) {
+          try {
+            // 1. session cookies from the homepage
+            const g = await cffiFetch(AA_HOME, {
+              impersonate: a.imp,
+              timeoutMs: 15_000,
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
+              returnCookies: true,
+            });
+            if (g.status !== 200) { lastErr.push(`${a.label}: home HTTP ${g.status}`); continue; }
+            const cookies = (g as any).cookies || {};
+            // 2. form POST — exact browser body, DD/MM/YYYY dep_date
+            const r = await cffiFetch(`${AA_HOME}search-schedule`, {
+              method: 'POST',
+              impersonate: a.imp,
+              timeoutMs: 22_000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Referer: AA_HOME,
+                Origin: 'https://bookme.allianceair.in',
+                'Accept-Language': 'en-US,en;q=0.9',
+              },
+              body,
+              cookies,
+            });
+            page = r.body || '';
+            status = r.status;
+            if (status > 0 && status !== 429 && status < 500) break;
+            lastErr.push(`${a.label}: HTTP ${status}`);
+          } catch (e: any) {
+            lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+            status = 0;
+          }
+        }
+        if (status === 0) throw new AcquisitionError('SERVER_ERROR', `Alliance Air unreachable after 3 attempts (${lastErr.join(' | ')})`);
+        if (status === 401 || status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', `Alliance Air access challenge (HTTP ${status})`, status);
+        if (status === 429) throw new AcquisitionError('RATE_LIMITED', 'Alliance Air rate-limited this IP', 429);
+        if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Alliance Air HTTP ${status}`, status);
+        const schedule = extractAaDataSchedule(page);
+        if (!schedule) throw new AcquisitionError('EMPTY_RESPONSE', 'Alliance Air search page returned no embedded schedule (wrong dep_date format or route not served)');
+        const flights = parseAllianceAirSchedule(schedule, dep);
+        if (!flights.length) return []; // honest empty: route/date not served that week
+        return allianceAirFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
     {

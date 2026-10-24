@@ -1,0 +1,722 @@
+{
+ "response": {
+  "success": true,
+  "origin": "DEL",
+  "destination": "BOM",
+  "departure_date": "27/10/2026",
+  "return_date": null,
+  "adult_quantity": 1,
+  "child_quantity": 0,
+  "infant_quantity": 0,
+  "departure_schedule": [
+   {
+    "connecting_flight_routes": [
+     {
+      "origin": {
+       "city": "NEW DELHI",
+       "name": "INDIRA GANDHI INTL",
+       "code": "DEL"
+      },
+      "destination": {
+       "code": "BOM",
+       "city": "MUMBAI",
+       "name": "CHHATRAPATI SHIVAJI INTERNATIONAL AIRPORT"
+      },
+      "flight_number": "9I841",
+      "aircraft": "ATR-72",
+      "transit": "0",
+      "route": "DEL-BOM",
+      "availability": "6",
+      "departure_date": {
+       "day": "27",
+       "month": "10",
+       "year": "2026",
+       "hour": "15",
+       "minute": "25",
+       "unix_timestamp": {
+        "date": "2026-10-27 15:25:00.000000",
+        "timezone_type": 3,
+        "timezone": "Asia/Jakarta"
+       }
+      },
+      "arrival_date": {
+       "day": "27",
+       "month": "10",
+       "year": "2026",
+       "hour": "18",
+       "minute": "30",
+       "unix_timestamp": {
+        "date": "2026-10-27 18:30:00.000000",
+        "timezone_type": 3,
+        "timezone": "Asia/Jakarta"
+       }
+      },
+      "num_day_offset": "0",
+      "facilities": {
+       "baggage": {
+        "adult": {
+         "weight": 15
+        },
+        "child": {
+         "weight": 15
+        },
+        "infant": {
+         "weight": 0
+        },
+        "unit_of_measure": "KG"
+       }
+      }
+     }
+    ],
+    "fare_info": {
+     "total_search_fare": {
+      "amount": 7147,
+      "dsc_amount": 0,
+      "sum_amount": 7147,
+      "promo_code": null,
+      "ccy": "INR"
+     },
+     "each_pax_type": {
+      "adult": {
+       "quantity": 1,
+       "fare_each": 7147,
+       "fare_total": 7147,
+       "fare_component": [
+        {
+         "name": "Basic Fare",
+         "alias": "Basic Fare",
+         "type": "FARE",
+         "fare_index": "1",
+         "amount": 5500
+        },
+        {
+         "name": "Insurance",
+         "alias": "Insurance",
+         "type": "FARE",
+         "fare_index": "2",
+         "amount": 0
+        },
+        {
+         "name": "Airport Tax",
+         "alias": "Airport Security Fee",
+         "type": "FARE",
+         "fare_index": "5",
+         "amount": 236
+        },
+        {
+         "name": "Surcharge Fee",
+         "alias": "Fuel Surcharge",
+         "type": "FARE",
+         "fare_index": "4",
+         "amount": 699
+        },
+        {
+         "name": "Terminal Fee",
+         "alias": "Domestic Passenger Service Charge",
+         "type": "FARE",
+         "fare_index": "3",
+         "amount": 91
+        },
+        {
+         "name": "Fare Vat",
+         "alias": "GST 5%",
+         "type": "FARE",
+         "fare_index": "7",
+         "amount": 275
+        },
+        {
+         "name": "Passenger service fee",
+         "alias": "Passenger Service Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "RCS Provision fee",
+         "alias": "RCS Provision Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Development Fee",
+         "alias": "Development Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Convenience Fee",
+         "alias": "Convenience Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Webcharge",
+         "alias": "Convenience Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Reservation and Ticket Fee",
+         "alias": "Reservation and Ticket Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Aviation Security Fee",
+         "alias": "Aviation Security Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Cute Fee",
+         "alias": "Cute Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 105
+        },
+        {
+         "name": "GST",
+         "alias": "GST",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "User Development Fee",
+         "alias": "User Development Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 241
+        },
+        {
+         "name": "Booking Fee",
+         "alias": "Other Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Ancillary Vat",
+         "alias": "Ancillary GST",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Arrival User Development Fee",
+         "alias": "Arrival User Development Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Webcharge International",
+         "alias": "Webcharge International",
+         "type": "FARE",
+         "fare_index": "8",
+         "amount": 0
+        }
+       ]
+      },
+      "child": [],
+      "infant": []
+     }
+    },
+    "flight_metadata": {
+     "meta_flight_string": {
+      "9I841": "G/GSAV"
+     },
+     "meta_flight_no": "9I841",
+     "flight_date": "20261027",
+     "origin": "DEL",
+     "destination": "BOM",
+     "fare_family": "SUPSAV",
+     "discount_details": []
+    }
+   },
+   {
+    "connecting_flight_routes": [
+     {
+      "origin": {
+       "city": "NEW DELHI",
+       "name": "INDIRA GANDHI INTL",
+       "code": "DEL"
+      },
+      "destination": {
+       "code": "BOM",
+       "city": "MUMBAI",
+       "name": "CHHATRAPATI SHIVAJI INTERNATIONAL AIRPORT"
+      },
+      "flight_number": "9I841",
+      "aircraft": "ATR-72",
+      "transit": "0",
+      "route": "DEL-BOM",
+      "availability": "9",
+      "departure_date": {
+       "day": "27",
+       "month": "10",
+       "year": "2026",
+       "hour": "15",
+       "minute": "25",
+       "unix_timestamp": {
+        "date": "2026-10-27 15:25:00.000000",
+        "timezone_type": 3,
+        "timezone": "Asia/Jakarta"
+       }
+      },
+      "arrival_date": {
+       "day": "27",
+       "month": "10",
+       "year": "2026",
+       "hour": "18",
+       "minute": "30",
+       "unix_timestamp": {
+        "date": "2026-10-27 18:30:00.000000",
+        "timezone_type": 3,
+        "timezone": "Asia/Jakarta"
+       }
+      },
+      "num_day_offset": "0",
+      "facilities": {
+       "baggage": {
+        "adult": {
+         "weight": 15
+        },
+        "child": {
+         "weight": 15
+        },
+        "infant": {
+         "weight": 0
+        },
+        "unit_of_measure": "KG"
+       }
+      }
+     }
+    ],
+    "fare_info": {
+     "total_search_fare": {
+      "amount": 12922,
+      "dsc_amount": 0,
+      "sum_amount": 12922,
+      "promo_code": null,
+      "ccy": "INR"
+     },
+     "each_pax_type": {
+      "adult": {
+       "quantity": 1,
+       "fare_each": 12922,
+       "fare_total": 12922,
+       "fare_component": [
+        {
+         "name": "Basic Fare",
+         "alias": "Basic Fare",
+         "type": "FARE",
+         "fare_index": "1",
+         "amount": 11000
+        },
+        {
+         "name": "Insurance",
+         "alias": "Insurance",
+         "type": "FARE",
+         "fare_index": "2",
+         "amount": 0
+        },
+        {
+         "name": "Airport Tax",
+         "alias": "Airport Security Fee",
+         "type": "FARE",
+         "fare_index": "5",
+         "amount": 236
+        },
+        {
+         "name": "Surcharge Fee",
+         "alias": "Fuel Surcharge",
+         "type": "FARE",
+         "fare_index": "4",
+         "amount": 699
+        },
+        {
+         "name": "Terminal Fee",
+         "alias": "Domestic Passenger Service Charge",
+         "type": "FARE",
+         "fare_index": "3",
+         "amount": 91
+        },
+        {
+         "name": "Fare Vat",
+         "alias": "GST 5%",
+         "type": "FARE",
+         "fare_index": "7",
+         "amount": 550
+        },
+        {
+         "name": "Passenger service fee",
+         "alias": "Passenger Service Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "RCS Provision fee",
+         "alias": "RCS Provision Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Development Fee",
+         "alias": "Development Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Convenience Fee",
+         "alias": "Convenience Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Webcharge",
+         "alias": "Convenience Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Reservation and Ticket Fee",
+         "alias": "Reservation and Ticket Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Aviation Security Fee",
+         "alias": "Aviation Security Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Cute Fee",
+         "alias": "Cute Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 105
+        },
+        {
+         "name": "GST",
+         "alias": "GST",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "User Development Fee",
+         "alias": "User Development Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 241
+        },
+        {
+         "name": "Booking Fee",
+         "alias": "Other Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Ancillary Vat",
+         "alias": "Ancillary GST",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Arrival User Development Fee",
+         "alias": "Arrival User Development Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Webcharge International",
+         "alias": "Webcharge International",
+         "type": "FARE",
+         "fare_index": "8",
+         "amount": 0
+        }
+       ]
+      },
+      "child": [],
+      "infant": []
+     }
+    },
+    "flight_metadata": {
+     "meta_flight_string": {
+      "9I841": "H/HVAL"
+     },
+     "meta_flight_no": "9I841",
+     "flight_date": "20261027",
+     "origin": "DEL",
+     "destination": "BOM",
+     "fare_family": "VAL",
+     "discount_details": []
+    }
+   },
+   {
+    "connecting_flight_routes": [
+     {
+      "origin": {
+       "city": "NEW DELHI",
+       "name": "INDIRA GANDHI INTL",
+       "code": "DEL"
+      },
+      "destination": {
+       "code": "BOM",
+       "city": "MUMBAI",
+       "name": "CHHATRAPATI SHIVAJI INTERNATIONAL AIRPORT"
+      },
+      "flight_number": "9I841",
+      "aircraft": "ATR-72",
+      "transit": "0",
+      "route": "DEL-BOM",
+      "availability": "9",
+      "departure_date": {
+       "day": "27",
+       "month": "10",
+       "year": "2026",
+       "hour": "15",
+       "minute": "25",
+       "unix_timestamp": {
+        "date": "2026-10-27 15:25:00.000000",
+        "timezone_type": 3,
+        "timezone": "Asia/Jakarta"
+       }
+      },
+      "arrival_date": {
+       "day": "27",
+       "month": "10",
+       "year": "2026",
+       "hour": "18",
+       "minute": "30",
+       "unix_timestamp": {
+        "date": "2026-10-27 18:30:00.000000",
+        "timezone_type": 3,
+        "timezone": "Asia/Jakarta"
+       }
+      },
+      "num_day_offset": "0",
+      "facilities": {
+       "baggage": {
+        "adult": {
+         "weight": 15
+        },
+        "child": {
+         "weight": 15
+        },
+        "infant": {
+         "weight": 0
+        },
+        "unit_of_measure": "KG"
+       }
+      }
+     }
+    ],
+    "fare_info": {
+     "total_search_fare": {
+      "amount": 22372,
+      "dsc_amount": 0,
+      "sum_amount": 22372,
+      "promo_code": null,
+      "ccy": "INR"
+     },
+     "each_pax_type": {
+      "adult": {
+       "quantity": 1,
+       "fare_each": 22372,
+       "fare_total": 22372,
+       "fare_component": [
+        {
+         "name": "Basic Fare",
+         "alias": "Basic Fare",
+         "type": "FARE",
+         "fare_index": "1",
+         "amount": 20000
+        },
+        {
+         "name": "Insurance",
+         "alias": "Insurance",
+         "type": "FARE",
+         "fare_index": "2",
+         "amount": 0
+        },
+        {
+         "name": "Airport Tax",
+         "alias": "Airport Security Fee",
+         "type": "FARE",
+         "fare_index": "5",
+         "amount": 236
+        },
+        {
+         "name": "Surcharge Fee",
+         "alias": "Fuel Surcharge",
+         "type": "FARE",
+         "fare_index": "4",
+         "amount": 699
+        },
+        {
+         "name": "Terminal Fee",
+         "alias": "Domestic Passenger Service Charge",
+         "type": "FARE",
+         "fare_index": "3",
+         "amount": 91
+        },
+        {
+         "name": "Fare Vat",
+         "alias": "GST 5%",
+         "type": "FARE",
+         "fare_index": "7",
+         "amount": 1000
+        },
+        {
+         "name": "Passenger service fee",
+         "alias": "Passenger Service Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "RCS Provision fee",
+         "alias": "RCS Provision Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Development Fee",
+         "alias": "Development Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Convenience Fee",
+         "alias": "Convenience Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Webcharge",
+         "alias": "Convenience Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Reservation and Ticket Fee",
+         "alias": "Reservation and Ticket Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Aviation Security Fee",
+         "alias": "Aviation Security Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Cute Fee",
+         "alias": "Cute Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 105
+        },
+        {
+         "name": "GST",
+         "alias": "GST",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "User Development Fee",
+         "alias": "User Development Fee",
+         "type": "FEES",
+         "fare_index": null,
+         "amount": 241
+        },
+        {
+         "name": "Booking Fee",
+         "alias": "Other Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Ancillary Vat",
+         "alias": "Ancillary GST",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Arrival User Development Fee",
+         "alias": "Arrival User Development Fee",
+         "type": "FARE",
+         "fare_index": null,
+         "amount": 0
+        },
+        {
+         "name": "Webcharge International",
+         "alias": "Webcharge International",
+         "type": "FARE",
+         "fare_index": "8",
+         "amount": 0
+        }
+       ]
+      },
+      "child": [],
+      "infant": []
+     }
+    },
+    "flight_metadata": {
+     "meta_flight_string": {
+      "9I841": "Y/YFLEX"
+     },
+     "meta_flight_no": "9I841",
+     "flight_date": "20261027",
+     "origin": "DEL",
+     "destination": "BOM",
+     "fare_family": "FLX",
+     "discount_details": []
+    }
+   }
+  ],
+  "return_schedule": [],
+  "is_return": false,
+  "is_international": false,
+  "flight_metadata": {
+   "origin": "DEL",
+   "destination": "BOM",
+   "adult_quantity": 1,
+   "child_quantity": 0,
+   "infant_quantity": 0,
+   "departure_date": "20261027",
+   "is_return": "0"
+  }
+ },
+ "capturedAt": "2026-10-24",
+ "route": "DEL-BOM",
+ "departureDate": "2026-10-27"
+}
