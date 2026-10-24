@@ -597,14 +597,26 @@ adminRouter.post('/speedtest/run', async (req, res) => {
 // ---- Home banners (owner 23 Oct): wide landscape strips rendered between
 // every home section on web + app. Admin controls image, link (vertical id or
 // https URL), title/subtitle, order and active state. ----
+
+/** Owner 24 Oct ("banner ka option reward section aur quick apps mai v do"):
+ * one home_banners table, each row targeted at a section. */
+const BANNER_SECTIONS = ['home', 'rewards', 'quickapps'];
+async function ensureBannerSectionColumn(): Promise<void> {
+  // MySQL: add the column once (guarded — file stores have flexible rows).
+  try {
+    await getStore().execute("ALTER TABLE home_banners ADD COLUMN section VARCHAR(20) NOT NULL DEFAULT 'home'");
+  } catch { /* column already exists, or a file store — either way fine */ }
+}
 adminRouter.get('/home-banners', async (_req, res) => {
   try {
+    await ensureBannerSectionColumn();
     const rows = await getStore().query<any>('SELECT * FROM home_banners');
     const banners = rows
       .sort((a, z) => (Number(a.position ?? 0) - Number(z.position ?? 0)) || (Number(a.id) - Number(z.id)))
       .map((r) => ({
         id: Number(r.id), imageUrl: String(r.image_url || ''), link: String(r.link_url || 'movies'),
         title: r.title ? String(r.title) : null, subtitle: r.subtitle ? String(r.subtitle) : null,
+        section: BANNER_SECTIONS.includes(String(r.section || 'home')) ? String(r.section) : 'home',
         isActive: Number(r.is_active ?? 1) === 1, position: Number(r.position ?? 0),
       }));
     res.json({ success: true, banners });
@@ -622,13 +634,16 @@ adminRouter.post('/home-banners', async (req, res) => {
     const isActive = req.body?.isActive === false ? 0 : 1;
     const position = Number(req.body?.position ?? 0) || 0;
     const id = Number(req.body?.id || 0);
+    // Owner 24 Oct: banners can target home, the Rewards section or Quick Apps.
+    const section = BANNER_SECTIONS.includes(String(req.body?.section || '')) ? String(req.body.section) : 'home';
+    await ensureBannerSectionColumn();
     if (id) {
-      await getStore().execute('UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, is_active = ?, position = ? WHERE id = ?',
-        [imageUrl, link, title, subtitle, isActive, position, id]);
+      await getStore().execute('UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, section = ?, is_active = ?, position = ? WHERE id = ?',
+        [imageUrl, link, title, subtitle, section, isActive, position, id]);
       audit(req, 'home_banner_update', String(id));
     } else {
-      await getStore().execute('INSERT INTO home_banners (image_url, link_url, title, subtitle, is_active, position) VALUES (?, ?, ?, ?, ?, ?)',
-        [imageUrl, link, title, subtitle, isActive, position]);
+      await getStore().execute('INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [imageUrl, link, title, subtitle, section, isActive, position]);
       audit(req, 'home_banner_create', imageUrl.slice(0, 80));
     }
     purgeSectionCache(); // owner edit live on next request, never behind the 24h TTL

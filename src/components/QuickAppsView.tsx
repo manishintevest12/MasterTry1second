@@ -13,6 +13,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { INITIAL_QUICK_APP_PARTNERS } from '../data/quickAppsData';
 import { QuickAppPartner } from '../types';
+import { HomeBannerStrip } from './HomeBannerStrip';
 
 export const QuickAppsView: React.FC = () => {
   const { quickAppPartners, trackQuickAppRedirection } = useApp();
@@ -258,6 +259,10 @@ export const QuickAppsView: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Owner 24 Oct: admin banner option inside Quick Apps (admin
+          HomeBannersTab, section=quickapps). Renders nothing when unset. */}
+      <HomeBannerStrip slot={0} section="quickapps" />
 
       {/* ================= PARTNER APPS GRID ================= */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

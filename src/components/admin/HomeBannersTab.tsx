@@ -15,6 +15,7 @@ type Banner = {
   link: string;
   title: string | null;
   subtitle: string | null;
+  section: string;
   isActive: boolean;
   position: number;
 };
@@ -25,6 +26,7 @@ export const HomeBannersTab: React.FC = () => {
   const [rows, setRows] = useState<Banner[]>([]);
   const [imageUrl, setImageUrl] = useState('');
   const [link, setLink] = useState('movies');
+  const [section, setSection] = useState('home');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -86,13 +88,14 @@ export const HomeBannersTab: React.FC = () => {
       const res = await fetch('/api/admin/home-banners', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ imageUrl: imageUrl.trim(), link: link.trim(), title: title.trim() || null, position: rows.length }),
+        body: JSON.stringify({ imageUrl: imageUrl.trim(), link: link.trim(), title: title.trim() || null, section, position: rows.length }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Could not save banner');
       setImageUrl('');
       setLink('movies');
       setTitle('');
+      setSection('home');
       setMsg({ ok: true, text: 'Banner saved — live on web + app instantly.' });
       await load();
     } catch (e: unknown) {
@@ -106,7 +109,7 @@ export const HomeBannersTab: React.FC = () => {
     await fetch('/api/admin/home-banners', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, isActive: !b.isActive, position: b.position }),
+      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, section: b.section, isActive: !b.isActive, position: b.position }),
     });
     await load();
   };
@@ -115,7 +118,7 @@ export const HomeBannersTab: React.FC = () => {
     await fetch('/api/admin/home-banners', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, isActive: b.isActive, position: Math.max(0, b.position + delta) }),
+      body: JSON.stringify({ id: b.id, imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle, section: b.section, isActive: b.isActive, position: Math.max(0, b.position + delta) }),
     });
     await load();
   };
@@ -134,8 +137,9 @@ export const HomeBannersTab: React.FC = () => {
           <ImageIcon className="w-5 h-5 text-red-600" /> Home Banners
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Wide landscape strips shown between every home section (web + Android app). Link to a vertical id (movies, flights, hotels,
-          ecommerce, grocery, food, bus, cab, loans, insurance, creditcards) or a full https URL.
+          Wide landscape strips shown between every home section (web + Android app) — and now also inside the Rewards and Quick Apps
+          sections (owner 24 Oct: pick the section per banner). Link to a vertical id (movies, flights, hotels, ecommerce, grocery,
+          food, bus, cab, loans, insurance, creditcards) or a full https URL.
         </p>
       </div>
 
@@ -151,6 +155,14 @@ export const HomeBannersTab: React.FC = () => {
             </button>
           </div>
           {imageUrl && <img src={imageUrl} alt="preview" className="mt-2 h-20 w-auto rounded-lg border border-slate-200 object-cover" />}
+        </div>
+        <div>
+          <label className="text-[11px] font-black uppercase text-slate-500">Where it shows (section)</label>
+          <select value={section} onChange={(e) => setSection(e.target.value)} className={inputCls + ' mt-1'}>
+            <option value="home">Home (between home sections)</option>
+            <option value="rewards">Rewards section</option>
+            <option value="quickapps">Quick Apps section</option>
+          </select>
         </div>
         <div>
           <label className="text-[11px] font-black uppercase text-slate-500">Link (vertical id or https URL)</label>
@@ -182,6 +194,9 @@ export const HomeBannersTab: React.FC = () => {
                 <p className="text-sm font-black text-slate-900 truncate">{b.title || 'Untitled banner'}</p>
                 <p className="text-[11px] text-slate-500 flex items-center gap-1 truncate">
                   <ExternalLink className="w-3 h-3" /> {b.link}
+                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase ${b.section === 'home' ? 'bg-slate-100 text-slate-600' : 'bg-red-50 text-red-700'}`}>
+                    {b.section}
+                  </span>
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">

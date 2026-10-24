@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../core/api.dart';
 import '../../core/session_cache.dart';
 import '../../core/storage.dart';
+import '../../core/app_state.dart';
 import '../../core/theme.dart';
+
+import '../widgets/home_banner_strip.dart';
 import '../widgets/common.dart';
 import '../widgets/kit.dart';
 
@@ -88,6 +91,12 @@ class _QuickAppsScreenState extends State<QuickAppsScreen> {
                 ),
               ],
             ),
+          ),
+          // Owner 24 Oct: admin banner option inside Quick Apps (admin portal
+          // HomeBannersTab, section=quickapps). Renders nothing when unset.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: HomeBannerStrip(api: AppState.instance.api, slot: 0, section: 'quickapps', onOpenVertical: (v) => AppState.instance.openVertical(v)),
           ),
           Expanded(
             child: _loading

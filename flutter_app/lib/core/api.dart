@@ -1336,8 +1336,12 @@ class Try1SecondApi {
     ];
   }
 
-  Future<List<HomeBanner>> homeBanners() async {
-    final data = await _get('/api/home-banners');
+  /// Owner 24 Oct: section-targeted banners ('home' keeps the mixed strip,
+  /// 'rewards'/'quickapps' serve that section's admin-authored set).
+  Future<List<HomeBanner>> homeBanners({String section = 'home'}) async {
+    final data = await _get(section == 'home'
+        ? '/api/home-banners'
+        : '/api/home-banners?section=${Uri.encodeQueryComponent(section)}');
     final rows = data['banners'];
     if (rows is! List) return const [];
     return [

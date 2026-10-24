@@ -7,6 +7,7 @@ import { OffersHub } from './OffersHub';
 import { SpinAndEarnWheel } from './SpinAndEarnWheel';
 import { CardOptimizer } from './CardOptimizer';
 import { RewardsTopPicks } from './RewardsTopPicks';
+import { HomeBannerStrip } from './HomeBannerStrip';
 import { ReferAndEarn } from './ReferAndEarn';
 import { Crown } from 'lucide-react';
 
@@ -115,6 +116,10 @@ export const RewardsHub: React.FC = () => {
           <span className="text-slate-400 text-[11px]">(+1 pt per new referral)</span>
         </div>
       </div>
+
+      {/* Owner 24 Oct: admin banner option inside Rewards (admin HomeBannersTab,
+          section=rewards). Renders nothing when no rewards banner is set. */}
+      <HomeBannerStrip slot={0} section="rewards" />
 
       {/* Subtab Contents */}
       <div>

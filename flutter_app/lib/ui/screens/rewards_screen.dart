@@ -13,6 +13,7 @@ import '../widgets/kit.dart';
 import '../widgets/spin_wheel.dart';
 import 'package:share_plus/share_plus.dart';
 import '../widgets/home_showcase.dart';
+import '../widgets/home_banner_strip.dart';
 /// Rewards Hub (website RewardsHub + OffersHub): wallet with OmniPoints and
 /// free spins, the real Spin & Earn wheel, referral link, and the Deals &
 /// Coupons hub with per-store tiles (UP TO X% OFF) and live deal cards.
@@ -181,6 +182,10 @@ class _DealsHubState extends State<_DealsHub> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
+          // Owner 24 Oct: admin banner option inside Rewards (admin portal
+          // HomeBannersTab, section=rewards). Renders nothing when unset.
+          HomeBannerStrip(api: widget.state.api, slot: 0, section: 'rewards', onOpenVertical: (v) => widget.state.openVertical(v)),
+          const SizedBox(height: 14),
           if ((_picks ?? const []).isNotEmpty) ...[
             _TopPicksRail(picks: _picks!, state: widget.state),
             const SizedBox(height: 14),

@@ -322,8 +322,12 @@ class _HeaderOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Owner 24 Oct ("header ka breadth thora increase kro — website
+              // ka menu bar completely hide ni ho raha"): the strip grew from
+              // 52 to 68 + a 10pt spacer so typical merchant sticky menus
+              // (Amazon/Flipkart ~60-70pt) stay fully behind the overlay.
               SizedBox(
-                height: 52,
+                height: 68,
                 child: Row(children: [
                   const SizedBox(width: 14),
                   const Icon(Icons.travel_explore, size: 20, color: Colors.white70),
@@ -345,12 +349,13 @@ class _HeaderOverlay extends StatelessWidget {
                   ),
                 ]),
               ),
-              // White tab handle centered under the dark strip (owner 23 Oct).
+              // White tab handle centered under the dark strip (owner 23 Oct;
+              // margin 8 -> 10 with the taller strip, owner 24 Oct).
               Center(
                 child: Container(
                   width: 36,
                   height: 4.5,
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: 10),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(999),

@@ -15,10 +15,12 @@ import 'kit.dart';
 /// Tap: a vertical id ('movies', 'flights', ...) opens that vertical inside
 /// the app; an https URL opens in the in-app browser via the global openDeal.
 class HomeBannerStrip extends StatefulWidget {
-  const HomeBannerStrip({super.key, required this.api, required this.onOpenVertical, this.slot = 0});
+  const HomeBannerStrip({super.key, required this.api, required this.onOpenVertical, this.slot = 0, this.section = 'home'});
   final Try1SecondApi api;
   final void Function(String vertical) onOpenVertical;
   final int slot;
+  /// 'home' | 'rewards' | 'quickapps' (owner 24 Oct banner option in rewards + quick apps).
+  final String section;
 
   @override
   State<HomeBannerStrip> createState() => _HomeBannerStripState();
@@ -36,13 +38,14 @@ class _HomeBannerStripState extends State<HomeBannerStrip> {
   void initState() {
     super.initState();
     _idx = widget.slot;
-    if (SessionCache.has('home.banners')) {
-      _banners = SessionCache.get('home.banners', const <HomeBanner>[]);
+    final cacheKey = 'home.banners.${widget.section}';
+    if (SessionCache.has(cacheKey)) {
+      _banners = SessionCache.get(cacheKey, const <HomeBanner>[]);
       _startCycle();
       return;
     }
-    widget.api.homeBanners().then((b) {
-      SessionCache.put('home.banners', b);
+    widget.api.homeBanners(section: widget.section).then((b) {
+      SessionCache.put(cacheKey, b);
       if (mounted) {
         setState(() => _banners = b);
         _startCycle();

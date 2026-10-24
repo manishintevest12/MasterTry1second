@@ -2099,9 +2099,18 @@ apiRouter.post('/rewards/referral/apply', requireAuth, async (req, res) => {
 // GET /api/home-banners — dynamic admin-managed banner strips between home
 // sections (owner 23 Oct). Wide landscape images; link is a vertical id
 // ('movies') or an https URL. Served to web + Flutter app alike.
-apiRouter.get('/home-banners', async (_req, res) => {
+apiRouter.get('/home-banners', async (req, res) => {
   try {
     // Owner 23 Oct: 24h cache; admin banner edits purge instantly.
+    // Owner 24 Oct ("banner ka option reward section aur quick apps mai v
+    // do"): ?section=rewards|quickapps serves that section's admin banners;
+    // the default remains the mixed home strip (admin + live banners).
+    const section = String((req.query as any)?.section || 'home');
+    if (section !== 'home') {
+      const banners = await cachedSection(`section-banners:${section}`, () => buildSectionBannersOnly(section));
+      res.json({ success: true, banners });
+      return;
+    }
     const banners = await cachedSection('home:section-banners', buildHomeBannersList);
     res.json({ success: true, banners });
   } catch {
@@ -2109,12 +2118,31 @@ apiRouter.get('/home-banners', async (_req, res) => {
   }
 });
 
+/** Admin-authored banners for ONE section (rewards / quickapps), no live padding. */
+async function buildSectionBannersOnly(section: string): Promise<any[]> {
+  const rows = await getStore().query<any>('SELECT * FROM home_banners');
+  return rows
+    .filter((r) => Number(r.is_active ?? 1) === 1)
+    .filter((r) => String(r.section || 'home') === section)
+    .sort((a, z) => (Number(a.position ?? 0) - Number(z.position ?? 0)) || (Number(a.id) - Number(z.id)))
+    .map((r) => ({
+      id: Number(r.id),
+      imageUrl: String(r.image_url || ''),
+      link: String(r.link_url || 'movies'),
+      title: r.title ? String(r.title) : null,
+      subtitle: r.subtitle ? String(r.subtitle) : null,
+    }));
+}
+
 /** Admin-authored home_banners rows + live mixed-content section banners. */
 async function buildHomeBannersList(): Promise<any[]> {
   try {
     const rows = await getStore().query<any>('SELECT * FROM home_banners');
+    // Owner 24 Oct: rows target sections; the home strip keeps only 'home'
+    // rows (rewards/quickapps banners must never leak into the home strips).
     const admin = rows
       .filter((r) => Number(r.is_active ?? 1) === 1)
+      .filter((r) => String(r.section || 'home') === 'home')
       .sort((a, z) => (Number(a.position ?? 0) - Number(z.position ?? 0)) || (Number(a.id) - Number(z.id)))
       .map((r) => ({
         id: Number(r.id),

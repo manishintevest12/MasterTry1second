@@ -17,27 +17,28 @@ export type HomeBanner = {
   subtitle?: string | null;
 };
 
-// Module-level cache: every strip on the page shares ONE fetch per page load.
-let bannerCache: HomeBanner[] | null = null;
-let bannerInflight: Promise<HomeBanner[]> | null = null;
+// Module-level cache: every strip on the page shares ONE fetch per page load.// Owner 24 Oct: per-SECTION caches — home keeps the mixed strip, rewards and
+// quickapps fetch their own admin-authored banner sets via ?section=.
+const bannerCache = new Map<string, HomeBanner[]>();
+const bannerInflight = new Map<string, Promise<HomeBanner[]>>();
 
-export function fetchHomeBanners(): Promise<HomeBanner[]> {
-  if (bannerCache) return Promise.resolve(bannerCache);
-  if (!bannerInflight) {
-    const load = async (): Promise<HomeBanner[]> => {
-      try {
-        const r = await fetch('/api/home-banners');
-        const d = r.ok ? await r.json() : null;
-        bannerCache = d?.success && Array.isArray(d.banners) ? (d.banners as HomeBanner[]) : [];
-        return bannerCache;
-      } catch {
-        bannerCache = [];
-        return [];
-      }
-    };
-    bannerInflight = load();
-  }
-  return bannerInflight;
+export function fetchHomeBanners(section = 'home'): Promise<HomeBanner[]> {
+  if (bannerCache.has(section)) return Promise.resolve(bannerCache.get(section)!);
+  if (bannerInflight.has(section)) return bannerInflight.get(section)!;
+  const load = async (): Promise<HomeBanner[]> => {
+    try {
+      const r = await fetch(section === 'home' ? '/api/home-banners' : `/api/home-banners?section=${encodeURIComponent(section)}`);
+      const d = r.ok ? await r.json() : null;
+      const list: HomeBanner[] = d?.success && Array.isArray(d.banners) ? (d.banners as HomeBanner[]) : [];
+      bannerCache.set(section, list);
+      return list;
+    } catch {
+      bannerCache.set(section, []);
+      return [];
+    }
+  };
+  bannerInflight.set(section, load());
+  return bannerInflight.get(section)!;
 }
 
 const resolveImage = (url: string) => (/^https?:\/\//.test(url) ? url : url);
@@ -48,12 +49,12 @@ const resolveImage = (url: string) => (/^https?:\/\//.test(url) ? url : url);
 const BADGE: Record<string, string> = { movies: 'MOVIE PICK', food: 'FOOD PICK', ecommerce: 'MEGA DEAL' };
 const CTA: Record<string, string> = { movies: 'Book Now', food: 'Order Now', ecommerce: 'Grab Deal' };
 
-export const HomeBannerStrip: React.FC<{ slot: number; onLaunchVertical?: (vertical: string) => void }> = ({ slot, onLaunchVertical }) => {
+export const HomeBannerStrip: React.FC<{ slot: number; section?: string; onLaunchVertical?: (vertical: string) => void }> = ({ slot, section = 'home', onLaunchVertical }) => {
   const [banners, setBanners] = useState<HomeBanner[] | null>(null);
   const [idx, setIdx] = useState(0);
   useEffect(() => {
     let alive = true;
-    fetchHomeBanners().then((b) => {
+    fetchHomeBanners(section).then((b) => {
       if (alive) setBanners(b);
     });
     return () => {

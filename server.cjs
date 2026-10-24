@@ -30496,10 +30496,20 @@ async function signInGoogleUser(claims) {
   ]);
   return { token, row };
 }
+async function buildSectionBannersOnly(section) {
+  const rows = await getStore().query("SELECT * FROM home_banners");
+  return rows.filter((r) => Number(r.is_active ?? 1) === 1).filter((r) => String(r.section || "home") === section).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+    id: Number(r.id),
+    imageUrl: String(r.image_url || ""),
+    link: String(r.link_url || "movies"),
+    title: r.title ? String(r.title) : null,
+    subtitle: r.subtitle ? String(r.subtitle) : null
+  }));
+}
 async function buildHomeBannersList() {
   try {
     const rows = await getStore().query("SELECT * FROM home_banners");
-    const admin = rows.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+    const admin = rows.filter((r) => Number(r.is_active ?? 1) === 1).filter((r) => String(r.section || "home") === "home").sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
       id: Number(r.id),
       imageUrl: String(r.image_url || ""),
       link: String(r.link_url || "movies"),
@@ -31885,8 +31895,14 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e?.message || "referral_unavailable" });
       }
     });
-    apiRouter.get("/home-banners", async (_req, res) => {
+    apiRouter.get("/home-banners", async (req, res) => {
       try {
+        const section = String(req.query?.section || "home");
+        if (section !== "home") {
+          const banners2 = await cachedSection(`section-banners:${section}`, () => buildSectionBannersOnly(section));
+          res.json({ success: true, banners: banners2 });
+          return;
+        }
         const banners = await cachedSection("home:section-banners", buildHomeBannersList);
         res.json({ success: true, banners });
       } catch {
@@ -33206,7 +33222,13 @@ var adminRoutes_exports = {};
 __export(adminRoutes_exports, {
   adminRouter: () => adminRouter
 });
-var import_express2, adminRouter, audit;
+async function ensureBannerSectionColumn() {
+  try {
+    await getStore().execute("ALTER TABLE home_banners ADD COLUMN section VARCHAR(20) NOT NULL DEFAULT 'home'");
+  } catch {
+  }
+}
+var import_express2, adminRouter, audit, BANNER_SECTIONS;
 var init_adminRoutes = __esm({
   "server/admin/adminRoutes.ts"() {
     import_express2 = require("express");
@@ -33807,8 +33829,10 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e?.message || "Speed test failed" });
       }
     });
+    BANNER_SECTIONS = ["home", "rewards", "quickapps"];
     adminRouter.get("/home-banners", async (_req, res) => {
       try {
+        await ensureBannerSectionColumn();
         const rows = await getStore().query("SELECT * FROM home_banners");
         const banners = rows.sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
           id: Number(r.id),
@@ -33816,6 +33840,7 @@ var init_adminRoutes = __esm({
           link: String(r.link_url || "movies"),
           title: r.title ? String(r.title) : null,
           subtitle: r.subtitle ? String(r.subtitle) : null,
+          section: BANNER_SECTIONS.includes(String(r.section || "home")) ? String(r.section) : "home",
           isActive: Number(r.is_active ?? 1) === 1,
           position: Number(r.position ?? 0)
         }));
@@ -33835,16 +33860,18 @@ var init_adminRoutes = __esm({
         const isActive3 = req.body?.isActive === false ? 0 : 1;
         const position = Number(req.body?.position ?? 0) || 0;
         const id = Number(req.body?.id || 0);
+        const section = BANNER_SECTIONS.includes(String(req.body?.section || "")) ? String(req.body.section) : "home";
+        await ensureBannerSectionColumn();
         if (id) {
           await getStore().execute(
-            "UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, is_active = ?, position = ? WHERE id = ?",
-            [imageUrl, link, title, subtitle, isActive3, position, id]
+            "UPDATE home_banners SET image_url = ?, link_url = ?, title = ?, subtitle = ?, section = ?, is_active = ?, position = ? WHERE id = ?",
+            [imageUrl, link, title, subtitle, section, isActive3, position, id]
           );
           audit(req, "home_banner_update", String(id));
         } else {
           await getStore().execute(
-            "INSERT INTO home_banners (image_url, link_url, title, subtitle, is_active, position) VALUES (?, ?, ?, ?, ?, ?)",
-            [imageUrl, link, title, subtitle, isActive3, position]
+            "INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [imageUrl, link, title, subtitle, section, isActive3, position]
           );
           audit(req, "home_banner_create", imageUrl.slice(0, 80));
         }
