@@ -9792,6 +9792,123 @@ var init_cathayTsp = __esm({
   }
 });
 
+// server/workers/parsers/britishAirwaysPaa.ts
+function baIntegrityToken(dep, from, to) {
+  const raw = `${dep.toUpperCase()}${from.toUpperCase()}${to}`;
+  const hex = (0, import_node_crypto2.createHash)("sha256").update(raw).digest("hex");
+  return Buffer.from(hex, "hex").toString("base64");
+}
+function baDeeplink(from, to, dep) {
+  return `${BA_FLIGHTLIST}?onds=${from}-${to}_${dep}&ad=1&yad=0&ch=0&inf=0&cabin=M&flex=LOWEST&ond=1`;
+}
+function baAvailabilityBody(from, to, dep) {
+  return {
+    ondSearches: [{ originLocationCode: from, destinationLocationCode: to, departureDate: dep }],
+    cabin: "M",
+    ticketFlexibility: "LOWEST",
+    passengerMix: { adultCount: 1, youngAdultCount: 0, childCount: 0, infantCount: 0 },
+    cug: false,
+    includeCalendar: true,
+    calendarDays: 3,
+    baIntegrityTokenV1: baIntegrityToken(dep, from, to)
+  };
+}
+function baAvailabilityUrl(from, to, dep) {
+  return `${BA_AVAILABILITY_API};ondwanted=1?metasearchdata=${from}_${to}_${dep}`;
+}
+function parseBaCabinHelper(body) {
+  try {
+    return JSON.parse(body)?.reply || {};
+  } catch {
+    return {};
+  }
+}
+function parseBaAvailability(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    throw new Error("SCHEMA_MISMATCH: not JSON");
+  }
+  const ond = Array.isArray(d?.availabilityData) ? d.availabilityData[0] : d;
+  const options = ond?.availableOptions;
+  if (!Array.isArray(options) || !options.length) {
+    throw new Error("SCHEMA_MISMATCH: availabilityData[].availableOptions missing");
+  }
+  const out = [];
+  for (const opt of options) {
+    const events = opt?.flightEvents;
+    if (!Array.isArray(events) || !events.length) continue;
+    const first = events[0];
+    const last = events[events.length - 1];
+    const fn = `${first.marketingCarrierCode || first.marketingCarrier?.carrierCode || ""}${first.marketingFlightNumber || first.marketingCarrier?.flightNumber || ""}`;
+    const cabins = Array.isArray(opt.availableCabinsForOption) ? opt.availableCabinsForOption : [];
+    const priced = cabins.filter((c) => !c.isNotAvailable && typeof c?.cabinPrice?.lowestJourneyPrice === "number").sort((a, b) => a.cabinPrice.lowestJourneyPrice - b.cabinPrice.lowestJourneyPrice);
+    const best = priced[0];
+    if (!fn || !best) continue;
+    const price = best.cabinPrice.lowestJourneyPriceRounded || Math.ceil(best.cabinPrice.lowestJourneyPrice);
+    const key = `${fn}-${isoTime2(first.departureDateTime || "")}`;
+    if (out.some((o) => `${o.flightNumber}-${o.depTime}` === key)) continue;
+    out.push({
+      flightNumber: fn,
+      depTime: isoTime2(first.departureDateTime || ""),
+      arrTime: isoTime2(last.arrivalDateTime || ""),
+      depIso: first.departureDateTime || "",
+      arrIso: last.arrivalDateTime || "",
+      stops: Math.max(0, events.length - 1),
+      price,
+      currency: best.cabinPrice.currencyCode || best.fareCurrency || "GBP",
+      cabin: best.dominantFareName || best.dominantFareType || ""
+    });
+  }
+  if (!out.length) throw new Error("SCHEMA_MISMATCH: no priced flight options decoded");
+  return out;
+}
+function baFlightItems(flights, source, fromCity, toCity, fromCode, toCode, dep) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return flights.map((o) => newRawItem(source, {
+    title: `British Airways ${o.flightNumber} ${fromCity} \u2192 ${toCity} ${o.depTime}\u2013${o.arrTime} \xB7 ${o.currency} ${o.price.toLocaleString("en-IN")}`,
+    brand: "British Airways",
+    price: o.price,
+    currency: o.currency,
+    seller: "British Airways",
+    sellerUrl: baDeeplink(fromCode, toCode, dep),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: dep },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: "British Airways",
+      flight_number: o.flightNumber,
+      travel_date: dep,
+      departure_date: dep,
+      departs: o.depTime,
+      arrives: o.arrTime,
+      duration: "",
+      stops: o.stops === 0 ? "non-stop" : `${o.stops} stop${o.stops > 1 ? "s" : ""}`,
+      fare_class: (o.cabin || "economy").toLowerCase(),
+      price_basis: `British Airways live ${o.cabin || "fare"} base fare (EXCLUDES taxes/fees/carrier charges) for 1 adult on ${dep} captured ${today2}`,
+      data_note: "Live per-flight data from British Airways' own booking engine (badotcomadapter-paa availability API). BA displays base fares excluding taxes on its flight list.",
+      image: ""
+    },
+    identifiers: { sku: `ba-${o.flightNumber}-${dep}` },
+    evidence: {
+      sourceUrl: BA_AVAILABILITY_API,
+      extractedFields: ["availabilityData[].availableOptions[].flightEvents", "availableCabinsForOption[].cabinPrice.lowestJourneyPrice"]
+    }
+  }));
+}
+var import_node_crypto2, BA_AVAILABILITY_API, BA_GRANT_API, BA_CABIN_HELPER, BA_FLIGHTLIST, isoTime2;
+var init_britishAirwaysPaa = __esm({
+  "server/workers/parsers/britishAirwaysPaa.ts"() {
+    import_node_crypto2 = require("node:crypto");
+    init_contract();
+    BA_AVAILABILITY_API = "https://www.britishairways.com/api/sc4/badotcomadapter-paa/rs/v1/flightavailability/search";
+    BA_GRANT_API = "https://www.britishairways.com/api/grant";
+    BA_CABIN_HELPER = (from, to) => `https://www.britishairways.com/lookup/jsonp/cabinHelper/getCabinsForRoute/${to}/${from}/en`;
+    BA_FLIGHTLIST = "https://www.britishairways.com/travel/book/public/en_gb/flightList";
+    isoTime2 = (iso2) => (iso2 || "").slice(11, 16);
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13906,6 +14023,7 @@ var init_flights = __esm({
     init_qatarAirwaysNbx();
     init_emiratesSrp();
     init_cathayTsp();
+    init_britishAirwaysPaa();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -14964,6 +15082,98 @@ var init_flights = __esm({
               }
             }
             throw new AcquisitionError("ACCESS_CHALLENGE", `Cathay Pacific TSP API gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
+          }
+        },
+        {
+          // British Airways (24 Oct 2026): recipe-only availability probe. All
+          // GETs on ba.com are open from datacenter IPs (incl. the
+          // lookup/jsonp/cabinHelper route validator), but EVERY POST tarpits -
+          // /api/grant and badotcomadapter-paa flightavailability/search hang
+          // with 0 bytes on chrome+safari rungs, and even a live Browserbase
+          // Chrome could not complete the availability call (Akamai BMP). Recipe
+          // fully captured from the public ba-sell bundle + live CDP observation:
+          // public grant -> availability POST with ondSearches body + the
+          // deobfuscated baIntegrityTokenV1 (base64(hex(sha256(date+org+dst)))).
+          // SELF-DETECTING (owner standing rule): 3-rung ladder, tarpit/403 =>
+          // honest ACCESS_CHALLENGE; probe self-activates on a clean production
+          // IP; parser is defensive and fails loudly (SCHEMA_MISMATCH) so the
+          // first successful prod run gives us the exact payload to tighten.
+          sourceId: "w_flights_britishairways",
+          name: "Flights worker: British Airways booking engine (badotcomadapter-paa probe)",
+          priority: 15,
+          maxPerMinute: 2,
+          timeoutMs: 5e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            try {
+              const ch = await cffiFetch(BA_CABIN_HELPER(fromA.code, toA.code), { impersonate: "chrome", timeoutMs: 15e3, headers: { "User-Agent": UA6, Accept: "*/*", Referer: "https://www.britishairways.com/travel/book/public/en_gb/" } });
+              const cabins = parseBaCabinHelper(ch.body || "");
+              if (ch.status === 200 && Object.keys(cabins).length === 0) return [];
+            } catch {
+            }
+            const rungs = [
+              { imp: "chrome", label: "chrome" },
+              { imp: "safari", label: "safari" }
+            ];
+            let lastStatus = 0;
+            for (const rung of rungs) {
+              try {
+                const g = await cffiFetch(BA_GRANT_API, {
+                  impersonate: rung.imp,
+                  timeoutMs: 2e4,
+                  method: "POST",
+                  headers: {
+                    "User-Agent": UA6,
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    Authorization: 'Client client_id="bacomngprod"',
+                    Origin: "https://www.britishairways.com",
+                    Referer: "https://www.britishairways.com/travel/flexible-search/public/en_gb/"
+                  },
+                  body: "grant_type=urn:com:baplc:oauth:grant:public"
+                });
+                lastStatus = g.status;
+                if (g.status !== 200) {
+                  await new Promise((rr) => setTimeout(rr, 1500));
+                  continue;
+                }
+                const cookies = g.cookies || {};
+                const r = await cffiFetch(baAvailabilityUrl(fromA.code, toA.code, dep), {
+                  impersonate: rung.imp,
+                  timeoutMs: 3e4,
+                  method: "POST",
+                  cookies,
+                  headers: {
+                    "User-Agent": UA6,
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    "Accept-Language": "en-GB,en;q=0.9",
+                    "ba_integrity_tokenV1": baIntegrityToken(dep, fromA.code, toA.code),
+                    Origin: "https://www.britishairways.com",
+                    Referer: baDeeplink(fromA.code, toA.code, dep)
+                  },
+                  body: JSON.stringify(baAvailabilityBody(fromA.code, toA.code, dep))
+                });
+                if (r.status === 200 && (r.body || "").length > 200) {
+                  const flights = parseBaAvailability(r.body || "");
+                  return baFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+                }
+                if (r.status === 403 || r.status === 429) {
+                  await new Promise((rr) => setTimeout(rr, 1500));
+                  continue;
+                }
+                break;
+              } catch {
+                continue;
+              }
+            }
+            throw new AcquisitionError("ACCESS_CHALLENGE", `British Airways availability API tarpits/gates from this IP (last HTTP ${lastStatus || 0}; probe self-activates on a clean production IP)`, lastStatus || 403);
           }
         },
         {
@@ -20164,7 +20374,7 @@ ${v}\r
     const dom = new JSDOM(html.replace(m[0], ""), { url, runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc });
     const w = dom.window;
     Object.defineProperty(w, "crypto", {
-      value: { ...w.crypto || {}, subtle: import_node_crypto2.webcrypto.subtle, getRandomValues: (b) => import_node_crypto2.webcrypto.getRandomValues(b) },
+      value: { ...w.crypto || {}, subtle: import_node_crypto3.webcrypto.subtle, getRandomValues: (b) => import_node_crypto3.webcrypto.getRandomValues(b) },
       configurable: true,
       writable: true
     });
@@ -20221,10 +20431,10 @@ ${v}\r
   }
   return { mintAwsWafToken, wafGet, isChallenged: (status, body) => status === 202 || status === 200 && body.includes("gokuProps") };
 }
-var import_node_crypto2, UA2, CACHE_TTL_MS, tokenCache;
+var import_node_crypto3, UA2, CACHE_TTL_MS, tokenCache;
 var init_awsWafChallenge = __esm({
   "server/common/awsWafChallenge.ts"() {
-    import_node_crypto2 = require("node:crypto");
+    import_node_crypto3 = require("node:crypto");
     init_logger();
     UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
     CACHE_TTL_MS = 15e4;
@@ -21948,7 +22158,7 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
   }
 }
-var import_node_crypto3, bmsLastPrice, moviesWorker;
+var import_node_crypto4, bmsLastPrice, moviesWorker;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -21961,7 +22171,7 @@ var init_movies = __esm({
     init_district();
     init_districtGw();
     init_imdbRatings();
-    import_node_crypto3 = require("node:crypto");
+    import_node_crypto4 = require("node:crypto");
     bmsLastPrice = /* @__PURE__ */ new Map();
     moviesWorker = {
       vertical: "movies",
@@ -21997,7 +22207,7 @@ var init_movies = __esm({
             const payload = JSON.parse(res.body);
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, stripTokens)) : "";
-            const fingerprint = (0, import_node_crypto3.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
+            const fingerprint = (0, import_node_crypto4.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
             const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
             const gwCity = gwCitySlug(typedCity || region.regionName || "");
             const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);

@@ -32,6 +32,7 @@ import { SIA_HOME, SIA_CHAT_PAGE, SIA_CHAT_API, siaChatPrompt, siaChatBody, pars
 import { QR_FARE_CALENDARS, QR_FLIGHT_OFFERS, qrHeaders, qrFareCalendarsBody, qrFlightOffersBody, parseQrFareCalendars, parseQrFlightOffers, qrFlightItems, qrCalendarItems } from '../parsers/qatarAirwaysNbx';
 import { ekSearchRequestUrl, EK_GATE_MARKER, parseEmiratesSrp, ekFlightItems } from '../parsers/emiratesSrp';
 import { CX_TSP_API, cxParams, cxDeeplink, parseCathayOfferFlights, parseCathayAirCalendar, cxFlightItems } from '../parsers/cathayTsp';
+import { BA_GRANT_API, BA_CABIN_HELPER, baAvailabilityUrl, baAvailabilityBody, baIntegrityToken, baDeeplink, parseBaCabinHelper, parseBaAvailability, baFlightItems } from '../parsers/britishAirwaysPaa';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -1158,6 +1159,89 @@ export const flightsWorker: VerticalWorker = {
           } catch { continue; }
         }
         throw new AcquisitionError('ACCESS_CHALLENGE', `Cathay Pacific TSP API gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
+      },
+    },
+    {
+      // British Airways (24 Oct 2026): recipe-only availability probe. All
+      // GETs on ba.com are open from datacenter IPs (incl. the
+      // lookup/jsonp/cabinHelper route validator), but EVERY POST tarpits -
+      // /api/grant and badotcomadapter-paa flightavailability/search hang
+      // with 0 bytes on chrome+safari rungs, and even a live Browserbase
+      // Chrome could not complete the availability call (Akamai BMP). Recipe
+      // fully captured from the public ba-sell bundle + live CDP observation:
+      // public grant -> availability POST with ondSearches body + the
+      // deobfuscated baIntegrityTokenV1 (base64(hex(sha256(date+org+dst)))).
+      // SELF-DETECTING (owner standing rule): 3-rung ladder, tarpit/403 =>
+      // honest ACCESS_CHALLENGE; probe self-activates on a clean production
+      // IP; parser is defensive and fails loudly (SCHEMA_MISMATCH) so the
+      // first successful prod run gives us the exact payload to tighten.
+      sourceId: 'w_flights_britishairways',
+      name: 'Flights worker: British Airways booking engine (badotcomadapter-paa probe)',
+      priority: 15,
+      maxPerMinute: 2,
+      timeoutMs: 50_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+        // 0. cheap liveness + route validation via the OPEN cabinHelper
+        try {
+          const ch = await cffiFetch(BA_CABIN_HELPER(fromA.code, toA.code), { impersonate: 'chrome', timeoutMs: 15_000, headers: { 'User-Agent': UA, Accept: '*/*', Referer: 'https://www.britishairways.com/travel/book/public/en_gb/' } });
+          const cabins = parseBaCabinHelper(ch.body || '');
+          if (ch.status === 200 && Object.keys(cabins).length === 0) return []; // route not served: honest empty
+        } catch { /* cabinHelper optional; availability is the real probe */ }
+        const rungs: { imp: 'chrome' | 'safari'; label: string }[] = [
+          { imp: 'chrome', label: 'chrome' },
+          { imp: 'safari', label: 'safari' },
+        ];
+        let lastStatus = 0;
+        for (const rung of rungs) {
+          try {
+            // 1. public OAuth grant (createPublicToken from the bundle)
+            const g = await cffiFetch(BA_GRANT_API, {
+              impersonate: rung.imp, timeoutMs: 20_000, method: 'POST',
+              headers: {
+                'User-Agent': UA,
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                Authorization: 'Client client_id="bacomngprod"',
+                Origin: 'https://www.britishairways.com',
+                Referer: 'https://www.britishairways.com/travel/flexible-search/public/en_gb/',
+              },
+              body: 'grant_type=urn:com:baplc:oauth:grant:public',
+            });
+            lastStatus = g.status;
+            if (g.status !== 200) { await new Promise(rr => setTimeout(rr, 1500)); continue; }
+            const cookies = (g as any).cookies || {};
+            // 2. availability POST (exact SPA recipe)
+            const r = await cffiFetch(baAvailabilityUrl(fromA.code, toA.code, dep), {
+              impersonate: rung.imp, timeoutMs: 30_000, method: 'POST', cookies,
+              headers: {
+                'User-Agent': UA,
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'Accept-Language': 'en-GB,en;q=0.9',
+                'ba_integrity_tokenV1': baIntegrityToken(dep, fromA.code, toA.code),
+                Origin: 'https://www.britishairways.com',
+                Referer: baDeeplink(fromA.code, toA.code, dep),
+              },
+              body: JSON.stringify(baAvailabilityBody(fromA.code, toA.code, dep)),
+            });
+            if (r.status === 200 && (r.body || '').length > 200) {
+              const flights = parseBaAvailability(r.body || '');
+              return baFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+            }
+            if (r.status === 403 || r.status === 429) { await new Promise(rr => setTimeout(rr, 1500)); continue; }
+            break;
+          } catch { continue; } // tarpit/timeout -> next rung
+        }
+        throw new AcquisitionError('ACCESS_CHALLENGE', `British Airways availability API tarpits/gates from this IP (last HTTP ${lastStatus || 0}; probe self-activates on a clean production IP)`, lastStatus || 403);
       },
     },
     {
