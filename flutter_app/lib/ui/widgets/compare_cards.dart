@@ -1644,39 +1644,40 @@ class _MovieShowtimes extends StatelessWidget {
       return const SizedBox.shrink();
     }
     if (shows.isEmpty) return const SizedBox.shrink();
-    // Owner 24 Oct (reference image, web parity): BookMyShow-style — shows
-    // GROUPED BY THEATRE, one header per hall with its time chips in a row,
-    // instead of repeating the theatre name on every single row.
-    final byTheatre = <String, List<Map>>{};
-    for (final sh in shows) {
-      if (sh is! Map) continue;
-      final th = ('${sh['theatre'] ?? ''}'.trim().isEmpty) ? 'Cinema' : '${sh['theatre']}'.trim();
-      byTheatre.putIfAbsent(th, () => []).add(sh);
-    }
+    // Owner 24 Oct EVENING revert (reference screenshot 3:44 AM): the card that
+    // shipped BEFORE the grouped-by-theatre experiment — flat per-show rows:
+    // [red time pill] theatre text [tier price boxes]. Both aliases
+    // ('movie'/'movies') accepted; chips stay red-filled.
     return Padding(
       padding: const EdgeInsets.only(top: 7),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final entry in byTheatre.entries.take(3))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          entry.key.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: tx(context, 8.5, w: FontWeight.w900, color: muted(context), ls: 0.4),
-                        ),
+          for (final sh in shows.take(3))
+            if (sh is Map)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(5)),
+                      child: Text(
+                        _fmt(sh['time']),
+                        style: tx(context, 9, w: FontWeight.w900, color: Colors.white),
                       ),
-                      for (final a in entry.value
-                          .expand((sh) => ((sh['areas'] as List?) ?? const []).whereType<Map>())
-                          .take(2))
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        '${sh['theatre'] ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tx(context, 9, color: muted(context)),
+                      ),
+                    ),
+                    for (final a in ((sh['areas'] as List?) ?? const []).take(2))
+                      if (a is Map)
                         Padding(
                           padding: const EdgeInsets.only(left: 4),
                           child: Container(
@@ -1692,34 +1693,9 @@ class _MovieShowtimes extends StatelessWidget {
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final sh in entry.value.take(6))
-                          Padding(
-                            padding: const EdgeInsets.only(right: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: T1SColors.red,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                _fmt(sh['time']),
-                                style: tx(context, 9.5, w: FontWeight.w900, color: Colors.white),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
         ],
       ),
     );
