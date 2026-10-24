@@ -1134,7 +1134,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                       )}
                     </div>
                     <p className={`text-base font-black ${i === 0 && r.priceAvailable ? 'text-emerald-700' : 'text-slate-900'}`}>
-                      {!r.priceAvailable ? 'Price on site' : isRate ? `${r.price}%` : `₹${r.price.toLocaleString('en-IN')}`}
+                      {!r.priceAvailable
+                        ? ((r.item.specs?.['price basis'] ?? r.item.specs?.['price_basis']) === 'app_only_fares' ? 'Fare on app' : 'Price on site')
+                        : isRate ? `${r.price}%` : `₹${r.price.toLocaleString('en-IN')}`}
                     </p>
                     <button
                       type="button"

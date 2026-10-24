@@ -186,8 +186,10 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
                     <p className="text-sm font-bold text-slate-800 truncate">{r.site}{item.vertical === 'cab' && cabVehicleOf(r.item) && <span className="ml-1.5 text-[11px] font-semibold text-slate-500">{cabVehicleOf(r.item)}</span>}</p>
                     {i === 0 && r.priceAvailable && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Lowest price</span>}
                   </div>
+                  {/* Owner 24 Oct: app-only rows (Uber/Rapido, price_basis=app_only_fares) say
+                      "Fare on app" — the same honest label as the main price and the app. */}
                   <p className={`text-base font-black ${i === 0 && r.priceAvailable ? 'text-emerald-700' : 'text-slate-900'}`}>
-                    {r.priceAvailable ? `₹${r.price.toLocaleString('en-IN')}` : 'Price on site'}
+                    {r.priceAvailable ? `₹${r.price.toLocaleString('en-IN')}` : spec(r.item, 'price basis', 'price_basis') === 'app_only_fares' ? 'Fare on app' : 'Price on site'}
                   </p>
                   <button
                     type="button"

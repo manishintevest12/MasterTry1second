@@ -50,6 +50,10 @@ function citySlug(city: string | undefined, raw: string): string | null {
   return null;
 }
 
+function zomatoNationalPresence(source: SourceConfig, term: string, reason: string): RawSourceItem[] {
+  return zomatoPresence(source, 'india', term, reason);
+}
+
 function zomatoPresence(source: SourceConfig, slug: string, term: string, reason: string): RawSourceItem[] {
   const q = encodeURIComponent(term || 'restaurants');
   const url = `https://www.zomato.com/${slug}/restaurants?q=${q}`;
@@ -183,9 +187,13 @@ export const foodWorker: VerticalWorker = {
         const t0 = Date.now();
         const left = () => 24_000 - (Date.now() - t0); // soft deadline inside the 26s kill
         const raw = String(ctx.query.rawQuery || '');
-        const slug = citySlug(ctx.query.location?.city, raw);
-        if (!slug) return [];
         const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
+        const slug = citySlug(ctx.query.location?.city, raw);
+        // Owner 24 Oct evening ("zomato is again not showing"): a search without
+        // a city used to early-return [] — Zomato vanished entirely. Now every
+        // no-city search gets an HONEST national presence row instead
+        // (zomato.com/india/restaurants?q=<term>, a real published pattern).
+        if (!slug) return zomatoNationalPresence(ctx.source, term || raw, 'no city in query');
         const url = `https://www.zomato.com/${slug}/restaurants?q=${encodeURIComponent(term || 'restaurants')}`;
         // Akamai SAMPLES datacenter crawls (403/202 alternate with full 200s — same
         // pattern as Goibibo hotels): up to 3 bounded attempts with a short gap.
@@ -201,7 +209,9 @@ export const foodWorker: VerticalWorker = {
         // back to the honest presence row instead of vanishing from the app.
         if (r.status !== 200) return zomatoPresence(ctx.source, slug, term, `HTTP ${r.status}`);
         const items = parseZomatoRestaurants(r.body, ctx.source, url, 'Zomato');
-        if (!items.length && looksLikeChallenge(r.body)) return zomatoPresence(ctx.source, slug, term, 'challenge shell');
+        // Owner 24 Oct: ANY empty parse (challenge shell, layout shift, soft-200
+        // template) falls back to the presence row — Zomato NEVER vanishes.
+        if (!items.length) return zomatoPresence(ctx.source, slug, term, looksLikeChallenge(r.body) ? 'challenge shell' : 'no parseable listings');
         // Deep dive: the search listing carries no prices (which is why Zomato contributed
         // 0 offers to results). Follow the first 2 restaurants and pull DISH prices from
         // their pages' embedded JSON (JSON-LD hasMenu / __PRELOADED_STATE__). Priced dishes
@@ -247,10 +257,12 @@ export const foodWorker: VerticalWorker = {
           if (dishItems.length >= 24) break;
         }
         if (dishItems.length) return dishItems;
-        if (restUrls.length && !hintAgg.priceHits) {
-          throw new AcquisitionError('EMPTY_RESPONSE', `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) — dish prices stay unavailable to browserless HTTP`);
-        }
-        return items;
+        // Owner 24 Oct: this used to THROW when the menu deep-dive found no
+        // embedded prices — which killed the whole task INCLUDING the presence
+        // row, so Zomato vanished. Return the listings (honest reference rows),
+        // and if even those are empty the presence row carries the handoff.
+        if (items.length) return items;
+        return zomatoPresence(ctx.source, slug, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : 'no usable rows');
       },
     },
     {

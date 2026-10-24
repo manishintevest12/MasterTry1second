@@ -16206,6 +16206,9 @@ function citySlug(city, raw) {
   }
   return null;
 }
+function zomatoNationalPresence(source, term, reason) {
+  return zomatoPresence(source, "india", term, reason);
+}
 function zomatoPresence(source, slug2, term, reason) {
   const q3 = encodeURIComponent(term || "restaurants");
   const url = `https://www.zomato.com/${slug2}/restaurants?q=${q3}`;
@@ -16399,9 +16402,9 @@ var init_food = __esm({
             const t0 = Date.now();
             const left = () => 24e3 - (Date.now() - t0);
             const raw = String(ctx.query.rawQuery || "");
-            const slug2 = citySlug(ctx.query.location?.city, raw);
-            if (!slug2) return [];
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
+            const slug2 = citySlug(ctx.query.location?.city, raw);
+            if (!slug2) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
             const url = `https://www.zomato.com/${slug2}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
             let r = await ctx.fetch(url, { timeoutMs: 4500 });
             for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429) && left() > 6e3; attempt++) {
@@ -16410,7 +16413,7 @@ var init_food = __esm({
             }
             if (r.status !== 200) return zomatoPresence(ctx.source, slug2, term, `HTTP ${r.status}`);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
-            if (!items.length && looksLikeChallenge(r.body)) return zomatoPresence(ctx.source, slug2, term, "challenge shell");
+            if (!items.length) return zomatoPresence(ctx.source, slug2, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
             const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
             const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
@@ -16453,10 +16456,8 @@ var init_food = __esm({
               if (dishItems.length >= 24) break;
             }
             if (dishItems.length) return dishItems;
-            if (restUrls.length && !hintAgg.priceHits) {
-              throw new AcquisitionError("EMPTY_RESPONSE", `Zomato restaurant pages carried no embedded menu prices (hints: ${JSON.stringify(hintAgg)}) \u2014 dish prices stay unavailable to browserless HTTP`);
-            }
-            return items;
+            if (items.length) return items;
+            return zomatoPresence(ctx.source, slug2, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
           }
         },
         {
@@ -19822,6 +19823,8 @@ async function olaRateCardFallback(ctx, rt, reason) {
     const ul = new URL("https://book.olacabs.com/");
     ul.searchParams.set("lat", String(a.lat));
     ul.searchParams.set("lng", String(a.lon));
+    ul.searchParams.set("drop_lat", String(b.lat));
+    ul.searchParams.set("drop_lng", String(b.lon));
     items.push(newRawItem(ctx.source, {
       title: `${rt.from} to ${rt.to} cab (${label}, one-way)`,
       brand: "Ola",
@@ -19947,7 +19950,7 @@ var init_cab = __esm({
                 price,
                 currency: "INR",
                 seller: "Ola",
-                sellerUrl: "https://book.olacabs.com/",
+                sellerUrl: `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`,
                 travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
                 attributes: {
                   pickup: rt.from,
@@ -20005,8 +20008,19 @@ var init_cab = __esm({
             const prices = Array.isArray(j?.prices) ? j.prices : [];
             const items = [];
             const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-            for (const p of prices.slice(0, 5)) {
-              const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
+            const parseUberEstimate = (p) => {
+              const est = String(p?.estimate ?? "");
+              const nums = (est.match(/[\d,.]+/g) || []).map((x) => Number(x.replace(/,/g, ""))).filter((n) => Number.isFinite(n) && n > 0);
+              if (nums.length === 1) return Math.round(nums[0]);
+              if (nums.length >= 2) return Math.round((nums[0] + nums[1]) / 2);
+              const lo = Number(p?.low_estimate ?? 0), hi = Number(p?.high_estimate ?? 0);
+              if (lo > 0 && hi > 0) return Math.round((lo + hi) / 2);
+              if (lo > 0) return Math.round(lo);
+              if (hi > 0) return Math.round(hi);
+              return 0;
+            };
+            for (const p of prices.slice(0, 8)) {
+              const price = parseUberEstimate(p);
               if (!price) continue;
               const vehicle = String(p.localized_display_name || "Uber cab").slice(0, 60);
               const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
@@ -25951,11 +25965,24 @@ async function recordPointerClick(dest, offerId, network) {
   }
   return clickId;
 }
-function merchantSearchFallback(vendor, title, vertical) {
+function merchantSearchFallback(vendor, title, vertical, travel) {
   const v = String(vendor || "").toLowerCase();
   const q3 = encodeURIComponent(String(title || "").trim().slice(0, 80));
   if (!v || !q3) return "";
   const has = (...keys) => keys.some((k) => v.includes(k));
+  const mmtFlightSrp = () => {
+    const legs = String(travel?.route || "").toLowerCase().split(/\s+to\s+/);
+    if (legs.length !== 2) return "";
+    const from = IATA[legs[0].trim()];
+    const to = IATA[legs[1].trim()];
+    if (!from || !to) return "";
+    const d = String(travel?.date || "");
+    const iso2 = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
+    if (!iso2) return "";
+    const [y, m, day] = iso2.split("-");
+    const it = `${from}-${to}-${day}/${m}/${y}`;
+    return `https://www.makemytrip.com/flight/search?itinerary=${encodeURIComponent(it)}&tripType=O&paxType=1-A-C&intl=false&cabinClass=E&cc=INR`;
+  };
   if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
   if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
@@ -25970,12 +25997,26 @@ function merchantSearchFallback(vendor, title, vertical) {
   if (has("zomato")) return `https://www.zomato.com/search?query=${q3}`;
   if (has("domino")) return `https://www.dominos.co.in/menu`;
   if (has("bookmyshow")) return "https://in.bookmyshow.com/explore/movies";
-  if (has("makemytrip")) return `https://www.makemytrip.com/${vertical === "flights" || vertical === "bus" ? "flights/" : ""}`;
+  if (has("makemytrip")) {
+    if (vertical === "flights") return mmtFlightSrp() || `https://www.makemytrip.com/flights/`;
+    if (vertical === "bus") {
+      const legs = String(travel?.route || "").split(/\s+to\s+/i);
+      const d = String(travel?.date || "");
+      if (legs.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        const [y, m, day] = d.split("-");
+        const f = legs[0].trim().replace(/\s+/g, "-");
+        const t = legs[1].trim().replace(/\s+/g, "-");
+        return `https://www.makemytrip.com/bus/search/${encodeURIComponent(f)}/${encodeURIComponent(t)}/${day}-${m}-${y}`;
+      }
+    }
+    return `https://www.makemytrip.com/${vertical === "bus" ? "bus/" : ""}`;
+  }
   return "";
 }
 var import_crypto20, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
+    init_airportLookup();
     import_crypto20 = __toESM(require("crypto"), 1);
     init_settings();
     init_linkinr();
@@ -33404,7 +33445,8 @@ function hostOfPublic(u) {
 function offerToComparisonItem(o) {
   const price = Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const list = Number(o.prices?.listPrice ?? 0) || 0;
-  const rawDest = String(o.sellerUrl || "") || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), String(o.vertical || ""));
+  const travelCtx = { route: o.travel?.route, date: o.travel?.date };
+  const rawDest = String(o.sellerUrl || "") || merchantSearchFallback(String(o.vendor || o.seller || ""), String(o.title || ""), String(o.vertical || ""), travelCtx);
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || "") }) : "";
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || "Verified source"));
   const attrs = o.attributes || {};
@@ -34323,7 +34365,10 @@ var init_routes = __esm({
         sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf2(String(x.o.sellerUrl || "")) || "Verified source")),
         price: x.price,
         currency: "\u20B9",
-        url: String(x.o.sellerUrl || "") || merchantSearchFallback(String(x.o.vendor || x.o.seller || ""), String(x.o.title || ""), vertical) ? createMaskingPointer(String(x.o.sellerUrl || "") || merchantSearchFallback(String(x.o.vendor || x.o.seller || ""), String(x.o.title || ""), vertical), { offerId: String(x.o.id || "") }) : "",
+        url: (() => {
+          const fb = String(x.o.sellerUrl || "") || merchantSearchFallback(String(x.o.vendor || x.o.seller || ""), String(x.o.title || ""), vertical, { route: x.o.travel?.route, date: x.o.travel?.date });
+          return fb ? createMaskingPointer(fb, { offerId: String(x.o.id || "") }) : "";
+        })(),
         isLowest: i === 0,
         isLiveScraped: true,
         sourceDomain: hostOf2(String(x.o.sellerUrl || "")),

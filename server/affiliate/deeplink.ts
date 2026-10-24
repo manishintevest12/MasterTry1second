@@ -13,6 +13,7 @@
  * resolves the token server-side, validates the destination (anti open-redirect)
  * and 302s through the tracking link, recording the click for attribution.
  */
+import { IATA } from '../common/airportLookup';
 import crypto from 'crypto';
 import { settings } from '../common/settings';
 import { linkinrTrackingUrl } from './linkinr';
@@ -231,11 +232,29 @@ export async function recordPointerClick(dest: string, offerId: string | undefin
  *  URL): the user lands on the merchant's own search for exactly that item,
  *  the affiliate converter (/api/out → Cuelinks/Ekaro) wraps it unchanged.
  *  Unknown vendor -> '' (old behaviour, no invention). */
-export function merchantSearchFallback(vendor: string, title: string, vertical?: string): string {
+export function merchantSearchFallback(vendor: string, title: string, vertical?: string, travel?: { route?: string; date?: string }): string {
   const v = String(vendor || '').toLowerCase();
   const q = encodeURIComponent(String(title || '').trim().slice(0, 80));
   if (!v || !q) return '';
   const has = (...keys: string[]) => keys.some((k) => v.includes(k));
+  // Owner 24 Oct evening ("payment-page deeplinks"): travel merchants get the
+  // ROUTE-PREFILLED SRP, never their homepage. Route comes from the offer's own
+  // travel block ("indore to delhi"); IATA codes from the shared airport table.
+  // If we cannot resolve both endpoints honestly we keep the shallower page —
+  // we never invent a route that was not searched.
+  const mmtFlightSrp = (): string => {
+    const legs = String(travel?.route || '').toLowerCase().split(/\s+to\s+/);
+    if (legs.length !== 2) return '';
+    const from = IATA[legs[0].trim()];
+    const to = IATA[legs[1].trim()];
+    if (!from || !to) return '';
+    const d = String(travel?.date || '');
+    const iso = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+    if (!iso) return '';
+    const [y, m, day] = iso.split('-');
+    const it = `${from}-${to}-${day}/${m}/${y}`;
+    return `https://www.makemytrip.com/flight/search?itinerary=${encodeURIComponent(it)}&tripType=O&paxType=1-A-C&intl=false&cabinClass=E&cc=INR`;
+  };
   if (has('amazon')) return `https://www.amazon.in/s?k=${q}`;
   if (has('flipkart')) return `https://www.flipkart.com/search?q=${q}`;
   if (has('meesho')) return `https://www.meesho.com/search?q=${q}`;
@@ -250,6 +269,19 @@ export function merchantSearchFallback(vendor: string, title: string, vertical?:
   if (has('zomato')) return `https://www.zomato.com/search?query=${q}`;
   if (has('domino')) return `https://www.dominos.co.in/menu`;
   if (has('bookmyshow')) return 'https://in.bookmyshow.com/explore/movies';
-  if (has('makemytrip')) return `https://www.makemytrip.com/${(vertical === 'flights' || vertical === 'bus') ? 'flights/' : ''}`;
+  if (has('makemytrip')) {
+    if (vertical === 'flights') return mmtFlightSrp() || `https://www.makemytrip.com/flights/`;
+    if (vertical === 'bus') {
+      const legs = String(travel?.route || '').split(/\s+to\s+/i);
+      const d = String(travel?.date || '');
+      if (legs.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        const [y, m, day] = d.split('-');
+        const f = legs[0].trim().replace(/\s+/g, '-');
+        const t = legs[1].trim().replace(/\s+/g, '-');
+        return `https://www.makemytrip.com/bus/search/${encodeURIComponent(f)}/${encodeURIComponent(t)}/${day}-${m}-${y}`;
+      }
+    }
+    return `https://www.makemytrip.com/${vertical === 'bus' ? 'bus/' : ''}`;
+  }
   return '';
 }

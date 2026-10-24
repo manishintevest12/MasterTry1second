@@ -1395,7 +1395,12 @@ class GroupCard extends StatelessWidget {
                                 Row(
                                   children: [
                                     Text(
-                                      g.best.priceAvailable ? formatPrice(vertical, g.best.price) : 'Price on site',
+                                      g.best.priceAvailable
+                                          ? formatPrice(vertical, g.best.price)
+                                          // Owner 24 Oct: app-only groups (Uber/Rapido cab catalog,
+                                          // price_basis=app_only_fares) show the honest 'Fare on
+                                          // app' label, matching the row-level fix + web parity.
+                                          : (it.spec('price basis', 'price_basis') == 'app_only_fares' ? 'Fare on app' : 'Price on site'),
                                       style: tx(
                                         context,
                                         16,

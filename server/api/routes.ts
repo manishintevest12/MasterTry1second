@@ -652,7 +652,8 @@ function offerToComparisonItem(o: any) {
   // Owner 24 Oct (payment-page deeplinks): rows without a product URL fall back
   // to the merchant's own SEARCH page for this exact item — the user always
   // lands where they can buy/pay; never a blank tab, never an invented URL.
-  const rawDest = String(o.sellerUrl || '') || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), String(o.vertical || ''));
+  const travelCtx = { route: o.travel?.route, date: o.travel?.date };
+  const rawDest = String(o.sellerUrl || '') || merchantSearchFallback(String(o.vendor || o.seller || ''), String(o.title || ''), String(o.vertical || ''), travelCtx);
   const url = rawDest ? createMaskingPointer(rawDest, { offerId: String(o.id || '') }) : '';
   const seller = hotelSellerLabel(o, String(o.seller || o.vendor || 'Verified source'));
   const attrs: Record<string, string> = o.attributes || {};
@@ -1108,7 +1109,7 @@ apiRouter.post('/scan/url', async (req, res) => {
     sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf(String(x.o.sellerUrl || '')) || 'Verified source')),
     price: x.price,
     currency: '₹',
-    url: (String(x.o.sellerUrl || '') || merchantSearchFallback(String(x.o.vendor || x.o.seller || ''), String(x.o.title || ''), vertical)) ? createMaskingPointer(String(x.o.sellerUrl || '') || merchantSearchFallback(String(x.o.vendor || x.o.seller || ''), String(x.o.title || ''), vertical), { offerId: String(x.o.id || '') }) : '',
+    url: (() => { const fb = String(x.o.sellerUrl || '') || merchantSearchFallback(String(x.o.vendor || x.o.seller || ''), String(x.o.title || ''), vertical, { route: x.o.travel?.route, date: x.o.travel?.date }); return fb ? createMaskingPointer(fb, { offerId: String(x.o.id || '') }) : ''; })(),
     isLowest: i === 0,
     isLiveScraped: true,
     sourceDomain: hostOf(String(x.o.sellerUrl || '')),

@@ -453,6 +453,8 @@ async function olaRateCardFallback(ctx: any, rt: { from: string; to: string }, r
     const ul = new URL('https://book.olacabs.com/');
     ul.searchParams.set('lat', String(a.lat));
     ul.searchParams.set('lng', String(a.lon));
+    ul.searchParams.set('drop_lat', String(b.lat));
+    ul.searchParams.set('drop_lng', String(b.lon));
     items.push(newRawItem(ctx.source, {
       title: `${rt.from} to ${rt.to} cab (${label}, one-way)`,
       brand: 'Ola',
@@ -516,7 +518,8 @@ export const cabWorker: VerticalWorker = {
             title: `${rt.from} to ${rt.to} cab (${vehicle}, one-way)`,
             brand: 'Ola',
             price, currency: 'INR',
-            seller: 'Ola', sellerUrl: 'https://book.olacabs.com/',
+            seller: 'Ola',
+            sellerUrl: `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`,
             travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: 'unknown' },
             attributes: {
               pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,
@@ -570,8 +573,24 @@ export const cabWorker: VerticalWorker = {
         const prices: any[] = Array.isArray(j?.prices) ? j.prices : [];
         const items = [];
         const today = new Date().toISOString().slice(0, 10);
-        for (const p of prices.slice(0, 5)) {
-          const price = Math.round(Number(p.estimate ?? p.low_estimate ?? 0));
+        // Owner 24 Oct evening ("real price chaiye"): Uber India returns `estimate`
+        // as a LOCALIZED STRING ("₹221", "₹110-130", "Metered") — Number("₹221") is
+        // NaN, so valid-token quotes were being SILENTLY DROPPED. Parse the string
+        // honestly: ranges take the midpoint, "Metered" (no estimate) falls back to
+        // low_estimate/high_estimate midpoint, else the single number wins.
+        const parseUberEstimate = (p: any): number => {
+          const est = String(p?.estimate ?? '');
+          const nums = (est.match(/[\d,.]+/g) || []).map((x: string) => Number(x.replace(/,/g, ''))).filter((n: number) => Number.isFinite(n) && n > 0);
+          if (nums.length === 1) return Math.round(nums[0]);
+          if (nums.length >= 2) return Math.round((nums[0] + nums[1]) / 2);
+          const lo = Number(p?.low_estimate ?? 0), hi = Number(p?.high_estimate ?? 0);
+          if (lo > 0 && hi > 0) return Math.round((lo + hi) / 2);
+          if (lo > 0) return Math.round(lo);
+          if (hi > 0) return Math.round(hi);
+          return 0;
+        };
+        for (const p of prices.slice(0, 8)) {
+          const price = parseUberEstimate(p);
           if (!price) continue;
           const vehicle = String(p.localized_display_name || 'Uber cab').slice(0, 60);
           const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
