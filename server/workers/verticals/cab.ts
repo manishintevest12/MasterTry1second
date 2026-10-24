@@ -10,12 +10,46 @@ import { parseQuickRideCabs } from '../parsers/quickRideCabs';
 import { indriveCityLookup, indrivePrices, buildIndriveOffers } from '../parsers/indriveIntercity';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
+import type { RawSourceItem, SourceConfig } from '../../types';
 import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace } from '../parsers/osmTravel';
 import { geoSearch, geoReverse } from '../../common/geoProxy';
 import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability, buildRapidoIntercityNotice } from '../parsers/rapidoCabs';
+import { rapidoGuestFares, rapidoServiceCatalog, buildRapidoFareRows } from '../parsers/rapidoFares';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, type UberGoPlace } from '../parsers/uberGoProducts';
 import { AcquisitionError } from '../../common/httpClient';
+
+/**
+ * Rapido live-fare flow, hard-failed safe: returns [] on any miss so the caller
+ * falls back to the honest availability rows. Both endpoints must geocode
+ * (city-center coords would price the WRONG trip — no number beats a wrong one).
+ */
+async function rapidoLiveFaresSafe(
+  ctx: { source: SourceConfig },
+  rt: { from: string; to: string },
+  city: string,
+): Promise<RawSourceItem[]> {
+  try {
+    const [pa, pb] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    if (!pa?.lat || !pb?.lat || pa?.lon == null || pb?.lon == null) return [];
+    const outcome = await rapidoGuestFares(
+      { lat: pa.lat, lng: pa.lon, label: rt.from },
+      { lat: pb.lat, lng: pb.lon, label: rt.to },
+    );
+    if (outcome.status !== 'ok' || !outcome.quotes.length) return [];
+    const catalog = await rapidoServiceCatalog(pa.lat, pa.lon);
+    return buildRapidoFareRows({
+      source: ctx.source,
+      from: rt.from,
+      to: rt.to,
+      city,
+      quotes: outcome.quotes,
+      catalog,
+    });
+  } catch {
+    return []; // geocode/fetch/decode failure — presence rows take over
+  }
+}
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw.replace(/\b(cab|taxi|ride|auto|uber|ola|rapido|book|a|an|the|price|fare|for|drop|pickup|from|need|want|go|going)\b/gi, ' ')
@@ -633,7 +667,7 @@ export const cabWorker: VerticalWorker = {
       // (Bike Taxi / Auto / Cab) with the fare left "available only on app" — zero numbers invented.
       // Intercity queries return [] honestly: Rapido's published network is city-local.
       sourceId: 'w_cab_rapido',
-      name: 'Cab worker: Rapido city availability (app-only fares: Bike/Auto/Cab)',
+      name: 'Cab worker: Rapido live city fares (Bike/Auto/Cab, guest fare API) + availability fallback',
       priority: 15,
       run: async (ctx) => {
         const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
@@ -697,6 +731,13 @@ export const cabWorker: VerticalWorker = {
             mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`,
           });
         }
+        // Owner 24 Oct ("real price chaiye bhai"): Rapido's guest booking PWA publishes
+        // LIVE intra-city fare windows (wasm-signed unup fare API — see rapidoFares.ts).
+        // Real prices win; the app-only availability rows stay as the honest fallback
+        // whenever signing is unsupported (old Node), the fare call fails, or quotes
+        // come back empty. Nothing is invented in between.
+        const fare = await rapidoLiveFaresSafe(ctx, rt, a.name);
+        if (fare.length) return fare;
         return buildRapidoAvailability({
           source: ctx.source,
           from: rt.from,
