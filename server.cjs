@@ -8881,6 +8881,118 @@ var init_allianceAir = __esm({
   }
 });
 
+// server/workers/parsers/fly91Ibe.ts
+function fly91Date(depIso) {
+  const m = depIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return depIso;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${m[3]}-${months[Number(m[2]) - 1]}-${m[1]}`;
+}
+function fly91BookingUrl(fromCode, toCode, depIso) {
+  return `${F91_IBE}booking?mode=searchResultInter&wvm=WVMD&tripType=OW&origin=${fromCode}&destination=${toCode}&travelDate=${fly91Date(depIso)}&adults=1&children=0&infants=0&cabinClass=ECONOMY&promoCode=&pointOfPurchase=OTHERS&channel=FLYWEB&locale=en_US&fareLevelSearch=ST&fareTypeSearch=SAVER`;
+}
+function fly91EventBody(fromCode, toCode, depIso) {
+  return new URLSearchParams({
+    _eventId: "showWtLblResult",
+    mode: "searchResultInter",
+    wvm: "WVMD",
+    tripType: "OW",
+    origin: fromCode,
+    destination: toCode,
+    travelDate: fly91Date(depIso),
+    adults: "1",
+    children: "0",
+    infants: "0",
+    cabinClass: "ECONOMY",
+    promoCode: "",
+    pointOfPurchase: "OTHERS",
+    flightNumberOW: "",
+    fareOW: "",
+    flightNumberRT: "",
+    fareRT: "",
+    fareLevel: "",
+    channel: "FLYWEB",
+    bookingSource: "",
+    access_token: "",
+    accessToken: "",
+    skyscanner_redirectid: "",
+    flexTrvlDates: "",
+    ccType: "",
+    deviceType: "",
+    ibeScreenId: "IBE000",
+    fareTypeSearch: "SAVER",
+    fareLevelSearch: "ST"
+  }).toString();
+}
+function fly91FormAction(shellHtml) {
+  const m = shellHtml.match(/action="([^"]*booking[^"]*)"/);
+  return m ? m[1].replace(/&amp;/g, "&") : null;
+}
+function parseFly91Results(html, depIso) {
+  const want = fly91Date(depIso);
+  const out = [];
+  const blocks = html.split(/<div class="flight\s+"/).slice(1);
+  for (const blk of blocks) {
+    const dateVal = (blk.match(/id="flightDateValue" value="([^"]+)"/) || [])[1];
+    if (!dateVal || dateVal !== want) continue;
+    const flightNo2 = ((blk.match(/id="flightNumberValue" value="([^"]+)"/) || [])[1] || "").replace(/_.*$/, "").trim();
+    const depTime = (blk.match(/id="flightDepartTime"[^>]*value="(\d{2}:\d{2})"/) || [])[1];
+    const arrTime = (blk.match(/id="flightArrivTime" value="(\d{2}:\d{2})"/) || [])[1];
+    const boardPoint = (blk.match(/id="boardPointValue" value="([A-Z]{3})"/) || [])[1];
+    const offPoint = (blk.match(/id="offPointValue" value="([A-Z]{3})"/) || [])[1];
+    const dur = blk.match(/data-key="travelduration" data-value="(\d{2}):(\d{2})"/) || [];
+    const durationMin = dur.length ? Number(dur[1]) * 60 + Number(dur[2]) : 0;
+    const priceRaw = (blk.match(/class="flightAmount">\s*([\d,]+)\s*INR/) || [])[1];
+    const price = priceRaw ? Number(priceRaw.replace(/,/g, "")) : 0;
+    if (!flightNo2 || !depTime || !arrTime || !Number.isFinite(price) || price <= 0) continue;
+    out.push({ flightNo: flightNo2, depTime, arrTime, boardPoint: boardPoint || "", offPoint: offPoint || "", durationMin, price, travelDate: depIso });
+  }
+  return out;
+}
+function fly91FlightItems(flights, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return flights.map((f) => {
+    const nearby = f.boardPoint && f.boardPoint !== fromCode;
+    const routeCity = nearby ? `${f.boardPoint} (nearby ${fromCity})` : fromCity;
+    return newRawItem(source, {
+      title: `Fly91 ${routeCity} \u2192 ${toCity} on ${f.travelDate} from \u20B9${f.price} (${f.flightNo}, ${f.depTime}\u2013${f.arrTime})`,
+      brand: "Fly91",
+      price: f.price,
+      currency: "INR",
+      seller: "Fly91",
+      sellerUrl: fly91BookingUrl(fromCode, toCode, depIso),
+      travel: { route: `${routeCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: f.travelDate },
+      attributes: {
+        route: `${routeCity} \u2192 ${toCity}`,
+        airline: "Fly91",
+        travel_date: f.travelDate,
+        departure_date: f.travelDate,
+        flight_number: f.flightNo,
+        departure_time: f.depTime,
+        arrival_time: f.arrTime,
+        ...f.durationMin ? { duration_minutes: String(f.durationMin) } : {},
+        ...nearby ? { nearby_departure_airport: f.boardPoint } : {},
+        fare_class: "SAVER (lowest published economy fare incl. taxes, convenience fee extra on Fly91 checkout)",
+        price_basis: `Fly91 booking-engine price for ${f.travelDate} captured ${today2}`,
+        data_note: `Fare and schedule acquired from Fly91's own booking engine on ${today2}; booking continues on Fly91's own website.`,
+        image: ""
+      },
+      identifiers: { sku: `fly91-${f.flightNo}-${f.travelDate}-${f.boardPoint}${f.offPoint}`.replace(/\s+/g, "") },
+      evidence: {
+        sourceUrl: F91_IBE,
+        extractedFields: ["flightNumberValue", "flightDepartTime", "boardPointValue", "offPointValue", "flightAmount (INR)"]
+      }
+    });
+  });
+}
+var F91_IBE;
+var init_fly91Ibe = __esm({
+  "server/workers/parsers/fly91Ibe.ts"() {
+    init_contract();
+    F91_IBE = "https://fly91.in/reservation/ibe/";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -12986,6 +13098,7 @@ var init_flights = __esm({
     init_spiceJetDotRez();
     init_airIndiaFares();
     init_allianceAir();
+    init_fly91Ibe();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -13581,6 +13694,87 @@ var init_flights = __esm({
             const flights = parseAllianceAirSchedule(schedule, dep);
             if (!flights.length) return [];
             return allianceAirFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+          }
+        },
+        {
+          // Fly91 LIVE (24 Oct 2026): IBS iTravel IBE (Dojo/Spring WebFlow) behind
+          // AWS ALB — NO WAF, fully browserless with curl_cffi. Recipe captured via
+          // Browserbase CDP from the Drupal homepage widget (custom.js #searchBtn):
+          // GET /reservation/ibe/booking?mode=searchResultInter&... (WebFlow shell,
+          // form action carries fresh jsessionid+execution key) then re-POST the form
+          // with _eventId=showWtLblResult -> server-rendered results page with
+          // per-flight divs (number, times, board/off points, duration, fare INR)
+          // and a 7-day fare strip. Nearby-airport flights (e.g. SDW when GOX
+          // searched) keep their true board point, clearly labelled.
+          // Verified sandbox 24 Oct: GOX-HYD 28 Oct IC 5303 12:10->13:45 4,001 INR.
+          sourceId: "w_flights_fly91",
+          name: "Flights worker: Fly91 direct booking engine",
+          priority: 14,
+          maxPerMinute: 4,
+          timeoutMs: 32e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const F91_FIX = { goa: "GOX", "navi mumbai": "NMB", "navi-mumbai": "NMB" };
+            const fromCode = F91_FIX[rt.from.toLowerCase()] || fromA.code;
+            const toCode = F91_FIX[rt.to.toLowerCase()] || toA.code;
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const bookingUrl = fly91BookingUrl(fromCode, toCode, dep);
+            let html = "";
+            let status = 0;
+            const lastErr = [];
+            for (const a of [
+              { label: "chrome-h2", imp: "chrome", hv: void 0 },
+              { label: "safari-h2", imp: "safari17_0", hv: void 0 },
+              { label: "chrome-h1", imp: "chrome", hv: "1.1" }
+            ]) {
+              try {
+                const g = await cffiFetch(bookingUrl, {
+                  impersonate: a.imp,
+                  timeoutMs: 18e3,
+                  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36", Referer: "https://fly91.in/", Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" },
+                  returnCookies: true
+                });
+                if (g.status !== 200) {
+                  lastErr.push(`${a.label}: shell HTTP ${g.status}`);
+                  continue;
+                }
+                const cookies = g.cookies || {};
+                const action = fly91FormAction(g.body || "");
+                const postUrl = action ? "https://fly91.in" + action : bookingUrl;
+                const r = await cffiFetch(postUrl, {
+                  method: "POST",
+                  impersonate: a.imp,
+                  timeoutMs: 25e3,
+                  headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    Referer: bookingUrl,
+                    Origin: "https://fly91.in"
+                  },
+                  body: fly91EventBody(fromCode, toCode, dep),
+                  cookies
+                });
+                html = r.body || "";
+                status = r.status;
+                if (status > 0 && status !== 429 && status < 500) break;
+                lastErr.push(`${a.label}: results HTTP ${status}`);
+              } catch (e) {
+                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+                status = 0;
+              }
+            }
+            if (status === 0) throw new AcquisitionError("SERVER_ERROR", `Fly91 unreachable after 3 attempts (${lastErr.join(" | ")})`);
+            if (status === 401 || status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `Fly91 access challenge (HTTP ${status})`, status);
+            if (status === 429) throw new AcquisitionError("RATE_LIMITED", "Fly91 rate-limited this IP", 429);
+            if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Fly91 HTTP ${status}`, status);
+            const flights = parseFly91Results(html, dep);
+            if (!flights.length) return [];
+            return fly91FlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
         {

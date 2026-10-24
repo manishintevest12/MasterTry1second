@@ -25,6 +25,7 @@ import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, 
 import { spiceJetLowFareBody, spiceJetAvailabilityBody, spiceJetBaseHeaders, spiceJetTokenHeaders, spiceJetSearchUrl, parseSpiceJetLowFare, parseSpiceJetAvailability, spiceJetDayFareItems } from '../parsers/spiceJetDotRez';
 import { airIndiaFaresBody, airIndiaFaresHeaders, AI_FARES_URL, parseAirIndiaFares, airIndiaDayFareItems } from '../parsers/airIndiaFares';
 import { AA_HOME, allianceAirSearchBody, extractAaDataSchedule, parseAllianceAirSchedule, allianceAirFlightItems } from '../parsers/allianceAir';
+import { fly91BookingUrl, fly91EventBody, fly91FormAction, parseFly91Results, fly91FlightItems } from '../parsers/fly91Ibe';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -705,6 +706,87 @@ export const flightsWorker: VerticalWorker = {
         const flights = parseAllianceAirSchedule(schedule, dep);
         if (!flights.length) return []; // honest empty: route/date not served that week
         return allianceAirFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+      },
+    },
+    {
+      // Fly91 LIVE (24 Oct 2026): IBS iTravel IBE (Dojo/Spring WebFlow) behind
+      // AWS ALB — NO WAF, fully browserless with curl_cffi. Recipe captured via
+      // Browserbase CDP from the Drupal homepage widget (custom.js #searchBtn):
+      // GET /reservation/ibe/booking?mode=searchResultInter&... (WebFlow shell,
+      // form action carries fresh jsessionid+execution key) then re-POST the form
+      // with _eventId=showWtLblResult -> server-rendered results page with
+      // per-flight divs (number, times, board/off points, duration, fare INR)
+      // and a 7-day fare strip. Nearby-airport flights (e.g. SDW when GOX
+      // searched) keep their true board point, clearly labelled.
+      // Verified sandbox 24 Oct: GOX-HYD 28 Oct IC 5303 12:10->13:45 4,001 INR.
+      sourceId: 'w_flights_fly91',
+      name: 'Flights worker: Fly91 direct booking engine',
+      priority: 14,
+      maxPerMinute: 4,
+      timeoutMs: 32_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        // Fly91 flies from Mopa (GOX), not Dabolim (GOI); carrier-specific code fixes
+        const F91_FIX: Record<string, string> = { goa: 'GOX', 'navi mumbai': 'NMB', 'navi-mumbai': 'NMB' };
+        const fromCode = F91_FIX[rt.from.toLowerCase()] || fromA.code;
+        const toCode = F91_FIX[rt.to.toLowerCase()] || toA.code;
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const bookingUrl = fly91BookingUrl(fromCode, toCode, dep);
+        let html = '';
+        let status = 0;
+        const lastErr: string[] = [];
+        for (const a of [
+          { label: 'chrome-h2', imp: 'chrome' as const, hv: undefined },
+          { label: 'safari-h2', imp: 'safari17_0' as const, hv: undefined },
+          { label: 'chrome-h1', imp: 'chrome' as const, hv: '1.1' as const },
+        ]) {
+          try {
+            const g = await cffiFetch(bookingUrl, {
+              impersonate: a.imp,
+              timeoutMs: 18_000,
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', Referer: 'https://fly91.in/', Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' },
+              returnCookies: true,
+            });
+            if (g.status !== 200) { lastErr.push(`${a.label}: shell HTTP ${g.status}`); continue; }
+            const cookies = (g as any).cookies || {};
+            const action = fly91FormAction(g.body || '');
+            const postUrl = action ? 'https://fly91.in' + action : bookingUrl;
+            const r = await cffiFetch(postUrl, {
+              method: 'POST',
+              impersonate: a.imp,
+              timeoutMs: 25_000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Referer: bookingUrl,
+                Origin: 'https://fly91.in',
+              },
+              body: fly91EventBody(fromCode, toCode, dep),
+              cookies,
+            });
+            html = r.body || '';
+            status = r.status;
+            if (status > 0 && status !== 429 && status < 500) break;
+            lastErr.push(`${a.label}: results HTTP ${status}`);
+          } catch (e: any) {
+            lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+            status = 0;
+          }
+        }
+        if (status === 0) throw new AcquisitionError('SERVER_ERROR', `Fly91 unreachable after 3 attempts (${lastErr.join(' | ')})`);
+        if (status === 401 || status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', `Fly91 access challenge (HTTP ${status})`, status);
+        if (status === 429) throw new AcquisitionError('RATE_LIMITED', 'Fly91 rate-limited this IP', 429);
+        if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Fly91 HTTP ${status}`, status);
+        const flights = parseFly91Results(html, dep);
+        if (!flights.length) return []; // honest empty: route/date not served
+        return fly91FlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
     {
