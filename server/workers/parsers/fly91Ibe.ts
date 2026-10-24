@@ -106,10 +106,9 @@ export function parseFly91Results(html: string, depIso: string): F91Flight[] {
 export function parseFly91FareStrip(html: string): { dt: string; pr: number }[] {
   const out: { dt: string; pr: number }[] = [];
   const re = /([A-Za-z]{3}), (\d{2})-([A-Za-z]{3})[\s\S]{0,160}?<span class="fare">\s*([\d,]+)\s*INR/g;
-  let m: RegExpExecArray | null;
   const year = new Date().getFullYear();
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  while ((m = re.exec(html))) {
+  for (const m of html.matchAll(re)) {
     const mo = months.findIndex((x) => x.toLowerCase() === m[3].toLowerCase());
     if (mo < 0) continue;
     const dt = `${year}-${String(mo + 1).padStart(2, '0')}-${m[2]}`;
