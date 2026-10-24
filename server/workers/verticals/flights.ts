@@ -23,6 +23,7 @@ import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
 import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
 import { spiceJetLowFareBody, spiceJetAvailabilityBody, spiceJetBaseHeaders, spiceJetTokenHeaders, spiceJetSearchUrl, parseSpiceJetLowFare, parseSpiceJetAvailability, spiceJetDayFareItems } from '../parsers/spiceJetDotRez';
+import { airIndiaFaresBody, airIndiaFaresHeaders, AI_FARES_URL, parseAirIndiaFares, airIndiaDayFareItems } from '../parsers/airIndiaFares';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -556,6 +557,72 @@ export const flightsWorker: VerticalWorker = {
           // metadata only — never fail the fare row for this
         }
         return spiceJetDayFareItems(fares, journeys, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+      },
+    },
+    {
+      // Air India LIVE (24 Oct 2026): the AEM booking widget on www.airindia.com
+      // fires POST api.airindia.com/airline-fares/v1/search with just a public
+      // Azure APIM subscription key — a ~61-day one-way INR fare calendar
+      // (base + tax per date). Discovered via Browserbase CDP capture of the
+      // widget's own XHR (Delhi->Mumbai, 28 Oct 2026) and verified replayed
+      // browserless from the sandbox: 28 Oct ONE-WAY total 7205 (base 5410 +
+      // tax 1795) — tripInfo.duration MUST be null; duration 1/4 returns
+      // round-trip totals (28 Oct 14024/14150).
+      // The IBE per-flight chain (prime/auth/token -> prime/search/air-bounds,
+      // shapes captured in parsers/airIndiaFares.ts) is Akamai 403 from
+      // datacenter IPs; the fare calendar is not, so it is the production
+      // source. Ladder chrome-h2 -> safari-h2 -> chrome-h1 (self-healing).
+      sourceId: 'w_flights_airindia',
+      name: 'Flights worker: Air India fare calendar (airline API)',
+      priority: 14,
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        let body = '';
+        let status = 0;
+        const lastErr: string[] = [];
+        const payload = airIndiaFaresBody(fromA.code, toA.code, dep);
+        for (const a of [
+          { label: 'chrome-h2', imp: 'chrome', hv: undefined },
+          { label: 'safari-h2', imp: 'safari17_0', hv: undefined },
+          { label: 'chrome-h1', imp: 'chrome', hv: '1.1' as const },
+        ]) {
+          try {
+            const r = await cffiFetch(AI_FARES_URL, {
+              method: 'POST',
+              impersonate: a.imp,
+              timeoutMs: 22_000,
+              headers: airIndiaFaresHeaders(),
+              body: payload,
+              ...(a.hv ? { httpVersion: a.hv } : {}),
+            });
+            body = r.body || '';
+            status = r.status;
+            if (status > 0 && status !== 429 && status < 500) break; // definitive answer
+            lastErr.push(`${a.label}: HTTP ${status}`);
+          } catch (e: any) {
+            lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+            status = 0;
+          }
+        }
+        if (status === 0) throw new AcquisitionError('SERVER_ERROR', `Air India fare-calendar unreachable after 3 attempts (${lastErr.join(' | ')})`);
+        if (status === 401 || status === 403) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', `Air India fare-calendar access challenge (HTTP ${status})`, status);
+        }
+        if (status === 429) throw new AcquisitionError('RATE_LIMITED', 'Air India fare-calendar rate-limited this IP', 429);
+        if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Air India fare-calendar HTTP ${status}`, status);
+        const fares = parseAirIndiaFares(body);
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Air India fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+        return airIndiaDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
     {
