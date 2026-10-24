@@ -29,6 +29,7 @@ import { fly91BookingUrl, fly91EventBody, fly91FormAction, parseFly91Results, fl
 import { SL_HOME, SL_IBE_OVERRIDE, SL_IBE_SITE, SL_OVERRIDE_POST, slIsImpervaStub, slIdxxui, slOverrideBody, slEncFromOverridePage, parseSriLankanAvailability, sriLankanFlightItems } from '../parsers/sriLankanPlnext';
 import { STAR_HOME, starAvailUrl, starValidDestinations, parseStarAirAvailability, starAirFlightItems } from '../parsers/starAirCrane';
 import { SIA_HOME, SIA_CHAT_PAGE, SIA_CHAT_API, siaChatPrompt, siaChatBody, parseSiaChatStream, siaRouteInvalid, siaIsGated, siaFareItems } from '../parsers/singaporeAirChat';
+import { QR_FARE_CALENDARS, QR_FLIGHT_OFFERS, qrHeaders, qrFareCalendarsBody, qrFlightOffersBody, parseQrFareCalendars, parseQrFlightOffers, qrFlightItems, qrCalendarItems } from '../parsers/qatarAirwaysNbx';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -954,6 +955,72 @@ export const flightsWorker: VerticalWorker = {
         const rows = parseSiaChatStream(stream);
         if (!rows.length) return []; // honest empty: no fare-cache entry for this date
         return siaFareItems(rows, ctx.source, rt.from, rt.to, dep);
+      },
+    },
+    {
+      // Qatar Airways (24 Oct 2026): nbx booking BFF endpoints discovered via
+      // Browserbase CDP. fare-calendars is OPEN to datacenter curl_cffi
+      // (sandbox-verified LIVE: DEL-DOH 27 Oct..2 Nov INR 21,795-23,784);
+      // flight-offers carries a path-specific Akamai sensor rule (403 from
+      // curl_cffi, passes in real browser). SELF-DETECTING LADDER: try
+      // flight-offers first (3 fingerprint rungs); persistent 403 -> honest
+      // fare-calendar date-level rows. The moment the sensor rule lifts for
+      // the production IP, rows upgrade to full flight-level data
+      // (in-browser verified: QR579 DEL 03:45->DOH 05:35 A350-900
+      // ECONOMY_CLASSIC INR 43,215; QR4781/QR4771 INR 23,244).
+      // Headers from CDP: nbx_fs_api_key + qr-lang + session-id +
+      // X-AssignedDeviceID are all the endpoints need.
+      sourceId: 'w_flights_qatar',
+      name: 'Flights worker: Qatar Airways direct booking engine (nbx BFF)',
+      priority: 15,
+      maxPerMinute: 2,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+        const sid = String((globalThis.crypto as any).randomUUID());
+        const referer = `https://www.qatarairways.com/app/booking/flight-selection?fromStation=${fromA.code}&toStation=${toA.code}&departing=${dep}`;
+        const H = { 'User-Agent': UA, ...qrHeaders(sid, referer) };
+        // 1. flight-offers (full data) with 3-rung fingerprint ladder
+        const rungs: { imp: 'chrome' | 'safari' | 'chrome-h1'; label: string }[] = [
+          { imp: 'chrome', label: 'chrome' },
+          { imp: 'safari', label: 'safari' },
+          { imp: 'chrome-h1', label: 'chrome-h1' },
+        ];
+        let offersBlocked = false;
+        for (const rung of rungs) {
+          try {
+            const r = await cffiFetch(QR_FLIGHT_OFFERS, {
+              impersonate: rung.imp, timeoutMs: 30_000, method: 'POST',
+              body: qrFlightOffersBody(fromA.code, toA.code, dep), headers: H,
+            });
+            if (r.status === 403) { offersBlocked = true; await new Promise(rr => setTimeout(rr, 1500)); continue; }
+            if (r.status === 200) {
+              const offers = parseQrFlightOffers(r.body || '', dep);
+              if (offers.length) return qrFlightItems(offers, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+              offersBlocked = false; // reachable but no economy rows: fall through to calendar
+            }
+            break;
+          } catch { offersBlocked = true; continue; }
+        }
+        // 2. fare-calendars fallback (open endpoint, sandbox-verified)
+        const cal = await cffiFetch(QR_FARE_CALENDARS, {
+          impersonate: 'chrome', timeoutMs: 30_000, method: 'POST',
+          body: qrFareCalendarsBody(fromA.code, toA.code, dep), headers: H,
+        });
+        if (cal.status === 403) throw new AcquisitionError('ACCESS_CHALLENGE', `Qatar Airways fare-calendar gated (HTTP ${cal.status})`, cal.status);
+        if (cal.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Qatar fare-calendar HTTP ${cal.status}`, cal.status);
+        const { requested } = parseQrFareCalendars(cal.body || '', dep);
+        if (!requested) return []; // honest empty: no fare-cache entry for this route/date
+        return qrCalendarItems(requested, ctx.source, rt.from, rt.to, fromA.code, toA.code);
       },
     },
     {

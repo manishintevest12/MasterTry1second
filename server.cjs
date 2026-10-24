@@ -9416,6 +9416,169 @@ var init_singaporeAirChat = __esm({
   }
 });
 
+// server/workers/parsers/qatarAirwaysNbx.ts
+function qrHeaders(sessionId, referer) {
+  return {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en",
+    "qr-lang": "en",
+    "nbx_fs_api_key": QR_NBX_API_KEY,
+    "session-id": sessionId,
+    "X-AssignedDeviceID": "e2uNCDUd44wFRHUQ9QE2U2BMoSCMWnGI",
+    Origin: "https://www.qatarairways.com",
+    Referer: referer
+  };
+}
+function qrFareCalendarsBody(from, to, dep) {
+  return JSON.stringify({
+    channel: "WEB_DESKTOP",
+    itineraries: [{ origin: from, destination: to, departureDate: dep, isRequested: true }],
+    cabinClass: "ECONOMY",
+    ignoreInvalidPromoCode: true,
+    passengers: [{ type: "ADT", count: 1 }],
+    flexibility: 3
+  });
+}
+function qrFlightOffersBody(from, to, dep) {
+  return JSON.stringify({
+    channel: "WEB_DESKTOP",
+    itineraries: [{ origin: from, destination: to, departureDate: dep, isRequested: true }],
+    cabinClass: "ECONOMY",
+    ignoreInvalidPromoCode: true,
+    passengers: [{ type: "ADT", count: 1 }]
+  });
+}
+function qrBookingUrl(from, to, dep) {
+  return `https://booking.qatarairways.com/nsp/views/showBooking.action?widget=QR&searchType=F&addTaxToFare=Y&minPurTime=0&selLang=en&tripType=O&fromStation=${from}&toStation=${to}&departing=${dep}&bookingClass=E&adults=1&children=0&infants=0&ofw=0&teenager=0&flexibleDate=off`;
+}
+function parseQrFareCalendars(body, dep) {
+  let j;
+  try {
+    j = JSON.parse(body);
+  } catch {
+    return { requested: null, all: [] };
+  }
+  const rows = (j?.faresFromCalendar || []).filter((f) => f && typeof f.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(f.date) && Number(f.lowestPrice) > 0).map((f) => ({ date: f.date, lowestPrice: Number(f.lowestPrice), currencyCode: String(f.currencyCode || "INR") }));
+  return { requested: rows.find((r) => r.date === dep) || null, all: rows };
+}
+function parseQrFlightOffers(body, dep) {
+  let j;
+  try {
+    j = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const o of j?.flightOffers || []) {
+    const segs = o?.segments || [];
+    const first = segs[0];
+    const last = segs[segs.length - 1];
+    if (!first?.flightNumber || !first?.departure?.dateTime) continue;
+    const depDt = String(first.departure.dateTime).slice(0, 19);
+    const depDate = depDt.slice(0, 10);
+    if (depDate !== dep) continue;
+    const depTime = depDt.slice(11, 16);
+    const arrDt = String(last?.arrival?.dateTime || "");
+    const arrTime = arrDt.slice(11, 16);
+    const arrNextDay = String(last?.arrival?.dateTime || "").slice(0, 10) > depDate || Number(last?.arrival?.daysDifference || 0) > 0;
+    const ecoFares = (o.fareOffers || []).filter((f) => f?.cabinType === "ECONOMY" && Number(f?.price?.total) > 0);
+    if (!ecoFares.length) continue;
+    const best = ecoFares.reduce((a, b) => Number(b.price.total) < Number(a.price.total) ? b : a);
+    const key = `${first.flightNumber}-${depTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      flightNumber: String(first.flightNumber),
+      airline: String(first.operatingAirlineName || "Qatar Airways"),
+      depIso: depDate,
+      depTime,
+      arrTime,
+      arrNextDay,
+      stops: Number(o.numberOfStops || 0),
+      durationSec: Number(o.duration || 0),
+      aircraft: String(first.vehicle?.name || ""),
+      bestEcoTotal: Number(best.price.total),
+      currencyCode: String(best.price.currencyCode || "INR"),
+      fareFamily: String(best.fareFamilyCode || ""),
+      seats: Number(best.availableSeats || 0)
+    });
+  }
+  return out;
+}
+function qrFlightItems(offers, source, fromCity, toCity, fromCode, toCode, dep) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return offers.map((o) => newRawItem(source, {
+    title: `Qatar Airways ${o.flightNumber} ${fromCity} \u2192 ${toCity} ${o.depTime}\u2013${o.arrTime}${o.arrNextDay ? "+1" : ""} \xB7 \u20B9${o.bestEcoTotal.toLocaleString("en-IN")}`,
+    brand: "Qatar Airways",
+    price: o.bestEcoTotal,
+    currency: o.currencyCode,
+    seller: "Qatar Airways",
+    sellerUrl: qrBookingUrl(fromCode, toCode, o.depIso),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: o.depIso },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: o.airline,
+      flight_number: o.flightNumber,
+      travel_date: o.depIso,
+      departure_date: o.depIso,
+      departs: o.depTime,
+      arrives: o.arrTime,
+      duration: o.durationSec ? `${Math.floor(o.durationSec / 3600)}h ${Math.round(o.durationSec % 3600 / 60)}m` : "",
+      stops: o.stops === 0 ? "non-stop" : `${o.stops} stop${o.stops > 1 ? "s" : ""}`,
+      aircraft: o.aircraft,
+      fare_class: o.fareFamily.replace(/_/g, " ").toLowerCase(),
+      seats_left: o.seats > 0 ? String(o.seats) : "",
+      price_basis: `Qatar Airways live economy fare (${o.fareFamily}) incl. taxes for 1 adult on ${o.depIso} captured ${today2}`,
+      data_note: `Live per-flight data from Qatar Airways' own booking API (flight-search BFF). Price is total incl. taxes for 1 adult.`,
+      image: ""
+    },
+    identifiers: { sku: `qr-${o.flightNumber}-${o.depIso}` },
+    evidence: {
+      sourceUrl: QR_FLIGHT_OFFERS,
+      extractedFields: ["flightOffers[].segments[].flightNumber", "departure.dateTime", "arrival.dateTime", "fareOffers[].price.total"]
+    }
+  }));
+}
+function qrCalendarItems(entry, source, fromCity, toCity, fromCode, toCode) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  return [newRawItem(source, {
+    title: `Qatar Airways ${fromCity} \u2192 ${toCity} on ${entry.date} from \u20B9${entry.lowestPrice.toLocaleString("en-IN")} (economy)`,
+    brand: "Qatar Airways",
+    price: entry.lowestPrice,
+    currency: entry.currencyCode,
+    seller: "Qatar Airways",
+    sellerUrl: qrBookingUrl(fromCode, toCode, entry.date),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: entry.date },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: "Qatar Airways",
+      travel_date: entry.date,
+      departure_date: entry.date,
+      fare_class: "Economy (lowest fare of the day)",
+      stops: "",
+      price_basis: `Qatar Airways live fare-calendar lowest economy fare for 1 adult on ${entry.date} captured ${today2}`,
+      data_note: `Lowest fare of the day from Qatar Airways' own live fare-calendar API (incl. taxes, 1 adult). Flight times/numbers are shown on the booking page.`,
+      image: ""
+    },
+    identifiers: { sku: `qr-cal-${fromCode}${toCode}-${entry.date}` },
+    evidence: {
+      sourceUrl: QR_FARE_CALENDARS,
+      extractedFields: ["faresFromCalendar[].date", "faresFromCalendar[].lowestPrice"]
+    }
+  })];
+}
+var QR_FARE_CALENDARS, QR_FLIGHT_OFFERS, QR_NBX_API_KEY;
+var init_qatarAirwaysNbx = __esm({
+  "server/workers/parsers/qatarAirwaysNbx.ts"() {
+    init_contract();
+    QR_FARE_CALENDARS = "https://www.qatarairways.com/dapi/public/bff/web/flight-search/fare-calendars";
+    QR_FLIGHT_OFFERS = "https://www.qatarairways.com/dapi/public/bff/web/flight-search/flight-offers";
+    QR_NBX_API_KEY = "74f2474702784207a9785eb3ef8ae4e4";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13527,6 +13690,7 @@ var init_flights = __esm({
     init_sriLankanPlnext();
     init_starAirCrane();
     init_singaporeAirChat();
+    init_qatarAirwaysNbx();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -14366,6 +14530,81 @@ var init_flights = __esm({
             const rows = parseSiaChatStream(stream);
             if (!rows.length) return [];
             return siaFareItems(rows, ctx.source, rt.from, rt.to, dep);
+          }
+        },
+        {
+          // Qatar Airways (24 Oct 2026): nbx booking BFF endpoints discovered via
+          // Browserbase CDP. fare-calendars is OPEN to datacenter curl_cffi
+          // (sandbox-verified LIVE: DEL-DOH 27 Oct..2 Nov INR 21,795-23,784);
+          // flight-offers carries a path-specific Akamai sensor rule (403 from
+          // curl_cffi, passes in real browser). SELF-DETECTING LADDER: try
+          // flight-offers first (3 fingerprint rungs); persistent 403 -> honest
+          // fare-calendar date-level rows. The moment the sensor rule lifts for
+          // the production IP, rows upgrade to full flight-level data
+          // (in-browser verified: QR579 DEL 03:45->DOH 05:35 A350-900
+          // ECONOMY_CLASSIC INR 43,215; QR4781/QR4771 INR 23,244).
+          // Headers from CDP: nbx_fs_api_key + qr-lang + session-id +
+          // X-AssignedDeviceID are all the endpoints need.
+          sourceId: "w_flights_qatar",
+          name: "Flights worker: Qatar Airways direct booking engine (nbx BFF)",
+          priority: 15,
+          maxPerMinute: 2,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const sid = String(globalThis.crypto.randomUUID());
+            const referer = `https://www.qatarairways.com/app/booking/flight-selection?fromStation=${fromA.code}&toStation=${toA.code}&departing=${dep}`;
+            const H = { "User-Agent": UA6, ...qrHeaders(sid, referer) };
+            const rungs = [
+              { imp: "chrome", label: "chrome" },
+              { imp: "safari", label: "safari" },
+              { imp: "chrome-h1", label: "chrome-h1" }
+            ];
+            let offersBlocked = false;
+            for (const rung of rungs) {
+              try {
+                const r = await cffiFetch(QR_FLIGHT_OFFERS, {
+                  impersonate: rung.imp,
+                  timeoutMs: 3e4,
+                  method: "POST",
+                  body: qrFlightOffersBody(fromA.code, toA.code, dep),
+                  headers: H
+                });
+                if (r.status === 403) {
+                  offersBlocked = true;
+                  await new Promise((rr) => setTimeout(rr, 1500));
+                  continue;
+                }
+                if (r.status === 200) {
+                  const offers = parseQrFlightOffers(r.body || "", dep);
+                  if (offers.length) return qrFlightItems(offers, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+                  offersBlocked = false;
+                }
+                break;
+              } catch {
+                offersBlocked = true;
+                continue;
+              }
+            }
+            const cal = await cffiFetch(QR_FARE_CALENDARS, {
+              impersonate: "chrome",
+              timeoutMs: 3e4,
+              method: "POST",
+              body: qrFareCalendarsBody(fromA.code, toA.code, dep),
+              headers: H
+            });
+            if (cal.status === 403) throw new AcquisitionError("ACCESS_CHALLENGE", `Qatar Airways fare-calendar gated (HTTP ${cal.status})`, cal.status);
+            if (cal.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Qatar fare-calendar HTTP ${cal.status}`, cal.status);
+            const { requested } = parseQrFareCalendars(cal.body || "", dep);
+            if (!requested) return [];
+            return qrCalendarItems(requested, ctx.source, rt.from, rt.to, fromA.code, toA.code);
           }
         },
         {
