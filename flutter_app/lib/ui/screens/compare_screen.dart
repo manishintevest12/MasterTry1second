@@ -111,6 +111,11 @@ class _CompareScreenState extends State<CompareScreen> {
       final cachedQ = _queryFromCacheKey(_state.cacheQuery[_meta.id]);
       if (_state.cache[_meta.id] != null && cachedQ.isNotEmpty) {
         _syncFormFromQuery(cachedQ);
+      } else {
+        // Cold cache (fresh install / aged out): the sticky last search
+        // still paints the user's own query in the form, never the seed.
+        final sticky = _state.lastQueryFor(_meta.id);
+        if (sticky.isNotEmpty) _syncFormFromQuery(sticky);
       }
       _runSearch(auto: true);
       return;
@@ -243,7 +248,11 @@ class _CompareScreenState extends State<CompareScreen> {
     // 'health insurance', 'best credit card'...) so Loans / Insurance /
     // Credit Cards NEVER dead-end in 'No matching options found' — a tab
     // shows real data the moment it opens (owner 23 Oct complaint).
-    final q = q0.isEmpty ? defaultQueryFor(_meta.id, _state.city) : q0;
+    // Owner 24 Oct: the vertical's OWN last searched query is sticky — it
+    // wins over the registry seed, so reopening flights after switching
+    // verticals re-runs the user's last route instead of Indore->Delhi.
+    final sticky = _state.lastQueryFor(_meta.id);
+    final q = q0.isEmpty ? (sticky.isNotEmpty ? sticky : defaultQueryFor(_meta.id, _state.city)) : q0;
     if (q.isEmpty) return;
     if (!auto) {
       _bgPollCount = 0; // fresh user search: full 30-poll budget again

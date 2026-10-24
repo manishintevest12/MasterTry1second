@@ -929,6 +929,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return () => { cancelled = true; };
   }, []);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // Owner 24 Oct (web parity of the app's sticky last search): the last query
+  // actually run per vertical — switching verticals and coming back restores
+  // the user's own last search instead of reverting to the DEFAULT_QUERY seed
+  // (flights kept falling back to Indore->Delhi).
+  const [verticalQueries, setVerticalQueries] = useState<Record<string, string>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [smartFilterText, setSmartFilterText] = useState<string>('');
   const [sortOption, setSortOption] = useState<'cheapest' | 'best' | 'fastest' | 'highest_rated'>('cheapest');
@@ -1000,7 +1005,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const handleSetVertical = (newVertical: VerticalId) => {
     setVertical(newVertical);
     setSelectedCategory('All');
-    setSearchQuery('');
+    // Sticky last search (owner 24 Oct): coming back to a vertical refills
+    // ITS last query, never a blank box that re-seeds the default route.
+    setSearchQuery(verticalQueries[newVertical] || '');
     setSmartFilterText('');
   };
 
@@ -1058,6 +1065,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     const rawQuery = overrideQuery !== undefined ? overrideQuery : searchQuery;
     const targetQuery = rawQuery && rawQuery.trim() ? rawQuery : (DEFAULT_QUERY[vertical] || '');
+    // Sticky (owner 24 Oct): remember the effective query per vertical so a
+    // vertical switch and back re-runs the user's own last search.
+    setVerticalQueries((prev) => (prev[vertical] === targetQuery ? prev : { ...prev, [vertical]: targetQuery }));
     const dateSensitive = ['hotels', 'flights', 'bus', 'cab', 'movies'].includes(vertical);
     const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
     const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };

@@ -25281,11 +25281,33 @@ function routeFloorMatches(rawQuery, offer) {
   const origin = sides.length > 2 ? tokens2(sides[1]) : tokens2(sides[0]);
   if (!dest.length) return true;
   const attrs = offer.attributes || {};
-  const text = `${offer.title || ""} ${offer.subtitle || ""} ${offer.travel?.route || ""} ${String(attrs.route || "")} ${String(attrs.destination || "")}`.toLowerCase();
-  const hits = (toks2) => toks2.some((t) => text.includes(t));
-  if (!hits(dest)) return false;
-  if (origin.length && !hits(origin)) return false;
-  return true;
+  const sideText = (t) => t.toLowerCase().replace(parens, " ");
+  const hits = (rowSide, toks2) => {
+    const s = sideText(rowSide);
+    return toks2.some((t) => new RegExp(`\\b${t}\\b`).test(s));
+  };
+  const matches = (declared2) => hits(declared2.destSide, dest) && (!origin.length || hits(declared2.originSide, origin));
+  const routeFields = [offer.travel?.route, typeof attrs.route === "string" ? attrs.route : ""].map((f) => String(f || "").trim()).filter(Boolean);
+  for (const f of routeFields) {
+    const d = declaredRouteSides(f);
+    if (d && matches(d)) return true;
+  }
+  const declared = declaredRouteSides(`${offer.title || ""} ${offer.subtitle || ""}`);
+  if (!declared) return false;
+  return matches(declared);
+}
+function declaredRouteSides(text) {
+  const re = /(?:\u2192|->|\s+to\s+)/gi;
+  const seps = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    seps.push({ idx: m.index, len: m[0].length });
+    if (seps.length > 8) break;
+  }
+  if (seps.length === 0) return null;
+  const first = seps[0];
+  const last = seps[seps.length - 1];
+  return { originSide: text.slice(0, first.idx), destSide: text.slice(last.idx + last.len) };
 }
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });

@@ -269,11 +269,51 @@ export function routeFloorMatches(
   const origin = sides.length > 2 ? tokens(sides[1]) : tokens(sides[0]);
   if (!dest.length) return true;
   const attrs = offer.attributes || ({} as Record<string, unknown>);
-  const text = `${offer.title || ''} ${offer.subtitle || ''} ${offer.travel?.route || ''} ${String(attrs.route || '')} ${String(attrs.destination || '')}`.toLowerCase();
-  const hits = (toks: string[]) => toks.some((t) => text.includes(t));
-  if (!hits(dest)) return false;
-  if (origin.length && !hits(origin)) return false;
-  return true;
+  // Owner 24 Oct ("indore se mumbai bola to indore-delhi dikha raha hai"): the
+  // old check searched the WHOLE title text, so a borrowed Delhi-route row
+  // whose title merely MENTIONED the destination ("... via Mumbai · Indore →
+  // Delhi") passed the floor and painted wrong-route itineraries on the first
+  // partial of a fresh route. A borrowed row must now DECLARE a route whose
+  // ENDPOINTS match: the row's origin side names a queried origin token and
+  // its destination side names a queried destination token. No parseable
+  // route -> cannot prove relevance -> never borrowed.
+  const sideText = (t: string) => t.toLowerCase().replace(parens, ' ');
+  const hits = (rowSide: string, toks: string[]) => {
+    const s = sideText(rowSide);
+    return toks.some((t) => new RegExp(`\\b${t}\\b`).test(s));
+  };
+  const matches = (declared: { originSide: string; destSide: string }) =>
+    hits(declared.destSide, dest) && (!origin.length || hits(declared.originSide, origin));
+  // Route-bearing attributes first, parsed independently (a travel.route field
+  // never contains sentence noise); then, only when no route attribute exists,
+  // the title+subtitle text.
+  const routeFields = [offer.travel?.route, typeof attrs.route === 'string' ? attrs.route : '']
+    .map((f) => String(f || '').trim()).filter(Boolean);
+  for (const f of routeFields) {
+    const d = declaredRouteSides(f);
+    if (d && matches(d)) return true;
+  }
+  const declared = declaredRouteSides(`${offer.title || ''} ${offer.subtitle || ''}`);
+  if (!declared) return false;
+  return matches(declared);
+}
+
+/** Parse a row's declared route out of its route-bearing text. Separators are
+ * unicode arrows, "->" or the word "to". For multi-leg itineraries
+ * ("Indore → Mumbai → Delhi") the overall route is first-endpoint to
+ * last-endpoint. Returns null when no route is declared. */
+function declaredRouteSides(text: string): { originSide: string; destSide: string } | null {
+  const re = /(?:\u2192|->|\s+to\s+)/gi;
+  const seps: { idx: number; len: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    seps.push({ idx: m.index, len: m[0].length });
+    if (seps.length > 8) break; // defensive: absurd text, treat as unparseable
+  }
+  if (seps.length === 0) return null;
+  const first = seps[0];
+  const last = seps[seps.length - 1];
+  return { originSide: text.slice(0, first.idx), destSide: text.slice(last.idx + last.len) };
 }
 
 async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery, maxAgeSec = 3600): Promise<any[]> {

@@ -32,7 +32,23 @@ test('non-route query keeps the old behaviour (no filtering)', () => {
 });
 
 test('lowercase/iata variants still match', () => {
-  assert.equal(routeFloorMatches('indore idr to delhi del', { title: 'Air India AI-806', subtitle: '', travel: { route: 'New Delhi to Indore' }, attributes: {} }), true);
+  assert.equal(routeFloorMatches('indore idr to delhi del', { title: 'Air India AI-806', subtitle: '', travel: { route: 'Indore to New Delhi' }, attributes: {} }), true);
+});
+
+// Owner 24 Oct ("indore se mumbai bola to indore-delhi dikha raha hai"): the
+// floor now matches the row's DECLARED route endpoints, direction included.
+// A reverse-direction borrowed row is a wrong-route row for a one-way trip.
+test('reverse-direction route row is rejected (direction matters)', () => {
+  assert.equal(routeFloorMatches('indore idr to delhi del', { title: 'Air India AI-806', subtitle: '', travel: { route: 'New Delhi to Indore' }, attributes: {} }), false);
+});
+
+// Owner 24 Oct: a borrowed itinerary whose title MENTIONS the destination as
+// a via stop ("... via Mumbai · Indore → Delhi") must not leak into an
+// Indore->Mumbai search — endpoint sides are matched, not the whole text.
+test('via-stop mention does not satisfy the queried destination', () => {
+  const viaRow = { title: 'Air India AI2616 + AI2556 via Mumbai · Indore → Delhi (1 stop)', subtitle: '', attributes: {} };
+  assert.equal(routeFloorMatches('Indore to Mumbai', viaRow), false);
+  assert.equal(routeFloorMatches('Indore to Delhi', viaRow), true);
 });
 
 

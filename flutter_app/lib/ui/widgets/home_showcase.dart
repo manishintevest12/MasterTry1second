@@ -19,6 +19,29 @@ import 'home_banner_strip.dart';
 /// masking pointer (/api/out) in the in-app browser, so the Amazon Associates
 /// tag and Myntra INR-Deals/Cuelinks routing are injected server-side exactly
 /// like the website.
+/// Owner 24 Oct ("1,000 ki jagah 10,00 aa raha"): Indian digit grouping is
+/// last-3 then pairs (1,23,456) — the old regex grouped from the left in
+/// pairs so 1000 rendered as "10,00". Public + tested.
+String formatRupee(double v) {
+  final whole = v == v.roundToDouble();
+  final n = whole ? v.round() : v;
+  final s = whole ? '$n' : n.toStringAsFixed(2);
+  if (n < 1000) return s;
+  final t = '$n'.split('.');
+  final d = t[0];
+  final last3 = d.substring(d.length - 3);
+  var rest = d.substring(0, d.length - 3);
+  final parts = <String>[];
+  while (rest.length > 2) {
+    parts.insert(0, rest.substring(rest.length - 2));
+    rest = rest.substring(0, rest.length - 2);
+  }
+  if (rest.isNotEmpty) parts.insert(0, rest);
+  final g = parts.isEmpty ? last3 : '${parts.join(',')},$last3';
+  return t.length > 1 ? '$g.${t[1]}' : g;
+}
+
+
 class HomeShowcase extends StatefulWidget {
   const HomeShowcase({super.key, required this.state});
   final AppState state;
@@ -365,16 +388,7 @@ class _ShowcaseCard extends StatelessWidget {
   final ShowcaseItem item;
   final AppState state;
 
-  String _rupee(double v) {
-    final whole = v == v.roundToDouble();
-    final n = whole ? v.round() : v;
-    final s = whole ? '$n' : n.toStringAsFixed(2);
-    if (n < 1000) return s;
-    // Indian grouping: 1,23,456
-    final t = '$n'.split('.');
-    final g = t[0].replaceAll(RegExp(r'\B(?=(\d{2})+(?!\d))'), ',');
-    return t.length > 1 ? '$g.${t[1]}' : g;
-  }
+  String _rupee(double v) => formatRupee(v);
 
   /// Red-brand hatke badges (reference idea, honest math).
   String? get _stealBadge {

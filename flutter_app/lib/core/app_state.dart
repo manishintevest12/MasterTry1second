@@ -182,6 +182,18 @@ class AppState extends ChangeNotifier {
     return p;
   }
 
+  /// Owner 24 Oct ("vertical change karke wapas aata hoon to flights phir se
+  /// Indore-Delhi support karne lagta hai"): the last query the user actually
+  /// searched in each vertical. Sticky across vertical switches AND app
+  /// restarts (persisted with the live disk cache) — a vertical reopens on
+  /// the user's own last search instead of the registry seed default.
+  final Map<String, String> lastQuery = {};
+
+  String lastQueryFor(String vertical) {
+    final key = vertical == 'movies' ? 'movie' : vertical;
+    return lastQuery[key] ?? '';
+  }
+
   Future<void> setLocation(String newCity, String newPin, {double? lat, double? lng}) async {
     city = newCity.trim().isEmpty ? city : newCity.trim();
     pincode = newPin.trim().isEmpty ? pincode : newPin.trim();
@@ -202,6 +214,7 @@ class AppState extends ChangeNotifier {
   Future<LiveResponse> live(String v, String query, {String? depart, String? returnDate, bool force = false}) async {
     final key = v == 'movies' ? 'movie' : v;
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
+    lastQuery[key] = q; // sticky: this vertical reopens on its own last search
     final cacheKey = '$key|$q|${depart ?? ''}';
     if (!force && cache[key] != null && cacheQuery[key] == cacheKey) {
       final hit = cache[key]!;
@@ -326,7 +339,7 @@ class AppState extends ChangeNotifier {
       if (capped.isEmpty) return;
       v[k] = {'q': cacheQuery[k], 't': cacheAt[k], 'j': capped};
     });
-    return {'city': city, 'pincode': pincode, 'v': v};
+    return {'city': city, 'pincode': pincode, 'v': v, 'lq': lastQuery};
   }
 
   Future<void> _loadDiskCache() async {
@@ -356,6 +369,12 @@ class AppState extends ChangeNotifier {
         // Corrupt entry: skip it, never crash the boot.
       }
     });
+    final lq = doc['lq'];
+    if (lq is Map) {
+      lq.forEach((k, val) {
+        if (val is String && val.trim().isNotEmpty) lastQuery['$k'] = val;
+      });
+    }
     if (loaded > 0) notifyListeners();
   }
 
