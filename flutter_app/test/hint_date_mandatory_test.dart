@@ -167,8 +167,20 @@ void main() {
       await tester.pumpAndSettle();
 
       final today = _today();
-      final din = today.add(const Duration(days: 5));
-      final dout = today.add(const Duration(days: 8));
+      var din = today.add(const Duration(days: 5));
+      var dout = today.add(const Duration(days: 8));
+      // Month-boundary safety (flake caught 23-24 Oct): when today+5 and
+      // today+8 fall in DIFFERENT months, the second day number is not on the
+      // visible grid (the picker renders only the viewed month), so the tap
+      // landed on nothing and checkout came back wrong. Step to the next
+      // month and pick early-day pairs there: always future, always unique.
+      if (din.month != dout.month) {
+        final firstOfNext = DateTime(din.year, din.month + 1, 1);
+        din = firstOfNext.add(const Duration(days: 1)); // day 2 of next month
+        dout = firstOfNext.add(const Duration(days: 4)); // day 5 of next month
+        await tester.tap(find.byIcon(Icons.chevron_right_rounded));
+        await tester.pump();
+      }
       // Tap the day numbers (unique on screen within the visible month).
       // Tall surface so the whole month grid (incl. day 31 in 31-day months —
       // the off-by-one daysInMonth bug this test caught) is built.

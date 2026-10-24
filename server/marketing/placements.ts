@@ -7,6 +7,7 @@
  * - Destinations are validated (SSRF/open-redirect safe) before saving.
  */
 import { getStore } from '../common/db';
+import { purgeSectionCache } from '../api/cachedSections';
 import { validateDestination } from '../affiliate/affiliateNetwork';
 
 export interface TopPickInput {
@@ -90,6 +91,7 @@ export async function upsertTopPick(input: TopPickInput): Promise<{ ok: boolean;
        price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
        rating=?, position=?, is_active=? WHERE id=?`, [...values, input.id],
     );
+    purgeSectionCache('rewards:'); // top-pick edit live on next request
     return { ok: true, id: input.id };
   }
   const result: any = await store.execute(
@@ -97,11 +99,13 @@ export async function upsertTopPick(input: TopPickInput): Promise<{ ok: boolean;
      price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, values,
   );
+  purgeSectionCache('rewards:'); // top-pick edit live on next request
   return { ok: true, id: Number(result?.insertId ?? 0) };
 }
 
 export async function deleteTopPick(id: number): Promise<void> {
   await getStore().execute('DELETE FROM top_picks WHERE id = ?', [Number(id)]);
+  purgeSectionCache('rewards:'); // top-pick removal live on next request
 }
 
 export async function getAdSlot(slotKey: string): Promise<any | null> {

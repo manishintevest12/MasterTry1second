@@ -26589,6 +26589,29 @@ var init_spendLens = __esm({
   }
 });
 
+// server/api/cachedSections.ts
+async function cachedSection(key, build, ttlMs = DEFAULT_TTL_MS) {
+  const hit = CACHE2.get(key);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await build();
+  CACHE2.set(key, { expiresAt: Date.now() + ttlMs, value });
+  return value;
+}
+function purgeSectionCache(prefix) {
+  if (!prefix) {
+    CACHE2.clear();
+    return;
+  }
+  for (const k of CACHE2.keys()) if (k.startsWith(prefix)) CACHE2.delete(k);
+}
+var CACHE2, DEFAULT_TTL_MS;
+var init_cachedSections = __esm({
+  "server/api/cachedSections.ts"() {
+    CACHE2 = /* @__PURE__ */ new Map();
+    DEFAULT_TTL_MS = 24 * 60 * 60 * 1e3;
+  }
+});
+
 // server/marketing/placements.ts
 var placements_exports = {};
 __export(placements_exports, {
@@ -26662,6 +26685,7 @@ async function upsertTopPick(input) {
        rating=?, position=?, is_active=? WHERE id=?`,
       [...values, input.id]
     );
+    purgeSectionCache("rewards:");
     return { ok: true, id: input.id };
   }
   const result = await store2.execute(
@@ -26670,10 +26694,12 @@ async function upsertTopPick(input) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     values
   );
+  purgeSectionCache("rewards:");
   return { ok: true, id: Number(result?.insertId ?? 0) };
 }
 async function deleteTopPick(id) {
   await getStore().execute("DELETE FROM top_picks WHERE id = ?", [Number(id)]);
+  purgeSectionCache("rewards:");
 }
 async function getAdSlot(slotKey) {
   const rows = await getStore().query(
@@ -26731,6 +26757,7 @@ var vert, str;
 var init_placements = __esm({
   "server/marketing/placements.ts"() {
     init_db();
+    init_cachedSections();
     init_affiliateNetwork();
     vert = (v) => String(v ?? "").trim().toLowerCase();
     str = (v, max) => {
@@ -29942,6 +29969,132 @@ function quickAppsPartnerFirst(rows) {
   const pinned = new Map(QUICK_APP_HOME_SIX.map((d, i) => [d, i]));
   return [...rows].sort((a, z) => (pinned.get(a.dom) ?? QUICK_APP_HOME_SIX.length) - (pinned.get(z.dom) ?? QUICK_APP_HOME_SIX.length));
 }
+async function buildQuickAppsList() {
+  try {
+    const CURATED_HOME_SIX_IDS = ["qapp-zomato", "qapp-flipkart", "qapp-amazon", "qapp-swiggy", "qapp-bookmyshow", "qapp-myntra"];
+    const { INITIAL_QUICK_APP_PARTNERS: INITIAL_QUICK_APP_PARTNERS2 } = await Promise.resolve().then(() => (init_quickAppsData(), quickAppsData_exports));
+    const curatedSix = CURATED_HOME_SIX_IDS.map((id) => INITIAL_QUICK_APP_PARTNERS2.find((q3) => q3.id === id)).filter((q3) => !!q3);
+    const curatedLogos = await Promise.all(curatedSix.map((q3) => resolveMerchantCrispLogo(q3.name).catch(() => null)));
+    const homeSix = curatedSix.map((q3, i) => ({
+      id: q3.id,
+      name: q3.name,
+      iconUrl: curatedLogos[i] || q3.iconUrl,
+      category: q3.category || "Partner",
+      type: "CPS",
+      deepLink: "",
+      webUrl: q3.webUrl,
+      description: q3.description || `Try1Second partner: live prices from ${q3.name}.`,
+      payoutRate: "Affiliate commission on every tracked sale",
+      payoutAmount: 0,
+      status: "active",
+      rating: q3.rating || 4.2,
+      downloadsOrUsers: q3.downloadsOrUsers || "",
+      badge: q3.badge || "Partner",
+      bgColor: "bg-slate-700",
+      createdAt: q3.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+      goUrl: createMaskingPointer(q3.webUrl, { offerId: q3.id, trusted: true })
+      // curated partner allow-list
+    }));
+    const curatedDomains = new Set(QUICK_APP_HOME_SIX);
+    const rows = await fetchAffiliateRows(600);
+    const seen = /* @__PURE__ */ new Set();
+    const byName = /* @__PURE__ */ new Map();
+    for (const row of rows) {
+      const name = String(row.merchant_name || "").trim();
+      if (name.length < 2) continue;
+      const dom = realMerchantDomain([row.original_url, row.affiliate_url]) || nameDomainOf(name);
+      const bucket = byName.get(name) || { domains: /* @__PURE__ */ new Set(), category: String(row.categories || "").split(",")[0].trim() };
+      if (dom) bucket.domains.add(dom);
+      byName.set(name, bucket);
+      seen.add(name.toLowerCase());
+    }
+    const entries = Array.from(byName.entries()).map(([name, b]) => {
+      const dom = Array.from(b.domains)[0] || nameDomainOf(name) || "example.com";
+      const homepage = `https://${dom}`;
+      return {
+        name,
+        dom,
+        payload: {
+          id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
+          name: name.slice(0, 60),
+          iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
+          category: b.category || "Shopping",
+          type: "CPS",
+          deepLink: "",
+          webUrl: homepage,
+          description: `Live-tracked coupons and cashback offers from ${name} via Try1Second.`,
+          payoutRate: "Affiliate commission on every tracked sale",
+          payoutAmount: 0,
+          status: "active",
+          rating: 0,
+          downloadsOrUsers: "",
+          badge: "Live Coupons",
+          bgColor: "bg-slate-700",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, trusted: true })
+          // affiliate registry
+        }
+      };
+    });
+    const curatedRest = INITIAL_QUICK_APP_PARTNERS2.filter((q3) => !CURATED_HOME_SIX_IDS.includes(q3.id));
+    const restLogos = await Promise.all(curatedRest.map((q3) => resolveMerchantCrispLogo(q3.name).catch(() => null)));
+    const curatedExtra = curatedRest.map((q3, i) => ({
+      id: q3.id,
+      name: q3.name,
+      iconUrl: restLogos[i] || q3.iconUrl,
+      category: q3.category || "Partner",
+      type: "CPS",
+      deepLink: "",
+      webUrl: q3.webUrl,
+      description: q3.description || `Try1Second partner: live prices from ${q3.name}.`,
+      payoutRate: "Affiliate commission on every tracked sale",
+      payoutAmount: 0,
+      status: "active",
+      rating: q3.rating || 4.2,
+      downloadsOrUsers: q3.downloadsOrUsers || "",
+      badge: q3.badge || "Partner",
+      bgColor: "bg-slate-700",
+      createdAt: q3.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+      goUrl: createMaskingPointer(q3.webUrl, { offerId: q3.id, trusted: true })
+      // curated partner allow-list
+    }));
+    let customApps = [];
+    try {
+      const rows2 = await getStore().query("SELECT * FROM quick_apps_custom");
+      customApps = rows2.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.id) - Number(z.id)).map((r) => ({
+        id: `qac-${r.id}`,
+        name: String(r.name).slice(0, 60),
+        iconUrl: r.icon_url ? String(r.icon_url) : `https://icons.duckduckgo.com/ip3/${safeHostIcon(String(r.web_url))}.ico`,
+        category: r.category ? String(r.category) : "Partner",
+        type: "CPS",
+        deepLink: "",
+        webUrl: String(r.web_url),
+        description: r.description ? String(r.description) : `Try1Second partner: live prices from ${r.name}.`,
+        payoutRate: "Affiliate commission on every tracked sale",
+        payoutAmount: 0,
+        status: "active",
+        rating: 4.2,
+        downloadsOrUsers: "",
+        badge: r.badge ? String(r.badge) : "Partner",
+        bgColor: "bg-slate-700",
+        createdAt: String(r.created_at || "").slice(0, 10),
+        goUrl: createMaskingPointer(String(r.web_url), { offerId: `qac-${r.id}`, trusted: true })
+        // owner-added merchant
+      }));
+    } catch {
+    }
+    const knownNames = new Set([...homeSix, ...curatedExtra, ...customApps].map((x) => String(x.name).toLowerCase()));
+    const ordered = quickAppsPartnerFirst(entries.filter((e) => !knownNames.has(e.name.toLowerCase())));
+    const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
+    const registryAffiliates = ordered.filter((e) => !curatedDomains.has(e.dom)).map((e, i) => ({
+      ...e.payload,
+      iconUrl: logos[i] || e.payload.iconUrl
+    }));
+    return [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates];
+  } catch {
+    throw new Error("quick_apps_build_failed");
+  }
+}
 function hotelSellerLabel(o, rawSeller) {
   if (!o || String(o.vertical) !== "hotels") return rawSeller;
   const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -30137,6 +30290,77 @@ function verticalForScanUrl(url, domain) {
   if (/(bankbazaar|paisabazaar|kreditbee|moneyview|navi)/.test(u)) return "loans";
   return "ecommerce";
 }
+async function buildTopPicksList() {
+  try {
+    const { listTopPicks: listTopPicks2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
+    const { itemFromOffer: itemFromOffer2, imageFromAttributes: imageFromAttributes2, fetchVerticalOffers: fetchVerticalOffers2, pickTopOfferRow: pickTopOfferRow2, ageDays: ageDays2, logoAnswers: logoAnswers2, realMerchantDomain: realMerchantDomain2, nameDomainOf: nameDomainOf2 } = await Promise.resolve().then(() => (init_showcase(), showcase_exports));
+    const VERTICALS2 = [
+      "ecommerce",
+      "grocery",
+      "food",
+      "flights",
+      "hotels",
+      "bus",
+      "cab",
+      "movie",
+      "loans",
+      "insurance",
+      "creditcards",
+      "account"
+    ];
+    const adminPicks = await listTopPicks2(void 0, false);
+    const picks = [];
+    const covered = /* @__PURE__ */ new Set();
+    for (const p of adminPicks || []) {
+      const v = String(p.vertical || "").toLowerCase();
+      covered.add(v);
+      const dest = String(p.destination_url || "").trim();
+      if (!dest) continue;
+      picks.push({
+        vertical: v,
+        source: "admin",
+        partnerName: p.partner_name || "",
+        headline: p.headline || "",
+        offerText: p.offer_text || null,
+        priceBadge: p.price_badge || null,
+        badgeText: p.badge_text || null,
+        rating: p.rating ?? null,
+        image: p.image_url || null,
+        ctaText: p.cta_text || "Grab Deal",
+        url: dest.startsWith("/api/out") ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}`, trusted: true })
+        // admin-curated pick
+      });
+    }
+    for (const v of VERTICALS2) {
+      if (covered.has(v)) continue;
+      const rows = await fetchVerticalOffers2(v, 300);
+      const row = pickTopOfferRow2(rows);
+      if (!row) continue;
+      const item = itemFromOffer2(row);
+      if (!item) continue;
+      if (item.image && !await logoAnswers2(item.image)) {
+        const dom = realMerchantDomain2([row.seller_url]) || nameDomainOf2(item.merchant);
+        item.image = dom ? `https://icons.duckduckgo.com/ip3/${dom}.ico` : item.image;
+      }
+      picks.push({
+        vertical: v,
+        source: "live",
+        partnerName: item.merchant,
+        headline: String(row.title || "").slice(0, 90),
+        offerText: item.badge,
+        priceBadge: item.price != null ? `Rs ${Math.round(item.price)}` : null,
+        badgeText: item.discountPct ? `${item.discountPct}% OFF` : null,
+        rating: item.rating,
+        image: item.image,
+        ctaText: "View Deal",
+        url: item.url
+      });
+    }
+    return picks;
+  } catch (e) {
+    throw new Error(e?.message || "top_picks_build_failed");
+  }
+}
 function leadRateOk(ip) {
   const now = Date.now();
   const h = leadHits.get(ip);
@@ -30168,6 +30392,31 @@ async function signInGoogleUser(claims) {
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
   ]);
   return { token, row };
+}
+async function buildHomeBannersList() {
+  try {
+    const rows = await getStore().query("SELECT * FROM home_banners");
+    const admin = rows.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
+      id: Number(r.id),
+      imageUrl: String(r.image_url || ""),
+      link: String(r.link_url || "movies"),
+      title: r.title ? String(r.title) : null,
+      subtitle: r.subtitle ? String(r.subtitle) : null
+    }));
+    let live = [];
+    try {
+      const { buildSectionBanners: buildSectionBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
+      live = (await buildSectionBanners2()).filter((b) => b.imageUrl && b.link).map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
+    } catch {
+    }
+    const seen = new Set(admin.map((b) => b.imageUrl));
+    return [
+      ...admin,
+      ...live.filter((b) => !seen.has(b.imageUrl)).map((b, i) => ({ id: 1e6 + i, ...b }))
+    ];
+  } catch {
+    return [];
+  }
 }
 async function bootstrapBackend() {
   try {
@@ -30223,6 +30472,7 @@ var init_routes = __esm({
     init_interstitial();
     init_cabDeeplink();
     init_showcase();
+    init_cachedSections();
     init_db();
     init_db();
     init_cache();
@@ -30463,126 +30713,8 @@ var init_routes = __esm({
     QUICK_APP_HOME_SIX = ["zomato.com", "flipkart.com", "amazon.in", "swiggy.com", "bookmyshow.com", "myntra.com"];
     apiRouter.get("/quick-apps", async (_req, res) => {
       try {
-        const CURATED_HOME_SIX_IDS = ["qapp-zomato", "qapp-flipkart", "qapp-amazon", "qapp-swiggy", "qapp-bookmyshow", "qapp-myntra"];
-        const { INITIAL_QUICK_APP_PARTNERS: INITIAL_QUICK_APP_PARTNERS2 } = await Promise.resolve().then(() => (init_quickAppsData(), quickAppsData_exports));
-        const curatedSix = CURATED_HOME_SIX_IDS.map((id) => INITIAL_QUICK_APP_PARTNERS2.find((q3) => q3.id === id)).filter((q3) => !!q3);
-        const curatedLogos = await Promise.all(curatedSix.map((q3) => resolveMerchantCrispLogo(q3.name).catch(() => null)));
-        const homeSix = curatedSix.map((q3, i) => ({
-          id: q3.id,
-          name: q3.name,
-          iconUrl: curatedLogos[i] || q3.iconUrl,
-          category: q3.category || "Partner",
-          type: "CPS",
-          deepLink: "",
-          webUrl: q3.webUrl,
-          description: q3.description || `Try1Second partner: live prices from ${q3.name}.`,
-          payoutRate: "Affiliate commission on every tracked sale",
-          payoutAmount: 0,
-          status: "active",
-          rating: q3.rating || 4.2,
-          downloadsOrUsers: q3.downloadsOrUsers || "",
-          badge: q3.badge || "Partner",
-          bgColor: "bg-slate-700",
-          createdAt: q3.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-          goUrl: createMaskingPointer(q3.webUrl, { offerId: q3.id, trusted: true })
-          // curated partner allow-list
-        }));
-        const curatedDomains = new Set(QUICK_APP_HOME_SIX);
-        const rows = await fetchAffiliateRows(600);
-        const seen = /* @__PURE__ */ new Set();
-        const byName = /* @__PURE__ */ new Map();
-        for (const row of rows) {
-          const name = String(row.merchant_name || "").trim();
-          if (name.length < 2) continue;
-          const dom = realMerchantDomain([row.original_url, row.affiliate_url]) || nameDomainOf(name);
-          const bucket = byName.get(name) || { domains: /* @__PURE__ */ new Set(), category: String(row.categories || "").split(",")[0].trim() };
-          if (dom) bucket.domains.add(dom);
-          byName.set(name, bucket);
-          seen.add(name.toLowerCase());
-        }
-        const entries = Array.from(byName.entries()).map(([name, b]) => {
-          const dom = Array.from(b.domains)[0] || nameDomainOf(name) || "example.com";
-          const homepage = `https://${dom}`;
-          return {
-            name,
-            dom,
-            payload: {
-              id: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}`,
-              name: name.slice(0, 60),
-              iconUrl: `https://icons.duckduckgo.com/ip3/${dom}.ico`,
-              category: b.category || "Shopping",
-              type: "CPS",
-              deepLink: "",
-              webUrl: homepage,
-              description: `Live-tracked coupons and cashback offers from ${name} via Try1Second.`,
-              payoutRate: "Affiliate commission on every tracked sale",
-              payoutAmount: 0,
-              status: "active",
-              rating: 0,
-              downloadsOrUsers: "",
-              badge: "Live Coupons",
-              bgColor: "bg-slate-700",
-              createdAt: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-              goUrl: createMaskingPointer(homepage, { offerId: `qa-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, trusted: true })
-              // affiliate registry
-            }
-          };
-        });
-        const curatedRest = INITIAL_QUICK_APP_PARTNERS2.filter((q3) => !CURATED_HOME_SIX_IDS.includes(q3.id));
-        const restLogos = await Promise.all(curatedRest.map((q3) => resolveMerchantCrispLogo(q3.name).catch(() => null)));
-        const curatedExtra = curatedRest.map((q3, i) => ({
-          id: q3.id,
-          name: q3.name,
-          iconUrl: restLogos[i] || q3.iconUrl,
-          category: q3.category || "Partner",
-          type: "CPS",
-          deepLink: "",
-          webUrl: q3.webUrl,
-          description: q3.description || `Try1Second partner: live prices from ${q3.name}.`,
-          payoutRate: "Affiliate commission on every tracked sale",
-          payoutAmount: 0,
-          status: "active",
-          rating: q3.rating || 4.2,
-          downloadsOrUsers: q3.downloadsOrUsers || "",
-          badge: q3.badge || "Partner",
-          bgColor: "bg-slate-700",
-          createdAt: q3.createdAt || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-          goUrl: createMaskingPointer(q3.webUrl, { offerId: q3.id, trusted: true })
-          // curated partner allow-list
-        }));
-        let customApps = [];
-        try {
-          const rows2 = await getStore().query("SELECT * FROM quick_apps_custom");
-          customApps = rows2.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.id) - Number(z.id)).map((r) => ({
-            id: `qac-${r.id}`,
-            name: String(r.name).slice(0, 60),
-            iconUrl: r.icon_url ? String(r.icon_url) : `https://icons.duckduckgo.com/ip3/${safeHostIcon(String(r.web_url))}.ico`,
-            category: r.category ? String(r.category) : "Partner",
-            type: "CPS",
-            deepLink: "",
-            webUrl: String(r.web_url),
-            description: r.description ? String(r.description) : `Try1Second partner: live prices from ${r.name}.`,
-            payoutRate: "Affiliate commission on every tracked sale",
-            payoutAmount: 0,
-            status: "active",
-            rating: 4.2,
-            downloadsOrUsers: "",
-            badge: r.badge ? String(r.badge) : "Partner",
-            bgColor: "bg-slate-700",
-            createdAt: String(r.created_at || "").slice(0, 10),
-            goUrl: createMaskingPointer(String(r.web_url), { offerId: `qac-${r.id}`, trusted: true })
-            // owner-added merchant
-          }));
-        } catch {
-        }
-        const knownNames = new Set([...homeSix, ...curatedExtra, ...customApps].map((x) => String(x.name).toLowerCase()));
-        const ordered = quickAppsPartnerFirst(entries.filter((e) => !knownNames.has(e.name.toLowerCase())));
-        const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
-        const registryAffiliates = ordered.filter((e) => !curatedDomains.has(e.dom)).map((e, i) => ({
-          ...e.payload,
-          iconUrl: logos[i] || e.payload.iconUrl
-        }));
-        res.json({ success: true, affiliates: [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates] });
+        const affiliates = await cachedSection("home:quick-apps", buildQuickAppsList);
+        res.json({ success: true, affiliates });
       } catch {
         res.status(500).json({ success: false, error: "quick_apps_unavailable" });
       }
@@ -30606,8 +30738,10 @@ var init_routes = __esm({
     });
     apiRouter.get("/home/hero-banners", async (_req, res) => {
       try {
-        const { buildHeroBanners: buildHeroBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
-        const slides = await buildHeroBanners2();
+        const slides = await cachedSection("home:hero-banners", async () => {
+          const { buildHeroBanners: buildHeroBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
+          return buildHeroBanners2();
+        });
         res.json({ success: true, slides });
       } catch {
         res.json({ success: true, slides: [] });
@@ -30615,7 +30749,7 @@ var init_routes = __esm({
     });
     apiRouter.get("/home/showcase", async (_req, res) => {
       try {
-        const sections = await buildShowcase();
+        const sections = await cachedSection("home:showcase", () => buildShowcase());
         res.json({ success: true, sections });
       } catch (e) {
         res.status(500).json({ success: false, error: "showcase_unavailable" });
@@ -31192,70 +31326,7 @@ var init_routes = __esm({
     });
     apiRouter.get("/rewards/top-picks", async (_req, res) => {
       try {
-        const { listTopPicks: listTopPicks2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
-        const { itemFromOffer: itemFromOffer2, imageFromAttributes: imageFromAttributes2, fetchVerticalOffers: fetchVerticalOffers2, pickTopOfferRow: pickTopOfferRow2, ageDays: ageDays2, logoAnswers: logoAnswers2, realMerchantDomain: realMerchantDomain2, nameDomainOf: nameDomainOf2 } = await Promise.resolve().then(() => (init_showcase(), showcase_exports));
-        const VERTICALS2 = [
-          "ecommerce",
-          "grocery",
-          "food",
-          "flights",
-          "hotels",
-          "bus",
-          "cab",
-          "movie",
-          "loans",
-          "insurance",
-          "creditcards",
-          "account"
-        ];
-        const adminPicks = await listTopPicks2(void 0, false);
-        const picks = [];
-        const covered = /* @__PURE__ */ new Set();
-        for (const p of adminPicks || []) {
-          const v = String(p.vertical || "").toLowerCase();
-          covered.add(v);
-          const dest = String(p.destination_url || "").trim();
-          if (!dest) continue;
-          picks.push({
-            vertical: v,
-            source: "admin",
-            partnerName: p.partner_name || "",
-            headline: p.headline || "",
-            offerText: p.offer_text || null,
-            priceBadge: p.price_badge || null,
-            badgeText: p.badge_text || null,
-            rating: p.rating ?? null,
-            image: p.image_url || null,
-            ctaText: p.cta_text || "Grab Deal",
-            url: dest.startsWith("/api/out") ? dest : createMaskingPointer(dest, { offerId: `pick-${p.id}`, trusted: true })
-            // admin-curated pick
-          });
-        }
-        for (const v of VERTICALS2) {
-          if (covered.has(v)) continue;
-          const rows = await fetchVerticalOffers2(v, 300);
-          const row = pickTopOfferRow2(rows);
-          if (!row) continue;
-          const item = itemFromOffer2(row);
-          if (!item) continue;
-          if (item.image && !await logoAnswers2(item.image)) {
-            const dom = realMerchantDomain2([row.seller_url]) || nameDomainOf2(item.merchant);
-            item.image = dom ? `https://icons.duckduckgo.com/ip3/${dom}.ico` : item.image;
-          }
-          picks.push({
-            vertical: v,
-            source: "live",
-            partnerName: item.merchant,
-            headline: String(row.title || "").slice(0, 90),
-            offerText: item.badge,
-            priceBadge: item.price != null ? `Rs ${Math.round(item.price)}` : null,
-            badgeText: item.discountPct ? `${item.discountPct}% OFF` : null,
-            rating: item.rating,
-            image: item.image,
-            ctaText: "View Deal",
-            url: item.url
-          });
-        }
+        const picks = await cachedSection("rewards:top-picks", buildTopPicksList);
         res.json({ success: true, picks });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not load top picks" });
@@ -31713,25 +31784,7 @@ var init_routes = __esm({
     });
     apiRouter.get("/home-banners", async (_req, res) => {
       try {
-        const rows = await getStore().query("SELECT * FROM home_banners");
-        const admin = rows.filter((r) => Number(r.is_active ?? 1) === 1).sort((a, z) => Number(a.position ?? 0) - Number(z.position ?? 0) || Number(a.id) - Number(z.id)).map((r) => ({
-          id: Number(r.id),
-          imageUrl: String(r.image_url || ""),
-          link: String(r.link_url || "movies"),
-          title: r.title ? String(r.title) : null,
-          subtitle: r.subtitle ? String(r.subtitle) : null
-        }));
-        let live = [];
-        try {
-          const { buildSectionBanners: buildSectionBanners2 } = await Promise.resolve().then(() => (init_heroBanners(), heroBanners_exports));
-          live = (await buildSectionBanners2()).filter((b) => b.imageUrl && b.link).map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
-        } catch {
-        }
-        const seen = new Set(admin.map((b) => b.imageUrl));
-        const banners = [
-          ...admin,
-          ...live.filter((b) => !seen.has(b.imageUrl)).map((b, i) => ({ id: 1e6 + i, ...b }))
-        ];
+        const banners = await cachedSection("home:section-banners", buildHomeBannersList);
         res.json({ success: true, banners });
       } catch {
         res.json({ success: true, banners: [] });
@@ -33065,6 +33118,7 @@ var init_adminRoutes = __esm({
     init_logger();
     init_affiliateNetwork();
     init_placements();
+    init_cachedSections();
     init_appLinks();
     init_deals();
     init_profiles();
@@ -33691,6 +33745,7 @@ var init_adminRoutes = __esm({
           );
           audit(req, "home_banner_create", imageUrl.slice(0, 80));
         }
+        purgeSectionCache();
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not save banner" });
@@ -33700,6 +33755,7 @@ var init_adminRoutes = __esm({
       try {
         await getStore().execute("DELETE FROM home_banners WHERE id = ?", [Number(req.params.id)]);
         audit(req, "home_banner_delete", String(req.params.id));
+        purgeSectionCache();
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not delete banner" });
@@ -33748,6 +33804,7 @@ var init_adminRoutes = __esm({
           );
           audit(req, "quick_app_create", name);
         }
+        purgeSectionCache();
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not save merchant" });
@@ -33757,6 +33814,7 @@ var init_adminRoutes = __esm({
       try {
         await getStore().execute("DELETE FROM quick_apps_custom WHERE id = ?", [Number(req.params.id)]);
         audit(req, "quick_app_delete", String(req.params.id));
+        purgeSectionCache();
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not delete merchant" });

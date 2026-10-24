@@ -16,6 +16,7 @@ import { cacheStats } from '../common/cache';
 import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
 import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
+import { purgeSectionCache } from '../api/cachedSections';
 import { listAppLinks, upsertAppLink, deleteAppLink } from '../marketing/appLinks';
 import { listAllDeals, saveDeal, deleteDeal, DEAL_KINDS } from '../marketing/deals';
 import { listProfiles, saveProfile, deleteProfile, AFFILIATE_NETWORKS } from '../affiliate/profiles';
@@ -630,6 +631,7 @@ adminRouter.post('/home-banners', async (req, res) => {
         [imageUrl, link, title, subtitle, isActive, position]);
       audit(req, 'home_banner_create', imageUrl.slice(0, 80));
     }
+    purgeSectionCache(); // owner edit live on next request, never behind the 24h TTL
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save banner' }); }
 });
@@ -638,6 +640,7 @@ adminRouter.delete('/home-banners/:id', async (req, res) => {
   try {
     await getStore().execute('DELETE FROM home_banners WHERE id = ?', [Number(req.params.id)]);
     audit(req, 'home_banner_delete', String(req.params.id));
+    purgeSectionCache(); // owner edit live on next request
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete banner' }); }
 });
@@ -680,6 +683,7 @@ adminRouter.post('/quick-apps', async (req, res) => {
         [name, webUrl, iconUrl, category, badge, description, isActive]);
       audit(req, 'quick_app_create', name);
     }
+    purgeSectionCache(); // owner edit live on next request
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save merchant' }); }
 });
@@ -688,6 +692,7 @@ adminRouter.delete('/quick-apps/:id', async (req, res) => {
   try {
     await getStore().execute('DELETE FROM quick_apps_custom WHERE id = ?', [Number(req.params.id)]);
     audit(req, 'quick_app_delete', String(req.params.id));
+    purgeSectionCache(); // owner edit live on next request
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete merchant' }); }
 });

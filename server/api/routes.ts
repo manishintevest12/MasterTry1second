@@ -30,6 +30,7 @@ import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recor
 import { createInterstitialPointer, isInAppWebView } from '../redirect/interstitial';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
+import { cachedSection } from './cachedSections';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -319,6 +320,21 @@ export function quickAppsPartnerFirst<T extends { dom: string }>(rows: T[]): T[]
 }
 apiRouter.get('/quick-apps', async (_req, res) => {
   try {
+    // Owner 23 Oct: 24h cache (quick-app logo resolution + registry reads are
+    // expensive on every home load); admin custom-app edits purge instantly.
+    const affiliates = await cachedSection('home:quick-apps', buildQuickAppsList);
+    res.json({ success: true, affiliates });
+  } catch {
+    res.status(500).json({ success: false, error: 'quick_apps_unavailable' });
+  }
+});
+
+/** Full quick-apps payload (curated six + curated catalogue + admin customs + registry).
+ *  A failed build THROWS (never cached): the endpoint's catch answers 500 and the
+ *  next request retries the build. */
+async function buildQuickAppsList(): Promise<any[]> {
+  try {
+
     // Owner 23 Oct: the six CURATED partners (Zomato, Flipkart, Amazon, Swiggy,
     // BookMyShow, Myntra) are not registry sellers — the registry holds niche
     // merchants (Libas, Asus, ...). The home rail must show the six partner
@@ -452,11 +468,11 @@ apiRouter.get('/quick-apps', async (_req, res) => {
         ...e.payload,
         iconUrl: logos[i] || e.payload.iconUrl,
       }));
-    res.json({ success: true, affiliates: [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates] });
+    return [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates];
   } catch {
-    res.status(500).json({ success: false, error: 'quick_apps_unavailable' });
+    throw new Error('quick_apps_build_failed');
   }
-});
+}
 
 // POST /api/quick-apps/go — masking pointers for allow-listed partner webUrls.
 apiRouter.post('/quick-apps/go', async (req: any, res) => {
@@ -484,8 +500,12 @@ apiRouter.post('/quick-apps/go', async (req: any, res) => {
 // data, admin customs first). Web + Flutter consume the same payload.
 apiRouter.get('/home/hero-banners', async (_req, res) => {
   try {
-    const { buildHeroBanners } = await import('../home/heroBanners');
-    const slides = await buildHeroBanners();
+    // Owner 23 Oct: 24h cache — the carousel payload is MySQL + live-catalogue
+    // composition that holds for a day; admin edits purge it instantly.
+    const slides = await cachedSection('home:hero-banners', async () => {
+      const { buildHeroBanners } = await import('../home/heroBanners');
+      return buildHeroBanners();
+    });
     res.json({ success: true, slides });
   } catch {
     res.json({ success: true, slides: [] }); // honest: carousel hidden until data exists
@@ -494,7 +514,9 @@ apiRouter.get('/home/hero-banners', async (_req, res) => {
 
 apiRouter.get('/home/showcase', async (_req, res) => {
   try {
-    const sections = await buildShowcase();
+    // Owner 23 Oct: 24h cache — home sections are curated MySQL/catalogue reads;
+    // admin banner edits purge this instantly via purgeSectionCache().
+    const sections = await cachedSection('home:showcase', () => buildShowcase());
     res.json({ success: true, sections });
   } catch (e: any) {
     res.status(500).json({ success: false, error: 'showcase_unavailable' });
@@ -1420,6 +1442,17 @@ apiRouter.get('/picks', async (req, res) => {
 // injected server-side (owner rule: ALL rewards/ads redirect through /api/out).
 apiRouter.get('/rewards/top-picks', async (_req, res) => {
   try {
+    // Owner 23 Oct: 24h cache; admin top-pick edits purge instantly.
+    const picks = await cachedSection('rewards:top-picks', buildTopPicksList);
+    res.json({ success: true, picks });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load top picks' });
+  }
+});
+
+/** Admin-curated picks first, live-catalogue auto picks for uncovered verticals. */
+async function buildTopPicksList(): Promise<any[]> {
+  try {
     const { listTopPicks } = await import('../marketing/placements');
     const { itemFromOffer, imageFromAttributes, fetchVerticalOffers, pickTopOfferRow, ageDays, logoAnswers, realMerchantDomain, nameDomainOf } = await import('../home/showcase');
 
@@ -1482,11 +1515,11 @@ apiRouter.get('/rewards/top-picks', async (_req, res) => {
       });
     }
 
-    res.json({ success: true, picks });
+    return picks;
   } catch (e: any) {
-    res.status(500).json({ success: false, error: e?.message || 'Could not load top picks' });
+    throw new Error(e?.message || 'top_picks_build_failed'); // never cached on failure
   }
-});
+}
 
 apiRouter.get('/ads', async (req, res) => {
   // Public: active ad slot config (AdSense ids or custom HTML). Nothing configured -> active: false.
@@ -2068,6 +2101,17 @@ apiRouter.post('/rewards/referral/apply', requireAuth, async (req, res) => {
 // ('movies') or an https URL. Served to web + Flutter app alike.
 apiRouter.get('/home-banners', async (_req, res) => {
   try {
+    // Owner 23 Oct: 24h cache; admin banner edits purge instantly.
+    const banners = await cachedSection('home:section-banners', buildHomeBannersList);
+    res.json({ success: true, banners });
+  } catch {
+    res.json({ success: true, banners: [] }); // honest: no banners configured
+  }
+});
+
+/** Admin-authored home_banners rows + live mixed-content section banners. */
+async function buildHomeBannersList(): Promise<any[]> {
+  try {
     const rows = await getStore().query<any>('SELECT * FROM home_banners');
     const admin = rows
       .filter((r) => Number(r.is_active ?? 1) === 1)
@@ -2090,17 +2134,16 @@ apiRouter.get('/home-banners', async (_req, res) => {
         .map((b) => ({ imageUrl: b.imageUrl, link: b.link, title: b.title, subtitle: b.subtitle }));
     } catch { /* honest: live pool unavailable, admin banners still serve */ }
     const seen = new Set(admin.map((b) => b.imageUrl));
-    const banners = [
+    return [
       ...admin,
       ...live
         .filter((b) => !seen.has(b.imageUrl))
         .map((b, i) => ({ id: 1_000_000 + i, ...b })),
     ];
-    res.json({ success: true, banners });
   } catch {
-    res.json({ success: true, banners: [] }); // honest: no banners configured
+    return []; // honest: no banners configured (cached only if the build itself worked)
   }
-});
+}
 
 apiRouter.post('/rewards/eligibility/claim', requireAuth, async (req, res) => {
   const user = (req as any).user;
