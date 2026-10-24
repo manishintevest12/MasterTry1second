@@ -172,7 +172,16 @@ export const foodWorker: VerticalWorker = {
       sourceId: 'w_food_zomato',
       name: 'Food worker: Zomato public restaurant listings',
       priority: 10,
+      // Owner 24 Oct: this task used to die as TIMEOUT on Akamai tarpits (3 x 12s
+      // default fetches + a 6-page menu deep-dive vs the 18s default kill), so
+      // even the honest presence row never survived. Budget-aware now: every
+      // fetch is short-bounded and the deep-dive watches the deadline, so the
+      // task ALWAYS lands inside 26s with listings, partial dishes or the
+      // presence row — never a bare TIMEOUT.
+      timeoutMs: 26_000,
       run: async (ctx) => {
+        const t0 = Date.now();
+        const left = () => 24_000 - (Date.now() - t0); // soft deadline inside the 26s kill
         const raw = String(ctx.query.rawQuery || '');
         const slug = citySlug(ctx.query.location?.city, raw);
         if (!slug) return [];
@@ -180,10 +189,13 @@ export const foodWorker: VerticalWorker = {
         const url = `https://www.zomato.com/${slug}/restaurants?q=${encodeURIComponent(term || 'restaurants')}`;
         // Akamai SAMPLES datacenter crawls (403/202 alternate with full 200s — same
         // pattern as Goibibo hotels): up to 3 bounded attempts with a short gap.
-        let r = await ctx.fetch(url);
-        for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429); attempt++) {
+        // Each fetch is capped at 4.5s so a hanging edge connection can never eat
+        // the task budget — the ladder always finishes and the presence row
+        // always lands (owner rule 23 Oct: Zomato is ALWAYS in the results).
+        let r = await ctx.fetch(url, { timeoutMs: 4_500 });
+        for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429) && left() > 6_000; attempt++) {
           await new Promise((res) => setTimeout(res, 900));
-          r = await ctx.fetch(url);
+          r = await ctx.fetch(url, { timeoutMs: 4_500 });
         }
         // Owner rule 23 Oct: Zomato ALWAYS in results. An edge-gated listing falls
         // back to the honest presence row instead of vanishing from the app.
@@ -201,7 +213,8 @@ export const foodWorker: VerticalWorker = {
         const dishItems: RawSourceItem[] = [];
         const hintAgg: Record<string, number> = {};
         for (const ru of restUrls) {
-          const rr = await ctx.fetch(ru);
+          if (left() < 4_000) break; // out of task budget — return what we already extracted
+          const rr = await ctx.fetch(ru, { timeoutMs: 3_500 });
           if (rr.status !== 200) continue;
           const { dishes, hints } = parseZomatoMenuPage(rr.body);
           for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
@@ -247,7 +260,15 @@ export const foodWorker: VerticalWorker = {
       sourceId: 'w_food_toing',
       name: 'Food worker: Toing dish prices (Swiggy disc shell feed)',
       priority: 8,
+      // Owner 24 Oct: the shell + menu fetches were 22s each (worst case ~198s)
+      // against the 18s default task kill — a slow disc.swiggy.com response meant
+      // a bare TIMEOUT and zero Toing rows. Budget-aware now: 3 x 7s shell pages,
+      // 5s menu probes with a deadline check, task window 32s — partial dishes
+      // always survive.
+      timeoutMs: 32_000,
       run: async (ctx) => {
+        const t0 = Date.now();
+        const left = () => 30_000 - (Date.now() - t0); // soft deadline inside the 32s kill
         const raw = String(ctx.query.rawQuery || '');
         const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, '').trim();
         if (!term) return [];
@@ -263,7 +284,7 @@ export const foodWorker: VerticalWorker = {
         let pages = 0;
         let firstJson = '';
         for (let i = 0; i < 3; i++) {
-          const r = await cffiFetch(shellUrl, { impersonate: 'chrome', method: 'POST', body, timeoutMs: 22_000, headers: H });
+          const r = await cffiFetch(shellUrl, { impersonate: 'chrome', method: 'POST', body, timeoutMs: 7_000, headers: H });
           if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `Toing shell HTTP ${r.status}`, r.status);
           if (!firstJson) firstJson = r.body;
           const g = toingShellGroups(r.body);
@@ -299,8 +320,9 @@ export const foodWorker: VerticalWorker = {
           const restSlice = Array.from(groups.values()).slice(0, 6);
           for (const { rest, fp } of restSlice) {
             if (items.length >= 24) break;
+            if (left() < 5_500) break; // out of task budget — ship the dishes we already have
             try {
-              const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 22_000, headers: H });
+              const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 5_000, headers: H });
               if (m.status !== 200) continue;
               const dishes = toingMenuDishes(m.body);
               for (const d of dishes) {

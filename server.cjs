@@ -16388,16 +16388,25 @@ var init_food = __esm({
           sourceId: "w_food_zomato",
           name: "Food worker: Zomato public restaurant listings",
           priority: 10,
+          // Owner 24 Oct: this task used to die as TIMEOUT on Akamai tarpits (3 x 12s
+          // default fetches + a 6-page menu deep-dive vs the 18s default kill), so
+          // even the honest presence row never survived. Budget-aware now: every
+          // fetch is short-bounded and the deep-dive watches the deadline, so the
+          // task ALWAYS lands inside 26s with listings, partial dishes or the
+          // presence row — never a bare TIMEOUT.
+          timeoutMs: 26e3,
           run: async (ctx) => {
+            const t0 = Date.now();
+            const left = () => 24e3 - (Date.now() - t0);
             const raw = String(ctx.query.rawQuery || "");
             const slug2 = citySlug(ctx.query.location?.city, raw);
             if (!slug2) return [];
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
             const url = `https://www.zomato.com/${slug2}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
-            let r = await ctx.fetch(url);
-            for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429); attempt++) {
+            let r = await ctx.fetch(url, { timeoutMs: 4500 });
+            for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429) && left() > 6e3; attempt++) {
               await new Promise((res) => setTimeout(res, 900));
-              r = await ctx.fetch(url);
+              r = await ctx.fetch(url, { timeoutMs: 4500 });
             }
             if (r.status !== 200) return zomatoPresence(ctx.source, slug2, term, `HTTP ${r.status}`);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
@@ -16408,7 +16417,8 @@ var init_food = __esm({
             const dishItems = [];
             const hintAgg = {};
             for (const ru of restUrls) {
-              const rr = await ctx.fetch(ru);
+              if (left() < 4e3) break;
+              const rr = await ctx.fetch(ru, { timeoutMs: 3500 });
               if (rr.status !== 200) continue;
               const { dishes, hints } = parseZomatoMenuPage(rr.body);
               for (const [k, v] of Object.entries(hints)) hintAgg[k] = (hintAgg[k] || 0) + v;
@@ -16456,7 +16466,15 @@ var init_food = __esm({
           sourceId: "w_food_toing",
           name: "Food worker: Toing dish prices (Swiggy disc shell feed)",
           priority: 8,
+          // Owner 24 Oct: the shell + menu fetches were 22s each (worst case ~198s)
+          // against the 18s default task kill — a slow disc.swiggy.com response meant
+          // a bare TIMEOUT and zero Toing rows. Budget-aware now: 3 x 7s shell pages,
+          // 5s menu probes with a deadline check, task window 32s — partial dishes
+          // always survive.
+          timeoutMs: 32e3,
           run: async (ctx) => {
+            const t0 = Date.now();
+            const left = () => 3e4 - (Date.now() - t0);
             const raw = String(ctx.query.rawQuery || "");
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
             if (!term) return [];
@@ -16471,7 +16489,7 @@ var init_food = __esm({
             let pages = 0;
             let firstJson = "";
             for (let i = 0; i < 3; i++) {
-              const r = await cffiFetch(shellUrl, { impersonate: "chrome", method: "POST", body, timeoutMs: 22e3, headers: H });
+              const r = await cffiFetch(shellUrl, { impersonate: "chrome", method: "POST", body, timeoutMs: 7e3, headers: H });
               if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Toing shell HTTP ${r.status}`, r.status);
               if (!firstJson) firstJson = r.body;
               const g = toingShellGroups(r.body);
@@ -16505,8 +16523,9 @@ var init_food = __esm({
               const restSlice = Array.from(groups.values()).slice(0, 6);
               for (const { rest, fp } of restSlice) {
                 if (items.length >= 24) break;
+                if (left() < 5500) break;
                 try {
-                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 22e3, headers: H });
+                  const m = await cffiFetch(`https://disc.swiggy.com/api/v2/dynamicmenu/${rest.id}?lat=${c[0]}&lng=${c[1]}`, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 5e3, headers: H });
                   if (m.status !== 200) continue;
                   const dishes = toingMenuDishes(m.body);
                   for (const d of dishes) {
