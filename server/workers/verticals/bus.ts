@@ -238,7 +238,12 @@ export const busWorker: VerticalWorker = {
         const rt = routeFromQuery(raw);
         if (!rt) return [];
         const getJson = async (url: string): Promise<any> => {
-          const r = await ctx.fetch(url, { expectJson: true, headers: { Accept: 'application/json' } });
+          // Owner 24 Oct (AbhiBus "kabhi aata hai kabhi ni" permanence fix): all
+          // AbhiBus calls ride curl_cffi Chrome TLS. httpAcquire uses cffi for GET
+          // only, so the /buslist/v3/services POST went out with the undici
+          // fingerprint AbhiBus's edge throttles intermittently — same root cause
+          // the redBus POST had (fixed earlier today).
+          const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 10_000, headers: { Accept: 'application/json', Referer: 'https://www.abhibus.com/' } });
           if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `AbhiBus HTTP ${r.status} on ${url.split('?')[0]}`, r.status);
           try { return JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'AbhiBus non-JSON response'); }
         };
@@ -250,19 +255,49 @@ export const busWorker: VerticalWorker = {
         const depart = String(ctx.query.travelDates?.depart || '');
         const jdate = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 86400000).toISOString().slice(0, 10);
         const route: AbhiBusRoute = { fromName: from.label, fromId: from.id, toName: to.label, toId: to.id, jdate };
-        const r = await ctx.fetch('https://www.abhibus.com/buslist/v3/services', {
-          method: 'POST',
-          expectJson: true,
-          maxBytes: 6_000_000,
-          timeoutMs: 20_000,
-          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: from.label, sourceid: Number(from.id),
-            destination: to.label, destinationid: Number(to.id),
-            jdate, prd: 'mobile', filters: '1', isReturnJourney: '0',
-          }),
+        const payload = JSON.stringify({
+          source: from.label, sourceid: Number(from.id),
+          destination: to.label, destinationid: Number(to.id),
+          jdate, prd: 'mobile', filters: '1', isReturnJourney: '0',
         });
-        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `AbhiBus services HTTP ${r.status}`, r.status);
+        const headers = { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.abhibus.com', Referer: 'https://www.abhibus.com/' };
+        // THREE cffi attempts (same tarpit-window strategy as redBus, owner 24
+        // Oct): a healthy answer lands in 2-4s; 3 x 9s + 800ms gaps catch a good
+        // window where the old single 20s undici POST hung. undici stays only as
+        // the honest bridge-down fallback (python missing on the host).
+        let r: { status: number; body: string } = { status: 0, body: '' };
+        const steps: string[] = [];
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const sr = Date.now();
+          try {
+            const cr = await cffiFetch('https://www.abhibus.com/buslist/v3/services', {
+              impersonate: 'chrome', method: 'POST', body: payload, timeoutMs: 9_000, headers,
+            });
+            steps.push(`services#${attempt}=cffi${Date.now() - sr}ms/${cr.status}`);
+            r = { status: cr.status, body: cr.body };
+            if (r.status === 200) break; // payload in hand
+            if (r.status === 403 || r.status === 429) break; // gate, do not blind-retry
+          } catch (e: any) {
+            steps.push(`services#${attempt}=cffi${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr}ms`);
+          }
+          if (attempt === 3) {
+            // cffi unavailable (bridge down): one honest undici attempt so
+            // AbhiBus is never silently skipped on such hosts.
+            const sr2 = Date.now();
+            try {
+              const fr = await ctx.fetch('https://www.abhibus.com/buslist/v3/services', {
+                method: 'POST', expectJson: true, maxBytes: 6_000_000, timeoutMs: 9_000,
+                headers, body: payload,
+              });
+              r = { status: fr.status, body: fr.body };
+              steps.push(`services#fallback=${fr.latencyMs ?? Date.now() - sr2}ms/${fr.status}`);
+            } catch (e: any) {
+              steps.push(`services#fallback=${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr2}ms`);
+            }
+          }
+          await new Promise((z) => setTimeout(z, 800));
+        }
+        if (r.status !== 200) throw new AcquisitionError('FORBIDDEN', `AbhiBus services HTTP ${r.status || 'no-response'} [${steps.join(' ')}]`, r.status || undefined);
         return parseAbhiBusServices(r.body, ctx.source, route);
       },
     },

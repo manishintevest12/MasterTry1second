@@ -128,21 +128,25 @@ function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } 
 }
 
 /**
- * Owner 24 Oct ("redbus ka result kabhi aata hai kabhi ni aata hai — permanently
- * fix"): a BUS response whose live pipeline ATTEMPTED redBus but carries no
- * redBus rows is a tarpit window being observed, not the truth for the next 5
- * minutes. Cache such a response for only 2 minutes (stale-serve 4) so the very
- * next poll re-attempts redBus and the gap self-heals, instead of sitting
- * behind the normal 5/15-min bus TTL. Responses that DID include redBus keep the
- * full window; responses where redBus was not even attempted (circuit) also keep
- * it (nothing to re-attempt this cycle).
+ * Owner 24 Oct ("redbus/abhibus ka result kabhi aata hai kabhi ni aata hai —
+ * permanently fix"): a BUS response whose live pipeline ATTEMPTED a primary
+ * live source (AbhiBus or redBus) but carries no rows from it is a tarpit
+ * window being observed, not the truth for the next 5 minutes. Cache such a
+ * response for only 2 minutes (stale-serve 4) so the very next poll re-attempts
+ * the missing source and the gap self-heals, instead of sitting behind the
+ * normal 5/15-min bus TTL. Sources that were not even attempted (circuit) keep
+ * the full window (nothing to re-attempt this cycle).
  */
-export function busTtlWithoutRedbus(vertical: string, response: SearchResponse, ttlSec: number, staleSec: number): { ttlSec: number; staleSec: number } {
+const BUS_PRIMARY_LIVE_SELLERS = ['abhibus', 'redbus'];
+export function busSelfHealTtl(vertical: string, response: SearchResponse, ttlSec: number, staleSec: number): { ttlSec: number; staleSec: number } {
   if (vertical !== 'bus' || !response.results?.length) return { ttlSec, staleSec };
   const attempted = (response.state?.sourcesAttempted || []) as unknown as string[];
-  if (!attempted.some((x) => String(x).includes('redbus'))) return { ttlSec, staleSec };
-  const hasRedbus = (response.results as any[]).some((o) => String(o?.seller || '').toLowerCase() === 'redbus');
-  return hasRedbus ? { ttlSec, staleSec } : { ttlSec: 120, staleSec: 240 };
+  const sellers = (response.results as any[]).map((o) => String(o?.seller || '').toLowerCase());
+  for (const seller of BUS_PRIMARY_LIVE_SELLERS) {
+    const wasAttempted = attempted.some((x) => String(x).includes(seller));
+    if (wasAttempted && !sellers.includes(seller)) return { ttlSec: 120, staleSec: 240 };
+  }
+  return { ttlSec, staleSec };
 }
 
 /**
@@ -433,7 +437,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
         .then((response) => {
           const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
           if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
-          else { const bt = busTtlWithoutRedbus(vertical, response, t, st); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
+          else { const bt = busSelfHealTtl(vertical, response, t, st); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
           return response;
         })
         .finally(() => { inflightPipelines.delete(cacheKey); });
@@ -482,7 +486,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       if (response.results.length === 0) {
         cachePut(cacheKey, response, 45, 45);
       } else {
-        const bt = busTtlWithoutRedbus(vertical, response, ttlSec, staleSec);
+        const bt = busSelfHealTtl(vertical, response, ttlSec, staleSec);
         cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
       }
       return response;

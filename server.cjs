@@ -20150,7 +20150,7 @@ var init_bus = __esm({
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
             const getJson3 = async (url) => {
-              const r2 = await ctx.fetch(url, { expectJson: true, headers: { Accept: "application/json" } });
+              const r2 = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 1e4, headers: { Accept: "application/json", Referer: "https://www.abhibus.com/" } });
               if (r2.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus HTTP ${r2.status} on ${url.split("?")[0]}`, r2.status);
               try {
                 return JSON.parse(r2.body);
@@ -20166,24 +20166,56 @@ var init_bus = __esm({
             const depart = String(ctx.query.travelDates?.depart || "");
             const jdate = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
             const route = { fromName: from.label, fromId: from.id, toName: to.label, toId: to.id, jdate };
-            const r = await ctx.fetch("https://www.abhibus.com/buslist/v3/services", {
-              method: "POST",
-              expectJson: true,
-              maxBytes: 6e6,
-              timeoutMs: 2e4,
-              headers: { Accept: "application/json", "Content-Type": "application/json" },
-              body: JSON.stringify({
-                source: from.label,
-                sourceid: Number(from.id),
-                destination: to.label,
-                destinationid: Number(to.id),
-                jdate,
-                prd: "mobile",
-                filters: "1",
-                isReturnJourney: "0"
-              })
+            const payload = JSON.stringify({
+              source: from.label,
+              sourceid: Number(from.id),
+              destination: to.label,
+              destinationid: Number(to.id),
+              jdate,
+              prd: "mobile",
+              filters: "1",
+              isReturnJourney: "0"
             });
-            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus services HTTP ${r.status}`, r.status);
+            const headers = { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.abhibus.com", Referer: "https://www.abhibus.com/" };
+            let r = { status: 0, body: "" };
+            const steps = [];
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              const sr = Date.now();
+              try {
+                const cr = await cffiFetch("https://www.abhibus.com/buslist/v3/services", {
+                  impersonate: "chrome",
+                  method: "POST",
+                  body: payload,
+                  timeoutMs: 9e3,
+                  headers
+                });
+                steps.push(`services#${attempt}=cffi${Date.now() - sr}ms/${cr.status}`);
+                r = { status: cr.status, body: cr.body };
+                if (r.status === 200) break;
+                if (r.status === 403 || r.status === 429) break;
+              } catch (e) {
+                steps.push(`services#${attempt}=cffi${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
+              }
+              if (attempt === 3) {
+                const sr2 = Date.now();
+                try {
+                  const fr = await ctx.fetch("https://www.abhibus.com/buslist/v3/services", {
+                    method: "POST",
+                    expectJson: true,
+                    maxBytes: 6e6,
+                    timeoutMs: 9e3,
+                    headers,
+                    body: payload
+                  });
+                  r = { status: fr.status, body: fr.body };
+                  steps.push(`services#fallback=${fr.latencyMs ?? Date.now() - sr2}ms/${fr.status}`);
+                } catch (e) {
+                  steps.push(`services#fallback=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr2}ms`);
+                }
+              }
+              await new Promise((z) => setTimeout(z, 800));
+            }
+            if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus services HTTP ${r.status || "no-response"} [${steps.join(" ")}]`, r.status || void 0);
             return parseAbhiBusServices(r.body, ctx.source, route);
           }
         },
@@ -25074,7 +25106,7 @@ var init_affiliateNetwork = __esm({
 // server/search/searchOrchestrator.ts
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
-  busTtlWithoutRedbus: () => busTtlWithoutRedbus,
+  busSelfHealTtl: () => busSelfHealTtl,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
   runSearchPolled: () => runSearchPolled
@@ -25142,12 +25174,15 @@ function searchCacheTtl(vertical) {
   if (["loans", "insurance", "creditcards", "banking"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
   return { ttlSec: 900, staleSec: 2700 };
 }
-function busTtlWithoutRedbus(vertical, response, ttlSec, staleSec) {
+function busSelfHealTtl(vertical, response, ttlSec, staleSec) {
   if (vertical !== "bus" || !response.results?.length) return { ttlSec, staleSec };
   const attempted = response.state?.sourcesAttempted || [];
-  if (!attempted.some((x) => String(x).includes("redbus"))) return { ttlSec, staleSec };
-  const hasRedbus = response.results.some((o) => String(o?.seller || "").toLowerCase() === "redbus");
-  return hasRedbus ? { ttlSec, staleSec } : { ttlSec: 120, staleSec: 240 };
+  const sellers = response.results.map((o) => String(o?.seller || "").toLowerCase());
+  for (const seller of BUS_PRIMARY_LIVE_SELLERS) {
+    const wasAttempted = attempted.some((x) => String(x).includes(seller));
+    if (wasAttempted && !sellers.includes(seller)) return { ttlSec: 120, staleSec: 240 };
+  }
+  return { ttlSec, staleSec };
 }
 async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
   const anyOffers = offers;
@@ -25323,7 +25358,7 @@ async function runSearch(input) {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
         if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
         else {
-          const bt = busTtlWithoutRedbus(vertical, response, t, st);
+          const bt = busSelfHealTtl(vertical, response, t, st);
           cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
         }
         return response;
@@ -25358,7 +25393,7 @@ async function runSearch(input) {
     if (response.results.length === 0) {
       cachePut(cacheKey, response, 45, 45);
     } else {
-      const bt = busTtlWithoutRedbus(vertical, response, ttlSec, staleSec);
+      const bt = busSelfHealTtl(vertical, response, ttlSec, staleSec);
       cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
     }
     return response;
@@ -25580,7 +25615,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var inflightPipelines, inflightPartials, RELEVANCE_GATED_CATALOGUE;
+var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, inflightPartials, RELEVANCE_GATED_CATALOGUE;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -25603,6 +25638,7 @@ var init_searchOrchestrator = __esm({
     init_catalogueService();
     init_verticalEngine();
     init_affiliateNetwork();
+    BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
     inflightPipelines = /* @__PURE__ */ new Map();
     inflightPartials = /* @__PURE__ */ new Map();
     RELEVANCE_GATED_CATALOGUE = /* @__PURE__ */ new Set(["ecommerce", "grocery", "food", "movies", "movie"]);
