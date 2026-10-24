@@ -278,13 +278,32 @@ String _hhmm(String v) {
   return '${h.toString().padLeft(2, '0')}:${m.group(2)}';
 }
 
+/// Flight-code key (owner 24 Oct "similar flights compare nahi ho rahe" fix):
+/// the SAME departure is published in different spellings per seller —
+/// "6E974" (Cleartrip/EMT), "6E 974" (Via), "AI2566" vs "AI 2566", and
+/// connecting itineraries "6E7168-2384" (EMT) vs "6E 7168 + 6E 2384" (Via).
+/// Grouping on the raw string kept splitting one flight into 2-3 cards.
+/// Key on the FIRST leg's flight code with separators stripped. The airline
+/// code must contain a letter so dates ("2026-10-24") never match; only the
+/// flight-number spec is scanned (never the title) so word+year pairs like
+/// "on 2026-10-24" can never fabricate a code. Mirrors web offerGroups.ts.
+String _flightCodeKey(String raw) {
+  final re = RegExp(r'\b([A-Z0-9]{2})\s*-?\s*(\d{3,4})\b', caseSensitive: false);
+  for (final m in re.allMatches(raw)) {
+    final code = (m.group(1) ?? '').toUpperCase();
+    if (RegExp(r'[A-Z]').hasMatch(code)) return '$code${m.group(2)}';
+  }
+  return _norm(raw); // no parseable code: legacy norm (compares only on exact spelling)
+}
+
 String offerKey(CompareItem it) {
   final v = it.vertical;
   switch (v) {
     case 'flights':
-      final no = _norm(it.spec('flight number'));
+      final no = _flightCodeKey(it.spec('flight number'));
       // Same flight from different sellers compares when flight number + date +
-      // time all match (owner 24 Oct). Dates normalize across ISO/DD-MM-YYYY.
+      // time all match (owner 24 Oct). Dates normalize across ISO/DD-MM-YYYY;
+      // flight codes normalize across "6E 974"/"6E974"/"6E7168-2384" spellings.
       final date = _dateNorm(it.spec('departure date', 'travel date', 'date'));
       final dep = _hhmm(it.spec('departure time'));
       if (no.isNotEmpty) return 'f|$no|$date|$dep';

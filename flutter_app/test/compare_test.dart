@@ -131,6 +131,89 @@ void main() {
     expect(ix.best.price, 6879);
   });
 
+  test('groupOffers: same flight merges across "6E974" / "6E 974" spellings (owner 24 Oct)', () {
+    // Cleartrip/EMT publish "6E974", Via publishes "6E 974" — same departure,
+    // ONE card. Via's departure time even carries the full ISO datetime.
+    final ct = mk(
+        id: 'c1',
+        vertical: 'flights',
+        title: 'IndiGo 6E974 indore → delhi non-stop',
+        provider: 'Cleartrip',
+        price: 7824,
+        specs: {'flight number': '6E974', 'departure date': '2026-10-24', 'departure time': '23:15'});
+    final via = mk(
+        id: 'v1',
+        vertical: 'flights',
+        title: 'IndiGo 6E 974 · indore → delhi',
+        provider: 'Via.com',
+        price: 7824,
+        specs: {'flight number': '6E 974', 'departure date': '2026-10-24', 'departure time': '2026-10-24 23:15'});
+    final groups = groupOffers([ct, via]);
+    expect(groups.length, 1, reason: 'spelled differently but SAME flight = ONE card');
+    expect(groups.first.rows.length, 2, reason: 'both sellers are rows on the card');
+  });
+
+  test('groupOffers: connecting itineraries merge on first leg (owner 24 Oct)', () {
+    // EMT: "6E7168-2384", Via: "6E 7168 + 6E 2384" — same first-leg departure.
+    final emt = mk(
+        id: 'e3',
+        vertical: 'flights',
+        title: 'IndiGo 6E7168-2384 · indore → delhi',
+        provider: 'EaseMyTrip',
+        price: 10333,
+        specs: {'flight number': '6E7168-2384', 'departure date': '2026-10-24', 'departure time': '21:50'});
+    final via = mk(
+        id: 'v3',
+        vertical: 'flights',
+        title: 'IndiGo 6E 7168 + 6E 2384 · indore → delhi',
+        provider: 'Via.com',
+        price: 10333,
+        specs: {'flight number': '6E 7168 + 6E 2384', 'departure date': '2026-10-24', 'departure time': '2026-10-24 21:50'});
+    final groups = groupOffers([emt, via]);
+    expect(groups.length, 1, reason: 'same first-leg departure compares as one itinerary');
+  });
+
+  test('groupOffers: AI2566 vs "AI 2566" is the same flight (owner 24 Oct)', () {
+    final emtAi = mk(
+        id: 'e2',
+        vertical: 'flights',
+        title: 'Air India AI2566 · indore → delhi',
+        provider: 'EaseMyTrip',
+        price: 17786,
+        specs: {'flight number': 'AI2566', 'departure date': '2026-10-24', 'departure time': '21:00'});
+    final viaAi = mk(
+        id: 'v2',
+        vertical: 'flights',
+        title: 'AirIndia AI 2566 · indore → delhi',
+        provider: 'Via.com',
+        price: 17787,
+        specs: {'flight number': 'AI 2566', 'departure date': '2026-10-24', 'departure time': '2026-10-24 21:00'});
+    final groups = groupOffers([emtAi, viaAi]);
+    expect(groups.length, 1);
+    expect(groups.first.best.site, 'EaseMyTrip', reason: 'cheaper row wins the card');
+  });
+
+  test('groupOffers: presence rows without flight numbers never fabricate codes', () {
+    // A route row whose title carries "on 2026-10-24" must NOT parse "ON2026"
+    // as a flight code; it keys by provider/route/title and stays standalone.
+    final mmt = mk(
+        id: 'm1',
+        vertical: 'flights',
+        title: 'MakeMyTrip indore → delhi on 2026-10-24',
+        provider: 'MakeMyTrip',
+        price: 7824,
+        specs: {'departure date': '2026-10-24'});
+    final flight = mk(
+        id: 'c1',
+        vertical: 'flights',
+        title: 'IndiGo 6E974 · indore → delhi',
+        provider: 'Cleartrip',
+        price: 7824,
+        specs: {'flight number': '6E974', 'departure date': '2026-10-24', 'departure time': '23:15'});
+    final groups = groupOffers([mmt, flight]);
+    expect(groups.length, 2, reason: 'route summary and a real flight never merge');
+  });
+
   test('price-less offers sort last and say Price on site', () {
     final groups = groupOffers([
       mk(id: 'n', provider: 'BMS', priced: false, price: 0),

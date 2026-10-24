@@ -60,6 +60,26 @@ const dateNorm = (v: string): string => {
   return norm(s);
 };
 
+/** Flight-code key (owner 24 Oct "similar flights compare nahi ho rahe" fix):
+ * the SAME departure is published in different spellings per seller —
+ * "6E974" (Cleartrip/EMT), "6E 974" (Via), "AI2566" vs "AI 2566", and
+ * connecting itineraries "6E7168-2384" (EMT) vs "6E 7168 + 6E 2384" (Via).
+ * Grouping on the raw string kept splitting one flight into 2-3 cards.
+ * Key on the FIRST leg's flight code with all separators stripped, so the
+ * same departure from any seller lands in ONE comparison card. The airline
+ * code must contain a letter, so dates ("2026-10-24") never match. Only the
+ * flight-number spec is scanned (never the title) so route-word+year pairs
+ * like "on 2026-10-24" can never fabricate a code. */
+const flightCodeKey = (raw: string): string => {
+  const re = /\b([A-Z0-9]{2})\s*-?\s*(\d{3,4})\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(String(raw || '')))) {
+    const code = m[1].toUpperCase();
+    if (/[A-Z]/.test(code)) return `${code}${m[2]}`;
+  }
+  return norm(raw); // no parseable code: legacy norm (such rows compare only on exact spelling)
+};
+
 const hhmm = (v: string): string => {
   const m = v.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
   if (!m) return norm(v);
@@ -80,9 +100,10 @@ export function siteName(it: ComparisonItem): string {
 export function offerKey(it: ComparisonItem): string {
   const v = it.vertical;
   if (v === 'flights') {
-    const no = norm(spec(it, 'flight number'));
+    const no = flightCodeKey(spec(it, 'flight number'));
     // Same flight from different sellers compares when flight number + date +
-    // time all match (owner 24 Oct). Dates normalize across ISO/DD-MM-YYYY.
+    // time all match (owner 24 Oct). Dates normalize across ISO/DD-MM-YYYY,
+    // flight codes normalize across "6E 974"/"6E974"/"6E7168-2384" spellings.
     const date = dateNorm(spec(it, 'departure date', 'travel date', 'date'));
     const dep = hhmm(spec(it, 'departure time'));
     if (no) return `f|${no}|${date}|${dep}`;
