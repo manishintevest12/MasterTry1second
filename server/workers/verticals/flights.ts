@@ -17,7 +17,7 @@ import { resolveAirport, IATA } from '../../common/airportLookup';
 import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems } from '../parsers/akasaFlights';
-import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems } from '../parsers/viaFlights';
+import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
@@ -731,7 +731,7 @@ export const flightsWorker: VerticalWorker = {
       // Per-flight results (/itinerary) 502 for browserless HTTP; the calendar gives
       // real per-day lowest fares for the route (~267-day window), like EMT/IndiGo/Akasa.
       sourceId: 'w_flights_via',
-      name: 'Flights worker: Via.com fare calendar (B2C apiv2)',
+      name: 'Flights worker: Via.com per-flight search (fallback: fare calendar)',
       priority: 14,
       maxPerMinute: 6,
       timeoutMs: 30_000,
@@ -746,6 +746,30 @@ export const flightsWorker: VerticalWorker = {
           ? ctx.query.travelDates.depart
           : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
         const endDate = new Date(Date.now() + 330 * 86400_000).toISOString().slice(0, 10);
+        // Owner 24 Oct: Via.com's own SEARCH API (POST /apiv2/flight/search,
+        // shape captured from their search box) returns FULL per-flight JSON
+        // (number, times, duration, stops, seats). That is the primary path.
+        const sr = await cffiFetch(viaSearchApiUrl(), {
+          method: 'POST',
+          impersonate: 'chrome',
+          timeoutMs: 25_000,
+          body: viaSearchRequestBody(from, rt.from, to, rt.to, dep),
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            Referer: 'https://in.via.com/flight/search',
+            Origin: 'https://in.via.com',
+          },
+        });
+        if (sr.status === 200) {
+          const journeys = parseViaSearchJourneys(sr.body);
+          if (journeys.length) return viaSearchItems(journeys, ctx.source, rt.from, rt.to, from, to, dep);
+          // 200 but empty: fall through to the fare calendar honestly.
+        }
+        // Self-healing fallback (owner standing rule): if the search API is
+        // gated/broken, the fare calendar still yields one honest lowest-fare
+        // row for the route — never fabricate per-flight data.
         const body = JSON.stringify({ src: from, dest: to, startDate: dep, endDate, fareType: 'b2c', oneWay: true });
         const r = await cffiFetch(viaFareCalendarUrl(), {
           method: 'POST',
@@ -760,9 +784,9 @@ export const flightsWorker: VerticalWorker = {
             Origin: 'https://in.via.com',
           },
         });
-        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Via.com fare-calendar HTTP ${r.status}`, r.status);
+        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Via.com search+fare-calendar HTTP ${sr.status}/${r.status}`, r.status);
         const fares = parseViaFareCalendar(r.body);
-        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', 'Via.com fare-calendar returned no fares for this route');
+        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Via.com returned no fares (search HTTP ${sr.status}, journeys 0; calendar empty)`);
         return viaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
       },
     },

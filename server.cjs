@@ -7741,6 +7741,127 @@ function parseViaFareCalendar(body) {
   }
   return out;
 }
+function parseViaSearchJourneys(body) {
+  let root;
+  try {
+    root = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const js = root?.onwardJourneys;
+  if (!Array.isArray(js)) return [];
+  const out = [];
+  for (const j of js) {
+    const amount = Number(j?.fares?.totalFare?.total?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const legsRaw = Array.isArray(j?.flights) ? j.flights : [];
+    const legs = [];
+    for (const l of legsRaw) {
+      const depT = String(l?.depDetail?.time || "");
+      const arrT = String(l?.arrDetail?.time || "");
+      if (!/^\d{4}-\d{2}-\d{2} /.test(depT) || !/^\d{4}-\d{2}-\d{2} /.test(arrT)) continue;
+      legs.push({
+        carrierCode: String(l?.carrier?.code || ""),
+        carrierName: String(l?.carrier?.name || ""),
+        flightNo: String(l?.flightNo || ""),
+        flyTime: Number(l?.flyTime) || 0,
+        depTime: depT.slice(0, 16),
+        // "2026-10-26 07:15"
+        arrTime: arrT.slice(0, 16),
+        depCode: String(l?.depDetail?.code || ""),
+        arrCode: String(l?.arrDetail?.code || ""),
+        depCity: String(l?.depDetail?.city || l?.depDetail?.name || ""),
+        arrCity: String(l?.arrDetail?.city || l?.arrDetail?.name || "")
+      });
+    }
+    if (!legs.length) continue;
+    const dur = Number(Array.isArray(j?.journeyInfo) ? j.journeyInfo[0]?.journeyTime : 0) || legs[0]?.flyTime || 0;
+    out.push({
+      flightKey: String(j?.flightKey || ""),
+      price: Math.round(amount),
+      seatsLeft: Number(j?.seatsLeft) || 0,
+      legs,
+      durationMin: dur,
+      fareType: String(legsRaw[0]?.fareType || ""),
+      refundable: Boolean(legsRaw[0]?.refundable)
+    });
+  }
+  return out;
+}
+function viaSearchItems(journeys, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const j of journeys) {
+    if (!j.flightKey) continue;
+    const prev = byKey.get(j.flightKey);
+    if (!prev || j.price < prev.price) byKey.set(j.flightKey, j);
+  }
+  const uniq = [...byKey.values()].sort((a, b) => a.price - b.price).slice(0, 25);
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  return uniq.map((j) => {
+    const fno = j.legs.map((l) => `${l.carrierCode} ${l.flightNo}`.trim()).join(" + ");
+    const dep = j.legs[0].depTime;
+    const arr = j.legs[j.legs.length - 1].arrTime;
+    const stops = j.legs.length - 1;
+    const airline = j.legs[0].carrierName;
+    const hhmm3 = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
+    return newRawItem(source, {
+      title: `${airline} ${fno} \xB7 ${routeLabel}`,
+      brand: airline,
+      price: j.price,
+      currency: "INR",
+      seller: "Via.com",
+      sellerUrl: viaSearchUrl(fromCode, toCode, depIso),
+      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: depIso },
+      attributes: {
+        route: routeLabel,
+        travel_date: depIso,
+        flight_number: fno,
+        departure: dep,
+        arrival: arr,
+        duration: hhmm3(j.durationMin),
+        stops: String(stops),
+        seats_left: j.seatsLeft > 0 ? String(j.seatsLeft) : "",
+        fare_class: j.fareType,
+        refundable: j.refundable ? "yes" : "",
+        price_basis: `Via.com live search fare for ${depIso} (total incl. taxes), acquired from Via.com's own search API on ${today2}`,
+        data_note: `Per-flight fare from Via.com's official search API on ${today2}; booking continues on Via.com's own website.`,
+        image: ""
+      },
+      identifiers: { sku: `via-flight-${j.flightKey.replace(/[^A-Za-z0-9-]/g, "")}-${depIso}` },
+      evidence: {
+        sourceUrl: viaSearchApiUrl(),
+        extractedFields: ["onwardJourneys[].flightKey", "fares.totalFare.total.amount (INR)", "flights[].flightNo", "flights[].depDetail.time", "flights[].arrDetail.time", "journeyInfo[0].journeyTime"]
+      }
+    });
+  });
+}
+function viaSearchApiUrl() {
+  return `${VIA_BASE}/apiv2/flight/search?&flowType=NODE&ajax=true&jsonData=true`;
+}
+function viaSearchRequestBody(fromCode, fromCity, toCode, toCity, depIso) {
+  return JSON.stringify({
+    sectorInfos: [{
+      src: { code: fromCode, name: fromCity, city: fromCity },
+      dest: { code: toCode, name: toCity, city: toCity },
+      date: depIso,
+      debug: false
+    }],
+    class: "ALL",
+    paxCount: { adt: 1, chd: 0, inf: 0 },
+    route: "ALL",
+    disc: false,
+    multiHop: false,
+    multiCity: false,
+    senior: false,
+    special: false,
+    domestic: true,
+    isOfflineSearch: false,
+    isPaxWiseCommission: false,
+    isComboAllowed: false,
+    isLiveSearch: false
+  });
+}
 function viaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const exact = fares.find((f) => f.dt === depIso);
@@ -12955,7 +13076,7 @@ var init_flights = __esm({
           // Per-flight results (/itinerary) 502 for browserless HTTP; the calendar gives
           // real per-day lowest fares for the route (~267-day window), like EMT/IndiGo/Akasa.
           sourceId: "w_flights_via",
-          name: "Flights worker: Via.com fare calendar (B2C apiv2)",
+          name: "Flights worker: Via.com per-flight search (fallback: fare calendar)",
           priority: 14,
           maxPerMinute: 6,
           timeoutMs: 3e4,
@@ -12968,6 +13089,23 @@ var init_flights = __esm({
             if (!from || !to) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const endDate = new Date(Date.now() + 330 * 864e5).toISOString().slice(0, 10);
+            const sr = await cffiFetch(viaSearchApiUrl(), {
+              method: "POST",
+              impersonate: "chrome",
+              timeoutMs: 25e3,
+              body: viaSearchRequestBody(from, rt.from, to, rt.to, dep),
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                Referer: "https://in.via.com/flight/search",
+                Origin: "https://in.via.com"
+              }
+            });
+            if (sr.status === 200) {
+              const journeys = parseViaSearchJourneys(sr.body);
+              if (journeys.length) return viaSearchItems(journeys, ctx.source, rt.from, rt.to, from, to, dep);
+            }
             const body = JSON.stringify({ src: from, dest: to, startDate: dep, endDate, fareType: "b2c", oneWay: true });
             const r = await cffiFetch(viaFareCalendarUrl(), {
               method: "POST",
@@ -12982,9 +13120,9 @@ var init_flights = __esm({
                 Origin: "https://in.via.com"
               }
             });
-            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Via.com fare-calendar HTTP ${r.status}`, r.status);
+            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Via.com search+fare-calendar HTTP ${sr.status}/${r.status}`, r.status);
             const fares = parseViaFareCalendar(r.body);
-            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", "Via.com fare-calendar returned no fares for this route");
+            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Via.com returned no fares (search HTTP ${sr.status}, journeys 0; calendar empty)`);
             return viaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
           }
         },

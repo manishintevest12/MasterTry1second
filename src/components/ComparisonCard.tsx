@@ -189,6 +189,9 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
         sellerQuotes: group.rows.flatMap((r) => r.item.sellerQuotes.slice(0, 1)).map((q, i) => ({ ...q, isLowest: i === 0 })),
       } as ComparisonItem)
     : (itemProp as ComparisonItem);
+  // Owner 24 Oct: movie cards don't show the 'via {seller}' line — the seller is already
+  // on the card's provider badge, so it appeared twice (ref image: 'via District by Zomato (Paytm)').
+  const isMovieCard = ['movies','movie'].includes(String((item as any).vertical || '').toLowerCase());
   const siteRows = group && group.rows.length > 1 ? group.rows : [];
   const [compareOpen, setCompareOpen] = useState<boolean>(false);
   const {
@@ -425,9 +428,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                     {(item.specs as any).area && <span className="text-slate-400 font-normal truncate">· {(item.specs as any).area}</span>}
                   </p>
                 )}
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  via {item.subtitle}
-                </p>
+                {!isMovieCard && (
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    via {item.subtitle}
+                  </p>
+                )}
                 {item.description && (
                   <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">
                     {item.description}
@@ -561,9 +566,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                 <h3 className="text-base font-bold text-slate-900 leading-tight">
                   {item.title}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  via {item.subtitle}
-                </p>
+                {!isMovieCard && (
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                    via {item.subtitle}
+                  </p>
+                )}
                 {item.description && (
                   <p className="text-[11px] text-slate-600 mt-1 leading-snug line-clamp-2">
                     {item.description}
@@ -705,7 +712,7 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
           </div>
 
           <div className="mt-1.5 flex items-center justify-between w-full text-[11px] text-slate-400">
-            <span>via {bestQuote?.sellerName || item.provider}</span>
+            {!isMovieCard && <span>via {bestQuote?.sellerName || item.provider}</span>}
             <button
               onClick={() => setExpanded(true)}
               className="text-orange-600 hover:underline font-semibold"
