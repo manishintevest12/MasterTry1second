@@ -20012,8 +20012,8 @@ var init_bus = __esm({
             try {
               const getJson3 = async (url) => {
                 const s = Date.now();
-                const r = await ctx.fetch(url, { expectJson: true, timeoutMs: 12e3, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
-                steps.push(`suggest=${r.latencyMs ?? Date.now() - s}ms/${r.status}`);
+                const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 1e4, headers: { Accept: "application/json", Referer: "https://www.redbus.in/" } });
+                steps.push(`suggest=${Date.now() - s}ms/${r.status}`);
                 if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `redBus suggestion HTTP ${r.status}`, r.status);
                 try {
                   return JSON.parse(r.body);
@@ -20057,25 +20057,37 @@ var init_bus = __esm({
             if (resolved.from && resolved.to) {
               const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
               const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
-              const warmup = setTimeout(startRoutePage, 4e3);
+              const warmup = setTimeout(startRoutePage, 3e3);
               let r = { status: 0, body: "" };
-              for (let attempt = 1; attempt <= 2; attempt++) {
+              for (let attempt = 1; attempt <= 3; attempt++) {
                 const sr = Date.now();
+                const attemptHeaders = { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl };
                 try {
-                  r = await ctx.fetch(u, {
-                    method: "POST",
-                    expectJson: true,
-                    maxBytes: 6e6,
-                    timeoutMs: 12e3,
-                    headers: { Accept: "application/json", "Content-Type": "application/json", Origin: "https://www.redbus.in", Referer: pageUrl },
-                    body: "{}"
-                  });
+                  const cr = await cffiFetch(u, { impersonate: "chrome", method: "POST", body: "{}", timeoutMs: 9e3, headers: attemptHeaders });
+                  r = { status: cr.status, body: cr.body, latencyMs: Date.now() - sr };
+                  steps.push(`searchResults#${attempt}=cffi${Date.now() - sr}ms/${cr.status}`);
+                  if (r.status === 200) break;
+                  if (r.status === 403 || r.status === 429) break;
                 } catch (e) {
-                  steps.push(`searchResults#${attempt}=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
-                  continue;
+                  steps.push(`searchResults#${attempt}=cffi${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
                 }
-                steps.push(`searchResults#${attempt}=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
-                break;
+                if (attempt === 3) {
+                  const sr2 = Date.now();
+                  try {
+                    r = await ctx.fetch(u, {
+                      method: "POST",
+                      expectJson: true,
+                      maxBytes: 6e6,
+                      timeoutMs: 9e3,
+                      headers: attemptHeaders,
+                      body: "{}"
+                    });
+                    steps.push(`searchResults#fallback=${r.latencyMs ?? Date.now() - sr2}ms/${r.status}`);
+                  } catch (e) {
+                    steps.push(`searchResults#fallback=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr2}ms`);
+                  }
+                }
+                await new Promise((z) => setTimeout(z, 800));
               }
               clearTimeout(warmup);
               if (r.status === 200) {
@@ -25062,6 +25074,7 @@ var init_affiliateNetwork = __esm({
 // server/search/searchOrchestrator.ts
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
+  busTtlWithoutRedbus: () => busTtlWithoutRedbus,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
   runSearchPolled: () => runSearchPolled
@@ -25128,6 +25141,13 @@ function searchCacheTtl(vertical) {
   if (["flights", "hotels", "bus", "cab", "movies"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   if (["loans", "insurance", "creditcards", "banking"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
   return { ttlSec: 900, staleSec: 2700 };
+}
+function busTtlWithoutRedbus(vertical, response, ttlSec, staleSec) {
+  if (vertical !== "bus" || !response.results?.length) return { ttlSec, staleSec };
+  const attempted = response.state?.sourcesAttempted || [];
+  if (!attempted.some((x) => String(x).includes("redbus"))) return { ttlSec, staleSec };
+  const hasRedbus = response.results.some((o) => String(o?.seller || "").toLowerCase() === "redbus");
+  return hasRedbus ? { ttlSec, staleSec } : { ttlSec: 120, staleSec: 240 };
 }
 async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
   const anyOffers = offers;
@@ -25302,7 +25322,10 @@ async function runSearch(input) {
       const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
         if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
-        else cachePut(cacheKey, response, t, st);
+        else {
+          const bt = busTtlWithoutRedbus(vertical, response, t, st);
+          cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
+        }
         return response;
       }).finally(() => {
         inflightPipelines.delete(cacheKey);
@@ -25335,7 +25358,8 @@ async function runSearch(input) {
     if (response.results.length === 0) {
       cachePut(cacheKey, response, 45, 45);
     } else {
-      cachePut(cacheKey, response, ttlSec, staleSec);
+      const bt = busTtlWithoutRedbus(vertical, response, ttlSec, staleSec);
+      cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
     }
     return response;
   }).finally(() => {

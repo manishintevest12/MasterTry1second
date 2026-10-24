@@ -56,8 +56,13 @@ export const busWorker: VerticalWorker = {
         try {
           const getJson = async (url: string): Promise<any> => {
             const s = Date.now();
-            const r = await ctx.fetch(url, { expectJson: true, timeoutMs: 12_000, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
-            steps.push(`suggest=${r.latencyMs ?? Date.now() - s}ms/${r.status}`);
+            // Owner 24 Oct (redbus "kabhi aata hai kabhi ni" permanent fix): ALL
+            // redBus calls now ride curl_cffi with Chrome impersonation. The old
+            // path used ctx.fetch, whose undici TLS/JA3 fingerprint redBus's edge
+            // tarpits intermittently — the POST especially (httpAcquire only uses
+            // cffi for GET). The same request through Chrome TLS lands in 2-4s.
+            const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 10_000, headers: { Accept: 'application/json', Referer: 'https://www.redbus.in/' } });
+            steps.push(`suggest=${Date.now() - s}ms/${r.status}`);
             if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `redBus suggestion HTTP ${r.status}`, r.status);
             try { return JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'redBus citySuggestion non-JSON'); }
           };
@@ -123,27 +128,45 @@ export const busWorker: VerticalWorker = {
           // when it tarpits it hangs to the timeout. So: two short attempts (12s each) —
           // a second attempt catches a good window twice as often as one long hang.
           // Route-page warm-up runs from t+4s in parallel (see fetchRoutePage above).
-          const warmup = setTimeout(startRoutePage, 4_000);
+          const warmup = setTimeout(startRoutePage, 3_000);
           let r: { status: number; body: string; latencyMs?: number } = { status: 0, body: '' };
-          for (let attempt = 1; attempt <= 2; attempt++) {
+          // THREE cffi attempts (owner 24 Oct permanence fix): a healthy answer
+          // lands in 2-4s; a tarpit window can outlast two. 3 x 9s attempts with
+          // 800ms gaps catch a good window half again as often, still inside the
+          // 42s search deadline (suggest + 3 attempts ~= 38s worst case). The
+          // old undici-transport POST stays as a last-resort attempt when the
+          // cffi bridge itself is unavailable (python missing on the host).
+          for (let attempt = 1; attempt <= 3; attempt++) {
             const sr = Date.now();
+            const attemptHeaders = { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.redbus.in', Referer: pageUrl };
             try {
-              r = await ctx.fetch(u, {
-                method: 'POST',
-                expectJson: true,
-                maxBytes: 6_000_000,
-                timeoutMs: 12_000,
-                headers: { Accept: 'application/json', 'Content-Type': 'application/json', Origin: 'https://www.redbus.in', Referer: pageUrl },
-                body: '{}',
-              });
+              const cr = await cffiFetch(u, { impersonate: 'chrome', method: 'POST', body: '{}', timeoutMs: 9_000, headers: attemptHeaders });
+              r = { status: cr.status, body: cr.body, latencyMs: Date.now() - sr };
+              steps.push(`searchResults#${attempt}=cffi${Date.now() - sr}ms/${cr.status}`);
+              if (r.status === 200) break; // got the payload
+              if (r.status === 403 || r.status === 429) break; // gate, do not blind-retry
             } catch (e: any) {
-              // city resolution works, the heavy search POST does not answer — record and
-              // either retry or fall to the route page below.
-              steps.push(`searchResults#${attempt}=${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr}ms`);
-              continue;
+              steps.push(`searchResults#${attempt}=cffi${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr}ms`);
             }
-            steps.push(`searchResults#${attempt}=${r.latencyMs ?? Date.now() - sr}ms/${r.status}`);
-            break; // got an HTTP response — success or gate, do not blind-retry a 403/429
+            if (attempt === 3) {
+              // cffi could not answer at all (bridge down): one honest undici
+              // attempt so redBus is never silently skipped on such hosts.
+              const sr2 = Date.now();
+              try {
+                r = await ctx.fetch(u, {
+                  method: 'POST',
+                  expectJson: true,
+                  maxBytes: 6_000_000,
+                  timeoutMs: 9_000,
+                  headers: attemptHeaders,
+                  body: '{}',
+                });
+                steps.push(`searchResults#fallback=${r.latencyMs ?? Date.now() - sr2}ms/${r.status}`);
+              } catch (e: any) {
+                steps.push(`searchResults#fallback=${(e instanceof AcquisitionError && e.failureClass) || 'ERROR'}@${Date.now() - sr2}ms`);
+              }
+            }
+            await new Promise((z) => setTimeout(z, 800));
           }
           clearTimeout(warmup);
           if (r.status === 200) {

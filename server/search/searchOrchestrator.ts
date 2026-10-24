@@ -128,6 +128,24 @@ function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } 
 }
 
 /**
+ * Owner 24 Oct ("redbus ka result kabhi aata hai kabhi ni aata hai — permanently
+ * fix"): a BUS response whose live pipeline ATTEMPTED redBus but carries no
+ * redBus rows is a tarpit window being observed, not the truth for the next 5
+ * minutes. Cache such a response for only 2 minutes (stale-serve 4) so the very
+ * next poll re-attempts redBus and the gap self-heals, instead of sitting
+ * behind the normal 5/15-min bus TTL. Responses that DID include redBus keep the
+ * full window; responses where redBus was not even attempted (circuit) also keep
+ * it (nothing to re-attempt this cycle).
+ */
+export function busTtlWithoutRedbus(vertical: string, response: SearchResponse, ttlSec: number, staleSec: number): { ttlSec: number; staleSec: number } {
+  if (vertical !== 'bus' || !response.results?.length) return { ttlSec, staleSec };
+  const attempted = (response.state?.sourcesAttempted || []) as unknown as string[];
+  if (!attempted.some((x) => String(x).includes('redbus'))) return { ttlSec, staleSec };
+  const hasRedbus = (response.results as any[]).some((o) => String(o?.seller || '').toLowerCase() === 'redbus');
+  return hasRedbus ? { ttlSec, staleSec } : { ttlSec: 120, staleSec: 240 };
+}
+
+/**
  * PROGRESSIVE COLD-START (21 Oct, owner request): a cold cache must never block
  * the UI for 6-40s while live sources acquire. If the L3 catalogue holds fresh
  * (<1h) validated rows for the vertical, they are returned IMMEDIATELY as real
@@ -415,7 +433,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
         .then((response) => {
           const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
           if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
-          else cachePut(cacheKey, response, t, st);
+          else { const bt = busTtlWithoutRedbus(vertical, response, t, st); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
           return response;
         })
         .finally(() => { inflightPipelines.delete(cacheKey); });
@@ -464,7 +482,8 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       if (response.results.length === 0) {
         cachePut(cacheKey, response, 45, 45);
       } else {
-        cachePut(cacheKey, response, ttlSec, staleSec);
+        const bt = busTtlWithoutRedbus(vertical, response, ttlSec, staleSec);
+        cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
       }
       return response;
     })
