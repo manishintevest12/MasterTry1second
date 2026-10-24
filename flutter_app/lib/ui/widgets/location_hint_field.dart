@@ -25,6 +25,7 @@ class LocationHintField extends StatefulWidget {
     this.onSubmitted,
     this.trailing,
     this.large = false,
+    this.onFieldTap,
   });
 
   final TextEditingController controller;
@@ -42,6 +43,12 @@ class LocationHintField extends StatefulWidget {
   /// Owner 22 Oct: Uber-style roomy field (bigger label + text, 56px+ tap area, big clear
   /// button) for the Cab form, where 12px text in a 26px strip made typing painful.
   final bool large;
+
+  /// Owner 24 Oct evening: when set, tapping the field opens the full-screen
+  /// granular AddressPickerScreen (same concept as 10-min grocery: search-as-
+  /// you-type + GPS + map pin) instead of inline typing. Used by the Food
+  /// delivery-address and Cab pickup/drop fields.
+  final VoidCallback? onFieldTap;
 
   @override
   State<LocationHintField> createState() => _LocationHintFieldState();
@@ -267,7 +274,10 @@ class _LocationHintFieldState extends State<LocationHintField> {
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           // Whole box focuses the field: a thin 26px TextField strip was the hard-to-hit target.
-          onTap: () => _focus.requestFocus(),
+          // Owner 24 Oct evening: with onFieldTap set (food delivery address, cab
+          // pickup/drop) the tap opens the granular AddressPickerScreen instead —
+          // the same concept as the 10-min grocery location input.
+          onTap: () => widget.onFieldTap != null ? widget.onFieldTap!() : _focus.requestFocus(),
           child: Container(
             key: ValueKey('hintfield-box-${widget.mode}'),
             constraints: BoxConstraints(minHeight: widget.large ? 60 : 0),
@@ -298,6 +308,9 @@ class _LocationHintFieldState extends State<LocationHintField> {
                       TextField(
                         controller: widget.controller,
                         focusNode: _focus,
+                        // Owner 24 Oct evening: read-only display when the tap opens the
+                        // full-screen picker — the text is the chosen address.
+                        readOnly: widget.onFieldTap != null,
                         style: tx(context, widget.large ? 16 : 12, w: FontWeight.w800),
                         textInputAction: TextInputAction.search,
                         onSubmitted: (v) => widget.onSubmitted?.call(v),
@@ -337,7 +350,7 @@ class _LocationHintFieldState extends State<LocationHintField> {
           ),
         ),
         // Inline hint list (owner 23 Oct): in-flow under the field, never detached.
-        if (_showing && (_rows.isNotEmpty || _empty)) _buildDropdown(context),
+        if (widget.onFieldTap == null && _showing && (_rows.isNotEmpty || _empty)) _buildDropdown(context),
       ],
     );
   }

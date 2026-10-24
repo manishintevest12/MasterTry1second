@@ -577,6 +577,8 @@ class _CompareScreenState extends State<CompareScreen> {
                 onOpenHotelPicker: _openHotelPicker,
                 foodAddr: _foodAddr,
                 onPickFoodAddress: _pickFoodAddress,
+                onPickFoodAddressSheet: _openFoodAddressSheet,
+                onOpenCabSpotPicker: _openCabSpotSheet,
                 accountType: _accountType,
                 onAccountType: (t) {
                   // Chip tap = immediate comparison for that account type (bank box keeps its text).
@@ -701,6 +703,55 @@ class _CompareScreenState extends State<CompareScreen> {
       toast(context, 'Location set to ${spot['address'] ?? city}');
       await _runSearch(force: true);
     }
+  }
+
+  /// Owner 24 Oct evening: food delivery address gets the SAME full-screen
+  /// granular picker as the 10-min grocery vertical — search-as-you-type over
+  /// /api/geo/suggest (colony/street level), GPS and map pin. The inline field
+  /// opens this sheet on tap and displays the chosen address.
+  Future<void> _openFoodAddressSheet() async {
+    final spot = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(title: 'Delivery Address', initialQuery: _foodAddr.text),
+      ),
+    );
+    if (spot == null || spot is! Map<String, dynamic> || !mounted) return;
+    final address = (spot['address'] ?? spot['label'] ?? '').toString();
+    if (address.isNotEmpty) {
+      setState(() => _foodAddr.text = address);
+    }
+    await _pickFoodAddress(spot); // structured city/pincode + setLocation + search
+  }
+
+  /// Owner 24 Oct evening: cab pickup/drop get the SAME full-screen granular
+  /// picker (grocery concept). Pickup also updates the user location context
+  /// (exact coordinates ride on every live search), mirroring _pickOnMap.
+  Future<void> _openCabSpotSheet(bool pickup) async {
+    final spot = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddressPickerScreen(
+          title: pickup ? 'Pickup Location' : 'Drop Destination',
+          initialQuery: (pickup ? _from : _to).text,
+        ),
+      ),
+    );
+    if (spot == null || spot is! Map<String, dynamic> || !mounted) return;
+    final label = (spot['address'] ?? spot['label'] ?? '').toString();
+    if (label.isEmpty) return;
+    if (pickup) {
+      setState(() => _from.text = label);
+      final lat = (spot['lat'] as num?)?.toDouble();
+      final lng = (spot['lng'] as num?)?.toDouble();
+      final city = (spot['city'] as String?)?.isNotEmpty == true ? spot['city'] as String : _state.city;
+      final pin = (spot['pincode'] as String?)?.isNotEmpty == true ? spot['pincode'] as String : _state.pincode;
+      await _state.setLocation(city, pin, lat: lat, lng: lng);
+      if (mounted) toast(context, 'Pickup set: $label');
+    } else {
+      setState(() => _to.text = label);
+    }
+    if (mounted) await _runSearch(force: true);
   }
 }
 
@@ -1128,6 +1179,8 @@ class _SearchCard extends StatelessWidget {
     required this.onOpenHotelPicker,
     this.foodAddr,
     this.onPickFoodAddress,
+    this.onPickFoodAddressSheet,
+    this.onOpenCabSpotPicker,
     this.accountType = 'Savings',
     this.onAccountType,
   });
@@ -1152,6 +1205,8 @@ class _SearchCard extends StatelessWidget {
   final VoidCallback onOpenHotelPicker;
   final TextEditingController? foodAddr;
   final void Function(Map<String, dynamic>)? onPickFoodAddress;
+  final VoidCallback? onPickFoodAddressSheet;
+  final Function(bool)? onOpenCabSpotPicker;
   final String accountType;
   final void Function(String)? onAccountType;
 
@@ -1190,6 +1245,9 @@ class _SearchCard extends StatelessWidget {
               onSelect: (_, __) => onSearch(),
               onSubmitted: (_) => onSearch(),
               trailing: mapPin(true),
+              // Owner 24 Oct evening: tap opens the full-screen granular picker
+              // (same concept as the 10-min grocery location input).
+              onFieldTap: onOpenCabSpotPicker != null ? () => onOpenCabSpotPicker!(true) : null,
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
@@ -1229,6 +1287,8 @@ class _SearchCard extends StatelessWidget {
               onSelect: (_, __) => onSearch(),
               onSubmitted: (_) => onSearch(),
               trailing: mapPin(false),
+              // Owner 24 Oct evening: tap opens the full-screen granular picker.
+              onFieldTap: onOpenCabSpotPicker != null ? () => onOpenCabSpotPicker!(false) : null,
             ),
             const SizedBox(height: 8),
             Row(
@@ -1617,6 +1677,9 @@ class _SearchCard extends StatelessWidget {
                 placeholder: 'Search delivery address...',
                 mode: 'pickup',
                 onSelect: (_, place) => onPickFoodAddress!(place),
+                // Owner 24 Oct evening: tap opens the full-screen granular
+                // picker (grocery concept) instead of inline typing.
+                onFieldTap: onPickFoodAddressSheet,
               )
             else
               Row(children: [Expanded(child: _CityChip(city: city, onTap: onPickCity))]),
