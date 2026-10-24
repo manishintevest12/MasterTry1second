@@ -31,6 +31,7 @@ import { STAR_HOME, starAvailUrl, starValidDestinations, parseStarAirAvailabilit
 import { SIA_HOME, SIA_CHAT_PAGE, SIA_CHAT_API, siaChatPrompt, siaChatBody, parseSiaChatStream, siaRouteInvalid, siaIsGated, siaFareItems } from '../parsers/singaporeAirChat';
 import { QR_FARE_CALENDARS, QR_FLIGHT_OFFERS, qrHeaders, qrFareCalendarsBody, qrFlightOffersBody, parseQrFareCalendars, parseQrFlightOffers, qrFlightItems, qrCalendarItems } from '../parsers/qatarAirwaysNbx';
 import { ekSearchRequestUrl, EK_GATE_MARKER, parseEmiratesSrp, ekFlightItems } from '../parsers/emiratesSrp';
+import { CX_TSP_API, cxParams, cxDeeplink, parseCathayOfferFlights, parseCathayAirCalendar, cxFlightItems } from '../parsers/cathayTsp';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -1084,6 +1085,79 @@ export const flightsWorker: VerticalWorker = {
           } catch { continue; }
         }
         throw new AcquisitionError('ACCESS_CHALLENGE', `Emirates sensor-gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
+      },
+    },
+    {
+      // Cathay Pacific (24 Oct 2026): the homepage widget GET form
+      // (/wdsibe/IBEFacade, no gate) hands off to the NEW "TSP" booking engine
+      // (book.cathaypacific.com, Akamai) which pulls offers from plain GETs
+      // on api.cathaypacific.com/tsp-svc/v1.0/: create-session -> offer-flights
+      // (type=OW) -> air-calendar. Verified LIVE in-browser BOM-HKG 29 Oct:
+      // 46 itineraries, CX660 02:00->09:55 77W 5h25m economy INR 33,746
+      // (checked 23kg + cabin 7kg, 3 seats left). Akamai rules differ per
+      // endpoint: sandbox sees offer-flights pass Akamai but 500 "No session
+      // found"; create-session/air-calendar 403. SELF-DETECTING (owner
+      // standing rule): 3-rung ladder; session/403 gate => honest
+      // ACCESS_CHALLENGE; auto-activates on a clean production IP.
+      sourceId: 'w_flights_cathay',
+      name: 'Flights worker: Cathay Pacific TSP booking engine (tsp-svc API)',
+      priority: 15,
+      maxPerMinute: 2,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
+        const apiHeaders = {
+          'User-Agent': UA,
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Origin': 'https://book.cathaypacific.com',
+          'Referer': 'https://book.cathaypacific.com/',
+          'sec-ch-ua': '"Not:A-Brand";v="8", "Chromium";v="156", "Google Chrome";v="156"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+        };
+        const params = cxParams(fromA.code, toA.code, dep);
+        const rungs: { imp: 'chrome' | 'safari'; label: string }[] = [
+          { imp: 'chrome', label: 'chrome' },
+          { imp: 'safari', label: 'safari' },
+        ];
+        let lastStatus = 0;
+        for (const rung of rungs) {
+          try {
+            // 1. prime the TSP session
+            const ses = await cffiFetch(`${CX_TSP_API}create-session?${params}`, { impersonate: rung.imp, timeoutMs: 30_000, headers: apiHeaders });
+            lastStatus = ses.status;
+            if (ses.status === 403) { await new Promise(rr => setTimeout(rr, 1200)); continue; }
+            if (ses.status !== 200) break;
+            // 2. offers
+            const off = await cffiFetch(`${CX_TSP_API}offer-flights?type=OW&${params}`, { impersonate: rung.imp, timeoutMs: 40_000, headers: apiHeaders });
+            if (off.status === 200) {
+              const flights = parseCathayOfferFlights(off.body || '');
+              if (flights.length) {
+                // 3. fare strip (best-effort)
+                let strip;
+                try {
+                  const cal = await cffiFetch(`${CX_TSP_API}air-calendar?${params}`, { impersonate: rung.imp, timeoutMs: 25_000, headers: apiHeaders });
+                  strip = cal.status === 200 ? parseCathayAirCalendar(cal.body || '') : undefined;
+                } catch { /* strip is optional */ }
+                return cxFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep, strip);
+              }
+              return []; // reachable but no rows for this route/date: honest empty
+            }
+            if (off.status === 403 || off.status === 429) { await new Promise(rr => setTimeout(rr, 1200)); continue; }
+            break;
+          } catch { continue; }
+        }
+        throw new AcquisitionError('ACCESS_CHALLENGE', `Cathay Pacific TSP API gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
       },
     },
     {

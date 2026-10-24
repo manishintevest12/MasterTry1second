@@ -9668,6 +9668,130 @@ var init_emiratesSrp = __esm({
   }
 });
 
+// server/workers/parsers/cathayTsp.ts
+function cxParams(from, to, dep) {
+  return `origin=${from}&destination=${to}&departureDate=${dep}&cabinClass=Y&entryLanguage=en&entryCountry=IN&adult=1&youngAdult=0&child=0&infant=0&student=0`;
+}
+function cxDeeplink(from, to, dep) {
+  return `${CX_DEEPLINK}?ca=Y&o=${from}&d=${to}&a=1&ya=0&ch=0&i=0&ddb1=${dep}&viewport=desktop`;
+}
+function parseCathayOfferFlights(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const list = d?.data?.flightList;
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const f of list) {
+    const card = f?.flightDetails?.flightCard;
+    const segs = f?.flightDetails?.flightSegments || [];
+    if (!card || !segs.length) continue;
+    const segInfos = segs.map((s) => s?.flightInfo).filter(Boolean);
+    if (!segInfos.length) continue;
+    const first = segInfos[0];
+    const last = segInfos[segInfos.length - 1];
+    const allFlights = segInfos.map((s) => `${s.marketingAirlineCode}${s.marketingFlightNumber}`);
+    const headline = allFlights.find((x) => /^CX/.test(x)) || allFlights[0];
+    const transitVia = segInfos.slice(0, -1).map((s) => s.arrival?.airportCode).filter(Boolean);
+    const stops = Math.max(0, segInfos.length - 1);
+    const ecoPrice = (card.totalPrice || []).find((p) => p.cabinClass === "Y" && p.isLowestPrice) || (card.totalPrice || []).find((p) => p.cabinClass === "Y") || (card.totalPrice || [])[0];
+    const priceInr = ecoPrice?.currencyCode === "INR" ? ecoPrice.value : ecoPrice ? ecoPrice.value : 0;
+    const cheapOffer = (f.flightOffers || []).find((o) => o.isCheapestOffer) || (f.flightOffers || [])[0];
+    const quota = cheapOffer?.availabilityDetails?.[0]?.quota;
+    const baggage = cheapOffer?.benefits?.baggage || [];
+    const checked = baggage.find((b) => b.key === "checkedBaggage");
+    const cabinBag = baggage.find((b) => b.key === "cabinBaggage");
+    const baggageNote = [
+      checked && `checked ${(checked.policyDetails || []).find((p) => p.unit === "kilogram")?.value}kg`,
+      cabinBag && `cabin ${(cabinBag.policyDetails || []).find((p) => p.unit === "kilogram")?.value}kg`
+    ].filter(Boolean).join(" + ");
+    const key = `${headline}-${isoTime(first.departure?.dateTime || "")}`;
+    if (!priceInr || out.some((o) => `${o.flightNumber}-${o.depTime}` === key)) continue;
+    out.push({
+      flightNumber: headline,
+      allFlights,
+      depTime: isoTime(first.departure?.dateTime || ""),
+      arrTime: isoTime(last.arrival?.dateTime || ""),
+      depIso: first.departure?.dateTime || "",
+      arrIso: last.arrival?.dateTime || "",
+      durationMin: Math.round((card.duration || first.duration || 0) / 60),
+      stops,
+      transitVia,
+      priceInr,
+      cabinClass: ecoPrice?.cabinClass || "Y",
+      aircraft: first.aircraftCode || "",
+      seatsLeft: typeof quota === "number" ? quota : null,
+      baggageNote
+    });
+  }
+  return out;
+}
+function parseCathayAirCalendar(body) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const cals = d?.data?.calendars;
+  if (!Array.isArray(cals)) return [];
+  const out = [];
+  for (const c of cals) {
+    const amount = c?.prices?.amount;
+    if (c.departureDate && typeof amount === "number") out.push({ date: c.departureDate, priceInr: amount });
+  }
+  return out;
+}
+function cxFlightItems(flights, source, fromCity, toCity, fromCode, toCode, dep, fareStrip) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const stripNote = fareStrip && fareStrip.length ? `Week around ${dep}: ${fareStrip.map((s) => `${s.date.slice(5)} \u20B9${s.priceInr.toLocaleString("en-IN")}`).join(", ")}` : "";
+  return flights.map((o) => newRawItem(source, {
+    title: `Cathay Pacific ${o.flightNumber} ${fromCity} \u2192 ${toCity} ${o.depTime}\u2013${o.arrTime} \xB7 \u20B9${o.priceInr.toLocaleString("en-IN")}`,
+    brand: "Cathay Pacific",
+    price: o.priceInr,
+    currency: "INR",
+    seller: "Cathay Pacific",
+    sellerUrl: cxDeeplink(fromCode, toCode, dep),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: dep },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: /AI/.test(o.allFlights.join("")) ? "Cathay Pacific (codeshare w/ Air India)" : "Cathay Pacific",
+      flight_number: o.flightNumber,
+      travel_date: dep,
+      departure_date: dep,
+      departs: o.depTime,
+      arrives: o.arrTime,
+      duration: o.durationMin ? `${Math.floor(o.durationMin / 60)}h ${o.durationMin % 60}m` : "",
+      stops: o.stops === 0 ? "non-stop" : `${o.stops} stop${o.stops > 1 ? "s" : ""}${o.transitVia.length ? ` via ${o.transitVia.join(", ")}` : ""}`,
+      fare_class: o.cabinClass === "Y" ? "economy" : o.cabinClass,
+      baggage: o.baggageNote || "",
+      seats_left: String(o.seatsLeft ?? ""),
+      aircraft: o.aircraft,
+      price_basis: `Cathay Pacific live ${o.cabinClass === "Y" ? "economy" : o.cabinClass} fare incl. taxes for 1 adult on ${dep} captured ${today2}`,
+      data_note: "Live per-flight data from Cathay Pacific's own booking engine (tsp-svc offer-flights API). Price is the lowest total incl. taxes for 1 adult.",
+      fare_strip: stripNote,
+      image: ""
+    },
+    identifiers: { sku: `cx-${o.flightNumber}-${dep}` },
+    evidence: {
+      sourceUrl: CX_TSP_API,
+      extractedFields: ["flightCard.flightNumberList", "flightSegments[].flightInfo (ISO dep/arr, aircraft)", "flightOffers[].unitPrice", "air-calendar prices"]
+    }
+  }));
+}
+var CX_TSP_API, CX_DEEPLINK, isoTime;
+var init_cathayTsp = __esm({
+  "server/workers/parsers/cathayTsp.ts"() {
+    init_contract();
+    CX_TSP_API = "https://api.cathaypacific.com/tsp-svc/v1.0/";
+    CX_DEEPLINK = "https://book.cathaypacific.com/tsp/en_IN/flight-selection";
+    isoTime = (iso2) => (iso2 || "").slice(11, 16);
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13781,6 +13905,7 @@ var init_flights = __esm({
     init_singaporeAirChat();
     init_qatarAirwaysNbx();
     init_emiratesSrp();
+    init_cathayTsp();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -14762,6 +14887,83 @@ var init_flights = __esm({
               }
             }
             throw new AcquisitionError("ACCESS_CHALLENGE", `Emirates sensor-gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
+          }
+        },
+        {
+          // Cathay Pacific (24 Oct 2026): the homepage widget GET form
+          // (/wdsibe/IBEFacade, no gate) hands off to the NEW "TSP" booking engine
+          // (book.cathaypacific.com, Akamai) which pulls offers from plain GETs
+          // on api.cathaypacific.com/tsp-svc/v1.0/: create-session -> offer-flights
+          // (type=OW) -> air-calendar. Verified LIVE in-browser BOM-HKG 29 Oct:
+          // 46 itineraries, CX660 02:00->09:55 77W 5h25m economy INR 33,746
+          // (checked 23kg + cabin 7kg, 3 seats left). Akamai rules differ per
+          // endpoint: sandbox sees offer-flights pass Akamai but 500 "No session
+          // found"; create-session/air-calendar 403. SELF-DETECTING (owner
+          // standing rule): 3-rung ladder; session/403 gate => honest
+          // ACCESS_CHALLENGE; auto-activates on a clean production IP.
+          sourceId: "w_flights_cathay",
+          name: "Flights worker: Cathay Pacific TSP booking engine (tsp-svc API)",
+          priority: 15,
+          maxPerMinute: 2,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+            const apiHeaders = {
+              "User-Agent": UA6,
+              "Accept": "application/json, text/plain, */*",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Origin": "https://book.cathaypacific.com",
+              "Referer": "https://book.cathaypacific.com/",
+              "sec-ch-ua": '"Not:A-Brand";v="8", "Chromium";v="156", "Google Chrome";v="156"',
+              "sec-ch-ua-mobile": "?0",
+              "sec-ch-ua-platform": '"Windows"'
+            };
+            const params = cxParams(fromA.code, toA.code, dep);
+            const rungs = [
+              { imp: "chrome", label: "chrome" },
+              { imp: "safari", label: "safari" }
+            ];
+            let lastStatus = 0;
+            for (const rung of rungs) {
+              try {
+                const ses = await cffiFetch(`${CX_TSP_API}create-session?${params}`, { impersonate: rung.imp, timeoutMs: 3e4, headers: apiHeaders });
+                lastStatus = ses.status;
+                if (ses.status === 403) {
+                  await new Promise((rr) => setTimeout(rr, 1200));
+                  continue;
+                }
+                if (ses.status !== 200) break;
+                const off = await cffiFetch(`${CX_TSP_API}offer-flights?type=OW&${params}`, { impersonate: rung.imp, timeoutMs: 4e4, headers: apiHeaders });
+                if (off.status === 200) {
+                  const flights = parseCathayOfferFlights(off.body || "");
+                  if (flights.length) {
+                    let strip2;
+                    try {
+                      const cal = await cffiFetch(`${CX_TSP_API}air-calendar?${params}`, { impersonate: rung.imp, timeoutMs: 25e3, headers: apiHeaders });
+                      strip2 = cal.status === 200 ? parseCathayAirCalendar(cal.body || "") : void 0;
+                    } catch {
+                    }
+                    return cxFlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep, strip2);
+                  }
+                  return [];
+                }
+                if (off.status === 403 || off.status === 429) {
+                  await new Promise((rr) => setTimeout(rr, 1200));
+                  continue;
+                }
+                break;
+              } catch {
+                continue;
+              }
+            }
+            throw new AcquisitionError("ACCESS_CHALLENGE", `Cathay Pacific TSP API gated from this IP (HTTP ${lastStatus || 403}; probe self-activates on a clean production IP)`, lastStatus || 403);
           }
         },
         {
