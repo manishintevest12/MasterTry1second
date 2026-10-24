@@ -8996,6 +8996,200 @@ var init_fly91Ibe = __esm({
   }
 });
 
+// server/workers/parsers/sriLankanPlnext.ts
+function slIsImpervaStub(body) {
+  return /_Incapsula_Resource|Pardon Our Interruption/i.test(body || "");
+}
+function slIdxxui(homeHtml) {
+  const m = (homeHtml || "").match(/id="idxxui"[^>]*value="([^"]+)"/) || (homeHtml || "").match(/name="idxxui"[^>]*value="([^"]+)"/);
+  return m ? m[1] : "";
+}
+function slDateParams(depIso) {
+  const m = depIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return { selddate1: depIso, fromdate: depIso.replace(/-/g, "") + "0000" };
+  return { selddate1: depIso, fromdate: `${m[1]}${m[2]}${m[3]}0000` };
+}
+function slOverrideBody(fromCode, toCode, fromLabel, toLabel, depIso, idxxui) {
+  const { selddate1, fromdate } = slDateParams(depIso);
+  return new URLSearchParams({
+    ffpOk: "",
+    isredemption: "F",
+    promotracking: "",
+    idxxui,
+    sitelang: "GB",
+    from_result: "",
+    to_result: "",
+    seldcity1: fromCode,
+    selacity1: toCode,
+    suggest1: fromLabel,
+    suggest2: toLabel,
+    suggest1xx: "",
+    suggest2xx: "",
+    selddate1,
+    seladate1: selddate1,
+    selcabinclass: "E",
+    seladults: "1",
+    selchildren: "0",
+    selchildrenyoung: "0",
+    selinfants: "0",
+    key_arrivalairport: "",
+    key_departureairport: "",
+    key_promocode: "",
+    tid: "OW",
+    tidtmp: "",
+    ispromowidget: "0",
+    fromdate,
+    todate: fromdate,
+    resultby: "1",
+    isPayLaterRedeemVoucher: "R",
+    resultbyPayLater: "4",
+    isCashPlusMiles: "5",
+    flxDateCheck: ""
+  }).toString();
+}
+function slEncFromOverridePage(html) {
+  const m = (html || "").match(/\b[A-F0-9]{100,}\b/);
+  return m ? m[0] : null;
+}
+function slParseAmadeusDate(s) {
+  const m = String(s || "").match(/^([A-Za-z]{3}) (\d{1,2}), (\d{4}), (\d{1,2}):(\d{2}):(\d{2}) (AM|PM)/);
+  if (!m) return null;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mo = months.findIndex((x) => x.toLowerCase() === m[1].toLowerCase());
+  if (mo < 0) return null;
+  let h = Number(m[4]) % 12;
+  if (m[7] === "PM") h += 12;
+  return {
+    iso: `${m[3]}-${String(mo + 1).padStart(2, "0")}-${String(Number(m[2])).padStart(2, "0")}`,
+    hhmm: `${String(h).padStart(2, "0")}:${m[5]}`
+  };
+}
+function parseSriLankanAvailability(html, depIso) {
+  const b = html || "";
+  const i = b.indexOf('"proposedBounds":');
+  if (i < 0) return null;
+  let k = i, depth = 0, start2 = -1;
+  while (k > 0) {
+    const c = b[k];
+    if (c === "}") depth += 1;
+    else if (c === "{") {
+      if (depth === 0) {
+        start2 = k;
+        break;
+      }
+      depth -= 1;
+    }
+    k -= 1;
+  }
+  if (start2 < 0) return null;
+  let end = start2;
+  depth = 0;
+  while (end < b.length) {
+    const c = b[end];
+    if (c === "{") depth += 1;
+    else if (c === "}") {
+      depth -= 1;
+      if (depth === 0) break;
+    }
+    end += 1;
+  }
+  let d;
+  try {
+    d = JSON.parse(b.slice(start2, end + 1));
+  } catch {
+    return null;
+  }
+  const flights = [];
+  const bounds = Array.isArray(d.proposedBounds) ? d.proposedBounds : [];
+  const grp = bounds[0]?.proposedFlightsGroup || [];
+  for (const g of grp) {
+    const segs = g.segments || [];
+    const first = segs[0];
+    const last = segs[segs.length - 1];
+    if (!first || !last) continue;
+    const dep = slParseAmadeusDate(first.beginDate);
+    const arr = slParseAmadeusDate(last.endDate);
+    if (!dep || !arr) continue;
+    if (dep.iso !== depIso) continue;
+    const alCode = String(first.airline?.code || "UL");
+    const no = String(first.flightNumber || "");
+    if (!no) continue;
+    flights.push({
+      flightNo: `${alCode}${no}`,
+      depTime: dep.hhmm,
+      arrTime: arr.hhmm,
+      depDateIso: dep.iso,
+      fromCode: String(first.beginLocation?.locationCode || ""),
+      toCode: String(last.endLocation?.locationCode || ""),
+      stops: Number(last.nbrOfStops ?? 0),
+      aircraft: String(first.equipment?.code || first.equipment || "")
+    });
+  }
+  if (!flights.length) return null;
+  let cheapestFare = 0, tax = 0, base = 0, seats = 0;
+  let fareFamily = "";
+  for (const rec of d.recommendationList || []) {
+    const bound = rec.bounds?.[0];
+    const amt = bound?.boundAmount;
+    const total = Number(amt?.totalAmount ?? 0);
+    if (!(total > 0)) continue;
+    const s = Number(bound?.flightGroupList?.[0]?.numberOfSeatsLeft ?? 0);
+    if (cheapestFare === 0 || total < cheapestFare) {
+      cheapestFare = Math.round(total);
+      tax = Math.round(Number(amt.tax ?? 0));
+      base = Math.round(Number(amt.amountWithoutTaxAndFee ?? amt.amountWithoutTax ?? 0));
+      seats = s;
+      fareFamily = String(bound?.ffCode || rec.ffCode || "");
+    }
+  }
+  if (cheapestFare <= 0) return null;
+  return { flights, cheapestFare, fareFamily, tax, base, seats };
+}
+function sriLankanFlightItems(flights, cheapestFare, fareFamily, tax, base, seats, source, fromCity, toCity, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const srpUrl = `${SL_HOME}`;
+  return flights.map((f) => newRawItem(source, {
+    title: `SriLankan Airlines ${f.flightNo} ${fromCity} \u2192 ${toCity} on ${f.depDateIso} from \u20B9${cheapestFare} (${f.depTime}\u2013${f.arrTime})`,
+    brand: "SriLankan Airlines",
+    price: cheapestFare,
+    currency: "INR",
+    seller: "SriLankan Airlines",
+    sellerUrl: srpUrl,
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: f.depDateIso },
+    attributes: {
+      route: `${fromCity} \u2192 ${toCity}`,
+      airline: "SriLankan Airlines",
+      flight_number: f.flightNo,
+      travel_date: f.depDateIso,
+      departure_date: f.depDateIso,
+      departure: f.depTime,
+      arrival: f.arrTime,
+      stops: String(f.stops),
+      ...f.aircraft ? { aircraft: f.aircraft } : {},
+      ...fareFamily ? { fare_class: `${fareFamily} (lowest available fare family incl. taxes)` } : {},
+      ...seats ? { seats: `${seats} seats left at this fare` } : {},
+      price_basis: `SriLankan booking-engine fare for 1 adult on ${f.depDateIso} (base \u20B9${base} + taxes \u20B9${tax}) captured ${today2}`,
+      data_note: `Fare and schedule from SriLankan Airlines' own Amadeus booking engine on ${today2}; booking continues on SriLankan's own website. Fare may change at checkout.`,
+      image: ""
+    },
+    identifiers: { sku: `ul-${f.flightNo}-${f.depDateIso}-${f.fromCode}${f.toCode}`.replace(/\s+/g, "") },
+    evidence: {
+      sourceUrl: SL_IBE_OVERRIDE,
+      extractedFields: ["proposedBounds[].proposedFlightsGroup[].segments[]", "recommendationList[].bounds[0].boundAmount.totalAmount (INR)"]
+    }
+  }));
+}
+var SL_HOME, SL_OVERRIDE_POST, SL_IBE_OVERRIDE, SL_IBE_SITE;
+var init_sriLankanPlnext = __esm({
+  "server/workers/parsers/sriLankanPlnext.ts"() {
+    init_contract();
+    SL_HOME = "https://www.srilankan.com/en_uk/ca";
+    SL_OVERRIDE_POST = "https://www.srilankan.com/en_uk/home/srilakan-override";
+    SL_IBE_OVERRIDE = "https://book.srilankan.com/plnext/srilankanairDX/Override.action?";
+    SL_IBE_SITE = "CBGVCNEW";
+  }
+});
+
 // server/workers/parsers/cleartripFlights.ts
 function cleartripSearchUrl(from, to, depDmy) {
   return `https://www.cleartrip.com/flight/search/v2?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart_date=${encodeURIComponent(depDmy)}&adults=1`;
@@ -13104,6 +13298,7 @@ var init_flights = __esm({
     init_airIndiaFares();
     init_allianceAir();
     init_fly91Ibe();
+    init_sriLankanPlnext();
     init_cleartripFlights();
     init_expediaFlightsQuery();
     init_expediaFlights();
@@ -13780,6 +13975,71 @@ var init_flights = __esm({
             const flights = parseFly91Results(html, dep);
             if (!flights.length) return [];
             return fly91FlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+          }
+        },
+        {
+          // SriLankan Airlines LIVE (24 Oct 2026): Amadeus pl-next IBE
+          // (book.srilankan.com/plnext/srilankanairDX, git 26.1.40). Full chain
+          // captured via Browserbase CDP: homepage GET (idxxui token) -> POST
+          // /en_uk/home/srilakan-override (widget params) -> override page
+          // (server-generated ENC hex) -> POST Override.action?SITE=CBGVCNEW&
+          // EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=<hex> ->
+          // availability page embeds the complete flex-pricer JSON
+          // (proposedBounds flights + recommendationList fares INR).
+          // Both hosts are Imperva-gated from datacenter IPs (sandbox GET = 212B
+          // Incapsula stub, book.* = "Pardon Our Interruption"), so this is a
+          // SELF-DETECTING FULL-FLOW PROBE (MMT pattern): every search replays
+          // the chain honestly; ACCESS_CHALLENGE while gated, full per-flight
+          // data the moment a clean production IP (Hostinger) runs it.
+          // Verified via CDP 24 Oct: UL122 (UL 122) MAA 09:50 -> CMB 11:10,
+          // 32B, non-stop; cheapest rec 9,495 INR (base 3,705 + tax 5,790,
+          // family EINSAS4, 1 seat left).
+          sourceId: "w_flights_srilankan",
+          name: "Flights worker: SriLankan Airlines direct Amadeus booking engine",
+          priority: 14,
+          maxPerMinute: 3,
+          timeoutMs: 4e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            if (!fromA.code || !toA.code) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const fromLabel = `${rt.from} (${fromA.code})`;
+            const toLabel = `${rt.to} (${toA.code})`;
+            const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+            const H = { "User-Agent": UA6, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
+            const home = await cffiFetch(SL_HOME, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
+            const homeBody = home.body || "";
+            if (slIsImpervaStub(homeBody)) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan homepage Imperva-gated from this IP (probe self-activates on a clean production IP)", 403);
+            if (home.status !== 200) throw new AcquisitionError("SERVER_ERROR", `SriLankan homepage HTTP ${home.status}`, home.status);
+            const idxxui = slIdxxui(homeBody);
+            const cookies = home.cookies || {};
+            const ov = await cffiFetch(SL_OVERRIDE_POST, {
+              impersonate: "chrome",
+              timeoutMs: 2e4,
+              method: "POST",
+              body: slOverrideBody(fromA.code, toA.code, fromLabel, toLabel, dep, idxxui),
+              headers: { ...H, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: SL_HOME },
+              cookies
+            });
+            if (ov.status !== 200 || slIsImpervaStub(ov.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan override page gated (Imperva)", 403);
+            const enc = slEncFromOverridePage(ov.body || "");
+            if (!enc) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan override page carried no ENC token (chain shape changed or gated)", 403);
+            const ibe = await cffiFetch(SL_IBE_OVERRIDE, {
+              impersonate: "chrome",
+              timeoutMs: 25e3,
+              method: "POST",
+              body: `SITE=${SL_IBE_SITE}&LANGUAGE=GB&EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=${enc}`,
+              headers: { ...H, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: "https://www.srilankan.com/" }
+            });
+            if (slIsImpervaStub(ibe.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", 'SriLankan IBE Imperva-gated ("Pardon Our Interruption")', 403);
+            if (ibe.status !== 200) throw new AcquisitionError("SERVER_ERROR", `SriLankan IBE HTTP ${ibe.status}`, ibe.status);
+            const parsed = parseSriLankanAvailability(ibe.body || "", dep);
+            if (!parsed) return [];
+            return sriLankanFlightItems(parsed.flights, parsed.cheapestFare, parsed.fareFamily, parsed.tax, parsed.base, parsed.seats, ctx.source, rt.from, rt.to, dep);
           }
         },
         {

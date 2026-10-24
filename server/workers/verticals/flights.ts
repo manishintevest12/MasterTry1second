@@ -26,6 +26,7 @@ import { spiceJetLowFareBody, spiceJetAvailabilityBody, spiceJetBaseHeaders, spi
 import { airIndiaFaresBody, airIndiaFaresHeaders, AI_FARES_URL, parseAirIndiaFares, airIndiaDayFareItems } from '../parsers/airIndiaFares';
 import { AA_HOME, allianceAirSearchBody, extractAaDataSchedule, parseAllianceAirSchedule, allianceAirFlightItems } from '../parsers/allianceAir';
 import { fly91BookingUrl, fly91EventBody, fly91FormAction, parseFly91Results, fly91FlightItems } from '../parsers/fly91Ibe';
+import { SL_HOME, SL_IBE_OVERRIDE, SL_IBE_SITE, SL_OVERRIDE_POST, slIsImpervaStub, slIdxxui, slOverrideBody, slEncFromOverridePage, parseSriLankanAvailability, sriLankanFlightItems } from '../parsers/sriLankanPlnext';
 // SpiceJet dotREZ NSK token cache (idle timeout 10 min server-side; refresh at 8 min).
 const sjTokenCache = new Map<string, { value: string; expires: number }>();
 
@@ -787,6 +788,72 @@ export const flightsWorker: VerticalWorker = {
         const flights = parseFly91Results(html, dep);
         if (!flights.length) return []; // honest empty: route/date not served
         return fly91FlightItems(flights, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
+      },
+    },
+    {
+      // SriLankan Airlines LIVE (24 Oct 2026): Amadeus pl-next IBE
+      // (book.srilankan.com/plnext/srilankanairDX, git 26.1.40). Full chain
+      // captured via Browserbase CDP: homepage GET (idxxui token) -> POST
+      // /en_uk/home/srilakan-override (widget params) -> override page
+      // (server-generated ENC hex) -> POST Override.action?SITE=CBGVCNEW&
+      // EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=<hex> ->
+      // availability page embeds the complete flex-pricer JSON
+      // (proposedBounds flights + recommendationList fares INR).
+      // Both hosts are Imperva-gated from datacenter IPs (sandbox GET = 212B
+      // Incapsula stub, book.* = "Pardon Our Interruption"), so this is a
+      // SELF-DETECTING FULL-FLOW PROBE (MMT pattern): every search replays
+      // the chain honestly; ACCESS_CHALLENGE while gated, full per-flight
+      // data the moment a clean production IP (Hostinger) runs it.
+      // Verified via CDP 24 Oct: UL122 (UL 122) MAA 09:50 -> CMB 11:10,
+      // 32B, non-stop; cheapest rec 9,495 INR (base 3,705 + tax 5,790,
+      // family EINSAS4, 1 seat left).
+      sourceId: 'w_flights_srilankan',
+      name: 'Flights worker: SriLankan Airlines direct Amadeus booking engine',
+      priority: 14,
+      maxPerMinute: 3,
+      timeoutMs: 40_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        if (!fromA.code || !toA.code) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const fromLabel = `${rt.from} (${fromA.code})`;
+        const toLabel = `${rt.to} (${toA.code})`;
+        const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+        const H = { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' };
+        // 1. homepage: session + idxxui
+        const home = await cffiFetch(SL_HOME, { impersonate: 'chrome', timeoutMs: 18_000, headers: H, returnCookies: true });
+        const homeBody = home.body || '';
+        if (slIsImpervaStub(homeBody)) throw new AcquisitionError('ACCESS_CHALLENGE', 'SriLankan homepage Imperva-gated from this IP (probe self-activates on a clean production IP)', 403);
+        if (home.status !== 200) throw new AcquisitionError('SERVER_ERROR', `SriLankan homepage HTTP ${home.status}`, home.status);
+        const idxxui = slIdxxui(homeBody);
+        const cookies = (home as any).cookies || {};
+        // 2. override POST -> override page (with server-generated ENC)
+        const ov = await cffiFetch(SL_OVERRIDE_POST, {
+          impersonate: 'chrome', timeoutMs: 20_000, method: 'POST',
+          body: slOverrideBody(fromA.code, toA.code, fromLabel, toLabel, dep, idxxui),
+          headers: { ...H, 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://www.srilankan.com', Referer: SL_HOME },
+          cookies,
+        });
+        if (ov.status !== 200 || slIsImpervaStub(ov.body || '')) throw new AcquisitionError('ACCESS_CHALLENGE', 'SriLankan override page gated (Imperva)', 403);
+        const enc = slEncFromOverridePage(ov.body || '');
+        if (!enc) throw new AcquisitionError('ACCESS_CHALLENGE', 'SriLankan override page carried no ENC token (chain shape changed or gated)', 403);
+        // 3. IBE Override.action -> availability page with embedded flex-pricer JSON
+        const ibe = await cffiFetch(SL_IBE_OVERRIDE, {
+          impersonate: 'chrome', timeoutMs: 25_000, method: 'POST',
+          body: `SITE=${SL_IBE_SITE}&LANGUAGE=GB&EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=${enc}`,
+          headers: { ...H, 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://www.srilankan.com', Referer: 'https://www.srilankan.com/' },
+        });
+        if (slIsImpervaStub(ibe.body || '')) throw new AcquisitionError('ACCESS_CHALLENGE', 'SriLankan IBE Imperva-gated ("Pardon Our Interruption")', 403);
+        if (ibe.status !== 200) throw new AcquisitionError('SERVER_ERROR', `SriLankan IBE HTTP ${ibe.status}`, ibe.status);
+        const parsed = parseSriLankanAvailability(ibe.body || '', dep);
+        if (!parsed) return []; // honest empty: route/date not served
+        return sriLankanFlightItems(parsed.flights, parsed.cheapestFare, parsed.fareFamily, parsed.tax, parsed.base, parsed.seats, ctx.source, rt.from, rt.to, dep);
       },
     },
     {
