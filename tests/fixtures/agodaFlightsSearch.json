@@ -1,0 +1,1270 @@
+{
+ "trips": [
+  {
+   "id": 1,
+   "totalItineraries": 273,
+   "isCompleted": false,
+   "bundles": [
+    {
+     "bundlePrice": [
+      {
+       "price": {
+        "inr": {
+         "charges": [
+          {
+           "breakDown": [
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 3920.0,
+              "inc": 7082.17
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 3920.0,
+              "inc": 7082.17
+             }
+            }
+           ],
+           "total": {
+            "exc": 3920.0,
+            "inc": 7082.17
+           },
+           "type": "Fare"
+          },
+          {
+           "breakDown": [
+            {
+             "basis": "PB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 3162.17,
+              "inc": 3162.17
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 3162.17,
+              "inc": 3162.17
+             }
+            },
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 3162.17,
+              "inc": 3162.17
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 3162.17,
+              "inc": 3162.17
+             }
+            }
+           ],
+           "total": {
+            "exc": 3162.17,
+            "inc": 3162.17
+           },
+           "type": "TaxAndFee"
+          }
+         ],
+         "display": {
+          "averagePerPax": {
+           "allInclusive": 7082.17,
+           "exclusive": 3920.0,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perBook": {
+           "allInclusive": 7082.17,
+           "exclusive": 3920.0,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perPax": [
+           {
+            "allInclusive": 7082.17,
+            "exclusive": 3920.0,
+            "type": "ADT",
+            "differential": null,
+            "loyaltyOffers": []
+           }
+          ]
+         },
+         "promotionDiscount": null,
+         "crossedOutDisplay": null,
+         "discountItem": null,
+         "totalDiscount": null,
+         "paymentModel": 1
+        }
+       },
+       "priceType": 0,
+       "packaging": null,
+       "cart": null
+      }
+     ],
+     "itineraries": [
+      {
+       "inboundSlice": null,
+       "itineraryInfo": {
+        "id": "G:DEL_20261028_A:BOM__1-0-0_ECO___671656496",
+        "externalItineraryId": "1741381481",
+        "lapInfantsAllowed": false,
+        "availableSeats": 88,
+        "passportRequired": false,
+        "nationalityRequired": null,
+        "passengerMinAge": -1,
+        "totalTripDuration": 120,
+        "token": "AAAA.AAAADENUH9UGJtklBHkDph4Qv1EPxnrOBmf5iXQDyp6xU0hyTnXlWQ0fDJb57Vo8GNLT9GZT6gnr+f368U/PV7JeUEP0eCfs3wrGuXqfkJrBOA6jgtzKnO2+eOgGRwbQrpLQVXr5m08LnmANyL5PxUzQoYHP9/YNsgAQmfUaRT5XXcFYTyCWwkafTeVJg9WKAz2mOYrxJvb66rszvhnNchB3PKdNKKmzRUTNqwAPw/FrD1eD+BHnJG8Iv+egg7EOOisGloEgSqPUGQuXkxdVPqnD9C3Wllo/Rg3Rb/UtKZoeR37Zhixb9y0y5wPR6IYkPQ2VTkGSOldw577sOJ5qKJVuap5/2Q==",
+        "ticketingAirline": "6E",
+        "ticketingCarrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "voidWindowClose": "0001-01-01T00:00:00",
+        "voidableWithinHours": 0,
+        "price": {
+         "inr": {
+          "charges": [
+           {
+            "breakDown": [
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 3920.0,
+               "inc": 7082.17
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 3920.0,
+               "inc": 7082.17
+              }
+             }
+            ],
+            "total": {
+             "exc": 3920.0,
+             "inc": 7082.17
+            },
+            "type": "Fare"
+           },
+           {
+            "breakDown": [
+             {
+              "basis": "PB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 3162.17,
+               "inc": 3162.17
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 3162.17,
+               "inc": 3162.17
+              }
+             },
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 3162.17,
+               "inc": 3162.17
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 3162.17,
+               "inc": 3162.17
+              }
+             }
+            ],
+            "total": {
+             "exc": 3162.17,
+             "inc": 3162.17
+            },
+            "type": "TaxAndFee"
+           }
+          ],
+          "display": {
+           "averagePerPax": {
+            "allInclusive": 7082.17,
+            "exclusive": 3920.0,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perBook": {
+            "allInclusive": 7082.17,
+            "exclusive": 3920.0,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perPax": [
+            {
+             "allInclusive": 7082.17,
+             "exclusive": 3920.0,
+             "type": "ADT",
+             "differential": null,
+             "loyaltyOffers": []
+            }
+           ]
+          },
+          "promotionDiscount": null,
+          "crossedOutDisplay": null,
+          "discountItem": null,
+          "totalDiscount": null,
+          "paymentModel": 1
+         }
+        },
+        "hackerFare": false,
+        "packaging": null,
+        "supplierAmount": null,
+        "virtualInterlining": false,
+        "baggageUrl": null,
+        "cartInfo": null,
+        "baggageUrlWithScope": {
+         "scope": "ITINERARY",
+         "baggageUrls": [
+          {
+           "scopeRefId": 1,
+           "url": "https://www.goindigo.in/travel-information/en/baggage-allowance.en-d971d34cc9944e1ca7b19ba6eae0c83d.html"
+          }
+         ]
+        },
+        "cancellationPolicies": [],
+        "availableFeatures": [
+         "Brand"
+        ]
+       },
+       "priceOptions": []
+      }
+     ],
+     "key": "1094414783",
+     "outboundSlice": {
+      "id": 1,
+      "duration": 120,
+      "overnightFlight": false,
+      "cancellationPolicies": [],
+      "channel": null,
+      "exchangePolicies": [],
+      "freeBags": [],
+      "segments": [
+       {
+        "id": 1,
+        "arrivalDateTime": "2026-10-28T14:55:00",
+        "layoverAfter": null,
+        "departDateTime": "2026-10-28T12:55:00",
+        "destinationAirport": "BOM",
+        "duration": 120,
+        "originAirport": "HDO",
+        "flightNumber": "5175",
+        "baggageFee": 0.0,
+        "aircraftContent": null,
+        "airportContent": {
+         "departureCityId": 30355,
+         "departureCityName": "Ghaziabad",
+         "departureCountryId": 35,
+         "departureCountryName": "India",
+         "departureAirportName": "Hindon Airport",
+         "arrivalCityId": 16850,
+         "arrivalCityName": "Mumbai",
+         "arrivalCountryId": 35,
+         "arrivalCountryName": "India",
+         "arrivalAirportName": "Chhatrapati Shivaji Maharaj International Airport"
+        },
+        "cabinClassContent": {
+         "cabinClass": "ECO",
+         "cabinName": "Economy Class"
+        },
+        "operatingCarrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "carrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "seatMapAvailable": false,
+        "seatSelectionAllowed": false,
+        "bagsRecheckRequired": false,
+        "segmentInfoByPaxTypes": [
+         {
+          "passengerType": "ADT",
+          "bookingClass": "R",
+          "fareBasisCode": "R0IP",
+          "fareBrand": ""
+         }
+        ]
+       }
+      ],
+      "subSupplierId": 30084,
+      "voidWindowClose": null,
+      "voidableWithinHours": 0,
+      "brand": null,
+      "sliceFeatures": []
+     },
+     "inboundFilters": null,
+     "totalCount": 1,
+     "inboundFeatures": [],
+     "priceOptions": []
+    },
+    {
+     "bundlePrice": [
+      {
+       "price": {
+        "inr": {
+         "charges": [
+          {
+           "breakDown": [
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 4695.0,
+              "inc": 7228.41
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 4695.0,
+              "inc": 7228.41
+             }
+            }
+           ],
+           "total": {
+            "exc": 4695.0,
+            "inc": 7228.41
+           },
+           "type": "Fare"
+          },
+          {
+           "breakDown": [
+            {
+             "basis": "PB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 2533.41,
+              "inc": 2533.41
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 2533.41,
+              "inc": 2533.41
+             }
+            },
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 2533.41,
+              "inc": 2533.41
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 2533.41,
+              "inc": 2533.41
+             }
+            }
+           ],
+           "total": {
+            "exc": 2533.41,
+            "inc": 2533.41
+           },
+           "type": "TaxAndFee"
+          }
+         ],
+         "display": {
+          "averagePerPax": {
+           "allInclusive": 7228.41,
+           "exclusive": 4695.0,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perBook": {
+           "allInclusive": 7228.41,
+           "exclusive": 4695.0,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perPax": [
+           {
+            "allInclusive": 7228.41,
+            "exclusive": 4695.0,
+            "type": "ADT",
+            "differential": null,
+            "loyaltyOffers": []
+           }
+          ]
+         },
+         "promotionDiscount": null,
+         "crossedOutDisplay": null,
+         "discountItem": null,
+         "totalDiscount": null,
+         "paymentModel": 1
+        }
+       },
+       "priceType": 0,
+       "packaging": null,
+       "cart": null
+      }
+     ],
+     "itineraries": [
+      {
+       "inboundSlice": null,
+       "itineraryInfo": {
+        "id": "G:DEL_20261028_A:BOM__1-0-0_ECO___2104548063",
+        "externalItineraryId": "1115716328",
+        "lapInfantsAllowed": false,
+        "availableSeats": 8,
+        "passportRequired": false,
+        "nationalityRequired": null,
+        "passengerMinAge": -1,
+        "totalTripDuration": 140,
+        "token": "AAAA.AAAADMMoDUk3kHTcIk6nAZFORhKkV/KdJCHU4rDnQFQltOCm9u5Lb/7kgP0NV1Ll0kLN+WZ23Ip0F24gnrIYNZ3UCr0727A1antGchFmlpkgfYlJa8l+kGom2lfCQ9dP1wQnZ4TpB61qO4ALxQUFPJVN3+lCopEva6FVrR9wqJrs9t2tsX1//8Zs1Ht2Arsex/vNzmYAAyE7pQzKIK2ftFux+xzD7N8qfYke4cuMGzZkUIFxRa7C/BkjMerVc/gZvfkGdHXXMLFi1xGAntHwilxSyBTtnWeHMyxgy5k/gI74ATMFHt58zgup109N8VIb3sen7QUCqF9C6kcmaQfzHby+4qgjfoz4RKE=",
+        "ticketingAirline": "SG",
+        "ticketingCarrierContent": {
+         "carrierCode": "SG",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/SG_v2.png",
+         "carrierName": "SpiceJet"
+        },
+        "voidWindowClose": "0001-01-01T00:00:00",
+        "voidableWithinHours": 0,
+        "price": {
+         "inr": {
+          "charges": [
+           {
+            "breakDown": [
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 4695.0,
+               "inc": 7228.41
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 4695.0,
+               "inc": 7228.41
+              }
+             }
+            ],
+            "total": {
+             "exc": 4695.0,
+             "inc": 7228.41
+            },
+            "type": "Fare"
+           },
+           {
+            "breakDown": [
+             {
+              "basis": "PB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 2533.41,
+               "inc": 2533.41
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 2533.41,
+               "inc": 2533.41
+              }
+             },
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 2533.41,
+               "inc": 2533.41
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 2533.41,
+               "inc": 2533.41
+              }
+             }
+            ],
+            "total": {
+             "exc": 2533.41,
+             "inc": 2533.41
+            },
+            "type": "TaxAndFee"
+           }
+          ],
+          "display": {
+           "averagePerPax": {
+            "allInclusive": 7228.41,
+            "exclusive": 4695.0,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perBook": {
+            "allInclusive": 7228.41,
+            "exclusive": 4695.0,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perPax": [
+            {
+             "allInclusive": 7228.41,
+             "exclusive": 4695.0,
+             "type": "ADT",
+             "differential": null,
+             "loyaltyOffers": []
+            }
+           ]
+          },
+          "promotionDiscount": null,
+          "crossedOutDisplay": null,
+          "discountItem": null,
+          "totalDiscount": null,
+          "paymentModel": 1
+         }
+        },
+        "hackerFare": false,
+        "packaging": null,
+        "supplierAmount": null,
+        "virtualInterlining": false,
+        "baggageUrl": null,
+        "cartInfo": null,
+        "baggageUrlWithScope": {
+         "scope": "ITINERARY",
+         "baggageUrls": [
+          {
+           "scopeRefId": 1,
+           "url": "https://www.spicejet.com/tnc.aspx"
+          }
+         ]
+        },
+        "cancellationPolicies": [],
+        "availableFeatures": [
+         "Brand"
+        ]
+       },
+       "priceOptions": []
+      }
+     ],
+     "key": "789231708",
+     "outboundSlice": {
+      "id": 1,
+      "duration": 140,
+      "overnightFlight": false,
+      "cancellationPolicies": [],
+      "channel": null,
+      "exchangePolicies": [],
+      "freeBags": [],
+      "segments": [
+       {
+        "id": 1,
+        "arrivalDateTime": "2026-10-28T21:40:00",
+        "layoverAfter": null,
+        "departDateTime": "2026-10-28T19:20:00",
+        "destinationAirport": "BOM",
+        "duration": 140,
+        "originAirport": "DEL",
+        "flightNumber": "612",
+        "baggageFee": 0.0,
+        "aircraftContent": null,
+        "airportContent": {
+         "departureCityId": 14552,
+         "departureCityName": "New Delhi",
+         "departureCountryId": 35,
+         "departureCountryName": "India",
+         "departureAirportName": "Indira Gandhi International Airport",
+         "arrivalCityId": 16850,
+         "arrivalCityName": "Mumbai",
+         "arrivalCountryId": 35,
+         "arrivalCountryName": "India",
+         "arrivalAirportName": "Chhatrapati Shivaji Maharaj International Airport"
+        },
+        "cabinClassContent": {
+         "cabinClass": "ECO",
+         "cabinName": "Economy Class"
+        },
+        "operatingCarrierContent": {
+         "carrierCode": "SG",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/SG_v2.png",
+         "carrierName": "SpiceJet"
+        },
+        "carrierContent": {
+         "carrierCode": "SG",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/SG_v2.png",
+         "carrierName": "SpiceJet"
+        },
+        "seatMapAvailable": false,
+        "seatSelectionAllowed": false,
+        "bagsRecheckRequired": false,
+        "segmentInfoByPaxTypes": [
+         {
+          "passengerType": "ADT",
+          "bookingClass": "W",
+          "fareBasisCode": "WJEV3",
+          "fareBrand": ""
+         }
+        ]
+       }
+      ],
+      "subSupplierId": 30084,
+      "voidWindowClose": null,
+      "voidableWithinHours": 0,
+      "brand": null,
+      "sliceFeatures": []
+     },
+     "inboundFilters": null,
+     "totalCount": 1,
+     "inboundFeatures": [],
+     "priceOptions": []
+    },
+    {
+     "bundlePrice": [
+      {
+       "price": {
+        "inr": {
+         "charges": [
+          {
+           "breakDown": [
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 6461.88,
+              "inc": 7391.51
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 6461.88,
+              "inc": 7391.51
+             }
+            }
+           ],
+           "total": {
+            "exc": 6461.88,
+            "inc": 7391.51
+           },
+           "type": "Fare"
+          },
+          {
+           "breakDown": [
+            {
+             "basis": "PB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 929.63,
+              "inc": 929.63
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 929.63,
+              "inc": 929.63
+             }
+            },
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 929.63,
+              "inc": 929.63
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 929.63,
+              "inc": 929.63
+             }
+            }
+           ],
+           "total": {
+            "exc": 929.63,
+            "inc": 929.63
+           },
+           "type": "TaxAndFee"
+          }
+         ],
+         "display": {
+          "averagePerPax": {
+           "allInclusive": 7391.51,
+           "exclusive": 6461.88,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perBook": {
+           "allInclusive": 7391.51,
+           "exclusive": 6461.88,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perPax": [
+           {
+            "allInclusive": 7391.51,
+            "exclusive": 6461.88,
+            "type": "ADT",
+            "differential": null,
+            "loyaltyOffers": []
+           }
+          ]
+         },
+         "promotionDiscount": null,
+         "crossedOutDisplay": null,
+         "discountItem": null,
+         "totalDiscount": null,
+         "paymentModel": 1
+        }
+       },
+       "priceType": 0,
+       "packaging": null,
+       "cart": null
+      }
+     ],
+     "itineraries": [
+      {
+       "inboundSlice": null,
+       "itineraryInfo": {
+        "id": "G:DEL_20261028_A:BOM__1-0-0_ECO___146081549",
+        "externalItineraryId": "1564670825",
+        "lapInfantsAllowed": false,
+        "availableSeats": 0,
+        "passportRequired": false,
+        "nationalityRequired": null,
+        "passengerMinAge": -1,
+        "totalTripDuration": 155,
+        "token": "AAAA.AAAADHWY4rgoMnrO6CQLb0+Q0J/31XrfP++Qh+iry774OL41wNaB9rLxDAY7cnVbFU+ApyCZ1MLSnwMApm2BoUD/eegO7V+fPgPEyJil7X5LvuKXxTwIInhi99uq8CKpZx/OTTrtcHlpSEd76yOn8kHm2tpH0tAUlTwWNjWIauKsccD9Rp9SI52BSyxr/ipzUQtxHc+NGxmTP/KUS2P/qFbVTwtEqtwZCq9aIvX+qgMMAEvsYqIXSxGIw8D1FLQ0GUfutZd41V+sP3q8EGJMHbk6mI9ZgH6B16a9gjUEp+kFiLARRUY+wq35louvXe7Bsnx4mo7UpIqvLR+tSOyotfTl9kHDERu2K69kMPOUOEILw5vJOdZ8mf0PYO7ruRSOsh1X+fVc",
+        "ticketingAirline": "6E",
+        "ticketingCarrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "voidWindowClose": "0001-01-01T00:00:00",
+        "voidableWithinHours": 0,
+        "price": {
+         "inr": {
+          "charges": [
+           {
+            "breakDown": [
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 6461.88,
+               "inc": 7391.51
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 6461.88,
+               "inc": 7391.51
+              }
+             }
+            ],
+            "total": {
+             "exc": 6461.88,
+             "inc": 7391.51
+            },
+            "type": "Fare"
+           },
+           {
+            "breakDown": [
+             {
+              "basis": "PB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 929.63,
+               "inc": 929.63
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 929.63,
+               "inc": 929.63
+              }
+             },
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 929.63,
+               "inc": 929.63
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 929.63,
+               "inc": 929.63
+              }
+             }
+            ],
+            "total": {
+             "exc": 929.63,
+             "inc": 929.63
+            },
+            "type": "TaxAndFee"
+           }
+          ],
+          "display": {
+           "averagePerPax": {
+            "allInclusive": 7391.51,
+            "exclusive": 6461.88,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perBook": {
+            "allInclusive": 7391.51,
+            "exclusive": 6461.88,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perPax": [
+            {
+             "allInclusive": 7391.51,
+             "exclusive": 6461.88,
+             "type": "ADT",
+             "differential": null,
+             "loyaltyOffers": []
+            }
+           ]
+          },
+          "promotionDiscount": null,
+          "crossedOutDisplay": null,
+          "discountItem": null,
+          "totalDiscount": null,
+          "paymentModel": 1
+         }
+        },
+        "hackerFare": false,
+        "packaging": null,
+        "supplierAmount": null,
+        "virtualInterlining": false,
+        "baggageUrl": null,
+        "cartInfo": null,
+        "baggageUrlWithScope": {
+         "scope": "ITINERARY",
+         "baggageUrls": [
+          {
+           "scopeRefId": 1,
+           "url": "https://www.goindigo.in/travel-information/en/baggage-allowance.en-d971d34cc9944e1ca7b19ba6eae0c83d.html"
+          }
+         ]
+        },
+        "cancellationPolicies": [
+         {
+          "allowed": false,
+          "currencyCode": "INR",
+          "passengerType": "ADT",
+          "penalty": 0.0,
+          "validFromHoursBeforeBoarding": 0,
+          "validUntilHoursBeforeBoarding": 0,
+          "cmsMappingValue": null
+         }
+        ],
+        "availableFeatures": [
+         "Brand"
+        ]
+       },
+       "priceOptions": []
+      }
+     ],
+     "key": "1875849884",
+     "outboundSlice": {
+      "id": 1,
+      "duration": 155,
+      "overnightFlight": false,
+      "cancellationPolicies": [],
+      "channel": null,
+      "exchangePolicies": [],
+      "freeBags": [
+       {
+        "baggageType": "CHECKED",
+        "passengerType": "ADT",
+        "quantity": 0,
+        "restrictions": [
+         {
+          "restrictionType": "WEIGHT",
+          "unit": "KG",
+          "value": "0"
+         }
+        ]
+       }
+      ],
+      "segments": [
+       {
+        "id": 1,
+        "arrivalDateTime": "2026-10-28T12:05:00",
+        "layoverAfter": null,
+        "departDateTime": "2026-10-28T09:30:00",
+        "destinationAirport": "BOM",
+        "duration": 155,
+        "originAirport": "DEL",
+        "flightNumber": "6107",
+        "baggageFee": 0.0,
+        "aircraftContent": null,
+        "airportContent": {
+         "departureCityId": 14552,
+         "departureCityName": "New Delhi",
+         "departureCountryId": 35,
+         "departureCountryName": "India",
+         "departureAirportName": "Indira Gandhi International Airport",
+         "arrivalCityId": 16850,
+         "arrivalCityName": "Mumbai",
+         "arrivalCountryId": 35,
+         "arrivalCountryName": "India",
+         "arrivalAirportName": "Chhatrapati Shivaji Maharaj International Airport"
+        },
+        "cabinClassContent": {
+         "cabinClass": "ECO",
+         "cabinName": "Economy Class"
+        },
+        "operatingCarrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "carrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "seatMapAvailable": true,
+        "seatSelectionAllowed": false,
+        "bagsRecheckRequired": false,
+        "segmentInfoByPaxTypes": [
+         {
+          "passengerType": "ADT",
+          "bookingClass": "Y",
+          "fareBasisCode": "",
+          "fareBrand": ""
+         }
+        ]
+       }
+      ],
+      "subSupplierId": 30091,
+      "voidWindowClose": null,
+      "voidableWithinHours": 0,
+      "brand": null,
+      "sliceFeatures": []
+     },
+     "inboundFilters": null,
+     "totalCount": 1,
+     "inboundFeatures": [],
+     "priceOptions": []
+    },
+    {
+     "bundlePrice": [
+      {
+       "price": {
+        "inr": {
+         "charges": [
+          {
+           "breakDown": [
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 5334.0,
+              "inc": 8400.47
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 5334.0,
+              "inc": 8400.47
+             }
+            }
+           ],
+           "total": {
+            "exc": 5334.0,
+            "inc": 8400.47
+           },
+           "type": "Fare"
+          },
+          {
+           "breakDown": [
+            {
+             "basis": "PB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 3066.47,
+              "inc": 3066.47
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 3066.47,
+              "inc": 3066.47
+             }
+            },
+            {
+             "basis": "PAPB",
+             "option": "Mandatory",
+             "price": {
+              "exc": 3066.47,
+              "inc": 3066.47
+             },
+             "quantity": 1,
+             "total": {
+              "exc": 3066.47,
+              "inc": 3066.47
+             }
+            }
+           ],
+           "total": {
+            "exc": 3066.47,
+            "inc": 3066.47
+           },
+           "type": "TaxAndFee"
+          }
+         ],
+         "display": {
+          "averagePerPax": {
+           "allInclusive": 8400.47,
+           "exclusive": 5334.0,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perBook": {
+           "allInclusive": 8400.47,
+           "exclusive": 5334.0,
+           "type": null,
+           "differential": null,
+           "loyaltyOffers": []
+          },
+          "perPax": [
+           {
+            "allInclusive": 8400.47,
+            "exclusive": 5334.0,
+            "type": "ADT",
+            "differential": null,
+            "loyaltyOffers": []
+           }
+          ]
+         },
+         "promotionDiscount": null,
+         "crossedOutDisplay": null,
+         "discountItem": null,
+         "totalDiscount": null,
+         "paymentModel": 1
+        }
+       },
+       "priceType": 0,
+       "packaging": null,
+       "cart": null
+      }
+     ],
+     "itineraries": [
+      {
+       "inboundSlice": null,
+       "itineraryInfo": {
+        "id": "G:DEL_20261028_A:BOM__1-0-0_ECO___1112109791",
+        "externalItineraryId": "525507774",
+        "lapInfantsAllowed": false,
+        "availableSeats": 8,
+        "passportRequired": false,
+        "nationalityRequired": null,
+        "passengerMinAge": -1,
+        "totalTripDuration": 115,
+        "token": "AAAA.AAAADK06A8kzQp9hLqn5+B0C7r3OZw/1v+jRe7fwWWOAXlXn2oLwWgApjp+Ax63YlwEX3rW95byh4ghtUoJmmE+iSSV6vCzozYFosm/5/4ApoLZVDmxmaj34mp6AmWYzEj8QpEnV4EAa9gBeKTKqjRRzexNDci5yYrdvYXAiXslRJYBdsqHourYFNZAYXNsZC17XngCVPnkbNURUpd4z76BAZwxQ5ejo02FHVIB7YUSaOzqQOtDxlQ/i07RWYbJI1iWJVNP/mg5sRTpmaFU4eakRgOxcidur5QBW2yLej8o7f7Ji2kzMITA0kuf6WJMJGIStW4eLbXVFzYa+fiUbUzDx8Xs=",
+        "ticketingAirline": "6E",
+        "ticketingCarrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "voidWindowClose": "0001-01-01T00:00:00",
+        "voidableWithinHours": 0,
+        "price": {
+         "inr": {
+          "charges": [
+           {
+            "breakDown": [
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 5334.0,
+               "inc": 8400.47
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 5334.0,
+               "inc": 8400.47
+              }
+             }
+            ],
+            "total": {
+             "exc": 5334.0,
+             "inc": 8400.47
+            },
+            "type": "Fare"
+           },
+           {
+            "breakDown": [
+             {
+              "basis": "PB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 3066.47,
+               "inc": 3066.47
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 3066.47,
+               "inc": 3066.47
+              }
+             },
+             {
+              "basis": "PAPB",
+              "option": "Mandatory",
+              "price": {
+               "exc": 3066.47,
+               "inc": 3066.47
+              },
+              "quantity": 1,
+              "total": {
+               "exc": 3066.47,
+               "inc": 3066.47
+              }
+             }
+            ],
+            "total": {
+             "exc": 3066.47,
+             "inc": 3066.47
+            },
+            "type": "TaxAndFee"
+           }
+          ],
+          "display": {
+           "averagePerPax": {
+            "allInclusive": 8400.47,
+            "exclusive": 5334.0,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perBook": {
+            "allInclusive": 8400.47,
+            "exclusive": 5334.0,
+            "type": null,
+            "differential": null,
+            "loyaltyOffers": []
+           },
+           "perPax": [
+            {
+             "allInclusive": 8400.47,
+             "exclusive": 5334.0,
+             "type": "ADT",
+             "differential": null,
+             "loyaltyOffers": []
+            }
+           ]
+          },
+          "promotionDiscount": null,
+          "crossedOutDisplay": null,
+          "discountItem": null,
+          "totalDiscount": null,
+          "paymentModel": 1
+         }
+        },
+        "hackerFare": false,
+        "packaging": null,
+        "supplierAmount": null,
+        "virtualInterlining": false,
+        "baggageUrl": null,
+        "cartInfo": null,
+        "baggageUrlWithScope": {
+         "scope": "ITINERARY",
+         "baggageUrls": [
+          {
+           "scopeRefId": 1,
+           "url": "https://www.goindigo.in/travel-information/en/baggage-allowance.en-d971d34cc9944e1ca7b19ba6eae0c83d.html"
+          }
+         ]
+        },
+        "cancellationPolicies": [],
+        "availableFeatures": [
+         "Brand"
+        ]
+       },
+       "priceOptions": []
+      }
+     ],
+     "key": "424252520",
+     "outboundSlice": {
+      "id": 1,
+      "duration": 115,
+      "overnightFlight": false,
+      "cancellationPolicies": [],
+      "channel": null,
+      "exchangePolicies": [],
+      "freeBags": [],
+      "segments": [
+       {
+        "id": 1,
+        "arrivalDateTime": "2026-10-28T16:25:00",
+        "layoverAfter": null,
+        "departDateTime": "2026-10-28T14:30:00",
+        "destinationAirport": "BOM",
+        "duration": 115,
+        "originAirport": "DXN",
+        "flightNumber": "5068",
+        "baggageFee": 0.0,
+        "aircraftContent": null,
+        "airportContent": {
+         "departureCityId": 14552,
+         "departureCityName": "New Delhi",
+         "departureCountryId": 35,
+         "departureCountryName": "India",
+         "departureAirportName": "Noida International Airport",
+         "arrivalCityId": 16850,
+         "arrivalCityName": "Mumbai",
+         "arrivalCountryId": 35,
+         "arrivalCountryName": "India",
+         "arrivalAirportName": "Chhatrapati Shivaji Maharaj International Airport"
+        },
+        "cabinClassContent": {
+         "cabinClass": "ECO",
+         "cabinName": "Economy Class"
+        },
+        "operatingCarrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "carrierContent": {
+         "carrierCode": "6E",
+         "carrierIcon": "https://img.agoda.net/images/mvc/default/airlines/6E_v2.png",
+         "carrierName": "IndiGo"
+        },
+        "seatMapAvailable": false,
+        "seatSelectionAllowed": false,
+        "bagsRecheckRequired": false,
+        "segmentInfoByPaxTypes": [
+         {
+          "passengerType": "ADT",
+          "bookingClass": "R",
+          "fareBasisCode": "L0IP",
+          "fareBrand": ""
+         }
+        ]
+       }
+      ],
+      "subSupplierId": 30084,
+      "voidWindowClose": null,
+      "voidableWithinHours": 0,
+      "brand": null,
+      "sliceFeatures": []
+     },
+     "inboundFilters": null,
+     "totalCount": 1,
+     "inboundFeatures": [],
+     "priceOptions": []
+    }
+   ]
+  }
+ ]
+}

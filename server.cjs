@@ -7972,6 +7972,142 @@ var init_flightsMojo = __esm({
   }
 });
 
+// server/workers/parsers/agodaFlights.ts
+function agodaFlightsSrpUrl(fromCode, toCode, dateIso) {
+  return `https://www.agoda.com/flights/search?origin=${fromCode}&destination=${toCode}&departDate=${dateIso}&adults=1&cabinType=Economy`;
+}
+function agodaSearchBody(fromCode, toCode, dateIso, page = 1) {
+  return {
+    flightsRequestId: crypto.randomUUID(),
+    passengers: [{ number: 1, passengerType: 1 }],
+    trips: [{
+      id: 1,
+      priority: 1,
+      pagination: { size: 20, number: page },
+      sort: { field: 8, direction: 0 },
+      filter: { cabinType: 4, stops: [], isMixedCabinClassAllowed: true, hackerFare: { disabled: false } },
+      slices: [{
+        id: 1,
+        departureDate: dateIso,
+        origin: [{ code: fromCode, type: 1 }],
+        destination: [{ code: toCode, type: 1 }]
+      }]
+    }],
+    supportedFeatures: [
+      "QuickSort",
+      "CrossOutPrice",
+      "Streaming",
+      "HackerFare",
+      "OnlineBanking",
+      "SupportChildrenInfants",
+      "TripProtectionMerchant",
+      "Agency",
+      "DisablePublishSearchMessage",
+      "IncompletePassportRequired",
+      "VirtualInterlining"
+    ],
+    context: {
+      clientInfo: { applicationName: "DesktopWeb", clientVersion: "1.0", userId: crypto.randomUUID(), origin: "IN", pageTypeId: 5501 },
+      userSettings: { currencyCode: "INR", language: "en-us", languageId: 1, priceView: 304 },
+      sessionInfo: { cid: 1917399, id: "npcudwpurarmgh1b3wmv5zc4", searchEngineClicks: null },
+      debugInfo: {},
+      trafficMessageInfo: { shouldSendTrafficMessage: false },
+      requestInfo: { currentRetryAttempt: 0, requestId: crypto.randomUUID() },
+      funnel: 0
+    }
+  };
+}
+function parseAgodaFlights(body) {
+  const root = body ?? {};
+  const trips = root.trips;
+  if (!Array.isArray(trips)) return [];
+  const out = [];
+  for (const t of trips) {
+    const bundles = (t ?? {}).bundles;
+    if (Array.isArray(bundles)) out.push(...bundles.filter(Boolean));
+  }
+  return out;
+}
+function agodaBundleFare(bundle) {
+  const first = (bundle.bundlePrice || [])[0];
+  const price = first?.price;
+  if (!price || typeof price !== "object") return { fare: NaN, currency: "" };
+  const curKey = Object.keys(price).find((k) => k.toLowerCase() === "inr");
+  if (!curKey) {
+    const anyKey = Object.keys(price)[0] || "";
+    return { fare: NaN, currency: anyKey.toUpperCase() };
+  }
+  const fare = Number(price[curKey]?.display?.perBook?.allInclusive);
+  return { fare: Number.isFinite(fare) ? fare : NaN, currency: "INR" };
+}
+function agodaFlightsItems(bundles, source, route, fromCode, toCode, dateIso, cap = 40) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const b of bundles) {
+    if (out.length >= cap) break;
+    const segs = (b.outboundSlice?.segments || []).filter(Boolean);
+    if (segs.length === 0) continue;
+    if (String(segs[0].originAirport || "") !== fromCode) continue;
+    if (String(segs[segs.length - 1].destinationAirport || "") !== toCode) continue;
+    const depDay = String(segs[0].departDateTime || "").slice(0, 10);
+    if (depDay !== dateIso) continue;
+    const { fare, currency } = agodaBundleFare(b);
+    if (currency !== "INR") continue;
+    if (!Number.isFinite(fare) || fare < 500 || fare > 5e5) continue;
+    const carrierCode = String(b.itineraries?.[0]?.itineraryInfo?.ticketingAirline || segs[0].carrierCode || "");
+    const carrier = segs[0].carrierContent?.carrierName || b.itineraries?.[0]?.itineraryInfo?.ticketingCarrierContent?.carrierName || carrierCode || "Agoda";
+    const flightNos = segs.map((s) => `${s.carrierCode || carrierCode || ""}${s.flightNumber || ""}`).join("-");
+    const depTime = String(segs[0].departDateTime || "").slice(11, 16);
+    const arrTime = String(segs[segs.length - 1].arrivalDateTime || "").slice(11, 16);
+    const stops = segs.length - 1;
+    const dur = Number(b.outboundSlice?.duration || 0) || void 0;
+    const key = `${flightNos}|${depTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const routeLabel = `${route.from} \u2192 ${route.to}`;
+    const itineraryId = String(b.itineraries?.[0]?.itineraryInfo?.id || "");
+    out.push(newRawItem(source, {
+      title: `${carrier} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
+      brand: String(carrier).slice(0, 80),
+      price: Math.round(fare),
+      currency: "INR",
+      seller: "Agoda",
+      sellerUrl: agodaFlightsSrpUrl(fromCode, toCode, dateIso),
+      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
+      attributes: {
+        route: routeLabel,
+        travel_date: dateIso,
+        airline: String(carrier),
+        airline_code: carrierCode,
+        flight_number: flightNos,
+        departure: String(depTime),
+        arrival: String(arrTime),
+        stops: String(stops),
+        ...dur ? { duration_minutes: String(dur) } : {},
+        ...segs[0].cabinClassContent?.cabinClass ? { cabin: segs[0].cabinClassContent.cabinClass } : {},
+        ...b.itineraries?.[0]?.itineraryInfo?.availableSeats != null ? { seats_left: String(b.itineraries[0].itineraryInfo.availableSeats) } : {},
+        price_basis: `live all-inclusive ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on Agoda's flight search on ${today2} (Agoda is the selling website)`,
+        data_note: `Fare acquired via Agoda's SearchUnbundled flight API on ${today2}; the ticket is SOLD by Agoda. Price may change at checkout.`
+      },
+      identifiers: { sku: `agoda-${flightNos}-${dateIso}-${depTime}`.slice(0, 120) },
+      evidence: {
+        sourceUrl: AGODA_SEARCH_URL,
+        sourceReference: (itineraryId || b.key || "").slice(0, 160),
+        extractedFields: ["trips[].bundles[].bundlePrice[0].price.inr.display.perBook.allInclusive", "outboundSlice.segments[].carrierCode/flightNumber/departDateTime", "outboundSlice.duration"]
+      }
+    }));
+  }
+  return out;
+}
+var AGODA_SEARCH_URL;
+var init_agodaFlights = __esm({
+  "server/workers/parsers/agodaFlights.ts"() {
+    init_contract();
+    AGODA_SEARCH_URL = "https://www.agoda.com/api/gw/flight/SearchUnbundled?";
+  }
+});
+
 // server/workers/parsers/viaFlights.ts
 function viaFareCalendarUrl() {
   return `${VIA_BASE}/apiv2/flight/fare-calendar?authToken=${VIA_AUTH_TOKEN}&requestSource=NODE_B2C&flowType=NODE&ajax=true&jsonData=true&__xreq__=true`;
@@ -14448,6 +14584,7 @@ var init_flights = __esm({
     init_akasaFlights();
     init_budgetAirFlights();
     init_flightsMojo();
+    init_agodaFlights();
     init_viaFlights();
     init_yatraFlights();
     init_goibiboFlights();
@@ -16297,15 +16434,66 @@ var init_flights = __esm({
           // Owner 24 Oct OTA expansion: Agoda flights. /flights app shell is open
           // (HTTP 200) but fare search is a gated client flow — no SSR fares to
           // browserless HTTP. Presence row keeps the brand visible.
+          // Owner OTA expansion (25 Oct). Agoda flights SearchUnbundled gateway —
+          // captured from the site's own XHR, replays BROWSERLESS with curl_cffi
+          // (client-generated UUIDs, guest session, INR storefront; no cookies or
+          // tokens). ~20 bundles per page; we pull 2 pages. Verified live:
+          // DEL-BOM 273 itineraries, IndiGo 6E5175 Rs 7,082 all-inclusive.
           sourceId: "w_flights_agodaflights",
-          name: "Flights worker: Agoda flights (probe)",
+          name: "Flights worker: Agoda SearchUnbundled (INR)",
           priority: 32,
-          run: async () => {
-            const res = await cffiFetch("https://www.agoda.com/flights", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE",
-              res.status === 403 ? "Agoda flights edge denies datacenter IPs (403)." : "Agoda flights is an app shell; fare search runs client-side with no browserless SSR fares."
-            );
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            const from = fromA.code;
+            const to = toA.code;
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const headers = { "Content-Type": "application/json", Accept: "application/json", Origin: "https://www.agoda.com", Referer: "https://www.agoda.com/flights" };
+            const bundles = [];
+            const seen = /* @__PURE__ */ new Set();
+            for (const page of [1, 2]) {
+              let r;
+              try {
+                r = await cffiFetch(AGODA_SEARCH_URL, {
+                  method: "POST",
+                  impersonate: "chrome",
+                  timeoutMs: 15e3,
+                  headers,
+                  body: JSON.stringify(agodaSearchBody(from, to, dep, page))
+                });
+              } catch (e) {
+                throw new AcquisitionError("SERVER_ERROR", `Agoda SearchUnbundled unreachable: ${String(e?.message || e)}`);
+              }
+              if (r.status === 403 || r.status === 429) {
+                throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda gateway blocked (HTTP ${r.status}).`, r.status);
+              }
+              if (r.status !== 200) {
+                throw new AcquisitionError("SERVER_ERROR", `Agoda SearchUnbundled HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 160)}`, r.status);
+              }
+              let json;
+              try {
+                json = JSON.parse(r.body);
+              } catch {
+                throw new AcquisitionError("EMPTY_RESPONSE", `Agoda SearchUnbundled returned non-JSON (HTTP ${r.status}).`, r.status);
+              }
+              for (const b of parseAgodaFlights(json)) {
+                const k = String(b.key || b.itineraries?.[0]?.itineraryInfo?.id || Math.random());
+                if (!seen.has(k)) {
+                  seen.add(k);
+                  bundles.push(b);
+                }
+              }
+              if (page === 1 && bundles.length === 0) {
+                throw new AcquisitionError("EMPTY_RESPONSE", `Agoda SearchUnbundled returned no bundles for ${from}-${to} ${dep}.`);
+              }
+            }
+            return agodaFlightsItems(bundles, ctx.source, rt, from, to, dep);
           }
         }
       ]

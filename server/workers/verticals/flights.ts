@@ -19,6 +19,7 @@ import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareIte
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaHonestNoService } from '../parsers/akasaFlights';
 import { parseBudgetAirCalendar, budgetAirCalendarUrl, budgetAirDayFareItems } from '../parsers/budgetAirFlights';
 import { flightsMojoSearchBody, FLIGHTSMOJO_SEARCH_URL, FLIGHTSMOJO_RESEARCH_URL, parseFlightsMojoResearch, flightsMojoItems } from '../parsers/flightsMojo';
+import { agodaSearchBody, AGODA_SEARCH_URL, parseAgodaFlights, agodaFlightsItems } from '../parsers/agodaFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
@@ -1983,15 +1984,59 @@ export const flightsWorker: VerticalWorker = {
       // Owner 24 Oct OTA expansion: Agoda flights. /flights app shell is open
       // (HTTP 200) but fare search is a gated client flow — no SSR fares to
       // browserless HTTP. Presence row keeps the brand visible.
+      // Owner OTA expansion (25 Oct). Agoda flights SearchUnbundled gateway —
+      // captured from the site's own XHR, replays BROWSERLESS with curl_cffi
+      // (client-generated UUIDs, guest session, INR storefront; no cookies or
+      // tokens). ~20 bundles per page; we pull 2 pages. Verified live:
+      // DEL-BOM 273 itineraries, IndiGo 6E5175 Rs 7,082 all-inclusive.
       sourceId: 'w_flights_agodaflights',
-      name: 'Flights worker: Agoda flights (probe)',
+      name: 'Flights worker: Agoda SearchUnbundled (INR)',
       priority: 32,
-      run: async () => {
-        const res = await cffiFetch('https://www.agoda.com/flights', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
-          res.status === 403
-            ? 'Agoda flights edge denies datacenter IPs (403).'
-            : 'Agoda flights is an app shell; fare search runs client-side with no browserless SSR fares.');
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return []; // unknown city — honest skip
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const headers = { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'https://www.agoda.com', Referer: 'https://www.agoda.com/flights' };
+        const bundles: ReturnType<typeof parseAgodaFlights> = [];
+        const seen = new Set<string>();
+        for (const page of [1, 2]) { // 2 pages = up to 40 bundles
+          let r;
+          try {
+            r = await cffiFetch(AGODA_SEARCH_URL, {
+              method: 'POST', impersonate: 'chrome', timeoutMs: 15_000,
+              headers, body: JSON.stringify(agodaSearchBody(from, to, dep, page)),
+            });
+          } catch (e: any) {
+            throw new AcquisitionError('SERVER_ERROR', `Agoda SearchUnbundled unreachable: ${String(e?.message || e)}`);
+          }
+          if (r.status === 403 || r.status === 429) {
+            throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Agoda gateway blocked (HTTP ${r.status}).`, r.status);
+          }
+          if (r.status !== 200) {
+            throw new AcquisitionError('SERVER_ERROR', `Agoda SearchUnbundled HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, r.status);
+          }
+          let json: unknown;
+          try { json = JSON.parse(r.body); } catch {
+            throw new AcquisitionError('EMPTY_RESPONSE', `Agoda SearchUnbundled returned non-JSON (HTTP ${r.status}).`, r.status);
+          }
+          for (const b of parseAgodaFlights(json)) {
+            const k = String(b.key || b.itineraries?.[0]?.itineraryInfo?.id || Math.random());
+            if (!seen.has(k)) { seen.add(k); bundles.push(b); }
+          }
+          if (page === 1 && bundles.length === 0) {
+            throw new AcquisitionError('EMPTY_RESPONSE', `Agoda SearchUnbundled returned no bundles for ${from}-${to} ${dep}.`);
+          }
+        }
+        return agodaFlightsItems(bundles, ctx.source, rt, from, to, dep);
       },
     },
   ],
