@@ -379,7 +379,7 @@ export const Footer: React.FC = () => {
         {/* Bottom Disclaimer & Copyright Row */}
         <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-[11px] text-slate-400">
           <div className="flex flex-wrap items-center gap-3">
-            <span>© {new Date().getFullYear()} Try1Second Metasearch Technologies Pvt Ltd. All rights reserved.</span>
+            <span>© {new Date().getFullYear()} Try1Second Powered by Standard Petro India Private Limited</span>
             <span className="hidden sm:inline">·</span>
             <button
               type="button"
