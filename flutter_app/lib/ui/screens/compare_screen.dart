@@ -304,13 +304,25 @@ class _CompareScreenState extends State<CompareScreen> {
         _bgPollCount = 0;
       }
     } catch (e) {
-      _error = '$e'.replaceFirst(RegExp(r'^Exception: ?'), '');
-      // Chain resilience (owner 23 Oct 'bus sirf zingbus deta hai'): a single
-      // failed poll (30s client timeout on a cold route, one flaky hop on
-      // mobile data) used to strand the progressive chain forever — the user
-      // kept the partial rows (zingbus-only) and never received the slow
-      // sources' top-ups (AbhiBus lands ~40s in). Auto polls keep going.
-      if (auto && _bgPollCount < 30) {
+      final is403 = '$e'.contains('403');
+      _error = is403
+          ? 'Site security is temporarily blocking the app (HTTP 403). '
+              'Please wait a few minutes and search again.'
+          : '$e'.replaceFirst(RegExp(r'^Exception: ?'), '');
+      // WAF self-healing (owner 25 Oct 403 report): when the CDN edge throws
+      // a bot-challenge 403 at the app, the old chain kept auto-polling up to
+      // 30 times (~75 requests/search) — hammering the WAF from the phone's
+      // IP only EXTENDS any rate-based ban. A 403 is permanent for this
+      // client: stop the chain cold, surface an honest message, and let the
+      // user retry on their own schedule instead.
+      if (is403) {
+        _bgPollCount = 0;
+      } else if (auto && _bgPollCount < 30) {
+        // Chain resilience (owner 23 Oct 'bus sirf zingbus deta hai'): a single
+        // failed poll (30s client timeout on a cold route, one flaky hop on
+        // mobile data) used to strand the progressive chain forever — the user
+        // kept the partial rows (zingbus-only) and never received the slow
+        // sources' top-ups (AbhiBus lands ~40s in). Auto polls keep going.
         _bgPoll = Timer(const Duration(milliseconds: 2500), () {
           if (!mounted) return;
           _bgPollCount += 1;

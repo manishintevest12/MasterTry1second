@@ -881,6 +881,17 @@ class HeroSlide {
   final List<String>? gradient;
 }
 
+/// HTTP-level failure with its status code, so callers can tell a permanent
+/// edge block (403 bot-challenge, 410) from a transient hop and react with a
+/// backoff instead of hammering a WAF that is already rate-limiting them.
+class ApiHttpException implements Exception {
+  final int statusCode;
+  ApiHttpException(this.statusCode);
+  bool get isPermanentBlock => statusCode == 403 || statusCode == 410 || statusCode == 451;
+  @override
+  String toString() => 'HTTP $statusCode';
+}
+
 class Try1SecondApi {
   /// Device network fix (owner 22 Oct): Indian mobile carriers are IPv6-first
   /// (Jio/Airtel). dart:io's default HttpClient has NO connectionTimeout, so a
@@ -1319,6 +1330,8 @@ class Try1SecondApi {
     // retry clears it; a second failure is reported honestly.
     try {
       return _decode(res);
+    } on ApiHttpException {
+      rethrow; // 403/410 edge block: retrying is pointless and feeds the WAF
     } on Exception {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       try {
@@ -1413,7 +1426,9 @@ class Try1SecondApi {
 
   Map<String, dynamic> _decode(http.Response res) {
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('HTTP ${res.statusCode}');
+      // Typed: a 403/410 from the CDN bot-challenge is PERMANENT for a
+      // non-browser client — retrying it just extends any IP-based ban.
+      throw ApiHttpException(res.statusCode);
     }
     final body = jsonDecode(res.body);
     if (body is! Map<String, dynamic>) throw Exception('Malformed response');
