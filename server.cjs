@@ -8578,6 +8578,10 @@ function aixScheduledFareItems(flights, dayFare, source, fromCity, toCity, fromC
     attributes: {
       route: routeLabel,
       airline: "Air India Express",
+      // IATA airport codes (owner 24 Oct reference card): codes render under the
+      // departure/arrival clocks; city names stay on the route label.
+      origin: fromCode,
+      destination: toCode,
       travel_date: f.dateIso,
       departure_date: f.dateIso,
       flight_number: f.flightNo,
@@ -8953,6 +8957,10 @@ function airIndiaScheduledFareItems(flights, dayFare, source, fromCity, toCity, 
     attributes: {
       route: routeLabel,
       airline: "Air India",
+      // IATA airport codes (owner 24 Oct reference card): codes render under the
+      // departure/arrival clocks; city names stay on the route label.
+      origin: fromCode,
+      destination: toCode,
       travel_date: f.dateIso,
       departure_date: f.dateIso,
       flight_number: f.flightNo,
@@ -15972,6 +15980,53 @@ var init_flights = __esm({
             throw new AcquisitionError(
               "EMPTY_RESPONSE",
               "Amazon India does not offer flight booking (no flights product exists on amazon.in; /flights is a generic page and /flight-search is 404) \u2014 no real fares to acquire, never fabricated."
+            );
+          }
+        },
+        {
+          // Owner 24 Oct OTA expansion: FlightsMojo (Indian OTA). Site open
+          // (Next.js App Router) and route SEO pages exist
+          // (/flights/del-to-bom-flights) but search results render client-side —
+          // no SSR fares to browserless HTTP. Presence row carries the route SEO
+          // page deeplink.
+          sourceId: "w_flights_flightsmojo",
+          name: "Flights worker: FlightsMojo (probe)",
+          priority: 30,
+          run: async () => {
+            const res = await cffiFetch("https://www.flightsmojo.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError(
+              res.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE",
+              res.status === 403 ? "FlightsMojo edge denies datacenter IPs (403)." : "FlightsMojo search is client-side (Next.js App Router); route SEO pages carry no SSR fares to browserless HTTP."
+            );
+          }
+        },
+        {
+          // Owner 24 Oct OTA expansion: Booking.com flights. flights.booking.com
+          // answers HTTP 202 (bot challenge) on datacenter IPs — the same edge
+          // family that gates the hotel vertical. Presence row keeps brand visible.
+          sourceId: "w_flights_bookingcom",
+          name: "Flights worker: Booking.com flights (probe)",
+          priority: 31,
+          run: async () => {
+            const res = await cffiFetch("https://flights.booking.com/", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError(
+              res.status === 202 || res.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE",
+              res.status === 202 || res.status === 403 ? "Booking.com flights edge returns a bot challenge to datacenter IPs (HTTP " + res.status + ")." : "Booking.com flights rendered no browserless fares."
+            );
+          }
+        },
+        {
+          // Owner 24 Oct OTA expansion: Agoda flights. /flights app shell is open
+          // (HTTP 200) but fare search is a gated client flow — no SSR fares to
+          // browserless HTTP. Presence row keeps the brand visible.
+          sourceId: "w_flights_agodaflights",
+          name: "Flights worker: Agoda flights (probe)",
+          priority: 32,
+          run: async () => {
+            const res = await cffiFetch("https://www.agoda.com/flights", { impersonate: "chrome", timeoutMs: 12e3 });
+            throw new AcquisitionError(
+              res.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE",
+              res.status === 403 ? "Agoda flights edge denies datacenter IPs (403)." : "Agoda flights is an app shell; fare search runs client-side with no browserless SSR fares."
             );
           }
         }
@@ -28535,12 +28590,12 @@ async function buildFlightSellerPresence(parsed, combined, succeededSourceIds) {
     if (presentSellers.has(cfg.seller.toLowerCase())) continue;
     if (succeeded.has(cfg.sourceId)) continue;
     const h = getHealth(cfg.sourceId);
-    if (h.lastFailureClass === "EMPTY_RESPONSE") continue;
+    if (h.lastFailureClass === "EMPTY_RESPONSE" && !cfg.showOnEmpty) continue;
     out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
   }
   return out;
 }
-var PRESENCE_SELLERS;
+var PRESENCE_SHOW_ON_EMPTY_IDS, PRESENCE_SELLERS;
 var init_sellerPresence = __esm({
   "server/search/sellerPresence.ts"() {
     init_airportLookup();
@@ -28548,6 +28603,9 @@ var init_sellerPresence = __esm({
     init_health();
     init_yatraFlights();
     init_akasaFlights();
+    PRESENCE_SHOW_ON_EMPTY_IDS = /* @__PURE__ */ new Set(
+      ["w_flights_budgetair", "w_flights_gotogate", "w_flights_flightnetwork", "w_flights_flightsmojo", "w_flights_bookingcom", "w_flights_agodaflights"]
+    );
     PRESENCE_SELLERS = [
       {
         seller: "Yatra",
@@ -28572,6 +28630,49 @@ var init_sellerPresence = __esm({
         sourceId: "w_flights_expedia",
         srp: (rt, dIso) => `https://www.expedia.com/Flights-Search?flight-type=oneway&from-date=${dIso}&from=${encodeURIComponent(`${rt.from} (${rt.fromCode})`)}&to=${encodeURIComponent(`${rt.to} (${rt.toCode})`)}&search-type=arsed&mode=search`,
         note: "Expedia's live fare feed is not reachable from our servers right now; this opens Expedia's own results for the route with the date prefilled."
+      },
+      // ---- Owner 24 Oct OTA expansion (presence until live recipes ship) ----
+      {
+        seller: "BudgetAir",
+        sourceId: "w_flights_budgetair",
+        srp: (rt) => "https://www.budgetair.com/en-in/flight/search",
+        note: "BudgetAir's Travix fare gateway is discovered but its live recipe is not captured yet; this opens BudgetAir's own flight search to check fares for the route.",
+        showOnEmpty: true
+      },
+      {
+        seller: "Gotogate",
+        sourceId: "w_flights_gotogate",
+        srp: () => "https://www.gotogate.in/",
+        note: "Gotogate's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens Gotogate's own flight search to check fares for the route.",
+        showOnEmpty: true
+      },
+      {
+        seller: "FlightNetwork",
+        sourceId: "w_flights_flightnetwork",
+        srp: () => "https://www.flightnetwork.com/",
+        note: "FlightNetwork's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens FlightNetwork's own flight search to check fares for the route.",
+        showOnEmpty: true
+      },
+      {
+        seller: "FlightsMojo",
+        sourceId: "w_flights_flightsmojo",
+        srp: (rt) => `https://www.flightsmojo.com/flights/${rt.from.toLowerCase().replace(/\s+/g, "-")}-to-${rt.to.toLowerCase().replace(/\s+/g, "-")}-flights`,
+        note: "FlightsMojo's search is client-side (no SSR fares to browserless HTTP yet); this opens FlightsMojo's own results page for the route.",
+        showOnEmpty: true
+      },
+      {
+        seller: "Booking.com",
+        sourceId: "w_flights_bookingcom",
+        srp: () => "https://flights.booking.com/",
+        note: "Booking.com flights answers a bot challenge to datacenter IPs; this opens Booking.com's own flight search to check fares for the route.",
+        showOnEmpty: true
+      },
+      {
+        seller: "Agoda",
+        sourceId: "w_flights_agodaflights",
+        srp: () => "https://www.agoda.com/flights",
+        note: "Agoda's flights product is an app shell with no SSR fares to browserless HTTP yet; this opens Agoda's own flight search to check fares for the route.",
+        showOnEmpty: true
       }
     ];
   }
@@ -29667,7 +29768,7 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
   if (String(vertical) === "flights") {
-    const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId);
+    const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId).filter((id) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
     combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
   }
   const engine = getVerticalEngine(vertical);
@@ -29714,7 +29815,7 @@ async function runLivePipeline(input, parsedIn, hooks) {
   let outcome = { results: [], attempted: [], succeeded: [], failed: [] };
   if (ctx.enabledSources.length > 0) {
     const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42e3);
-    outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt, onPartial: hooks?.onPartial });
+    outcome = await acquireParallel(parsed, { maxSources: 40, deadlineAt, onPartial: hooks?.onPartial });
   }
   return finalizeLive(totalStart, input, parsed, ctx, outcome);
 }

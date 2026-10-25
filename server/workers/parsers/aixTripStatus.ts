@@ -155,6 +155,10 @@ export function aixScheduledFareItems(
     attributes: {
       route: routeLabel,
       airline: 'Air India Express',
+      // IATA airport codes (owner 24 Oct reference card): codes render under the
+      // departure/arrival clocks; city names stay on the route label.
+      origin: fromCode,
+      destination: toCode,
       travel_date: f.dateIso,
       departure_date: f.dateIso,
       flight_number: f.flightNo,

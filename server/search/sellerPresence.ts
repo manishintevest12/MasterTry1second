@@ -24,7 +24,16 @@ import { getHealth } from '../sources/health';
 import { yatraSrpUrl } from '../workers/parsers/yatraFlights';
 import { AKASA_WEB } from '../workers/parsers/akasaFlights';
 
-const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { from: string; to: string; fromCode: string; toCode: string; }, dIso: string) => string; note: string }> = [
+export const PRESENCE_SHOW_ON_EMPTY_IDS: ReadonlySet<string> = new Set(
+  ['w_flights_budgetair', 'w_flights_gotogate', 'w_flights_flightnetwork', 'w_flights_flightsmojo', 'w_flights_bookingcom', 'w_flights_agodaflights'],
+);
+
+// showOnEmpty (owner 24 Oct OTA expansion): route-agnostic OTA aggregators —
+// an EMPTY_RESPONSE from a not-yet-cracked recipe means the recipe is missing,
+// NOT that the OTA has no service on the route (unlike carriers like Akasa on
+// IDR-DEL). These sellers keep their honest presence card until their live
+// fare recipe ships, then priced rows suppress it automatically.
+const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { from: string; to: string; fromCode: string; toCode: string; }, dIso: string) => string; note: string; showOnEmpty?: boolean }> = [
   {
     seller: 'Yatra',
     sourceId: 'w_flights_yatra',
@@ -50,6 +59,50 @@ const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { fr
       + `&from=${encodeURIComponent(`${rt.from} (${rt.fromCode})`)}&to=${encodeURIComponent(`${rt.to} (${rt.toCode})`)}&search-type=arsed&mode=search`,
     note: "Expedia's live fare feed is not reachable from our servers right now; this opens Expedia's own results for the route with the date prefilled.",
   },
+  // ---- Owner 24 Oct OTA expansion (presence until live recipes ship) ----
+  {
+    seller: 'BudgetAir',
+    sourceId: 'w_flights_budgetair',
+    srp: (rt) => 'https://www.budgetair.com/en-in/flight/search',
+    note: "BudgetAir's Travix fare gateway is discovered but its live recipe is not captured yet; this opens BudgetAir's own flight search to check fares for the route.",
+    showOnEmpty: true,
+  },
+  {
+    seller: 'Gotogate',
+    sourceId: 'w_flights_gotogate',
+    srp: () => 'https://www.gotogate.in/',
+    note: "Gotogate's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens Gotogate's own flight search to check fares for the route.",
+    showOnEmpty: true,
+  },
+  {
+    seller: 'FlightNetwork',
+    sourceId: 'w_flights_flightnetwork',
+    srp: () => 'https://www.flightnetwork.com/',
+    note: "FlightNetwork's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens FlightNetwork's own flight search to check fares for the route.",
+    showOnEmpty: true,
+  },
+  {
+    seller: 'FlightsMojo',
+    sourceId: 'w_flights_flightsmojo',
+    srp: (rt) => `https://www.flightsmojo.com/flights/${rt.from.toLowerCase().replace(/\s+/g, '-')}-to-${rt.to.toLowerCase().replace(/\s+/g, '-')}-flights`,
+    note: "FlightsMojo's search is client-side (no SSR fares to browserless HTTP yet); this opens FlightsMojo's own results page for the route.",
+    showOnEmpty: true,
+  },
+  {
+    seller: 'Booking.com',
+    sourceId: 'w_flights_bookingcom',
+    srp: () => 'https://flights.booking.com/',
+    note: "Booking.com flights answers a bot challenge to datacenter IPs; this opens Booking.com's own flight search to check fares for the route.",
+    showOnEmpty: true,
+  },
+  {
+    seller: 'Agoda',
+    sourceId: 'w_flights_agodaflights',
+    srp: () => 'https://www.agoda.com/flights',
+    note: "Agoda's flights product is an app shell with no SSR fares to browserless HTTP yet; this opens Agoda's own flight search to check fares for the route.",
+    showOnEmpty: true,
+  },
+
 ];
 
 function presenceOffer(seller: string, sourceId: string, srp: string, note: string, from: string, to: string, dIso: string): NormalizedOffer {
@@ -142,7 +195,7 @@ export async function buildFlightSellerPresence(
     // gated source's latest class becomes ACCESS_CHALLENGE/RATE_LIMITED and
     // the presence card returns automatically (self-healing).
     const h = getHealth(cfg.sourceId);
-    if (h.lastFailureClass === 'EMPTY_RESPONSE') continue;
+    if (h.lastFailureClass === 'EMPTY_RESPONSE' && !cfg.showOnEmpty) continue;
     out.push(presenceOffer(cfg.seller, cfg.sourceId, cfg.srp(rt, dIso), cfg.note, rt0.from, rt0.to, dIso));
   }
   return out;

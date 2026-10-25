@@ -517,6 +517,11 @@ class TravelTile extends StatelessWidget {
       final m = RegExp(r'(\d{1,2}):(\d{2})(?::(\d{2}))?').firstMatch(durStr);
       if (m != null) durMin = (int.tryParse(m.group(1)!) ?? 0) * 60 + (int.tryParse(m.group(2)!) ?? 0);
     }
+    // '1h 45m' style duration strings also parse (web parity, 24 Oct).
+    if (durMin == 0 && durStr.isNotEmpty) {
+      final hm = RegExp(r'(\d{1,2})\s*h\s*(\d{1,2})?\s*m?', caseSensitive: false).firstMatch(durStr);
+      if (hm != null) durMin = (int.tryParse(hm.group(1)!) ?? 0) * 60 + (int.tryParse(hm.group(2) ?? '0') ?? 0);
+    }
     // 2) 'departure time' missing an arrival falls back to the 'departure' range
     //    ('02:30 AM → 08:30 AM' → dep 02:30, arr 08:30) exactly like the web card.
     // Some sellers publish '2026-10-31 07:15' — keep the clock only (web parity).

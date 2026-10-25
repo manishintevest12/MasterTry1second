@@ -23,10 +23,24 @@ const priced = (seller: string): NormalizedOffer => ({
   provenance: { sourceId: 'w_test', sourceMethod: 'direct_http', adapterVersion: 't', parserVersion: 't', fetchedAt: new Date().toISOString() },
 } as any);
 
-test('presence: 4 gated sellers appear when nothing else contributed', async () => {
+const OTA_EXPANSION = ['Agoda', 'Booking.com', 'BudgetAir', 'FlightNetwork', 'FlightsMojo', 'Gotogate'];
+
+test('presence: 4 gated + 6 OTA-expansion sellers appear when nothing else contributed', async () => {
   const rows = await buildFlightSellerPresence(parsed(), []);
-  assert.equal(rows.length, 4);
-  assert.deepEqual(rows.map((r) => r.seller).sort(), ['Akasa Air', 'Expedia', 'IndiGo', 'Yatra']);
+  assert.equal(rows.length, 10);
+  assert.deepEqual(rows.map((r) => r.seller).sort(), ['Agoda', 'Akasa Air', 'Booking.com', 'BudgetAir', 'Expedia', 'FlightNetwork', 'FlightsMojo', 'Gotogate', 'IndiGo', 'Yatra']);
+});
+
+test('presence: OTA expansion rows carry seller search-page deeplinks (owner 24 Oct)', async () => {
+  const rows = await buildFlightSellerPresence(parsed(), []);
+  const by = (x: string) => rows.find((r) => r.seller === x)!;
+  assert.ok(by('BudgetAir').sellerUrl!.startsWith('https://www.budgetair.com/en-in/flight/search'));
+  assert.ok(by('Gotogate').sellerUrl!.startsWith('https://www.gotogate.in/'));
+  assert.ok(by('FlightNetwork').sellerUrl!.startsWith('https://www.flightnetwork.com/'));
+  assert.ok(by('FlightsMojo').sellerUrl!.includes('indore-to-delhi-flights'), 'FlightsMojo deeplink must be the route SEO page');
+  assert.ok(by('Booking.com').sellerUrl!.startsWith('https://flights.booking.com/'));
+  assert.ok(by('Agoda').sellerUrl!.startsWith('https://www.agoda.com/flights'));
+  for (const s2 of OTA_EXPANSION) assert.equal(by(s2).attributes.price_basis, 'live_fares_unavailable', `${s2} honest price basis`);
 });
 
 test('presence: honest rows — no price, price_basis flags live fares unavailable', async () => {
@@ -73,7 +87,7 @@ test('presence: route filter compatibility — engine routeFilter keeps the rows
   const { routeFilter } = await import('../server/verticals/verticalEngine');
   const rows = await buildFlightSellerPresence(parsed(), []);
   const kept = routeFilter(rows, parsed());
-  assert.equal(kept.length, 4, 'presence rows must survive the flights route filter');
+  assert.equal(kept.length, 10, 'presence rows must survive the flights route filter');
 });
 
 test('presence: seller whose source SUCCEEDED with honest zero rows is skipped (no-service route)', async () => {
@@ -81,12 +95,21 @@ test('presence: seller whose source SUCCEEDED with honest zero rows is skipped (
   // a "feed unreachable" card would be misleading, so no presence row.
   const rows = await buildFlightSellerPresence(parsed(), [], ['w_flights_akasa']);
   assert.ok(!rows.some((r) => r.seller === 'Akasa Air'), 'honest no-service seller must not get a presence card');
-  assert.equal(rows.length, 3, 'the other gated sellers keep their cards');
+  assert.equal(rows.length, 9, 'the other sellers keep their cards');
 });
 
 test('presence: a FAILED seller keeps its presence card even when other sources succeeded', async () => {
   const rows = await buildFlightSellerPresence(parsed(), [], ['w_flights_kiwi', 'w_flights_ixigo']);
-  assert.equal(rows.length, 4, 'none of the presence sellers succeeded, so all four cards stay');
+  assert.equal(rows.length, 10, 'none of the presence sellers succeeded, so all cards stay');
+});
+
+test('presence: OTA expansion keeps its card on EMPTY_RESPONSE (recipe-uncracked, not no-service)', async () => {
+  // Owner 24 Oct: BudgetAir's probe answered EMPTY_RESPONSE (recipe not yet
+  // captured) — an OTA aggregator still sells this route, so unlike a
+  // no-service carrier the honest presence card stays.
+  recordFailure('w_flights_budgetair', 'EMPTY_RESPONSE', 'no browserless SSR fares');
+  const rows = await buildFlightSellerPresence(parsed(), []);
+  assert.ok(rows.some((r) => r.seller === 'BudgetAir'), 'OTA expansion seller keeps brand visibility on empty');
 });
 
 test('presence: CATALOGUE path — seller whose own API last answered EMPTY_RESPONSE (no-service route) is skipped', async () => {
@@ -96,12 +119,13 @@ test('presence: CATALOGUE path — seller whose own API last answered EMPTY_RESP
   recordFailure('w_flights_akasa', 'EMPTY_RESPONSE', 'no bookable fares on this route');
   const rows = await buildFlightSellerPresence(parsed(), []);
   assert.ok(!rows.some((r) => r.seller === 'Akasa Air'), 'no-service carrier must not get a presence card on the catalogue path');
-  assert.equal(rows.length, 3, 'genuinely gated sellers keep their cards');
+  assert.ok(rows.some((r) => r.seller === 'Yatra'), 'genuinely gated sellers keep their cards');
+  assert.ok(!rows.some((r) => r.seller === 'Akasa Air'));
 });
 
 test('presence: a gated class (ACCESS_CHALLENGE) brings the card back — self-healing', async () => {
   recordFailure('w_flights_akasa', 'ACCESS_CHALLENGE', 'edge challenge');
   const rows = await buildFlightSellerPresence(parsed(), []);
-  assert.equal(rows.length, 4, 'a gated carrier keeps brand visibility');
+  assert.equal(rows.length, 10, 'a gated carrier keeps brand visibility');
   assert.ok(rows.every((r) => (r.attributes?.price_basis ?? '') === 'live_fares_unavailable'), 'honest price basis');
 });

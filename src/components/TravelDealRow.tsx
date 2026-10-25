@@ -76,10 +76,129 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
   // Flight presence rows (gated seller, price_basis=live_fares_unreachable): the
   // fare exists on the seller's own site — honest label, never 'Price unavailable'.
   const fareOnSellerSite = spec(item, 'price basis', 'price_basis') === 'live_fares_unavailable';
+  const isFlight = item.vertical === 'flights';
+  // Owner 24 Oct reference card: 'Compare X sites' chip + green 'save ₹X'.
+  const offerCount = group ? group.rows.length : item.sellerQuotes.length;
+  const groupPrices = group ? group.rows.map((r) => r.price).filter((x) => x > 0) : [];
+  const saveAmt = groupPrices.length > 1 ? Math.max(...groupPrices) - Math.min(...groupPrices) : 0;
+  const isBestPrice = !!group && item.priceAvailable;
+  const flightStops = stops !== undefined ? (Number(stopsRaw) === 0 ? 'Non-stop' : stops) : undefined;
+  const fromCode = spec(item, 'origin') || from;
+  const toCode = spec(item, 'destination') || to;
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-2xs hover:shadow-md hover:border-slate-300 transition-all overflow-hidden">
-    <div className="flex flex-col sm:flex-row">
+        {isFlight ? (
+          /* Owner 24 Oct reference card (Flutter app screenshot): airline logo +
+             airline name + flight number top-left, price + green 'save ₹X'
+             top-right, provider chip + BEST PRICE, navy flight-details pill,
+             footer with 'Compare X sites' chip and a red Book button. */
+          <div className="p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center shrink-0 overflow-hidden">
+                {logo && logoOk ? (
+                  <img src={logo} alt={`${carrier} logo`} className="w-8 h-8 object-contain" loading="lazy" referrerPolicy="no-referrer" onError={() => setLogoOk(false)} />
+                ) : (
+                  <span className="text-xs font-black text-slate-600">{initials(carrier)}</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-900 truncate">
+                  {airlineName || carrier}
+                  {flightNo && <span className="ml-1.5 font-black text-slate-700 tabular-nums">{flightNo}</span>}
+                </p>
+                <p className="text-[11px] text-slate-500 truncate">
+                  {[fromCode, toCode].filter(Boolean).join(' → ')}
+                  {duration && ` · ${duration}`}
+                  {date && ` · ${date}`}
+                </p>
+                {(item as any).freshnessStatus === 'LIVE_VERIFIED' && (
+                  <span className="inline-flex mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">Live</span>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                {item.priceAvailable ? (
+                  <>
+                    <p className="text-xl font-black text-slate-900 leading-none">₹{(item.primaryPrice || 0).toLocaleString('en-IN')}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{priceNote}</p>
+                    {saveAmt > 0 && (
+                      <p className="text-[11px] font-bold text-emerald-600 mt-0.5">save ₹{saveAmt.toLocaleString('en-IN')}</p>
+                    )}
+                  </>
+                ) : appOnlyFares ? (
+                  <p className="text-sm font-bold text-slate-500">Fare on app</p>
+                ) : fareOnSellerSite ? (
+                  <p className="text-sm font-bold text-slate-500">Fare on seller site</p>
+                ) : (
+                  <p className="text-sm font-bold text-slate-500">Price unavailable</p>
+                )}
+              </div>
+            </div>
+
+            {/* provider chip + BEST PRICE (cheapest site for this same trip) */}
+            {quote && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded-full px-2.5 py-1">
+                  <span className="w-4 h-4 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[8px] font-black text-slate-600">{initials(quote.sellerName)}</span>
+                  {quote.sellerName}
+                </span>
+                {isBestPrice && (
+                  <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1">BEST PRICE</span>
+                )}
+              </div>
+            )}
+
+            {/* navy flight-details pill */}
+            {hasTimes ? (
+              <div className="mt-3 inline-flex items-center gap-2.5 bg-[#1D3557] text-white rounded-full px-4 py-2 text-xs font-bold">
+                {flightNo && <span className="tabular-nums">{flightNo}</span>}
+                <span className="tabular-nums flex items-center gap-1.5">{dep}<ArrowRight className="w-3 h-3 opacity-80" />{arr}</span>
+                {flightStops && <span className="opacity-90 font-semibold">{flightStops}</span>}
+              </div>
+            ) : (
+              <div className="mt-3 inline-flex items-center gap-2 bg-[#1D3557] text-white rounded-full px-4 py-2 text-xs font-bold">
+                <span className="truncate max-w-[220px]">{fromCode || item.title}</span>
+                {toCode && <><ArrowRight className="w-3 h-3 opacity-80" /><span className="truncate max-w-[220px]">{toCode}</span></>}
+                {duration && <span className="opacity-90 font-semibold">{duration}</span>}
+              </div>
+            )}
+
+            {/* footer: airline + 'Compare X sites' chip | heart + red Book */}
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[11px] font-semibold text-slate-600 truncate">{airlineName || carrier}</span>
+                {offerCount > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setOpen((o) => !o)}
+                    className="shrink-0 text-[11px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-full px-3 py-1.5 cursor-pointer"
+                  >
+                    Compare {offerCount} sites
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => toggleTrackPrice(item.id)}
+                  title={tracked ? 'Stop tracking price' : 'Track price drops'}
+                  className={`p-2 rounded-xl border cursor-pointer ${tracked ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-700'}`}
+                >
+                  <Heart className={`w-4 h-4 ${tracked ? 'fill-rose-500' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  disabled={!quote}
+                  onClick={() => quote && startRedirection(item, quote)}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-black flex items-center justify-center gap-1.5 shadow-md shadow-rose-500/20 cursor-pointer disabled:opacity-50"
+                >
+                  <span>Book</span><ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row">
       {/* LEFT: carrier + journey */}
       <div className="flex-1 p-4 sm:p-5 min-w-0">
         <div className="flex items-center gap-3">
@@ -170,6 +289,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
         {quote && <p className="hidden sm:block text-[10px] text-slate-400 text-right truncate">on {quote.sourceDomain || quote.sellerName}{airlineName && airlineName.toLowerCase() !== carrier.toLowerCase() && <> · <span className="font-semibold text-slate-600">{airlineName}</span></>}</p>}
       </div>
     </div>
+        )}
 
     {extraRows.length > 1 && (
       <>
@@ -178,18 +298,26 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
           onClick={() => setOpen((o) => !o)}
           className="w-full flex items-center justify-between px-4 sm:px-5 py-2.5 border-t border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
         >
-          <span>Compare {extraRows.length} websites{group?.highest && group.highest > group.best.price ? ` · save up to ₹${(group.highest - group.best.price).toLocaleString('en-IN')}` : ''}</span>
+          <span>Compare {extraRows.length} {isFlight ? 'sites' : 'websites'}{group?.highest && group.highest > group.best.price ? ` · save up to ₹${(group.highest - group.best.price).toLocaleString('en-IN')}` : ''}</span>
           <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
         </button>
         {open && (
           <div className="border-t border-slate-100 divide-y divide-slate-100">
+            {isFlight && (
+              <div className="px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-900">Every site, cheapest first</p>
+                  <p className="text-[11px] text-slate-500">Same trip, real prices — we never adjust them.</p>
+                </div>
+              </div>
+            )}
             {extraRows.map((r, i) => {
               const q = r.item.sellerQuotes.find((x) => x.isLowest) || r.item.sellerQuotes[0];
               return (
                 <div key={r.item.id + i} className="flex items-center gap-3 px-4 sm:px-5 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-800 truncate">{r.site}{item.vertical === 'cab' && cabVehicleOf(r.item) && <span className="ml-1.5 text-[11px] font-semibold text-slate-500">{cabVehicleOf(r.item)}</span>}</p>
-                    {i === 0 && r.priceAvailable && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Lowest price</span>}
+                    {i === 0 && r.priceAvailable && <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">BEST PRICE</span>}
                   </div>
                   {/* Owner 24 Oct: app-only rows (Uber/Rapido, price_basis=app_only_fares) say
                       "Fare on app" — the same honest label as the main price and the app. */}
@@ -200,7 +328,7 @@ export const TravelDealRow: React.FC<{ item?: ComparisonItem; group?: OfferGroup
                     type="button"
                     disabled={!q}
                     onClick={() => q && startRedirection(r.item, q)}
-                    className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1 cursor-pointer disabled:opacity-50"
                   >
                     <span>Book</span><ExternalLink className="w-3 h-3" />
                   </button>

@@ -1867,6 +1867,53 @@ export const flightsWorker: VerticalWorker = {
           'Amazon India does not offer flight booking (no flights product exists on amazon.in; /flights is a generic page and /flight-search is 404) — no real fares to acquire, never fabricated.');
       },
     },
+    {
+      // Owner 24 Oct OTA expansion: FlightsMojo (Indian OTA). Site open
+      // (Next.js App Router) and route SEO pages exist
+      // (/flights/del-to-bom-flights) but search results render client-side —
+      // no SSR fares to browserless HTTP. Presence row carries the route SEO
+      // page deeplink.
+      sourceId: 'w_flights_flightsmojo',
+      name: 'Flights worker: FlightsMojo (probe)',
+      priority: 30,
+      run: async () => {
+        const res = await cffiFetch('https://www.flightsmojo.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
+          res.status === 403
+            ? 'FlightsMojo edge denies datacenter IPs (403).'
+            : 'FlightsMojo search is client-side (Next.js App Router); route SEO pages carry no SSR fares to browserless HTTP.');
+      },
+    },
+    {
+      // Owner 24 Oct OTA expansion: Booking.com flights. flights.booking.com
+      // answers HTTP 202 (bot challenge) on datacenter IPs — the same edge
+      // family that gates the hotel vertical. Presence row keeps brand visible.
+      sourceId: 'w_flights_bookingcom',
+      name: 'Flights worker: Booking.com flights (probe)',
+      priority: 31,
+      run: async () => {
+        const res = await cffiFetch('https://flights.booking.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 202 || res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
+          res.status === 202 || res.status === 403
+            ? 'Booking.com flights edge returns a bot challenge to datacenter IPs (HTTP ' + res.status + ').'
+            : 'Booking.com flights rendered no browserless fares.');
+      },
+    },
+    {
+      // Owner 24 Oct OTA expansion: Agoda flights. /flights app shell is open
+      // (HTTP 200) but fare search is a gated client flow — no SSR fares to
+      // browserless HTTP. Presence row keeps the brand visible.
+      sourceId: 'w_flights_agodaflights',
+      name: 'Flights worker: Agoda flights (probe)',
+      priority: 32,
+      run: async () => {
+        const res = await cffiFetch('https://www.agoda.com/flights', { impersonate: 'chrome', timeoutMs: 12_000 });
+        throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
+          res.status === 403
+            ? 'Agoda flights edge denies datacenter IPs (403).'
+            : 'Agoda flights is an app shell; fare search runs client-side with no browserless SSR fares.');
+      },
+    },
   ],
 };
 registerVerticalWorker(flightsWorker);

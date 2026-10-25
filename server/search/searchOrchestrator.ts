@@ -30,7 +30,7 @@ import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { passesQueryRelevance } from './queryRelevance';
-import { buildFlightSellerPresence } from './sellerPresence';
+import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerPresence';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
@@ -690,7 +690,12 @@ async function finalizeLive(
     // route it does not fly must NOT spawn a "feed unreachable" card.
     const honestEmpty = (outcome.failed || [])
       .filter((f: any) => f.failureClass === 'EMPTY_RESPONSE')
-      .map((f: any) => f.sourceId);
+      .map((f: any) => f.sourceId)
+      // Owner 24 Oct OTA expansion: route-agnostic aggregators (BudgetAir,
+      // Gotogate, FlightsMojo, ...) treat EMPTY_RESPONSE as "recipe not yet
+      // captured", not "no service on this route" — their honest presence
+      // card must survive (handled via showOnEmpty inside the builder).
+      .filter((id: string) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
     combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined, [...(outcome.succeeded || []), ...honestEmpty]))];
   }
 
@@ -762,7 +767,10 @@ async function runLivePipeline(input: SearchInput, parsedIn?: ParsedQuery, hooks
     // 42s acquisition budget: Hostinger's nginx proxy returns 504 at ~55s. Cutting
     // acquisition at 42s leaves time for normalize/rank/respond + proxy headroom.
     const deadlineAt = Date.now() + (Number(process.env.LIVE_SEARCH_BUDGET_MS) || 42_000);
-    outcome = await acquireParallel(parsed, { maxSources: 20, deadlineAt, onPartial: hooks?.onPartial });
+    // Owner 24 Oct OTA expansion: flights now carries 37 registered sources
+    // (incl. 6 new OTA probes); the old cap of 20 silently cut the newest ones.
+    // Other verticals have far fewer sources, so this cap only widens flights.
+    outcome = await acquireParallel(parsed, { maxSources: 40, deadlineAt, onPartial: hooks?.onPartial });
   }
   return finalizeLive(totalStart, input, parsed, ctx, outcome);
 }

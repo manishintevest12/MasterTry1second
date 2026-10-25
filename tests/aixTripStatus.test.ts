@@ -77,6 +77,9 @@ test('aixScheduledFareItems builds honest per-flight cards (fare calendar price 
   assert.equal(it.currency, 'INR');
   assert.equal(it.seller, 'Air India Express');
   assert.equal(it.attributes.flight_number, 'IX1056');
+  // owner 24 Oct reference card: IATA codes publish on the row for the card clocks
+  assert.equal(it.attributes.origin, 'DEL');
+  assert.equal(it.attributes.destination, 'BOM');
   assert.equal(it.attributes.departure_time, '08:50');
   assert.equal(it.attributes.arrival_time, '11:15');
   assert.equal(it.attributes.duration_minutes, '145');

@@ -100,6 +100,9 @@ test('airIndiaScheduledFareItems builds honest per-flight cards (fare-calendar p
   assert.equal(it.attributes.stops, '0');
   assert.equal(it.attributes.aircraft, 'AIRBUS A320NEO');
   assert.equal(it.attributes.travel_date, '2026-10-28');
+  // owner 24 Oct reference card: IATA codes publish on the row for the card clocks
+  assert.equal(it.attributes.origin, 'DEL');
+  assert.equal(it.attributes.destination, 'BOM');
   // honesty: date-level fare clearly labelled
   assert.match(it.attributes.price_basis, /fare-calendar/);
   assert.match(it.attributes.data_note, /date's lowest published one-way fare/);
