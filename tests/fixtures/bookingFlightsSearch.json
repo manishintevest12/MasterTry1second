@@ -1,0 +1,103 @@
+{
+  "_comment": "SYNTHETIC Kayak-family BCF /api/flights/ response shape (built from the captured gateway URL family + Kayak API structure). The sandbox IP is gated so no live 200 body exists yet; the full-flow probe validates the real shape on the production Hostinger IP and surfaces the body head in the log if the shape drifts.",
+  "searchId": "bcf-test-1",
+  "currency": "INR",
+  "carriers": [
+    { "id": "c6E", "name": "IndiGo", "displayName": "IndiGo" },
+    { "id": "cSG", "name": "SpiceJet", "displayName": "SpiceJet" }
+  ],
+  "airports": [
+    { "id": "DEL", "name": "Delhi" },
+    { "id": "BOM", "name": "Mumbai" },
+    { "id": "BLR", "name": "Bengaluru" }
+  ],
+  "legs": [
+    {
+      "id": "leg1",
+      "carrier": "c6E",
+      "departureAirport": "DEL",
+      "arrivalAirport": "BOM",
+      "duration": 135,
+      "stopoverCount": 0,
+      "segments": ["seg1"]
+    },
+    {
+      "id": "leg2",
+      "carrier": "cSG",
+      "departureAirport": "DEL",
+      "arrivalAirport": "BOM",
+      "duration": 150,
+      "stopoverCount": 0,
+      "segments": ["seg2"]
+    },
+    {
+      "id": "leg3",
+      "carrier": "c6E",
+      "departureAirport": "DEL",
+      "arrivalAirport": "BOM",
+      "duration": 330,
+      "stopoverCount": 1,
+      "segments": ["seg3", "seg4"]
+    }
+  ],
+  "segments": [
+    {
+      "id": "seg1",
+      "origin": "DEL",
+      "destination": "BOM",
+      "flightNumber": "5175",
+      "carriers": { "marketing": ["6E"], "operating": ["6E"] },
+      "departureTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "12:55" },
+      "arrivalTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "15:10" },
+      "duration": 135,
+      "cabinClass": "economy"
+    },
+    {
+      "id": "seg2",
+      "origin": "DEL",
+      "destination": "BOM",
+      "flightNumber": "612",
+      "carriers": { "marketing": ["SG"], "operating": ["SG"] },
+      "departureTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "19:20" },
+      "arrivalTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "21:50" },
+      "duration": 150,
+      "cabinClass": "economy"
+    },
+    {
+      "id": "seg3",
+      "origin": "DEL",
+      "destination": "GOI",
+      "flightNumber": "5178",
+      "carriers": { "marketing": ["6E"], "operating": ["6E"] },
+      "departureTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "08:05" },
+      "arrivalTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "10:35" },
+      "duration": 150,
+      "cabinClass": "economy"
+    },
+    {
+      "id": "seg4",
+      "origin": "GOI",
+      "destination": "BOM",
+      "flightNumber": "5179",
+      "carriers": { "marketing": ["6E"], "operating": ["6E"] },
+      "departureTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "12:00" },
+      "arrivalTime": { "date": { "year": 2026, "month": 10, "day": 28 }, "time": "13:20" },
+      "duration": 80,
+      "cabinClass": "economy"
+    }
+  ],
+  "flights": [
+    { "id": "f1", "legs": ["leg1"], "priceMajor": 7082, "priceMinor": 0, "rankingType": "CHEAPEST" },
+    { "id": "f2", "legs": ["leg2"], "priceMajor": 7228, "priceMinor": 50, "rankingType": "BEST" },
+    { "id": "f3", "legs": ["leg3"], "priceMajor": 6540, "priceMinor": 0, "rankingType": "OTHER" },
+    { "id": "f4", "legs": ["leg1"], "priceMajor": 7082, "priceMinor": 0 },
+    { "id": "f5", "legs": ["leg1"], "priceMajor": 0, "priceMinor": 0 },
+    { "id": "f6", "legs": ["leg1", "leg2"], "priceMajor": 9000, "priceMinor": 0 }
+  ],
+  "groups": {
+    "cheapest": ["f1"],
+    "best": ["f2"],
+    "other": ["f3"]
+  },
+  "filteredOutCount": 0
+}

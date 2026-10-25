@@ -20,6 +20,7 @@ import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaH
 import { parseBudgetAirCalendar, budgetAirCalendarUrl, budgetAirDayFareItems } from '../parsers/budgetAirFlights';
 import { flightsMojoSearchBody, FLIGHTSMOJO_SEARCH_URL, FLIGHTSMOJO_RESEARCH_URL, parseFlightsMojoResearch, flightsMojoItems } from '../parsers/flightsMojo';
 import { agodaSearchBody, AGODA_SEARCH_URL, parseAgodaFlights, agodaFlightsItems } from '../parsers/agodaFlights';
+import { parseBookingFlights, bookingFlightsApiUrl, bookingFlightsSrpUrl } from '../parsers/bookingFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
@@ -1966,18 +1967,75 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
-      // Owner 24 Oct OTA expansion: Booking.com flights. flights.booking.com
-      // answers HTTP 202 (bot challenge) on datacenter IPs — the same edge
-      // family that gates the hotel vertical. Presence row keeps brand visible.
+      // Owner OTA expansion (24 Oct probe, 25 Oct full-flow). Booking.com
+      // flights fronts a Kayak-family JSON API discovered from the site's own
+      // XHR: GET /api/flights/?type=ONEWAY&...&chal_t=<ms>. The sandbox IP is
+      // gated (202 challenge / 429 rate limit), so this is a SELF-DETECTING
+      // full-flow probe (MMT pattern): warm the edge for the bkng cookie,
+      // replay the gateway, and emit priced rows the moment the production
+      // Hostinger IP is not gated. Kayak-shaped responses are parsed
+      // defensively; unparseable-but-open bodies surface in the log so the
+      // parser can be extended without fresh recon.
       sourceId: 'w_flights_bookingcom',
-      name: 'Flights worker: Booking.com flights (probe)',
+      name: 'Flights worker: Booking.com flights (full-flow probe)',
       priority: 31,
-      run: async () => {
-        const res = await cffiFetch('https://flights.booking.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 202 || res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
-          res.status === 202 || res.status === 403
-            ? 'Booking.com flights edge returns a bot challenge to datacenter IPs (HTTP ' + res.status + ').'
-            : 'Booking.com flights rendered no browserless fares.');
+      maxPerMinute: 4,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return []; // unknown city — honest skip
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+
+        // 1) Warm the edge — collects the bkng session cookie.
+        let jar: Record<string, string> = {};
+        try {
+          const warm = await cffiFetch('https://flights.booking.com/', { impersonate: 'chrome', timeoutMs: 12_000, returnCookies: true });
+          jar = (warm as any).cookies || {};
+        } catch { /* warm is best-effort; the gateway call decides */ }
+
+        // 2) Replay the gateway with the site's own recipe.
+        const apiHeaders: Record<string, string> = {
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: bookingFlightsSrpUrl(from, to, dep),
+        };
+        let res;
+        try {
+          res = await cffiFetch(bookingFlightsApiUrl(from, to, dep), {
+            impersonate: 'chrome', timeoutMs: 22_000, headers: apiHeaders,
+            ...(Object.keys(jar).length ? { cookies: jar } : {}),
+          });
+        } catch (e: any) {
+          throw new AcquisitionError('SERVER_ERROR', `Booking.com flights gateway unreachable: ${String(e?.message || e)}`);
+        }
+        if (res.status === 202 || res.status === 403) {
+          throw new AcquisitionError('ACCESS_CHALLENGE', `Booking.com flights edge returned a bot challenge (HTTP ${res.status}); full-flow probe stays armed and self-activates when the gate lifts.`, res.status);
+        }
+        if (res.status === 429) {
+          throw new AcquisitionError('RATE_LIMITED', `Booking.com flights gateway rate-limited this IP (HTTP 429); backoff will retry.`, res.status);
+        }
+        if (res.status !== 200) {
+          throw new AcquisitionError('SERVER_ERROR', `Booking.com flights gateway HTTP ${res.status}: ${(res.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, res.status);
+        }
+        let json: any;
+        try { json = JSON.parse(res.body); } catch {
+          throw new AcquisitionError('EMPTY_RESPONSE', `Booking.com flights gateway returned non-JSON (HTTP ${res.status}): ${(res.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, res.status);
+        }
+        const items = parseBookingFlights(json, ctx.source, from, to, String(rt.from), String(rt.to), dep);
+        if (items.length === 0) {
+          // Gate open but shape drifted (or genuinely no fares): surface a
+          // snippet so the next session can extend the parser with evidence.
+          const snippet = (res.body || '').replace(/\s+/g, ' ').slice(0, 200);
+          throw new AcquisitionError('EMPTY_RESPONSE', `Booking.com flights gateway responded 200 but parsed 0 itineraries for ${from}-${to} ${dep}. Body head: ${snippet}`);
+        }
+        return items;
       },
     },
     {

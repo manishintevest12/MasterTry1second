@@ -4977,7 +4977,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num11 = (x) => {
+  const num12 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -4998,17 +4998,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num11(rating.value),
-      ratingCount: num11(rating.count),
-      pricePerNight: num11(pricing.bookingPrice),
-      tax: num11(tax.total_tax),
-      priceInclusive: num11(tax.final_price_with_tax),
-      slashedPrice: num11(pricing.slashedPrice),
-      discountPercentage: num11(pricing.discountPercentage),
+      rating: num12(rating.value),
+      ratingCount: num12(rating.count),
+      pricePerNight: num12(pricing.bookingPrice),
+      tax: num12(tax.total_tax),
+      priceInclusive: num12(tax.final_price_with_tax),
+      slashedPrice: num12(pricing.slashedPrice),
+      discountPercentage: num12(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num11(geo.lat ?? geo.latitude),
-      lon: num11(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num12(geo.lat ?? geo.latitude),
+      lon: num12(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -8108,6 +8108,130 @@ var init_agodaFlights = __esm({
   }
 });
 
+// server/workers/parsers/bookingFlights.ts
+function bookingFlightsApiUrl(from, to, dep) {
+  const t = Date.now();
+  return `https://flights.booking.com/api/flights/?type=ONEWAY&adults=1&cabinClass=ECONOMY&depart=${encodeURIComponent(dep)}&from=${encodeURIComponent(from)}.AIRPORT&to=${encodeURIComponent(to)}.AIRPORT&chal_t=${t}&force_referer=&enableVI=1&search_source=user`;
+}
+function bookingFlightsSrpUrl(from, to, dep) {
+  return `https://flights.booking.com/airplane-flights/${from}.${to}/${dep}?type=ONEWAY&adults=1&cabinClass=ECONOMY`;
+}
+function hhmm2(v) {
+  if (!v) return "";
+  if (typeof v === "string") return v.slice(11, 16);
+  if (typeof v === "object") {
+    const t = str(v.time);
+    if (/^\d{1,2}:\d{2}/.test(t)) return t.slice(0, 5);
+  }
+  return "";
+}
+function byId(list) {
+  const m = /* @__PURE__ */ new Map();
+  for (const el of asArray(list)) {
+    const id = str(el?.id);
+    if (id) m.set(id, el);
+  }
+  return m;
+}
+function parseSegments(leg, segMap) {
+  const out = [];
+  for (const sid of asArray(leg?.segments)) {
+    const seg = segMap.get(str(sid)) ?? (typeof sid === "object" ? sid : void 0);
+    if (!seg) continue;
+    const carrierCode = str(seg?.carrierCode) || str(seg?.carriers?.marketing?.[0]) || str(seg?.carriers?.[0]) || str(seg?.marketingCarrier?.code) || str(seg?.carrier?.code);
+    const flightNumber = str(seg?.flightNumber) || str(seg?.flightNo);
+    const dep = hhmm2(seg?.departureTime ?? seg?.departTime);
+    const arr = hhmm2(seg?.arrivalTime ?? seg?.arriveTime);
+    if (!flightNumber || !dep) continue;
+    out.push({ carrierCode, flightNumber, dep, arr });
+  }
+  return out;
+}
+function parseBookingFlights(json, source, fromCode, toCode, fromLabel, toLabel, dateIso, cap = 40) {
+  if (!json || typeof json !== "object") return [];
+  const currency = str(json?.currency || json?.currencyCode).toUpperCase();
+  if (currency && currency !== "INR") return [];
+  const legs = byId(json?.legs);
+  const segMap = byId(json?.segments);
+  const carriers = {};
+  for (const c of asArray(json?.carriers)) carriers[str(c?.id)] = c;
+  const flights = asArray(json?.flights).filter(Boolean);
+  if (!flights.length) return [];
+  const groupOrder = [
+    ...asArray(json?.groups?.cheapest).map(str),
+    ...asArray(json?.groups?.best).map(str),
+    ...asArray(json?.groups?.recommended).map(str),
+    ...asArray(json?.groups?.other).map(str)
+  ];
+  const idSet = new Set(groupOrder);
+  const ordered = [
+    ...groupOrder.map((id) => flights.find((f) => str(f?.id) === id)).filter(Boolean),
+    ...flights.filter((f) => !idSet.has(str(f?.id)))
+  ];
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${fromLabel} \u2192 ${toLabel}`;
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const f of ordered) {
+    if (out.length >= cap) break;
+    const price = num9(f?.priceMajor) + num9(f?.priceMinor) / 100;
+    if (!(price > 0) || price < 500 || price > 5e5) continue;
+    const legIds = asArray(f?.legs).map(str);
+    const legObjs = legIds.map((id) => legs.get(id)).filter(Boolean);
+    if (!legObjs.length) continue;
+    if (legObjs.length > 1) continue;
+    const segs = parseSegments(legObjs[0], segMap);
+    if (!segs.length) continue;
+    const first = segs[0];
+    const last = segs[segs.length - 1];
+    const carrierId = str(legObjs[0]?.carrier);
+    const carrierInfo = carriers[carrierId];
+    const carrierName = str(carrierInfo?.name) || str(carrierInfo?.displayName) || first.carrierCode || "Booking.com";
+    const carrierCode = first.carrierCode || (carrierName.length <= 3 ? carrierName : "");
+    const flightNos = segs.map((s) => `${s.carrierCode || carrierCode}${s.flightNumber}`).join("-");
+    const key = `${flightNos}|${first.dep}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const stops = segs.length - 1;
+    const dur = num9(legObjs[0]?.duration);
+    out.push(newRawItem(source, {
+      title: `${carrierName} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
+      brand: String(carrierName).slice(0, 80),
+      price: Math.round(price),
+      currency: "INR",
+      seller: "Booking.com",
+      sellerUrl: bookingFlightsSrpUrl(fromCode, toCode, dateIso),
+      travel: { route: `${fromLabel.toLowerCase()} to ${toLabel.toLowerCase()}`, date: dateIso, seatType: "economy" },
+      attributes: {
+        route: routeLabel,
+        travel_date: dateIso,
+        airline: String(carrierName),
+        ...carrierCode ? { airline_code: String(carrierCode) } : {},
+        flight_number: flightNos,
+        departure: String(first.dep),
+        arrival: String(last.arr),
+        stops: String(stops),
+        ...dur ? { duration_minutes: String(Math.round(dur)) } : {},
+        price_basis: `live all-inclusive ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on Booking.com's flight search on ${today2} (Booking.com is the selling website)`,
+        data_note: `Fare acquired via Booking.com's flight search API on ${today2}; the ticket is SOLD by Booking.com. Price may change at checkout.`
+      }
+    }));
+  }
+  return out;
+}
+var num9, str, asArray;
+var init_bookingFlights = __esm({
+  "server/workers/parsers/bookingFlights.ts"() {
+    init_contract();
+    num9 = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    str = (v) => v == null ? "" : String(v).trim();
+    asArray = (v) => Array.isArray(v) ? v : [];
+  }
+});
+
 // server/workers/parsers/viaFlights.ts
 function viaFareCalendarUrl() {
   return `${VIA_BASE}/apiv2/flight/fare-calendar?authToken=${VIA_AUTH_TOKEN}&requestSource=NODE_B2C&flowType=NODE&ajax=true&jsonData=true&__xreq__=true`;
@@ -8199,7 +8323,7 @@ function viaSearchItems(journeys, source, fromCity, toCity, fromCode, toCode, de
     const arr = j.legs[j.legs.length - 1].arrTime;
     const stops = j.legs.length - 1;
     const airline = j.legs[0].carrierName;
-    const hhmm3 = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
+    const hhmm4 = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
     return newRawItem(source, {
       title: `${airline} ${fno} \xB7 ${routeLabel}`,
       brand: airline,
@@ -8214,7 +8338,7 @@ function viaSearchItems(journeys, source, fromCity, toCity, fromCode, toCode, de
         flight_number: fno,
         departure: dep,
         arrival: arr,
-        duration: hhmm3(j.durationMin),
+        duration: hhmm4(j.durationMin),
         stops: String(stops),
         seats_left: j.seatsLeft > 0 ? String(j.seatsLeft) : "",
         fare_class: j.fareType,
@@ -8318,7 +8442,7 @@ function airlineName(code, map) {
   if (e?.name) return e.name;
   return code;
 }
-function hhmm2(iso2, hm) {
+function hhmm3(iso2, hm) {
   return /^\d{4}-\d{2}-\d{2}$/.test(iso2) ? `${iso2} ${hm}` : `${iso2} ${hm}`.trim();
 }
 function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
@@ -8376,8 +8500,8 @@ function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
         attributes: {
           airline: name,
           flight_number: `${ac}${fl}`,
-          departure: hhmm2(depDate, String(first.dd || "")),
-          arrival: hhmm2(String(last.adt || "").slice(0, 10), String(last.ad || "")),
+          departure: hhmm3(depDate, String(first.dd || "")),
+          arrival: hhmm3(String(last.adt || "").slice(0, 10), String(last.ad || "")),
           duration: String(od.tdu || first.du || ""),
           stops: String(stops),
           origin: String(first.dac || ""),
@@ -9246,9 +9370,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     const last = legs[legs.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
-    const num11 = String(first?.flightNumber || "").trim();
+    const num12 = String(first?.flightNumber || "").trim();
     const carrier = String(first?.carrierCode || "AI");
-    if (!depTime || !arrTime || !num11) continue;
+    if (!depTime || !arrTime || !num12) continue;
     const validity = first?.validityPeriod || {};
     const starts = String(validity.start || "").slice(0, 10);
     const ends = String(validity.end || "").slice(0, 10);
@@ -9261,7 +9385,7 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     }
     const durSecs = Number(entry?.duration ?? first?.flightDuration);
     out.push({
-      flightNo: `${carrier}${num11}`,
+      flightNo: `${carrier}${num12}`,
       dateIso: wantDateIso,
       depTime,
       arrTime,
@@ -14585,6 +14709,7 @@ var init_flights = __esm({
     init_budgetAirFlights();
     init_flightsMojo();
     init_agodaFlights();
+    init_bookingFlights();
     init_viaFlights();
     init_yatraFlights();
     init_goibiboFlights();
@@ -16416,18 +16541,73 @@ var init_flights = __esm({
           }
         },
         {
-          // Owner 24 Oct OTA expansion: Booking.com flights. flights.booking.com
-          // answers HTTP 202 (bot challenge) on datacenter IPs — the same edge
-          // family that gates the hotel vertical. Presence row keeps brand visible.
+          // Owner OTA expansion (24 Oct probe, 25 Oct full-flow). Booking.com
+          // flights fronts a Kayak-family JSON API discovered from the site's own
+          // XHR: GET /api/flights/?type=ONEWAY&...&chal_t=<ms>. The sandbox IP is
+          // gated (202 challenge / 429 rate limit), so this is a SELF-DETECTING
+          // full-flow probe (MMT pattern): warm the edge for the bkng cookie,
+          // replay the gateway, and emit priced rows the moment the production
+          // Hostinger IP is not gated. Kayak-shaped responses are parsed
+          // defensively; unparseable-but-open bodies surface in the log so the
+          // parser can be extended without fresh recon.
           sourceId: "w_flights_bookingcom",
-          name: "Flights worker: Booking.com flights (probe)",
+          name: "Flights worker: Booking.com flights (full-flow probe)",
           priority: 31,
-          run: async () => {
-            const res = await cffiFetch("https://flights.booking.com/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 202 || res.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE",
-              res.status === 202 || res.status === 403 ? "Booking.com flights edge returns a bot challenge to datacenter IPs (HTTP " + res.status + ")." : "Booking.com flights rendered no browserless fares."
-            );
+          maxPerMinute: 4,
+          timeoutMs: 3e4,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            const from = fromA.code;
+            const to = toA.code;
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            let jar = {};
+            try {
+              const warm = await cffiFetch("https://flights.booking.com/", { impersonate: "chrome", timeoutMs: 12e3, returnCookies: true });
+              jar = warm.cookies || {};
+            } catch {
+            }
+            const apiHeaders = {
+              Accept: "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+              Referer: bookingFlightsSrpUrl(from, to, dep)
+            };
+            let res;
+            try {
+              res = await cffiFetch(bookingFlightsApiUrl(from, to, dep), {
+                impersonate: "chrome",
+                timeoutMs: 22e3,
+                headers: apiHeaders,
+                ...Object.keys(jar).length ? { cookies: jar } : {}
+              });
+            } catch (e) {
+              throw new AcquisitionError("SERVER_ERROR", `Booking.com flights gateway unreachable: ${String(e?.message || e)}`);
+            }
+            if (res.status === 202 || res.status === 403) {
+              throw new AcquisitionError("ACCESS_CHALLENGE", `Booking.com flights edge returned a bot challenge (HTTP ${res.status}); full-flow probe stays armed and self-activates when the gate lifts.`, res.status);
+            }
+            if (res.status === 429) {
+              throw new AcquisitionError("RATE_LIMITED", `Booking.com flights gateway rate-limited this IP (HTTP 429); backoff will retry.`, res.status);
+            }
+            if (res.status !== 200) {
+              throw new AcquisitionError("SERVER_ERROR", `Booking.com flights gateway HTTP ${res.status}: ${(res.body || "").replace(/\s+/g, " ").slice(0, 160)}`, res.status);
+            }
+            let json;
+            try {
+              json = JSON.parse(res.body);
+            } catch {
+              throw new AcquisitionError("EMPTY_RESPONSE", `Booking.com flights gateway returned non-JSON (HTTP ${res.status}): ${(res.body || "").replace(/\s+/g, " ").slice(0, 160)}`, res.status);
+            }
+            const items = parseBookingFlights(json, ctx.source, from, to, String(rt.from), String(rt.to), dep);
+            if (items.length === 0) {
+              const snippet = (res.body || "").replace(/\s+/g, " ").slice(0, 200);
+              throw new AcquisitionError("EMPTY_RESPONSE", `Booking.com flights gateway responded 200 but parsed 0 itineraries for ${from}-${to} ${dep}. Body head: ${snippet}`);
+            }
+            return items;
           }
         },
         {
@@ -18297,10 +18477,10 @@ function decodeRapidoFareQuotes(bytes) {
       const fn = tag >>> 3, wt = tag & 7;
       if (wt === 2) {
         const len = vint();
-        const str3 = new TextDecoder().decode(q3.slice(j, j + len));
+        const str4 = new TextDecoder().decode(q3.slice(j, j + len));
         j += len;
-        if (fn === 1) out.parentServiceId = str3;
-        if (fn === 2) out.serviceId = str3;
+        if (fn === 1) out.parentServiceId = str4;
+        if (fn === 2) out.serviceId = str4;
       } else if (wt === 1) {
         const val = qd.getFloat64(j, true);
         j += 8;
@@ -18390,15 +18570,15 @@ async function rapidoServiceCatalog(lat, lng) {
     throw new Error("Rapido services non-JSON");
   }
   const list = Array.isArray(j?.data?.data) ? j.data.data : [];
-  const byId = /* @__PURE__ */ new Map();
+  const byId2 = /* @__PURE__ */ new Map();
   for (const s of list) {
     const id = String(s?._id || "");
     if (!id) continue;
-    byId.set(id, { id, name: String(s.name || ""), displayName: String(s.displayName || s.name || id), parentServiceId: String(s.parentServiceId || "") });
+    byId2.set(id, { id, name: String(s.name || ""), displayName: String(s.displayName || s.name || id), parentServiceId: String(s.parentServiceId || "") });
   }
-  if (!byId.size) throw new Error("Rapido services catalog empty");
-  servicesCache.set(key, { at: Date.now(), byId });
-  return byId;
+  if (!byId2.size) throw new Error("Rapido services catalog empty");
+  servicesCache.set(key, { at: Date.now(), byId: byId2 });
+  return byId2;
 }
 async function rapidoGuestFares(pickup, drop) {
   const mod = await initThiqa();
@@ -22093,9 +22273,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num9(p.pricing?.discount?.prim_price?.sp);
+      const sp = num10(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num9(p.pricing?.discount?.mrp);
+      const mrp = num10(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -22131,11 +22311,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num9;
+var num10;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num9 = (v) => {
+    num10 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -24135,7 +24315,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num11 = (key) => {
+  const num12 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -24146,8 +24326,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num11("servicecount")) || 0,
-    operators: field("operators") || num11("operators") || "",
+    servicecount: Number(num12("servicecount")) || 0,
+    operators: field("operators") || num12("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -31455,9 +31635,9 @@ function safeParse(v) {
 }
 async function upsertTopPick(input) {
   const vertical = vert(input.vertical);
-  const partner_name = str(input.partner_name, 120);
-  const headline = str(input.headline, 200);
-  const destination = str(input.destination_url, 500);
+  const partner_name = str2(input.partner_name, 120);
+  const headline = str2(input.headline, 200);
+  const destination = str2(input.destination_url, 500);
   if (!partner_name) return { ok: false, error: "Partner name is required" };
   if (!headline) return { ok: false, error: "Headline is required" };
   if (!destination) return { ok: false, error: "Destination URL is required" };
@@ -31469,17 +31649,17 @@ async function upsertTopPick(input) {
   const values = [
     vertical,
     partner_name,
-    str(input.partner_code, 16),
-    str(input.badge_text, 60) || "Sponsored Top Pick",
+    str2(input.partner_code, 16),
+    str2(input.badge_text, 60) || "Sponsored Top Pick",
     headline,
-    str(input.offer_text, 400),
-    str(input.price_badge, 60),
+    str2(input.offer_text, 400),
+    str2(input.price_badge, 60),
     perks,
-    str(input.cta_text, 80) || "View Deal",
+    str2(input.cta_text, 80) || "View Deal",
     destination,
-    str(input.image_url, 500),
-    str(input.logo_bg, 40) || "bg-slate-900",
-    str(input.logo_text, 8),
+    str2(input.image_url, 500),
+    str2(input.logo_bg, 40) || "bg-slate-900",
+    str2(input.logo_text, 8),
     rating,
     Number(input.position ?? 0) || 0,
     input.is_active === false ? 0 : 1
@@ -31523,8 +31703,8 @@ async function upsertAdSlot(input) {
   const slot_key = vert(input.slot_key);
   if (!/^[a-z0-9_-]{2,60}$/.test(slot_key)) return { ok: false, error: "Slot key must be 2-60 chars (a-z, 0-9, -, _)" };
   if (input.provider === "adsense") {
-    const client = str(input.adsense_client, 60);
-    const slot = str(input.adsense_slot, 60);
+    const client = str2(input.adsense_client, 60);
+    const slot = str2(input.adsense_slot, 60);
     if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
     if (!/^[0-9]{6,20}$/.test(slot || "")) return { ok: false, error: "AdSense slot id must be numeric" };
     const store3 = getStore();
@@ -31559,14 +31739,14 @@ async function upsertAdSlot(input) {
   }
   return { ok: true };
 }
-var vert, str;
+var vert, str2;
 var init_placements = __esm({
   "server/marketing/placements.ts"() {
     init_db();
     init_cachedSections();
     init_affiliateNetwork();
     vert = (v) => String(v ?? "").trim().toLowerCase();
-    str = (v, max) => {
+    str2 = (v, max) => {
       const s = String(v ?? "").trim();
       return s ? s.slice(0, max) : null;
     };
@@ -32069,9 +32249,9 @@ function statedDiscountPct(attributes) {
   if (!att || typeof att !== "object") return 0;
   const raw = att.discount ?? att.discount_pct ?? att.discount_percentage;
   if (raw == null) return 0;
-  const str3 = String(raw);
-  if (/up\s*to/i.test(str3)) return 0;
-  const m = str3.match(/(\d+(?:\.\d+)?)\s*%?/);
+  const str4 = String(raw);
+  if (/up\s*to/i.test(str4)) return 0;
+  const m = str4.match(/(\d+(?:\.\d+)?)\s*%?/);
   const pct = m ? Math.round(parseFloat(m[1])) : 0;
   return pct >= 1 && pct <= 95 ? pct : 0;
 }
@@ -32209,7 +32389,7 @@ async function resolveMerchantLogo(row) {
 function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
-  const dv = num10(row.discount_value);
+  const dv = num11(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
   const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
@@ -32302,7 +32482,7 @@ async function fetchAffiliateRows(limit) {
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
       []
     );
-    rows.sort((a, b) => (num10(b.discount_value) ?? 0) - (num10(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    rows.sort((a, b) => (num11(b.discount_value) ?? 0) - (num11(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
   } catch (e) {
     log.debug("Showcase", "affiliate pool query failed", { error: String(e).slice(0, 100) });
@@ -32563,7 +32743,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
+var num11, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -32571,7 +32751,7 @@ var init_showcase = __esm({
     init_deeplink();
     init_merchantCrispLogo();
     init_merchantLogos();
-    num10 = (v) => {
+    num11 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -32582,8 +32762,8 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf = (r) => num10(r.effective_price) ?? num10(r.mandatory_total) ?? 0;
-    mrpOf = (r) => num10(r.list_price) ?? 0;
+    priceOf = (r) => num11(r.effective_price) ?? num11(r.mandatory_total) ?? 0;
+    mrpOf = (r) => num11(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
       if (m && m > p) return (m - p) / m;
@@ -34486,12 +34666,12 @@ async function ensureLeadsTable() {
   ensured4 = true;
 }
 function validateLead(i) {
-  const firstName = str2(i.firstName, 80);
-  const lastName = str2(i.lastName, 80);
+  const firstName = str3(i.firstName, 80);
+  const lastName = str3(i.lastName, 80);
   const source = ["lead_form", "partner_inquiry", "cpl"].includes(i.source) ? i.source : "lead_form";
   if (source === "partner_inquiry") {
-    if (!str2(i.business, 160)) return { ok: false, error: "Business name is required" };
-    if (!str2(i.email, 160) && !str2(i.phone, 20)) return { ok: false, error: "Email or phone is required" };
+    if (!str3(i.business, 160)) return { ok: false, error: "Business name is required" };
+    if (!str3(i.email, 160) && !str3(i.phone, 20)) return { ok: false, error: "Email or phone is required" };
   } else {
     if (!firstName) return { ok: false, error: "First name is required" };
     if (!lastName) return { ok: false, error: "Last name is required" };
@@ -34501,13 +34681,13 @@ function validateLead(i) {
       const salary = Number(i.salary);
       if (!Number.isFinite(salary) || salary < 0) return { ok: false, error: "Salary must be zero or more" };
     }
-    if (!str2(i.location, 120)) return { ok: false, error: "Location is required" };
+    if (!str3(i.location, 120)) return { ok: false, error: "Location is required" };
     let digits = String(i.phone || "").replace(/\D/g, "");
     if (!digits) return { ok: false, error: "Mobile number is required" };
     if (/^(91|0)/.test(digits) && digits.length === 12 || /^0/.test(digits) && digits.length === 11) digits = digits.replace(/^(91|0)/, "");
     if (!/^[6-9]\d{9}$/.test(digits))
       return { ok: false, error: "Enter a valid 10-digit Indian mobile number" };
-    const email = str2(i.email, 160);
+    const email = str3(i.email, 160);
     if (!email) return { ok: false, error: "Email is required" };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email address" };
     if (i.vertical && !VERTICALS.includes(i.vertical)) return { ok: false, error: "Unsupported vertical" };
@@ -34525,21 +34705,21 @@ async function saveLead(i) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
     [
       c.source || "lead_form",
-      str2(c.vertical, 20),
-      str2(c.serviceType, 160),
-      str2(c.accountType, 20),
-      str2(c.firstName, 80),
-      str2(c.lastName, 80),
+      str3(c.vertical, 20),
+      str3(c.serviceType, 160),
+      str3(c.accountType, 20),
+      str3(c.firstName, 80),
+      str3(c.lastName, 80),
       c.age ?? null,
       c.salary ?? null,
-      str2(c.location, 120),
-      str2(c.phone, 20),
-      str2(c.email, 160),
-      str2(c.business, 160),
-      str2(c.website, 200),
-      str2(c.category, 60),
-      str2(c.message, 1e3),
-      str2(c.destUrl, 600)
+      str3(c.location, 120),
+      str3(c.phone, 20),
+      str3(c.email, 160),
+      str3(c.business, 160),
+      str3(c.website, 200),
+      str3(c.category, 60),
+      str3(c.message, 1e3),
+      str3(c.destUrl, 600)
     ]
   );
   const r = result;
@@ -34575,13 +34755,13 @@ async function updateLeadStatus(id, status) {
   const s = ["new", "contacted", "converted", "closed"].includes(status) ? status : "new";
   await getStore().execute("UPDATE leads SET status = ? WHERE id = ?", [s, Number(id) || 0]);
 }
-var ensured4, VERTICALS, str2;
+var ensured4, VERTICALS, str3;
 var init_leads = __esm({
   "server/marketing/leads.ts"() {
     init_db();
     ensured4 = false;
     VERTICALS = ["loans", "insurance", "creditcards", "account"];
-    str2 = (v, max) => {
+    str3 = (v, max) => {
       const s = String(v ?? "").trim();
       return s ? s.slice(0, max) : null;
     };
@@ -37215,7 +37395,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num11 = (v) => {
+    const num12 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -37226,8 +37406,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num11(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num11(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num12(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num12(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
