@@ -274,7 +274,15 @@ class _CompareScreenState extends State<CompareScreen> {
     });
     _bgPoll?.cancel();
     try {
-      _res = await _state.live(_meta.id, q, depart: _iso(_date), force: force);
+      // Explicit PUDO (owner 25 Oct): for cab searches send the exact picker
+      // labels too — the server geocodes them city-biased instead of regex-
+      // extracting the raw query ("Rajwada" alone geocoded to Nashik).
+      final isCab = _meta.kind == SearchKind.cab;
+      _res = await _state.live(_meta.id, q,
+          depart: _iso(_date),
+          force: force,
+          from: isCab && _from.text.trim().isNotEmpty ? _from.text.trim() : null,
+          to: isCab && _to.text.trim().isNotEmpty ? _to.text.trim() : null);
 
       _shownCacheKey = _state.cacheQuery[_meta.id];
       // Owner 23 Oct (loans/hotels 'results nahi dikhte' on device): the

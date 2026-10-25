@@ -211,7 +211,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Runs (or reuses) the live search for a vertical, exactly like the website's triggerLiveLocationScrape.
-  Future<LiveResponse> live(String v, String query, {String? depart, String? returnDate, bool force = false}) async {
+  Future<LiveResponse> live(String v, String query, {String? depart, String? returnDate, bool force = false, String? from, String? to}) async {
     final key = v == 'movies' ? 'movie' : v;
     final q = query.trim().isEmpty ? defaultQueryFor(key, city) : query.trim();
     lastQuery[key] = q; // sticky: this vertical reopens on its own last search
@@ -222,12 +222,17 @@ class AppState extends ChangeNotifier {
       // Progressive partial rows (no seller quotes yet) are never a fresh
       // hit — paint them, but revalidate in the background like any stale
       // response so real quotes with working buttons land on their own.
-      if (age <= freshTtlMs(key) && !hit.pendingRefresh) return hit;
+      // Thin-response poison guard (owner 25 Oct "app pr ek hi result"): a
+      // "completed" snapshot with <=2 rows (403-era tarpit: 1 JioMart row, 11
+      // sources "verified") must never count as a FRESH hit — paint it
+      // instantly but revalidate quietly in the background like a stale one,
+      // so the healthy multi-row scan replaces it on its own.
+      if (age <= freshTtlMs(key) && !hit.pendingRefresh && hit.items.length >= 3) return hit;
       // Stale-but-valid: paint INSTANTLY from cache and refresh quietly in the
       // background (web parity: never make the user watch a spinner for a
       // result we already have on screen).
       if (_inFlight[cacheKey] == null) {
-        unawaited(_fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate));
+        unawaited(_fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate, from: from, to: to));
       }
       return hit;
     }
@@ -246,7 +251,7 @@ class AppState extends ChangeNotifier {
         try {
           // 1) WEB PARITY: live scrape pipeline first (banking catalogue).
           var res = await api
-              .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate);
+              .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate, from: from, to: to);
           // 2) Enrichment fallback: admin deals registry only when the scrape
           //    honestly returned zero rows (never mixed into a live result).
           if (res.items.isEmpty) {
@@ -266,7 +271,7 @@ class AppState extends ChangeNotifier {
       _inFlight[cacheKey] = f;
       return f;
     }
-    final f = _fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate);
+    final f = _fetchAndStore(key, cacheKey, q, depart: depart, returnDate: returnDate, from: from, to: to);
     _inFlight[cacheKey] = f;
     return f;
   }
@@ -284,14 +289,19 @@ class AppState extends ChangeNotifier {
     String q, {
     String? depart,
     String? returnDate,
+    String? from,
+    String? to,
   }) async {
     try {
       final res = await api
-          .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate);
+          .live(key, q, city: city, pincode: pincode, lat: pickLat, lng: pickLng, depart: depart, returnDate: returnDate, from: from, to: to);
       cache[key] = res;
       cacheQuery[key] = cacheKey;
       cacheAt[key] = _nowMs;
-      if (!res.pendingRefresh) _scheduleDiskSave();
+      // Thin-response poison guard (owner 25 Oct): never persist a "completed"
+      // <=2-row snapshot to disk — a poisoned entry survives app restarts and
+      // re-serves a single stale row on every search for that query.
+      if (!res.pendingRefresh && res.items.length >= 3) _scheduleDiskSave();
       notifyListeners();
       return res;
     } finally {

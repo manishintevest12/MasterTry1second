@@ -57,6 +57,10 @@ export interface ParsedQuery {
   travelDates?: { depart?: string; return?: string };
   parties?: { passengers?: number; guests?: number };
   configuration?: Record<string, string>; // variant/config attributes (color, size, storage...)
+  /** Explicit pickup/drop labels (cab, owner 25 Oct): set by /api/search and
+   * /api/scrape/live from body.from/body.to — the cab worker prefers these
+   * picker-provided labels over regex route extraction. */
+  pudo?: { from?: string; to?: string };
 }
 
 // ============ Acquisition ============

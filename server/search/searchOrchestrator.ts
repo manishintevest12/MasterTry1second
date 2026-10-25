@@ -47,6 +47,11 @@ export interface SearchInput {
   /** Explicit travel dates from the frontend (YYYY-MM-DD); override defaults when present. */
   travelDates?: { depart?: string; return?: string };
   guests?: number;
+  /** Explicit pickup/drop labels (cab, owner 25 Oct): the app's granular picker
+   * knows the exact Photon label + city; regex route extraction from rawQuery
+   * loses the city for bare locality names ("Rajwada" -> Nashik). */
+  from?: string;
+  to?: string;
 }
 
 function parseCatalogueAttributes(raw: unknown): Record<string, string> {
@@ -146,6 +151,23 @@ export function busSelfHealTtl(vertical: string, response: SearchResponse, ttlSe
     const wasAttempted = attempted.some((x) => String(x).includes(seller));
     if (wasAttempted && !sellers.includes(seller)) return { ttlSec: 120, staleSec: 240 };
   }
+  return { ttlSec, staleSec };
+}
+
+/**
+ * Thin-result poison guard (owner 25 Oct "app pr ek hi result, website pr sb"):
+ * a COMPLETED scan that verified 5+ sources but landed <=2 rows is a tarpit
+ * snapshot (all live sources gated that instant, only a catalogue row
+ * survived) — e.g. the 403-era e-commerce snapshot that served 1 JioMart row
+ * with 11 sources "verified" and stopped the app's poll chain. Cache such a
+ * response for only 2 minutes so the very next poll re-scans and the snapshot
+ * self-heals, instead of serving as a fresh cache hit for the full TTL.
+ * Healthy scans keep the full window.
+ */
+export function thinResultTtl(response: SearchResponse, ttlSec: number, staleSec: number): { ttlSec: number; staleSec: number } {
+  const n = response.results?.length || 0;
+  const succeeded = (response.state?.sourcesSucceeded || []).length;
+  if (n <= 2 && succeeded >= 5) return { ttlSec: 120, staleSec: 240 };
   return { ttlSec, staleSec };
 }
 
@@ -385,6 +407,9 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
     lng: input.lng,
   });
   if (input.vertical) parsed.vertical = input.vertical as any;
+  // Explicit PUDO labels (cab, owner 25 Oct): the app's granular picker sends
+  // from/to directly; the cab worker prefers them over regex route extraction.
+  if (input.from?.trim() && input.to?.trim()) parsed.pudo = { from: input.from.trim().slice(0, 120), to: input.to.trim().slice(0, 120) };
   if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...(input.travelDates.return ? { return: input.travelDates.return } : {}) };
   if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
   if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
@@ -477,7 +502,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
         .then((response) => {
           const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
           if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
-          else { const bt = busSelfHealTtl(vertical, response, t, st); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
+          else { const bs = busSelfHealTtl(vertical, response, t, st); const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
           return response;
         })
         .finally(() => { inflightPipelines.delete(cacheKey); });
@@ -526,7 +551,8 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       if (response.results.length === 0) {
         cachePut(cacheKey, response, 45, 45);
       } else {
-        const bt = busSelfHealTtl(vertical, response, ttlSec, staleSec);
+        const bs = busSelfHealTtl(vertical, response, ttlSec, staleSec);
+        const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
         cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
       }
       return response;

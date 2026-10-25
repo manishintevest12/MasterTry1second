@@ -21,13 +21,17 @@ class _CabApi extends Try1SecondApi {
   Future<LiveResponse> live(
     String vertical,
     String query, {
+
     String city = 'Indore',
     String pincode = '452001',
     double? lat,
     double? lng,
     String? depart,
     String? returnDate,
-  }) async {
+    String? from,
+    String? to,
+  
+}) async {
     return LiveResponse(items, const [], const [], const [], 'test', 5);
   }
 }

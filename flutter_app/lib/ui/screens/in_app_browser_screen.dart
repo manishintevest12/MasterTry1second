@@ -322,12 +322,15 @@ class _HeaderOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Owner 24 Oct ("header ka breadth thora increase kro — website
-              // ka menu bar completely hide ni ho raha"): the strip grew from
-              // 52 to 68 + a 10pt spacer so typical merchant sticky menus
-              // (Amazon/Flipkart ~60-70pt) stay fully behind the overlay.
+              // Owner 25 Oct ("header thora sa chota kro — FROM ka address
+              // hide ho raha hai"): 68 was hiding Ola's route-input area
+              // below the fold; strip 68 -> 56 and the pull-tab spacing
+              // 10 -> 6 so the merchant page's own inputs (FROM/TO on Ola)
+              // clear the overlay. Still tall enough to mask the typical
+              // ~50-56pt merchant menubar; taller menus (24 Oct complaint)
+              // are masked by the strip + tab, not the full 68 anymore.
               SizedBox(
-                height: 68,
+                height: 56,
                 child: Row(children: [
                   const SizedBox(width: 14),
                   const Icon(Icons.travel_explore, size: 20, color: Colors.white70),
@@ -350,12 +353,12 @@ class _HeaderOverlay extends StatelessWidget {
                 ]),
               ),
               // White tab handle centered under the dark strip (owner 23 Oct;
-              // margin 8 -> 10 with the taller strip, owner 24 Oct).
+              // margin trimmed 10 -> 6 with the shorter 25 Oct strip).
               Center(
                 child: Container(
                   width: 36,
                   height: 4.5,
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: 6),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(999),

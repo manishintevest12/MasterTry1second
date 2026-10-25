@@ -18,13 +18,17 @@ class _RecordingApi extends Try1SecondApi {
   Future<LiveResponse> live(
     String vertical,
     String query, {
+
     String city = 'Indore',
     String pincode = '452001',
     double? lat,
     double? lng,
     String? depart,
     String? returnDate,
-  }) async {
+    String? from,
+    String? to,
+  
+}) async {
     queries.add(query);
     return LiveResponse(const [], const [], const [], const [], 'test', 5);
   }

@@ -1070,6 +1070,8 @@ class Try1SecondApi {
     double? lng,
     String? depart,
     String? returnDate,
+    String? from,
+    String? to,
   }) async {
     final dateSensitive = const ['hotels', 'flights', 'bus', 'cab', 'movies', 'movie'].contains(vertical);
     final res = await _post('/api/scrape/live', {
@@ -1080,6 +1082,11 @@ class Try1SecondApi {
       // Exact map pin (MapPinPicker): the engine gets the precise point, not just the city.
       if (lat != null && lng != null) 'coordinates': {'lat': lat, 'lng': lng},
       if (dateSensitive && depart != null) 'travelDates': {'depart': depart, if (returnDate != null) 'return': returnDate},
+      // Explicit PUDO labels (owner 25 Oct): the cab worker geocodes the exact
+      // picker labels city-biased instead of regex-extracting the raw query
+      // ("Rajwada" alone geocoded to Nashik, 467 km from Indore).
+      if (from != null && from.trim().isNotEmpty) 'from': from.trim(),
+      if (to != null && to.trim().isNotEmpty) 'to': to.trim(),
     });
     return LiveResponse.fromJson(res);
   }

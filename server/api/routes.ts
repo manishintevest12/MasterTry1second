@@ -597,6 +597,8 @@ apiRouter.post('/search', async (req, res) => {
       return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
     } : undefined,
     guests: Number(req.body.guests) || undefined,
+    from: String(req.body.from || '').slice(0, 120) || undefined,
+    to: String(req.body.to || '').slice(0, 120) || undefined,
   };
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
@@ -886,6 +888,8 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // Exact map pin (MapPinPicker, 17 Oct): the engine gets the precise point, not just the city.
     lat: typeof req.body.coordinates?.lat === 'number' ? req.body.coordinates.lat : undefined,
     lng: typeof req.body.coordinates?.lng === 'number' ? req.body.coordinates.lng : undefined,
+    from: String(req.body.from || '').slice(0, 120) || undefined,
+    to: String(req.body.to || '').slice(0, 120) || undefined,
   };
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });

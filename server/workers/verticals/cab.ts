@@ -11,7 +11,7 @@ import { indriveCityLookup, indrivePrices, buildIndriveOffers } from '../parsers
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem, SourceConfig } from '../../types';
-import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace } from '../parsers/osmTravel';
+import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace, type GeoPoint } from '../parsers/osmTravel';
 import { geoSearch, geoReverse } from '../../common/geoProxy';
 import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability, buildRapidoIntercityNotice } from '../parsers/rapidoCabs';
 import { rapidoGuestFares, rapidoServiceCatalog, buildRapidoFareRows } from '../parsers/rapidoFares';
@@ -30,7 +30,7 @@ async function rapidoLiveFaresSafe(
   city: string,
 ): Promise<RawSourceItem[]> {
   try {
-    const [pa, pb] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    const [pa, pb] = await Promise.all([geocodePudo(rt.from, city), geocodePudo(rt.to, city)]);
     if (!pa?.lat || !pb?.lat || pa?.lon == null || pb?.lon == null) return [];
     const outcome = await rapidoGuestFares(
       { lat: pa.lat, lng: pa.lon, label: rt.from },
@@ -57,6 +57,38 @@ function routeFromQuery(raw: string): { from: string; to: string } | null {
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|→)\s+(.{2,40})/);
   if (!m) return null;
   return { from: m[1].trim(), to: m[2].trim() };
+}
+
+/**
+ * Owner 25 Oct ("uber aur rapido app pr v real price ni de raha"): a bare
+ * PUDO label like "Rajwada" geocodes to Nashik's Rajwada (467 km away) — every
+ * cab price then goes absurd (Ola rate-card estimated a Rs 9,839 intercity
+ * trip for an 8 km Indore city ride) or vanishes (Rapido fareEstimate 500s on
+ * intercity, Uber rows go presence-only). Bias every PUDO geocode with the
+ * search's own city context: city-scoped lookup first when the label does not
+ * already name the city, bare lookup as the honest fallback.
+ */
+function ctxCity(ctx: any): string | undefined {
+  const c = String(ctx?.query?.location?.city || '').trim();
+  return c || undefined;
+}
+async function geocodePudo(name: string, city?: string): Promise<GeoPoint | null> {
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+  if (city && !clean.toLowerCase().includes(city.toLowerCase())) {
+    const biased = await photonGeocode(`${clean}, ${city}`);
+    if (biased) return biased;
+  }
+  return geocodePlace(clean);
+}
+/** Prefer explicit picker PUDO labels (app sends from/to with full Photon
+ * labels) over regex route extraction from the raw query. */
+function cabRoute(ctx: any): { from: string; to: string } | null {
+  const p = ctx?.query?.pudo;
+  const f = String(p?.from || '').trim().slice(0, 120);
+  const t2 = String(p?.to || '').trim().slice(0, 120);
+  if (f && t2) return { from: f, to: t2 };
+  return routeFromQuery(String(ctx?.query?.rawQuery || ''));
 }
 
 
@@ -192,7 +224,8 @@ async function uberPudoPlace(bias: { lat: number; lon: number }, query: string, 
 /** Returns availability rows from Uber's own guest web catalog. Never throws. */
 async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promise<any[]> {
   try {
-    const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    const city = ctxCity(ctx);
+    const [a, b] = await Promise.all([geocodePudo(rt.from, city), geocodePudo(rt.to, city)]);
     if (!a || !b) return [];
     // Canonical Uber-side place names (best-effort refinement of the deeplink text).
     const [pu, dr] = await Promise.all([uberPudoPlace(a, rt.from, 'PICKUP'), uberPudoPlace(b, rt.to, 'DROPOFF')]);
@@ -467,7 +500,7 @@ async function olaRateCardFallback(ctx: any, rt: { from: string; to: string }, r
     // geographic fallback: geocode pickup, pick the city whose boundary center is nearest? boundaries are polygons; use name distance instead
     throw new AcquisitionError('EMPTY_RESPONSE', `Ola fare unavailable (${reason}); "${rt.from}" is not an Ola operating city in Ola's own BPD registry (${cities.length} IN cities).`);
   }
-  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePlace(rt.from), geocodePlace(rt.to)]);
+  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePudo(rt.from, city.name), geocodePudo(rt.to, city.name)]);
   if (!a || !b) return [];
   const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15_000, headers: { Accept: 'application/json' } });
   if (osrm.status !== 200) throw new AcquisitionError('SERVER_ERROR', `OSRM HTTP ${osrm.status}`, osrm.status);
@@ -529,10 +562,11 @@ export const cabWorker: VerticalWorker = {
       timeoutMs: 40_000,
       run: async (ctx) => {
         const key = String(process.env.OLA_API_KEY || '').trim();
-        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        const rt = cabRoute(ctx);
         if (!rt) return [];
         if (!key) return olaRateCardFallback(ctx, rt, 'OLA_API_KEY not configured in hPanel env');
-        const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+        const city = ctxCity(ctx);
+        const [a, b] = await Promise.all([geocodePudo(rt.from, city), geocodePudo(rt.to, city)]);
         if (!a || !b) return [];
         const url = `https://devapi.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
         const r = await cffiFetch(url, { timeoutMs: 18_000, headers: { 'X-APP-TOKEN': key, Accept: 'application/json' } });
@@ -580,7 +614,7 @@ export const cabWorker: VerticalWorker = {
       maxPerMinute: 10,
       timeoutMs: 40_000,
       run: async (ctx) => {
-        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        const rt = cabRoute(ctx);
         if (!rt) return [];
         let authHeaders: Record<string, string> | null = null;
         const appId = String(process.env.UBER_APPLICATION_ID || '').trim();
@@ -596,7 +630,7 @@ export const cabWorker: VerticalWorker = {
         // replacing the generic presence row entirely.
         const noCredsPath = async (why: string) => uberSsrFallback(ctx, rt, why, await uberGoFlowSafe(ctx, rt));
         if (!authHeaders) return noCredsPath('official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)');
-        const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+        const [a, b] = await Promise.all([geocodePudo(rt.from, ctxCity(ctx)), geocodePudo(rt.to, ctxCity(ctx))]);
         if (!a || !b) return [];
         const apiHost = String(process.env.UBER_API_HOST || 'api.uber.com').trim() || 'api.uber.com'; // set UBER_API_HOST=sandbox-api.uber.com to test against Uber's sandbox
         const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
@@ -670,7 +704,7 @@ export const cabWorker: VerticalWorker = {
       name: 'Cab worker: Rapido live city fares (Bike/Auto/Cab, guest fare API) + availability fallback',
       priority: 15,
       run: async (ctx) => {
-        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        const rt = cabRoute(ctx);
         if (!rt) return [];
         const fetchText = async (url: string): Promise<string> => {
           const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/xml,text/xml,*/*' } });
@@ -773,7 +807,7 @@ export const cabWorker: VerticalWorker = {
       maxPerMinute: 6,
       timeoutMs: 30_000,
       run: async (ctx) => {
-        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        const rt = cabRoute(ctx);
         if (!rt) return [];
         const url = `https://www.bharattaxi.com/${bharatTaxiSlug(cityFromRouteText(rt.from))}/to/${bharatTaxiSlug(cityFromRouteText(rt.to))}`;
         const r = await cffiFetch(url, { impersonate: 'chrome', timeoutMs: 30_000 });
@@ -831,7 +865,7 @@ export const cabWorker: VerticalWorker = {
       maxPerMinute: 10,
       timeoutMs: 30_000,
       run: async (ctx) => {
-        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        const rt = cabRoute(ctx);
         if (!rt) return [];
         const lookup = async (x: string) => {
           const byCity = await indriveCityLookup(cityFromRouteText(x));

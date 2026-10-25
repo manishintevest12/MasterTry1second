@@ -88,12 +88,16 @@ class _CompactCta extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) {
+    // Owner 25 Oct (repeated complaint): the pill STILL rendered full card
+    // width — Container(alignment: center) EXPANDS to the max loose width,
+    // so the 23 Oct 'compact' fix only shrank the height, never the width.
+    // Drop alignment, center the text via vertical padding -> the pill is
+    // content-sized (h30, ~110dp wide) like the web card's small CTA.
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 30,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(color: T1SColors.red, borderRadius: BorderRadius.circular(8)),
         child: Text(label, style: tx(context, 10, w: FontWeight.w900, color: Colors.white)),
       ),
