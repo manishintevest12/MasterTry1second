@@ -42,6 +42,20 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+
+        // Release keystore (25 Oct): Play Console rejected the AAB because it
+        // was signed with the debug alias above ("signed in debug mode").
+        // This is the PERMANENT Play-Store signing key — same key must sign
+        // every future update; back it up (keystore + passwords) alongside
+        // the repo. SHA-1/SHA-256 must be re-registered in Firebase/Google
+        // consoles if login uses them (debug key D1:12:D9...AE:5A stays for
+        // debug builds).
+        create("release") {
+            storeFile = file("try1second-release.keystore")
+            storePassword = "T1sRelease#2026#K3ystore"
+            keyAlias = "try1second"
+            keyPassword = "T1sRelease#2026#K3ystore"
+        }
     }
 
     buildTypes {
@@ -49,8 +63,8 @@ android {
             signingConfig = signingConfigs.getByName("shared")
         }
         release {
-            // TODO: replace with a private release keystore before Play Store upload.
-            signingConfig = signingConfigs.getByName("shared")
+            // Play Store release signing (debug-signing rejected by Play Console).
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
