@@ -1407,6 +1407,7 @@ async function cffiFetch(url, opts = {}) {
     ...opts.body ? { body: opts.body } : {},
     ...opts.cookies ? { cookies: opts.cookies } : {},
     ...opts.returnCookies ? { returnCookies: true } : {},
+    ...opts.returnHeaders ? { returnHeaders: true } : {},
     ...opts.httpVersion ? { httpVersion: opts.httpVersion } : {},
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
     impersonate: opts.impersonate || "safari17_0"
@@ -1434,7 +1435,7 @@ async function cffiFetch(url, opts = {}) {
       clearTimeout(timer);
       try {
         const res = JSON.parse(out || "{}");
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ""), ...res.cookies ? { cookies: res.cookies } : {} });
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ""), ...res.cookies ? { cookies: res.cookies } : {}, ...res.headers ? { headers: res.headers } : {} });
         reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge error: ${res.error || err || "unknown"}`));
       } catch {
         reject(new AcquisitionError("SERVER_ERROR", `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
@@ -8498,6 +8499,111 @@ var init_aixLowFares = __esm({
   }
 });
 
+// server/workers/parsers/aixTripStatus.ts
+function aixTripStatusUrl() {
+  return `${AIX_API_BASE}/b2c-flightstatus/v2/flight/trip-status`;
+}
+function aixTripStatusHeaders() {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Ocp-Apim-Subscription-Key": AIX_SUBSCRIPTION_KEY,
+    "client-id": "AIRASIA-WEB-APP",
+    "referring-client": "https://www.airindiaexpress.com",
+    Origin: "https://www.airindiaexpress.com",
+    Referer: "https://www.airindiaexpress.com/flight-status"
+  };
+}
+function aixTripStatusBody(origin, destination, beginDate) {
+  return JSON.stringify({
+    beginDate,
+    identifier: "",
+    carrierCode: "IX",
+    originStations: [origin],
+    destinationStations: [destination]
+  });
+}
+function localHm(iso2) {
+  const s = String(iso2 || "");
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(s);
+  return m ? `${m[2]}:${m[3]}` : "";
+}
+function parseAixTripStatus(body, wantDateIso) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const envelopes = Array.isArray(d) ? d : [d];
+  const out = [];
+  for (const env of envelopes) {
+    const rows = env?.data;
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const flightNo2 = String(row?.flightNumber || "").trim();
+      if (!flightNo2) continue;
+      const dateIso = String(row?.flightDateLocal || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso) || dateIso !== wantDateIso) continue;
+      const depTime = localHm(row?.originalDepartureTime);
+      const arrTime = localHm(row?.originalArrivalTime);
+      if (!depTime || !arrTime) continue;
+      const durSecs = Number(row?.flyDurationInSecs);
+      out.push({
+        flightNo: flightNo2,
+        dateIso,
+        depTime,
+        arrTime,
+        durationMin: Number.isFinite(durSecs) && durSecs > 0 ? Math.round(durSecs / 60) : 0,
+        fromCode: String(row?.scheduledDeparture?.airportCode || ""),
+        toCode: String(row?.scheduledArrival?.airportCode || "")
+      });
+    }
+  }
+  return out;
+}
+function aixScheduledFareItems(flights, dayFare, source, fromCity, toCity, fromCode, toCode) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const taxesNote = dayFare.taxes !== void 0 ? ` (taxes+fees component \u20B9${dayFare.taxes})` : "";
+  const seats = dayFare.available !== void 0 ? `, ${dayFare.available} seats reported available that day` : "";
+  return flights.map((f) => newRawItem(source, {
+    title: `Air India Express ${fromCity} \u2192 ${toCity} ${f.dateIso} from \u20B9${dayFare.pr} (${f.flightNo}, ${f.depTime}\u2013${f.arrTime})`,
+    brand: "Air India Express",
+    price: dayFare.pr,
+    currency: "INR",
+    seller: "Air India Express",
+    sellerUrl: aixSearchUrl(fromCode, toCode, f.dateIso),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: f.dateIso },
+    attributes: {
+      route: routeLabel,
+      airline: "Air India Express",
+      travel_date: f.dateIso,
+      departure_date: f.dateIso,
+      flight_number: f.flightNo,
+      departure_time: f.depTime,
+      arrival_time: f.arrTime,
+      ...f.durationMin > 0 ? { duration_minutes: String(f.durationMin) } : {},
+      fare_detail: `Air India Express flight ${f.flightNo}, ${fromCode} ${f.depTime} \u2192 ${toCode} ${f.arrTime}${f.durationMin > 0 ? `, ${f.durationMin} min block time` : ""}, lowest economy fare published for ${f.dateIso}${taxesNote}`,
+      fare_class: "lowest economy fare on Air India Express's own fare calendar (per-flight booking fare may differ)",
+      price_basis: `Air India Express fare-calendar price for this route and date, combined with the airline's own flight-status schedule, captured ${today2}`,
+      data_note: `Fare from the airline's fare-calendar API and schedule from the airline's flight-status API on ${today2}${seats}. The fare is the date's lowest published fare; the exact per-flight fare is confirmed on the airline's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `aix-${f.flightNo}-${f.dateIso}-${fromCode}${toCode}`.replace(/\s+/g, "") },
+    evidence: {
+      sourceUrl: aixTripStatusUrl(),
+      extractedFields: ["data[].flightNumber", "data[].originalDepartureTime", "data[].originalArrivalTime", "data[].flyDurationInSecs", "lowFares[].price (INR)"]
+    }
+  }));
+}
+var init_aixTripStatus = __esm({
+  "server/workers/parsers/aixTripStatus.ts"() {
+    init_contract();
+    init_aixLowFares();
+  }
+});
+
 // server/workers/parsers/spiceJetDotRez.ts
 function spiceJetBaseHeaders(authorization, referer) {
   return {
@@ -8754,6 +8860,129 @@ var init_airIndiaFares = __esm({
     init_contract();
     AI_FARES_URL = "https://api.airindia.com/airline-fares/v1/search";
     AI_SUB_KEY = "8ea658f3ac1e44cca129d7ed252d4c42";
+  }
+});
+
+// server/workers/parsers/airIndiaSchedule.ts
+function airIndiaSchedHeaders() {
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "Ocp-Apim-Subscription-Key": AI_SUB_KEY,
+    Origin: "https://www.airindia.com",
+    Referer: "https://www.airindia.com/in/en/book/flight-schedule.html"
+  };
+}
+function airIndiaSchedQuery(origin, destination, departureDate) {
+  return `origin=${origin}&destination=${destination}&departureDate=${departureDate}`;
+}
+function airIndiaSchedSignature(jwt, qs) {
+  const parts = String(jwt || "").split(".");
+  if (parts.length !== 3) return "";
+  let payload = null;
+  try {
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    payload = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
+  } catch {
+    return "";
+  }
+  const token = String(payload?.token || "");
+  const iv = String(payload?.iv || "");
+  return (0, import_crypto7.createHash)("sha256").update(qs + token + iv, "utf8").digest("hex");
+}
+function localHm2(iso2) {
+  const m = /T(\d{2}:\d{2})/.exec(String(iso2 || ""));
+  return m ? m[1] : "";
+}
+function parseAirIndiaSchedules(body, wantDateIso) {
+  let d;
+  try {
+    d = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const entries = Array.isArray(d?.data) ? d.data : [];
+  const out = [];
+  for (const entry of entries) {
+    const legs = entry?.flights;
+    if (!Array.isArray(legs) || !legs.length) continue;
+    const first = legs[0];
+    const last = legs[legs.length - 1];
+    const depTime = localHm2(first?.origin?.departureLocalTime);
+    const arrTime = localHm2(last?.destination?.arrivalLocalTime);
+    const num11 = String(first?.flightNumber || "").trim();
+    const carrier = String(first?.carrierCode || "AI");
+    if (!depTime || !arrTime || !num11) continue;
+    const validity = first?.validityPeriod || {};
+    const starts = String(validity.start || "").slice(0, 10);
+    const ends = String(validity.end || "").slice(0, 10);
+    if (starts && wantDateIso < starts) continue;
+    if (ends && wantDateIso > ends) continue;
+    if (Array.isArray(first?.operatingDays) && first.operatingDays.length) {
+      const dow = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+      const dayName = dow[(/* @__PURE__ */ new Date(`${wantDateIso}T12:00:00Z`)).getUTCDay()];
+      if (!first.operatingDays.map((x) => String(x).toLowerCase()).includes(dayName)) continue;
+    }
+    const durSecs = Number(entry?.duration ?? first?.flightDuration);
+    out.push({
+      flightNo: `${carrier}${num11}`,
+      dateIso: wantDateIso,
+      depTime,
+      arrTime,
+      durationMin: Number.isFinite(durSecs) && durSecs > 0 ? Math.round(durSecs / 60) : 0,
+      stops: Number(entry?.stops ?? first?.stops ?? 0) || 0,
+      aircraft: String(first?.airCraftTypeName || first?.airCraftType || ""),
+      terminal: first?.origin?.airportTerminal ? String(first.origin.airportTerminal) : void 0,
+      operatingDays: Array.isArray(first?.operatingDays) ? first.operatingDays.map((x) => String(x)) : []
+    });
+  }
+  return out;
+}
+function airIndiaScheduledFareItems(flights, dayFare, source, fromCity, toCity, fromCode, toCode) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const taxNote = dayFare.tax !== void 0 ? ` (taxes component \u20B9${dayFare.tax})` : "";
+  return flights.map((f) => newRawItem(source, {
+    title: `Air India ${fromCity} \u2192 ${toCity} ${f.dateIso} from \u20B9${dayFare.pr} (${f.flightNo}, ${f.depTime}\u2013${f.arrTime})`,
+    brand: "Air India",
+    price: dayFare.pr,
+    currency: "INR",
+    seller: "Air India",
+    sellerUrl: airIndiaSearchUrl(fromCode, toCode, f.dateIso),
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: f.dateIso },
+    attributes: {
+      route: routeLabel,
+      airline: "Air India",
+      travel_date: f.dateIso,
+      departure_date: f.dateIso,
+      flight_number: f.flightNo,
+      departure_time: f.depTime,
+      arrival_time: f.arrTime,
+      ...f.durationMin > 0 ? { duration_minutes: String(f.durationMin) } : {},
+      ...f.aircraft ? { aircraft: f.aircraft } : {},
+      ...f.terminal ? { departure_terminal: f.terminal } : {},
+      stops: String(f.stops),
+      fare_detail: `Air India flight ${f.flightNo}${f.aircraft ? `, ${f.aircraft}` : ""}, ${fromCode} ${f.depTime} \u2192 ${toCode} ${f.arrTime}${f.stops > 0 ? `, ${f.stops} stop` : ", nonstop"}${f.terminal ? `, Terminal ${f.terminal}` : ""}, lowest economy one-way fare (incl. taxes) published for ${f.dateIso}${taxNote}`,
+      fare_class: "lowest economy one-way fare on Air India's own fare calendar (per-flight booking fare may differ)",
+      price_basis: `Air India fare-calendar price for this route and date, combined with the airline's own published flight schedule, captured ${today2}`,
+      data_note: `Fare from Air India's fare-calendar API and schedule from Air India's own flight-schedule API on ${today2}. The fare is the date's lowest published one-way fare; the exact per-flight fare is confirmed on the airline's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `airindia-${f.flightNo}-${f.dateIso}-${fromCode}${toCode}`.replace(/\s+/g, "") },
+    evidence: {
+      sourceUrl: AI_SCHED_URL,
+      extractedFields: ["data[].flights[].flightNumber", "data[].flights[].origin.departureLocalTime", "data[].flights[].destination.arrivalLocalTime", "data[].duration (secs)", "fares[].totalPrice.total (INR)"]
+    }
+  }));
+}
+var import_crypto7, AI_SCHED_TOKEN_URL, AI_SCHED_URL;
+var init_airIndiaSchedule = __esm({
+  "server/workers/parsers/airIndiaSchedule.ts"() {
+    init_contract();
+    init_airIndiaFares();
+    import_crypto7 = require("crypto");
+    AI_SCHED_TOKEN_URL = "https://api.airindia.com/flight-information/v1/auth/token";
+    AI_SCHED_URL = "https://api.airindia.com/flight-information/v1/schedules";
   }
 });
 
@@ -14018,8 +14247,10 @@ var init_flights = __esm({
     init_goibiboFlights();
     init_mmtFareCalendar();
     init_aixLowFares();
+    init_aixTripStatus();
     init_spiceJetDotRez();
     init_airIndiaFares();
+    init_airIndiaSchedule();
     init_allianceAir();
     init_fly91Ibe();
     init_sriLankanPlnext();
@@ -14364,6 +14595,32 @@ var init_flights = __esm({
             if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Air India Express fare-calendar HTTP ${status}`, status);
             const fares = parseAixLowFares(body);
             if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Air India Express fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+            const sellable = fares.filter((f) => !f.noFlights && !f.soldOut);
+            const exactFare = sellable.find((f) => f.dt === dep);
+            if (exactFare) {
+              try {
+                for (const a of ["chrome", "safari17_0"]) {
+                  try {
+                    const tr = await cffiFetch(aixTripStatusUrl(), {
+                      method: "POST",
+                      impersonate: a,
+                      timeoutMs: 12e3,
+                      headers: aixTripStatusHeaders(),
+                      body: aixTripStatusBody(fromA.code, toA.code, dep)
+                    });
+                    if (tr.status === 200) {
+                      const flights = parseAixTripStatus(tr.body || "[]", dep);
+                      if (flights.length) {
+                        return aixScheduledFareItems(flights, exactFare, ctx.source, rt.from, rt.to, fromA.code, toA.code);
+                      }
+                      break;
+                    }
+                  } catch {
+                  }
+                }
+              } catch {
+              }
+            }
             return aixDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
@@ -14543,6 +14800,45 @@ var init_flights = __esm({
             if (status !== 200) throw new AcquisitionError("SERVER_ERROR", `Air India fare-calendar HTTP ${status}`, status);
             const fares = parseAirIndiaFares(body);
             if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Air India fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+            const today0 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const exactFare = [...fares].filter((f) => f.dt >= today0).find((f) => f.dt === dep);
+            if (exactFare) {
+              try {
+                const qs = airIndiaSchedQuery(fromA.code, toA.code, dep);
+                for (const imp of ["chrome", "safari17_0"]) {
+                  try {
+                    const t = await cffiFetch(AI_SCHED_TOKEN_URL, {
+                      method: "POST",
+                      impersonate: imp,
+                      timeoutMs: 12e3,
+                      headers: airIndiaSchedHeaders(),
+                      body: "",
+                      returnHeaders: true
+                    });
+                    const jwt = String(t.headers?.["x-access-token"] || t.headers?.["X-Access-Token"] || "");
+                    if (t.status !== 200 || !jwt) break;
+                    const r2 = await cffiFetch(`${AI_SCHED_URL}?${qs}`, {
+                      impersonate: imp,
+                      timeoutMs: 15e3,
+                      headers: {
+                        ...airIndiaSchedHeaders(),
+                        "x-access-token": `Bearer ${jwt}`,
+                        "x-signature": airIndiaSchedSignature(jwt, qs)
+                      }
+                    });
+                    if (r2.status === 200) {
+                      const flights = parseAirIndiaSchedules(r2.body || "{}", dep);
+                      if (flights.length) {
+                        return airIndiaScheduledFareItems(flights, exactFare, ctx.source, rt.from, rt.to, fromA.code, toA.code);
+                      }
+                      break;
+                    }
+                  } catch {
+                  }
+                }
+              } catch {
+              }
+            }
             return airIndiaDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
           }
         },
@@ -15687,7 +15983,7 @@ var init_flights = __esm({
 
 // server/workers/parsers/zomato.ts
 function parseZomatoRestaurants(html, source, searchUrl, platform) {
-  const fingerprint = (0, import_crypto7.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto8.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -15824,10 +16120,10 @@ function parseZomatoMenuPage(html) {
   }
   return { dishes: dishes.slice(0, 400), hints };
 }
-var import_crypto7;
+var import_crypto8;
 var init_zomato = __esm({
   "server/workers/parsers/zomato.ts"() {
-    import_crypto7 = require("crypto");
+    import_crypto8 = require("crypto");
     init_contract();
   }
 });
@@ -15840,7 +16136,7 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   } catch {
     return [];
   }
-  const fingerprint = (0, import_crypto8.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const cards = [];
   const stack = [d?.data];
   while (stack.length) {
@@ -15898,10 +16194,10 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   }
   return out.slice(0, 60);
 }
-var import_crypto8, IMG;
+var import_crypto9, IMG;
 var init_swiggy = __esm({
   "server/workers/parsers/swiggy.ts"() {
-    import_crypto8 = require("crypto");
+    import_crypto9 = require("crypto");
     init_contract();
     IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
   }
@@ -16186,12 +16482,12 @@ function toingItem(source, sourceUrl, rest, di, city, fingerprint, priceBasis) {
   });
 }
 function toingFingerprint(json) {
-  return (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  return (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
 }
-var import_crypto9, TOING_IMG;
+var import_crypto10, TOING_IMG;
 var init_toing = __esm({
   "server/workers/parsers/toing.ts"() {
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     init_contract();
     TOING_IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
   }
@@ -17407,9 +17703,9 @@ async function initThiqa() {
   if (Date.now() < thiqaBrokenUntil) return null;
   try {
     const wasm = Buffer.from(RAPIDO_THIQA_WASM_B64, "base64");
-    const wsha = (0, import_crypto10.createHash)("sha256").update(wasm).digest("hex");
+    const wsha = (0, import_crypto11.createHash)("sha256").update(wasm).digest("hex");
     if (wsha !== RAPIDO_THIQA_WASM_B64_SHA256) throw new Error(`thiqa wasm sha256 mismatch (${wsha})`);
-    const gsha = (0, import_crypto10.createHash)("sha256").update(RAPIDO_THIQA_GLUE, "utf8").digest("hex");
+    const gsha = (0, import_crypto11.createHash)("sha256").update(RAPIDO_THIQA_GLUE, "utf8").digest("hex");
     if (gsha !== RAPIDO_THIQA_GLUE_SHA256) throw new Error(`thiqa glue sha256 mismatch (${gsha})`);
     const dir = import_path3.default.join(import_os.default.tmpdir(), "try1s-rapido-thiqa");
     import_fs2.default.mkdirSync(dir, { recursive: true });
@@ -17436,7 +17732,7 @@ async function signBody(body, sKey, sequence) {
   const mod = await initThiqa();
   if (!mod) return null;
   try {
-    const sig = await mod.getThiqa(body, sKey, sequence, JSON.stringify({ id: (0, import_crypto10.randomUUID)() }));
+    const sig = await mod.getThiqa(body, sKey, sequence, JSON.stringify({ id: (0, import_crypto11.randomUUID)() }));
     if (!sig?.success || !sig.xKm || !sig.xM || !sig.xEkref || !sig.xPm) return null;
     return { "x-km": sig.xKm, "x-m": sig.xM, "x-ekref": sig.xEkref, "x-pm": sig.xPm };
   } catch {
@@ -17681,10 +17977,10 @@ function buildRapidoFareRows(inp) {
   void route;
   return rows;
 }
-var import_crypto10, import_fs2, import_os, import_path3, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
+var import_crypto11, import_fs2, import_os, import_path3, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
 var init_rapidoFares = __esm({
   "server/workers/parsers/rapidoFares.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     import_fs2 = __toESM(require("fs"), 1);
     import_os = __toESM(require("os"), 1);
     import_path3 = __toESM(require("path"), 1);
@@ -17707,7 +18003,7 @@ var init_rapidoFares = __esm({
       appversion: "214",
       internet: "online"
     };
-    DEVICE_ID = `try1s-${(0, import_crypto10.randomUUID)().slice(0, 12)}`;
+    DEVICE_ID = `try1s-${(0, import_crypto11.randomUUID)().slice(0, 12)}`;
     sigCfg = null;
     thiqaMod = null;
     thiqaBrokenUntil = 0;
@@ -20860,7 +21156,7 @@ var init_cab = __esm({
 // server/workers/parsers/bankbazaarInsurance.ts
 function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   const $ = cheerio4.load(html);
-  const fingerprint = (0, import_crypto11.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto12.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -20907,10 +21203,10 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   });
   return out.slice(0, 30);
 }
-var import_crypto11, cheerio4;
+var import_crypto12, cheerio4;
 var init_bankbazaarInsurance = __esm({
   "server/workers/parsers/bankbazaarInsurance.ts"() {
-    import_crypto11 = require("crypto");
+    import_crypto12 = require("crypto");
     cheerio4 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -23244,7 +23540,7 @@ function parseAbhiBusServices(json, source, route) {
   }
   const services = Array.isArray(d?.services) ? d.services : [];
   if (!services.length) return [];
-  const fingerprint = (0, import_crypto12.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto13.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route.fromName)}/${route.fromId}/${encodeURIComponent(route.toName)}/${route.toId}/${route.jdate}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -23304,10 +23600,10 @@ function parseAbhiBusServices(json, source, route) {
   }
   return out.slice(0, 40);
 }
-var import_crypto12;
+var import_crypto13;
 var init_abhibus = __esm({
   "server/workers/parsers/abhibus.ts"() {
-    import_crypto12 = require("crypto");
+    import_crypto13 = require("crypto");
     init_contract();
   }
 });
@@ -23398,7 +23694,7 @@ function parseRedBusSearch(json, source, route) {
   }
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
-  const fingerprint = (0, import_crypto13.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto14.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const slug2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
   const searchUrl = `https://www.redbus.in/bus-tickets/${slug2(route.fromName)}-to-${slug2(route.toName)}.aspx`;
   const out = [];
@@ -23461,10 +23757,10 @@ function parseRedBusSearch(json, source, route) {
   }
   return out;
 }
-var import_crypto13;
+var import_crypto14;
 var init_redbusSearch = __esm({
   "server/workers/parsers/redbusSearch.ts"() {
-    import_crypto13 = require("crypto");
+    import_crypto14 = require("crypto");
     init_contract();
   }
 });
@@ -23985,15 +24281,15 @@ function cardToRawItem(c, source, bankSlug, fingerprintSeed) {
     evidence: {
       sourceUrl: c.cardUrl,
       sourceReference: `${bankSlug}:${c.name}`,
-      rawFingerprint: (0, import_crypto14.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
+      rawFingerprint: (0, import_crypto15.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
       extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : [], ...c.rewardRate ? ["reward_rate"] : [], ...c.apr ? ["apr"] : []]
     }
   });
 }
-var import_crypto14, NA, clean, BANK_NAMES;
+var import_crypto15, NA, clean, BANK_NAMES;
 var init_cardInsider = __esm({
   "server/workers/parsers/cardInsider.ts"() {
-    import_crypto14 = require("crypto");
+    import_crypto15 = require("crypto");
     init_contract();
     NA = /^(n\/?a|not applicable|nil|none|-+)$/i;
     clean = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -24072,15 +24368,15 @@ function pbToRawItem(c, source, bankSlug, seed) {
     evidence: {
       sourceUrl: c.url,
       sourceReference: `${bankSlug}:${c.name}`,
-      rawFingerprint: (0, import_crypto15.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
+      rawFingerprint: (0, import_crypto16.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
       extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : []]
     }
   });
 }
-var import_crypto15, clean2;
+var import_crypto16, clean2;
 var init_paisabazaarCards = __esm({
   "server/workers/parsers/paisabazaarCards.ts"() {
-    import_crypto15 = require("crypto");
+    import_crypto16 = require("crypto");
     init_contract();
     init_cardInsider();
     clean2 = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -24917,11 +25213,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto16, HttpAcquisitionAdapter;
+var cheerio5, import_crypto17, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto16 = require("crypto");
+    import_crypto17 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -24968,7 +25264,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto16.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -25017,10 +25313,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto17, StructuredDataAdapter;
+var import_crypto18, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto17 = require("crypto");
+    import_crypto18 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -25050,7 +25346,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto18.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -25107,10 +25403,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto18, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto19, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto18 = require("crypto");
+    import_crypto19 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -25158,7 +25454,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey2)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto18.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -25182,7 +25478,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto18.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -25349,7 +25645,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto18.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -26031,13 +26327,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto19.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto20.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto19;
+var import_crypto20;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto19 = require("crypto");
+    import_crypto20 = require("crypto");
   }
 });
 
@@ -26339,19 +26635,19 @@ function linkinrTrackingUrl(dest) {
   const c = linkinrCampaignFor(dest);
   if (!c) return null;
   const sub = process.env.LINKINR_SUB_ID || "try1second";
-  const click = import_crypto20.default.randomBytes(4).toString("hex");
+  const click = import_crypto21.default.randomBytes(4).toString("hex");
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
 }
 function linkinrStats() {
   const m = loadRegistry();
   return { campaigns: m.size, domains: m.size, enabled: linkinrEnabled() };
 }
-var import_fs3, import_path4, import_crypto20, import_url, import_meta2, campaignByDomain;
+var import_fs3, import_path4, import_crypto21, import_url, import_meta2, campaignByDomain;
 var init_linkinr = __esm({
   "server/affiliate/linkinr/index.ts"() {
     import_fs3 = __toESM(require("fs"), 1);
     import_path4 = __toESM(require("path"), 1);
-    import_crypto20 = __toESM(require("crypto"), 1);
+    import_crypto21 = __toESM(require("crypto"), 1);
     import_url = require("url");
     import_meta2 = {};
     campaignByDomain = null;
@@ -26455,7 +26751,7 @@ __export(deeplink_exports, {
   safeDomain: () => safeDomain
 });
 function secret() {
-  return process.env.AFFILIATE_SECRET || import_crypto21.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto22.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -26473,15 +26769,15 @@ function createMaskingPointer(destination, opts = {}) {
     return "";
   }
   const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {} }));
-  const sig = import_crypto21.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto22.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 function resolveMaskingPointer(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
-  const expect = import_crypto21.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  if (sig.length !== expect.length || !import_crypto21.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  const expect = import_crypto22.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto22.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -26567,7 +26863,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
-  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto21.default.randomBytes(6).toString("hex"));
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto22.default.randomBytes(6).toString("hex"));
   return out.replace(/\{[a-z0-9_]+\}/gi, "");
 }
 function parseJsonObj(v) {
@@ -26580,7 +26876,7 @@ function parseJsonObj(v) {
   }
 }
 async function recordPointerClick(dest, offerId, network) {
-  const clickId = import_crypto21.default.randomUUID();
+  const clickId = import_crypto22.default.randomUUID();
   try {
     const store2 = getStore();
     await store2.execute(
@@ -26641,11 +26937,11 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto21, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
+var import_crypto22, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
-    import_crypto21 = __toESM(require("crypto"), 1);
+    import_crypto22 = __toESM(require("crypto"), 1);
     init_settings();
     init_linkinr();
     init_ekaro();
@@ -28912,7 +29208,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto22.default.randomUUID();
+  const clickId = import_crypto23.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -28938,10 +29234,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto22, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
+var import_crypto23, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto22 = __toESM(require("crypto"), 1);
+    import_crypto23 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -29850,16 +30146,16 @@ var init_productGrouping = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto23.default.randomBytes(16).toString("hex");
-  const hash = import_crypto23.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto24.default.randomBytes(16).toString("hex");
+  const hash = import_crypto24.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto23.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto23.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto24.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto24.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -29882,7 +30178,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto23.default.randomBytes(32).toString("hex");
+  const token = import_crypto24.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -29922,10 +30218,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto23, SESSION_TTL_SEC;
+var import_crypto24, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto23 = __toESM(require("crypto"), 1);
+    import_crypto24 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -29967,16 +30263,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto24.default.randomBytes(8).toString("hex");
-  const hash = import_crypto24.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto25.default.randomBytes(8).toString("hex");
+  const hash = import_crypto25.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto24.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto25.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto24.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto25.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -30009,7 +30305,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store2.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
-  const code = String(import_crypto24.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto25.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store2.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -30066,10 +30362,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean3}`);
   return { ok: true, email: clean3 };
 }
-var import_crypto24, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto25, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto24 = __toESM(require("crypto"), 1);
+    import_crypto25 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -30118,8 +30414,8 @@ async function verifyFirebaseIdTokenDetailed(idToken, opts = {}) {
     }
     const certPem = certs[header.kid];
     if (!certPem) return { reason: "unknown_signing_key", detail: `kid=${header.kid}` };
-    const publicKey = new import_crypto25.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto25.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto26.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto26.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return { reason: "bad_signature" };
     return {
@@ -30164,8 +30460,8 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const certs = certsOverride || await getGoogleCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto25.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto25.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto26.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto26.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
     return {
@@ -30180,10 +30476,10 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto25, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
+var import_crypto26, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto25 = __toESM(require("crypto"), 1);
+    import_crypto26 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -30273,7 +30569,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store2 = getStore();
-  const key = idempotencyKey || import_crypto26.default.randomUUID();
+  const key = idempotencyKey || import_crypto27.default.randomUUID();
   const prior = await store2.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -30395,7 +30691,7 @@ async function ensureReferralCode(userId) {
   if (existing) return existing;
   for (let attempt = 0; attempt < 6; attempt++) {
     let code = "T1S-";
-    const bytes = import_crypto26.default.randomBytes(6);
+    const bytes = import_crypto27.default.randomBytes(6);
     for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
     try {
       const res = await store2.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
@@ -30431,10 +30727,10 @@ async function referralStats(userId) {
   }
   return { referredCount: Number(referred[0]?.c || 0), referredByCode };
 }
-var import_crypto26, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
+var import_crypto27, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto26 = __toESM(require("crypto"), 1);
+    import_crypto27 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -30720,7 +31016,7 @@ __export(interstitial_exports, {
   resolveInterstitialMeta: () => resolveInterstitialMeta
 });
 function secret2() {
-  return process.env.AFFILIATE_SECRET || import_crypto27.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto28.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url2(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -30735,14 +31031,14 @@ function createInterstitialPointer(url, partner, appScheme) {
     s: String(appScheme || "").slice(0, 500),
     e: Date.now() + INTERSTITIAL_TTL_MS
   }));
-  const sig = import_crypto27.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto28.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
   return `${payload}.${sig}`;
 }
 function resolveInterstitialMeta(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
-  const expect = import_crypto27.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
-  if (m[2].length !== expect.length || !import_crypto27.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
+  const expect = import_crypto28.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
+  if (m[2].length !== expect.length || !import_crypto28.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url2(m[1]));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -30893,10 +31189,10 @@ async function redirectRouteHandler(req, res) {
   }
   res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }
-var import_crypto27, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
+var import_crypto28, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
 var init_interstitial = __esm({
   "server/redirect/interstitial.ts"() {
-    import_crypto27 = __toESM(require("crypto"), 1);
+    import_crypto28 = __toESM(require("crypto"), 1);
     init_placements();
     init_affiliateNetwork();
     init_logger();
@@ -34354,7 +34650,7 @@ async function signInGoogleUser(claims) {
     rows = await store2.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
-  const token = import_crypto28.default.randomBytes(32).toString("hex");
+  const token = import_crypto29.default.randomBytes(32).toString("hex");
   await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -34429,7 +34725,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto28, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits, validHex, bannerGradient;
+var import_express, import_crypto29, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -34445,7 +34741,7 @@ var init_routes = __esm({
     init_authService();
     init_otpService();
     init_firebaseAuth();
-    import_crypto28 = __toESM(require("crypto"), 1);
+    import_crypto29 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
@@ -35777,7 +36073,7 @@ var init_routes = __esm({
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store2.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto28.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto29.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -35785,7 +36081,7 @@ var init_routes = __esm({
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto28.default.randomBytes(32).toString("hex");
+      const token = import_crypto29.default.randomBytes(32).toString("hex");
       await store2.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -36038,7 +36334,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto29.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto30.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -36332,10 +36628,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto29, strip, clip, COUPON_TXT;
+var import_crypto30, strip, clip, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto29 = require("crypto");
+    import_crypto30 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();

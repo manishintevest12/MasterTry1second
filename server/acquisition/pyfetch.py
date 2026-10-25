@@ -81,6 +81,7 @@ def main() -> None:
 
     seed_cookies = req.get("cookies") or {}
     return_cookies = bool(req.get("returnCookies"))
+    return_headers = bool(req.get("returnHeaders"))
 
     def _seed_domain(url: str) -> str:
         """Seed cookies on the registrable domain of the request URL (e.g. .bigbasket.com)."""
@@ -119,6 +120,13 @@ def main() -> None:
                     out["cookies"] = {k: str(v) for k, v in s.cookies.get_dict().items()}
                 except Exception:
                     out["cookies"] = {}
+            if return_headers:
+                try:
+                    # Response headers for flows that mint tokens in headers
+                    # (e.g. Air India /flight-information/v1/auth/token -> x-access-token).
+                    out["headers"] = {str(k): str(v) for k, v in r.headers.items()}
+                except Exception:
+                    out["headers"] = {}
         print(json.dumps(out))
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))

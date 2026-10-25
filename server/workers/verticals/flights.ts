@@ -22,8 +22,10 @@ import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraC
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
 import { parseMmtFareCalendar, mmtFareCalendarUrl, mmtCalendarHeaders, mmtDayFareItems } from '../parsers/mmtFareCalendar';
 import { parseAixLowFares, aixLowFaresUrl, aixLowFaresHeaders, aixLowFaresBody, aixDayFareItems } from '../parsers/aixLowFares';
+import { aixTripStatusUrl, aixTripStatusHeaders, aixTripStatusBody, parseAixTripStatus, aixScheduledFareItems } from '../parsers/aixTripStatus';
 import { spiceJetLowFareBody, spiceJetAvailabilityBody, spiceJetBaseHeaders, spiceJetTokenHeaders, spiceJetSearchUrl, parseSpiceJetLowFare, parseSpiceJetAvailability, spiceJetDayFareItems } from '../parsers/spiceJetDotRez';
 import { airIndiaFaresBody, airIndiaFaresHeaders, AI_FARES_URL, parseAirIndiaFares, airIndiaDayFareItems } from '../parsers/airIndiaFares';
+import { AI_SCHED_TOKEN_URL, AI_SCHED_URL, airIndiaSchedHeaders, airIndiaSchedQuery, airIndiaSchedSignature, parseAirIndiaSchedules, airIndiaScheduledFareItems } from '../parsers/airIndiaSchedule';
 import { AA_HOME, allianceAirSearchBody, extractAaDataSchedule, parseAllianceAirSchedule, allianceAirFlightItems } from '../parsers/allianceAir';
 import { fly91BookingUrl, fly91EventBody, fly91FormAction, parseFly91Results, fly91FlightItems } from '../parsers/fly91Ibe';
 import { SL_HOME, SL_IBE_OVERRIDE, SL_IBE_SITE, SL_OVERRIDE_POST, slIsImpervaStub, slIdxxui, slOverrideBody, slEncFromOverridePage, parseSriLankanAvailability, sriLankanFlightItems } from '../parsers/sriLankanPlnext';
@@ -439,6 +441,42 @@ export const flightsWorker: VerticalWorker = {
         if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Air India Express fare-calendar HTTP ${status}`, status);
         const fares = parseAixLowFares(body);
         if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Air India Express fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+        // Schedule-enrichment (24 Oct discovery, self-healing by design): the
+        // airline's PUBLIC flight-status API (b2c-flightstatus/v2/flight/trip-status)
+        // publishes per-flight numbers + local dep/arr times for a route+date with
+        // no auth/reCAPTCHA. Best-effort: any failure here just falls back to the
+        // plain date-level fare row — the fare row is never lost, times are never
+        // invented. Only enrich when the fare calendar has an EXACT fare for the
+        // requested date (a 'cheapest upcoming' fallback date with a different
+        // day's schedule would mislabel the flight).
+        const sellable = fares.filter((f) => !f.noFlights && !f.soldOut);
+        const exactFare = sellable.find((f) => f.dt === dep);
+        if (exactFare) {
+          try {
+            for (const a of ['chrome', 'safari17_0']) {
+              try {
+                const tr = await cffiFetch(aixTripStatusUrl(), {
+                  method: 'POST',
+                  impersonate: a,
+                  timeoutMs: 12_000,
+                  headers: aixTripStatusHeaders(),
+                  body: aixTripStatusBody(fromA.code, toA.code, dep),
+                });
+                if (tr.status === 200) {
+                  const flights = parseAixTripStatus(tr.body || '[]', dep);
+                  if (flights.length) {
+                    return aixScheduledFareItems(flights, exactFare, ctx.source, rt.from, rt.to, fromA.code, toA.code);
+                  }
+                  break; // healthy answer, no schedule published -> plain fare row
+                }
+              } catch {
+                // next rung
+              }
+            }
+          } catch {
+            // schedule enrichment is best-effort; fall through to the fare row
+          }
+        }
         return aixDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },
@@ -631,6 +669,57 @@ export const flightsWorker: VerticalWorker = {
         if (status !== 200) throw new AcquisitionError('SERVER_ERROR', `Air India fare-calendar HTTP ${status}`, status);
         const fares = parseAirIndiaFares(body);
         if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Air India fare-calendar returned no fares for ${fromA.code}-${toA.code}`);
+        // Schedule-enrichment (24 Oct discovery, best-effort by design): Air
+        // India's PUBLIC flight-schedule API (flight-information/v1 — the
+        // /book/flight-schedule.html component's own backend) publishes full
+        // per-flight numbers/times for ANY route+date browserless with a short
+        // JWT + sha256 x-signature. Any failure here just falls back to the
+        // plain date-level fare row — the fare is never lost, times are never
+        // invented. Only enrich when the fare calendar has an EXACT fare for
+        // the requested date.
+        const today0 = new Date().toISOString().slice(0, 10);
+        const exactFare = [...fares].filter((f) => f.dt >= today0).find((f) => f.dt === dep);
+        if (exactFare) {
+          try {
+            const qs = airIndiaSchedQuery(fromA.code, toA.code, dep);
+            for (const imp of ['chrome', 'safari17_0']) {
+              try {
+                // step 1: mint the short-lived access token (response header)
+                const t = await cffiFetch(AI_SCHED_TOKEN_URL, {
+                  method: 'POST',
+                  impersonate: imp,
+                  timeoutMs: 12_000,
+                  headers: airIndiaSchedHeaders(),
+                  body: '',
+                  returnHeaders: true,
+                });
+                const jwt = String((t as any).headers?.['x-access-token'] || (t as any).headers?.['X-Access-Token'] || '');
+                if (t.status !== 200 || !jwt) break; // definitive: schedule flow unavailable -> fare row
+                // step 2: signed schedules fetch
+                const r2 = await cffiFetch(`${AI_SCHED_URL}?${qs}`, {
+                  impersonate: imp,
+                  timeoutMs: 15_000,
+                  headers: {
+                    ...airIndiaSchedHeaders(),
+                    'x-access-token': `Bearer ${jwt}`,
+                    'x-signature': airIndiaSchedSignature(jwt, qs),
+                  },
+                });
+                if (r2.status === 200) {
+                  const flights = parseAirIndiaSchedules(r2.body || '{}', dep);
+                  if (flights.length) {
+                    return airIndiaScheduledFareItems(flights, exactFare, ctx.source, rt.from, rt.to, fromA.code, toA.code);
+                  }
+                  break; // healthy answer, nothing published for this date
+                }
+              } catch {
+                // next rung
+              }
+            }
+          } catch {
+            // schedule enrichment is best-effort; fall through to the fare row
+          }
+        }
         return airIndiaDayFareItems(fares, ctx.source, rt.from, rt.to, fromA.code, toA.code, dep);
       },
     },

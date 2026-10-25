@@ -1,0 +1,111 @@
+{
+ "capturedAt": "2026-10-24T22:40:00Z",
+ "route": "DEL-BOM",
+ "beginDate": "2026-10-28",
+ "response": [
+  {
+   "status": "success",
+   "message": "Flight status fetched successfully",
+   "data": [
+    {
+     "flightNumber": "IX1056",
+     "flightDateUtc": "2026-10-28T00:00:00.000Z",
+     "flightDateLocal": "2026-10-28T00:00:00.000Z",
+     "aircraftRegistration": "VTBWC",
+     "scheduledDeparture": {
+      "airportCode": "DEL",
+      "airportCity": "New Delhi",
+      "airportCountry": "INDIA",
+      "airportName": "Indira Gandhi International Airport",
+      "airportTimeZone": "Asia/Calcutta"
+     },
+     "scheduledArrival": {
+      "airportCode": "BOM",
+      "airportCity": "Mumbai",
+      "airportCountry": "INDIA",
+      "airportName": "Chhatrapati Shivaji Maharaj International Airport",
+      "airportTimeZone": "Asia/Calcutta"
+     },
+     "latestDeparture": "DEL",
+     "latestArrival": "BOM",
+     "originalDepartureTime": "2026-10-28T08:50:00",
+     "originalArrivalTime": "2026-10-28T11:15:00",
+     "scheduledDepartureTime": "2026-10-28T08:50:00",
+     "scheduledArrivalTime": "2026-10-28T11:15:00",
+     "estimatedBlockOffTime": null,
+     "estimatedTakeoffTime": null,
+     "estimatedTouchdownTime": null,
+     "estimatedBlockOnTime": null,
+     "actualBlockOffTime": null,
+     "actualTouchdownTime": null,
+     "actualTakeoffTime": null,
+     "actualBlockOnTime": null,
+     "flyDurationInSecs": "8700",
+     "delayDurationInSecs": "0",
+     "flightDepartureStatus": "NA",
+     "flightArrivalStatus": "NA",
+     "flightGenericStatus": "Yet to depart",
+     "createdOn": "2026-10-15T01:10:08.050Z",
+     "modifiedOn": "2026-10-24T07:24:05.141Z",
+     "flightArrivalDateLocal": "2026-10-28T00:00:00.000Z"
+    }
+   ],
+   "meta": {
+    "total": 1
+   },
+   "errors": []
+  },
+  {
+   "status": "success",
+   "message": "Flight status fetched successfully",
+   "data": [
+    {
+     "flightNumber": "IX1235",
+     "flightDateUtc": "2026-10-28T00:00:00.000Z",
+     "flightDateLocal": "2026-10-28T00:00:00.000Z",
+     "aircraftRegistration": "VTBWC",
+     "scheduledDeparture": {
+      "airportCode": "DEL",
+      "airportCity": "New Delhi",
+      "airportCountry": "INDIA",
+      "airportName": "Indira Gandhi International Airport",
+      "airportTimeZone": "Asia/Calcutta"
+     },
+     "scheduledArrival": {
+      "airportCode": "BOM",
+      "airportCity": "Mumbai",
+      "airportCountry": "INDIA",
+      "airportName": "Chhatrapati Shivaji Maharaj International Airport",
+      "airportTimeZone": "Asia/Calcutta"
+     },
+     "latestDeparture": "DEL",
+     "latestArrival": "BOM",
+     "originalDepartureTime": "2026-10-28T20:40:00",
+     "originalArrivalTime": "2026-10-28T23:10:00",
+     "scheduledDepartureTime": "2026-10-28T20:40:00",
+     "scheduledArrivalTime": "2026-10-28T23:10:00",
+     "estimatedBlockOffTime": null,
+     "estimatedTakeoffTime": null,
+     "estimatedTouchdownTime": null,
+     "estimatedBlockOnTime": null,
+     "actualBlockOffTime": null,
+     "actualTouchdownTime": null,
+     "actualTakeoffTime": null,
+     "actualBlockOnTime": null,
+     "flyDurationInSecs": "9000",
+     "delayDurationInSecs": "0",
+     "flightDepartureStatus": "NA",
+     "flightArrivalStatus": "NA",
+     "flightGenericStatus": "Yet to depart",
+     "createdOn": "2026-10-15T01:06:21.053Z",
+     "modifiedOn": "2026-10-24T07:23:41.841Z",
+     "flightArrivalDateLocal": "2026-10-28T00:00:00.000Z"
+    }
+   ],
+   "meta": {
+    "total": 1
+   },
+   "errors": []
+  }
+ ]
+}

@@ -81,6 +81,8 @@ export interface CffiResponse {
   body: string;
   /** Present when requested via opts.returnCookies: the session cookie jar after the call. */
   cookies?: Record<string, string>;
+  /** Present when requested via opts.returnHeaders: the raw response headers. */
+  headers?: Record<string, string>;
 }
 
 export async function cffiFetch(
@@ -97,6 +99,8 @@ export async function cffiFetch(
     cookies?: Record<string, string>;
     /** Return the session cookie jar after the call (for multi-step handshakes). */
     returnCookies?: boolean;
+    /** Return response headers after the call (for token-minting flows). */
+    returnHeaders?: boolean;
   } = {},
 ): Promise<CffiResponse> {
   const payload = JSON.stringify({
@@ -106,6 +110,7 @@ export async function cffiFetch(
     ...(opts.body ? { body: opts.body } : {}),
     ...(opts.cookies ? { cookies: opts.cookies } : {}),
     ...(opts.returnCookies ? { returnCookies: true } : {}),
+    ...(opts.returnHeaders ? { returnHeaders: true } : {}),
     ...(opts.httpVersion ? { httpVersion: opts.httpVersion } : {}),
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 20_000) / 1000)),
     impersonate: opts.impersonate || 'safari17_0',
@@ -131,7 +136,7 @@ export async function cffiFetch(
       clearTimeout(timer);
       try {
         const res = JSON.parse(out || '{}');
-        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ''), ...(res.cookies ? { cookies: res.cookies as Record<string, string> } : {}) });
+        if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ''), ...(res.cookies ? { cookies: res.cookies as Record<string, string> } : {}), ...(res.headers ? { headers: res.headers as Record<string, string> } : {}) });
         reject(new AcquisitionError('SERVER_ERROR', `curl_cffi bridge error: ${res.error || err || 'unknown'}`));
       } catch {
         reject(new AcquisitionError('SERVER_ERROR', `curl_cffi bridge bad output: ${err.slice(0, 200)}`));
