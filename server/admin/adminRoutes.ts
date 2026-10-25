@@ -326,6 +326,45 @@ adminRouter.delete('/affiliate-profiles/:slug', async (req, res) => {
   catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete affiliate profile' }); }
 });
 
+// ---- Affiliate COVERAGE (owner 25 Oct): every monetized partnership in one view —
+// manual profiles + automatic layers (LinkInR campaigns, Ekaro, Amazon, Cuelinks,
+// sync-worker affiliate_links) so the owner can see what is covered and override
+// any of it from the Affiliate IDs panel (manual profiles always win). ----
+adminRouter.get('/affiliate/coverage', async (_req, res) => {
+  try {
+    const { settings } = await import('../common/settings');
+    const { linkinrCampaignList, linkinrStats } = await import('../affiliate/linkinr');
+    const { ekaroStats } = await import('../affiliate/ekaro');
+    const store = getStore() as any;
+    let capturedLinks: any[] = [];
+    try {
+      capturedLinks = await store.query(
+        `SELECT network_source AS network, vendor_domain AS domain, deep_link_template AS template, campaign_id AS campaign
+         FROM affiliate_links ORDER BY vendor_domain ASC LIMIT 500`);
+    } catch { capturedLinks = []; }
+    res.json({
+      success: true,
+      manual: await listProfiles(),
+      linkinr: {
+        enabled: linkinrStats().enabled,
+        campaigns: linkinrCampaignList().map((c) => ({
+          name: c.name, domain: c.domain, payout: c.payout, type: c.type, categories: c.categories,
+        })),
+      },
+      amazon: { tag: settings.amazonAssociates?.tag || '' },
+      cuelinks: {
+        enabled: Boolean(settings.cuelinks?.enabled),
+        publisherId: settings.cuelinks?.publisherId || '',
+        cid: settings.cuelinks?.cid || '',
+      },
+      ekaro: ekaroStats(),
+      capturedLinks,
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not load affiliate coverage' });
+  }
+});
+
 // ---- Deals registry (offers / coupons / bank, card, gift-card, loan, insurance, movie deals) ----
 adminRouter.get('/deals', async (_req, res) => {
   try { res.json({ success: true, kinds: DEAL_KINDS, deals: await listAllDeals() }); }

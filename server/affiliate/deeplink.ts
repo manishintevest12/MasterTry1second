@@ -132,12 +132,22 @@ export function amazonAssociatesUrl(dest: string): string | null {
 export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug?: string } = {}): Promise<SecureDeeplinkResult> {
   const domain = safeDomain(targetUrl);
   const store = getStore();
-  // 1. Admin-managed affiliate_configs (slug or domain match)
+  // 1. Admin-managed affiliate_configs (slug, exact domain, or registrable-domain
+  //    suffix match — a profile saved for 'yatra.com' also covers hotel.yatra.com,
+  //    flights.yatra.com, www.yatra.com; the LONGEST domain wins, so a more
+  //    specific profile ('hotel.yatra.com') can still override a broad one).
   try {
     const slug = (opts.companySlug || '').toLowerCase().slice(0, 64);
+    // Registrable-domain candidates so a profile saved for 'yatra.com' also
+    // covers hotel.yatra.com / flights.yatra.com / www.yatra.com. Longest
+    // company_domain wins, so a specific profile can override a broad one.
+    const labels = domain.split('.').filter(Boolean);
+    const parent2 = labels.length >= 2 ? labels.slice(-2).join('.') : domain;
+    const parent3 = labels.length >= 3 ? labels.slice(-3).join('.') : domain;
     const rows = await store.query<any>(
       `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
-       WHERE active = 1 AND (slug = ? OR company_domain = ?) LIMIT 1`, [slug, domain]);
+       WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
+       ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`, [slug, domain, parent2, parent3]);
     const r = rows?.[0];
     if (r?.template) {
       const extra = parseJsonObj(r.extra_params);

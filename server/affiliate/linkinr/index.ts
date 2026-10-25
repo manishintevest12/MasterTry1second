@@ -157,6 +157,12 @@ export function linkinrTrackingUrl(dest: string): string | null {
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
 }
 
+/** Effective per-domain coverage (best campaign per domain), for the admin panel. */
+export function linkinrCampaignList(): LinkInRCampaign[] {
+  const m = loadRegistry();
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Registry stats for admin/logging. */
 export function linkinrStats(): { campaigns: number; domains: number; enabled: boolean } {
   const m = loadRegistry();
