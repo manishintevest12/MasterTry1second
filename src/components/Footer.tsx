@@ -319,22 +319,20 @@ export const Footer: React.FC = () => {
             </h5>
             <ul className="space-y-2 text-xs">
               <li>
-                <button
-                  type="button"
-                  onClick={() => handleLegalClick('about')}
+                <a
+                  href="/about"
                   className="hover:text-orange-600 transition-colors cursor-pointer font-medium"
                 >
                   About Us & Story
-                </button>
+                </a>
               </li>
               <li>
-                <button
-                  type="button"
-                  onClick={() => handleLegalClick('privacy')}
+                <a
+                  href="/privacy"
                   className="hover:text-orange-600 transition-colors cursor-pointer font-medium"
                 >
                   Privacy Policy (DPDP)
-                </button>
+                </a>
               </li>
               <li>
                 <button

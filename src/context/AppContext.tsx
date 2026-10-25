@@ -1542,6 +1542,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
+      // PROGRAMMATIC SEO PATH ROUTES (owner 25 Oct): landing pages like
+      // /flights/delhi-to-mumbai-flights, /hotels/indore, /loans/personal-loan
+      // open the matching vertical with the search pre-filled, so every
+      // sitemap URL is a real page for users, not just for crawlers.
+      if (!/merchantinstab2b|admininsta/.test(path + hash + search)) {
+        const m = /^\/(flights|hotels|bus|ecommerce|grocery|food|movies|loans|insurance|cabs|credit-cards|bank-accounts|banking)(?:\/([a-z0-9-]+))?\/?$/.exec(path);
+        if (m) {
+          const vmap: Record<string, string> = {
+            flights: 'flights', hotels: 'hotels', bus: 'bus', ecommerce: 'ecommerce',
+            grocery: 'grocery', food: 'food', movies: 'movie', loans: 'loans',
+            insurance: 'insurance', cabs: 'cab', 'credit-cards': 'creditcards',
+            'bank-accounts': 'account', banking: 'banking',
+          };
+          const vid = vmap[m[1]];
+          if (vid && (COMPARISON_VERTICALS as readonly string[]).includes(vid)) {
+            const seg = m[2] || '';
+            // Route pages: "<from>-to-<dest>-flights|bus" -> "A to B" query
+            const rm = seg ? /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-(flights|bus)$/.exec(seg) : null;
+            let query = '';
+            if (rm) {
+              const pretty = (x: string) => x.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+              query = `${pretty(rm[1])} to ${pretty(rm[2])}`;
+            } else if (seg && ['hotels', 'cabs', 'grocery', 'food', 'movies'].includes(m[1])) {
+              // City page: use the city name as the starting query
+              query = seg.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+            } else if (seg) {
+              // Category/type page: the tail slug as a natural search phrase
+              query = seg.split('-').join(' ');
+            }
+            setVertical(vid as any);
+            setActiveNavTab('compare');
+            if (query) {
+              setSearchQuery(query);
+              setVerticalQueries((prev) => ({ ...prev, [vid]: query }));
+            }
+            setCurrentSecretRoute('/');
+          }
+        }
+      }
+
       if (
         path.includes('merchantinstab2b') ||
         hash.includes('merchantinstab2b') ||
