@@ -17,6 +17,7 @@ import { resolveAirport, IATA } from '../../common/airportLookup';
 import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaHonestNoService } from '../parsers/akasaFlights';
+import { parseBudgetAirCalendar, budgetAirCalendarUrl, budgetAirDayFareItems } from '../parsers/budgetAirFlights';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
@@ -1709,13 +1710,50 @@ export const flightsWorker: VerticalWorker = {
     },
 
     {
+      // Owner OTA expansion (24 Oct). BudgetAir/Travix low-fare calendar: open
+      // SOA2 GET, browserless from any IP, no session/tokens — captured from
+      // the site's own datepicker XHR and replayed with curl_cffi.
+      // ~348 priced dates (per-day lowest TOTAL, taxes in) for the route; the
+      // full SRP is a client-side shell, so this is the fare-calendar pattern
+      // (Akasa/Via/AIX). Self-healing: transient 5xx/edge blocks raise the
+      // normal acquisition error and the circuit backoff handles recovery.
       sourceId: 'w_flights_budgetair',
-      name: 'Flights worker: BudgetAir/Travix (probe)',
+      name: 'Flights worker: BudgetAir/Travix low-fare calendar',
       priority: 20,
-      run: async () => {
-        const res = await cffiFetch('https://www.budgetair.com/en_us', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
-          'BudgetAir (Travix) search results load only via the sessioned edge-api.travix.com gateway; the flights URL 302s to a marketing home with static per-airline deal tiles, no SSR route fares to browserless HTTP.');
+      maxPerMinute: 6,
+      timeoutMs: 22_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return []; // unknown city — honest skip
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const res = await cffiFetch(budgetAirCalendarUrl(from, to), {
+          impersonate: 'chrome',
+          timeoutMs: 20_000,
+          headers: { Accept: 'application/json', Referer: 'https://www.budgetair.com/en_us/flights' },
+        });
+        if (res.status === 403 || res.status === 429) {
+          throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED',
+            `BudgetAir calendar edge-blocked (HTTP ${res.status}).`, res.status);
+        }
+        if (res.status !== 200) {
+          throw new AcquisitionError('SERVER_ERROR', `BudgetAir calendar HTTP ${res.status}: ${(res.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, res.status);
+        }
+        let json: unknown;
+        try { json = JSON.parse(res.body); } catch {
+          throw new AcquisitionError('EMPTY_RESPONSE', 'BudgetAir calendar returned a non-JSON body.');
+        }
+        const fares = parseBudgetAirCalendar(json);
+        // An empty 200 (route with no cached Travix inventory) is an honest
+        // no-service result, not an error: keeps the circuit closed.
+        if (fares.length === 0) return [];
+        return budgetAirDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
       },
     },
     {

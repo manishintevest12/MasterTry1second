@@ -1,0 +1,51 @@
+{
+ "ResponseStatus": {
+  "Timestamp": "/Date(1792903446037+0800)/",
+  "Ack": "Success",
+  "Errors": [],
+  "Extension": [
+   {
+    "Id": "CLOGGING_TRACE_ID",
+    "Value": "79614313-85f1-4c18-b8a6-f0f7a91128c9"
+   },
+   {
+    "Id": "RootMessageId",
+    "Value": "100025527-0a0e476e-498028-195073"
+   }
+  ]
+ },
+ "response": [
+  {
+   "totalPrice": "5722",
+   "date": "2027-03-23"
+  },
+  {
+   "totalPrice": "6306",
+   "date": "2026-11-03"
+  },
+  {
+   "totalPrice": "6349",
+   "date": "2026-10-31"
+  },
+  {
+   "totalPrice": "6804",
+   "date": "2026-12-01"
+  },
+  {
+   "totalPrice": "6833",
+   "date": "2026-10-29"
+  },
+  {
+   "totalPrice": "6833",
+   "date": "2026-10-30"
+  },
+  {
+   "totalPrice": "7075",
+   "date": "2026-10-28"
+  },
+  {
+   "totalPrice": "14064",
+   "date": "2026-11-15"
+  }
+ ]
+}

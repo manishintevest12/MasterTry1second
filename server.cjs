@@ -7776,6 +7776,67 @@ var init_akasaFlights = __esm({
   }
 });
 
+// server/workers/parsers/budgetAirFlights.ts
+function budgetAirCalendarUrl(fromCode, toCode, currency = "INR") {
+  const q3 = new URLSearchParams({ departureCode: fromCode, arrivalCode: toCode, currency });
+  return `${BUDGETAIR_CALENDAR_URL}?${q3.toString()}`;
+}
+function parseBudgetAirCalendar(body) {
+  const root = body ?? {};
+  const list = Array.isArray(root.response) ? root.response : Array.isArray(body) ? body : [];
+  const out = [];
+  for (const e of list) {
+    if (!e || typeof e !== "object") continue;
+    const date = String(e.date ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const raw = e.totalPrice;
+    const price = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
+    if (!Number.isFinite(price) || price <= 0) continue;
+    out.push({ date, price });
+  }
+  return out;
+}
+function budgetAirDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const exact = fares.find((f) => f.date === depIso);
+  const upcoming = [...fares].filter((f) => f.date >= today2).sort((a, b) => a.price - b.price);
+  const chosen = exact || upcoming[0];
+  if (!chosen) return [];
+  const isExact = Boolean(exact);
+  const routeLabel = `${fromCity} \u2192 ${toCity}`;
+  const deeplink = `${BUDGETAIR_WEB}/flights/${fromCode}/${toCode}/${chosen.date}`;
+  return [newRawItem(source, {
+    title: `BudgetAir ${routeLabel} ${isExact ? `on ${chosen.date}` : `(cheapest upcoming, ${chosen.date})`} from \u20B9${Math.round(chosen.price)}`,
+    brand: "BudgetAir",
+    price: Math.round(chosen.price),
+    currency: "INR",
+    seller: "BudgetAir",
+    sellerUrl: deeplink,
+    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.date },
+    attributes: {
+      route: routeLabel,
+      travel_date: chosen.date,
+      fare_class: "lowest economy fare (taxes included) from BudgetAir's own low-fare calendar",
+      price_basis: `lowest BudgetAir fare returned by Travix's lowPrice calendar API on ${today2} for this route${isExact ? " and date" : " within the next 12 months"}`,
+      data_note: `Fare acquired from BudgetAir's official low-fare calendar on ${today2}; booking is on BudgetAir's own website.`,
+      image: ""
+    },
+    identifiers: { sku: `budgetair-${fromCode}-${toCode}-${chosen.date}` },
+    evidence: {
+      sourceUrl: budgetAirCalendarUrl(fromCode, toCode),
+      extractedFields: ["response[].date", "response[].totalPrice (INR)"]
+    }
+  })];
+}
+var BUDGETAIR_CALENDAR_URL, BUDGETAIR_WEB;
+var init_budgetAirFlights = __esm({
+  "server/workers/parsers/budgetAirFlights.ts"() {
+    init_contract();
+    BUDGETAIR_CALENDAR_URL = "https://rest.budgetair.com/restapi/soa2/36017/lowPrice_lowPriceCalendarSearch";
+    BUDGETAIR_WEB = "https://www.budgetair.com/en_us";
+  }
+});
+
 // server/workers/parsers/viaFlights.ts
 function viaFareCalendarUrl() {
   return `${VIA_BASE}/apiv2/flight/fare-calendar?authToken=${VIA_AUTH_TOKEN}&requestSource=NODE_B2C&flowType=NODE&ajax=true&jsonData=true&__xreq__=true`;
@@ -14250,6 +14311,7 @@ var init_flights = __esm({
     init_kiwiFlights();
     init_indigoFlights();
     init_akasaFlights();
+    init_budgetAirFlights();
     init_viaFlights();
     init_yatraFlights();
     init_goibiboFlights();
@@ -15822,15 +15884,52 @@ var init_flights = __esm({
           }
         },
         {
+          // Owner OTA expansion (24 Oct). BudgetAir/Travix low-fare calendar: open
+          // SOA2 GET, browserless from any IP, no session/tokens — captured from
+          // the site's own datepicker XHR and replayed with curl_cffi.
+          // ~348 priced dates (per-day lowest TOTAL, taxes in) for the route; the
+          // full SRP is a client-side shell, so this is the fare-calendar pattern
+          // (Akasa/Via/AIX). Self-healing: transient 5xx/edge blocks raise the
+          // normal acquisition error and the circuit backoff handles recovery.
           sourceId: "w_flights_budgetair",
-          name: "Flights worker: BudgetAir/Travix (probe)",
+          name: "Flights worker: BudgetAir/Travix low-fare calendar",
           priority: 20,
-          run: async () => {
-            const res = await cffiFetch("https://www.budgetair.com/en_us", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 200 ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE",
-              "BudgetAir (Travix) search results load only via the sessioned edge-api.travix.com gateway; the flights URL 302s to a marketing home with static per-airline deal tiles, no SSR route fares to browserless HTTP."
-            );
+          maxPerMinute: 6,
+          timeoutMs: 22e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            const from = fromA.code;
+            const to = toA.code;
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const res = await cffiFetch(budgetAirCalendarUrl(from, to), {
+              impersonate: "chrome",
+              timeoutMs: 2e4,
+              headers: { Accept: "application/json", Referer: "https://www.budgetair.com/en_us/flights" }
+            });
+            if (res.status === 403 || res.status === 429) {
+              throw new AcquisitionError(
+                res.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
+                `BudgetAir calendar edge-blocked (HTTP ${res.status}).`,
+                res.status
+              );
+            }
+            if (res.status !== 200) {
+              throw new AcquisitionError("SERVER_ERROR", `BudgetAir calendar HTTP ${res.status}: ${(res.body || "").replace(/\s+/g, " ").slice(0, 160)}`, res.status);
+            }
+            let json;
+            try {
+              json = JSON.parse(res.body);
+            } catch {
+              throw new AcquisitionError("EMPTY_RESPONSE", "BudgetAir calendar returned a non-JSON body.");
+            }
+            const fares = parseBudgetAirCalendar(json);
+            if (fares.length === 0) return [];
+            return budgetAirDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
           }
         },
         {
