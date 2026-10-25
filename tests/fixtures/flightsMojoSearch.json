@@ -1,0 +1,4060 @@
+{
+ "rsp": {
+  "status": 1,
+  "message": "Success",
+  "Error_Code": null,
+  "Error_Desc": null,
+  "Error_InnerException": null
+ },
+ "res": [
+  [
+   {
+    "rid": "OTB0",
+    "vc": "SG",
+    "fare": {
+     "pv": {
+      "AQ_ticket_id": "zril4I4ethrdLNe5a6fQleqSh0TNpLdaITubWoLeGXLfbntP8eVs8fzYiubQYU0ywtlk5/oPaZKZlJkhly9vvqrkkjt3zFnsRQfYV3HKtmyhDv6l1YI1sgmCoiTnO9KMwywfJevjlk3ezxCBThoTJwUtkdkmFiXcW5BwsZhKCevOKcU+u3uLp/NRajJo63cJ8boUVEXbD18ne8MY88dpKfFfTolF37blCdOuW3oT5WJa0Fma5NcVI88aTzp0EmHWwQjBYzi2knXLGHi87t8QZTtpTkJh389hv9jQmrSlKlp3aVheTQc+4CwvWix2zjconZ6GXapFSNmkTpjKRTJ04gA0JS5naifGs0wDVAEMu9yPRYv+Y+1F2LuaWcxoFmt1t0k4H/3KJ2H4MNTBiXyn4gsw5wOT2mjlqpjs+wSE2n0TSDyiSC46zvyv6gpH4q2iPmdfon9HNlUOsKKcZaEANTxw6zUW+pi8rZZrxBYhWraWo4QaREpqYoLPKtLQsG/9pFNSkIe161Q95ZiksRuyd2Z5I8yem8SK3UE6ftI2sbfHd94p5R3q3HDix1G8W+QzGBiMORc2vNi+heXlvUkpz1NfnSKOKvgSzen3OZPCbJQ="
+     },
+     "fid": null,
+     "rt": 0,
+     "ru": true,
+     "ft": 23,
+     "mft": 6,
+     "cia": false,
+     "ct": 0,
+     "bc": null,
+     "bi": {
+      "cib": "15 KG",
+      "cb": "7 KG"
+     },
+     "cur": "INR",
+     "pf": 5606,
+     "gt": 5606,
+     "cej": false,
+     "bf": 4204.5,
+     "tax": 1401.5,
+     "ce": 0,
+     "disc": 0,
+     "mku": 0,
+     "fb": null,
+     "mid": " Comm(-)0",
+     "cf": 0,
+     "sa": 0,
+     "ib": false,
+     "gds": 5,
+     "sp": 0,
+     "sc": 0,
+     "cache": false,
+     "minifare": null,
+     "bn": null,
+     "fi": null,
+     "sgp": [
+      {
+       "cc": 0,
+       "fc": "N/A",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      }
+     ],
+     "prov2": {
+      "m": 1,
+      "b": 1,
+      "v": "",
+      "t": "0001-01-01T00:00:00",
+      "g": 5
+     }
+    },
+    "flist": [
+     {
+      "pv": {
+       "AQ_ticket_id": "zril4I4ethrdLNe5a6fQleqSh0TNpLdaITubWoLeGXLfbntP8eVs8fzYiubQYU0ywtlk5/oPaZKZlJkhly9vvqrkkjt3zFnsRQfYV3HKtmyhDv6l1YI1sgmCoiTnO9KMwywfJevjlk3ezxCBThoTJwUtkdkmFiXcW5BwsZhKCevOKcU+u3uLp/NRajJo63cJ8boUVEXbD18ne8MY88dpKfFfTolF37blCdOuW3oT5WJa0Fma5NcVI88aTzp0EmHWwQjBYzi2knXLGHi87t8QZTtpTkJh389hv9jQmrSlKlp3aVheTQc+4CwvWix2zjconZ6GXapFSNmkTpjKRTJ04gA0JS5naifGs0wDVAEMu9yPRYv+Y+1F2LuaWcxoFmt1t0k4H/3KJ2H4MNTBiXyn4gsw5wOT2mjlqpjs+wSE2n0TSDyiSC46zvyv6gpH4q2iPmdfon9HNlUOsKKcZaEANTxw6zUW+pi8rZZrxBYhWraWo4QaREpqYoLPKtLQsG/9pFNSkIe161Q95ZiksRuyd2Z5I8yem8SK3UE6ftI2sbfHd94p5R3q3HDix1G8W+QzGBiMORc2vNi+heXlvUkpz1NfnSKOKvgSzen3OZPCbJQ="
+      },
+      "fid": null,
+      "rt": 0,
+      "ru": true,
+      "ft": 23,
+      "mft": 6,
+      "cia": false,
+      "ct": 0,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 5606,
+      "gt": 5606,
+      "cej": false,
+      "bf": 4204.5,
+      "tax": 1401.5,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 0,
+      "ib": false,
+      "gds": 5,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 0,
+        "fc": "N/A",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 5
+      }
+     },
+     {
+      "pv": {
+       "JustClickFare_Id": "5662270185107196674",
+       "JustClickSeats_Available": "9",
+       "JustClickFlight_Id": "5257294365187835699",
+       "JustClickFlight_Key": "FK5170728958185754912"
+      },
+      "fid": null,
+      "rt": 0,
+      "ft": 0,
+      "mft": 6,
+      "cia": false,
+      "ct": 0,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 5606,
+      "gt": 5606,
+      "cej": false,
+      "bf": 5606,
+      "tax": 0,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 25,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 0,
+        "fc": "RI"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 25
+      }
+     },
+     {
+      "pv": {
+       "BudgetTicketFare_Id": "5733880118957641660",
+       "BudgetTicketSeats_Available": "1",
+       "BudgetTicketFlight_Id": "4899315187925736932",
+       "BudgetTicketFlight_Key": "KEYgXaiUvH6uSeu4OnDJbM4trIODp0rGWzQWFzC4DXR/k4g7VoX9hV13nHmfQ0aOqQbGISjrIp7/GtBi1ZKoosgtrsDVgF+pOu4aDb+ss8nVIr07SPIpa47RdUH4HvJWmgxKmOuEU6JwQeN8SCffkeoAvJRxFN9LPfBfJyAOWcPF3u+kY1I3ApfhYXtgluvdyima4pvhroIZnf/vFlF3NxFcEdOZEwPHddFWqXV99tKKZMOYii3tIltpVVU6isGgEA0TiIjV+nwzA47kkjnU4pa2JYcgfgdGqi+JhH2wrwNyyP5s++NuZQnq5KtDGSeKW4HkL6Z5WdYIF8MTLgFzQzdzHUjXSgUxV+rOpUw2k9k+Zzs+sGuPkdcAmGvPYhOpKuYogyPlLKzQM2+gbAMG9TEoEuNL1C/wI2d1bGsE8gtCngrt6b80mJl4Fb4tL2nTgW+PLYc2cmxAaU7l8F5UadYzh5hQYfen5rrduenu/VzSU8byPxfPM5Q3QyprN3yTrJfgYkWkZkmOC5O8HEPH10+IoRNMnBNS4S2vR9+9FKAOt9s6C4Mb51kr1MetPhSoZRp4NPUYzbDtirALIjGOFnBXA=="
+      },
+      "fid": null,
+      "rt": 0,
+      "ft": 0,
+      "mft": 6,
+      "cia": false,
+      "ct": 0,
+      "bc": null,
+      "bi": {
+       "cib": "15",
+       "cb": "7"
+      },
+      "cur": "INR",
+      "pf": 5703,
+      "gt": 5703,
+      "cej": false,
+      "bf": 5384,
+      "tax": 319,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 0,
+      "ib": false,
+      "gds": 10,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 0,
+        "bag": "15",
+        "cbag": "7"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 10
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0",
+       "TboResultIndex": "OB1[TBO]GzoTpe7MiiCuzBGvV1F8x9FOUq4etE4aZkWwlby5DIAZKZgFOQlPHySxSI6R8fzCE5pd7UACiHjFtE76+8TFCG8A89aEXYC5ajnw1ZwweKr2yD2FvBQeduVQgxUJNS4YtRaFU6aE8KLe9CtKywhbdBVsziaIsgIjugHeyDhFNWLMZBy3TO2gPDIp1nskh/WBEf0bidSqPL6AzxgPIZLBInFH+PjQRnV96OKUTrZrtW0XiIHKAOBGk1G0SwSgZnvzj5Bbd5zz52yjgfpL9SrTm05QqVLfxOlCosc3g+aXxqUgQVNkPMNWrXqGDOSKDqbDqodg4NgVpdqMuP9+guZA6h4QtPRrPBbuGbE1yH9G05gDrbRTaJ2CVcezN+5O885nrfDJJRq837S6bj0aMPvKTX1OWTtYCzvyf7OsAWK+86LjRvco94J2GF0wa5ynYl245JWGebfTu0QMSTnOupLTZLo5dQzDbHUmW/sPSUpcvi+42MWUMBT4F7KTRGMJWEOeblPhnkpn0y6upqVoizIDC4jKN9pTgGBhD7s/fe/s4BD2mOE+N744rp2F07GVdh8CMpt62GjcvDjd2K/HwdBNSr1LzQwjg72cJKULn7svNegEkI53sOKa8ewC1/h/Vug7p/bLcrNYPDHM/7mEHVqm9S54WhbQL22WoHdsuOa2RZo2r3syJ3ew9X3RrThr0bikzO6zoM8zY5y9mAYvUksXN29i89N93nL11uGvxZ4dkYtiK3Hh9mtyf9+SusaW1Lj/bhBW8BMO8nwp4xF5sOz0qQs5BsQFWe2GXcf0YDI9b7jfOwaejuozaB6d9n39WUYOiL9oMQaUtxvoGQsX+BtNOyeLotJTnNNhxycI/a3Harl1wMeU9r36sOBHu7zxnAAHQHkBhmq9U87W2ykXhiQ1WrUgvawFHnZsW4Dae2505cOThCTv2DN+7tQts18Gvs1kG5a1gtMwNmqPZUmu5WVYgWfyvN/+SykgwnPmtiOW+w/xJTF2JO42OoAECsdi2Eets87wmJ0H6pBDRFUpEPILYQmjDsgA7t5DjEd0gAzY8zvKKJmb5bhOgc3v/qLH5tZ+rPQi2Yv4aY+oXmQHEZGH5n9UeKz4UwEyHRiOyyzvJenylcLa1Z5gsVIBBpNMOyMI9KLaLBhOlrrGk5Kz2lfT+90XP2Y9PWT+Uvp5lmL+QcwGs+QFkBD8c5ARaAQHQl4ouZyQTA9lhTyLjoZeUypnc+G79qy2lV342DSfh2uqabx5M+BfcQxGYpcIIu1SYYMOLIBteXiewsCzIHXjYIY7cpjBN3kzr6SExEOGjT42fNFXBELFnKDGjYgmucVHWoGYwmi5ywJTPQohuImz9QFkSjFDyPHwoEzIMZ2KYZXw6ZaCs8mZNML3idA9K2MffYMigoP0sOYG1+MuA4Uxv8/+/XvGecY6i2puBIVtLcobV+AzBZAP//yTweaCM1bfZQ9QJZqHMinewftTYEFJ0QFgbk35vwJ8ZKqpCqwbIVqo4cmamTH5rjQBgxz0dZ7Grt5acpYgA/GoMB4DkKJHDw7KnYOxEhH1EFruLFu6weKE3McU+s7fKyk9hENWfg1D0bOobN7C65uSNynUMdi62VsDV45gTwxF7tyW90ffJ729fNCFOcwMQEihCqzn6GQWP4mzsPn2lZpHfGtHn7KVfK+4qX0ec5G7aX4dNVspoka6oF7IZtn6BYKSm7qR1OEWukFLJrNPQEElHuiFYkDZtfslvx21UlF3YmXvDt1RfaMgjdg2kqso9QpZzx01CdTeWh9kYmzYtFlaXmoauVF88eOoRLH5/fJdnOtbDVS+FBYlqeH5Ilti2Qwb4Sv02/XJVUZWy9+wusadvbYjM/ZmkUjTVtqnkHAMb5wegBCc7S0qiaSjb8riF/5FMlqO3fdnX9Pd",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 0,
+      "ft": 0,
+      "mft": 6,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 5961.18,
+      "gt": 5961.18,
+      "cej": false,
+      "bf": 5606,
+      "tax": 355.18,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Non-Refundable",
+       " Non-Voidable",
+       " Non-Changeable",
+       " Seats are chargeable",
+       " No Show refunds are not permitted",
+       " GST is not applicable on Series Fare",
+       " Names may appear on the airline website one day before departure",
+       " Web check-in is available on the airline website by entering the PNR and last name."
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "RI",
+        "fbc": "RI",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0",
+       "TboResultIndex": "OB1[TBO]rws1jr9JIy2PR0bvJy6obO/qWrWbYH2xeoAfw44egxaKdUkRZvRyfUuVi5VnE5yF3Xwy9aDRCCbCyQgT6f4fQHDn0rslaU0a70DW1TyohL97/UMyqm0qOgKFEnMafkgtgAno8YBx83g92Shf5kkt6cznoU3CYNc2Gd7V27h9fDy2114PXNFhSmrSKQoVpvTA0Bm4hm21aeqvoysGEliIpXtqCNFG/zgPpmQhVLIpu5QyeYSSowY7N3XkcK00XD9sjwH7kIHwSDQKKcLSV9uZaSWwB+ctDnHweolXz1ZiEJE8QzxdEDQtbNNuoprE038RH7Y5o4f2KWpu1Xy7ZHv53XwX9tfKJodGnjRtT0Vq1LXDAdt50Fl7NrMRQo6ksrf8vYHGzj0tMu6458+UYXNFSNijVd2gGRGn5XcdpOWVzKvJXEmGTiaSJGJFvyLw9sUMqS7leyjrzGpKO9HM8/UWQ7+QEh0q9yyVdmHgNtG0dhgpl6Ax1f+wIIRFbZCtlLrQdi/Y/9G3CRBB7dOCR2DUB3brncVUmRZ7lSRbhnh5fBmq9SIN64d34VvB65q77pvPLVh18c4aBueJLD6i0XtGYrU/oeWkIZ82YFncT2DPWg4=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 0,
+      "ft": 0,
+      "mft": 6,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6019,
+      "gt": 6019,
+      "cej": false,
+      "bf": 0,
+      "tax": 6019,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Non-Refundable",
+       " Non-Voidable",
+       " Non-Changeable",
+       " Seats are chargeable",
+       " No Show refunds are not permitted",
+       " GST is not applicable on Series Fare",
+       " Names may appear on the airline website one day before departure",
+       " Web check-in is available on the airline website by entering the PNR and last name."
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "A",
+        "fbc": "A",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB5[TBO]tEPRNL85kMYtX7IH0DToGdtuYAGkSauUp/MT+Ia0v8ZkQlvlVwDfz8L58uq8hJM8GAn2qFJyXnQy7L765rZjCry/TlJvFFi1bLDNgtHgjQm+lE+4LoftjQO8cLe8rSFiiegoq7n0c/qmTZADfgqEsSabrczzinbWClTElxEQduurpd8MssLKx+g1eMLjWSM09bvltnnGi9Uz3I/m7Ulg7LUwEGWM/FN6kCf+LImCRHujUxXAfRE6gF8GfdpTN910/atVKgm2vsE8S/GGW5Z/K7rDos21ixZMuE1fijVU6htimRyN/vZfLSgMXrP5gHyHEiiOxyq88VBaGljI9s/e+ZrBtyGT/ppiuvkr11slv4qA4FQdslFXwwhlmlcilnecPF61GtlKA4q0CYWEABiFsJzP7826mLy5ojnXdf/Hm1vj/5O1kXO0afv/3ZnrRXVf1938/sDBRc8LiUHz4eGBq4FwDWSIj1pF0H37yXoWgXM/OglaG9pTl+RCa3/2ShgssERZK/JIMrgND5lhmeu+/WyooT0mH3xxPxru1vTC8Xry4wg4zl/vVj/aFTgNz18F+FM7RFP+pvWoFCn0jvSLvScZkbvJLEOy0v+i+E+DCDF5U0oUVLubsWoZSiJHtjUxOOuCTLUPKfNul5KwtNAr1Duy4gdLUt4PUYAcRT7EVq3WRUbjoZcKgxOhxU9P8ebMJd6Sz0xnMkBNL6uEbiuVMw==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 4,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 6365,
+      "gt": 6365,
+      "cej": false,
+      "bf": 4648,
+      "tax": 1717,
+      "ce": 10.72,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)10.72",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Meal Included",
+       "Seat - Included"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "CE",
+        "fbc": "WCRQ3",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB3[TBO]WE0H+wQCQGh3v13GLipEFe3ufi1K8amuWeRMKY4IaIeBwoUaHN08JOubBqC6PPCfTvlvst1FrYsDs7tPKRCEMeD1JFCuAUmSQd12UUpb2DQVP5avKVvULTUEJNIiyptsFWpGlC/hJcN0ICvANx3hyl/2yG6V9ZhHEJKP/HHwPt4+LOzAQ2vS98MSqvIl/oJDAom7VAUcAPJpwAszOHy0PQ0Z+Wl67fcJRNf1J0VaUamOhfEEmmNqZNUGCJnr32EtGZ89ldVc9D8FdJS5TRfQggn3M51TnR052FEqvsUijBMl7id7EWK65kS4G0rZ5R5p+3NI3600+q6RcwyV0pqMlGLElVRbFms5+AJ9w6muhQSajRlzNrOb1bpGPP7YRmYxYnDQmcub5PZ08ffRIdVT3Mb14JPDDbZykzim7mmM86T2hF32tvBG+3TrHjKMeOiobkhvdVGV8bbwAq40gGiUjEoiRyK0mZ6JVTa0OsxJBeTIYnmQ/AA3xDnYPVhAqyGA7AhfdS2PJdhHCgh7dracQzISWMbssD2nNcFibjKV7Wu+4YaLRnZBxCV5HOSI3XIFCgvc4dyVVTl68cU8C4CqPIOl5K5dMvHi95cbseXMQZ66xozZTmt2JDNbx49PtNP1+OVzYmTcX6sA8TUHVQgrleHAEDyCEYeeHhXuQs+iM5VutBfREb19AbexWdReVoWmf+IZRxEUP6w78hW9KuTi1GupXLGg6/beGudgydENA6va987xJM5EZil0elfHhnzoTMqYDx62F7tLPOA+DQemY9gaocUd55SfKjkA1oAwScU=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 25,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 6414,
+      "gt": 6414,
+      "cej": false,
+      "bf": 4695,
+      "tax": 1719,
+      "ce": 88.45,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)88.45",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 4899",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 3899",
+        "reissal": false,
+        "refal": false
+       }
+      ],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "HR",
+        "fbc": "WJEV3",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB8[TBO]tFnM7fZhrIp3L9In/18K3XhSOTCNiNSA0Yafcml3sFPy+HjlRRjOl1LlwTFiSiTkVdjs763HkWYXTjJYMmq60gVn+J3skymq7l/D+3r3uq0g5L1tos17QviVNM0AnQdZUuZSok4eoq7scnBJ7mmsBt5Fon585Jq92Ga6VBklukqAa0Zp2kVRwgjvVUMtUo83OvOtFlWEHUZFlObis3gzVAkqiUVVMwbog2Tnu7vZcyYHN/movrl3Ou7dOtzeFPhNmNKn6enyR/AW1UZxNq+TfbxF51ae7x1EAczg5ST3q/8x2lZz6Mw7Uz9ZPlyhO+GsRnVanwYc7QP4UdfIFVj9U2uxTXYw5ebkomTBN7KCwkahXXCMIfT4lTNd/Btjl6joWHaW1DA+KDyCT2cG11hd4G222SYBkoJ0cSnhEwYCXCWWrLAHEHnAxi/fBoQIqcsi7moAZrygUz0q9OMKvB1Q1lutGAEs73f7t44OIdBGw6M3Ngo9aw7IQ/PHRC9i3uKlK6/KLjxNcKoUdBJRC3tQznu4ZcsLhTO1d/Ur34dzi3z/1jSZ+Mo1xgKyiobUADFoTG+zWuBXzwMEPd1T/Q2iZz4FCyndls60IZJ6c2+2c8yEWxQ19q6xN0chdg9S97AI8b1VBNyiWbN1DoeBM8b0Xsqa588msWl3LqSLhp7skDDVnDjVyA0Lgn6K3lTfOcQ6ev9e2/AhUzThpyJlT1ZU2RStOFI5PVIYa3GTMkJ2jOGrW4q5+7XSJe0+1genrg6mAEpuZcJlEj0wjqg7tBsAyyz4wk9xkfVwXrTe8EH5mDM=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 25,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 6414,
+      "gt": 6414,
+      "cej": false,
+      "bf": 4695,
+      "tax": 1719,
+      "ce": 123.66,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)123.66",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 4899",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 3899",
+        "reissal": false,
+        "refal": false
+       }
+      ],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "HR",
+        "fbc": "WJEV3",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "tjID": "4-5408941247_0DELBOMSG612",
+       "tjReturnID": "73724090897599"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": "RS",
+      "bi": {
+       "cib": "15 Kg",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 6787,
+      "gt": 6787,
+      "cej": false,
+      "bf": 5050,
+      "tax": 1737,
+      "ce": 86.61,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)86.61",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "RS",
+        "fbc": "USAV",
+        "bag": "15 Kg",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB5[TBO]91zBNRkBBC2wnG3BrWADDbK8dkuIihrMKUgTp4aOtWSx1zUd3Q+XifTGnW9clfeoRkoXvBtca0l3/a2lYJvGXEBCJAudn3Q/hYa2IilNyA2cOjbRiGY8kYDSVS6I+YBhV2r+CjApTPNoBj+yjFASTjMocaK0C+ha9b65XGky74YXjxZQdy+hbe2iUby5NBDmccFmpP69+Hu8qYoeA+1FkK9llBbKwBM4jjji/t69ZwKxCPamQUEWgiY99ozp9xaUKo5TuMuWJ2fmpK0bUAdPQGdVxUJs5jUhIOxFYLEFeY5ye58I0SHFfksBxhAsfbKjzfcDfKqJWmV/Zd1EYcbcv82Wo+Ztshf4MUlOvDf+Nlupsg8ChYquUPm42JnXBHsadacmzhRwKC0ORIY7T1uPipGMge4gIMoTx4htNUdmVFBtpZwgvO4ghKQdyty1Pu0vmTNsaXUirfoVnNFsGu+udnwzsheHPdhQS85wUNRAJM1Nck32mE4f/X/SwQr7vgbnik/YueD8BpGQoKWfrOvCW1CoO0PrpBzd5S6Hsadq+a9EGDjaaEUv/+9LIhytKDiGd9IffLlQKIFf3g2pwk1OYLuESuZu28owMLo4Adqv5LyjIdwIcXdrzi1rfDoNQ7O0BOWhOtVpSA9s6249VOrSNeOWCz27yRMNsg4tH9846/tubDbh1p/XGbyocCHVljXKubzPUMUmRDq1damiBA+MQedJizYoXm4Znzgruq7STdr1fzq4TPRYhCSNYbaMUnG6/MitCa4LhynQp4/CjM2Uea/mEJcyG0RnzJAJ185vBwFbtT8TH1aDoluOrsBYKHrg",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 10,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 6787,
+      "gt": 6787,
+      "cej": false,
+      "bf": 5050,
+      "tax": 1737,
+      "ce": 96.26,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)96.26",
+      "cf": 0,
+      "sa": 17,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 4899",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 3899",
+        "reissal": false,
+        "refal": false
+       }
+      ],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "RS",
+        "fbc": "USAV",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB32[TBO]6VAH1pFAJv6X/vl3vAMCPe4RlCWMBsSxi8aYfyyIjJ5MjBor/LnhVA70r/J7//GMDkHEcCnZczZnryXVpaUvbEXsW8/KXHI7Xr493MZWfhh2H3YkteOT0asM4n0gSKjCcBk7POFv0/3wDiyw/nYs3mNx4iioPYdVagcblZ4FOe6YkBekkggCV1ursI39hA3waCXVMkpsJ1vxFhLdGkaBY0GCbJKWuC6PvcDiNlVCmZ5akjRrj+o0O1gLneZe2hP2pZoIwbeOjPGTLrxIbQxHaHoiPX0YrTCVssaCKeAXBqpAonSk/Fk64iHp39jgIoyX0J0YdqijpwHvXOyZGUyRmp9UBoCaWN/rxkjzzznX49acyehs1O2n13urgzTb7f6dB9EieLLaXk2291qt1DNyYlPdPFNX4d7lUjTx+OtQWFU4FGa/SzspOBezR7bQDCbDD/i7MAtBPE0UgXqZXlB5KKbCj9tWthSdPn6ER3ZQaTtlpgC35X/8UMg+5pULR9B6tR/F6pKofYlI+fuLAS/E00XkJEB58kSuYM78c0xgVcG5Oj6zfZf3ME4eUyDITSqmg/kmVU9BFDdMX7z1bs/7FLTDuLx3G85FqBGbYlNElpUvMrDD7///glSKWhpJvlU7dp9GU2cWeyuwLPG4VDwqkQG+LNlVBwIiNP4Sp68aqUTo4kBMW8DKIfKd2MA+4c1/Uf0O5DBfwsSdkFNR3QqZa0p0JbWSMB2xXQm5+YUM6Eb36zmjb/BxEV4vT9Ggsw3KQEmjeG1CuPO2Y9wJHDf9r67vzvXGT6URZn/lY/Jyj4g=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 10,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 6787,
+      "gt": 6787,
+      "cej": false,
+      "bf": 5050,
+      "tax": 1737,
+      "ce": 134.13,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)134.13",
+      "cf": 0,
+      "sa": 17,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 2999",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 4899",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 3899",
+        "reissal": false,
+        "refal": false
+       }
+      ],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "RS",
+        "fbc": "USAV",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB34[TBO]XxA29ho8PJdLFsWSErDb10tpUUTSshm8T7Ildy8QrAIMZzniY+9pM+S5w1NUJnXXN9BMXb09BwvLllxB+A/onVORsV3MjF891nY9GUS5SQd1XJQD2Gt+YrBZRwK3R1EbupbcSIm4ufFVTCp+LScjfiaLRn0FJ8ScoGtQRvK3abM+Cw3rIYH1jccmHPufRbqFtdKGK3wTnojawuM2SDLplcm4ozwM4hNVOqlxTBv/GgoC6mhHnV+d5eqGk7Jp+BR9XMH/yooD4P/EgUDWvQlZmjUa/OgY7hcU2y/asGENrDjJSz7n5NHeNWqz3uQpxfh0drqOjsIzzABzGwzhDTrsby32HAlJnKOHF6NGMMdlKeq0CpjLKvyYPwutROiQzSMXoddIEEj999C1WQuvX6QkF9aZ90RWZwp1GWIh2yYC2+6Cljg35K9ZY33wiezGncXNssnA41U/3BWUs3CyrP6HYVwKwqM+RUu1cITWlaOxmG9ub4WHvKEhDT//7BK/nT8PvW71Ue01khcf9MLz6o6AMHJfiheTu8yQE5JR/fBkoJYtAqA9xTg6GHnO7y699CUhfrDdl8JOqglSwNdfcI0RyVdxMFYOOxT2cbL2RCOwvm5pl1x83ol7+4dlHVuuyaCzORHTjczqxPN0J5TkVz3oCbYZwcZOoBo4eJRCyQVMmgtHhLVsuoatVP/BJzWN0iHb0JlOOazA6dMkVpU9mu2OJo1VCUQWtflJsQlXGjeHWNjEbqZvgV/OGt0x1tItwXeOQBV/x9WUTj+pJP2rRmD+pvKvhIxopdtb45doYxba6Uw=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 11,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 6804,
+      "gt": 6804,
+      "cej": false,
+      "bf": 5065,
+      "tax": 1739,
+      "ce": 134.56,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)134.56",
+      "cf": 0,
+      "sa": 17,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 499",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "0",
+        "to": "96",
+        "unit": "HOURS",
+        "dtl": "INR 4899",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Cancellation",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 3899",
+        "reissal": false,
+        "refal": false
+       },
+       {
+        "jp": "DEL-BOM",
+        "type": "Reissue",
+        "from": "96",
+        "to": "",
+        "unit": "HOURS",
+        "dtl": "INR 499",
+        "reissal": false,
+        "refal": false
+       }
+      ],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "SA",
+        "fbc": "UBOM3",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB153[TBO]OGw7NP3FE26Kp0CzVA9X6/cnGgHS9EpLB7B/vzUDvKpbZKkmS0eeGr2ev/8CW0EQ1RF0G8F+0GD30itCtwmO4JiyIlZvk/MbLuIgkyv2FdVXtt3xxbj0glYmKDwKLBoajYQDZYiub05PUQelI5eUJA6bForMxnrHBXwQtFdJUmF1jBvfPVfh+AG5+29ABJMJauB9r//cEFhPjKx6hOx4z3yEGtAEcjoCP5io58swJbK7UedUFT4A6opdNmu29jHrh4YfQJlhKLjBSzWYmJhqOjRssYNL6TjJe0bSpP9UwSF5owk4PizjqZHyQDhAn6CeLpqksZXNriFYgPaWLdLn0B8Htadv4XOrMUzTnSV+4wVqh3UfrPAV87flZ30WbcBuIRr2nkmchDO4oy69REk15a9vSBjq9r4tDWHxfUJrwFRY0t0E4xMCZEh0UYs0tkZl60esH3jbFz6R9RS0ygJOedoSEZcPPoPBIRdU54uOTiwG0BY2qgNFt/F3PTDh1lhwYYCx2h3Ms0mKtnZQriQGFp5omZxz+tMiWbETZt6UHTH0AuLMch5bcz8ZIiq/sATLaMzOVXF4zVdtoDzyynomWj5NMNP4z+C5Iu9ydwE2zLza1sXNerdUvK54c7n5GQ4VkyKjeFtY03oTaT197zJI9lcFg7l76QmiajtZFO9InfkDJ0MsXpLMl7de4gwHtbWTfWUx/fkZesM4rZDPTn0J0g==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7KG (7 KG X 1 pcs)"
+      },
+      "cur": "INR",
+      "pf": 8101,
+      "gt": 8101,
+      "cej": false,
+      "bf": 6300,
+      "tax": 1801,
+      "ce": 123.74,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)123.74",
+      "cf": 0,
+      "sa": 17,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Meal Included",
+       "Seat - Preferred Seat Selection Extra leg room seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "SC",
+        "fbc": "USMX",
+        "bag": "15 KG",
+        "cbag": "7KG (7 KG X 1 pcs)"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "RequestedCurrency": "INR",
+       "ResponseCurrency": ""
+      },
+      "fid": null,
+      "rt": 0,
+      "ru": true,
+      "ft": 2,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": null
+      },
+      "cur": "INR",
+      "pf": 12882,
+      "gt": 12882,
+      "cej": false,
+      "bf": 9312,
+      "tax": 3570,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 11,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "U",
+        "fbc": "UOWSAVER",
+        "bag": "15 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 11
+      }
+     }
+    ],
+    "fseg": [
+     {
+      "dur": 140,
+      "sn": "Depart",
+      "stp": 1,
+      "lot": 0,
+      "segs": [
+       {
+        "id": "1",
+        "al": "SG",
+        "fn": "612",
+        "fc": "N/A",
+        "oc": "SG",
+        "org": "DEL",
+        "dt": "2026-10-28T19:20:00",
+        "ft": "",
+        "dst": "BOM",
+        "at": "2026-10-28T21:40:00",
+        "tt": "",
+        "cc": 0,
+        "dur": 140,
+        "lot": 0,
+        "equ": "",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null
+       }
+      ]
+     }
+    ],
+    "rc": "SG61228101920",
+    "prov": {
+     "TboResultIndex": "OB1[TBO]GzoTpe7MiiCuzBGvV1F8x9FOUq4etE4aZkWwlby5DIAZKZgFOQlPHySxSI6R8fzCE5pd7UACiHjFtE76+8TFCG8A89aEXYC5ajnw1ZwweKr2yD2FvBQeduVQgxUJNS4YtRaFU6aE8KLe9CtKywhbdBVsziaIsgIjugHeyDhFNWLMZBy3TO2gPDIp1nskh/WBEf0bidSqPL6AzxgPIZLBInFH+PjQRnV96OKUTrZrtW0XiIHKAOBGk1G0SwSgZnvzj5Bbd5zz52yjgfpL9SrTm05QqVLfxOlCosc3g+aXxqUgQVNkPMNWrXqGDOSKDqbDqodg4NgVpdqMuP9+guZA6h4QtPRrPBbuGbE1yH9G05gDrbRTaJ2CVcezN+5O885nrfDJJRq837S6bj0aMPvKTX1OWTtYCzvyf7OsAWK+86LjRvco94J2GF0wa5ynYl245JWGebfTu0QMSTnOupLTZLo5dQzDbHUmW/sPSUpcvi+42MWUMBT4F7KTRGMJWEOeblPhnkpn0y6upqVoizIDC4jKN9pTgGBhD7s/fe/s4BD2mOE+N744rp2F07GVdh8CMpt62GjcvDjd2K/HwdBNSr1LzQwjg72cJKULn7svNegEkI53sOKa8ewC1/h/Vug7p/bLcrNYPDHM/7mEHVqm9S54WhbQL22WoHdsuOa2RZo2r3syJ3ew9X3RrThr0bikzO6zoM8zY5y9mAYvUksXN29i89N93nL11uGvxZ4dkYtiK3Hh9mtyf9+SusaW1Lj/bhBW8BMO8nwp4xF5sOz0qQs5BsQFWe2GXcf0YDI9b7jfOwaejuozaB6d9n39WUYOiL9oMQaUtxvoGQsX+BtNOyeLotJTnNNhxycI/a3Harl1wMeU9r36sOBHu7zxnAAHQHkBhmq9U87W2ykXhiQ1WrUgvawFHnZsW4Dae2505cOThCTv2DN+7tQts18Gvs1kG5a1gtMwNmqPZUmu5WVYgWfyvN/+SykgwnPmtiOW+w/xJTF2JO42OoAECsdi2Eets87wmJ0H6pBDRFUpEPILYQmjDsgA7t5DjEd0gAzY8zvKKJmb5bhOgc3v/qLH5tZ+rPQi2Yv4aY+oXmQHEZGH5n9UeKz4UwEyHRiOyyzvJenylcLa1Z5gsVIBBpNMOyMI9KLaLBhOlrrGk5Kz2lfT+90XP2Y9PWT+Uvp5lmL+QcwGs+QFkBD8c5ARaAQHQl4ouZyQTA9lhTyLjoZeUypnc+G79qy2lV342DSfh2uqabx5M+BfcQxGYpcIIu1SYYMOLIBteXiewsCzIHXjYIY7cpjBN3kzr6SExEOGjT42fNFXBELFnKDGjYgmucVHWoGYwmi5ywJTPQohuImz9QFkSjFDyPHwoEzIMZ2KYZXw6ZaCs8mZNML3idA9K2MffYMigoP0sOYG1+MuA4Uxv8/+/XvGecY6i2puBIVtLcobV+AzBZAP//yTweaCM1bfZQ9QJZqHMinewftTYEFJ0QFgbk35vwJ8ZKqpCqwbIVqo4cmamTH5rjQBgxz0dZ7Grt5acpYgA/GoMB4DkKJHDw7KnYOxEhH1EFruLFu6weKE3McU+s7fKyk9hENWfg1D0bOobN7C65uSNynUMdi62VsDV45gTwxF7tyW90ffJ729fNCFOcwMQEihCqzn6GQWP4mzsPn2lZpHfGtHn7KVfK+4qX0ec5G7aX4dNVspoka6oF7IZtn6BYKSm7qR1OEWukFLJrNPQEElHuiFYkDZtfslvx21UlF3YmXvDt1RfaMgjdg2kqso9QpZzx01CdTeWh9kYmzYtFlaXmoauVF88eOoRLH5/fJdnOtbDVS+FBYlqeH5Ilti2Qwb4Sv02/XJVUZWy9+wusadvbYjM/ZmkUjTVtqnkHAMb5wegBCc7S0qiaSjb8riF/5FMlqO3fdnX9Pd",
+     "TboNonMetaResultIndex": "OB1[TBO]rws1jr9JIy2PR0bvJy6obO/qWrWbYH2xeoAfw44egxaKdUkRZvRyfUuVi5VnE5yF3Xwy9aDRCCbCyQgT6f4fQHDn0rslaU0a70DW1TyohL97/UMyqm0qOgKFEnMafkgtgAno8YBx83g92Shf5kkt6cznoU3CYNc2Gd7V27h9fDy2114PXNFhSmrSKQoVpvTA0Bm4hm21aeqvoysGEliIpXtqCNFG/zgPpmQhVLIpu5QyeYSSowY7N3XkcK00XD9sjwH7kIHwSDQKKcLSV9uZaSWwB+ctDnHweolXz1ZiEJE8QzxdEDQtbNNuoprE038RH7Y5o4f2KWpu1Xy7ZHv53XwX9tfKJodGnjRtT0Vq1LXDAdt50Fl7NrMRQo6ksrf8vYHGzj0tMu6458+UYXNFSNijVd2gGRGn5XcdpOWVzKvJXEmGTiaSJGJFvyLw9sUMqS7leyjrzGpKO9HM8/UWQ7+QEh0q9yyVdmHgNtG0dhgpl6Ax1f+wIIRFbZCtlLrQdi/Y/9G3CRBB7dOCR2DUB3brncVUmRZ7lSRbhnh5fBmq9SIN64d34VvB65q77pvPLVh18c4aBueJLD6i0XtGYrU/oeWkIZ82YFncT2DPWg4=",
+     "PlatingCarrier": "GP"
+    },
+    "il": true,
+    "ilc": false,
+    "journeykey": null,
+    "legfares": null
+   },
+   {
+    "rid": "OTB4",
+    "vc": "IX",
+    "fare": {
+     "pv": {
+      "AdditionalTxnFeeOfrd": "0",
+      "AdditionalTxnFeePub": "0.0",
+      "TboResultIndex": "OB9[TBO]a1dlgG8Jo+rLGRFdXCaD291tq1STmU3OzfRElr9AngVJ6GwTZ4czmVzP7V30DpzVXZuVs0rY8F280HlU+RArFhyT5Uk28NPdcNjzZQuz0g6V9FPaOnW3jIEN5a3156N4OptLTWYx2o8ydAsOSmmax+n5NOpvgFaqJ5QAc7t2lpEcuUntGA2oApE6coYzvbYAJb1HnE/YqfwmyM+AHQ3ZGKlX+sHlMEVIhp23sdbMnF4HwMam/ZrHL3tBr4toEkNRzuz4y3vr0VRkuvhtaNvX6UVqXBXFV+fkykQpyU/qNhWIoJb1chc0GLMSiCJIwNV1L6VVg8fDfHOq804w77V1REM6XaKrsBYpvCHbdZB34EfiR4tyS0seRI/HpdnjAx3rLvJ+9dFV1JZbsaz+xY4lGTouswtD+CaO4w5NYpXPr8mToOx/Yy3oGA3N2jOLtxUsvWnBglnDsu3ANSBuH7IfU7ClmOwcYWQlm++0yDib87CTmwH+KYMf0NkZPj7Hbt9ccWSdEBuSTmvgl0Qi4On5DHbyS/Or/CFjNpO83wPa8NqX2014ZSPy2Vw0nrVcXVanJ/jkRjxcSQb/CMs5jt3N1Dl/ykLfIlF26zqsC6YhdHfIs7z1YFhqbT9C/HA1k0Q78Hvvb+HuXIajlCMUfZbf28Txk0ZDM49YCooEi41dsH6aW1tmRyC1BS03p+jdnm8n",
+      "TboIsLcc": "true"
+     },
+     "fid": null,
+     "rt": 1,
+     "ft": 0,
+     "mft": 3,
+     "cia": false,
+     "ct": 1,
+     "bc": null,
+     "bi": {
+      "cib": "15 KG",
+      "cb": "7 KG"
+     },
+     "cur": "INR",
+     "pf": 6501,
+     "gt": 6501,
+     "cej": false,
+     "bf": 4713,
+     "tax": 1788,
+     "ce": 0,
+     "disc": 0,
+     "mku": 0,
+     "fb": null,
+     "mid": " Comm(-)0",
+     "cf": 0,
+     "sa": 9,
+     "ib": false,
+     "gds": 1,
+     "sp": 0,
+     "sc": 0,
+     "cache": false,
+     "minifare": [],
+     "bn": null,
+     "fi": [
+      "Meal - Chargeable",
+      "Seat - Chargeable"
+     ],
+     "sgp": [
+      {
+       "cc": 1,
+       "fc": "XM",
+       "fbc": "XNSA000",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      }
+     ],
+     "prov2": {
+      "m": 1,
+      "b": 1,
+      "v": "",
+      "t": "0001-01-01T00:00:00",
+      "g": 1
+     }
+    },
+    "flist": [
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB9[TBO]a1dlgG8Jo+rLGRFdXCaD291tq1STmU3OzfRElr9AngVJ6GwTZ4czmVzP7V30DpzVXZuVs0rY8F280HlU+RArFhyT5Uk28NPdcNjzZQuz0g6V9FPaOnW3jIEN5a3156N4OptLTWYx2o8ydAsOSmmax+n5NOpvgFaqJ5QAc7t2lpEcuUntGA2oApE6coYzvbYAJb1HnE/YqfwmyM+AHQ3ZGKlX+sHlMEVIhp23sdbMnF4HwMam/ZrHL3tBr4toEkNRzuz4y3vr0VRkuvhtaNvX6UVqXBXFV+fkykQpyU/qNhWIoJb1chc0GLMSiCJIwNV1L6VVg8fDfHOq804w77V1REM6XaKrsBYpvCHbdZB34EfiR4tyS0seRI/HpdnjAx3rLvJ+9dFV1JZbsaz+xY4lGTouswtD+CaO4w5NYpXPr8mToOx/Yy3oGA3N2jOLtxUsvWnBglnDsu3ANSBuH7IfU7ClmOwcYWQlm++0yDib87CTmwH+KYMf0NkZPj7Hbt9ccWSdEBuSTmvgl0Qi4On5DHbyS/Or/CFjNpO83wPa8NqX2014ZSPy2Vw0nrVcXVanJ/jkRjxcSQb/CMs5jt3N1Dl/ykLfIlF26zqsC6YhdHfIs7z1YFhqbT9C/HA1k0Q78Hvvb+HuXIajlCMUfZbf28Txk0ZDM49YCooEi41dsH6aW1tmRyC1BS03p+jdnm8n",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6501,
+      "gt": 6501,
+      "cej": false,
+      "bf": 4713,
+      "tax": 1788,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "XM",
+        "fbc": "XNSA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_0DELBOMIX1056",
+       "tjReturnID": "73724271457046"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": "SM",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 6501,
+      "gt": 6501,
+      "cej": false,
+      "bf": 4713,
+      "tax": 1788,
+      "ce": 34.64,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)34.64",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "SM",
+        "fbc": "XNSA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB78[TBO]gUaPmeaTgmFB9IHKKmL4lRXjU0n0G8LKVvqVLNuDZkVRjNF1LDFSX6fPlVEYDFD+bh8MQ8vfv+IByZw5FeOuJQsIybGRQbWrWWWdWZbiUAiX4fTkqb2vZEa8RGas2doaIxbnsKw112lGNP2hHEtxfNwNuetDnXPAQ3DZpLZwN0swofuL3IeOBxCz7F2Vy4QasGNLPtPivlwl5dIMOj/HCJvfLo1CyD1RiMCvYx5TwLwWsabDTxWm4n7yVP6AQ1ZxEhNkyxZ1RWvC9A+4dyIOZ9GEMTCCUysctdcedbC9zk0TyHQIA50bZ3FceiMcVjtLj2nE5cVOMIY6ClU2VwVg/YiepCWwPkSdaeimMWWyx44sB+/F4nyy+Uc1hr7wbP6pwF9LL4sXObGbzXRykKW+7vwXOf0KivzX8S7h87mfbK217ITSiazIU+ItVXzXzx9MuRwMxEbu+IOQrsq6m4lWS/YYAxh2RaCDoqwlXsF/rOXGfAysR+4y0d/Maf1hSdsDoxTDRk0JRWlcV3W/hE3W0il0kr7bxhzGvnSgPAkUJnSGEhS43L35hrmNR3sCJezX1eYeWpNrYT9UWjFSRVeOiZuA39ZrbGF9NNIvLGQGhhs6ErAhlV8X+Ycj+VfhqTp2/KT0RFm7DQvglhsCfZecbcJyAGZdzouKYym2UN3AsamIDAh5ypZGWRevdCkaxhTF",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6845,
+      "gt": 6845,
+      "cej": false,
+      "bf": 5039,
+      "tax": 1806,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GC",
+        "fbc": "GNRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB27[TBO]WzWGfqg829gaoECUdCb83INjas3neFCjeyBjyyg8RmLF93v257Qxjc2sKaG09Qn/YGyhnNHGI2i9nyTrSzHBepOfLCctUx6I7iXNhHK0dFlJmRsbEWp//u9VbNcfldF26N9XXIIh+rSzv/T4JSUUAIUFkjWka+XKcUNU6uhwDrDQPv5PJFXnmJDdDs6mwjLaTlqW8i5kEZm1pQWiSVMxDIm6c8sGZzeevISZT7px+Yf6qEBpnzDoxCQoyNUwe+X7A+SRYVTEoCqLs2R9Hn3SIN1c+DtrqvyRI2f2MZZ4cOq5cGHkag6x/XxjtIC9Onr9TTZz+H97pfJ01URbSLyzxfo/vrFJ8NCkZNYS6SzvKYjJDvlcneQWaSeELFKQUDlowIlbxMWadV9g+Tb5q6HAfdCQLmPDeArdEOL3pFyExes5PucqHGCqexwfRCTeRPXR1hKlBA+QMakfwi1eq9VzB1KBU+23DuIJ+dTZjXut3z4wINuqpYpuy6ngSBZ/AZ++OcD1Iek0Ch1Nqb3tV90zgARbdwS2LeRJcCVgfJwXuTJnj6TqeZAurMB6ji4FJShqHbLkB/qnXVSl3T5JjTaNDLSouOiINdE5hhVP+ZpDp9+UEdqLKiBTauFRK4ySb+d80mzPVQ9kpZNR4pfqHR0MRVXRgRg7vfQn/t32jX4b3SE=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6845,
+      "gt": 6845,
+      "cej": false,
+      "bf": 5039,
+      "tax": 1806,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GC",
+        "fbc": "GNRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_0DELBOMIX1056",
+       "tjReturnID": "73724271457848"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": "EC",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 6845,
+      "gt": 6845,
+      "cej": false,
+      "bf": 5039,
+      "tax": 1806,
+      "ce": 37.04,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)37.04",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "EC",
+        "fbc": "GNRA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB167[TBO]a1dlgG8Jo+rLGRFdXCaD20KB1UGUHcZde7SYot91IuYQJbZq7wSfTjTEGDvDLe8e8YTHN0hy3Rik+meeOSFU6ifHorOBFZaP9D0xJ+ZPgIFWINv4lcl4s016C1z4Y5vpIdSn3KcaQP7+aIc7SYZjkwNyShUe/W1fK5QU2hsfOlIS+KJ+wmAvb4pYrKTjH7GoVZVj5lTo5aTXsHEhLfj4wr0kczALVhuPCIfY8UBeYjXojJiCBziVtMBWFcfg8a0wDSiJvnFDYR2YuKWmrAj3jfSWrILRClcJBnCRW/X66yzuTl22tkDyV4F3Z+ydRxUy+dE8rgchs8majozdOUvc7PxgDPwMmZsa9Yn02RmdQ913JcUX4ylT5R8qwMj5+9FJoTLVpUnu0yTRAG8CxOUfKs94rIUHCDycf90SSCVB7Ki69X1qPZmz5k+UXx215UgCKosiZPcjGM2jvlk/tsy0v3VGm3Vkaw79eaxOIu1ioODwkzKoVSsxMHirB7ZsvApeVW+KB8i49LlYQPe0KotFH89mCZdYVyNRHXxGqAn79DXc/KrzSFENfVBXY1IlTxvcRQL1Evkb26e4gPZiK9SVBu+4Fiq573jX/X6fFz8+poxglq/vLJMu3Idjih60sNkaBLBzingL+3ceGf2NpNBDgegZQnPdNqYiO+0GOEt+6PCW3vCJiF4dIR0a57y7nvui",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7369,
+      "gt": 7369,
+      "cej": false,
+      "bf": 5539,
+      "tax": 1830,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Hot Meals or Lite Bite",
+       "Seat - Complementary standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GF",
+        "fbc": "GNOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB99[TBO]yJTyEaqmEbXX2FWje7W+UyzyeyVoTqA+2Re715cThgcyY6KqB04sKxSjwuso1MYr8sEasBAdcXPkKC6XgqBpnClwz4RGuSJoFsz/HYzrz7qWuL1QEPXhHqW6c00EJ5DblbDyyIp2QcAE/t5UOLx7VXp2jiei5RZO7BdRT9gpIoiPUrx2Smvbkq59sEl2BC0c70XK930MsmbdVeaxzCUCUYnCVQ5uv8DdK36/RStIYwC4sA3c3V+TQVRk5y4onCsIFT5OdB0w3OqTBok/lCmhy2IMykKQux6fyPn/yR+NTUqWl9WID8up7UCug2+GI0iev1gO2IToRvuPPHxXW7mGvTblv4beM22ywJDABR8lLt711m46ET933+G4TRsjffdkQvbrt1H4qwI54DxJXHklHFECfXKzbFQyKq1eR1Am2GnO2l6TwP0LrrmxPBzQ8dSRNPl0Y3uTeLr2LnXzN6Adh0uZ953ltxtoAdE82i/ysd7+AGH5o2OJAeIWn555yRqP6Is8LEXuJQk9PalU+qYXfVKlywr/pBA2UPujRHIjoWXM4jnhes0uFNLz/uBrAd/DLTRBDsyIEE/xelwHsfBUywamzr/ij/VwVjIeiJpSRtagSkf/XgZW4Qn8DPII/69R1Zw+MNPaPL3v6ImcBUFSgsP1dZR+Gi7pJ5QgUvn4GAc1p4qwx9ilQdKNKffVJ3mw",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7369,
+      "gt": 7369,
+      "cej": false,
+      "bf": 5539,
+      "tax": 1830,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Hot Meals or Lite Bite",
+       "Seat - Complementary standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GF",
+        "fbc": "GNOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_0DELBOMIX1056",
+       "tjReturnID": "73724271458103"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 4,
+      "cia": false,
+      "ct": 1,
+      "bc": "OF",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7369,
+      "gt": 7369,
+      "cej": false,
+      "bf": 5539,
+      "tax": 1830,
+      "ce": 40.71,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)40.71",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "OF",
+        "fbc": "GNOA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB138[TBO]I2U0+1m/Ar6ICfh1218Amp8BF19ISUcngS/crUbZ/w6NgfRn90xVgiIHM285ibshV4GJl1pPeHaFqXGJzXWCVN6Rl8t+6JS0cqHGlNYCVtqxBCIuOQP/MRSL/jufcq0nvZdnIVEB6czuKt0gr/l/MgRz8/ZDqakCVHe1pMKjk5BkQD6Bf0Z30rx7xEN4ZmhW/5EJA9z1EafNL6d6rfhVXDsx9/OQPOEqh5rCZxRlknT+yBnPsGlhHddM/IJR46TR81EOSkVPo5TGQ4vdfLZm1RUT3sDH10QZPGHX09kDYlDiqoNRtBnrATKXydOrUGLK1rWXV6MvetOsJmq/4/bAMNYOy4ogDT0eCwrL+Q2n8CGIDDIU4nvkJLfpZk4yqbqPEmXfR+SaHsTYw15V/Hkwe3T6YJzYvewHaLLkdHv0XuhnNpLydLQjFYYgq5stkonrQbexWdqmu2KhNGP2QhJv6qprwLumvBlH14DSIfqNkpb7ifpfpmNrisYoev+FmBIZFDrS8yqsPmedXqrIMUZS0FgCZ4Y4YKm3PwEIglDXx39Gg0HvT61gtti50DIrQD7mO/ywIYRs4ub3C2+eZ6p2JPKyuqEVF6KsvZUhagz2eLgLBNMuh20J0Be9AVSxRb0uJyXlXqkb3G5DLlKVI+qQ7bcydSl0Oa0NwYy0z5OV77I=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "20 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7789,
+      "gt": 7789,
+      "cej": false,
+      "bf": 5939,
+      "tax": 1850,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Lite Bite",
+       "Seat - Complementary Prime and standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GP",
+        "fbc": "GNEA000",
+        "bag": "20 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_0DELBOMIX1056",
+       "tjReturnID": "73724271458230"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": "FP",
+      "bi": {
+       "cib": "20 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7789,
+      "gt": 7789,
+      "cej": false,
+      "bf": 5939,
+      "tax": 1850,
+      "ce": 43.65,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)43.65",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "FP",
+        "fbc": "GNEA000",
+        "bag": "20 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     }
+    ],
+    "fseg": [
+     {
+      "dur": 145,
+      "sn": "Depart",
+      "stp": 1,
+      "lot": 0,
+      "segs": [
+       {
+        "id": "1",
+        "al": "IX",
+        "fn": "1056",
+        "fc": "XM",
+        "oc": "IX",
+        "org": "DEL",
+        "dt": "2026-10-28T08:50:00",
+        "ft": "1",
+        "dst": "BOM",
+        "at": "2026-10-28T11:15:00",
+        "tt": "2",
+        "cc": 1,
+        "dur": 145,
+        "lot": 0,
+        "equ": "7M8",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null,
+        "fbc": "XNSA000"
+       }
+      ]
+     }
+    ],
+    "rc": "IX105628100850",
+    "prov": {
+     "TboResultIndex": "OB9[TBO]a1dlgG8Jo+rLGRFdXCaD291tq1STmU3OzfRElr9AngVJ6GwTZ4czmVzP7V30DpzVXZuVs0rY8F280HlU+RArFhyT5Uk28NPdcNjzZQuz0g6V9FPaOnW3jIEN5a3156N4OptLTWYx2o8ydAsOSmmax+n5NOpvgFaqJ5QAc7t2lpEcuUntGA2oApE6coYzvbYAJb1HnE/YqfwmyM+AHQ3ZGKlX+sHlMEVIhp23sdbMnF4HwMam/ZrHL3tBr4toEkNRzuz4y3vr0VRkuvhtaNvX6UVqXBXFV+fkykQpyU/qNhWIoJb1chc0GLMSiCJIwNV1L6VVg8fDfHOq804w77V1REM6XaKrsBYpvCHbdZB34EfiR4tyS0seRI/HpdnjAx3rLvJ+9dFV1JZbsaz+xY4lGTouswtD+CaO4w5NYpXPr8mToOx/Yy3oGA3N2jOLtxUsvWnBglnDsu3ANSBuH7IfU7ClmOwcYWQlm++0yDib87CTmwH+KYMf0NkZPj7Hbt9ccWSdEBuSTmvgl0Qi4On5DHbyS/Or/CFjNpO83wPa8NqX2014ZSPy2Vw0nrVcXVanJ/jkRjxcSQb/CMs5jt3N1Dl/ykLfIlF26zqsC6YhdHfIs7z1YFhqbT9C/HA1k0Q78Hvvb+HuXIajlCMUfZbf28Txk0ZDM49YCooEi41dsH6aW1tmRyC1BS03p+jdnm8n",
+     "TboNonMetaResultIndex": "OB27[TBO]WzWGfqg829gaoECUdCb83INjas3neFCjeyBjyyg8RmLF93v257Qxjc2sKaG09Qn/YGyhnNHGI2i9nyTrSzHBepOfLCctUx6I7iXNhHK0dFlJmRsbEWp//u9VbNcfldF26N9XXIIh+rSzv/T4JSUUAIUFkjWka+XKcUNU6uhwDrDQPv5PJFXnmJDdDs6mwjLaTlqW8i5kEZm1pQWiSVMxDIm6c8sGZzeevISZT7px+Yf6qEBpnzDoxCQoyNUwe+X7A+SRYVTEoCqLs2R9Hn3SIN1c+DtrqvyRI2f2MZZ4cOq5cGHkag6x/XxjtIC9Onr9TTZz+H97pfJ01URbSLyzxfo/vrFJ8NCkZNYS6SzvKYjJDvlcneQWaSeELFKQUDlowIlbxMWadV9g+Tb5q6HAfdCQLmPDeArdEOL3pFyExes5PucqHGCqexwfRCTeRPXR1hKlBA+QMakfwi1eq9VzB1KBU+23DuIJ+dTZjXut3z4wINuqpYpuy6ngSBZ/AZ++OcD1Iek0Ch1Nqb3tV90zgARbdwS2LeRJcCVgfJwXuTJnj6TqeZAurMB6ji4FJShqHbLkB/qnXVSl3T5JjTaNDLSouOiINdE5hhVP+ZpDp9+UEdqLKiBTauFRK4ySb+d80mzPVQ9kpZNR4pfqHR0MRVXRgRg7vfQn/t32jX4b3SE="
+    },
+    "il": true,
+    "ilc": false,
+    "journeykey": null,
+    "legfares": null
+   },
+   {
+    "rid": "OTB5",
+    "vc": "IX",
+    "fare": {
+     "pv": {
+      "AdditionalTxnFeeOfrd": "0",
+      "AdditionalTxnFeePub": "0.0",
+      "TboResultIndex": "OB10[TBO]a1dlgG8Jo+rLGRFdXCaD26I51PGt/mH+7SsJ+UA+U0c72uitrahP/t6glEs9sm//ncRzoh5zNFl1Xdd64NwnqLxDBbizRPcjfU7ULnr/XpydWHQyJdvvm+ITdx3yo496MvDMmYJLGgehO4FY1UKCT6AC0DHkAYFTczzv6OJE4dJTyBjvpGJ80PmzKcTrxJEFbmDBNBG1084sM3u7I8hpoLKReI8h1Cxihf9EFDUBblkjcbhJ1BEIWDwqg+er6drXCTvQNHme7afgLxU2ISd/Wp2KHM5qwAUVDiiq1prAM94AjzlVVcVfnwabx0RQdfuxWZecN+R0jMel8+P+1/c/BbxncvBPvKygqyLh4zYtdhkgW97q+9R9G2CBdZBaMeKoZ4qi8ftjhDTXuCI2HynP+/bR8OaO8xToH2WX8eJOnjvIQd3eK61jmsQSiSQd8QGCoPdQlP/mT0d80hpSH1enEUh/Kj0qjmCvXTJhubgHxcEw1p68FYhCd9QdpgQNYrMkMCM7EvZwsGebqlhYd4yj+hPLDXNj4sGYndaS/VsJ5bKyQSgeP+RgXXLeZ5F6uiSXcfHWKDRGyPb9OO/cfrzReDUTShxNLut4BwhGGKgBxqUdUdO2f0qaoStwVR7n48LNHUu4dWNwRwvNAYMMC4elW7hxay47rS9F0T7/m4bkXXLJtXNW5FdriJX9SY+qRP8w",
+      "TboIsLcc": "true"
+     },
+     "fid": null,
+     "rt": 1,
+     "ft": 0,
+     "mft": 3,
+     "cia": false,
+     "ct": 1,
+     "bc": null,
+     "bi": {
+      "cib": "15 KG",
+      "cb": "7 KG"
+     },
+     "cur": "INR",
+     "pf": 6501,
+     "gt": 6501,
+     "cej": false,
+     "bf": 4713,
+     "tax": 1788,
+     "ce": 0,
+     "disc": 0,
+     "mku": 0,
+     "fb": null,
+     "mid": " Comm(-)0",
+     "cf": 0,
+     "sa": 9,
+     "ib": false,
+     "gds": 1,
+     "sp": 0,
+     "sc": 0,
+     "cache": false,
+     "minifare": [],
+     "bn": null,
+     "fi": [
+      "Meal - Chargeable",
+      "Seat - Chargeable"
+     ],
+     "sgp": [
+      {
+       "cc": 1,
+       "fc": "XM",
+       "fbc": "XNSA000",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      }
+     ],
+     "prov2": {
+      "m": 1,
+      "b": 1,
+      "v": "",
+      "t": "0001-01-01T00:00:00",
+      "g": 1
+     }
+    },
+    "flist": [
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB10[TBO]a1dlgG8Jo+rLGRFdXCaD26I51PGt/mH+7SsJ+UA+U0c72uitrahP/t6glEs9sm//ncRzoh5zNFl1Xdd64NwnqLxDBbizRPcjfU7ULnr/XpydWHQyJdvvm+ITdx3yo496MvDMmYJLGgehO4FY1UKCT6AC0DHkAYFTczzv6OJE4dJTyBjvpGJ80PmzKcTrxJEFbmDBNBG1084sM3u7I8hpoLKReI8h1Cxihf9EFDUBblkjcbhJ1BEIWDwqg+er6drXCTvQNHme7afgLxU2ISd/Wp2KHM5qwAUVDiiq1prAM94AjzlVVcVfnwabx0RQdfuxWZecN+R0jMel8+P+1/c/BbxncvBPvKygqyLh4zYtdhkgW97q+9R9G2CBdZBaMeKoZ4qi8ftjhDTXuCI2HynP+/bR8OaO8xToH2WX8eJOnjvIQd3eK61jmsQSiSQd8QGCoPdQlP/mT0d80hpSH1enEUh/Kj0qjmCvXTJhubgHxcEw1p68FYhCd9QdpgQNYrMkMCM7EvZwsGebqlhYd4yj+hPLDXNj4sGYndaS/VsJ5bKyQSgeP+RgXXLeZ5F6uiSXcfHWKDRGyPb9OO/cfrzReDUTShxNLut4BwhGGKgBxqUdUdO2f0qaoStwVR7n48LNHUu4dWNwRwvNAYMMC4elW7hxay47rS9F0T7/m4bkXXLJtXNW5FdriJX9SY+qRP8w",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6501,
+      "gt": 6501,
+      "cej": false,
+      "bf": 4713,
+      "tax": 1788,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "XM",
+        "fbc": "XNSA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_1DELBOMIX1235",
+       "tjReturnID": "73724271460286"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": "SM",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 6501,
+      "gt": 6501,
+      "cej": false,
+      "bf": 4713,
+      "tax": 1788,
+      "ce": 34.64,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)34.64",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "SM",
+        "fbc": "XNSA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB79[TBO]gUaPmeaTgmFB9IHKKmL4lU+df2m1LiQZG1a5VHIBcfpVGSfxiNodQjtlCn2U6kVcTc4DLE7w5eVlFZgOBva0gJo1sjfPlaeUm5InLPZDFDBI9MjFMujvFZUPwFF75GH5CEEypONn0pH1Phhru5mbJcAuBgVZgU6N1mMzY/WWZMXV0B3uUfnIedNyO8ynl5WMYZxUR6fh2hCQBL3GH37NM0yQPjtJPGevSssK1A7VLylc5tzhtgrPtLfZW6Lm+5ByJA13PbQ28UMcYVOikrdn/WI3AZ3epfMMqtG5SVGhhKNohyJPtubODAEZ73FteVPcVe7vJHuntBhJqoyqjhDwvbUkz6LQv0Nxyg+X7mnLSlm91abpaYP67L12E5XAPet24LFiOUhROm5QuU0JR5EVv3co2jWUnzpILlCKT6GQKoGzbKH6awSOGV0A1Rj08OGJN3zWJAqGzYV9cjkzvr4pJYFII3mrg0ZL/SA7+zklQlvWmMLtR4G2iepfVjYJWFvDC6DCabHbWYDeBGbIi+0IKUU6XNOtg1hrhnFOqkCv3Sy4gNeMbXolZSwpsk0fwy6YN/CgW/TnSzmQz/YIp1OBLd61uswCfuny0mYkQ5zv9vCiBJ9PnZ4x9bws6WtvY/C7DKswtxY+H6P61yiYn826T/yQq9u31pZRXtRQOmV4UjM=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6845,
+      "gt": 6845,
+      "cej": false,
+      "bf": 5039,
+      "tax": 1806,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GC",
+        "fbc": "GNRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB28[TBO]Yffl2zj+MlUUkAzZ6FU20yYqIFV4j6ff5GLPkvEptFI+chCqcAubbCw/0QMpow5OgbTZSCS7bJrS146OttJ9BUQU3Tg1ge3uehN0bfOGbUhPODt2uK4sncgFTFduuU/JickGvClhOdwc1w08VN5dhBJ55BXK68vR81GV6HRogfNkWGmkyBdOZC+VkrMeuzhsI8OlsV4DrsD8d3FbVXDKvzU8QCVLJJzJT1YDH1YCBY2k6+sxo1fi+PAB6TaNKQ1y2RffL/OxeI7yCin3mjq2317FfqVC1p/ulL0WH0LdvhMnTJiM4eAZrxb8Qk8HZgvLnc82ZVUxFv99Cr2ZV+PCvc1yOxDVDw62l1R3g0sislYJ0VKbTEB+7c2PbuK9f2OXRftVz0OthEZyhExIb49jjMrXufIqAVLU7OClw0yafSMOoraluD4/7G514ZP8p6uhDxq17q8LiDbm9HWPQgqkgGk2+WT3Ewec2JLWiJS82GzhwhTbReGK3v3eSDoXTPmj6Bd64DRjaijQNNEsrkanAQ1xuKRyD216VkdPuPq2N/LKuD/V+r/PSTVz1vN9kUIKsVUcD/ik+M/Rv0cVe4FWCXWeEY+IsAY5HfZ9aep70n5iNw4CtX6+UAU/mISi9DtuI3uoB9q9rmY+LK7p9bwyngiQ9vltAosIPolw2zIa/gU=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 6845,
+      "gt": 6845,
+      "cej": false,
+      "bf": 5039,
+      "tax": 1806,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GC",
+        "fbc": "GNRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_1DELBOMIX1235",
+       "tjReturnID": "73724271460498"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": "EC",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 6845,
+      "gt": 6845,
+      "cej": false,
+      "bf": 5039,
+      "tax": 1806,
+      "ce": 37.04,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)37.04",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "EC",
+        "fbc": "GNRA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB168[TBO]Yb0taRPeue7TaM8vGmd2VPwYppYoKO1j9vUdgFcKLx2CZBiMKV0Opq04EPDftv6pz/aYvc2xBEVNU/iELLfU5MxBetj2BIMr6XNqjz1yG+8AOO1/XwwQE/KCck+71NLE2BA1/NcOlmKDFWP46sA/b2Yozw837/vwg/jJ0sjU+YbFU1XyQ0DunLdVGwS1zPu/0Wzp78wTiyYs2JKPFCDS2o72tFYBrW1DUG/VB+zCuxClLnTQpwLWUkHBk8TJiB6hrkUHxhPluNtMuS4v5ie7zAuS+23Yn7e0AZN4BBhCj9kopTmH0SvzBNegWhgeMiftxF7FqINGRIe+groS7VoOSrERnASC2M2tV44uu9stEC9CpIR2MlNfTz46QJReL1MuDzJOyPUPRCQ4G3M97Det3Y6GYy+tCKsrib5fSsfnrOYS97TMH7Ic7E4+I5r4u3iFUIqsfw7/bzOrnPNMr1BsgqCrJjYbCreNfyR6y2IPiR0FRpvy2IrnUZT8J/5EiWAYbDpqhwYdGm/AzcMRyPsbWaStuIOexuqGnYW9ggloZvdgSKj+BOqkx1RglD/ELxozffB3z1vUyWqCRNIv1DBmy3AvZCMNcOGKRHvDoyDQoy+Z0FuXgTlSJaNaprFV7hHQMAHUB2k7xfYNHIOnhQ3uttCQ8/rfw+4yIRMwm1ldE5o=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7369,
+      "gt": 7369,
+      "cej": false,
+      "bf": 5539,
+      "tax": 1830,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Hot Meals or Lite Bite",
+       "Seat - Complementary standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GF",
+        "fbc": "GNOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB100[TBO]g6BC/rarXl45g5tpY+L6jrXXkaHhN6+vKhRmT3Szj7THluc+jLA4jzG0/yzQ35ozxkjLsr2yShANU45QiZ4yXFNSRTnagp5TQoHTD2DBLpijWkK8A1doe2RJp2tRG3RV/4f8PldpyncODuyKusp5HzL3tDI80G6jnC6SLRN2DERnbw2pZhmFXU/ESAFfNiWZjjs/3t8wKfU93VVtAEsEbP1NefY4FmYxq+8kIsP6AHwCqRVsLkaNsi89V7fKE3Ma0WbbJG5F7VZ5bCO2A9iX5bu8xxQedWqQbTyh8Ah4C+LfKSDQQIl3RPJQzxSM2u2A73J736+moK2rn8hNttKN+ifSwVgrZX5jYOK7j+lwCVHI20NvIFeNVkrIUMOkE8fipr2M47wf+FnKTqBbDTChf853doNL199ZaoElArLKzTmL89dEVVNkzAL3RYFd3DFR3pLlcNHyy+VkRetukxU0a6I3Ls8m/Bzk7IYqT0fHLh6fK+8BlPAoF78sNwSIL+JrHEgqWd4ws6P6KAKkiw4dDp3z9LpeuzSJQlUSaBhJaZ4y07GTRMsd4J1hV8ty0op3akXXyMpu7TrGGtfEem0wtccSmSwhdMbJSs9EdtncpiZQ1Y7y7Y9VBIOqTfSy6yMAG9sLZJSWLLUeK4KPUvvjlOqi0ZbEYro7/ZaKx/Dv9eyEnFXVJ1RJA3YuvqulCyal",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7369,
+      "gt": 7369,
+      "cej": false,
+      "bf": 5539,
+      "tax": 1830,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Hot Meals or Lite Bite",
+       "Seat - Complementary standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GF",
+        "fbc": "GNOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_1DELBOMIX1235",
+       "tjReturnID": "73724271460612"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 4,
+      "cia": false,
+      "ct": 1,
+      "bc": "OF",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7369,
+      "gt": 7369,
+      "cej": false,
+      "bf": 5539,
+      "tax": 1830,
+      "ce": 40.71,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)40.71",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "OF",
+        "fbc": "GNOA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB139[TBO]peaYS5f+wdwMprBKaJps5SH3NtS9sB6fAWRpdJ0MDvxhDImRx4PpnNVsxhjjlpIhcbCu5U5aPb+FassDOP9Y0CHgtLHYv3RHSKGHja2LjI7p2N26lZMk6cui9wnyzDDlcemKWik1LhHMRMS2x7AUTQbGk7amDlPUsjSVAotR9/FzOVJ2dfQzNqqpxj8Ps0JzURO0k5S5rF7D/MwgHtOiXdLU2hPZEAW5HK0qtJpXINbyfGbPCQNR0078J/uv7U0BB+50E2JoZuH6vzFkylPIrhD4t8iEG7bSZCQGSlmtViHuW2rxRsTPvMOefjPat3yIz9T3kzHIfUf7AgvwnEZrBErTXMflfTcdaOUHhEb/h4CNrMWx3HwHQ4+bEj0JaV7pPj2odX4x2W8qJI7A8vqcvRFgJ+1gtuLDx2/tgBpDCmP9EqQcjMJMPW1v+pmTDR7pSHKnxXToW1LHgw6tHSvPtQ8cXmzZv0Vls6fURC9bStpr3kzkc8YQ6Wu8M2OGoDWqHZKa9rwgKiiYwPykesZkoA7BfGPqKY8mlchNlH8Hx0sPcjuFAgpASKN5p+FFiGHmOkM6R5hsE5LAfNp2gjZAVpWHFiEyCd45VQ0o8xMgVdeGUloGotTLOUX6WDgU9JXiFunMgXU2h4kcn56PIPFUkEubwBGcBu21ZsCPt3CPL8w=",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "20 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7789,
+      "gt": 7789,
+      "cej": false,
+      "bf": 5939,
+      "tax": 1850,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Lite Bite",
+       "Seat - Complementary Prime and standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "GP",
+        "fbc": "GNEA000",
+        "bag": "20 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_1DELBOMIX1235",
+       "tjReturnID": "73724271460726"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": "FP",
+      "bi": {
+       "cib": "20 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7789,
+      "gt": 7789,
+      "cej": false,
+      "bf": 5939,
+      "tax": 1850,
+      "ce": 43.65,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)43.65",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "FP",
+        "fbc": "GNEA000",
+        "bag": "20 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     }
+    ],
+    "fseg": [
+     {
+      "dur": 150,
+      "sn": "Depart",
+      "stp": 1,
+      "lot": 0,
+      "segs": [
+       {
+        "id": "1",
+        "al": "IX",
+        "fn": "1235",
+        "fc": "XM",
+        "oc": "IX",
+        "org": "DEL",
+        "dt": "2026-10-28T20:40:00",
+        "ft": "1",
+        "dst": "BOM",
+        "at": "2026-10-28T23:10:00",
+        "tt": "2",
+        "cc": 1,
+        "dur": 150,
+        "lot": 0,
+        "equ": "7M8",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null,
+        "fbc": "XNSA000"
+       }
+      ]
+     }
+    ],
+    "rc": "IX123528102040",
+    "prov": {
+     "TboResultIndex": "OB10[TBO]a1dlgG8Jo+rLGRFdXCaD26I51PGt/mH+7SsJ+UA+U0c72uitrahP/t6glEs9sm//ncRzoh5zNFl1Xdd64NwnqLxDBbizRPcjfU7ULnr/XpydWHQyJdvvm+ITdx3yo496MvDMmYJLGgehO4FY1UKCT6AC0DHkAYFTczzv6OJE4dJTyBjvpGJ80PmzKcTrxJEFbmDBNBG1084sM3u7I8hpoLKReI8h1Cxihf9EFDUBblkjcbhJ1BEIWDwqg+er6drXCTvQNHme7afgLxU2ISd/Wp2KHM5qwAUVDiiq1prAM94AjzlVVcVfnwabx0RQdfuxWZecN+R0jMel8+P+1/c/BbxncvBPvKygqyLh4zYtdhkgW97q+9R9G2CBdZBaMeKoZ4qi8ftjhDTXuCI2HynP+/bR8OaO8xToH2WX8eJOnjvIQd3eK61jmsQSiSQd8QGCoPdQlP/mT0d80hpSH1enEUh/Kj0qjmCvXTJhubgHxcEw1p68FYhCd9QdpgQNYrMkMCM7EvZwsGebqlhYd4yj+hPLDXNj4sGYndaS/VsJ5bKyQSgeP+RgXXLeZ5F6uiSXcfHWKDRGyPb9OO/cfrzReDUTShxNLut4BwhGGKgBxqUdUdO2f0qaoStwVR7n48LNHUu4dWNwRwvNAYMMC4elW7hxay47rS9F0T7/m4bkXXLJtXNW5FdriJX9SY+qRP8w",
+     "TboNonMetaResultIndex": "OB28[TBO]Yffl2zj+MlUUkAzZ6FU20yYqIFV4j6ff5GLPkvEptFI+chCqcAubbCw/0QMpow5OgbTZSCS7bJrS146OttJ9BUQU3Tg1ge3uehN0bfOGbUhPODt2uK4sncgFTFduuU/JickGvClhOdwc1w08VN5dhBJ55BXK68vR81GV6HRogfNkWGmkyBdOZC+VkrMeuzhsI8OlsV4DrsD8d3FbVXDKvzU8QCVLJJzJT1YDH1YCBY2k6+sxo1fi+PAB6TaNKQ1y2RffL/OxeI7yCin3mjq2317FfqVC1p/ulL0WH0LdvhMnTJiM4eAZrxb8Qk8HZgvLnc82ZVUxFv99Cr2ZV+PCvc1yOxDVDw62l1R3g0sislYJ0VKbTEB+7c2PbuK9f2OXRftVz0OthEZyhExIb49jjMrXufIqAVLU7OClw0yafSMOoraluD4/7G514ZP8p6uhDxq17q8LiDbm9HWPQgqkgGk2+WT3Ewec2JLWiJS82GzhwhTbReGK3v3eSDoXTPmj6Bd64DRjaijQNNEsrkanAQ1xuKRyD216VkdPuPq2N/LKuD/V+r/PSTVz1vN9kUIKsVUcD/ik+M/Rv0cVe4FWCXWeEY+IsAY5HfZ9aep70n5iNw4CtX6+UAU/mISi9DtuI3uoB9q9rmY+LK7p9bwyngiQ9vltAosIPolw2zIa/gU="
+    },
+    "il": true,
+    "ilc": false,
+    "journeykey": null,
+    "legfares": null
+   },
+   {
+    "rid": "OTB35",
+    "vc": "IX",
+    "fare": {
+     "pv": {
+      "AdditionalTxnFeeOfrd": "0",
+      "AdditionalTxnFeePub": "0.0",
+      "TboResultIndex": "OB110[TBO]BujDSvc6DDfiYwh2KNLCFtLA/G04nZwN9XSisaLW6Eh/60f/94dVKOj11r533qBEErZ6AHXBOnMBq/I9NedUkE5lT1d6wkb3tb+YsbeIGfSLavH4sS3uW7F+0znaIVmnj/7ZURLcRZjaGl/Wm2+RKdSY/OxqT5abgKgHfACmXZtTjonAC1fL7RKY4DXs63+w16hnVKr/DLqjPR3Rk8nvK/x7NV882Cp7I+G8HklGheSFOWuQuEpLBp1t9jRYjzpZ08ZhTIYlBeRYNVPlc6FFbM5OUIlLs35LtD0z9fi1312sXpeam6K7KKtizXdfdXHfWFLayJcLA3AanQ+9vpeJaRtmrNfX5qrcYjtWWXtk4jyG3Cy38kX+21X08iWpy43rorN4SNvfVzUXXVPylP6DdTPkS1dixcSnexeREyeOt5NarsyOSbRUDA1rlZgtk05ZzOiVZ8nDT+ZsBRV8ZqBqymaqzDbb4cuBT6yiIWp1TIXRw5I7hgdPYuj94pNJWScXyGsSU5oDl5utlqJNQrENWAV6ZPNjgiXHgVtm/O4BN9UOqSX6CSNqbchEYRpOg9iiiKoHiarAWWd3knpC96WvLyrcqxTjtTCfv69fr2ozw8dwhmwOj+5TsSa0mVNRhz+HenmnlIRn2LOk+yuFiYT0VkL16R9OYURI7QLht1WYzlPz6cld8eFsXsqv4rXxlXk0JrklHonf6KvwULw9mKAu1XjeMRCMvL/7ei1jrhQwrzxHXtDGrz74d0yfQIXkEuWUbwXO/zR2zYAKBcWypKcCTQ==",
+      "TboIsLcc": "true"
+     },
+     "fid": null,
+     "rt": 1,
+     "ft": 25,
+     "mft": 9,
+     "cia": false,
+     "ct": 1,
+     "bc": null,
+     "bi": {
+      "cib": "15 KG",
+      "cb": "7 KG"
+     },
+     "cur": "INR",
+     "pf": 7083,
+     "gt": 7083,
+     "cej": false,
+     "bf": 5167,
+     "tax": 1916,
+     "ce": 0,
+     "disc": 0,
+     "mku": 0,
+     "fb": null,
+     "mid": " Comm(-)0",
+     "cf": 0,
+     "sa": 9,
+     "ib": false,
+     "gds": 1,
+     "sp": 0,
+     "sc": 0,
+     "cache": false,
+     "minifare": [],
+     "bn": null,
+     "fi": [
+      "Cabin Baggage - 07KG",
+      "Check-In baggage - 15KG",
+      "Cancellation fees - Applicable",
+      "Reissue fees - Applicable",
+      "Seat - Chargeable",
+      "Meal - Chargeable"
+     ],
+     "sgp": [
+      {
+       "cc": 1,
+       "fc": "WT",
+       "fbc": "WCBA000",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      },
+      {
+       "cc": 1,
+       "fc": "WT",
+       "fbc": "WCBA000",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      }
+     ],
+     "prov2": {
+      "m": 1,
+      "b": 1,
+      "v": "",
+      "t": "0001-01-01T00:00:00",
+      "g": 1
+     }
+    },
+    "flist": [
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB110[TBO]BujDSvc6DDfiYwh2KNLCFtLA/G04nZwN9XSisaLW6Eh/60f/94dVKOj11r533qBEErZ6AHXBOnMBq/I9NedUkE5lT1d6wkb3tb+YsbeIGfSLavH4sS3uW7F+0znaIVmnj/7ZURLcRZjaGl/Wm2+RKdSY/OxqT5abgKgHfACmXZtTjonAC1fL7RKY4DXs63+w16hnVKr/DLqjPR3Rk8nvK/x7NV882Cp7I+G8HklGheSFOWuQuEpLBp1t9jRYjzpZ08ZhTIYlBeRYNVPlc6FFbM5OUIlLs35LtD0z9fi1312sXpeam6K7KKtizXdfdXHfWFLayJcLA3AanQ+9vpeJaRtmrNfX5qrcYjtWWXtk4jyG3Cy38kX+21X08iWpy43rorN4SNvfVzUXXVPylP6DdTPkS1dixcSnexeREyeOt5NarsyOSbRUDA1rlZgtk05ZzOiVZ8nDT+ZsBRV8ZqBqymaqzDbb4cuBT6yiIWp1TIXRw5I7hgdPYuj94pNJWScXyGsSU5oDl5utlqJNQrENWAV6ZPNjgiXHgVtm/O4BN9UOqSX6CSNqbchEYRpOg9iiiKoHiarAWWd3knpC96WvLyrcqxTjtTCfv69fr2ozw8dwhmwOj+5TsSa0mVNRhz+HenmnlIRn2LOk+yuFiYT0VkL16R9OYURI7QLht1WYzlPz6cld8eFsXsqv4rXxlXk0JrklHonf6KvwULw9mKAu1XjeMRCMvL/7ei1jrhQwrzxHXtDGrz74d0yfQIXkEuWUbwXO/zR2zYAKBcWypKcCTQ==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 25,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7083,
+      "gt": 7083,
+      "cej": false,
+      "bf": 5167,
+      "tax": 1916,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WT",
+        "fbc": "WCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WT",
+        "fbc": "WCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB51[TBO]v5a2KnvKA5l/kJhIW+ujnloo+LJcFNHSmKzOff5ctKyVoE01VSfSvh4cTfYf5K4xZujx8muGjWrgNDJjtu7FD98zHtmEZ/bmzzwTyNLhqX/xknbTruBMgUqRN6K7BEDPQdTAt/ZVZ8j4RWgRGO3Wx6BY1Ww2JCUYqdJFf110qWUy9FssoSQ4W9z2THFZsBGiLsSFOnqS2aNHedYxVpTFrsJWc6JwqwqX7lZKM+H99toPAhCAc9MJpFbu18w89uC9NMkzcUlyreI7cSeMeSG3xxNKLOIi1ydXlkFgt4vyZA9KIETLQRiwxnY519l/tdegi5SnJgCCqv6Vnv48OLFBg0vCBfl5ozRll5S6zbzzWFsiJyl0b1prjskufqiFuv6YX6qVQYYkdQCmoE4iECVmmfEmPNSvrlk+F/qmTBydUrxwetfMBHelkRqyxVmH3yeGnjI/XbGc7ZiL8DtdGB8IQbHatbk0r3hX7AiqUy+cV16dkQIX9tJ0sZbieUDzFyuPcLuih7P4Vz9uCggW7KHH6R18+wXRsfWLbMMTDdNqX7CJsJ1lWvZCHXg8AZpbL9y55V7f9fjYCJWw0eCrep5fv/fa3PVbENDu5uHMtmvCrwqeVP8y76irecb5feYC9EbX7vcv7KTTftLeAhcSVlHpWvPraTYi74WKxSZdZ9199NQoxPM/Hde5W9aT/kkuOjul6v7nJrcYyarU1b+66UMktWOxLnwmOBLEHweivnsFtEk1CSicH+BHYHi2CQnez0O5dkQDfIX9HAN6QmMl6s9MqA==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 25,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7083,
+      "gt": 7083,
+      "cej": false,
+      "bf": 5167,
+      "tax": 1916,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WT",
+        "fbc": "WCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WT",
+        "fbc": "WCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_2DELJAIIX1371JAIBOMIX1247",
+       "tjReturnID": "73724271462645"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": "BT",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7083,
+      "gt": 7083,
+      "cej": false,
+      "bf": 5167,
+      "tax": 1916,
+      "ce": 37.98,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)37.98",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "BT",
+        "fbc": "WCBA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "BT",
+        "fbc": "WCBA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB138[TBO]l+q5FVSNzhwtv7BT/W/Dk53Penn2c+lEccYYqgZolJZILUoflPyR0Hx/E/SteVNHXX/rqilX170WFxuxQ2nhdWYIR6layAoPoaZ8/z62J1Ky67CRecXyvsf1vHDqict/wqgI3JfsRFvzf8quXtuaUFELmNUM37FfeLHXqbZt3QsvN6yFYOtJFWtCZs3Iax21x1EEgnQhTDvontWGzQTHZxMbQiqIX4oHYuYDFTbf5UO9wytgEO9TwiOxB7CzmqCGMRCJEoYGNSu7b6zwo1Tr/73IYCjkERLx0/a62CGMsTh1g1t6UGoWiuX8vmr4x6tY1w7yzDX9o2ai31Untqzk+oXQEusn78oIIGmzxp/LDHkBCTgWKmFeEq3C78KGkw4fSkmU9GChpd7loHSYGdqFIfHzR2309b+PcW4L7gRmXWqt3XKTVHR9RnkLMl7uhhoRpob3R165+S0hm9HkMoCGnGqDh8JOGFQ+DIYUBf773baSwgTmXFI1bFMezbanC8/T3vq5TkvUQlhHyFDL+3LfKRnMnha2DLxR5OO7NLQJ3wUewB9D6SsM1Yt7m2KZWZHuW8xit7qhC3G2AeLO72bxy4yoJf89Y+KHwXsBsTNuMowRbgAvblHobp0u7KjA92afKwOvyes7MCd6hO4dSyZbnvvn0P8mqkcPEEpQo/dKy+uiu0jnT5/rcvlkdRKlUJuz3xLZ0M6zcHC8hGeuGjUzg27sHpUUDNxiyjPpCvrD70uOq2VyWN2fD2dJjiS+qFtAojIoi7ADwgROWXbjucp25Q==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7251,
+      "gt": 7251,
+      "cej": false,
+      "bf": 5327,
+      "tax": 1924,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WC",
+        "fbc": "WCRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WC",
+        "fbc": "WCRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB74[TBO]2eynhDwWmHdgc1Dbw484zTW2AqFCMfMzkOnh05dh+npesBzYre9BI9efDtxVQ9EcWMu6jvM9UN43jdZD1VQOtRd/lcN0kP8v+F1kPTq27EjUP262WDPyxoev0sgKsqaPBvoZ4HH9t9+q5Csk6geixAqIYbwOE+aX4xukApqtDXKq/0MASG53Q/QFO6yigMDn1cLSRSlhBUUdQYVtV2hGi7u+iAyb5f3lJGMUFYuAK1z05S7uQl/VJbBD4wRSR4cPIK5rSM1UPPSGHng/h8PnSSUN1fRHw8Pr8ZCPphKspt+ktaJIjKiHTW4IbK667g3E8463KHtwPx+n628bH5wWmv0s2Vsy1OZy86KajukDc25SASsBS/b42fBlNFjlzGeXKgwLGyweiCZRQqEbSwgc5sVFe3IpCdracUHvw8LZXBfuksNK61FmYnjlw5TvXneeT6AnpG9NCTILCVRs0Ul0pENPTe1YustgUV9ZNYa/YuWWc+2ujEMkHtrQPff4XLqHVcte+n32dVSZ76bSStHvqcLJ8oBsRcJYQckb867A5C+ADQ3ASmwB4ISJ8rEUGgVpg9DIyWuGE2XSS7TF6FGSmkrK0qeH9dHPNnaDnbco9vK2wxx4mOC41ehLO5+5Rh/crLtKOsqNfc+N3K/qrBSnvPOPtNy+c6QhDaJ5tEIL5QzeoPICzcH0yjpX25TGTgD+NG/tCp4zLUP5sZ6NJrVUPjLLkOFFVWDVuuXnu1XKV0xjfjFk9G7/xniLCHIdGYxHCtKwIqPDwmI5LomMh1tYiA==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7251,
+      "gt": 7251,
+      "cej": false,
+      "bf": 5327,
+      "tax": 1924,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WC",
+        "fbc": "WCRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WC",
+        "fbc": "WCRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB146[TBO]dhfdsM5MPNPcJCPPi+O7aAI3zFTEX+G2uLQuBHkCwxiOv7L7uPoKmQTCrh4h/o6d6FbvFDocOuSCX6zVZuBzo2lG4jk5Tw0mXROJkZr/yrWp0FOiUTGk8E5AaDh5Q6yO5U5eyXcUalFMyKqE2WHxDgaLCleyIVsUB/F/nfI3T8YWLoQHNDqJ7PNb9wNaFRBlTiAaeYPiKxPLalgQSScMWTiFzvJuBFgRDQDJhku0zOLvP11YHw65Iw1R/CTCkdfccAu5+ePGJuMrmSr7qasqOVNLF5gun+XZ5RBp5dhTz+aMzO5L4ObMkKN7/vZf2+gB1SfWDGsrfpZJlqczX/aWoOUPIZ6FT0yc4GBVtDcIvl4F88gHl2S3fAevWrbZ7Sp7yl0zUaWvsKz8ENyl5S4LgKwSs9CEu5VIg80ufcYoUTsg+DdToOOGqYhNOgRcPjtnaUKml6hZKmuq/lGck++IqhTDnvntdpMJ1aOy6qMqF3PrOeXKjLtdswibD3zmeRZxf/hOdZpfodGaZj1XeQRcG19Pms9TPoEk7HESmoaJ4MV00B1viGWWV7734plYM+FYIJ7ot//Bt4cvkWqkupTB8FSURf7fpJqldR813XRdAqysY45QVjL6kfavp0I0kAqHAXNoG2xUj91YZJJtHv/i56DKGAedf1N/JQctJnWKH428TYS5rxmDyhO37WP4mwg6hDIrzgZCCSYcctlyf9B61iBTzFv+gJCgu/HkcXd6EFMxCTQvtJvDpvnA2Zs53AS213hOU7uvC/5VmVkTl1hfZA==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7300,
+      "gt": 7300,
+      "cej": false,
+      "bf": 5374,
+      "tax": 1926,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WM",
+        "fbc": "WCSA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WM",
+        "fbc": "WCSA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_2DELJAIIX1371JAIBOMIX1247",
+       "tjReturnID": "73724271462960"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": "SM",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7300,
+      "gt": 7300,
+      "cej": false,
+      "bf": 5374,
+      "tax": 1926,
+      "ce": 39.5,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)39.50",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "SM",
+        "fbc": "WCSA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "SM",
+        "fbc": "WCSA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB146[TBO]2PkCYF+OwQuM4o3tZ5x93Tl+4lJb01HwJzO6dhH2IFc+3rfjDNUIOeIU0Md7vSDhiPHFwQR8BrFUo29hIA3dOwtTfZ2c8SdzCaG39ZMU6+I/Of96/NLxtJgV1iDi4EurXgTcI0nKbU01g8zRTvlv1OEwC5xlN1GlT1joVwInbXpDSpCD0nzZlv7qgdYMp9XF8pseT/RP0XpitZlJLY1XO0N7wg31HB/i3wFFxJPqzF1ZarITkcMlKgJk+uSs5RbAn3apbCdfxQXAuiDZ/z36/tD0uLy7aX1iEO5TmgGq7WjTo34whXdSRg/pHw6CtJ4uHGC0n8g6Lfx5FS4YeKSv+BGwaO01wZK9yvDIcaTtu4qjwx9Lx8tUCFpp2ZIHFz0R0snjqx/B7emyLt1fklyRcat1Rvi3GLjB5qeHzPMyMpCrovG41R9wvCWEu9BWrYimOieSjdiUGFVaYHdCg4sEYnk1sIc59bX7amiYwomiJ9M+Cig2iDoIsd96eE/AYYKWuxxzUVNx97B+/g5RbYWiTPKvsEDxaFG+p1fzUSsC5WKcDf589uaWncAN/8bvzC/AodVoqhfwAj8Rr83C4jEUL7ozyly/tPovXT2Xpk/rOo2XYUzZWKdhULuZsrqGu660yxocO3YmffgDZ6Ge60pRYZxzDh8QuLyGMcTknKUMiq2n5vpnyrH5ofC2NMMbyr5MB93YAUXNYHYvKZsSwOwU2owwabbDsHtaeAnKMuf6IgOKZL7v4yNsc118cutFHBYZYh8zCEfshnmi+aTq2MMgtw==",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7851,
+      "gt": 7851,
+      "cej": false,
+      "bf": 5897,
+      "tax": 1954,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Hot Meals or Lite Bite",
+       "Seat - Complementary standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WF",
+        "fbc": "WCOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WF",
+        "fbc": "WCOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_2DELJAIIX1371JAIBOMIX1247",
+       "tjReturnID": "73724271463140"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 4,
+      "cia": false,
+      "ct": 1,
+      "bc": "OF",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7851,
+      "gt": 7851,
+      "cej": false,
+      "bf": 5897,
+      "tax": 1954,
+      "ce": 43.34,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)43.34",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "OF",
+        "fbc": "WCOA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "OF",
+        "fbc": "WCOA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB167[TBO]aYocdjd+VqAUUEHoy1SaUkyaj69+rrs+UYHelQJDW3yAN6eAAe5sbiJ5k8Y/0gAdrEWUz5grt+G9InAkuxVva47yAHBksLVpf3XzIcKtaB/AUGlmJQ5DQKwZPbJvwJaQl8S97SpzxrhoZ22vz34PigtabElMVKLFjPc4taIxnh2Fv1Neh5eh0Xq8SwdTcBqnVucs6jsMXiU+ttKF8J6Xs+vYU9RfQBN4GRgFef01g9nkKZHF7b4H5d8D3sUuwrcwE/fqTJJN95EeNz06lnf4aNsquykjUT2KHE4M/dXjPX+LtOtHpWOdEHd5pEvK2VWClquF8X3YvIb2IWoRNuKQy45QceCHSi69Lo15c7GFfkZlciEG80PDB9rWo3kp0ABvPpWPOazV/QUNCxb6sApR3zuMOVFkcdELWZH4PiGUhyif/2eV/h26MzWPRUqGxqpDw0jJayQWjQd7ZKCIPxvAEiDiSoLLkv2zQv/KRNU1jLlfxzrIRTZ+/dzEVJ3lZy3dpZeodMmKtw4mWkeC40ZPJFwTqptPxAO55FBue5IFZy1/mmh21aoJsctJqAzjHpe/DEpBKFJquBhMok9GiDTDsolJogv8LYt9I1BMPalfgsLsJbItumgsE7WMemU27cmFY3dBrsMDhg/wLKpLl3zcZvJi4b87/Ks6nTmMy/xEy1JUTs5h9qKX05GQ2Zu6s9XqaTdKWK/K3UDU0uYj75SXM/Uv82ATNss/aRboxVs9v9EmxL5V67rHDWpUy/M988tW",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "20 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 8449,
+      "gt": 8449,
+      "cej": false,
+      "bf": 6467,
+      "tax": 1982,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Lite Bite",
+       "Seat - Complementary Prime and standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "WP",
+        "fbc": "WCEA000",
+        "bag": "20 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "WP",
+        "fbc": "WCEA000",
+        "bag": "20 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_2DELJAIIX1371JAIBOMIX1247",
+       "tjReturnID": "73724271463247"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": "FP",
+      "bi": {
+       "cib": "20 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 8449,
+      "gt": 8449,
+      "cej": false,
+      "bf": 6467,
+      "tax": 1982,
+      "ce": 47.53,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)47.53",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "FP",
+        "fbc": "WCEA000",
+        "bag": "20 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "FP",
+        "fbc": "WCEA000",
+        "bag": "20 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     }
+    ],
+    "fseg": [
+     {
+      "dur": 335,
+      "sn": "Depart",
+      "stp": 2,
+      "lot": 135,
+      "segs": [
+       {
+        "id": "1",
+        "al": "IX",
+        "fn": "1371",
+        "fc": "WT",
+        "oc": "IX",
+        "org": "DEL",
+        "dt": "2026-10-28T19:00:00",
+        "ft": "1",
+        "dst": "JAI",
+        "at": "2026-10-28T20:00:00",
+        "tt": "2",
+        "cc": 1,
+        "dur": 60,
+        "lot": 135,
+        "equ": "320",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null,
+        "fbc": "WCBA000"
+       },
+       {
+        "id": "2",
+        "al": "IX",
+        "fn": "1247",
+        "fc": "WT",
+        "oc": "IX",
+        "org": "JAI",
+        "dt": "2026-10-28T22:15:00",
+        "ft": "2",
+        "dst": "BOM",
+        "at": "2026-10-29T00:35:00",
+        "tt": "2",
+        "cc": 1,
+        "dur": 140,
+        "lot": 0,
+        "equ": "7M8",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null,
+        "fbc": "WCBA000"
+       }
+      ]
+     }
+    ],
+    "rc": "IX137128101900IX124728102215",
+    "prov": {
+     "TboResultIndex": "OB110[TBO]BujDSvc6DDfiYwh2KNLCFtLA/G04nZwN9XSisaLW6Eh/60f/94dVKOj11r533qBEErZ6AHXBOnMBq/I9NedUkE5lT1d6wkb3tb+YsbeIGfSLavH4sS3uW7F+0znaIVmnj/7ZURLcRZjaGl/Wm2+RKdSY/OxqT5abgKgHfACmXZtTjonAC1fL7RKY4DXs63+w16hnVKr/DLqjPR3Rk8nvK/x7NV882Cp7I+G8HklGheSFOWuQuEpLBp1t9jRYjzpZ08ZhTIYlBeRYNVPlc6FFbM5OUIlLs35LtD0z9fi1312sXpeam6K7KKtizXdfdXHfWFLayJcLA3AanQ+9vpeJaRtmrNfX5qrcYjtWWXtk4jyG3Cy38kX+21X08iWpy43rorN4SNvfVzUXXVPylP6DdTPkS1dixcSnexeREyeOt5NarsyOSbRUDA1rlZgtk05ZzOiVZ8nDT+ZsBRV8ZqBqymaqzDbb4cuBT6yiIWp1TIXRw5I7hgdPYuj94pNJWScXyGsSU5oDl5utlqJNQrENWAV6ZPNjgiXHgVtm/O4BN9UOqSX6CSNqbchEYRpOg9iiiKoHiarAWWd3knpC96WvLyrcqxTjtTCfv69fr2ozw8dwhmwOj+5TsSa0mVNRhz+HenmnlIRn2LOk+yuFiYT0VkL16R9OYURI7QLht1WYzlPz6cld8eFsXsqv4rXxlXk0JrklHonf6KvwULw9mKAu1XjeMRCMvL/7ei1jrhQwrzxHXtDGrz74d0yfQIXkEuWUbwXO/zR2zYAKBcWypKcCTQ==",
+     "TboNonMetaResultIndex": "OB51[TBO]v5a2KnvKA5l/kJhIW+ujnloo+LJcFNHSmKzOff5ctKyVoE01VSfSvh4cTfYf5K4xZujx8muGjWrgNDJjtu7FD98zHtmEZ/bmzzwTyNLhqX/xknbTruBMgUqRN6K7BEDPQdTAt/ZVZ8j4RWgRGO3Wx6BY1Ww2JCUYqdJFf110qWUy9FssoSQ4W9z2THFZsBGiLsSFOnqS2aNHedYxVpTFrsJWc6JwqwqX7lZKM+H99toPAhCAc9MJpFbu18w89uC9NMkzcUlyreI7cSeMeSG3xxNKLOIi1ydXlkFgt4vyZA9KIETLQRiwxnY519l/tdegi5SnJgCCqv6Vnv48OLFBg0vCBfl5ozRll5S6zbzzWFsiJyl0b1prjskufqiFuv6YX6qVQYYkdQCmoE4iECVmmfEmPNSvrlk+F/qmTBydUrxwetfMBHelkRqyxVmH3yeGnjI/XbGc7ZiL8DtdGB8IQbHatbk0r3hX7AiqUy+cV16dkQIX9tJ0sZbieUDzFyuPcLuih7P4Vz9uCggW7KHH6R18+wXRsfWLbMMTDdNqX7CJsJ1lWvZCHXg8AZpbL9y55V7f9fjYCJWw0eCrep5fv/fa3PVbENDu5uHMtmvCrwqeVP8y76irecb5feYC9EbX7vcv7KTTftLeAhcSVlHpWvPraTYi74WKxSZdZ9199NQoxPM/Hde5W9aT/kkuOjul6v7nJrcYyarU1b+66UMktWOxLnwmOBLEHweivnsFtEk1CSicH+BHYHi2CQnez0O5dkQDfIX9HAN6QmMl6s9MqA=="
+    },
+    "il": true,
+    "ilc": false,
+    "journeykey": null,
+    "legfares": null
+   },
+   {
+    "rid": "OTB64",
+    "vc": "IX",
+    "fare": {
+     "pv": {
+      "AdditionalTxnFeeOfrd": "0",
+      "AdditionalTxnFeePub": "0.0",
+      "TboResultIndex": "OB186[TBO]C4prJTMjABGflhvdvKx5Xr7tEAzlalY3tXYVTFKt16N1tdliHZL+eHYv6nDTedtIGcC2u0YN96lOrbD351H/PT0uiw6jgyCyzhj47RnJroAlwq+TudJ2lRi/s79lmuKdogANgB5Z0Rm+0Q2UYoXWzjA8wG2NeuPx2TzhvDZGKpoYMmSerFG9N2sARomeLBEf7uGh5v6G7bvbukVakZtD8eSOXJOPLWj5Yrp5U+A/S/kaw0jQ49PVtS5lwPjba1BvaqRZcOYnYNGZv88x3TFNi9HyWTxitNi+Sy/P0WqeeFT+YYLXpS3GmoIajXWP5ssydFjTNLdVMI5BFbIRN2icj8v2/eZXqkiaGewijxnfb5RM2pcnKuYWgdbgYCis1cdk1YnE9Vp1N07HP+JMryI2Bn1JkWdt1NWi8AloXUzI3UPxvA22n0ab8zwDi7lMAHhW+wQpKEamHyfRoYmYNEOl2WyKNWTZtmG+CZ8n3/WYfHilMdLTLO4DzH0RZJO39h0KBRMH2VMZeBPJlPCNT39t+fOt06HbnEfNY6B/Z2vLK2W5BoLeH+0GlGJ644fXbBKhQJKhmOaQ4k70AKByiKNwm128Z/jYxEqWwzeXMvOM6RoxatftwmCTedIAZd7FWFQ3V+rw0eI8DHFxlunva+qhxnGdDUBe33O5SIeOOxKet8rI4xMlAcoOk4FP0viQzOoaq/kgmbNZf2qEgzPzUDx05t5qvNVwHv4grZX4wb5rkMAwKLVsZkVR1mG9k1lQqkip",
+      "TboIsLcc": "true"
+     },
+     "fid": null,
+     "rt": 1,
+     "ft": 25,
+     "mft": 9,
+     "cia": false,
+     "ct": 1,
+     "bc": null,
+     "bi": {
+      "cib": "15 KG",
+      "cb": "7 KG"
+     },
+     "cur": "INR",
+     "pf": 7641,
+     "gt": 7641,
+     "cej": false,
+     "bf": 5697,
+     "tax": 1944,
+     "ce": 0,
+     "disc": 0,
+     "mku": 0,
+     "fb": null,
+     "mid": " Comm(-)0",
+     "cf": 0,
+     "sa": 9,
+     "ib": false,
+     "gds": 1,
+     "sp": 0,
+     "sc": 0,
+     "cache": false,
+     "minifare": [],
+     "bn": null,
+     "fi": [
+      "Cabin Baggage - 07KG",
+      "Check-In baggage - 15KG",
+      "Cancellation fees - Applicable",
+      "Reissue fees - Applicable",
+      "Seat - Chargeable",
+      "Meal - Chargeable"
+     ],
+     "sgp": [
+      {
+       "cc": 1,
+       "fc": "KT",
+       "fbc": "KCBA000",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      },
+      {
+       "cc": 1,
+       "fc": "KT",
+       "fbc": "KCBA000",
+       "bag": "15 KG",
+       "cbag": "7 KG"
+      }
+     ],
+     "prov2": {
+      "m": 1,
+      "b": 1,
+      "v": "",
+      "t": "0001-01-01T00:00:00",
+      "g": 1
+     }
+    },
+    "flist": [
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB186[TBO]C4prJTMjABGflhvdvKx5Xr7tEAzlalY3tXYVTFKt16N1tdliHZL+eHYv6nDTedtIGcC2u0YN96lOrbD351H/PT0uiw6jgyCyzhj47RnJroAlwq+TudJ2lRi/s79lmuKdogANgB5Z0Rm+0Q2UYoXWzjA8wG2NeuPx2TzhvDZGKpoYMmSerFG9N2sARomeLBEf7uGh5v6G7bvbukVakZtD8eSOXJOPLWj5Yrp5U+A/S/kaw0jQ49PVtS5lwPjba1BvaqRZcOYnYNGZv88x3TFNi9HyWTxitNi+Sy/P0WqeeFT+YYLXpS3GmoIajXWP5ssydFjTNLdVMI5BFbIRN2icj8v2/eZXqkiaGewijxnfb5RM2pcnKuYWgdbgYCis1cdk1YnE9Vp1N07HP+JMryI2Bn1JkWdt1NWi8AloXUzI3UPxvA22n0ab8zwDi7lMAHhW+wQpKEamHyfRoYmYNEOl2WyKNWTZtmG+CZ8n3/WYfHilMdLTLO4DzH0RZJO39h0KBRMH2VMZeBPJlPCNT39t+fOt06HbnEfNY6B/Z2vLK2W5BoLeH+0GlGJ644fXbBKhQJKhmOaQ4k70AKByiKNwm128Z/jYxEqWwzeXMvOM6RoxatftwmCTedIAZd7FWFQ3V+rw0eI8DHFxlunva+qhxnGdDUBe33O5SIeOOxKet8rI4xMlAcoOk4FP0viQzOoaq/kgmbNZf2qEgzPzUDx05t5qvNVwHv4grZX4wb5rkMAwKLVsZkVR1mG9k1lQqkip",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 25,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7641,
+      "gt": 7641,
+      "cej": false,
+      "bf": 5697,
+      "tax": 1944,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 1,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "KT",
+        "fbc": "KCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "KT",
+        "fbc": "KCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 1
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB115[TBO]emkD+NkQzvrlHisNIaPWJtEnrpth+2rLEA+en3YnfCoNI3CtE2WlkDwsg7oqNR4CZEl0QYBkAqI+ylo1L+to75U/vCt/YWBpRvXYAUroU0flKioBiDNVRP/er9oKW6NDrISjcTQQ+2GAha0Tk1+FtDHmKHA7xdjROs0aw1yJl/SYAOAj1EKzYPE7Vo51TIEDTwBE4dY4qf8Foel/Y5FCU0U9kh2HpRGCYnpKSc7paJ4GqmKTn8lhKrRtoe7jogw13mM3Qx3kqKcTjXQCRhaAkQulhFykyOeR+rQNyx+Cz2uPqxqENn9bUQdI5mNFr1MZiQnSnqHplU+wRLye77x23TG7pWRQPWFIfFgaSLZp4fP2ypeIm7dopMqkScvyApjfca1Dy0v5O6X5G3R2U77VgV/74+8U6p7Dg5ZJNMO91IpQ9CDvkbA6q2DfGu4po91Ygn9BSUNCY5dSjT2DUgM92jU6AK21sdjd6HirZobsnDYk4Tp91w/a5RTbZ6Vua7r1EzcMi79IrnBPsizCeWnBQIlWtmm+gsTcIo587+lED5WLXooxjNZwTogtcGA+sgf+o8cjPv+tqbC567qs2TB03MQKdHh3uMhdJMcuStRFYDYJu5QPg/y5cRCLzI+C6KpG4tvqlzFqjcl4uT+OeWscUxBPi36pfMtmQml5kHGvxZyA5TR31pwMDkT1dc49G3BX046IU0E1VypULJShCkxDw4+PxgpQCJm/UTGBbhjZMwoW5UFB6pCPGXJpGdJ5Bo3i",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 25,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7641,
+      "gt": 7641,
+      "cej": false,
+      "bf": 5697,
+      "tax": 1944,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Cabin Baggage - 07KG",
+       "Check-In baggage - 15KG",
+       "Cancellation fees - Applicable",
+       "Reissue fees - Applicable",
+       "Seat - Chargeable",
+       "Meal - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "KT",
+        "fbc": "KCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "KT",
+        "fbc": "KCBA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_6DELGOXIX1108GOXBOMIX1209",
+       "tjReturnID": "73724271473126"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": "BT",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7641,
+      "gt": 7641,
+      "cej": false,
+      "bf": 5697,
+      "tax": 1944,
+      "ce": 41.87,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)41.87",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "BT",
+        "fbc": "KCBA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "BT",
+        "fbc": "KCBA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB145[TBO]anV42mi9nL2CD/M05X1YJpmTCuZJV2yAeN/g4IrrIyFtN5h2jmKLCAfmhyJih5zbcixfoqQiFV4MNSf9PUNMjbs8oCJ78ylLOomnUQuIDe4ug5lxh5U631zlv/9FDULZhWo4+5WM9Vdd6aD7VoKhHRAaa0/9hOaSsCD3EIoB2IQepc6TnBlq/0OEGKcxHYUqhx47vculNhixm+rQ1fYjD3bGXBlAwsOKuMIoIzCGPmcEcDnX5C6D7XEUTe1+4aLlViDzAk1EHaJkfJaDGfGKF47Yp8ooNz09ZfbBt+494BX5Fccx5pB68r5EIhOHDY3iZThG/KRaRoa0gfbz0bRzqf37mZxeLJ8DoKRQBzW4rQVRBNCYCC39ayGv/C/DOke0C2mozhUAF2uN5T7cSkL+HlYhVDiaNrXKyOg1d/MPKznGaZ7kiZAwiMXfpVGm/yk3eOAFouAPXKgFhkY/B5ZGsEfvhOSQUY3zoiXl6ZSPxNISzojW65imN3qwq5R1jORLhTJpNQAXVfAl68mbX5vkEDoHh+fiECOtdM+08RYzzqvV8sZ3GBUTUVT9ajET1YLkygdDofMqtnWT0SPA0ZIKjo2fDlKJx/D0fPlbZHmg8aYGqS/WfPcocQnqMoIGBi9EWemL6wq7mEB16AtvyASwFvrcfTuG29wm8PXh7vx/AuTuXpNNfhsvekTVcSvodO7Q5dxc0+fzveA0VWmOKOdc+92qc9IVojsHHN6k0wMsCqXwrXup+aYfdf8Drx6gy7s9",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 9,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 7825,
+      "gt": 7825,
+      "cej": false,
+      "bf": 5873,
+      "tax": 1952,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Chargeable",
+       "Seat - Chargeable"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "KC",
+        "fbc": "KCRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "KC",
+        "fbc": "KCRA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_6DELGOXIX1108GOXBOMIX1209",
+       "tjReturnID": "73724271473326"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 3,
+      "cia": false,
+      "ct": 1,
+      "bc": "SM",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 7874,
+      "gt": 7874,
+      "cej": false,
+      "bf": 5920,
+      "tax": 1954,
+      "ce": 43.51,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)43.51",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "SM",
+        "fbc": "KCSA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "SM",
+        "fbc": "KCSA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB165[TBO]biNb0a5VKgI5Llfji8Ug90W1QrBpwEh0hEbueqHk6vb656D06qRJR5rOq2zT773oyh4V3dFGlb/zFbBYrrMoKf9RCLK4MYtwr0q2TaWCI8TAxAau/xQN3yCT3gDQ2MzvquMD4wW+IVPN+ikQPnVhGEv70F/6TrCUjanEoK1uGM1Qf9fAvF8QkfGBeGL2KYcuUt6qsGhbbHy3pfvskcF7dSFwrc0njnxZtfNtWEhNOGCE3GqKZVa9+C9/AYnDdJHE+1mxOGeGCGEHoSpyUVlbbvbK82WLNvXHbv23fzCcvGp3mIEKeEn6L9AV6HP3v2iewmxfICNLo7mGnQWaKieh91/b16+hp6aW2pus2FsjbLbti3rBoGxLiklbRMN3VVZlqXNV9/SJ61hslYP/qUh0c3TFlNGpYaixN9D5K7VvGedJPGwM+RUSaBGc92ALbUtAx908i8TgH9Fj3EupK99MuflucSTQt2Dr3clGBWZgVC/AZQaV0lViNrpLiVNCbroGs+cuRZRd2R+WnO677JIY6wv4U95omKlbK76u4f/HvP5LVG8qQbxpMLPZQ1MP/ncXf9Ke5dubRthx5m9k7PRb4iWVS7qv/IIJjOOCaeD7pqy//Q/dP3Xk13pvONjtM2ju++qCXAuhGqkq+SD5pOZkJfDj6DQWxolVJnN9Rgac31hdyYRRc+Vos6UOmhaoqngzPHREDNshYfmqX95/pPMlc35Ds6dJfm2Yx/PjOUAdXjsazYJWPys9XCcrxEHC99EV",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 1,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "15 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 8423,
+      "gt": 8423,
+      "cej": false,
+      "bf": 6443,
+      "tax": 1980,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Hot Meals or Lite Bite",
+       "Seat - Complementary standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "KF",
+        "fbc": "KCOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "KF",
+        "fbc": "KCOA000",
+        "bag": "15 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_6DELGOXIX1108GOXBOMIX1209",
+       "tjReturnID": "73724271473434"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 4,
+      "cia": false,
+      "ct": 1,
+      "bc": "OF",
+      "bi": {
+       "cib": "15 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 8423,
+      "gt": 8423,
+      "cej": false,
+      "bf": 6443,
+      "tax": 1980,
+      "ce": 47.36,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)47.36",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "OF",
+        "fbc": "KCOA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "OF",
+        "fbc": "KCOA000",
+        "bag": "15 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     },
+     {
+      "pv": {
+       "AdditionalTxnFeeOfrd": "0",
+       "AdditionalTxnFeePub": "0.0",
+       "TboResultIndex": "OB194[TBO]DKcqukeQLR/ZVf6siixrTcan/jYajPYwnkn6ENzDzrR3SLIC7b4qDZ9nNJpGL5oOeFxtDVq4PzJkIJ2gXkHNnCpr5yNve2E5VLKpghhfSvMEOnKrXdsOFTv7iis1TXVKbJ4E2Wr61zE8XwI9zOGG2HdHXEIB+V/mhUJQUapbB19uCeaBEkq4U/bHvVzllNYQ1xNpCx09GL65NpjmBpXeQSaLEuAKuiX2ZN1KxmIliFSv+I6RZLxenSL+VluqN+qj6hHks75WH8CetOtGLdsW0ABbyNvsBmBrq/CekwlTxYOiNXNs1vzpiguvrnLD9+4Rs+0KW/v4/1MlYMD0dc3pJNvGDAuLDHRiu2/LYh48WPetyeGgKZxjik393VMXPqv1tcMQkv+EWtiekrYdiN4PjTjNJkRyLNz586aHFkl1/IcvYNL0zAutzqZXoUKnRC9kWkYwreI9ywlr4NWdKwlAPBvBcjKiOCfXnIBJ/+1y63ZvQtTz4ULj0+ozjBX/O+Gm621aVf3ZWNMY1hwWxi8P4VOtgA1U776dm5qdIxaaFDoLnv8N63g7Bba4eUbAwhNZplBvY6/saa5IPlOAfAFI+oDWSZs+tX0QZU5tD1+375daCXdIucIsCsDv03CVAZmCZjXEtDnHm7EeA3SSG4VO33POc3ecG9d8aLiaWMPW04hmap/HortaPtUkl7Zz0BbTX1nl5JPUkh/PBcZBkZrLZO4PU2M5UbsEWhvNduPQv8oP0MpK3vcf33kL8RYiNkWR",
+       "TboIsLcc": "true"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 0,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": null,
+      "bi": {
+       "cib": "20 KG",
+       "cb": "7 KG"
+      },
+      "cur": "INR",
+      "pf": 9021,
+      "gt": 9021,
+      "cej": false,
+      "bf": 7013,
+      "tax": 2008,
+      "ce": 0,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)0",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 17,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": [],
+      "bn": null,
+      "fi": [
+       "Meal - Lite Bite",
+       "Seat - Complementary Prime and standard seat"
+      ],
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "KP",
+        "fbc": "KCEA000",
+        "bag": "20 KG",
+        "cbag": "7 KG"
+       },
+       {
+        "cc": 1,
+        "fc": "KP",
+        "fbc": "KCEA000",
+        "bag": "20 KG",
+        "cbag": "7 KG"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 17
+      }
+     },
+     {
+      "pv": {
+       "tjID": "22-16-5408941247_6DELGOXIX1108GOXBOMIX1209",
+       "tjReturnID": "73724271473585"
+      },
+      "fid": null,
+      "rt": 1,
+      "ft": 17,
+      "mft": 5,
+      "cia": false,
+      "ct": 1,
+      "bc": "FP",
+      "bi": {
+       "cib": "20 Kg (01 Piece only)",
+       "cb": "7 Kg"
+      },
+      "cur": "INR",
+      "pf": 9021,
+      "gt": 9021,
+      "cej": false,
+      "bf": 7013,
+      "tax": 2008,
+      "ce": 51.55,
+      "disc": 0,
+      "mku": 0,
+      "fb": null,
+      "mid": " Comm(-)51.55",
+      "cf": 0,
+      "sa": 9,
+      "ib": false,
+      "gds": 2,
+      "sp": 0,
+      "sc": 0,
+      "cache": false,
+      "minifare": null,
+      "bn": null,
+      "fi": null,
+      "sgp": [
+       {
+        "cc": 1,
+        "fc": "FP",
+        "fbc": "KCEA000",
+        "bag": "20 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       },
+       {
+        "cc": 1,
+        "fc": "FP",
+        "fbc": "KCEA000",
+        "bag": "20 Kg (01 Piece only)",
+        "cbag": "7 Kg"
+       }
+      ],
+      "prov2": {
+       "m": 1,
+       "b": 1,
+       "v": "",
+       "t": "0001-01-01T00:00:00",
+       "g": 2
+      }
+     }
+    ],
+    "fseg": [
+     {
+      "dur": 290,
+      "sn": "Depart",
+      "stp": 2,
+      "lot": 50,
+      "segs": [
+       {
+        "id": "1",
+        "al": "IX",
+        "fn": "1108",
+        "fc": "KT",
+        "oc": "IX",
+        "org": "DEL",
+        "dt": "2026-10-28T20:35:00",
+        "ft": "1",
+        "dst": "GOX",
+        "at": "2026-10-28T23:15:00",
+        "tt": "",
+        "cc": 1,
+        "dur": 160,
+        "lot": 50,
+        "equ": "32N",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null,
+        "fbc": "KCBA000"
+       },
+       {
+        "id": "2",
+        "al": "IX",
+        "fn": "1209",
+        "fc": "KT",
+        "oc": "IX",
+        "org": "GOX",
+        "dt": "2026-10-29T00:05:00",
+        "ft": "",
+        "dst": "BOM",
+        "at": "2026-10-29T01:25:00",
+        "tt": "2",
+        "cc": 1,
+        "dur": 80,
+        "lot": 0,
+        "equ": "7M8",
+        "bag": "15 KG",
+        "cbag": "7 KG",
+        "snd": null,
+        "fbc": "KCBA000"
+       }
+      ]
+     }
+    ],
+    "rc": "IX110828102035IX120929100005",
+    "prov": {
+     "TboResultIndex": "OB186[TBO]C4prJTMjABGflhvdvKx5Xr7tEAzlalY3tXYVTFKt16N1tdliHZL+eHYv6nDTedtIGcC2u0YN96lOrbD351H/PT0uiw6jgyCyzhj47RnJroAlwq+TudJ2lRi/s79lmuKdogANgB5Z0Rm+0Q2UYoXWzjA8wG2NeuPx2TzhvDZGKpoYMmSerFG9N2sARomeLBEf7uGh5v6G7bvbukVakZtD8eSOXJOPLWj5Yrp5U+A/S/kaw0jQ49PVtS5lwPjba1BvaqRZcOYnYNGZv88x3TFNi9HyWTxitNi+Sy/P0WqeeFT+YYLXpS3GmoIajXWP5ssydFjTNLdVMI5BFbIRN2icj8v2/eZXqkiaGewijxnfb5RM2pcnKuYWgdbgYCis1cdk1YnE9Vp1N07HP+JMryI2Bn1JkWdt1NWi8AloXUzI3UPxvA22n0ab8zwDi7lMAHhW+wQpKEamHyfRoYmYNEOl2WyKNWTZtmG+CZ8n3/WYfHilMdLTLO4DzH0RZJO39h0KBRMH2VMZeBPJlPCNT39t+fOt06HbnEfNY6B/Z2vLK2W5BoLeH+0GlGJ644fXbBKhQJKhmOaQ4k70AKByiKNwm128Z/jYxEqWwzeXMvOM6RoxatftwmCTedIAZd7FWFQ3V+rw0eI8DHFxlunva+qhxnGdDUBe33O5SIeOOxKet8rI4xMlAcoOk4FP0viQzOoaq/kgmbNZf2qEgzPzUDx05t5qvNVwHv4grZX4wb5rkMAwKLVsZkVR1mG9k1lQqkip",
+     "TboNonMetaResultIndex": "OB115[TBO]emkD+NkQzvrlHisNIaPWJtEnrpth+2rLEA+en3YnfCoNI3CtE2WlkDwsg7oqNR4CZEl0QYBkAqI+ylo1L+to75U/vCt/YWBpRvXYAUroU0flKioBiDNVRP/er9oKW6NDrISjcTQQ+2GAha0Tk1+FtDHmKHA7xdjROs0aw1yJl/SYAOAj1EKzYPE7Vo51TIEDTwBE4dY4qf8Foel/Y5FCU0U9kh2HpRGCYnpKSc7paJ4GqmKTn8lhKrRtoe7jogw13mM3Qx3kqKcTjXQCRhaAkQulhFykyOeR+rQNyx+Cz2uPqxqENn9bUQdI5mNFr1MZiQnSnqHplU+wRLye77x23TG7pWRQPWFIfFgaSLZp4fP2ypeIm7dopMqkScvyApjfca1Dy0v5O6X5G3R2U77VgV/74+8U6p7Dg5ZJNMO91IpQ9CDvkbA6q2DfGu4po91Ygn9BSUNCY5dSjT2DUgM92jU6AK21sdjd6HirZobsnDYk4Tp91w/a5RTbZ6Vua7r1EzcMi79IrnBPsizCeWnBQIlWtmm+gsTcIo587+lED5WLXooxjNZwTogtcGA+sgf+o8cjPv+tqbC567qs2TB03MQKdHh3uMhdJMcuStRFYDYJu5QPg/y5cRCLzI+C6KpG4tvqlzFqjcl4uT+OeWscUxBPi36pfMtmQml5kHGvxZyA5TR31pwMDkT1dc49G3BX046IU0E1VypULJShCkxDw4+PxgpQCJm/UTGBbhjZMwoW5UFB6pCPGXJpGdJ5Bo3i"
+    },
+    "il": true,
+    "ilc": false,
+    "journeykey": null,
+    "legfares": null
+   }
+  ]
+ ]
+}

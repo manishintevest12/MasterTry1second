@@ -18,6 +18,7 @@ import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaHonestNoService } from '../parsers/akasaFlights';
 import { parseBudgetAirCalendar, budgetAirCalendarUrl, budgetAirDayFareItems } from '../parsers/budgetAirFlights';
+import { flightsMojoSearchBody, FLIGHTSMOJO_SEARCH_URL, FLIGHTSMOJO_RESEARCH_URL, parseFlightsMojoResearch, flightsMojoItems } from '../parsers/flightsMojo';
 import { parseViaFareCalendar, viaFareCalendarUrl, viaDayFareItems, parseViaSearchJourneys, viaSearchItems, viaSearchApiUrl, viaSearchRequestBody } from '../parsers/viaFlights';
 import { parseYatraBatch, yatraTriggerUrl, yatraSrpUrl, yatraCalendarUrl, yatraCalendarItems, YATRA_SUPPLIERS } from '../parsers/yatraFlights';
 import { parseGoibiboSsr, goibiboRouteUrl } from '../parsers/goibiboFlights';
@@ -1911,15 +1912,56 @@ export const flightsWorker: VerticalWorker = {
       // (/flights/del-to-bom-flights) but search results render client-side —
       // no SSR fares to browserless HTTP. Presence row carries the route SEO
       // page deeplink.
+      // Owner OTA expansion (25 Oct). FlightsMojo .in storefront (INR):
+      // POST /api/flight/search then poll /api/flight/research with the same
+      // client-generated body — replayed browserless with curl_cffi, no session
+      // or tokens (captured from their own search flow via request
+      // interception; ~219 DEL-BOM itineraries, real INR fares incl. 6E/SG/IX).
       sourceId: 'w_flights_flightsmojo',
-      name: 'Flights worker: FlightsMojo (probe)',
+      name: 'Flights worker: FlightsMojo search (INR storefront)',
       priority: 30,
-      run: async () => {
-        const res = await cffiFetch('https://www.flightsmojo.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
-          res.status === 403
-            ? 'FlightsMojo edge denies datacenter IPs (403).'
-            : 'FlightsMojo search is client-side (Next.js App Router); route SEO pages carry no SSR fares to browserless HTTP.');
+      maxPerMinute: 4,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return []; // unknown city — honest skip
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const body = JSON.stringify(flightsMojoSearchBody(from, to, dep));
+        const opts = { impersonate: 'chrome', timeoutMs: 20_000, body, headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'https://www.flightsmojo.in', Referer: 'https://www.flightsmojo.in/flight/searchflights' } } as const;
+        let r;
+        try {
+          r = await cffiFetch(FLIGHTSMOJO_SEARCH_URL, { ...opts, method: 'POST' });
+        } catch (e: any) {
+          throw new AcquisitionError('SERVER_ERROR', `FlightsMojo search unreachable: ${String(e?.message || e)}`);
+        }
+        if (r.status === 403 || r.status === 429) {
+          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `FlightsMojo edge-blocked (HTTP ${r.status}).`, r.status);
+        }
+        if (r.status !== 200) {
+          throw new AcquisitionError('SERVER_ERROR', `FlightsMojo search HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, r.status);
+        }
+        // research poll: results arrive asynchronously (~4-8s)
+        let itins: ReturnType<typeof parseFlightsMojoResearch> = [];
+        for (let poll = 0; poll < 4; poll++) {
+          await new Promise((res) => setTimeout(res, poll === 0 ? 4_000 : 5_000));
+          const rr = await cffiFetch(FLIGHTSMOJO_RESEARCH_URL, { ...opts, method: 'POST' });
+          if (rr.status !== 200) continue;
+          let json: unknown;
+          try { json = JSON.parse(rr.body); } catch { continue; }
+          itins = parseFlightsMojoResearch(json);
+          if (itins.length > 0) break;
+        }
+        if (itins.length === 0) {
+          throw new AcquisitionError('EMPTY_RESPONSE', `FlightsMojo research returned no itineraries for ${from}-${to} ${dep}.`);
+        }
+        return flightsMojoItems(itins, ctx.source, rt, from, to, dep);
       },
     },
     {
