@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:try1second/ui/widgets/location_hint_field.dart';
 import 'dart:io';
 
 /// Owner 24 Oct evening: food delivery-address and cab pickup/drop fields must
@@ -54,4 +56,36 @@ void main() {
     // Pickup selection must update the location context exactly like the map-pin path.
     expect(screenSrc.contains("Pickup set: \$label"), isTrue);
   });
+
+
+// Owner 25 Oct: food delivery address + cab pickup/drop must LOOK like the
+// 10-min grocery location pill (red pin + text + chevron), not a typing box.
+group('grocery-style picker pill (owner 25 Oct)', () {
+  testWidgets('picker-mode field renders the grocery pill, not a TextField', (tester) async {
+    var tapped = 0;
+    final c = TextEditingController();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: LocationHintField(
+          controller: c,
+          label: 'Pickup Location',
+          placeholder: 'Enter pickup point...',
+          mode: 'pickup',
+          large: true,
+          onFieldTap: () => tapped++,
+        ),
+      ),
+    ));
+    expect(find.byType(TextField), findsNothing, reason: 'picker pill has no inline typing box');
+    expect(find.byIcon(Icons.location_on_outlined), findsOneWidget, reason: 'red map pin like grocery');
+    expect(find.byIcon(Icons.expand_more_rounded), findsOneWidget, reason: 'dropdown chevron like grocery');
+    expect(find.text('Enter pickup point...'), findsOneWidget, reason: 'placeholder shows when empty');
+    await tester.tap(find.byKey(const ValueKey('hintfield-box-pickup')));
+    await tester.pump();
+    expect(tapped, 1, reason: 'tap opens the full-screen granular picker');
+    c.text = 'Chappan Dukan, Indore';
+    await tester.pump();
+    expect(find.text('Chappan Dukan, Indore'), findsOneWidget, reason: 'chosen address shows in the pill');
+  });
+});
 }

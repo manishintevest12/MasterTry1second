@@ -263,10 +263,58 @@ class _LocationHintFieldState extends State<LocationHintField> {
     );
   }
 
+  /// Owner 25 Oct: when the field opens the full-screen granular picker
+  /// (onFieldTap set — food delivery address, cab pickup/drop, flights,
+  /// hotels), it must LOOK like the 10-min grocery location pill: a compact
+  /// row with a red map pin, the chosen address (or grey placeholder) and a
+  /// dropdown chevron — NOT a plain typing box. Typing happens inside the
+  /// picker's search-as-you-type screen, exactly like grocery.
+  Widget _buildPickerPill(BuildContext context) {
+    final hasText = widget.controller.text.isNotEmpty;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onFieldTap,
+      child: Container(
+        key: ValueKey('hintfield-box-${widget.mode}'),
+        height: widget.large ? 48 : 40,
+        padding: EdgeInsets.symmetric(horizontal: widget.large ? 12 : 10),
+        decoration: BoxDecoration(
+          color: isDark(context) ? T1SColors.slate800 : Colors.white,
+          borderRadius: BorderRadius.circular(widget.large ? 12 : 10),
+          border: Border.all(color: border(context)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.location_on_outlined,
+                size: widget.large ? 18 : 14, color: T1SColors.red),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hasText ? widget.controller.text : widget.placeholder,
+                style: tx(
+                  context,
+                  widget.large ? 14 : 11.5,
+                  w: FontWeight.w800,
+                  color: hasText ? null : muted(context),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (widget.trailing != null) widget.trailing!,
+            Icon(Icons.expand_more_rounded,
+                size: 17, color: T1SColors.slate400),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dotColor =
         widget.mode == 'pickup' ? const Color(0xFF34D399) : T1SColors.red;
+    if (widget.onFieldTap != null) return _buildPickerPill(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
