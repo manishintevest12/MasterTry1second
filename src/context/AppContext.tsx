@@ -1243,6 +1243,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // the actual click to MySQL affiliate_clicks). No client-side fabricated
     // order/commission records are created anymore.
 
+    // Owner 25 Oct fix: the 24 Oct tracking cleanup removed the timer that
+    // advanced the hand-off screen, leaving the 'Securing Best Price' spinner
+    // stuck forever. This beat is pure UI — it reveals the ready panel with the
+    // Proceed button; the merchant hop still happens only when the user clicks
+    // Proceed (quote.url is a server pointer, attribution stays server-side).
+    setTimeout(() => {
+      setRedirectionState((prev) => (prev.isOpen ? { ...prev, step: 'awarded' } : prev));
+    }, 900);
+
   };
 
   const closeRedirection = () => {
