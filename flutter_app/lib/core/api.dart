@@ -901,13 +901,17 @@ class Try1SecondApi {
   /// the 3-2-1 loader with zero results. A tight 6s connect deadline makes the
   /// socket stack fail fast on dead addresses and dial IPv4 within the same
   /// request, and the retry belt gives one more chance on flaky mobile links.
-  /// Browser-like UA (owner 23 Oct 403 fix): dart:io's default
-  /// "Dart/x.y (dart:io)" User-Agent is on Hostinger's WAF bot list and every
-  /// API call answered 403 on the live site. A Chrome-on-Android UA passes the
-  /// same edge that serves the website, so the app rides the same trust path.
+  /// Honest app UA (owner 25 Oct): history — dart:io's default
+  /// "Dart/x.y (dart:io)" UA got WAF-403ed on 23 Oct, so we impersonated
+  /// Chrome; on 25 Oct the edge started scoring UA/TLS MISMATCH (claimed
+  /// Chrome but dart:io TLS) as a bot signal — phone IPs got challenge
+  /// 403s escalating to connection resets (errno 104). Verified live 25
+  /// Oct: the edge now accepts an honest, self-identifying app UA (real
+  /// apps identify themselves; they don't pretend to be browsers), so the
+  /// app drops the impersonation entirely. Cleanest long-term posture:
+  /// identified client, no fingerprint conflict, no mismatch trigger.
   static const String kAppUserAgent =
-      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 Try1SecondApp';
+      'Try1Second/1.8.22 (Android; app; +https://try1second.com)';
 
   static http.Client _hardenedClient() {
     final inner = io.HttpClient()
