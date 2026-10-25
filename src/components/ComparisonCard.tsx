@@ -104,7 +104,7 @@ function MovieShowtimes({ raw }: { raw: unknown }) {
   return (
     <div className="mt-1.5 space-y-1">
       {shows.slice(0, 3).map((sh: any, i: number) => (
-        <div key={i} className="flex items-center gap-1.5 text-[10.5px] min-w-0">
+        <div key={i} className="flex flex-wrap items-center gap-1.5 text-[10.5px] min-w-0">
           <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-bold whitespace-nowrap shrink-0">{fmt(sh.time)}</span>
           <span className="text-slate-500 truncate min-w-0">{String(sh.theatre || '')}</span>
           {Array.isArray(sh.areas) && sh.areas.length > 0 && (
@@ -261,9 +261,12 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-xs hover:border-slate-300 transition-all overflow-hidden mb-4">
       {/* Main Card Row (Replicating Kayak Flight/Product Card) */}
-      <div className="p-4 sm:p-5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        {/* Left & Center Information */}
-        <div className="flex-1">
+      <div className="p-4 sm:p-5 flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center justify-between gap-4">
+        {/* Left & Center Information — min-w-0 lets it shrink when movie
+            showtime pills are wide; without it the shrink-0 right zone is
+            pushed past the card edge and the Select Deal CTA gets clipped
+            (owner 25 Oct: movie card 'Select Deal' cut off on the right). */}
+        <div className="flex-1 min-w-0">
           {/* Top Metadata & Utility Row */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
