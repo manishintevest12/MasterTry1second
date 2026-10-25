@@ -34,12 +34,12 @@ test('presence: 4 gated + 6 OTA-expansion sellers appear when nothing else contr
 test('presence: OTA expansion rows carry seller search-page deeplinks (owner 24 Oct)', async () => {
   const rows = await buildFlightSellerPresence(parsed(), []);
   const by = (x: string) => rows.find((r) => r.seller === x)!;
-  assert.ok(by('BudgetAir').sellerUrl!.startsWith('https://www.budgetair.com/en-in/flight/search'));
-  assert.ok(by('Gotogate').sellerUrl!.startsWith('https://www.gotogate.in/'));
-  assert.ok(by('FlightNetwork').sellerUrl!.startsWith('https://www.flightnetwork.com/'));
+  assert.ok(by('BudgetAir').sellerUrl!.startsWith('https://www.budgetair.com/en_us/flights/IDR/DEL/'), 'BudgetAir deeplink must be the route+date results page');
+  assert.ok(by('Gotogate').sellerUrl!.startsWith('https://in.gotogate.com/air/IDRDEL29OCT'), 'Gotogate deeplink must be the IN storefront results page');
+  assert.ok(by('FlightNetwork').sellerUrl!.startsWith('https://in.flightnetwork.com/air/IDRDEL29OCT'), 'FlightNetwork deeplink must be the IN storefront results page');
   assert.ok(by('FlightsMojo').sellerUrl!.includes('indore-to-delhi-flights'), 'FlightsMojo deeplink must be the route SEO page');
   assert.ok(by('Booking.com').sellerUrl!.startsWith('https://flights.booking.com/'));
-  assert.ok(by('Agoda').sellerUrl!.startsWith('https://www.agoda.com/flights'));
+  assert.ok(by('Agoda').sellerUrl!.startsWith('https://www.agoda.com/flights/search?origin=IDR'), 'Agoda deeplink must be the route+date results page');
   for (const s2 of OTA_EXPANSION) assert.equal(by(s2).attributes.price_basis, 'live_fares_unavailable', `${s2} honest price basis`);
 });
 

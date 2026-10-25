@@ -4977,7 +4977,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num12 = (x) => {
+  const num11 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -4998,17 +4998,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num12(rating.value),
-      ratingCount: num12(rating.count),
-      pricePerNight: num12(pricing.bookingPrice),
-      tax: num12(tax.total_tax),
-      priceInclusive: num12(tax.final_price_with_tax),
-      slashedPrice: num12(pricing.slashedPrice),
-      discountPercentage: num12(pricing.discountPercentage),
+      rating: num11(rating.value),
+      ratingCount: num11(rating.count),
+      pricePerNight: num11(pricing.bookingPrice),
+      tax: num11(tax.total_tax),
+      priceInclusive: num11(tax.final_price_with_tax),
+      slashedPrice: num11(pricing.slashedPrice),
+      discountPercentage: num11(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num12(geo.lat ?? geo.latitude),
-      lon: num12(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num11(geo.lat ?? geo.latitude),
+      lon: num11(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -6535,169 +6535,6 @@ var init_hotels = __esm({
   }
 });
 
-// server/workers/parsers/openflights.ts
-function splitCsv(line) {
-  const out = [];
-  let cur = "", inQ = false;
-  for (const ch of line) {
-    if (ch === '"') {
-      inQ = !inQ;
-      continue;
-    }
-    if (ch === "," && !inQ) {
-      out.push(cur);
-      cur = "";
-      continue;
-    }
-    cur += ch;
-  }
-  out.push(cur);
-  return out.map((s) => s.trim());
-}
-async function loadOpenFlights(fetchFn) {
-  if (cache3 && Date.now() - cache3.at < 24 * 36e5) return cache3;
-  const [apRaw, alRaw, rtRaw] = await Promise.all([
-    fetchFn(`${BASE}/airports.dat`),
-    fetchFn(`${BASE}/airlines.dat`),
-    fetchFn(`${BASE}/routes.dat`)
-  ]);
-  const airports = apRaw.split("\n").filter(Boolean).map((l) => {
-    const f = splitCsv(l);
-    return { id: f[0], name: f[1], city: f[2], country: f[3], iata: f[4], lat: Number(f[6]), lon: Number(f[7]) };
-  }).filter((a) => a.iata && a.iata !== "\\N");
-  const airlines = alRaw.split("\n").filter(Boolean).map((l) => {
-    const f = splitCsv(l);
-    return { name: f[1], iata: f[3], active: f[7] === "Y" };
-  }).filter((a) => a.iata && a.iata !== "\\N");
-  const routes = rtRaw.split("\n").filter(Boolean).map((l) => {
-    const f = l.split(",");
-    return { airlineIata: f[0], srcIata: f[2], dstIata: f[4], stops: Number(f[7]) };
-  }).filter((r) => r.srcIata && r.dstIata && r.srcIata !== "\\N" && r.dstIata !== "\\N");
-  cache3 = { at: Date.now(), airports, airlines, routes };
-  return { airports, airlines, routes };
-}
-function matchAirports(airports, input) {
-  const raw = String(input || "").trim();
-  const code = raw.match(/\(([A-Za-z]{3})\)/)?.[1] || (/^[A-Za-z]{3}$/.test(raw) ? raw : "");
-  if (code) {
-    const byCode = airports.filter((a) => a.iata.toUpperCase() === code.toUpperCase());
-    if (byCode.length) return byCode;
-  }
-  const cleaned = raw.replace(/\([^)]*\)/g, "").replace(/\b(airport|international|intl)\b/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
-  if (!cleaned) return [];
-  const target = CITY_ALIASES[cleaned] || cleaned;
-  let hit = airports.filter((a) => a.city.toLowerCase() === target);
-  if (!hit.length) hit = airports.filter((a) => a.city.toLowerCase() === cleaned);
-  if (!hit.length) hit = airports.filter((a) => a.name.toLowerCase().includes(target));
-  return hit;
-}
-function airlineSiteFor(name) {
-  for (const [re, u] of AIRLINE_SITES) if (re.test(name)) return u;
-  return void 0;
-}
-function canonicalAirlineName(name) {
-  for (const [re, canon] of CANONICAL_AIRLINES) if (re.test(name)) return canon;
-  return name.replace(/\s*(airlines|air lines|limited|ltd|pvt\.? ?ltd|co\.|inc)\.?$/i, "").trim() || name;
-}
-function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, sourceUrl) {
-  const fromAirports = matchAirports(airports, fromCity);
-  const toAirports = matchAirports(airports, toCity);
-  if (!fromAirports.length || !toAirports.length) return [];
-  const srcIatas = new Set(fromAirports.map((a) => a.iata));
-  const dstIatas = new Set(toAirports.map((a) => a.iata));
-  const DEFUNCT = /\b(jet airways|kingfisher|spicejet cargo|silkair|tiger airways|air deccan|jetlite|go ?first|go ?air|air sahara|sahara|king ?fisher|virgin america|germanwings|monarch|thomas cook|air berlin|alitalia|malev|cargo|freight|express cargo|logistics|courier|dhl|fedex|ups)\b/i;
-  const airlineByIata = new Map(airlines.filter((a) => a.active && !DEFUNCT.test(a.name)).map((a) => [a.iata, a]));
-  const matched = /* @__PURE__ */ new Map();
-  for (const r of routes) {
-    if (srcIatas.has(r.srcIata) && dstIatas.has(r.dstIata)) {
-      const al = airlineByIata.get(r.airlineIata);
-      if (!al) continue;
-      if (!matched.has(al.name)) matched.set(al.name, []);
-      matched.get(al.name).push(r);
-    }
-  }
-  const out = [];
-  for (const [airlineName2, rs] of matched) {
-    const direct = rs.filter((r) => r.stops === 0).length;
-    const r0 = rs[0];
-    const srcAp = fromAirports.find((a) => a.iata === r0.srcIata);
-    const dstAp = toAirports.find((a) => a.iata === r0.dstIata);
-    out.push(newRawItem(source, {
-      title: `${airlineName2}: ${srcAp.city} (${srcAp.iata}) \u2192 ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
-      seller: canonicalAirlineName(airlineName2).slice(0, 100),
-      sellerUrl: airlineSiteFor(airlineName2) || sourceUrl,
-      currency: "INR",
-      travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...date ? { date } : {}, seatType: "unknown" },
-      attributes: {
-        airline: airlineName2.slice(0, 100),
-        ...r0.airlineIata ? { airline_code: r0.airlineIata } : {},
-        from_iata: srcAp.iata,
-        to_iata: dstAp.iata,
-        scheduled_services: String(rs.length),
-        ...direct > 0 ? { direct_services: String(direct) } : {},
-        data_note: "Airline-route schedules from OpenFlights open data; live fares require the airline (we never invent them)"
-      },
-      evidence: {
-        sourceUrl,
-        sourceReference: `${r0.srcIata}-${r0.dstIata}:${airlineName2}`,
-        extractedFields: ["route", "airline", "airports"]
-      }
-    }));
-  }
-  return out.slice(0, 20);
-}
-var BASE, cache3, CITY_ALIASES, AIRLINE_SITES, CANONICAL_AIRLINES;
-var init_openflights = __esm({
-  "server/workers/parsers/openflights.ts"() {
-    init_contract();
-    BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
-    cache3 = null;
-    CITY_ALIASES = {
-      "new delhi": "delhi",
-      "bengaluru": "bangalore",
-      "bombay": "mumbai",
-      "calcutta": "kolkata",
-      "madras": "chennai",
-      "gurugram": "delhi",
-      "gurgaon": "delhi",
-      "noida": "delhi",
-      "trivandrum": "thiruvananthapuram",
-      "cochin": "kochi",
-      "poona": "pune",
-      "baroda": "vadodara",
-      "banaras": "varanasi",
-      "benares": "varanasi",
-      "new york city": "new york",
-      "nyc": "new york",
-      "dubai international": "dubai",
-      "abu dhabi": "abu dhabi"
-    };
-    AIRLINE_SITES = [
-      [/indigo/i, "https://www.goindigo.in/"],
-      [/air india express/i, "https://www.airindiaexpress.com/"],
-      [/air india/i, "https://www.airindia.com/"],
-      [/spicejet/i, "https://www.spicejet.com/"],
-      [/akasa/i, "https://www.akasaair.com/"],
-      [/vistara/i, "https://www.airindia.com/"],
-      [/alliance air/i, "https://www.allianceair.in/"],
-      [/star air/i, "https://www.starair.in/"],
-      [/fly ?91/i, "https://flybig.in/"]
-    ];
-    CANONICAL_AIRLINES = [
-      [/indigo/i, "IndiGo"],
-      [/air india express/i, "Air India Express"],
-      [/^air india(?!.*express)/i, "Air India"],
-      [/spicejet/i, "SpiceJet"],
-      [/akasa/i, "Akasa Air"],
-      [/emirates/i, "Emirates"],
-      [/vistara/i, "Vistara"],
-      [/alliance air/i, "Alliance Air"],
-      [/star air/i, "Star Air"],
-      [/fly ?91/i, "Fly91"]
-    ];
-  }
-});
-
 // server/workers/parsers/ixigoFlights.ts
 function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
   const iataOf = (city, code) => code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null;
@@ -7090,7 +6927,7 @@ async function resolveAirport(city, codeHint) {
   return cityToAirport(city);
 }
 async function loadAirports() {
-  if (cache4 && Date.now() - cache4.at < TTL_OK) return cache4.byCity;
+  if (cache3 && Date.now() - cache3.at < TTL_OK) return cache3.byCity;
   const res = await fetch(URL_DAT, { signal: AbortSignal.timeout(15e3) });
   if (!res.ok) throw new Error(`airports.dat HTTP ${res.status}`);
   const text = await res.text();
@@ -7128,7 +6965,7 @@ async function loadAirports() {
     if (bucket) bucket.push(ap);
     else byCity.set(key, [ap]);
   }
-  cache4 = { at: Date.now(), byCity };
+  cache3 = { at: Date.now(), byCity };
   return byCity;
 }
 async function cityToAirport(city) {
@@ -7159,7 +6996,7 @@ async function cityToAirport(city) {
     return { code: null, city, country: "" };
   }
 }
-var URL_DAT, PREFERRED, PREF_RANK, IATA, TTL_OK, TTL_MISS, cache4, missCache, norm2;
+var URL_DAT, PREFERRED, PREF_RANK, IATA, TTL_OK, TTL_MISS, cache3, missCache, norm2;
 var init_airportLookup = __esm({
   "server/common/airportLookup.ts"() {
     init_logger();
@@ -7309,7 +7146,7 @@ var init_airportLookup = __esm({
     };
     TTL_OK = 24 * 36e5;
     TTL_MISS = 10 * 6e4;
-    cache4 = null;
+    cache3 = null;
     missCache = /* @__PURE__ */ new Map();
     norm2 = (s) => s.toLowerCase().replace(/[’'’.]/g, "").replace(/\s+/g, " ").trim();
   }
@@ -7837,587 +7674,783 @@ var init_budgetAirFlights = __esm({
   }
 });
 
-// server/workers/parsers/flightsMojo.ts
-function flightsMojoSearchBody(fromCode, toCode, dateIso) {
-  const session = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}-${Math.random().toString(16).slice(2, 6)}`;
-  const key = `${fromCode}${toCode}${dateIso.slice(8)}${dateIso.slice(5, 7)}${dateIso.slice(2, 4)}1001`;
-  const searchId = `2510${dateIso.slice(2, 4)}${dateIso.slice(5, 7)}${dateIso.slice(8)}0619542e061b9795ce4deaaa${key}`;
-  const arp = (code) => ({ airportCode: code, airportName: `${code} Airport`, cityCode: code, cityName: code, countryCode: "IN", countryName: "India" });
+// server/workers/parsers/etraveliFlights.ts
+function etraveliSearchUrl(host) {
+  return `https://${host}/graphql/SearchOnResultPage`;
+}
+function etraveliSearchBody(brand, fromCode, toCode, dateIso, offset = 0) {
   return {
-    searchURL: null,
-    userSessionID: session,
-    userSearchID: searchId,
-    userLogID: searchId,
-    client: 1,
-    segment: [{
-      originAirport: fromCode,
-      orgArp: arp(fromCode),
-      destinationAirport: toCode,
-      destArp: arp(toCode),
-      travelDate: `${dateIso}T00:00:00`,
-      originAllAirports: false,
-      destinationAllAirports: false
-    }],
-    searchDirectFlight: false,
-    flexibleSearch: false,
-    tripType: 1,
-    adults: 1,
-    child: 0,
-    infants: 0,
-    cabinType: 1,
-    airline: "ALL",
-    currencyCode: "INR",
-    siteId: 1,
-    sID: null,
-    rID: null,
-    locale: null,
-    isNearBy: false,
-    limit: null,
-    page: null,
-    pageValue: null,
-    userIP: null,
-    serverIP: null,
-    fareCachingKey: key,
-    isMetaRequest: false,
-    fareType: 0,
-    travelType: 0,
-    deepLink: `/flight/searchflights?sec1=${fromCode}|${toCode}|${dateIso}&adults=1&child=0&infants=0&cabin=1&airline=ALL&siteid=1&currency=INR`,
-    isGetLiveFare: false,
-    device: 1,
-    isReSearch: false,
-    utm_source: "direct",
-    utm_medium: "none",
-    utm_campaign: "none",
-    utm_source_first: "direct",
-    utm_medium_first: "none",
-    utm_campaign_first: "none",
-    gclid: "",
-    kayakClickId: null,
-    wegoClickId: null
+    operationName: "SearchOnResultPage",
+    variables: {
+      adults: 1,
+      cabinClass: "ECONOMY",
+      childAges: [],
+      filters: [],
+      routes: [{ origin: fromCode, destination: toCode, departureDate: dateIso }],
+      sortTypeCode: "BEST_VALUE",
+      ...offset > 0 ? { offset } : {}
+    },
+    query: ETRAVELI_QUERY
   };
 }
-function flightsMojoSrpUrl(fromCode, toCode, dateIso) {
-  return `${FLIGHTSMOJO_BASE}/flight/searchflights?sec1=${fromCode}%7C${toCode}%7C${dateIso}&adults=1&child=0&infants=0&cabin=1&airline=ALL&siteid=1&currency=INR`;
-}
-function parseFlightsMojoResearch(body) {
+function parseEtraveliFlights(body) {
   const root = body ?? {};
-  if (!Array.isArray(root.res) || root.res.length === 0) return [];
-  const itins = root.res[0];
-  return Array.isArray(itins) ? itins : [];
+  if (root.errors && !root.data?.search) {
+    return { flights: [], flightsCount: 0, error: String(root.errors?.[0]?.message || "graphql error").slice(0, 160) };
+  }
+  const search = (root.data ?? {}).search;
+  if (!search || typeof search !== "object") return { flights: [], flightsCount: 0, error: "no data.search in response" };
+  const flights = Array.isArray(search.flights) ? search.flights.filter(Boolean) : [];
+  const flightsCount = Number(search.flightsCount ?? 0) || flights.length;
+  const searchPath = typeof search.searchPath === "string" ? search.searchPath : void 0;
+  return { flights, flightsCount, searchPath };
 }
-function flightsMojoItems(itineraries, source, route, fromCode, toCode, dateIso, cap = 40) {
+function etraveliFlightFare(f) {
+  const price = f.travelerPrices?.[0]?.price?.price;
+  const value = Number(price?.value);
+  const currency = String(price?.currency?.code || "").toUpperCase();
+  if (!Number.isFinite(value) || value <= 0) return { fare: NaN, currency };
+  return { fare: value / 100, currency };
+}
+function etraveliFlightsItems(flights, brand, source, route, fromCode, toCode, dateIso, searchPath, cap = 40) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const routeLabel = `${route.from} \u2192 ${route.to}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const it of itineraries) {
+  for (const f of flights) {
     if (out.length >= cap) break;
-    const segs = (it.fseg?.[0]?.segs || []).filter(Boolean);
+    const segs = (f.bounds?.[0]?.segments || []).filter(Boolean);
     if (segs.length === 0) continue;
-    const firstOrg = String(segs[0].org || "");
-    const lastDst = String(segs[segs.length - 1].dst || "");
-    if (firstOrg !== fromCode || lastDst !== toCode) continue;
-    const depDay = String(segs[0].dt || "").slice(0, 10);
+    const oCode = String(segs[0].origin?.cityCode || segs[0].origin?.code || "");
+    const dCode = String(segs[segs.length - 1].destination?.cityCode || segs[segs.length - 1].destination?.code || "");
+    if (oCode !== fromCode || dCode !== toCode) continue;
+    const depDay = String(segs[0].departuredAt || "").slice(0, 10);
     if (depDay !== dateIso) continue;
-    const fare = Number(it.fare?.pf ?? it.fare?.gt ?? 0);
-    const cur = String(it.fare?.cur || "");
-    if (cur !== "INR") continue;
-    if (!Number.isFinite(fare) || fare < 500) continue;
-    const flightNos = segs.map((s) => `${s.al || ""}${s.fn || ""}`).join("-");
-    const depTime = String(segs[0].dt || "").slice(11, 16);
-    const arrTime = String(segs[segs.length - 1].at || "").slice(11, 16);
+    const { fare, currency } = etraveliFlightFare(f);
+    if (currency !== "INR") continue;
+    if (!Number.isFinite(fare) || fare < 500 || fare > 5e5) continue;
+    const carrierCode = String(segs[0].marketingCarrier?.code || "");
+    const carrier = String(segs[0].marketingCarrier?.name || carrierCode || brand.brand);
+    const flightNos = segs.map((s) => {
+      const code = String(s.marketingCarrier?.code || "");
+      const num11 = String(s.flightNumber || "");
+      return num11.startsWith(code) && code ? num11 : `${code}${num11}`;
+    }).join("-");
+    const depTime = String(segs[0].departuredAt || "").slice(11, 16);
+    const arrTime = String(segs[segs.length - 1].arrivedAt || "").slice(11, 16);
     const stops = segs.length - 1;
-    const dur = Number(it.fseg?.[0]?.dur || 0) || void 0;
-    const key = `${it.vc || ""}|${flightNos}|${depTime}`;
+    const durMs = Number(segs[0].duration || 0) || Number(f.bounds?.[0]?.segments?.reduce?.((a, s) => a + (Number(s.duration) || 0), 0) || 0);
+    const dur = durMs > 0 ? Math.round(durMs / 6e4) : void 0;
+    const key = `${flightNos}|${depTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const routeLabel = `${route.from} \u2192 ${route.to}`;
+    const shareable = String(f.shareableUrl || "");
+    const deeplink = shareable.startsWith("http") ? shareable : `https://${brand.host}${searchPath || "/rf/result"}`;
     out.push(newRawItem(source, {
-      title: `${it.vc || ""} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
-      brand: String(it.vc || "FlightsMojo").slice(0, 80),
+      title: `${carrier} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
+      brand: carrier.slice(0, 80),
       price: Math.round(fare),
       currency: "INR",
-      seller: "FlightsMojo",
-      sellerUrl: flightsMojoSrpUrl(fromCode, toCode, dateIso),
+      seller: brand.brand,
+      sellerUrl: deeplink,
       travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
       attributes: {
         route: routeLabel,
         travel_date: dateIso,
-        airline_code: String(it.vc || ""),
+        airline: carrier,
+        airline_code: carrierCode,
         flight_number: flightNos,
         departure: depTime,
         arrival: arrTime,
         stops: String(stops),
         ...dur ? { duration_minutes: String(dur) } : {},
-        ...segs[0]?.cbag ? { cabin_baggage: segs[0].cbag } : {},
-        price_basis: `live ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on FlightsMojo's flight search on ${today2} (FlightsMojo is the selling website)`,
-        data_note: `Fare acquired via FlightsMojo's own search API on ${today2}; the ticket is SOLD by FlightsMojo. Price may change at checkout.`
+        ...segs[0].cabinClassName ? { cabin: segs[0].cabinClassName } : {},
+        ...segs[0].aircraftType ? { aircraft: String(segs[0].aircraftType).slice(0, 60) } : {},
+        price_basis: `live all-inclusive ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on ${brand.brand}'s flight search on ${today2} (${brand.brand} is the selling website)`,
+        data_note: `Fare acquired via ${brand.brand}'s SearchOnResultPage flight API on ${today2}; the ticket is SOLD by ${brand.brand}. Price may change at checkout.`
       },
-      identifiers: { sku: `flightsmojo-${flightNos}-${dateIso}-${depTime}`.slice(0, 120) },
+      identifiers: { sku: `${brand.brand.toLowerCase()}-${flightNos}-${dateIso}-${depTime}`.slice(0, 120) },
       evidence: {
-        sourceUrl: FLIGHTSMOJO_SEARCH_URL,
-        sourceReference: String(it.rid || "").slice(0, 80),
-        extractedFields: ["res[0][].fare.pf (INR)", "fseg[0].segs[].al/fn/org/dst/dt/at", "fseg[0].dur"]
+        sourceUrl: etraveliSearchUrl(brand.host),
+        sourceReference: String(f.id || "").slice(0, 160),
+        extractedFields: ["data.search.flights[].travelerPrices[0].price.price.value", "bounds[0].segments[].marketingCarrier/flightNumber/departuredAt", "shareableUrl"]
       }
     }));
   }
   return out;
 }
-var FLIGHTSMOJO_BASE, FLIGHTSMOJO_SEARCH_URL, FLIGHTSMOJO_RESEARCH_URL;
-var init_flightsMojo = __esm({
-  "server/workers/parsers/flightsMojo.ts"() {
+var ETRAVELI_QUERY, GOTOGATE_IN, FLIGHTNETWORK_IN;
+var init_etraveliFlights = __esm({
+  "server/workers/parsers/etraveliFlights.ts"() {
     init_contract();
-    FLIGHTSMOJO_BASE = "https://www.flightsmojo.in";
-    FLIGHTSMOJO_SEARCH_URL = `${FLIGHTSMOJO_BASE}/api/flight/search`;
-    FLIGHTSMOJO_RESEARCH_URL = `${FLIGHTSMOJO_BASE}/api/flight/research`;
-  }
-});
-
-// server/workers/parsers/agodaFlights.ts
-function agodaFlightsSrpUrl(fromCode, toCode, dateIso) {
-  return `https://www.agoda.com/flights/search?origin=${fromCode}&destination=${toCode}&departDate=${dateIso}&adults=1&cabinType=Economy`;
-}
-function agodaSearchBody(fromCode, toCode, dateIso, page = 1) {
-  return {
-    flightsRequestId: crypto.randomUUID(),
-    passengers: [{ number: 1, passengerType: 1 }],
-    trips: [{
-      id: 1,
-      priority: 1,
-      pagination: { size: 20, number: page },
-      sort: { field: 8, direction: 0 },
-      filter: { cabinType: 4, stops: [], isMixedCabinClassAllowed: true, hackerFare: { disabled: false } },
-      slices: [{
-        id: 1,
-        departureDate: dateIso,
-        origin: [{ code: fromCode, type: 1 }],
-        destination: [{ code: toCode, type: 1 }]
-      }]
-    }],
-    supportedFeatures: [
-      "QuickSort",
-      "CrossOutPrice",
-      "Streaming",
-      "HackerFare",
-      "OnlineBanking",
-      "SupportChildrenInfants",
-      "TripProtectionMerchant",
-      "Agency",
-      "DisablePublishSearchMessage",
-      "IncompletePassportRequired",
-      "VirtualInterlining"
-    ],
-    context: {
-      clientInfo: { applicationName: "DesktopWeb", clientVersion: "1.0", userId: crypto.randomUUID(), origin: "IN", pageTypeId: 5501 },
-      userSettings: { currencyCode: "INR", language: "en-us", languageId: 1, priceView: 304 },
-      sessionInfo: { cid: 1917399, id: "npcudwpurarmgh1b3wmv5zc4", searchEngineClicks: null },
-      debugInfo: {},
-      trafficMessageInfo: { shouldSendTrafficMessage: false },
-      requestInfo: { currentRetryAttempt: 0, requestId: crypto.randomUUID() },
-      funnel: 0
-    }
-  };
-}
-function parseAgodaFlights(body) {
-  const root = body ?? {};
-  const trips = root.trips;
-  if (!Array.isArray(trips)) return [];
-  const out = [];
-  for (const t of trips) {
-    const bundles = (t ?? {}).bundles;
-    if (Array.isArray(bundles)) out.push(...bundles.filter(Boolean));
-  }
-  return out;
-}
-function agodaBundleFare(bundle) {
-  const first = (bundle.bundlePrice || [])[0];
-  const price = first?.price;
-  if (!price || typeof price !== "object") return { fare: NaN, currency: "" };
-  const curKey = Object.keys(price).find((k) => k.toLowerCase() === "inr");
-  if (!curKey) {
-    const anyKey = Object.keys(price)[0] || "";
-    return { fare: NaN, currency: anyKey.toUpperCase() };
-  }
-  const fare = Number(price[curKey]?.display?.perBook?.allInclusive);
-  return { fare: Number.isFinite(fare) ? fare : NaN, currency: "INR" };
-}
-function agodaFlightsItems(bundles, source, route, fromCode, toCode, dateIso, cap = 40) {
-  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const out = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const b of bundles) {
-    if (out.length >= cap) break;
-    const segs = (b.outboundSlice?.segments || []).filter(Boolean);
-    if (segs.length === 0) continue;
-    if (String(segs[0].originAirport || "") !== fromCode) continue;
-    if (String(segs[segs.length - 1].destinationAirport || "") !== toCode) continue;
-    const depDay = String(segs[0].departDateTime || "").slice(0, 10);
-    if (depDay !== dateIso) continue;
-    const { fare, currency } = agodaBundleFare(b);
-    if (currency !== "INR") continue;
-    if (!Number.isFinite(fare) || fare < 500 || fare > 5e5) continue;
-    const carrierCode = String(b.itineraries?.[0]?.itineraryInfo?.ticketingAirline || segs[0].carrierCode || "");
-    const carrier = segs[0].carrierContent?.carrierName || b.itineraries?.[0]?.itineraryInfo?.ticketingCarrierContent?.carrierName || carrierCode || "Agoda";
-    const flightNos = segs.map((s) => `${s.carrierCode || carrierCode || ""}${s.flightNumber || ""}`).join("-");
-    const depTime = String(segs[0].departDateTime || "").slice(11, 16);
-    const arrTime = String(segs[segs.length - 1].arrivalDateTime || "").slice(11, 16);
-    const stops = segs.length - 1;
-    const dur = Number(b.outboundSlice?.duration || 0) || void 0;
-    const key = `${flightNos}|${depTime}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const routeLabel = `${route.from} \u2192 ${route.to}`;
-    const itineraryId = String(b.itineraries?.[0]?.itineraryInfo?.id || "");
-    out.push(newRawItem(source, {
-      title: `${carrier} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
-      brand: String(carrier).slice(0, 80),
-      price: Math.round(fare),
-      currency: "INR",
-      seller: "Agoda",
-      sellerUrl: agodaFlightsSrpUrl(fromCode, toCode, dateIso),
-      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
-      attributes: {
-        route: routeLabel,
-        travel_date: dateIso,
-        airline: String(carrier),
-        airline_code: carrierCode,
-        flight_number: flightNos,
-        departure: String(depTime),
-        arrival: String(arrTime),
-        stops: String(stops),
-        ...dur ? { duration_minutes: String(dur) } : {},
-        ...segs[0].cabinClassContent?.cabinClass ? { cabin: segs[0].cabinClassContent.cabinClass } : {},
-        ...b.itineraries?.[0]?.itineraryInfo?.availableSeats != null ? { seats_left: String(b.itineraries[0].itineraryInfo.availableSeats) } : {},
-        price_basis: `live all-inclusive ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on Agoda's flight search on ${today2} (Agoda is the selling website)`,
-        data_note: `Fare acquired via Agoda's SearchUnbundled flight API on ${today2}; the ticket is SOLD by Agoda. Price may change at checkout.`
-      },
-      identifiers: { sku: `agoda-${flightNos}-${dateIso}-${depTime}`.slice(0, 120) },
-      evidence: {
-        sourceUrl: AGODA_SEARCH_URL,
-        sourceReference: (itineraryId || b.key || "").slice(0, 160),
-        extractedFields: ["trips[].bundles[].bundlePrice[0].price.inr.display.perBook.allInclusive", "outboundSlice.segments[].carrierCode/flightNumber/departDateTime", "outboundSlice.duration"]
+    ETRAVELI_QUERY = `query SearchOnResultPage($routes: [Route!]!, $cabinClass: CabinClass, $direct: Boolean, $carrierCodes: [String], $adults: Int!, $childAges: [Int], $offset: Int, $sortTypeCode: String, $filters: [Filter!], $validWithVoucher: Boolean) {
+  search(
+    routes: $routes
+    cabinClass: $cabinClass
+    direct: $direct
+    carrierCodes: $carrierCodes
+    adults: $adults
+    childAges: $childAges
+    offset: $offset
+    sortTypeCode: $sortTypeCode
+    filters: $filters
+    validWithVoucher: $validWithVoucher
+  ) {
+    availableFilters {
+      code
+      group
+      label
+      ... on RangeFilter {
+        __typename
+        code
+        group
+        label
+        max
+        min
+        type
       }
-    }));
-  }
-  return out;
-}
-var AGODA_SEARCH_URL;
-var init_agodaFlights = __esm({
-  "server/workers/parsers/agodaFlights.ts"() {
-    init_contract();
-    AGODA_SEARCH_URL = "https://www.agoda.com/api/gw/flight/SearchUnbundled?";
-  }
-});
-
-// server/workers/parsers/bookingFlights.ts
-function bookingFlightsApiUrl(from, to, dep) {
-  const t = Date.now();
-  return `https://flights.booking.com/api/flights/?type=ONEWAY&adults=1&cabinClass=ECONOMY&depart=${encodeURIComponent(dep)}&from=${encodeURIComponent(from)}.AIRPORT&to=${encodeURIComponent(to)}.AIRPORT&chal_t=${t}&force_referer=&enableVI=1&search_source=user`;
-}
-function bookingFlightsSrpUrl(from, to, dep) {
-  return `https://flights.booking.com/airplane-flights/${from}.${to}/${dep}?type=ONEWAY&adults=1&cabinClass=ECONOMY`;
-}
-function hhmm2(v) {
-  if (!v) return "";
-  if (typeof v === "string") return v.slice(11, 16);
-  if (typeof v === "object") {
-    const t = str(v.time);
-    if (/^\d{1,2}:\d{2}/.test(t)) return t.slice(0, 5);
-  }
-  return "";
-}
-function byId(list) {
-  const m = /* @__PURE__ */ new Map();
-  for (const el of asArray(list)) {
-    const id = str(el?.id);
-    if (id) m.set(id, el);
-  }
-  return m;
-}
-function parseSegments(leg, segMap) {
-  const out = [];
-  for (const sid of asArray(leg?.segments)) {
-    const seg = segMap.get(str(sid)) ?? (typeof sid === "object" ? sid : void 0);
-    if (!seg) continue;
-    const carrierCode = str(seg?.carrierCode) || str(seg?.carriers?.marketing?.[0]) || str(seg?.carriers?.[0]) || str(seg?.marketingCarrier?.code) || str(seg?.carrier?.code);
-    const flightNumber = str(seg?.flightNumber) || str(seg?.flightNo);
-    const dep = hhmm2(seg?.departureTime ?? seg?.departTime);
-    const arr = hhmm2(seg?.arrivalTime ?? seg?.arriveTime);
-    if (!flightNumber || !dep) continue;
-    out.push({ carrierCode, flightNumber, dep, arr });
-  }
-  return out;
-}
-function parseBookingFlights(json, source, fromCode, toCode, fromLabel, toLabel, dateIso, cap = 40) {
-  if (!json || typeof json !== "object") return [];
-  const currency = str(json?.currency || json?.currencyCode).toUpperCase();
-  if (currency && currency !== "INR") return [];
-  const legs = byId(json?.legs);
-  const segMap = byId(json?.segments);
-  const carriers = {};
-  for (const c of asArray(json?.carriers)) carriers[str(c?.id)] = c;
-  const flights = asArray(json?.flights).filter(Boolean);
-  if (!flights.length) return [];
-  const groupOrder = [
-    ...asArray(json?.groups?.cheapest).map(str),
-    ...asArray(json?.groups?.best).map(str),
-    ...asArray(json?.groups?.recommended).map(str),
-    ...asArray(json?.groups?.other).map(str)
-  ];
-  const idSet = new Set(groupOrder);
-  const ordered = [
-    ...groupOrder.map((id) => flights.find((f) => str(f?.id) === id)).filter(Boolean),
-    ...flights.filter((f) => !idSet.has(str(f?.id)))
-  ];
-  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const routeLabel = `${fromLabel} \u2192 ${toLabel}`;
-  const seen = /* @__PURE__ */ new Set();
-  const out = [];
-  for (const f of ordered) {
-    if (out.length >= cap) break;
-    const price = num9(f?.priceMajor) + num9(f?.priceMinor) / 100;
-    if (!(price > 0) || price < 500 || price > 5e5) continue;
-    const legIds = asArray(f?.legs).map(str);
-    const legObjs = legIds.map((id) => legs.get(id)).filter(Boolean);
-    if (!legObjs.length) continue;
-    if (legObjs.length > 1) continue;
-    const segs = parseSegments(legObjs[0], segMap);
-    if (!segs.length) continue;
-    const first = segs[0];
-    const last = segs[segs.length - 1];
-    const carrierId = str(legObjs[0]?.carrier);
-    const carrierInfo = carriers[carrierId];
-    const carrierName = str(carrierInfo?.name) || str(carrierInfo?.displayName) || first.carrierCode || "Booking.com";
-    const carrierCode = first.carrierCode || (carrierName.length <= 3 ? carrierName : "");
-    const flightNos = segs.map((s) => `${s.carrierCode || carrierCode}${s.flightNumber}`).join("-");
-    const key = `${flightNos}|${first.dep}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const stops = segs.length - 1;
-    const dur = num9(legObjs[0]?.duration);
-    out.push(newRawItem(source, {
-      title: `${carrierName} ${flightNos} \xB7 ${routeLabel}`.slice(0, 200),
-      brand: String(carrierName).slice(0, 80),
-      price: Math.round(price),
-      currency: "INR",
-      seller: "Booking.com",
-      sellerUrl: bookingFlightsSrpUrl(fromCode, toCode, dateIso),
-      travel: { route: `${fromLabel.toLowerCase()} to ${toLabel.toLowerCase()}`, date: dateIso, seatType: "economy" },
-      attributes: {
-        route: routeLabel,
-        travel_date: dateIso,
-        airline: String(carrierName),
-        ...carrierCode ? { airline_code: String(carrierCode) } : {},
-        flight_number: flightNos,
-        departure: String(first.dep),
-        arrival: String(last.arr),
-        stops: String(stops),
-        ...dur ? { duration_minutes: String(Math.round(dur)) } : {},
-        price_basis: `live all-inclusive ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on Booking.com's flight search on ${today2} (Booking.com is the selling website)`,
-        data_note: `Fare acquired via Booking.com's flight search API on ${today2}; the ticket is SOLD by Booking.com. Price may change at checkout.`
+      ... on SelectionFilter {
+        __typename
+        code
+        group
+        label
+        isMultiChoice
+        options {
+          label
+          value
+          __typename
+        }
+        type
       }
-    }));
-  }
-  return out;
-}
-var num9, str, asArray;
-var init_bookingFlights = __esm({
-  "server/workers/parsers/bookingFlights.ts"() {
-    init_contract();
-    num9 = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : 0;
-    };
-    str = (v) => v == null ? "" : String(v).trim();
-    asArray = (v) => Array.isArray(v) ? v : [];
-  }
-});
-
-// server/workers/parsers/viaFlights.ts
-function viaFareCalendarUrl() {
-  return `${VIA_BASE}/apiv2/flight/fare-calendar?authToken=${VIA_AUTH_TOKEN}&requestSource=NODE_B2C&flowType=NODE&ajax=true&jsonData=true&__xreq__=true`;
-}
-function viaSearchUrl(fromCode, toCode, depIso) {
-  const [y, m, d] = depIso.split("-");
-  const usDate = `${m}/${d}/${y}`;
-  return `${VIA_BASE}/flight/search?returnType=one-way&destination=${toCode}&bdestination=${toCode}&source=${fromCode}&bsource=${fromCode}&month=${Number(m)}&day=${Number(d)}&year=${y}&date=${encodeURIComponent(usDate)}&numAdults=1&numChildren=0&numInfants=0&validation_result=&domesinter=domestic&livequote=-1&flightClass=Economy&travType=DOM&routingType=ALL&isAjax=false`;
-}
-function parseViaFareCalendar(body) {
-  let root;
-  try {
-    root = JSON.parse(body);
-  } catch {
-    return [];
-  }
-  const cd = root?.cd;
-  if (!Array.isArray(cd)) return [];
-  const out = [];
-  for (const e of cd) {
-    const dt = String(e?.dt || "");
-    const pr = Number(e?.pr);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dt) && Number.isFinite(pr) && pr > 0) {
-      out.push({ dt, pr, prType: String(e?.prType || "") });
+      __typename
     }
-  }
-  return out;
-}
-function parseViaSearchJourneys(body) {
-  let root;
-  try {
-    root = JSON.parse(body);
-  } catch {
-    return [];
-  }
-  const js = root?.onwardJourneys;
-  if (!Array.isArray(js)) return [];
-  const out = [];
-  for (const j of js) {
-    const amount = Number(j?.fares?.totalFare?.total?.amount);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
-    const legsRaw = Array.isArray(j?.flights) ? j.flights : [];
-    const legs = [];
-    for (const l of legsRaw) {
-      const depT = String(l?.depDetail?.time || "");
-      const arrT = String(l?.arrDetail?.time || "");
-      if (!/^\d{4}-\d{2}-\d{2} /.test(depT) || !/^\d{4}-\d{2}-\d{2} /.test(arrT)) continue;
-      legs.push({
-        carrierCode: String(l?.carrier?.code || ""),
-        carrierName: String(l?.carrier?.name || ""),
-        flightNo: String(l?.flightNo || ""),
-        flyTime: Number(l?.flyTime) || 0,
-        depTime: depT.slice(0, 16),
-        // "2026-10-26 07:15"
-        arrTime: arrT.slice(0, 16),
-        depCode: String(l?.depDetail?.code || ""),
-        arrCode: String(l?.arrDetail?.code || ""),
-        depCity: String(l?.depDetail?.city || l?.depDetail?.name || ""),
-        arrCity: String(l?.arrDetail?.city || l?.arrDetail?.name || "")
-      });
+    availableSortTypes {
+      code
+      name
+      __typename
     }
-    if (!legs.length) continue;
-    const dur = Number(Array.isArray(j?.journeyInfo) ? j.journeyInfo[0]?.journeyTime : 0) || legs[0]?.flyTime || 0;
-    out.push({
-      flightKey: String(j?.flightKey || ""),
-      price: Math.round(amount),
-      seatsLeft: Number(j?.seatsLeft) || 0,
-      legs,
-      durationMin: dur,
-      fareType: String(legsRaw[0]?.fareType || ""),
-      refundable: Boolean(legsRaw[0]?.refundable)
-    });
-  }
-  return out;
-}
-function viaSearchItems(journeys, source, fromCity, toCity, fromCode, toCode, depIso) {
-  const byKey = /* @__PURE__ */ new Map();
-  for (const j of journeys) {
-    if (!j.flightKey) continue;
-    const prev = byKey.get(j.flightKey);
-    if (!prev || j.price < prev.price) byKey.set(j.flightKey, j);
-  }
-  const uniq = [...byKey.values()].sort((a, b) => a.price - b.price).slice(0, 25);
-  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const routeLabel = `${fromCity} \u2192 ${toCity}`;
-  return uniq.map((j) => {
-    const fno = j.legs.map((l) => `${l.carrierCode} ${l.flightNo}`.trim()).join(" + ");
-    const dep = j.legs[0].depTime;
-    const arr = j.legs[j.legs.length - 1].arrTime;
-    const stops = j.legs.length - 1;
-    const airline = j.legs[0].carrierName;
-    const hhmm4 = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m`;
-    return newRawItem(source, {
-      title: `${airline} ${fno} \xB7 ${routeLabel}`,
-      brand: airline,
-      price: j.price,
-      currency: "INR",
-      seller: "Via.com",
-      sellerUrl: viaSearchUrl(fromCode, toCode, depIso),
-      travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: depIso },
-      attributes: {
-        route: routeLabel,
-        travel_date: depIso,
-        flight_number: fno,
-        departure: dep,
-        arrival: arr,
-        duration: hhmm4(j.durationMin),
-        stops: String(stops),
-        seats_left: j.seatsLeft > 0 ? String(j.seatsLeft) : "",
-        fare_class: j.fareType,
-        refundable: j.refundable ? "yes" : "",
-        price_basis: `Via.com live search fare for ${depIso} (total incl. taxes), acquired from Via.com's own search API on ${today2}`,
-        data_note: `Per-flight fare from Via.com's official search API on ${today2}; booking continues on Via.com's own website.`,
-        image: ""
-      },
-      identifiers: { sku: `via-flight-${j.flightKey.replace(/[^A-Za-z0-9-]/g, "")}-${depIso}` },
-      evidence: {
-        sourceUrl: viaSearchApiUrl(),
-        extractedFields: ["onwardJourneys[].flightKey", "fares.totalFare.total.amount (INR)", "flights[].flightNo", "flights[].depDetail.time", "flights[].arrDetail.time", "journeyInfo[0].journeyTime"]
+    carrierCodes
+    carrierNames
+    flights {
+      ...Flights
+      __typename
+    }
+    flightsCount
+    filteredFlightsCount
+    quickSortPrices {
+      carrierPromo {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
       }
-    });
-  });
-}
-function viaSearchApiUrl() {
-  return `${VIA_BASE}/apiv2/flight/search?&flowType=NODE&ajax=true&jsonData=true`;
-}
-function viaSearchRequestBody(fromCode, fromCity, toCode, toCity, depIso) {
-  return JSON.stringify({
-    sectorInfos: [{
-      src: { code: fromCode, name: fromCity, city: fromCity },
-      dest: { code: toCode, name: toCity, city: toCity },
-      date: depIso,
-      debug: false
-    }],
-    class: "ALL",
-    paxCount: { adt: 1, chd: 0, inf: 0 },
-    route: "ALL",
-    disc: false,
-    multiHop: false,
-    multiCity: false,
-    senior: false,
-    special: false,
-    domestic: true,
-    isOfflineSearch: false,
-    isPaxWiseCommission: false,
-    isComboAllowed: false,
-    isLiveSearch: false
-  });
-}
-function viaDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, depIso) {
-  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const exact = fares.find((f) => f.dt === depIso);
-  const upcoming = [...fares].sort((a, b) => a.pr - b.pr);
-  const chosen = exact || upcoming[0];
-  if (!chosen) return [];
-  const isExact = Boolean(exact);
-  const routeLabel = `${fromCity} \u2192 ${toCity}`;
-  return [newRawItem(source, {
-    title: `Via.com ${routeLabel} ${isExact ? `on ${chosen.dt}` : `(cheapest upcoming, ${chosen.dt})`} from \u20B9${Math.round(chosen.pr)}`,
-    brand: "Via.com",
-    price: Math.round(chosen.pr),
-    currency: "INR",
-    seller: "Via.com",
-    sellerUrl: viaSearchUrl(fromCode, toCode, chosen.dt),
-    travel: { route: `${fromCity.toLowerCase()} to ${toCity.toLowerCase()}`, date: chosen.dt },
-    attributes: {
-      route: routeLabel,
-      travel_date: chosen.dt,
-      fare_class: `lowest economy fare (${chosen.prType || "LOW"} bucket) from Via.com's own fare calendar`,
-      price_basis: `lowest Via.com fare returned by via.com's fare-calendar API on ${today2} for this route${isExact ? " and date" : " within the returned calendar window"}`,
-      data_note: `Fare acquired from Via.com's official fare calendar on ${today2}; booking continues on Via.com's own website.`,
-      image: ""
-    },
-    identifiers: { sku: `via-${fromCode}-${toCode}-${chosen.dt}` },
-    evidence: {
-      sourceUrl: viaFareCalendarUrl(),
-      extractedFields: ["cd[].dt", "cd[].pr (INR)", "cd[].prType"]
+      cheapTrip {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
+      }
+      shortTrip {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
+      }
+      recommendation {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
+      }
+      bestValue {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
+      }
+      longStay {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
+      }
+      __typename
     }
-  })];
+    resultSetMetaData {
+      priceRange {
+        min
+        max
+        __typename
+      }
+      travelTimeRange {
+        min
+        max
+        __typename
+      }
+      marketingCarriers {
+        code
+        name
+        logo {
+          small
+          large
+          darkModeSmall
+          darkModeLarge
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    routes {
+      origin {
+        code
+        name
+        cityCode
+        cityName
+        countryCode
+        countryName
+        continentCode
+        continentName
+        __typename
+      }
+      destination {
+        code
+        name
+        cityCode
+        cityName
+        countryCode
+        countryName
+        continentCode
+        continentName
+        __typename
+      }
+      departureAt
+      departureDate
+      departureTimeOfDay
+      __typename
+    }
+    searchPath
+    sponsoredTrips {
+      ...Flights
+      __typename
+    }
+    travelers {
+      ageType
+      __typename
+    }
+    type
+    tripCampaigns {
+      campaignImageUrlDesktop
+      campaignImageUrlMobile
+      selectionKey
+      __typename
+    }
+    validWithVoucher
+    __typename
+  }
 }
-var VIA_BASE, VIA_AUTH_TOKEN;
-var init_viaFlights = __esm({
-  "server/workers/parsers/viaFlights.ts"() {
-    init_contract();
-    VIA_BASE = "https://in.via.com";
-    VIA_AUTH_TOKEN = "553f5767-373f-4d98-9e6d-08fa87400a42";
+
+fragment IncludedCabinBaggage on IncludedCabinBaggage {
+  pieces
+  weight
+  weightUnit
+  __typename
+}
+
+fragment IncludedCheckedBaggage on IncludedCheckedBaggage {
+  pieces
+  weight
+  weightUnit
+  __typename
+}
+
+fragment AvailableExtraProducts on ExtraProduct {
+  configuration {
+    productPreSelection
+    __typename
+  }
+  productId: id
+  name
+  selectedWithTrip
+  productSpecificTexts {
+    ... on PriceLockText {
+      __typename
+      lockPeriod {
+        unit
+        value
+        unitCode
+        __typename
+      }
+    }
+    __typename
+  }
+  sellSpecification {
+    ... on SellSpecificationTravelerExternalChoiceNew {
+      preselectedChoice
+      externalChoices {
+        ... on DistribusionChoice {
+          externalChoiceId
+          ancillaryOption
+          distribusionChoiceBoundData {
+            arrivalDateTime
+            arrivalStation
+            boundAndSegmentIndices {
+              boundIndex
+              segmentIndex
+              __typename
+            }
+            departureDateTime
+            departureStation
+            fareClass
+            transferCarrier
+            transferCarrierLogo
+            termsAndConditions
+            transferTime
+            transferType
+            validityReferenceTimeType
+            validityDurationType
+            validityDuration
+            __typename
+          }
+          pricePerTravelers {
+            price {
+              price {
+                value
+                __typename
+              }
+              __typename
+            }
+            travelerId
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    ... on SellSpecificationTravelerNew {
+      sellPriceTravelers {
+        price {
+          price {
+            value
+            __typename
+          }
+          markup {
+            value
+            __typename
+          }
+          vat {
+            value
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    ... on SellSpecificationNoneNew {
+      price {
+        price {
+          value
+          currency {
+            code
+            exponent
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    ... on SellSpecificationBaggageNew {
+      sellPriceBaggage {
+        travelerId
+        hasMultipleWeightOptions
+        options {
+          numberOfUnits
+          weight
+          weightUnit
+          preselected
+          ancillaryCarrierPriceBreakdowns {
+            carrier {
+              code
+              name
+              __typename
+            }
+            providerPrice {
+              value
+              __typename
+            }
+            __typename
+          }
+          price {
+            markup {
+              value
+              __typename
+            }
+            price {
+              value
+              __typename
+            }
+            vat {
+              value
+              __typename
+            }
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    ... on SellCabinBaggageNew {
+      weight
+      weightUnit
+      pieces
+      size3d {
+        height
+        length
+        width
+        __typename
+      }
+      sellPriceTravelers {
+        travelerId
+        price {
+          markup {
+            value
+            currency {
+              code
+              exponent
+              name
+              __typename
+            }
+            __typename
+          }
+          price {
+            value
+            currency {
+              code
+              exponent
+              name
+              __typename
+            }
+            __typename
+          }
+          vat {
+            currency {
+              code
+              exponent
+              name
+              __typename
+            }
+            value
+            __typename
+          }
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+  __typename
+}
+
+fragment PaymentMethodPrices on PaymentMethodPrice {
+  code
+  name
+  price {
+    value
+    __typename
+  }
+  type
+  __typename
+}
+
+fragment TravelerPrices on TravelerPrice {
+  id
+  price {
+    markup {
+      value
+      __typename
+    }
+    price {
+      value
+      currency {
+        code
+        __typename
+      }
+      __typename
+    }
+    vat {
+      value
+      __typename
+    }
+    __typename
+  }
+  taxesAndFees {
+    category
+    taxes {
+      code
+      title
+      amount {
+        value
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+  travelerId
+  __typename
+}
+
+fragment Flights on Trip {
+  id
+  tripId
+  isVI
+  includedCabinBaggage {
+    includedPersonalItem
+    size3d {
+      height
+      length
+      width
+      __typename
+    }
+    ...IncludedCabinBaggage
+    __typename
+  }
+  includedCheckedBaggage {
+    ...IncludedCheckedBaggage
+    __typename
+  }
+  bounds {
+    boundId: id
+    includedCabinBaggage {
+      ...IncludedCabinBaggage
+      __typename
+    }
+    includedCheckedBaggage {
+      ...IncludedCheckedBaggage
+      __typename
+    }
+    segments {
+      ... on TripSegment {
+        __typename
+        segmentId: id
+        aircraftType
+        arrivedAt
+        brandedFareInformation {
+          name
+          __typename
+        }
+        includedCabinBaggage {
+          ...IncludedCabinBaggage
+          __typename
+        }
+        includedCheckedBaggage {
+          ...IncludedCheckedBaggage
+          __typename
+        }
+        brandedFareInformation {
+          name
+          __typename
+        }
+        cabinClassName
+        departuredAt
+        destination {
+          code
+          name
+          cityCode
+          cityName
+          airportCode
+          airportName
+          __typename
+        }
+        duration
+        equipmentCode
+        flightNumber
+        marketingCarrier {
+          code
+          name
+          logo {
+            small
+            large
+            darkModeSmall
+            darkModeLarge
+            __typename
+          }
+          __typename
+        }
+        ticketingCarrier {
+          code
+          name
+          __typename
+        }
+        numberOfTechnicalStops
+        technicalStops {
+          arrivalAt
+          departureAt
+          duration
+          location {
+            code
+            name
+            cityName
+            cityCode
+            __typename
+          }
+          __typename
+        }
+        operatingCarrier {
+          code
+          name
+          logo {
+            small
+            large
+            darkModeSmall
+            darkModeLarge
+            __typename
+          }
+          __typename
+        }
+        operatingInformation
+        origin {
+          code
+          name
+          cityCode
+          cityName
+          airportCode
+          airportName
+          __typename
+        }
+        segmentDetails {
+          paxType
+          numberOfSeatsLeft
+          __typename
+        }
+      }
+      ... on EventSegment {
+        __typename
+        segmentId: id
+        types
+        duration
+      }
+      __typename
+    }
+    __typename
+  }
+  brandedFares {
+    name
+    __typename
+  }
+  availableExtraProducts {
+    ...AvailableExtraProducts
+    __typename
+  }
+  includedExtraProducts {
+    id
+    texts {
+      name
+      productSummaryAlternativeName
+      readMoreText
+      receiptText
+      salesAbstract
+      __typename
+    }
+    __typename
+  }
+  selectionKey
+  type
+  tripCharacteristics
+  tripTravelers: travelers {
+    id
+    ageType
+    __typename
+  }
+  paymentMethodPrices {
+    ...PaymentMethodPrices
+    __typename
+  }
+  discountedPaymentMethodPrices {
+    cheapestPaymentMethods {
+      ...PaymentMethodPrices
+      __typename
+    }
+    otherPaymentMethods {
+      ...PaymentMethodPrices
+      __typename
+    }
+    __typename
+  }
+  travelerPrices {
+    ...TravelerPrices
+    __typename
+  }
+  travelerPricesWithoutPaymentDiscounts {
+    price {
+      markup {
+        value
+        __typename
+      }
+      price {
+        value
+        currency {
+          code
+          __typename
+        }
+        __typename
+      }
+      vat {
+        value
+        __typename
+      }
+      __typename
+    }
+    taxesAndFees {
+      category
+      taxes {
+        code
+        title
+        amount {
+          value
+          __typename
+        }
+        __typename
+      }
+      __typename
+    }
+    travelerId
+    __typename
+  }
+  tripTags
+  systems
+  voucherAmount {
+    value
+    __typename
+  }
+  shareableUrl
+  preferredDisplayCarrier
+  __typename
+}`;
+    GOTOGATE_IN = { host: "in.gotogate.com", brand: "Gotogate" };
+    FLIGHTNETWORK_IN = { host: "in.flightnetwork.com", brand: "FlightNetwork" };
   }
 });
 
@@ -8442,7 +8475,7 @@ function airlineName(code, map) {
   if (e?.name) return e.name;
   return code;
 }
-function hhmm3(iso2, hm) {
+function hhmm2(iso2, hm) {
   return /^\d{4}-\d{2}-\d{2}$/.test(iso2) ? `${iso2} ${hm}` : `${iso2} ${hm}`.trim();
 }
 function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
@@ -8500,8 +8533,8 @@ function parseYatraBatch(body, source, srpUrl, routeKey, fromCity, toCity) {
         attributes: {
           airline: name,
           flight_number: `${ac}${fl}`,
-          departure: hhmm3(depDate, String(first.dd || "")),
-          arrival: hhmm3(String(last.adt || "").slice(0, 10), String(last.ad || "")),
+          departure: hhmm2(depDate, String(first.dd || "")),
+          arrival: hhmm2(String(last.adt || "").slice(0, 10), String(last.ad || "")),
           duration: String(od.tdu || first.du || ""),
           stops: String(stops),
           origin: String(first.dac || ""),
@@ -9370,9 +9403,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     const last = legs[legs.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
-    const num12 = String(first?.flightNumber || "").trim();
+    const num11 = String(first?.flightNumber || "").trim();
     const carrier = String(first?.carrierCode || "AI");
-    if (!depTime || !arrTime || !num12) continue;
+    if (!depTime || !arrTime || !num11) continue;
     const validity = first?.validityPeriod || {};
     const starts = String(validity.start || "").slice(0, 10);
     const ends = String(validity.end || "").slice(0, 10);
@@ -9385,7 +9418,7 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     }
     const durSecs = Number(entry?.duration ?? first?.flightDuration);
     out.push({
-      flightNo: `${carrier}${num12}`,
+      flightNo: `${carrier}${num11}`,
       dateIso: wantDateIso,
       depTime,
       arrTime,
@@ -14693,11 +14726,66 @@ async function expediaFlightsSearch(ctx, rt, dIso) {
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `expedia.com GraphQL returned no priced flight listings for ${from}-${to} on ${dIso}`);
   return items;
 }
-var sjTokenCache, URL_AP, flightsWorker;
+async function etraveliBrandSearch(ctx, brand) {
+  const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+  const rt = routeFromQuery(raw);
+  if (!rt) return [];
+  const fromA = await resolveAirport(rt.from, rt.fromCode);
+  const toA = await resolveAirport(rt.to, rt.toCode);
+  const from = fromA.code;
+  const to = toA.code;
+  if (!from || !to) return [];
+  const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const headers = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "Origin": `https://${brand.host}`,
+    "Referer": `https://${brand.host}/`
+  };
+  const collected = [];
+  let searchPath;
+  for (const page of [0, 1, 2, 3]) {
+    const offset = page * 10;
+    let r;
+    try {
+      r = await cffiFetch(etraveliSearchUrl(brand.host), {
+        method: "POST",
+        impersonate: "chrome",
+        timeoutMs: 15e3,
+        headers,
+        body: JSON.stringify(etraveliSearchBody(brand, from, to, dep, offset))
+      });
+    } catch (e) {
+      if (page === 0) throw new AcquisitionError("SERVER_ERROR", `${brand.brand} SearchOnResultPage unreachable: ${String(e?.message || e)}`);
+      break;
+    }
+    if (r.status === 403 || r.status === 429) {
+      throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `${brand.brand} edge-blocked (HTTP ${r.status}).`, r.status);
+    }
+    if (r.status !== 200) {
+      if (page === 0) throw new AcquisitionError("SERVER_ERROR", `${brand.brand} HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 160)}`, r.status);
+      break;
+    }
+    let json;
+    try {
+      json = JSON.parse(r.body);
+    } catch {
+      if (page === 0) throw new AcquisitionError("EMPTY_RESPONSE", `${brand.brand} returned non-JSON (HTTP ${r.status}).`, r.status);
+      break;
+    }
+    const { flights, flightsCount, searchPath: sp, error } = parseEtraveliFlights(json);
+    if (error && page === 0) throw new AcquisitionError("EMPTY_RESPONSE", `${brand.brand} graphql error: ${error}`);
+    searchPath = sp || searchPath;
+    collected.push(...flights);
+    if (flights.length === 0 || collected.length >= (flightsCount || collected.length)) break;
+  }
+  if (collected.length === 0) return [];
+  return etraveliFlightsItems(collected, brand, ctx.source, rt, from, to, dep, searchPath);
+}
+var sjTokenCache, flightsWorker;
 var init_flights = __esm({
   "server/workers/verticals/flights.ts"() {
     init_verticalWorker();
-    init_openflights();
     init_ixigoFlights();
     init_httpClient();
     init_emtFareCalendar();
@@ -14707,10 +14795,7 @@ var init_flights = __esm({
     init_indigoFlights();
     init_akasaFlights();
     init_budgetAirFlights();
-    init_flightsMojo();
-    init_agodaFlights();
-    init_bookingFlights();
-    init_viaFlights();
+    init_etraveliFlights();
     init_yatraFlights();
     init_goibiboFlights();
     init_mmtFareCalendar();
@@ -14734,7 +14819,6 @@ var init_flights = __esm({
     init_fxRates();
     init_curlCffiFetch();
     sjTokenCache = /* @__PURE__ */ new Map();
-    URL_AP = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat";
     flightsWorker = {
       vertical: "flights",
       tasks: [
@@ -16331,349 +16415,33 @@ var init_flights = __esm({
           }
         },
         {
+          // Owner OTA expansion (25 Oct). Etraveli Group — Gotogate IN storefront.
+          // The brand SPA's own GraphQL SearchOnResultPage POST, captured via
+          // request interception and replayed BROWSERLESS with curl_cffi: 10
+          // flights/page (offset pagination), real INR fares, shareableUrl with
+          // per-itinerary selectionKey as the book deeplink. No session/tokens.
+          // Self-healing: 403/429 map to the normal acquisition errors so the
+          // circuit backoff recovers; empty 200 = honest no-service (route closed).
           sourceId: "w_flights_gotogate",
-          name: "Flights worker: Gotogate/Etraveli (probe)",
+          name: "Flights worker: Gotogate/Etraveli SearchOnResultPage (INR)",
           priority: 21,
-          run: async () => {
-            const res = await cffiFetch("https://us.gotogate.com/?customerLanguage=en", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 200 ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE",
-              "Gotogate (Etraveli Group) is a full JS shell: search results render client-side from sessioned XHRs, and /en-in returns 404 to browserless HTTP; no SSR fares."
-            );
+          maxPerMinute: 4,
+          timeoutMs: 34e3,
+          run: async (ctx) => {
+            return etraveliBrandSearch(ctx, GOTOGATE_IN);
           }
         },
         {
+          // Owner OTA expansion (25 Oct). Etraveli Group — FlightNetwork IN
+          // storefront. Same SearchOnResultPage recipe as Gotogate (identical
+          // platform), independent brand host + inventory for seller diversity.
           sourceId: "w_flights_flightnetwork",
-          name: "Flights worker: FlightNetwork/Etraveli (probe)",
+          name: "Flights worker: FlightNetwork/Etraveli SearchOnResultPage (INR)",
           priority: 22,
-          run: async () => {
-            const res = await cffiFetch("https://us-en.flightnetwork.com/?customerLanguage=en", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 200 ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE",
-              "FlightNetwork (Etraveli Group) serves the same JS shell as Gotogate: route URLs 404, search is client-side only; no SSR fares to browserless HTTP."
-            );
-          }
-        },
-        {
-          sourceId: "w_flights_holidaybreakz",
-          name: "Flights worker: HolidayBreakz (probe)",
-          priority: 23,
-          run: async () => {
-            const res = await cffiFetch("https://www.holidaybreakz.com/flightsticket", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 200 ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE",
-              "HolidayBreakz is a US-market agency: static USD deal tiles for US cities (SFO/ATL/AUS) on SEO pages; flight/hotel search is a sessioned POST with no SSR fares, no India-route inventory."
-            );
-          }
-        },
-        {
-          sourceId: "w_flights_openflights",
-          name: "Flights worker: OpenFlights airline-route data (worldwide)",
-          priority: 10,
-          maxPerMinute: 10,
-          run: async (ctx) => {
-            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
-            const rt = routeFromQuery(raw);
-            if (!rt) return [];
-            const fetchFn = (u) => ctx.fetch(u, { expectJson: false }).then((r) => {
-              if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OpenFlights HTTP ${r.status}`, r.status);
-              return r.body;
-            });
-            const { airports, airlines, routes } = await loadOpenFlights(fetchFn);
-            return parseRoute(airports, airlines, routes, ctx.source, rt.from, rt.to, ctx.query.travelDates?.depart, URL_AP);
-          }
-        },
-        // ---- Owner-requested flight sources (17 Oct 2026): Via.com LIVE, HEG/Paytm/Amazon honest probes ----
-        {
-          // Via.com: the B2C site's own fare-calendar API (open; public bundle authToken).
-          // Per-flight results (/itinerary) 502 for browserless HTTP; the calendar gives
-          // real per-day lowest fares for the route (~267-day window), like EMT/IndiGo/Akasa.
-          sourceId: "w_flights_via",
-          name: "Flights worker: Via.com per-flight search (fallback: fare calendar)",
-          priority: 14,
-          maxPerMinute: 6,
-          timeoutMs: 3e4,
-          run: async (ctx) => {
-            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
-            const rt = routeFromQuery(raw);
-            if (!rt) return [];
-            const from = (await resolveAirport(rt.from, rt.fromCode)).code;
-            const to = (await resolveAirport(rt.to, rt.toCode)).code;
-            if (!from || !to) return [];
-            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const endDate = new Date(Date.now() + 330 * 864e5).toISOString().slice(0, 10);
-            const sr = await cffiFetch(viaSearchApiUrl(), {
-              method: "POST",
-              impersonate: "chrome",
-              timeoutMs: 25e3,
-              body: viaSearchRequestBody(from, rt.from, to, rt.to, dep),
-              headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-                "X-Requested-With": "XMLHttpRequest",
-                Referer: "https://in.via.com/flight/search",
-                Origin: "https://in.via.com"
-              }
-            });
-            if (sr.status === 200) {
-              const journeys = parseViaSearchJourneys(sr.body);
-              if (journeys.length) return viaSearchItems(journeys, ctx.source, rt.from, rt.to, from, to, dep);
-            }
-            const body = JSON.stringify({ src: from, dest: to, startDate: dep, endDate, fareType: "b2c", oneWay: true });
-            const r = await cffiFetch(viaFareCalendarUrl(), {
-              method: "POST",
-              impersonate: "chrome",
-              timeoutMs: 2e4,
-              body,
-              headers: {
-                Accept: "application/json",
-                "Content-Type": "application/json",
-                "X-Requested-With": "XMLHttpRequest",
-                Referer: "https://in.via.com/flight-tickets",
-                Origin: "https://in.via.com"
-              }
-            });
-            if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Via.com search+fare-calendar HTTP ${sr.status}/${r.status}`, r.status);
-            const fares = parseViaFareCalendar(r.body);
-            if (!fares.length) throw new AcquisitionError("EMPTY_RESPONSE", `Via.com returned no fares (search HTTP ${sr.status}, journeys 0; calendar empty)`);
-            return viaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
-          }
-        },
-        {
-          // HappyEasyGo: flight.happyeasygo.com no longer resolves; www.happyeasygo.com/flight/
-          // is a Vue/Nuxt client-rendered shell with no browserless API (apiproxy/apipro DNS dead).
-          sourceId: "w_flights_happyeasygo",
-          name: "Flights worker: HappyEasyGo (probe)",
-          priority: 24,
-          run: async () => {
-            const res = await cffiFetch("https://www.happyeasygo.com/flight/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 200 ? "EMPTY_RESPONSE" : "ACCESS_CHALLENGE",
-              "HappyEasyGo flight search renders client-side only (flight.happyeasygo.com no longer resolves); no SSR fares and no open browserless API \u2014 no real prices to acquire."
-            );
-          }
-        },
-        {
-          // Paytm flights: travel.paytm.com is Akamai-403 from datacenter IPs on all
-          // fingerprints; paytm.com/flight-tickets is a client-rendered marketing shell.
-          sourceId: "w_flights_paytm",
-          name: "Flights worker: Paytm (probe)",
-          priority: 25,
-          run: async () => {
-            const res = await cffiFetch("https://travel.paytm.com/flights/", { impersonate: "chrome", timeoutMs: 12e3 });
-            throw new AcquisitionError(
-              res.status === 403 ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE",
-              res.status === 403 ? "Paytm travel (travel.paytm.com) denies datacenter IPs at the Akamai edge (403 on all TLS fingerprints); flight search loads only via sessioned app APIs." : "Paytm flights page rendered no SSR fares to browserless HTTP."
-            );
-          }
-        },
-        {
-          // Amazon India does not have a flight booking product (recon 17 Oct 2026):
-          // amazon.in/flights serves a generic page, /flight-search and /gp/flight-search are 404.
-          sourceId: "w_flights_amazon",
-          name: "Flights worker: Amazon India (no flights product)",
-          priority: 26,
-          run: async () => {
-            throw new AcquisitionError(
-              "EMPTY_RESPONSE",
-              "Amazon India does not offer flight booking (no flights product exists on amazon.in; /flights is a generic page and /flight-search is 404) \u2014 no real fares to acquire, never fabricated."
-            );
-          }
-        },
-        {
-          // Owner 24 Oct OTA expansion: FlightsMojo (Indian OTA). Site open
-          // (Next.js App Router) and route SEO pages exist
-          // (/flights/del-to-bom-flights) but search results render client-side —
-          // no SSR fares to browserless HTTP. Presence row carries the route SEO
-          // page deeplink.
-          // Owner OTA expansion (25 Oct). FlightsMojo .in storefront (INR):
-          // POST /api/flight/search then poll /api/flight/research with the same
-          // client-generated body — replayed browserless with curl_cffi, no session
-          // or tokens (captured from their own search flow via request
-          // interception; ~219 DEL-BOM itineraries, real INR fares incl. 6E/SG/IX).
-          sourceId: "w_flights_flightsmojo",
-          name: "Flights worker: FlightsMojo search (INR storefront)",
-          priority: 30,
           maxPerMinute: 4,
-          timeoutMs: 45e3,
+          timeoutMs: 34e3,
           run: async (ctx) => {
-            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
-            const rt = routeFromQuery(raw);
-            if (!rt) return [];
-            const fromA = await resolveAirport(rt.from, rt.fromCode);
-            const toA = await resolveAirport(rt.to, rt.toCode);
-            const from = fromA.code;
-            const to = toA.code;
-            if (!from || !to) return [];
-            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const body = JSON.stringify(flightsMojoSearchBody(from, to, dep));
-            const opts = { impersonate: "chrome", timeoutMs: 2e4, body, headers: { "Content-Type": "application/json", Accept: "application/json", Origin: "https://www.flightsmojo.in", Referer: "https://www.flightsmojo.in/flight/searchflights" } };
-            let r;
-            try {
-              r = await cffiFetch(FLIGHTSMOJO_SEARCH_URL, { ...opts, method: "POST" });
-            } catch (e) {
-              throw new AcquisitionError("SERVER_ERROR", `FlightsMojo search unreachable: ${String(e?.message || e)}`);
-            }
-            if (r.status === 403 || r.status === 429) {
-              throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `FlightsMojo edge-blocked (HTTP ${r.status}).`, r.status);
-            }
-            if (r.status !== 200) {
-              throw new AcquisitionError("SERVER_ERROR", `FlightsMojo search HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 160)}`, r.status);
-            }
-            let itins = [];
-            for (let poll = 0; poll < 4; poll++) {
-              await new Promise((res) => setTimeout(res, poll === 0 ? 4e3 : 5e3));
-              const rr = await cffiFetch(FLIGHTSMOJO_RESEARCH_URL, { ...opts, method: "POST" });
-              if (rr.status !== 200) continue;
-              let json;
-              try {
-                json = JSON.parse(rr.body);
-              } catch {
-                continue;
-              }
-              itins = parseFlightsMojoResearch(json);
-              if (itins.length > 0) break;
-            }
-            if (itins.length === 0) {
-              throw new AcquisitionError("EMPTY_RESPONSE", `FlightsMojo research returned no itineraries for ${from}-${to} ${dep}.`);
-            }
-            return flightsMojoItems(itins, ctx.source, rt, from, to, dep);
-          }
-        },
-        {
-          // Owner OTA expansion (24 Oct probe, 25 Oct full-flow). Booking.com
-          // flights fronts a Kayak-family JSON API discovered from the site's own
-          // XHR: GET /api/flights/?type=ONEWAY&...&chal_t=<ms>. The sandbox IP is
-          // gated (202 challenge / 429 rate limit), so this is a SELF-DETECTING
-          // full-flow probe (MMT pattern): warm the edge for the bkng cookie,
-          // replay the gateway, and emit priced rows the moment the production
-          // Hostinger IP is not gated. Kayak-shaped responses are parsed
-          // defensively; unparseable-but-open bodies surface in the log so the
-          // parser can be extended without fresh recon.
-          sourceId: "w_flights_bookingcom",
-          name: "Flights worker: Booking.com flights (full-flow probe)",
-          priority: 31,
-          maxPerMinute: 4,
-          timeoutMs: 3e4,
-          run: async (ctx) => {
-            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
-            const rt = routeFromQuery(raw);
-            if (!rt) return [];
-            const fromA = await resolveAirport(rt.from, rt.fromCode);
-            const toA = await resolveAirport(rt.to, rt.toCode);
-            const from = fromA.code;
-            const to = toA.code;
-            if (!from || !to) return [];
-            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            let jar = {};
-            try {
-              const warm = await cffiFetch("https://flights.booking.com/", { impersonate: "chrome", timeoutMs: 12e3, returnCookies: true });
-              jar = warm.cookies || {};
-            } catch {
-            }
-            const apiHeaders = {
-              Accept: "application/json",
-              "X-Requested-With": "XMLHttpRequest",
-              Referer: bookingFlightsSrpUrl(from, to, dep)
-            };
-            let res;
-            try {
-              res = await cffiFetch(bookingFlightsApiUrl(from, to, dep), {
-                impersonate: "chrome",
-                timeoutMs: 22e3,
-                headers: apiHeaders,
-                ...Object.keys(jar).length ? { cookies: jar } : {}
-              });
-            } catch (e) {
-              throw new AcquisitionError("SERVER_ERROR", `Booking.com flights gateway unreachable: ${String(e?.message || e)}`);
-            }
-            if (res.status === 202 || res.status === 403) {
-              throw new AcquisitionError("ACCESS_CHALLENGE", `Booking.com flights edge returned a bot challenge (HTTP ${res.status}); full-flow probe stays armed and self-activates when the gate lifts.`, res.status);
-            }
-            if (res.status === 429) {
-              throw new AcquisitionError("RATE_LIMITED", `Booking.com flights gateway rate-limited this IP (HTTP 429); backoff will retry.`, res.status);
-            }
-            if (res.status !== 200) {
-              throw new AcquisitionError("SERVER_ERROR", `Booking.com flights gateway HTTP ${res.status}: ${(res.body || "").replace(/\s+/g, " ").slice(0, 160)}`, res.status);
-            }
-            let json;
-            try {
-              json = JSON.parse(res.body);
-            } catch {
-              throw new AcquisitionError("EMPTY_RESPONSE", `Booking.com flights gateway returned non-JSON (HTTP ${res.status}): ${(res.body || "").replace(/\s+/g, " ").slice(0, 160)}`, res.status);
-            }
-            const items = parseBookingFlights(json, ctx.source, from, to, String(rt.from), String(rt.to), dep);
-            if (items.length === 0) {
-              const snippet = (res.body || "").replace(/\s+/g, " ").slice(0, 200);
-              throw new AcquisitionError("EMPTY_RESPONSE", `Booking.com flights gateway responded 200 but parsed 0 itineraries for ${from}-${to} ${dep}. Body head: ${snippet}`);
-            }
-            return items;
-          }
-        },
-        {
-          // Owner 24 Oct OTA expansion: Agoda flights. /flights app shell is open
-          // (HTTP 200) but fare search is a gated client flow — no SSR fares to
-          // browserless HTTP. Presence row keeps the brand visible.
-          // Owner OTA expansion (25 Oct). Agoda flights SearchUnbundled gateway —
-          // captured from the site's own XHR, replays BROWSERLESS with curl_cffi
-          // (client-generated UUIDs, guest session, INR storefront; no cookies or
-          // tokens). ~20 bundles per page; we pull 2 pages. Verified live:
-          // DEL-BOM 273 itineraries, IndiGo 6E5175 Rs 7,082 all-inclusive.
-          sourceId: "w_flights_agodaflights",
-          name: "Flights worker: Agoda SearchUnbundled (INR)",
-          priority: 32,
-          maxPerMinute: 4,
-          timeoutMs: 3e4,
-          run: async (ctx) => {
-            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
-            const rt = routeFromQuery(raw);
-            if (!rt) return [];
-            const fromA = await resolveAirport(rt.from, rt.fromCode);
-            const toA = await resolveAirport(rt.to, rt.toCode);
-            const from = fromA.code;
-            const to = toA.code;
-            if (!from || !to) return [];
-            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const headers = { "Content-Type": "application/json", Accept: "application/json", Origin: "https://www.agoda.com", Referer: "https://www.agoda.com/flights" };
-            const bundles = [];
-            const seen = /* @__PURE__ */ new Set();
-            for (const page of [1, 2]) {
-              let r;
-              try {
-                r = await cffiFetch(AGODA_SEARCH_URL, {
-                  method: "POST",
-                  impersonate: "chrome",
-                  timeoutMs: 15e3,
-                  headers,
-                  body: JSON.stringify(agodaSearchBody(from, to, dep, page))
-                });
-              } catch (e) {
-                throw new AcquisitionError("SERVER_ERROR", `Agoda SearchUnbundled unreachable: ${String(e?.message || e)}`);
-              }
-              if (r.status === 403 || r.status === 429) {
-                throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda gateway blocked (HTTP ${r.status}).`, r.status);
-              }
-              if (r.status !== 200) {
-                throw new AcquisitionError("SERVER_ERROR", `Agoda SearchUnbundled HTTP ${r.status}: ${(r.body || "").replace(/\s+/g, " ").slice(0, 160)}`, r.status);
-              }
-              let json;
-              try {
-                json = JSON.parse(r.body);
-              } catch {
-                throw new AcquisitionError("EMPTY_RESPONSE", `Agoda SearchUnbundled returned non-JSON (HTTP ${r.status}).`, r.status);
-              }
-              for (const b of parseAgodaFlights(json)) {
-                const k = String(b.key || b.itineraries?.[0]?.itineraryInfo?.id || Math.random());
-                if (!seen.has(k)) {
-                  seen.add(k);
-                  bundles.push(b);
-                }
-              }
-              if (page === 1 && bundles.length === 0) {
-                throw new AcquisitionError("EMPTY_RESPONSE", `Agoda SearchUnbundled returned no bundles for ${from}-${to} ${dep}.`);
-              }
-            }
-            return agodaFlightsItems(bundles, ctx.source, rt, from, to, dep);
+            return etraveliBrandSearch(ctx, FLIGHTNETWORK_IN);
           }
         }
       ]
@@ -17844,7 +17612,7 @@ var init_indriveIntercity = __esm({
 
 // server/common/geoProxy.ts
 async function throttledNominatim(path14) {
-  const hit = cache5.get(path14);
+  const hit = cache4.get(path14);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -17859,8 +17627,8 @@ async function throttledNominatim(path14) {
       return null;
     }
     const value = await r.json();
-    if (cache5.size >= CACHE_MAX) cache5.delete(cache5.keys().next().value);
-    cache5.set(path14, { at: Date.now(), value });
+    if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
+    cache4.set(path14, { at: Date.now(), value });
     return value;
   } catch (e) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
@@ -17895,7 +17663,7 @@ async function geoReverse(lat, lng) {
   };
 }
 async function throttledPhoton(path14) {
-  const hit = cache5.get(path14);
+  const hit = cache4.get(path14);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -17910,8 +17678,8 @@ async function throttledPhoton(path14) {
       return null;
     }
     const value = await r.json();
-    if (cache5.size >= CACHE_MAX) cache5.delete(cache5.keys().next().value);
-    cache5.set(`photon:${path14}`, { at: Date.now(), value });
+    if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
+    cache4.set(`photon:${path14}`, { at: Date.now(), value });
     return value;
   } catch (e) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e?.message || e).slice(0, 80)}`);
@@ -17973,13 +17741,13 @@ async function geoSuggest(q3, opts = {}) {
   const near = Number.isFinite(opts.lat) && Number.isFinite(opts.lng) ? { lat: opts.lat, lng: opts.lng } : void 0;
   return feats.map((f) => photonFeatureToPlace(f, near)).filter((p) => p !== null).slice(0, limit);
 }
-var UA, NOMINATIM, cache5, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
+var UA, NOMINATIM, cache4, CACHE_MS, CACHE_MAX, lastCallAt, MIN_INTERVAL_MS, PHOTON, lastPhotonAt, PHOTON_MIN_INTERVAL_MS;
 var init_geoProxy = __esm({
   "server/common/geoProxy.ts"() {
     init_logger();
     UA = "Try1secondBot/1.0 (https://www.try1second.com; independent metasearch)";
     NOMINATIM = "https://nominatim.openstreetmap.org";
-    cache5 = /* @__PURE__ */ new Map();
+    cache4 = /* @__PURE__ */ new Map();
     CACHE_MS = 24 * 60 * 6e4;
     CACHE_MAX = 800;
     lastCallAt = 0;
@@ -18477,10 +18245,10 @@ function decodeRapidoFareQuotes(bytes) {
       const fn = tag >>> 3, wt = tag & 7;
       if (wt === 2) {
         const len = vint();
-        const str4 = new TextDecoder().decode(q3.slice(j, j + len));
+        const str3 = new TextDecoder().decode(q3.slice(j, j + len));
         j += len;
-        if (fn === 1) out.parentServiceId = str4;
-        if (fn === 2) out.serviceId = str4;
+        if (fn === 1) out.parentServiceId = str3;
+        if (fn === 2) out.serviceId = str3;
       } else if (wt === 1) {
         const val = qd.getFloat64(j, true);
         j += 8;
@@ -18570,15 +18338,15 @@ async function rapidoServiceCatalog(lat, lng) {
     throw new Error("Rapido services non-JSON");
   }
   const list = Array.isArray(j?.data?.data) ? j.data.data : [];
-  const byId2 = /* @__PURE__ */ new Map();
+  const byId = /* @__PURE__ */ new Map();
   for (const s of list) {
     const id = String(s?._id || "");
     if (!id) continue;
-    byId2.set(id, { id, name: String(s.name || ""), displayName: String(s.displayName || s.name || id), parentServiceId: String(s.parentServiceId || "") });
+    byId.set(id, { id, name: String(s.name || ""), displayName: String(s.displayName || s.name || id), parentServiceId: String(s.parentServiceId || "") });
   }
-  if (!byId2.size) throw new Error("Rapido services catalog empty");
-  servicesCache.set(key, { at: Date.now(), byId: byId2 });
-  return byId2;
+  if (!byId.size) throw new Error("Rapido services catalog empty");
+  servicesCache.set(key, { at: Date.now(), byId });
+  return byId;
 }
 async function rapidoGuestFares(pickup, drop) {
   const mod = await initThiqa();
@@ -22273,9 +22041,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num10(p.pricing?.discount?.prim_price?.sp);
+      const sp = num9(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num10(p.pricing?.discount?.mrp);
+      const mrp = num9(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -22311,11 +22079,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num10;
+var num9;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num10 = (v) => {
+    num9 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -23307,7 +23075,7 @@ var init_bookmyshow = __esm({
 function ticketnewCityKeys(city) {
   const c = (city || "").toLowerCase().trim().replace(/\s+/g, "-");
   if (!c) return [];
-  return CITY_ALIASES2[c] || [c];
+  return CITY_ALIASES[c] || [c];
 }
 function ticketnewSlug(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -23361,13 +23129,13 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
   }
   return out;
 }
-var TICKETNEW_BASE, CITY_ALIASES2;
+var TICKETNEW_BASE, CITY_ALIASES;
 var init_ticketnew = __esm({
   "server/workers/parsers/ticketnew.ts"() {
     init_contract();
     init_bookmyshow();
     TICKETNEW_BASE = "https://www.ticketnew.com";
-    CITY_ALIASES2 = {
+    CITY_ALIASES = {
       bengaluru: ["bengaluru", "bangalore"],
       bangalore: ["bangalore", "bengaluru"],
       mumbai: ["mumbai"],
@@ -24315,7 +24083,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num12 = (key) => {
+  const num11 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -24326,8 +24094,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num12("servicecount")) || 0,
-    operators: field("operators") || num12("operators") || "",
+    servicecount: Number(num11("servicecount")) || 0,
+    operators: field("operators") || num11("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -27040,13 +26808,13 @@ var init_freshness = __esm({
 
 // server/pipeline/lenderLogo.ts
 function load7() {
-  if (cache6) return cache6;
+  if (cache5) return cache5;
   try {
-    cache6 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
+    cache5 = JSON.parse(import_node_fs4.default.readFileSync(CACHE_FILE, "utf8"));
   } catch {
-    cache6 = {};
+    cache5 = {};
   }
-  return cache6;
+  return cache5;
 }
 function persist2() {
   if (saveTimer2) return;
@@ -27054,7 +26822,7 @@ function persist2() {
     saveTimer2 = null;
     try {
       import_node_fs4.default.mkdirSync(import_node_path4.default.dirname(CACHE_FILE), { recursive: true });
-      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache6 || {}));
+      import_node_fs4.default.writeFileSync(CACHE_FILE, JSON.stringify(cache5 || {}));
     } catch {
     }
   }, 1500);
@@ -27138,7 +26906,7 @@ function resolveLenderLogo(rawName) {
   inflight2.set(key, p);
   return p;
 }
-var import_node_fs4, import_node_path4, UA3, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache6, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
+var import_node_fs4, import_node_path4, UA3, CACHE_FILE, MISS_TTL_MS, FETCH_TIMEOUT_MS, cache5, inflight2, saveTimer2, LENDER_ALIAS, OTHER_BANK_TOKENS, STOP_TOKENS, normTokens;
 var init_lenderLogo = __esm({
   "server/pipeline/lenderLogo.ts"() {
     import_node_fs4 = __toESM(require("node:fs"), 1);
@@ -27147,7 +26915,7 @@ var init_lenderLogo = __esm({
     CACHE_FILE = import_node_path4.default.join(process.cwd(), "data", "lender-logos-v2.json");
     MISS_TTL_MS = 7 * 864e5;
     FETCH_TIMEOUT_MS = 4e3;
-    cache6 = null;
+    cache5 = null;
     inflight2 = /* @__PURE__ */ new Map();
     saveTimer2 = null;
     LENDER_ALIAS = {
@@ -27211,6 +26979,7 @@ var init_lenderLogo = __esm({
 var linkinr_exports = {};
 __export(linkinr_exports, {
   linkinrCampaignFor: () => linkinrCampaignFor,
+  linkinrCampaignList: () => linkinrCampaignList,
   linkinrEnabled: () => linkinrEnabled,
   linkinrStats: () => linkinrStats,
   linkinrTrackingUrl: () => linkinrTrackingUrl
@@ -27339,6 +27108,10 @@ function linkinrTrackingUrl(dest) {
   const click = import_crypto21.default.randomBytes(4).toString("hex");
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
 }
+function linkinrCampaignList() {
+  const m = loadRegistry();
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
 function linkinrStats() {
   const m = loadRegistry();
   return { campaigns: m.size, domains: m.size, enabled: linkinrEnabled() };
@@ -27356,6 +27129,11 @@ var init_linkinr = __esm({
 });
 
 // server/affiliate/ekaro/index.ts
+var ekaro_exports = {};
+__export(ekaro_exports, {
+  ekaroStats: () => ekaroStats,
+  ekaroTrackingUrl: () => ekaroTrackingUrl
+});
 function ekaroEnabled() {
   return Boolean(process.env.EKARO_API_KEY);
 }
@@ -27376,7 +27154,7 @@ async function convert(dest) {
   if (!ekaroEnabled()) return null;
   const url = new URL(dest);
   const host = url.hostname.replace(/^www\./, "");
-  const hit = cache7.get(host);
+  const hit = cache6.get(host);
   if (hit && Date.now() - hit.at < (hit.link ? POS_TTL_MS : NEG_TTL_MS)) return hit.link;
   const pending = inFlight.get(host);
   if (pending) return pending;
@@ -27396,19 +27174,19 @@ async function convert(dest) {
           console.warn("[Ekaro] API key rejected (401/403) \u2014 exits stay direct until a valid EKARO_API_KEY is set");
           authWarned = true;
         }
-        cache7.set(host, { link: null, at: Date.now() });
+        cache6.set(host, { link: null, at: Date.now() });
         return null;
       }
       if (!res.ok) {
-        cache7.set(host, { link: null, at: Date.now() });
+        cache6.set(host, { link: null, at: Date.now() });
         return null;
       }
       const json = await res.json().catch(() => null);
       const link = extractLink(json, dest);
-      cache7.set(host, { link, at: Date.now() });
+      cache6.set(host, { link, at: Date.now() });
       return link;
     } catch {
-      cache7.set(host, { link: null, at: Date.now() });
+      cache6.set(host, { link: null, at: Date.now() });
       return null;
     } finally {
       inFlight.delete(host);
@@ -27425,14 +27203,17 @@ async function ekaroTrackingUrl(dest) {
     return null;
   }
 }
-var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache7, inFlight, authWarned, trimUrl;
+function ekaroStats() {
+  return { enabled: ekaroEnabled(), domainsCached: cache6.size };
+}
+var EKARO_ENDPOINT, POS_TTL_MS, NEG_TTL_MS, FETCH_TIMEOUT_MS2, cache6, inFlight, authWarned, trimUrl;
 var init_ekaro = __esm({
   "server/affiliate/ekaro/index.ts"() {
     EKARO_ENDPOINT = "https://ekaro-api.affiliaters.in/api/converter";
     POS_TTL_MS = 6 * 60 * 60 * 1e3;
     NEG_TTL_MS = 60 * 60 * 1e3;
     FETCH_TIMEOUT_MS2 = 2500;
-    cache7 = /* @__PURE__ */ new Map();
+    cache6 = /* @__PURE__ */ new Map();
     inFlight = /* @__PURE__ */ new Map();
     authWarned = false;
     trimUrl = (u) => u.replace(/[.,;!)'"\]]+$/, "");
@@ -27524,10 +27305,14 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const store2 = getStore();
   try {
     const slug2 = (opts.companySlug || "").toLowerCase().slice(0, 64);
+    const labels = domain.split(".").filter(Boolean);
+    const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
+    const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
     const rows = await store2.query(
       `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
-       WHERE active = 1 AND (slug = ? OR company_domain = ?) LIMIT 1`,
-      [slug2, domain]
+       WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
+       ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
+      [slug2, domain, parent2, parent3]
     );
     const r = rows?.[0];
     if (r?.template) {
@@ -29179,7 +28964,24 @@ var init_queryRelevance = __esm({
   }
 });
 
+// server/workers/parsers/agodaFlights.ts
+function agodaFlightsSrpUrl(fromCode, toCode, dateIso) {
+  return `https://www.agoda.com/flights/search?origin=${fromCode}&destination=${toCode}&departDate=${dateIso}&adults=1&cabinType=Economy`;
+}
+var init_agodaFlights = __esm({
+  "server/workers/parsers/agodaFlights.ts"() {
+    init_contract();
+  }
+});
+
 // server/search/sellerPresence.ts
+function etraveliResultsUrl(brand, rt, dIso) {
+  const m = [/^\d{4}-(\d{2})-(\d{2})$/.exec(dIso || "")];
+  const MONTHS2 = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const day = m[0] ? m[0][2] : "28";
+  const mon = m[0] ? MONTHS2[parseInt(m[0][1], 10) - 1] || "OCT" : "OCT";
+  return `https://${brand.host}/air/${rt.fromCode}${rt.toCode}${day}${mon}/1/-/-/c:Y`;
+}
 function presenceOffer(seller, sourceId, srp, note, from, to, dIso) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
@@ -29249,6 +29051,8 @@ var init_sellerPresence = __esm({
     init_health();
     init_yatraFlights();
     init_akasaFlights();
+    init_agodaFlights();
+    init_etraveliFlights();
     PRESENCE_SHOW_ON_EMPTY_IDS = /* @__PURE__ */ new Set(
       ["w_flights_budgetair", "w_flights_gotogate", "w_flights_flightnetwork", "w_flights_flightsmojo", "w_flights_bookingcom", "w_flights_agodaflights"]
     );
@@ -29281,29 +29085,29 @@ var init_sellerPresence = __esm({
       {
         seller: "BudgetAir",
         sourceId: "w_flights_budgetair",
-        srp: (rt) => "https://www.budgetair.com/en-in/flight/search",
-        note: "BudgetAir's Travix fare gateway is discovered but its live recipe is not captured yet; this opens BudgetAir's own flight search to check fares for the route.",
+        srp: (rt, dIso) => `https://www.budgetair.com/en_us/flights/${rt.fromCode}/${rt.toCode}/${dIso}`,
+        note: "BudgetAir's Travix fare gateway is live; if its priced row is unavailable for this search, this opens BudgetAir's own results page with the route and date prefilled.",
         showOnEmpty: true
       },
       {
         seller: "Gotogate",
         sourceId: "w_flights_gotogate",
-        srp: () => "https://www.gotogate.in/",
-        note: "Gotogate's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens Gotogate's own flight search to check fares for the route.",
+        srp: (rt, dIso) => etraveliResultsUrl(GOTOGATE_IN, rt, dIso),
+        note: "Gotogate's live fare feed is served from its India storefront; if its priced row is unavailable for this search, this opens Gotogate's own results page with the route and date prefilled.",
         showOnEmpty: true
       },
       {
         seller: "FlightNetwork",
         sourceId: "w_flights_flightnetwork",
-        srp: () => "https://www.flightnetwork.com/",
-        note: "FlightNetwork's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens FlightNetwork's own flight search to check fares for the route.",
+        srp: (rt, dIso) => etraveliResultsUrl(FLIGHTNETWORK_IN, rt, dIso),
+        note: "FlightNetwork's live fare feed is served from its India storefront; if its priced row is unavailable for this search, this opens FlightNetwork's own results page with the route and date prefilled.",
         showOnEmpty: true
       },
       {
         seller: "FlightsMojo",
         sourceId: "w_flights_flightsmojo",
         srp: (rt) => `https://www.flightsmojo.com/flights/${rt.from.toLowerCase().replace(/\s+/g, "-")}-to-${rt.to.toLowerCase().replace(/\s+/g, "-")}-flights`,
-        note: "FlightsMojo's search is client-side (no SSR fares to browserless HTTP yet); this opens FlightsMojo's own results page for the route.",
+        note: "FlightsMojo's live fare API is wired; if its priced row is unavailable for this search, this opens FlightsMojo's own results page for the route.",
         showOnEmpty: true
       },
       {
@@ -29316,8 +29120,8 @@ var init_sellerPresence = __esm({
       {
         seller: "Agoda",
         sourceId: "w_flights_agodaflights",
-        srp: () => "https://www.agoda.com/flights",
-        note: "Agoda's flights product is an app shell with no SSR fares to browserless HTTP yet; this opens Agoda's own flight search to check fares for the route.",
+        srp: (rt, dIso) => agodaFlightsSrpUrl(rt.fromCode, rt.toCode, dIso),
+        note: "Agoda's live fare API is wired; if its priced row is unavailable for this search, this opens Agoda's own results page with the route and date prefilled.",
         showOnEmpty: true
       }
     ];
@@ -31635,9 +31439,9 @@ function safeParse(v) {
 }
 async function upsertTopPick(input) {
   const vertical = vert(input.vertical);
-  const partner_name = str2(input.partner_name, 120);
-  const headline = str2(input.headline, 200);
-  const destination = str2(input.destination_url, 500);
+  const partner_name = str(input.partner_name, 120);
+  const headline = str(input.headline, 200);
+  const destination = str(input.destination_url, 500);
   if (!partner_name) return { ok: false, error: "Partner name is required" };
   if (!headline) return { ok: false, error: "Headline is required" };
   if (!destination) return { ok: false, error: "Destination URL is required" };
@@ -31649,17 +31453,17 @@ async function upsertTopPick(input) {
   const values = [
     vertical,
     partner_name,
-    str2(input.partner_code, 16),
-    str2(input.badge_text, 60) || "Sponsored Top Pick",
+    str(input.partner_code, 16),
+    str(input.badge_text, 60) || "Sponsored Top Pick",
     headline,
-    str2(input.offer_text, 400),
-    str2(input.price_badge, 60),
+    str(input.offer_text, 400),
+    str(input.price_badge, 60),
     perks,
-    str2(input.cta_text, 80) || "View Deal",
+    str(input.cta_text, 80) || "View Deal",
     destination,
-    str2(input.image_url, 500),
-    str2(input.logo_bg, 40) || "bg-slate-900",
-    str2(input.logo_text, 8),
+    str(input.image_url, 500),
+    str(input.logo_bg, 40) || "bg-slate-900",
+    str(input.logo_text, 8),
     rating,
     Number(input.position ?? 0) || 0,
     input.is_active === false ? 0 : 1
@@ -31703,8 +31507,8 @@ async function upsertAdSlot(input) {
   const slot_key = vert(input.slot_key);
   if (!/^[a-z0-9_-]{2,60}$/.test(slot_key)) return { ok: false, error: "Slot key must be 2-60 chars (a-z, 0-9, -, _)" };
   if (input.provider === "adsense") {
-    const client = str2(input.adsense_client, 60);
-    const slot = str2(input.adsense_slot, 60);
+    const client = str(input.adsense_client, 60);
+    const slot = str(input.adsense_slot, 60);
     if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
     if (!/^[0-9]{6,20}$/.test(slot || "")) return { ok: false, error: "AdSense slot id must be numeric" };
     const store3 = getStore();
@@ -31739,14 +31543,14 @@ async function upsertAdSlot(input) {
   }
   return { ok: true };
 }
-var vert, str2;
+var vert, str;
 var init_placements = __esm({
   "server/marketing/placements.ts"() {
     init_db();
     init_cachedSections();
     init_affiliateNetwork();
     vert = (v) => String(v ?? "").trim().toLowerCase();
-    str2 = (v, max) => {
+    str = (v, max) => {
       const s = String(v ?? "").trim();
       return s ? s.slice(0, max) : null;
     };
@@ -31950,7 +31754,7 @@ var init_interstitial = __esm({
 
 // server/common/cabDeeplink.ts
 async function getCabDeeplinkConfig() {
-  if (cache8 && Date.now() - cache8.at < CACHE_MS2) return cache8.v;
+  if (cache7 && Date.now() - cache7.at < CACHE_MS2) return cache7.v;
   let merged = { ...DEFAULTS2 };
   try {
     const rows = await getStore().query("SELECT v FROM app_settings WHERE k = ?", [KEY]);
@@ -31961,7 +31765,7 @@ async function getCabDeeplinkConfig() {
   } catch (e) {
     log.debug("CabDeeplink", `app_settings read skipped: ${String(e?.message || e).slice(0, 60)}`);
   }
-  cache8 = { at: Date.now(), v: merged };
+  cache7 = { at: Date.now(), v: merged };
   return merged;
 }
 async function saveCabDeeplinkConfig(patch) {
@@ -31980,7 +31784,7 @@ async function saveCabDeeplinkConfig(patch) {
     "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
     [KEY, JSON.stringify(next)]
   );
-  cache8 = { at: Date.now(), v: next };
+  cache7 = { at: Date.now(), v: next };
   return next;
 }
 function sanitizeParams(raw) {
@@ -32075,7 +31879,7 @@ function numParam(v) {
   const n = Number(v);
   return Number.isFinite(n) && (n !== 0 || String(v).trim() === "0") ? n : null;
 }
-var DEFAULTS2, KEY, cache8, CACHE_MS2, encJson;
+var DEFAULTS2, KEY, cache7, CACHE_MS2, encJson;
 var init_cabDeeplink = __esm({
   "server/common/cabDeeplink.ts"() {
     init_db();
@@ -32092,7 +31896,7 @@ var init_cabDeeplink = __esm({
       rapidoEnabled: true
     };
     KEY = "cab_deeplinks";
-    cache8 = null;
+    cache7 = null;
     CACHE_MS2 = 6e4;
     encJson = (v) => encodeURIComponent(JSON.stringify(v));
   }
@@ -32100,13 +31904,13 @@ var init_cabDeeplink = __esm({
 
 // server/pipeline/merchantCrispLogo.ts
 function load8() {
-  if (cache9) return cache9;
+  if (cache8) return cache8;
   try {
-    cache9 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
+    cache8 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
   } catch {
-    cache9 = {};
+    cache8 = {};
   }
-  return cache9;
+  return cache8;
 }
 function persist3() {
   if (saveTimer3) return;
@@ -32114,7 +31918,7 @@ function persist3() {
     saveTimer3 = null;
     try {
       import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE2), { recursive: true });
-      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache9 || {}));
+      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
     } catch {
     }
   }, 1500);
@@ -32174,7 +31978,7 @@ function resolveMerchantCrispLogo(rawName) {
   inflight3.set(key, p);
   return p;
 }
-var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache9, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
     import_node_fs5 = __toESM(require("node:fs"), 1);
@@ -32183,7 +31987,7 @@ var init_merchantCrispLogo = __esm({
     CACHE_FILE2 = import_node_path5.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
     MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS3 = 4e3;
-    cache9 = null;
+    cache8 = null;
     inflight3 = /* @__PURE__ */ new Map();
     saveTimer3 = null;
     MERCHANT_ALIAS = {
@@ -32249,9 +32053,9 @@ function statedDiscountPct(attributes) {
   if (!att || typeof att !== "object") return 0;
   const raw = att.discount ?? att.discount_pct ?? att.discount_percentage;
   if (raw == null) return 0;
-  const str4 = String(raw);
-  if (/up\s*to/i.test(str4)) return 0;
-  const m = str4.match(/(\d+(?:\.\d+)?)\s*%?/);
+  const str3 = String(raw);
+  if (/up\s*to/i.test(str3)) return 0;
+  const m = str3.match(/(\d+(?:\.\d+)?)\s*%?/);
   const pct = m ? Math.round(parseFloat(m[1])) : 0;
   return pct >= 1 && pct <= 95 ? pct : 0;
 }
@@ -32389,7 +32193,7 @@ async function resolveMerchantLogo(row) {
 function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
-  const dv = num11(row.discount_value);
+  const dv = num10(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
   const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
@@ -32482,7 +32286,7 @@ async function fetchAffiliateRows(limit) {
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
       []
     );
-    rows.sort((a, b) => (num11(b.discount_value) ?? 0) - (num11(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    rows.sort((a, b) => (num10(b.discount_value) ?? 0) - (num10(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
   } catch (e) {
     log.debug("Showcase", "affiliate pool query failed", { error: String(e).slice(0, 100) });
@@ -32743,7 +32547,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num11, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
+var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -32751,7 +32555,7 @@ var init_showcase = __esm({
     init_deeplink();
     init_merchantCrispLogo();
     init_merchantLogos();
-    num11 = (v) => {
+    num10 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -32762,8 +32566,8 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf = (r) => num11(r.effective_price) ?? num11(r.mandatory_total) ?? 0;
-    mrpOf = (r) => num11(r.list_price) ?? 0;
+    priceOf = (r) => num10(r.effective_price) ?? num10(r.mandatory_total) ?? 0;
+    mrpOf = (r) => num10(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
       if (m && m > p) return (m - p) / m;
@@ -34666,12 +34470,12 @@ async function ensureLeadsTable() {
   ensured4 = true;
 }
 function validateLead(i) {
-  const firstName = str3(i.firstName, 80);
-  const lastName = str3(i.lastName, 80);
+  const firstName = str2(i.firstName, 80);
+  const lastName = str2(i.lastName, 80);
   const source = ["lead_form", "partner_inquiry", "cpl"].includes(i.source) ? i.source : "lead_form";
   if (source === "partner_inquiry") {
-    if (!str3(i.business, 160)) return { ok: false, error: "Business name is required" };
-    if (!str3(i.email, 160) && !str3(i.phone, 20)) return { ok: false, error: "Email or phone is required" };
+    if (!str2(i.business, 160)) return { ok: false, error: "Business name is required" };
+    if (!str2(i.email, 160) && !str2(i.phone, 20)) return { ok: false, error: "Email or phone is required" };
   } else {
     if (!firstName) return { ok: false, error: "First name is required" };
     if (!lastName) return { ok: false, error: "Last name is required" };
@@ -34681,13 +34485,13 @@ function validateLead(i) {
       const salary = Number(i.salary);
       if (!Number.isFinite(salary) || salary < 0) return { ok: false, error: "Salary must be zero or more" };
     }
-    if (!str3(i.location, 120)) return { ok: false, error: "Location is required" };
+    if (!str2(i.location, 120)) return { ok: false, error: "Location is required" };
     let digits = String(i.phone || "").replace(/\D/g, "");
     if (!digits) return { ok: false, error: "Mobile number is required" };
     if (/^(91|0)/.test(digits) && digits.length === 12 || /^0/.test(digits) && digits.length === 11) digits = digits.replace(/^(91|0)/, "");
     if (!/^[6-9]\d{9}$/.test(digits))
       return { ok: false, error: "Enter a valid 10-digit Indian mobile number" };
-    const email = str3(i.email, 160);
+    const email = str2(i.email, 160);
     if (!email) return { ok: false, error: "Email is required" };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: "Enter a valid email address" };
     if (i.vertical && !VERTICALS.includes(i.vertical)) return { ok: false, error: "Unsupported vertical" };
@@ -34705,21 +34509,21 @@ async function saveLead(i) {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
     [
       c.source || "lead_form",
-      str3(c.vertical, 20),
-      str3(c.serviceType, 160),
-      str3(c.accountType, 20),
-      str3(c.firstName, 80),
-      str3(c.lastName, 80),
+      str2(c.vertical, 20),
+      str2(c.serviceType, 160),
+      str2(c.accountType, 20),
+      str2(c.firstName, 80),
+      str2(c.lastName, 80),
       c.age ?? null,
       c.salary ?? null,
-      str3(c.location, 120),
-      str3(c.phone, 20),
-      str3(c.email, 160),
-      str3(c.business, 160),
-      str3(c.website, 200),
-      str3(c.category, 60),
-      str3(c.message, 1e3),
-      str3(c.destUrl, 600)
+      str2(c.location, 120),
+      str2(c.phone, 20),
+      str2(c.email, 160),
+      str2(c.business, 160),
+      str2(c.website, 200),
+      str2(c.category, 60),
+      str2(c.message, 1e3),
+      str2(c.destUrl, 600)
     ]
   );
   const r = result;
@@ -34755,13 +34559,13 @@ async function updateLeadStatus(id, status) {
   const s = ["new", "contacted", "converted", "closed"].includes(status) ? status : "new";
   await getStore().execute("UPDATE leads SET status = ? WHERE id = ?", [s, Number(id) || 0]);
 }
-var ensured4, VERTICALS, str3;
+var ensured4, VERTICALS, str2;
 var init_leads = __esm({
   "server/marketing/leads.ts"() {
     init_db();
     ensured4 = false;
     VERTICALS = ["loans", "insurance", "creditcards", "account"];
-    str3 = (v, max) => {
+    str2 = (v, max) => {
       const s = String(v ?? "").trim();
       return s ? s.slice(0, max) : null;
     };
@@ -37395,7 +37199,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num12 = (v) => {
+    const num11 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -37406,8 +37210,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num12(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num12(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num11(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num11(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
@@ -37795,6 +37599,169 @@ var init_acceptanceRegistry = __esm({
       { id: "open_library", name: "Open Library", vertical: "ecommerce", tier: "implemented", probes: [
         { capability: "book search", url: "https://openlibrary.org/search.json?q=atomic%20habits&limit=5", parser: "openlibrary" }
       ] }
+    ];
+  }
+});
+
+// server/workers/parsers/openflights.ts
+function splitCsv(line) {
+  const out = [];
+  let cur = "", inQ = false;
+  for (const ch of line) {
+    if (ch === '"') {
+      inQ = !inQ;
+      continue;
+    }
+    if (ch === "," && !inQ) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+async function loadOpenFlights(fetchFn) {
+  if (cache9 && Date.now() - cache9.at < 24 * 36e5) return cache9;
+  const [apRaw, alRaw, rtRaw] = await Promise.all([
+    fetchFn(`${BASE}/airports.dat`),
+    fetchFn(`${BASE}/airlines.dat`),
+    fetchFn(`${BASE}/routes.dat`)
+  ]);
+  const airports = apRaw.split("\n").filter(Boolean).map((l) => {
+    const f = splitCsv(l);
+    return { id: f[0], name: f[1], city: f[2], country: f[3], iata: f[4], lat: Number(f[6]), lon: Number(f[7]) };
+  }).filter((a) => a.iata && a.iata !== "\\N");
+  const airlines = alRaw.split("\n").filter(Boolean).map((l) => {
+    const f = splitCsv(l);
+    return { name: f[1], iata: f[3], active: f[7] === "Y" };
+  }).filter((a) => a.iata && a.iata !== "\\N");
+  const routes = rtRaw.split("\n").filter(Boolean).map((l) => {
+    const f = l.split(",");
+    return { airlineIata: f[0], srcIata: f[2], dstIata: f[4], stops: Number(f[7]) };
+  }).filter((r) => r.srcIata && r.dstIata && r.srcIata !== "\\N" && r.dstIata !== "\\N");
+  cache9 = { at: Date.now(), airports, airlines, routes };
+  return { airports, airlines, routes };
+}
+function matchAirports(airports, input) {
+  const raw = String(input || "").trim();
+  const code = raw.match(/\(([A-Za-z]{3})\)/)?.[1] || (/^[A-Za-z]{3}$/.test(raw) ? raw : "");
+  if (code) {
+    const byCode = airports.filter((a) => a.iata.toUpperCase() === code.toUpperCase());
+    if (byCode.length) return byCode;
+  }
+  const cleaned = raw.replace(/\([^)]*\)/g, "").replace(/\b(airport|international|intl)\b/gi, "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!cleaned) return [];
+  const target = CITY_ALIASES2[cleaned] || cleaned;
+  let hit = airports.filter((a) => a.city.toLowerCase() === target);
+  if (!hit.length) hit = airports.filter((a) => a.city.toLowerCase() === cleaned);
+  if (!hit.length) hit = airports.filter((a) => a.name.toLowerCase().includes(target));
+  return hit;
+}
+function airlineSiteFor(name) {
+  for (const [re, u] of AIRLINE_SITES) if (re.test(name)) return u;
+  return void 0;
+}
+function canonicalAirlineName(name) {
+  for (const [re, canon] of CANONICAL_AIRLINES) if (re.test(name)) return canon;
+  return name.replace(/\s*(airlines|air lines|limited|ltd|pvt\.? ?ltd|co\.|inc)\.?$/i, "").trim() || name;
+}
+function parseRoute(airports, airlines, routes, source, fromCity, toCity, date, sourceUrl) {
+  const fromAirports = matchAirports(airports, fromCity);
+  const toAirports = matchAirports(airports, toCity);
+  if (!fromAirports.length || !toAirports.length) return [];
+  const srcIatas = new Set(fromAirports.map((a) => a.iata));
+  const dstIatas = new Set(toAirports.map((a) => a.iata));
+  const DEFUNCT = /\b(jet airways|kingfisher|spicejet cargo|silkair|tiger airways|air deccan|jetlite|go ?first|go ?air|air sahara|sahara|king ?fisher|virgin america|germanwings|monarch|thomas cook|air berlin|alitalia|malev|cargo|freight|express cargo|logistics|courier|dhl|fedex|ups)\b/i;
+  const airlineByIata = new Map(airlines.filter((a) => a.active && !DEFUNCT.test(a.name)).map((a) => [a.iata, a]));
+  const matched = /* @__PURE__ */ new Map();
+  for (const r of routes) {
+    if (srcIatas.has(r.srcIata) && dstIatas.has(r.dstIata)) {
+      const al = airlineByIata.get(r.airlineIata);
+      if (!al) continue;
+      if (!matched.has(al.name)) matched.set(al.name, []);
+      matched.get(al.name).push(r);
+    }
+  }
+  const out = [];
+  for (const [airlineName2, rs] of matched) {
+    const direct = rs.filter((r) => r.stops === 0).length;
+    const r0 = rs[0];
+    const srcAp = fromAirports.find((a) => a.iata === r0.srcIata);
+    const dstAp = toAirports.find((a) => a.iata === r0.dstIata);
+    out.push(newRawItem(source, {
+      title: `${airlineName2}: ${srcAp.city} (${srcAp.iata}) \u2192 ${dstAp.city} (${dstAp.iata})`.slice(0, 200),
+      seller: canonicalAirlineName(airlineName2).slice(0, 100),
+      sellerUrl: airlineSiteFor(airlineName2) || sourceUrl,
+      currency: "INR",
+      travel: { route: `${srcAp.city} ${srcAp.iata} to ${dstAp.city} ${dstAp.iata}`.toLowerCase(), ...date ? { date } : {}, seatType: "unknown" },
+      attributes: {
+        airline: airlineName2.slice(0, 100),
+        ...r0.airlineIata ? { airline_code: r0.airlineIata } : {},
+        from_iata: srcAp.iata,
+        to_iata: dstAp.iata,
+        scheduled_services: String(rs.length),
+        ...direct > 0 ? { direct_services: String(direct) } : {},
+        data_note: "Airline-route schedules from OpenFlights open data; live fares require the airline (we never invent them)"
+      },
+      evidence: {
+        sourceUrl,
+        sourceReference: `${r0.srcIata}-${r0.dstIata}:${airlineName2}`,
+        extractedFields: ["route", "airline", "airports"]
+      }
+    }));
+  }
+  return out.slice(0, 20);
+}
+var BASE, cache9, CITY_ALIASES2, AIRLINE_SITES, CANONICAL_AIRLINES;
+var init_openflights = __esm({
+  "server/workers/parsers/openflights.ts"() {
+    init_contract();
+    BASE = "https://raw.githubusercontent.com/jpatokal/openflights/master/data";
+    cache9 = null;
+    CITY_ALIASES2 = {
+      "new delhi": "delhi",
+      "bengaluru": "bangalore",
+      "bombay": "mumbai",
+      "calcutta": "kolkata",
+      "madras": "chennai",
+      "gurugram": "delhi",
+      "gurgaon": "delhi",
+      "noida": "delhi",
+      "trivandrum": "thiruvananthapuram",
+      "cochin": "kochi",
+      "poona": "pune",
+      "baroda": "vadodara",
+      "banaras": "varanasi",
+      "benares": "varanasi",
+      "new york city": "new york",
+      "nyc": "new york",
+      "dubai international": "dubai",
+      "abu dhabi": "abu dhabi"
+    };
+    AIRLINE_SITES = [
+      [/indigo/i, "https://www.goindigo.in/"],
+      [/air india express/i, "https://www.airindiaexpress.com/"],
+      [/air india/i, "https://www.airindia.com/"],
+      [/spicejet/i, "https://www.spicejet.com/"],
+      [/akasa/i, "https://www.akasaair.com/"],
+      [/vistara/i, "https://www.airindia.com/"],
+      [/alliance air/i, "https://www.allianceair.in/"],
+      [/star air/i, "https://www.starair.in/"],
+      [/fly ?91/i, "https://flybig.in/"]
+    ];
+    CANONICAL_AIRLINES = [
+      [/indigo/i, "IndiGo"],
+      [/air india express/i, "Air India Express"],
+      [/^air india(?!.*express)/i, "Air India"],
+      [/spicejet/i, "SpiceJet"],
+      [/akasa/i, "Akasa Air"],
+      [/emirates/i, "Emirates"],
+      [/vistara/i, "Vistara"],
+      [/alliance air/i, "Alliance Air"],
+      [/star air/i, "Star Air"],
+      [/fly ?91/i, "Fly91"]
     ];
   }
 });
@@ -38524,6 +38491,47 @@ var init_adminRoutes = __esm({
         res.json({ success: true });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Could not delete affiliate profile" });
+      }
+    });
+    adminRouter.get("/affiliate/coverage", async (_req, res) => {
+      try {
+        const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
+        const { linkinrCampaignList: linkinrCampaignList2, linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
+        const { ekaroStats: ekaroStats2 } = await Promise.resolve().then(() => (init_ekaro(), ekaro_exports));
+        const store2 = getStore();
+        let capturedLinks = [];
+        try {
+          capturedLinks = await store2.query(
+            `SELECT network_source AS network, vendor_domain AS domain, deep_link_template AS template, campaign_id AS campaign
+         FROM affiliate_links ORDER BY vendor_domain ASC LIMIT 500`
+          );
+        } catch {
+          capturedLinks = [];
+        }
+        res.json({
+          success: true,
+          manual: await listProfiles(),
+          linkinr: {
+            enabled: linkinrStats2().enabled,
+            campaigns: linkinrCampaignList2().map((c) => ({
+              name: c.name,
+              domain: c.domain,
+              payout: c.payout,
+              type: c.type,
+              categories: c.categories
+            }))
+          },
+          amazon: { tag: settings3.amazonAssociates?.tag || "" },
+          cuelinks: {
+            enabled: Boolean(settings3.cuelinks?.enabled),
+            publisherId: settings3.cuelinks?.publisherId || "",
+            cid: settings3.cuelinks?.cid || ""
+          },
+          ekaro: ekaroStats2(),
+          capturedLinks
+        });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "Could not load affiliate coverage" });
       }
     });
     adminRouter.get("/deals", async (_req, res) => {

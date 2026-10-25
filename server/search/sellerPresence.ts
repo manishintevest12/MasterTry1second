@@ -23,6 +23,8 @@ import { routeFromQuery } from '../workers/verticals/flights';
 import { getHealth } from '../sources/health';
 import { yatraSrpUrl } from '../workers/parsers/yatraFlights';
 import { AKASA_WEB } from '../workers/parsers/akasaFlights';
+import { agodaFlightsSrpUrl } from '../workers/parsers/agodaFlights';
+import { GOTOGATE_IN, FLIGHTNETWORK_IN, EtraveliBrandConfig } from '../workers/parsers/etraveliFlights';
 
 export const PRESENCE_SHOW_ON_EMPTY_IDS: ReadonlySet<string> = new Set(
   ['w_flights_budgetair', 'w_flights_gotogate', 'w_flights_flightnetwork', 'w_flights_flightsmojo', 'w_flights_bookingcom', 'w_flights_agodaflights'],
@@ -33,6 +35,17 @@ export const PRESENCE_SHOW_ON_EMPTY_IDS: ReadonlySet<string> = new Set(
 // NOT that the OTA has no service on the route (unlike carriers like Akasa on
 // IDR-DEL). These sellers keep their honest presence card until their live
 // fare recipe ships, then priced rows suppress it automatically.
+
+/** Etraveli results deeplink: /air/{FROM}{TO}{DDMMM}/1/-/-/c:Y (the SPA's own
+ *  shareable results path — 302s to /rf/result which hydrates the search). */
+export function etraveliResultsUrl(brand: EtraveliBrandConfig, rt: { fromCode: string; toCode: string }, dIso: string): string {
+  const m = [/^\d{4}-(\d{2})-(\d{2})$/.exec(dIso || '')];
+  const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const day = m[0] ? m[0][2] : '28';
+  const mon = m[0] ? MONTHS[parseInt(m[0][1], 10) - 1] || 'OCT' : 'OCT';
+  return `https://${brand.host}/air/${rt.fromCode}${rt.toCode}${day}${mon}/1/-/-/c:Y`;
+}
+
 const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { from: string; to: string; fromCode: string; toCode: string; }, dIso: string) => string; note: string; showOnEmpty?: boolean }> = [
   {
     seller: 'Yatra',
@@ -63,29 +76,29 @@ const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { fr
   {
     seller: 'BudgetAir',
     sourceId: 'w_flights_budgetair',
-    srp: (rt) => 'https://www.budgetair.com/en-in/flight/search',
-    note: "BudgetAir's Travix fare gateway is discovered but its live recipe is not captured yet; this opens BudgetAir's own flight search to check fares for the route.",
+    srp: (rt, dIso) => `https://www.budgetair.com/en_us/flights/${rt.fromCode}/${rt.toCode}/${dIso}`,
+    note: "BudgetAir's Travix fare gateway is live; if its priced row is unavailable for this search, this opens BudgetAir's own results page with the route and date prefilled.",
     showOnEmpty: true,
   },
   {
     seller: 'Gotogate',
     sourceId: 'w_flights_gotogate',
-    srp: () => 'https://www.gotogate.in/',
-    note: "Gotogate's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens Gotogate's own flight search to check fares for the route.",
+    srp: (rt, dIso) => etraveliResultsUrl(GOTOGATE_IN, rt, dIso),
+    note: "Gotogate's live fare feed is served from its India storefront; if its priced row is unavailable for this search, this opens Gotogate's own results page with the route and date prefilled.",
     showOnEmpty: true,
   },
   {
     seller: 'FlightNetwork',
     sourceId: 'w_flights_flightnetwork',
-    srp: () => 'https://www.flightnetwork.com/',
-    note: "FlightNetwork's Etraveli fire-engine SPA renders no fares to browserless HTTP yet; this opens FlightNetwork's own flight search to check fares for the route.",
+    srp: (rt, dIso) => etraveliResultsUrl(FLIGHTNETWORK_IN, rt, dIso),
+    note: "FlightNetwork's live fare feed is served from its India storefront; if its priced row is unavailable for this search, this opens FlightNetwork's own results page with the route and date prefilled.",
     showOnEmpty: true,
   },
   {
     seller: 'FlightsMojo',
     sourceId: 'w_flights_flightsmojo',
     srp: (rt) => `https://www.flightsmojo.com/flights/${rt.from.toLowerCase().replace(/\s+/g, '-')}-to-${rt.to.toLowerCase().replace(/\s+/g, '-')}-flights`,
-    note: "FlightsMojo's search is client-side (no SSR fares to browserless HTTP yet); this opens FlightsMojo's own results page for the route.",
+    note: "FlightsMojo's live fare API is wired; if its priced row is unavailable for this search, this opens FlightsMojo's own results page for the route.",
     showOnEmpty: true,
   },
   {
@@ -98,8 +111,8 @@ const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { fr
   {
     seller: 'Agoda',
     sourceId: 'w_flights_agodaflights',
-    srp: () => 'https://www.agoda.com/flights',
-    note: "Agoda's flights product is an app shell with no SSR fares to browserless HTTP yet; this opens Agoda's own flight search to check fares for the route.",
+    srp: (rt, dIso) => agodaFlightsSrpUrl(rt.fromCode, rt.toCode, dIso),
+    note: "Agoda's live fare API is wired; if its priced row is unavailable for this search, this opens Agoda's own results page with the route and date prefilled.",
     showOnEmpty: true,
   },
 

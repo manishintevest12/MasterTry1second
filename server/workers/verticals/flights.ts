@@ -18,6 +18,10 @@ import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaHonestNoService } from '../parsers/akasaFlights';
 import { parseBudgetAirCalendar, budgetAirCalendarUrl, budgetAirDayFareItems } from '../parsers/budgetAirFlights';
+import {
+  GOTOGATE_IN, FLIGHTNETWORK_IN, EtraveliBrandConfig, EtraveliFlight,
+  etraveliSearchUrl, etraveliSearchBody, parseEtraveliFlights, etraveliFlightsItems,
+} from '../parsers/etraveliFlights';
 import { flightsMojoSearchBody, FLIGHTSMOJO_SEARCH_URL, FLIGHTSMOJO_RESEARCH_URL, parseFlightsMojoResearch, flightsMojoItems } from '../parsers/flightsMojo';
 import { agodaSearchBody, AGODA_SEARCH_URL, parseAgodaFlights, agodaFlightsItems } from '../parsers/agodaFlights';
 import { parseBookingFlights, bookingFlightsApiUrl, bookingFlightsSrpUrl } from '../parsers/bookingFlights';
@@ -146,6 +150,60 @@ async function expediaFlightsSearch(ctx: any, rt: { from: string; to: string; fr
   const items = parseExpediaFlights(r.body, ctx.source, { from: rt.from, to: rt.to, fromCode: from, toCode: to }, dIso, srpUrl, fx);
   if (!items.length) throw new AcquisitionError('EMPTY_RESPONSE', `expedia.com GraphQL returned no priced flight listings for ${from}-${to} on ${dIso}`);
   return items;
+}
+
+
+/** Shared Etraveli brand search (Gotogate/FlightNetwork IN storefronts). */
+async function etraveliBrandSearch(ctx: any, brand: EtraveliBrandConfig): Promise<any[]> {
+  const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+  const rt = routeFromQuery(raw);
+  if (!rt) return [];
+  const fromA = await resolveAirport(rt.from, rt.fromCode);
+  const toA = await resolveAirport(rt.to, rt.toCode);
+  const from = fromA.code; const to = toA.code;
+  if (!from || !to) return []; // unknown city — honest skip
+  const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+    ? ctx.query.travelDates.depart
+    : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+  const headers = {
+    'Content-Type': 'application/json', 'Accept': 'application/json',
+    'Origin': `https://${brand.host}`, 'Referer': `https://${brand.host}/`,
+  };
+  const collected: EtraveliFlight[] = [];
+  let searchPath: string | undefined;
+  // up to 4 pages (40 rows) via offset pagination; stop when a page runs dry
+  for (const page of [0, 1, 2, 3]) {
+    const offset = page * 10;
+    let r;
+    try {
+      r = await cffiFetch(etraveliSearchUrl(brand.host), {
+        method: 'POST', impersonate: 'chrome', timeoutMs: 15_000,
+        headers, body: JSON.stringify(etraveliSearchBody(brand, from, to, dep, offset)),
+      });
+    } catch (e: any) {
+      if (page === 0) throw new AcquisitionError('SERVER_ERROR', `${brand.brand} SearchOnResultPage unreachable: ${String(e?.message || e)}`);
+      break; // partial pages ship
+    }
+    if (r.status === 403 || r.status === 429) {
+      throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `${brand.brand} edge-blocked (HTTP ${r.status}).`, r.status);
+    }
+    if (r.status !== 200) {
+      if (page === 0) throw new AcquisitionError('SERVER_ERROR', `${brand.brand} HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, r.status);
+      break;
+    }
+    let json: unknown;
+    try { json = JSON.parse(r.body); } catch {
+      if (page === 0) throw new AcquisitionError('EMPTY_RESPONSE', `${brand.brand} returned non-JSON (HTTP ${r.status}).`, r.status);
+      break;
+    }
+    const { flights, flightsCount, searchPath: sp, error } = parseEtraveliFlights(json);
+    if (error && page === 0) throw new AcquisitionError('EMPTY_RESPONSE', `${brand.brand} graphql error: ${error}`);
+    searchPath = sp || searchPath;
+    collected.push(...flights);
+    if (flights.length === 0 || collected.length >= (flightsCount || collected.length)) break;
+  }
+  if (collected.length === 0) return []; // honest no-service; circuit stays closed
+  return etraveliFlightsItems(collected, brand, ctx.source, rt, from, to, dep, searchPath);
 }
 
 export const flightsWorker: VerticalWorker = {
@@ -1760,341 +1818,33 @@ export const flightsWorker: VerticalWorker = {
       },
     },
     {
+      // Owner OTA expansion (25 Oct). Etraveli Group — Gotogate IN storefront.
+      // The brand SPA's own GraphQL SearchOnResultPage POST, captured via
+      // request interception and replayed BROWSERLESS with curl_cffi: 10
+      // flights/page (offset pagination), real INR fares, shareableUrl with
+      // per-itinerary selectionKey as the book deeplink. No session/tokens.
+      // Self-healing: 403/429 map to the normal acquisition errors so the
+      // circuit backoff recovers; empty 200 = honest no-service (route closed).
       sourceId: 'w_flights_gotogate',
-      name: 'Flights worker: Gotogate/Etraveli (probe)',
+      name: 'Flights worker: Gotogate/Etraveli SearchOnResultPage (INR)',
       priority: 21,
-      run: async () => {
-        const res = await cffiFetch('https://us.gotogate.com/?customerLanguage=en', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
-          'Gotogate (Etraveli Group) is a full JS shell: search results render client-side from sessioned XHRs, and /en-in returns 404 to browserless HTTP; no SSR fares.');
+      maxPerMinute: 4,
+      timeoutMs: 34_000,
+      run: async (ctx) => {
+        return etraveliBrandSearch(ctx, GOTOGATE_IN);
       },
     },
     {
+      // Owner OTA expansion (25 Oct). Etraveli Group — FlightNetwork IN
+      // storefront. Same SearchOnResultPage recipe as Gotogate (identical
+      // platform), independent brand host + inventory for seller diversity.
       sourceId: 'w_flights_flightnetwork',
-      name: 'Flights worker: FlightNetwork/Etraveli (probe)',
+      name: 'Flights worker: FlightNetwork/Etraveli SearchOnResultPage (INR)',
       priority: 22,
-      run: async () => {
-        const res = await cffiFetch('https://us-en.flightnetwork.com/?customerLanguage=en', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
-          'FlightNetwork (Etraveli Group) serves the same JS shell as Gotogate: route URLs 404, search is client-side only; no SSR fares to browserless HTTP.');
-      },
-    },
-    {
-      sourceId: 'w_flights_holidaybreakz',
-      name: 'Flights worker: HolidayBreakz (probe)',
-      priority: 23,
-      run: async () => {
-        const res = await cffiFetch('https://www.holidaybreakz.com/flightsticket', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
-          'HolidayBreakz is a US-market agency: static USD deal tiles for US cities (SFO/ATL/AUS) on SEO pages; flight/hotel search is a sessioned POST with no SSR fares, no India-route inventory.');
-      },
-    },
-    {
-      sourceId: 'w_flights_openflights',
-      name: 'Flights worker: OpenFlights airline-route data (worldwide)',
-      priority: 10,
-      maxPerMinute: 10,
-      run: async (ctx) => {
-        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
-        const rt = routeFromQuery(raw);
-        if (!rt) return [];
-        const fetchFn = (u: string) => ctx.fetch(u, { expectJson: false }).then((r) => {
-          if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `OpenFlights HTTP ${r.status}`, r.status);
-          return r.body;
-        });
-        const { airports, airlines, routes } = await loadOpenFlights(fetchFn);
-        return parseRoute(airports, airlines, routes, ctx.source, rt.from, rt.to, ctx.query.travelDates?.depart, URL_AP);
-      },
-    },
-    // ---- Owner-requested flight sources (17 Oct 2026): Via.com LIVE, HEG/Paytm/Amazon honest probes ----
-    {
-      // Via.com: the B2C site's own fare-calendar API (open; public bundle authToken).
-      // Per-flight results (/itinerary) 502 for browserless HTTP; the calendar gives
-      // real per-day lowest fares for the route (~267-day window), like EMT/IndiGo/Akasa.
-      sourceId: 'w_flights_via',
-      name: 'Flights worker: Via.com per-flight search (fallback: fare calendar)',
-      priority: 14,
-      maxPerMinute: 6,
-      timeoutMs: 30_000,
-      run: async (ctx) => {
-        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
-        const rt = routeFromQuery(raw);
-        if (!rt) return [];
-        const from = (await resolveAirport(rt.from, rt.fromCode)).code;
-        const to = (await resolveAirport(rt.to, rt.toCode)).code;
-        if (!from || !to) return []; // unknown city — honest skip
-        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
-          ? ctx.query.travelDates.depart
-          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-        const endDate = new Date(Date.now() + 330 * 86400_000).toISOString().slice(0, 10);
-        // Owner 24 Oct: Via.com's own SEARCH API (POST /apiv2/flight/search,
-        // shape captured from their search box) returns FULL per-flight JSON
-        // (number, times, duration, stops, seats). That is the primary path.
-        const sr = await cffiFetch(viaSearchApiUrl(), {
-          method: 'POST',
-          impersonate: 'chrome',
-          timeoutMs: 25_000,
-          body: viaSearchRequestBody(from, rt.from, to, rt.to, dep),
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            Referer: 'https://in.via.com/flight/search',
-            Origin: 'https://in.via.com',
-          },
-        });
-        if (sr.status === 200) {
-          const journeys = parseViaSearchJourneys(sr.body);
-          if (journeys.length) return viaSearchItems(journeys, ctx.source, rt.from, rt.to, from, to, dep);
-          // 200 but empty: fall through to the fare calendar honestly.
-        }
-        // Self-healing fallback (owner standing rule): if the search API is
-        // gated/broken, the fare calendar still yields one honest lowest-fare
-        // row for the route — never fabricate per-flight data.
-        const body = JSON.stringify({ src: from, dest: to, startDate: dep, endDate, fareType: 'b2c', oneWay: true });
-        const r = await cffiFetch(viaFareCalendarUrl(), {
-          method: 'POST',
-          impersonate: 'chrome',
-          timeoutMs: 20_000,
-          body,
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            Referer: 'https://in.via.com/flight-tickets',
-            Origin: 'https://in.via.com',
-          },
-        });
-        if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `Via.com search+fare-calendar HTTP ${sr.status}/${r.status}`, r.status);
-        const fares = parseViaFareCalendar(r.body);
-        if (!fares.length) throw new AcquisitionError('EMPTY_RESPONSE', `Via.com returned no fares (search HTTP ${sr.status}, journeys 0; calendar empty)`);
-        return viaDayFareItems(fares, ctx.source, rt.from, rt.to, from, to, dep);
-      },
-    },
-    {
-      // HappyEasyGo: flight.happyeasygo.com no longer resolves; www.happyeasygo.com/flight/
-      // is a Vue/Nuxt client-rendered shell with no browserless API (apiproxy/apipro DNS dead).
-      sourceId: 'w_flights_happyeasygo',
-      name: 'Flights worker: HappyEasyGo (probe)',
-      priority: 24,
-      run: async () => {
-        const res = await cffiFetch('https://www.happyeasygo.com/flight/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 200 ? 'EMPTY_RESPONSE' : 'ACCESS_CHALLENGE',
-          'HappyEasyGo flight search renders client-side only (flight.happyeasygo.com no longer resolves); no SSR fares and no open browserless API — no real prices to acquire.');
-      },
-    },
-    {
-      // Paytm flights: travel.paytm.com is Akamai-403 from datacenter IPs on all
-      // fingerprints; paytm.com/flight-tickets is a client-rendered marketing shell.
-      sourceId: 'w_flights_paytm',
-      name: 'Flights worker: Paytm (probe)',
-      priority: 25,
-      run: async () => {
-        const res = await cffiFetch('https://travel.paytm.com/flights/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError(res.status === 403 ? 'ACCESS_CHALLENGE' : 'EMPTY_RESPONSE',
-          res.status === 403
-            ? 'Paytm travel (travel.paytm.com) denies datacenter IPs at the Akamai edge (403 on all TLS fingerprints); flight search loads only via sessioned app APIs.'
-            : 'Paytm flights page rendered no SSR fares to browserless HTTP.');
-      },
-    },
-    {
-      // Amazon India does not have a flight booking product (recon 17 Oct 2026):
-      // amazon.in/flights serves a generic page, /flight-search and /gp/flight-search are 404.
-      sourceId: 'w_flights_amazon',
-      name: 'Flights worker: Amazon India (no flights product)',
-      priority: 26,
-      run: async () => {
-        throw new AcquisitionError('EMPTY_RESPONSE',
-          'Amazon India does not offer flight booking (no flights product exists on amazon.in; /flights is a generic page and /flight-search is 404) — no real fares to acquire, never fabricated.');
-      },
-    },
-    {
-      // Owner 24 Oct OTA expansion: FlightsMojo (Indian OTA). Site open
-      // (Next.js App Router) and route SEO pages exist
-      // (/flights/del-to-bom-flights) but search results render client-side —
-      // no SSR fares to browserless HTTP. Presence row carries the route SEO
-      // page deeplink.
-      // Owner OTA expansion (25 Oct). FlightsMojo .in storefront (INR):
-      // POST /api/flight/search then poll /api/flight/research with the same
-      // client-generated body — replayed browserless with curl_cffi, no session
-      // or tokens (captured from their own search flow via request
-      // interception; ~219 DEL-BOM itineraries, real INR fares incl. 6E/SG/IX).
-      sourceId: 'w_flights_flightsmojo',
-      name: 'Flights worker: FlightsMojo search (INR storefront)',
-      priority: 30,
       maxPerMinute: 4,
-      timeoutMs: 45_000,
+      timeoutMs: 34_000,
       run: async (ctx) => {
-        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
-        const rt = routeFromQuery(raw);
-        if (!rt) return [];
-        const fromA = await resolveAirport(rt.from, rt.fromCode);
-        const toA = await resolveAirport(rt.to, rt.toCode);
-        const from = fromA.code; const to = toA.code;
-        if (!from || !to) return []; // unknown city — honest skip
-        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
-          ? ctx.query.travelDates.depart
-          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-        const body = JSON.stringify(flightsMojoSearchBody(from, to, dep));
-        const opts = { impersonate: 'chrome', timeoutMs: 20_000, body, headers: { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'https://www.flightsmojo.in', Referer: 'https://www.flightsmojo.in/flight/searchflights' } } as const;
-        let r;
-        try {
-          r = await cffiFetch(FLIGHTSMOJO_SEARCH_URL, { ...opts, method: 'POST' });
-        } catch (e: any) {
-          throw new AcquisitionError('SERVER_ERROR', `FlightsMojo search unreachable: ${String(e?.message || e)}`);
-        }
-        if (r.status === 403 || r.status === 429) {
-          throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `FlightsMojo edge-blocked (HTTP ${r.status}).`, r.status);
-        }
-        if (r.status !== 200) {
-          throw new AcquisitionError('SERVER_ERROR', `FlightsMojo search HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, r.status);
-        }
-        // research poll: results arrive asynchronously (~4-8s)
-        let itins: ReturnType<typeof parseFlightsMojoResearch> = [];
-        for (let poll = 0; poll < 4; poll++) {
-          await new Promise((res) => setTimeout(res, poll === 0 ? 4_000 : 5_000));
-          const rr = await cffiFetch(FLIGHTSMOJO_RESEARCH_URL, { ...opts, method: 'POST' });
-          if (rr.status !== 200) continue;
-          let json: unknown;
-          try { json = JSON.parse(rr.body); } catch { continue; }
-          itins = parseFlightsMojoResearch(json);
-          if (itins.length > 0) break;
-        }
-        if (itins.length === 0) {
-          throw new AcquisitionError('EMPTY_RESPONSE', `FlightsMojo research returned no itineraries for ${from}-${to} ${dep}.`);
-        }
-        return flightsMojoItems(itins, ctx.source, rt, from, to, dep);
-      },
-    },
-    {
-      // Owner OTA expansion (24 Oct probe, 25 Oct full-flow). Booking.com
-      // flights fronts a Kayak-family JSON API discovered from the site's own
-      // XHR: GET /api/flights/?type=ONEWAY&...&chal_t=<ms>. The sandbox IP is
-      // gated (202 challenge / 429 rate limit), so this is a SELF-DETECTING
-      // full-flow probe (MMT pattern): warm the edge for the bkng cookie,
-      // replay the gateway, and emit priced rows the moment the production
-      // Hostinger IP is not gated. Kayak-shaped responses are parsed
-      // defensively; unparseable-but-open bodies surface in the log so the
-      // parser can be extended without fresh recon.
-      sourceId: 'w_flights_bookingcom',
-      name: 'Flights worker: Booking.com flights (full-flow probe)',
-      priority: 31,
-      maxPerMinute: 4,
-      timeoutMs: 30_000,
-      run: async (ctx) => {
-        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
-        const rt = routeFromQuery(raw);
-        if (!rt) return [];
-        const fromA = await resolveAirport(rt.from, rt.fromCode);
-        const toA = await resolveAirport(rt.to, rt.toCode);
-        const from = fromA.code; const to = toA.code;
-        if (!from || !to) return []; // unknown city — honest skip
-        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
-          ? ctx.query.travelDates.depart
-          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-
-        // 1) Warm the edge — collects the bkng session cookie.
-        let jar: Record<string, string> = {};
-        try {
-          const warm = await cffiFetch('https://flights.booking.com/', { impersonate: 'chrome', timeoutMs: 12_000, returnCookies: true });
-          jar = (warm as any).cookies || {};
-        } catch { /* warm is best-effort; the gateway call decides */ }
-
-        // 2) Replay the gateway with the site's own recipe.
-        const apiHeaders: Record<string, string> = {
-          Accept: 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          Referer: bookingFlightsSrpUrl(from, to, dep),
-        };
-        let res;
-        try {
-          res = await cffiFetch(bookingFlightsApiUrl(from, to, dep), {
-            impersonate: 'chrome', timeoutMs: 22_000, headers: apiHeaders,
-            ...(Object.keys(jar).length ? { cookies: jar } : {}),
-          });
-        } catch (e: any) {
-          throw new AcquisitionError('SERVER_ERROR', `Booking.com flights gateway unreachable: ${String(e?.message || e)}`);
-        }
-        if (res.status === 202 || res.status === 403) {
-          throw new AcquisitionError('ACCESS_CHALLENGE', `Booking.com flights edge returned a bot challenge (HTTP ${res.status}); full-flow probe stays armed and self-activates when the gate lifts.`, res.status);
-        }
-        if (res.status === 429) {
-          throw new AcquisitionError('RATE_LIMITED', `Booking.com flights gateway rate-limited this IP (HTTP 429); backoff will retry.`, res.status);
-        }
-        if (res.status !== 200) {
-          throw new AcquisitionError('SERVER_ERROR', `Booking.com flights gateway HTTP ${res.status}: ${(res.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, res.status);
-        }
-        let json: any;
-        try { json = JSON.parse(res.body); } catch {
-          throw new AcquisitionError('EMPTY_RESPONSE', `Booking.com flights gateway returned non-JSON (HTTP ${res.status}): ${(res.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, res.status);
-        }
-        const items = parseBookingFlights(json, ctx.source, from, to, String(rt.from), String(rt.to), dep);
-        if (items.length === 0) {
-          // Gate open but shape drifted (or genuinely no fares): surface a
-          // snippet so the next session can extend the parser with evidence.
-          const snippet = (res.body || '').replace(/\s+/g, ' ').slice(0, 200);
-          throw new AcquisitionError('EMPTY_RESPONSE', `Booking.com flights gateway responded 200 but parsed 0 itineraries for ${from}-${to} ${dep}. Body head: ${snippet}`);
-        }
-        return items;
-      },
-    },
-    {
-      // Owner 24 Oct OTA expansion: Agoda flights. /flights app shell is open
-      // (HTTP 200) but fare search is a gated client flow — no SSR fares to
-      // browserless HTTP. Presence row keeps the brand visible.
-      // Owner OTA expansion (25 Oct). Agoda flights SearchUnbundled gateway —
-      // captured from the site's own XHR, replays BROWSERLESS with curl_cffi
-      // (client-generated UUIDs, guest session, INR storefront; no cookies or
-      // tokens). ~20 bundles per page; we pull 2 pages. Verified live:
-      // DEL-BOM 273 itineraries, IndiGo 6E5175 Rs 7,082 all-inclusive.
-      sourceId: 'w_flights_agodaflights',
-      name: 'Flights worker: Agoda SearchUnbundled (INR)',
-      priority: 32,
-      maxPerMinute: 4,
-      timeoutMs: 30_000,
-      run: async (ctx) => {
-        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
-        const rt = routeFromQuery(raw);
-        if (!rt) return [];
-        const fromA = await resolveAirport(rt.from, rt.fromCode);
-        const toA = await resolveAirport(rt.to, rt.toCode);
-        const from = fromA.code; const to = toA.code;
-        if (!from || !to) return []; // unknown city — honest skip
-        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
-          ? ctx.query.travelDates.depart
-          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-        const headers = { 'Content-Type': 'application/json', Accept: 'application/json', Origin: 'https://www.agoda.com', Referer: 'https://www.agoda.com/flights' };
-        const bundles: ReturnType<typeof parseAgodaFlights> = [];
-        const seen = new Set<string>();
-        for (const page of [1, 2]) { // 2 pages = up to 40 bundles
-          let r;
-          try {
-            r = await cffiFetch(AGODA_SEARCH_URL, {
-              method: 'POST', impersonate: 'chrome', timeoutMs: 15_000,
-              headers, body: JSON.stringify(agodaSearchBody(from, to, dep, page)),
-            });
-          } catch (e: any) {
-            throw new AcquisitionError('SERVER_ERROR', `Agoda SearchUnbundled unreachable: ${String(e?.message || e)}`);
-          }
-          if (r.status === 403 || r.status === 429) {
-            throw new AcquisitionError(r.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED', `Agoda gateway blocked (HTTP ${r.status}).`, r.status);
-          }
-          if (r.status !== 200) {
-            throw new AcquisitionError('SERVER_ERROR', `Agoda SearchUnbundled HTTP ${r.status}: ${(r.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, r.status);
-          }
-          let json: unknown;
-          try { json = JSON.parse(r.body); } catch {
-            throw new AcquisitionError('EMPTY_RESPONSE', `Agoda SearchUnbundled returned non-JSON (HTTP ${r.status}).`, r.status);
-          }
-          for (const b of parseAgodaFlights(json)) {
-            const k = String(b.key || b.itineraries?.[0]?.itineraryInfo?.id || Math.random());
-            if (!seen.has(k)) { seen.add(k); bundles.push(b); }
-          }
-          if (page === 1 && bundles.length === 0) {
-            throw new AcquisitionError('EMPTY_RESPONSE', `Agoda SearchUnbundled returned no bundles for ${from}-${to} ${dep}.`);
-          }
-        }
-        return agodaFlightsItems(bundles, ctx.source, rt, from, to, dep);
+        return etraveliBrandSearch(ctx, FLIGHTNETWORK_IN);
       },
     },
   ],

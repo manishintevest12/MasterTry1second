@@ -1,0 +1,4863 @@
+{
+ "data": {
+  "search": {
+   "flightsCount": 78,
+   "flights": [
+    {
+     "id": "1009584898325541",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 25,
+       "length": 55,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-28T09:30",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T07:10",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8400000,
+         "equipmentCode": "AIR",
+         "flightNumber": "QP1805",
+         "marketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 111620,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "QP1805-28Oct26-U,buz9fi",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255410",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -19583,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -19583,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255410",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 783300,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255410",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 802883,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255410",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [
+      "PRICE",
+      "WEIGHTED"
+     ],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=QP1805-28Oct26-U%2Cbuz9fi%2C%3A%3Ag_0%3Ah_0%3Aa_BY%3Ab_8D%3Ac_8D%3Ad_66bcc8%3Ae_10c8e0%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_pr9wyv",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325543",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 25,
+       "length": 55,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-28T18:45",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T16:20",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8700000,
+         "equipmentCode": "AIR",
+         "flightNumber": "QP1114",
+         "marketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 111620,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "QP1114-28Oct26-U,bqx6d3",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255430",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -19583,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -19583,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255430",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 783300,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255430",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 802883,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255430",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=QP1114-28Oct26-U%2Cbqx6d3%2C%3A%3Ag_0%3Ah_0%3Aa_R8%3Ab_8D%3Ac_8D%3Ad_66bcc8%3Ae_10c8e0%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_pr9wyv",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325542",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 25,
+       "length": 55,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-28T12:40",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T10:15",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8700000,
+         "equipmentCode": "AIR",
+         "flightNumber": "QP1112",
+         "marketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 111620,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "QP1112-28Oct26-U,bpwnlh",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255420",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -19583,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -19583,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255420",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 783300,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255420",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 802883,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255420",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=QP1112-28Oct26-U%2Cbpwnlh%2C%3A%3Ag_0%3Ah_0%3Aa_H3%3Ab_8D%3Ac_8D%3Ad_66bcc8%3Ae_10c8e0%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_pr9wyv",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325544",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 25,
+       "length": 55,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-28T22:25",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T19:55",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 9000000,
+         "equipmentCode": "AIR",
+         "flightNumber": "QP1845",
+         "marketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 111620,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "QP1845-28Oct26-U,bx5x8i",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255440",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -19583,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -19583,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255440",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 783300,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255440",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 802883,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255440",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=QP1845-28Oct26-U%2Cbx5x8i%2C%3A%3Ag_0%3Ah_0%3Aa_X7%3Ab_8D%3Ac_8D%3Ad_66bcc8%3Ae_10c8e0%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_pr9wyv",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325547",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 25,
+       "length": 55,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-28T20:40",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T18:10",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 9000000,
+         "equipmentCode": "AIR",
+         "flightNumber": "QP1118",
+         "marketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 115012,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "QP1118-28Oct26-U,bsy7wb",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255470",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -20178,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -20178,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255470",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 807100,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 31000,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255470",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 827278,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 31000,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255470",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=QP1118-28Oct26-U%2Cbsy7wb%2C%3A%3Ag_0%3Ah_0%3Aa_UA%3Ab_8D%3Ac_8D%3Ad_6a5e78%3Ae_10c8e0%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_o9xqm3",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325545",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 25,
+       "length": 55,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-29T00:10",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T21:45",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8700000,
+         "equipmentCode": "AIR",
+         "flightNumber": "QP1116",
+         "marketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "QP",
+          "name": "Akasa Air",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/b047ac6c2934feb1b8c2e69ab2db061689a4359d-qp-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/eb290a24c25c5fa5260bc7e1f21a9c7caea88c33-qp-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 111620,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "QP1116-28Oct26-U,brxp4p",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255450",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -19583,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -19583,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255450",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 783300,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255450",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 802883,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 29800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255450",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=QP1116-28Oct26-U%2Cbrxp4p%2C%3A%3Ag_0%3Ah_0%3Aa_109%3Ab_8D%3Ac_8D%3Ad_66bcc8%3Ae_10c8e0%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_pr9wyv",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325477",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 20,
+       "length": 55,
+       "width": 40,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": null,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": null,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "Boeing 737",
+         "arrivedAt": "2026-10-28T19:55",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": null,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T17:40",
+         "destination": {
+          "code": "NMI",
+          "name": "Mumbai Navi Intl. Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "NMI",
+          "airportName": "Mumbai Navi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8100000,
+         "equipmentCode": "AIR",
+         "flightNumber": "AI9869",
+         "marketingCarrier": {
+          "code": "AI",
+          "name": "Air India",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/a82fa542a5e351bb789064875ef7158ea1eccff1-ai_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/a9a9435d3faca02d9db56492bc7d627d7c599de8-ai_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/a82fa542a5e351bb789064875ef7158ea1eccff1-ai-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/a9a9435d3faca02d9db56492bc7d627d7c599de8-ai-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "AI",
+          "name": "Air India",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "IX",
+          "name": "IX",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/50ff56614b35fd79c670224764743dc02ed77abc-ix_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/cc92bd8f87ea4acfdf1f31a434ac672c18b88e62-ix_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/50ff56614b35fd79c670224764743dc02ed77abc-ix-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/cc92bd8f87ea4acfdf1f31a434ac672c18b88e62-ix-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": "IX",
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 4,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 114940,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "AI9869-28Oct26-S,bp5yt3",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983254770",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -23457,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -23457,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983254770",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 938283,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 204800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983254770",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 961740,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 204800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983254770",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=AI9869-28Oct26-S%2Cbp5yt3%2C%3A%3Ag_0%3Ah_0%3Aa_TG%3Ab_8D%3Ac_8D%3Ad_71a1d8%3Ae_1d89d6%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_o9e2o0",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325546",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 23,
+       "length": 50,
+       "width": 35,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": 1,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": 1,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "",
+         "arrivedAt": "2026-10-28T21:40",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": 1,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T19:20",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8400000,
+         "equipmentCode": "AIR",
+         "flightNumber": "SG612",
+         "marketingCarrier": {
+          "code": "SG",
+          "name": "SpiceJet",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/27631152bc115236e29cc9609bb35ae59252ecae-sg_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/9272d3d26fa9d9c9cc788fe634a51679aeae41be-sg_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/27631152bc115236e29cc9609bb35ae59252ecae-sg-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/9272d3d26fa9d9c9cc788fe634a51679aeae41be-sg-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "SG",
+          "name": "SpiceJet",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "SG",
+          "name": "SpiceJet",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/27631152bc115236e29cc9609bb35ae59252ecae-sg_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/9272d3d26fa9d9c9cc788fe634a51679aeae41be-sg_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/27631152bc115236e29cc9609bb35ae59252ecae-sg-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/9272d3d26fa9d9c9cc788fe634a51679aeae41be-sg-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": null,
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 1,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 131117,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 1X15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "SG612-28Oct26-U,anl9vl",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983255460",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -23003,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -23003,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983255460",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 920121,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 173700,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255460",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 943124,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 173700,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983255460",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=SG612-28Oct26-U%2Canl9vl%2C%3A%3Ag_0%3Ah_0%3Aa_W8%3Ab_8D%3Ac_8D%3Ad_678fb8%3Ae_24d682%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_nd30ex",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325476",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 20,
+       "length": 55,
+       "width": 40,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": null,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": null,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "Boeing 737",
+         "arrivedAt": "2026-10-28T07:45",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": null,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T05:30",
+         "destination": {
+          "code": "NMI",
+          "name": "Mumbai Navi Intl. Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "NMI",
+          "airportName": "Mumbai Navi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8100000,
+         "equipmentCode": "AIR",
+         "flightNumber": "AI9655",
+         "marketingCarrier": {
+          "code": "AI",
+          "name": "Air India",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/a82fa542a5e351bb789064875ef7158ea1eccff1-ai_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/a9a9435d3faca02d9db56492bc7d627d7c599de8-ai_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/a82fa542a5e351bb789064875ef7158ea1eccff1-ai-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/a9a9435d3faca02d9db56492bc7d627d7c599de8-ai-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "AI",
+          "name": "Air India",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "IX",
+          "name": "IX",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/50ff56614b35fd79c670224764743dc02ed77abc-ix_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/cc92bd8f87ea4acfdf1f31a434ac672c18b88e62-ix_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/50ff56614b35fd79c670224764743dc02ed77abc-ix-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/cc92bd8f87ea4acfdf1f31a434ac672c18b88e62-ix-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": "IX",
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 4,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 114940,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "AI9655-28Oct26-S,blf4a8",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983254760",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -23457,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -23457,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983254760",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 938283,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 204800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983254760",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 961740,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 204800,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983254760",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=AI9655-28Oct26-S%2Cblf4a8%2C%3A%3Ag_0%3Ah_0%3Aa_96%3Ab_8D%3Ac_8D%3Ad_71a1d8%3Ae_1d89d6%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_o9e2o0",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    },
+    {
+     "id": "1009584898325474",
+     "tripId": "0",
+     "isVI": false,
+     "includedCabinBaggage": {
+      "includedPersonalItem": true,
+      "size3d": {
+       "height": 20,
+       "length": 55,
+       "width": 40,
+       "__typename": "Size3d"
+      },
+      "pieces": 1,
+      "weight": 7,
+      "weightUnit": "kg",
+      "__typename": "IncludedCabinBaggage"
+     },
+     "includedCheckedBaggage": {
+      "pieces": null,
+      "weight": 15,
+      "weightUnit": "kg",
+      "__typename": "IncludedCheckedBaggage"
+     },
+     "bounds": [
+      {
+       "boundId": "0",
+       "includedCabinBaggage": {
+        "pieces": 1,
+        "weight": 7,
+        "weightUnit": "kg",
+        "__typename": "IncludedCabinBaggage"
+       },
+       "includedCheckedBaggage": {
+        "pieces": null,
+        "weight": 15,
+        "weightUnit": "kg",
+        "__typename": "IncludedCheckedBaggage"
+       },
+       "segments": [
+        {
+         "__typename": "TripSegment",
+         "segmentId": "00",
+         "aircraftType": "Boeing 737",
+         "arrivedAt": "2026-10-28T11:15",
+         "brandedFareInformation": null,
+         "includedCabinBaggage": {
+          "pieces": 1,
+          "weight": 7,
+          "weightUnit": "kg",
+          "__typename": "IncludedCabinBaggage"
+         },
+         "includedCheckedBaggage": {
+          "pieces": null,
+          "weight": 15,
+          "weightUnit": "kg",
+          "__typename": "IncludedCheckedBaggage"
+         },
+         "cabinClassName": "Economy",
+         "departuredAt": "2026-10-28T08:50",
+         "destination": {
+          "code": "BOM",
+          "name": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "cityCode": "BOM",
+          "cityName": "Mumbai (Bombay)",
+          "airportCode": "BOM",
+          "airportName": "Mumbai Chhatrapati Shivaji Maharaj Airport",
+          "__typename": "RegionNew"
+         },
+         "duration": 8700000,
+         "equipmentCode": "AIR",
+         "flightNumber": "AI9836",
+         "marketingCarrier": {
+          "code": "AI",
+          "name": "Air India",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/a82fa542a5e351bb789064875ef7158ea1eccff1-ai_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/a9a9435d3faca02d9db56492bc7d627d7c599de8-ai_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/a82fa542a5e351bb789064875ef7158ea1eccff1-ai-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/a9a9435d3faca02d9db56492bc7d627d7c599de8-ai-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "ticketingCarrier": {
+          "code": "AI",
+          "name": "Air India",
+          "__typename": "CarrierNew"
+         },
+         "numberOfTechnicalStops": 0,
+         "technicalStops": [],
+         "operatingCarrier": {
+          "code": "IX",
+          "name": "IX",
+          "logo": {
+           "small": "https://in.gotogate.com/www/images/c/50ff56614b35fd79c670224764743dc02ed77abc-ix_40x40.png",
+           "large": "https://in.gotogate.com/www/images/c/cc92bd8f87ea4acfdf1f31a434ac672c18b88e62-ix_80x80.png",
+           "darkModeSmall": "https://in.gotogate.com/www/images/c/50ff56614b35fd79c670224764743dc02ed77abc-ix-dark_40x40.png",
+           "darkModeLarge": "https://in.gotogate.com/www/images/c/cc92bd8f87ea4acfdf1f31a434ac672c18b88e62-ix-dark_80x80.png",
+           "__typename": "CarrierLogo"
+          },
+          "__typename": "CarrierNew"
+         },
+         "operatingInformation": "IX",
+         "origin": {
+          "code": "DEL",
+          "name": "Delhi Indira Gandhi Intl. Airport",
+          "cityCode": "DEL",
+          "cityName": "New Delhi",
+          "airportCode": "DEL",
+          "airportName": "Delhi Indira Gandhi Intl. Airport",
+          "__typename": "RegionNew"
+         },
+         "segmentDetails": [
+          {
+           "paxType": "ADT",
+           "numberOfSeatsLeft": 4,
+           "__typename": "SegmentDetailsNew"
+          }
+         ]
+        }
+       ],
+       "__typename": "BoundNew"
+      }
+     ],
+     "brandedFares": [],
+     "availableExtraProducts": [
+      {
+       "configuration": {
+        "productPreSelection": "NONE",
+        "__typename": "Configuration"
+       },
+       "productId": "65",
+       "name": "Flexible Ticket",
+       "selectedWithTrip": false,
+       "productSpecificTexts": null,
+       "sellSpecification": {
+        "sellPriceTravelers": [
+         {
+          "price": {
+           "price": {
+            "value": 114175,
+            "__typename": "CurrencyAmount"
+           },
+           "markup": null,
+           "vat": null,
+           "__typename": "Price"
+          },
+          "__typename": "SellPriceTravelerNew"
+         }
+        ],
+        "__typename": "SellSpecificationTravelerNew"
+       },
+       "__typename": "ExtraProduct"
+      }
+     ],
+     "includedExtraProducts": [
+      {
+       "id": "6",
+       "texts": {
+        "name": "Checked baggage",
+        "productSummaryAlternativeName": null,
+        "readMoreText": null,
+        "receiptText": null,
+        "salesAbstract": "On this trip you are allowed 15 kg",
+        "__typename": "ExtraProductTexts"
+       },
+       "__typename": "IncludedExtraProduct"
+      }
+     ],
+     "selectionKey": "AI9836-28Oct26-S,bm06sx",
+     "type": "ONE_WAY",
+     "tripCharacteristics": [],
+     "tripTravelers": [
+      {
+       "id": "10095848983254740",
+       "ageType": "ADT",
+       "__typename": "TravelerNew"
+      }
+     ],
+     "paymentMethodPrices": [
+      {
+       "code": "VI",
+       "name": "VISA",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VD",
+       "name": "VISA Debit",
+       "price": {
+        "value": -23301,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VE",
+       "name": "VISA Electron",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "VC",
+       "name": "VISA Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "CA",
+       "name": "MASTERCARD",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MO",
+       "name": "MAESTRO",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MD",
+       "name": "MASTERCARD Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "MC",
+       "name": "MASTERCARD Corporate",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RU",
+       "name": "RUPAY",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "RD",
+       "name": "RUPAY Debit",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "DS",
+       "name": "DISCOVER",
+       "price": {
+        "value": 700,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "CARD",
+       "__typename": "PaymentMethodPrice"
+      },
+      {
+       "code": "--",
+       "name": "UpiQr",
+       "price": {
+        "value": 0,
+        "__typename": "CurrencyAmount"
+       },
+       "type": "WALLET",
+       "__typename": "PaymentMethodPrice"
+      }
+     ],
+     "discountedPaymentMethodPrices": {
+      "cheapestPaymentMethods": [
+       {
+        "code": "VD",
+        "name": "VISA Debit",
+        "price": {
+         "value": -23301,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "otherPaymentMethods": [
+       {
+        "code": "VI",
+        "name": "VISA",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VE",
+        "name": "VISA Electron",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "VC",
+        "name": "VISA Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "CA",
+        "name": "MASTERCARD",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MO",
+        "name": "MAESTRO",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MD",
+        "name": "MASTERCARD Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "MC",
+        "name": "MASTERCARD Corporate",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RU",
+        "name": "RUPAY",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "RD",
+        "name": "RUPAY Debit",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "DS",
+        "name": "DISCOVER",
+        "price": {
+         "value": 700,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "CARD",
+        "__typename": "PaymentMethodPrice"
+       },
+       {
+        "code": "--",
+        "name": "UpiQr",
+        "price": {
+         "value": 0,
+         "__typename": "CurrencyAmount"
+        },
+        "type": "WALLET",
+        "__typename": "PaymentMethodPrice"
+       }
+      ],
+      "__typename": "DiscountedPaymentMethodPrices"
+     },
+     "travelerPrices": [
+      {
+       "id": "10095848983254740",
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 932039,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 182700,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983254740",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "travelerPricesWithoutPaymentDiscounts": [
+      {
+       "price": {
+        "markup": null,
+        "price": {
+         "value": 955340,
+         "currency": {
+          "code": "INR",
+          "__typename": "Currency"
+         },
+         "__typename": "CurrencyAmount"
+        },
+        "vat": {
+         "value": 182700,
+         "__typename": "CurrencyAmount"
+        },
+        "__typename": "Price"
+       },
+       "taxesAndFees": [],
+       "travelerId": "10095848983254740",
+       "__typename": "TravelerPrice"
+      }
+     ],
+     "tripTags": [],
+     "systems": [],
+     "voucherAmount": {
+      "value": 0,
+      "__typename": "CurrencyAmount"
+     },
+     "shareableUrl": "https://in.gotogate.com/from/sharedurl/air/DELBOM28OCT/1/-/-/c:Y?selectionKey=AI9836-28Oct26-S%2Cbm06sx%2C%3A%3Ag_0%3Ah_0%3Aa_EQ%3Ab_8D%3Ac_8D%3Ad_70d6b8%3Ae_1d610e%3Af_4E%3Ai_1.0.0%3Aj_OM%3Az_o06kmu",
+     "preferredDisplayCarrier": null,
+     "__typename": "Trip"
+    }
+   ],
+   "searchPath": "/air/DELBOM28OCT/1/-/-/c:Y"
+  }
+ }
+}
