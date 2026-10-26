@@ -62,7 +62,9 @@ export const settings = {
   // google_sign_in Android plugin uses it as the audience via default_web_client_id,
   // so every plain build works without owner env setup. Override/extend via env.
   googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS
-    || '49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com'
+    || '49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com,'
+     + '49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com,'
+     + '49438102645-ek7dp1kea0dfj0moi7jphamqrngjg1lk.apps.googleusercontent.com'
   ).split(',').map((e) => e.trim()).filter(Boolean),
   mailFrom: process.env.MAIL_FROM || 'Try1Second <onboarding@resend.dev>',
 
