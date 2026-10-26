@@ -1343,6 +1343,170 @@ var init_health = __esm({
   }
 });
 
+// server/sources/edgeRelay.ts
+var edgeRelay_exports = {};
+__export(edgeRelay_exports, {
+  edgeRelayFetch: () => edgeRelayFetch,
+  gatedHostPolicy: () => gatedHostPolicy,
+  hostInPolicy: () => hostInPolicy,
+  isGatedResponse: () => isGatedResponse,
+  noteDirectGate: () => noteDirectGate,
+  relayConfigured: () => relayConfigured,
+  relayDisabled: () => relayDisabled,
+  relayStats: () => relayStats
+});
+function csv(v) {
+  return String(v || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+function gatedHostPolicy() {
+  const override = csv(process.env.EDGE_RELAY_HOSTS);
+  return override.length ? override : DEFAULT_GATED_HOSTS;
+}
+function relayDisabled() {
+  return String(process.env.EDGE_RELAY_DISABLE || "") === "1";
+}
+function hostInPolicy(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return gatedHostPolicy().some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+function isGatedResponse(status, body, opts) {
+  if (status === 401 || status === 403 || status === 407 || status === 429 || status === 503) return true;
+  const b = (body || "").toLowerCase();
+  const markers = [
+    "akamai bot manager",
+    "akamai_ bot",
+    "_abck",
+    "behavioral challenge",
+    "just a moment",
+    "cf-chl",
+    "checking your browser",
+    "enable javascript and cookies",
+    "attention required! | cloudflare",
+    "request unsuccessful. incapsula",
+    "access denied",
+    "pardon our interruption",
+    "unusual traffic"
+  ];
+  if (markers.some((m) => b.includes(m))) return true;
+  const min = opts?.minHtmlBytes ?? 1200;
+  if (body && body.length < min && /^\s*<(!doctype|html)/i.test(body)) return true;
+  return false;
+}
+function relayLegs() {
+  const legs = [];
+  const awsUrl = String(process.env.EDGE_RELAY_AWS_URL || "").trim();
+  const cfUrl = String(process.env.EDGE_RELAY_CF_URL || "").trim();
+  if (awsUrl) legs.push({ name: "aws", url: awsUrl, token: String(process.env.EDGE_RELAY_AWS_TOKEN || "") });
+  if (cfUrl) legs.push({ name: "cf", url: cfUrl, token: String(process.env.EDGE_RELAY_CF_TOKEN || "") });
+  return legs;
+}
+function breakerOpen(name) {
+  const b = breakers.get(name);
+  if (!b) return false;
+  if (b.failures < BREAKER_THRESHOLD) return false;
+  if (Date.now() - b.openedAt > BREAKER_COOLDOWN_MS) {
+    breakers.set(name, { failures: BREAKER_THRESHOLD - 1, openedAt: 0 });
+    return false;
+  }
+  return true;
+}
+function breakerOk(name) {
+  breakers.set(name, { failures: 0, openedAt: 0 });
+}
+function breakerFail(name) {
+  const b = breakers.get(name) || { failures: 0, openedAt: 0 };
+  const failures = b.failures + 1;
+  breakers.set(name, { failures, openedAt: failures >= BREAKER_THRESHOLD ? Date.now() : 0 });
+}
+function relayStats() {
+  return { ...stats, legs: relayLegs().map((l) => ({ name: l.name, open: breakerOpen(l.name) })) };
+}
+function relayConfigured() {
+  return relayLegs().length > 0 && !relayDisabled();
+}
+async function edgeRelayFetch(url, opts = {}) {
+  if (relayDisabled()) return null;
+  const legs = relayLegs();
+  if (!legs.length) return null;
+  for (const leg of legs) {
+    if (breakerOpen(leg.name)) continue;
+    stats.attempts++;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), (opts.timeoutMs || 25e3) + 8e3);
+      const res = await fetch(leg.url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...leg.token ? { "x-relay-token": leg.token } : {} },
+        body: JSON.stringify({
+          url,
+          method: opts.method || "GET",
+          headers: opts.headers || {},
+          ...opts.body ? { body: opts.body } : {},
+          impersonate: opts.impersonate || "chrome",
+          ...opts.httpVersion ? { httpVersion: opts.httpVersion } : {},
+          timeoutSec: Math.max(3, Math.ceil((opts.timeoutMs || 25e3) / 1e3))
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`relay ${leg.name} http ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(`relay ${leg.name}: ${data.error}`);
+      const status = Number(data.status || 0);
+      const body = String(data.body ?? "");
+      if (isGatedResponse(status, body)) {
+        stats.gated++;
+        breakerFail(leg.name);
+        continue;
+      }
+      breakerOk(leg.name);
+      stats.ok++;
+      stats.servedByRelay++;
+      stats.lastVia = leg.name;
+      return { status, body, headers: data.headers, via: leg.name };
+    } catch (e) {
+      breakerFail(leg.name);
+      stats.failed++;
+      stats.lastError = String(e?.message || e).slice(0, 160);
+      log.warn("EdgeRelay", `relay leg ${leg.name} failed`, { url: url.slice(0, 120), error: stats.lastError });
+    }
+  }
+  return null;
+}
+function noteDirectGate() {
+  stats.gated++;
+}
+var DEFAULT_GATED_HOSTS, breakers, BREAKER_THRESHOLD, BREAKER_COOLDOWN_MS, stats;
+var init_edgeRelay = __esm({
+  "server/sources/edgeRelay.ts"() {
+    init_logger();
+    DEFAULT_GATED_HOSTS = [
+      "uber.com",
+      // m.uber.com / www.uber.com guest fare paths
+      "rapido.bike",
+      // m.rapido.bike fare-estimate PWA
+      "booking.com",
+      // bot-challenge probe
+      "hotels.com",
+      // Expedia group edge
+      "expedia.com",
+      // Expedia group edge
+      "makemytrip.com",
+      // Akamai-sampled listings (hotels/flights SRP)
+      "goibibo.com"
+      // Akamai-sampled listings
+    ];
+    breakers = /* @__PURE__ */ new Map();
+    BREAKER_THRESHOLD = 3;
+    BREAKER_COOLDOWN_MS = 6e4;
+    stats = { attempts: 0, ok: 0, failed: 0, gated: 0, servedByRelay: 0, lastVia: "", lastError: "" };
+  }
+});
+
 // server/common/curlCffiFetch.ts
 function runProbe(bin) {
   return new Promise((resolve) => {
@@ -1399,7 +1563,7 @@ async function pythonDiagnostics() {
   const chosen = await pythonBin();
   return { chosen, probes: probeResults.filter((p) => p.version || p.cffi) };
 }
-async function cffiFetch(url, opts = {}) {
+async function cffiFetchDirect(url, opts = {}) {
   const payload = JSON.stringify({
     url,
     method: opts.method || "GET",
@@ -1444,6 +1608,32 @@ async function cffiFetch(url, opts = {}) {
     child.stdin.write(payload);
     child.stdin.end();
   });
+}
+async function cffiFetch(url, opts = {}) {
+  let direct = null;
+  let directError = null;
+  try {
+    direct = await cffiFetchDirect(url, opts);
+  } catch (e) {
+    directError = e;
+  }
+  const { hostInPolicy: hostInPolicy2, isGatedResponse: isGatedResponse2, relayConfigured: relayConfigured2, edgeRelayFetch: edgeRelayFetch2, noteDirectGate: noteDirectGate2 } = await Promise.resolve().then(() => (init_edgeRelay(), edgeRelay_exports));
+  const policyHit = hostInPolicy2(url);
+  const gated = direct ? isGatedResponse2(direct.status, direct.body) : false;
+  if (gated) noteDirectGate2();
+  if (policyHit && relayConfigured2() && (gated || directError)) {
+    const relayed = await edgeRelayFetch2(url, opts);
+    if (relayed) {
+      return {
+        status: relayed.status,
+        body: relayed.body,
+        ...relayed.headers ? { headers: relayed.headers } : {},
+        via: relayed.via
+      };
+    }
+  }
+  if (direct) return { ...direct, via: "direct" };
+  throw directError || new AcquisitionError("SERVER_ERROR", "curl_cffi bridge unavailable");
 }
 var import_node_child_process, import_node_path2, import_node_fs2, import_node_url, import_meta, HELPER, PY_CANDIDATES, pyChoice, probeResults;
 var init_curlCffiFetch = __esm({
@@ -36709,9 +36899,9 @@ var init_routes = __esm({
         const user = req.user;
         const { ensureReferralCode: ensureReferralCode2, referralStats: referralStats2, validPointBalance: validPointBalance2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
         const code = await ensureReferralCode2(user.id);
-        const stats = await referralStats2(user.id);
+        const stats2 = await referralStats2(user.id);
         const points = await validPointBalance2(user.id);
-        res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats.referredCount, referredByCode: stats.referredByCode, points });
+        res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats2.referredCount, referredByCode: stats2.referredByCode, points });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "referral_unavailable" });
       }
@@ -38239,6 +38429,7 @@ var init_adminRoutes = __esm({
     init_cache();
     init_logger();
     init_affiliateNetwork();
+    init_edgeRelay();
     init_placements();
     init_cachedSections();
     init_appLinks();
@@ -39128,6 +39319,19 @@ var init_adminRoutes = __esm({
         });
       } catch (e) {
         res.status(500).json({ success: false, error: e?.message || "Integration status unavailable" });
+      }
+    });
+    adminRouter.get("/relay/health", (_req, res) => {
+      try {
+        res.json({
+          success: true,
+          configured: relayConfigured(),
+          disabled: relayDisabled(),
+          hosts: gatedHostPolicy(),
+          stats: relayStats()
+        });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e?.message || "relay stats unavailable" });
       }
     });
   }

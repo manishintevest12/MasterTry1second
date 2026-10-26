@@ -1,0 +1,6 @@
+name = "try1second-edge-relay"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+# Optional: pin to an Indian PoP-adjacent region hint (Cloudflare picks nearest).
+# [placement]
+# mode = "smart"

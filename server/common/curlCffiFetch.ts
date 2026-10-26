@@ -85,7 +85,7 @@ export interface CffiResponse {
   headers?: Record<string, string>;
 }
 
-export async function cffiFetch(
+async function cffiFetchDirect(
   url: string,
   opts: {
     headers?: Record<string, string>;
@@ -145,4 +145,44 @@ export async function cffiFetch(
     child.stdin.write(payload);
     child.stdin.end();
   });
+}
+
+/**
+ * Relay-aware entry point (owner 26 Oct): direct curl_cffi FIRST; when the
+ * response is a GATE (403/429/challenge/tiny stub) or the bridge itself fails,
+ * and the host is in the gated-host policy, the exact same request is retried
+ * through the Edge Relay pool (AWS Lambda preferred, Cloudflare Worker second).
+ * Every worker keeps calling cffiFetch exactly as before — server-driven.
+ */
+export async function cffiFetch(
+  url: string,
+  opts: Parameters<typeof cffiFetchDirect>[1] = {},
+): Promise<CffiResponse & { via?: 'direct' | 'aws' | 'cf' }> {
+  let direct: CffiResponse | null = null;
+  let directError: any = null;
+  try {
+    direct = await cffiFetchDirect(url, opts);
+  } catch (e) {
+    directError = e;
+  }
+
+  const { hostInPolicy, isGatedResponse, relayConfigured, edgeRelayFetch, noteDirectGate } = await import('../sources/edgeRelay');
+  const policyHit = hostInPolicy(url);
+  const gated = direct ? isGatedResponse(direct.status, direct.body) : false;
+  if (gated) noteDirectGate();
+
+  if (policyHit && relayConfigured() && (gated || directError)) {
+    const relayed = await edgeRelayFetch(url, opts);
+    if (relayed) {
+      return {
+        status: relayed.status,
+        body: relayed.body,
+        ...(relayed.headers ? { headers: relayed.headers } : {}),
+        via: relayed.via,
+      };
+    }
+  }
+
+  if (direct) return { ...direct, via: 'direct' };
+  throw directError || new AcquisitionError('SERVER_ERROR', 'curl_cffi bridge unavailable');
 }

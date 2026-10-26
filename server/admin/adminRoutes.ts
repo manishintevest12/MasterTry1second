@@ -15,6 +15,7 @@ import { getStore } from '../common/db';
 import { cacheStats } from '../common/cache';
 import { redactSecrets } from '../common/logger';
 import { validateDestination } from '../affiliate/affiliateNetwork';
+import { relayStats, relayConfigured, gatedHostPolicy, relayDisabled } from '../sources/edgeRelay';
 import { listTopPicks, upsertTopPick, deleteTopPick, listAdSlots, upsertAdSlot } from '../marketing/placements';
 import { purgeSectionCache } from '../api/cachedSections';
 import { listAppLinks, upsertAppLink, deleteAppLink } from '../marketing/appLinks';
@@ -869,5 +870,21 @@ adminRouter.get('/integrations', async (_req, res) => {
     });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Integration status unavailable' });
+  }
+});
+
+// Edge Relay visibility (owner 26 Oct): which egress legs exist, breaker state,
+// how many requests escalated, and the gated-host policy. Admin-only.
+adminRouter.get('/relay/health', (_req: Request, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      configured: relayConfigured(),
+      disabled: relayDisabled(),
+      hosts: gatedHostPolicy(),
+      stats: relayStats(),
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'relay stats unavailable' });
   }
 });
