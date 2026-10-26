@@ -76,3 +76,16 @@ test('firebase token: forged signature, unknown kid, malformed input carry hones
   const claims = await verifyFirebaseIdTokenDetailed(mint({ email: undefined }), opts);
   assert.equal(claims.reason, 'bad_claims');
 });
+
+// Owner 26 Oct: any Google client of OUR project is acceptable — registration of
+// a new signing SHA (or Play App Signing) must never break sign-in again.
+import { audienceAllowed as __audOk } from '../server/auth/firebaseAuth';
+
+test('audienceAllowed accepts any client of our own Firebase project', () => {
+  const listed = ['49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com'];
+  assert.equal(__audOk(listed[0], listed), true);
+  assert.equal(__audOk('49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com', listed), true);
+  assert.equal(__audOk('49438102645-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.apps.googleusercontent.com', listed), true);
+  assert.equal(__audOk('123456789012-abc.apps.googleusercontent.com', listed), false);
+  assert.equal(__audOk('', listed), false);
+});

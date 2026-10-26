@@ -132,6 +132,24 @@ async function getGoogleCertificates(): Promise<Record<string, string>> {
  * `aud` must be one of GOOGLE_OAUTH_CLIENT_IDS, token must be unexpired and the
  * email verified. Returns null on any failure; unverified claims are never trusted.
  */
+/**
+ * Audience policy (owner 26 Oct): every Google client of OUR Firebase project
+ * (49438102645-*.apps.googleusercontent.com) is acceptable — web client, each
+ * Android client tied to a signing SHA, and any future client created when a
+ * new fingerprint is registered (including Play App Signing). Tokens belonging
+ * to any OTHER project are still rejected, so this cannot be abused for
+ * cross-app token reuse.
+ */
+const PROJECT_AUDIENCE_PREFIX = '49438102645-';
+
+export function audienceAllowed(aud: string, allowedAudiences: string[]): boolean {
+  if (!aud) return false;
+  if (allowedAudiences.includes(aud)) return true;
+  if (String(process.env.GOOGLE_AUDIENCE_ANY_PROJECT_CLIENT || '1') === '0') return false;
+  if (!aud.startsWith(PROJECT_AUDIENCE_PREFIX)) return false;
+  return /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/i.test(aud);
+}
+
 export async function verifyGoogleIdToken(idToken: string, allowedAudiences: string[] = settings.googleOauthClientIds, certsOverride?: Record<string, string>): Promise<FirebaseUserClaims | null> {
   if (!allowedAudiences.length) return null;
   try {
@@ -141,7 +159,7 @@ export async function verifyGoogleIdToken(idToken: string, allowedAudiences: str
     const payload = JSON.parse(base64UrlDecode(parts[1]).toString('utf8'));
 
     if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
-    if (!allowedAudiences.includes(String(payload.aud))) return null;
+    if (!audienceAllowed(String(payload.aud), allowedAudiences)) return null;
     if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') return null;
     const now = Math.floor(Date.now() / 1000);
     if (typeof payload.exp !== 'number' || payload.exp <= now) return null;
