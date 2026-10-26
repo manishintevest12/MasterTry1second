@@ -163,10 +163,6 @@ class AppState extends ChangeNotifier {
   /// Deep-link helpers used by hero buttons and the assistant.
   final GlobalKey<NavigatorState> navigator = GlobalKey<NavigatorState>();
 
-  void openRadar() {
-    navigator.currentState?.pushNamed('radar');
-  }
-
   void openProduct(PendingSearch s) {
     navigator.currentState?.pushNamed('product', arguments: s);
   }

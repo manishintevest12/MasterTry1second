@@ -14,7 +14,6 @@ import {
   Car,
   Sparkles,
   ArrowRight,
-  Radar,
   Gift,
   ShoppingBasket,
   Ticket,
@@ -162,8 +161,7 @@ export const HomeView: React.FC = () => {
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              {/* Owner 23 Oct: 'Open Live Scanner Radar' button hidden from the
-                  home hero per owner request (Radar stays reachable via nav). */}
+              {/* Owner 25 Oct: Live Scanner Radar fully removed from the site. */}
             </div>
           </div>
         </div>

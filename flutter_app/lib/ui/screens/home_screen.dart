@@ -15,7 +15,7 @@ import '../../core/session_cache.dart';
 
 /// Website HomeView: dark hero (engine pill, stat tiles, headline, Price Lens,
 /// launch buttons) + Ask Try1Second AI + Quick Apps rail + vertical cards grid
-/// + radar/referral teaser. All data real; all taps route like the site.
+/// + referral teaser. All data real; all taps route like the site.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -88,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         HomeShowcase(state: _state),
         const SizedBox(height: 18),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: _RadarTeaser()),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: _ReferralTeaser()),
       ]),
     );
   }
@@ -282,11 +282,11 @@ class _LaunchCard extends StatelessWidget {
 
 
 // ---------------------------------------------------------------------------
-// Radar + referral teaser (website dark banner)
+// Referral teaser (website dark banner)
 // ---------------------------------------------------------------------------
 
-class _RadarTeaser extends StatelessWidget {
-  const _RadarTeaser();
+class _ReferralTeaser extends StatelessWidget {
+  const _ReferralTeaser();
 
   @override
   Widget build(BuildContext context) {
@@ -313,7 +313,7 @@ class _RadarTeaser extends StatelessWidget {
             child: Row(children: [
               Container(width: 7, height: 7, decoration: const BoxDecoration(color: T1SColors.emerald500, shape: BoxShape.circle)),
               const SizedBox(width: 6),
-              Text('Real-Time Redirection Tracker Active',
+              Text('Invite friends, earn guaranteed rewards',
                   style: tx(context, 10.5, w: FontWeight.w800, color: T1SColors.emerald400)),
             ]),
           ),

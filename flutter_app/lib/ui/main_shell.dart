@@ -12,7 +12,6 @@ import 'screens/home_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/quick_apps_screen.dart';
-import 'screens/radar_screen.dart';
 import 'screens/rewards_screen.dart';
 import 'widgets/kit.dart';
 import 'widgets/logo.dart';
@@ -142,7 +141,6 @@ class _MainShellState extends State<MainShell> {
                     onSpendLens: () => _push(const SpendLensScreen()),
                     onAlerts: () => _push(const NotificationsScreen()),
                     onProfile: () => _push(const ProfileScreen()),
-                    onRadar: () => _push(const RadarScreen()),
                   ),
                 ),
               ],
@@ -243,7 +241,6 @@ class _MenuSheet extends StatelessWidget {
     required this.onSpendLens,
     required this.onAlerts,
     required this.onProfile,
-    required this.onRadar,
   });
   final int points;
   final int trackedCount;
@@ -253,7 +250,6 @@ class _MenuSheet extends StatelessWidget {
   final VoidCallback onSpendLens;
   final VoidCallback onAlerts;
   final VoidCallback onProfile;
-  final VoidCallback onRadar;
 
   @override
   Widget build(BuildContext context) {
@@ -328,10 +324,6 @@ class _MenuSheet extends StatelessWidget {
               const SizedBox(width: 6),
               Text('$points pts', style: tx(context, 12, w: FontWeight.w900)),
               const Spacer(),
-              GestureDetector(
-                onTap: onRadar,
-                child: Text('Open Radar →', style: tx(context, 12, w: FontWeight.w800, color: T1SColors.red)),
-              ),
             ]),
           ),
         ]),

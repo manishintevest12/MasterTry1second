@@ -45,5 +45,7 @@ test('every city-based cab worker routes through the clean-city extraction', () 
   assert.ok(src.includes('savaariRouteSlug(cityFromRouteText(rt.from))'), 'Savaari slugs the clean city');
   assert.ok(src.includes('indriveCityLookup(cityFromRouteText(x))'), 'InDrive looks up the clean city');
   assert.ok(src.includes('uberCitySlugFor(cityFromRouteText(rt.from))'), 'Uber city guide tries the clean city');
-  assert.ok(src.includes('geocodePlace(rt.from)'), 'geocoding falls back to the clean city');
+  // Owner 25 Oct (v1.8.23 PUDO rework): pickup geocoding is city-biased photonGeocode
+  // with geocodePlace(clean-city) as the fallback — the helper at cab.ts ~L74-82.
+  assert.ok(src.includes('return geocodePlace(clean);'), 'geocoding falls back to the clean city');
 });

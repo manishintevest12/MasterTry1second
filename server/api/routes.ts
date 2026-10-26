@@ -15,7 +15,7 @@ import { parseRouteQuery, resolveCabQuery } from '../verticals/verticalEngine';
 import { geoSearch, geoReverse, geoSuggest } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
-import { authMiddleware, requireAuth, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
+import { authMiddleware, requireAuth, requireAdmin, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
 import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
 import { verifyFirebaseIdTokenDetailed, verifyGoogleIdToken } from '../auth/firebaseAuth';
 import crypto from 'crypto';
@@ -52,7 +52,11 @@ import { bmsUpcomingUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegio
 export const apiRouter = Router();
 
 // ============ System ============
-apiRouter.get('/health', async (_req: Request, res: Response) => {
+// Owner 25 Oct: public probe answers 'online' only. Store/redis/production
+// internals are admin-only so nothing about our stack leaks to the frontend.
+apiRouter.get('/health', authMiddleware, async (req: any, res: Response) => {
+  const admin = req.user?.role === 'admin';
+  if (!admin) return res.json({ status: 'online', timestamp: new Date().toISOString() });
   const store = getStore();
   const missing = assertProductionReadiness();
   res.json({
@@ -67,7 +71,7 @@ apiRouter.get('/health', async (_req: Request, res: Response) => {
 });
 
 /** Which Python interpreters the host offers and whether curl_cffi loads in them (shared-hosting diagnostics). */
-apiRouter.get('/health/transport', async (_req: Request, res: Response) => {
+apiRouter.get('/health/transport', authMiddleware, requireAdmin, async (_req: Request, res: Response) => {
   try { res.json({ ok: true, ...(await pythonDiagnostics()) }); } catch (e: any) { res.status(500).json({ ok: false, error: String(e?.message || e) }); }
 });
 
@@ -543,7 +547,8 @@ apiRouter.get('/home/showcase', async (_req, res) => {
 
 // Owner 24 Oct ("kabhi band na ho"): automatic source-recovery audit trail —
 // every source the background scanner re-activated on its own, newest first.
-apiRouter.get('/sources/recovery-log', async (_req, res) => {
+// Owner 25 Oct: recovery internals (source ids, failure classes, probes) admin-only.
+apiRouter.get('/sources/recovery-log', authMiddleware, requireAdmin, async (_req, res) => {
   try {
     const { getStore } = await import('../common/db');
     const rows = await getStore().query(
@@ -556,7 +561,9 @@ apiRouter.get('/sources/recovery-log', async (_req, res) => {
   }
 });
 
-apiRouter.get('/status', (_req, res) => {
+// Owner 25 Oct: engine/source internals are admin-only — the public radar views were
+// removed; unauthenticated calls (old app builds) now get 401 with no internals.
+apiRouter.get('/status', authMiddleware, requireAdmin, (_req, res) => {
   res.json({
     success: true,
     sources: sourcesStatusReport(),
@@ -1766,7 +1773,8 @@ apiRouter.get('/quick-apps', async (_req, res) => {
   }
 });
 
-apiRouter.get('/provenance', async (_req, res) => {
+// Owner 25 Oct: source evidence (worker names, methods, URLs) is admin-only.
+apiRouter.get('/provenance', authMiddleware, requireAdmin, async (_req, res) => {
   try {
     const rows = await getStore().query<any>(
       `SELECT offer_id, source_id, source_method, source_url, fetched_at, extracted_fields, evidence_hash

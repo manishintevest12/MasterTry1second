@@ -236,16 +236,6 @@ export const NotificationsDrawer: React.FC = () => {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            setActiveNavTab('radar');
-            setIsNotificationsOpen(false);
-          }}
-          className="mt-auto pt-4 w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
-        >
-          Open Live Scanner Radar
-        </button>
       </div>
     </div>
   );

@@ -1759,9 +1759,9 @@ var init_devFixtures = __esm({
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
   const head = body.slice(0, 6e3);
-  const shell = body.length < 12e4;
+  const shell2 = body.length < 12e4;
   const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|bm-verify|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
-  return markers.test(head) && !/application\/ld\+json/i.test(head) || shell && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
+  return markers.test(head) && !/application\/ld\+json/i.test(head) || shell2 && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
   const started3 = Date.now();
@@ -1936,12 +1936,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start2 = -1, inStr = false, esc2 = false;
+  let depth = 0, start2 = -1, inStr = false, esc3 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc2) esc2 = false;
-      else if (ch === "\\") esc2 = true;
+      if (esc3) esc3 = false;
+      else if (ch === "\\") esc3 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -2056,12 +2056,12 @@ function parseMyntra(html, source, pageUrl) {
     const start2 = /window\.__myx\s*=\s*\{/.exec(html);
     if (start2) {
       const from = start2.index + start2[0].length - 1;
-      let depth = 0, inStr = false, esc2 = false, end = -1;
+      let depth = 0, inStr = false, esc3 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc2) esc2 = false;
-          else if (ch === "\\") esc2 = true;
+          if (esc3) esc3 = false;
+          else if (ch === "\\") esc3 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -2951,12 +2951,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc2 = false, end = -1;
+  let depth = 0, inStr = false, esc3 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc2) esc2 = false;
-      else if (ch === "\\") esc2 = true;
+      if (esc3) esc3 = false;
+      else if (ch === "\\") esc3 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -4689,12 +4689,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc2 = false, end = -1;
+  let depth = 0, inStr = false, esc3 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc2) esc2 = false;
-      else if (c === "\\") esc2 = true;
+      if (esc3) esc3 = false;
+      else if (c === "\\") esc3 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -4825,12 +4825,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc2 = false, end = -1;
+    let depth = 0, inStr = false, esc3 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc2) esc2 = false;
-        else if (c === "\\") esc2 = true;
+        if (esc3) esc3 = false;
+        else if (c === "\\") esc3 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -6316,16 +6316,16 @@ var init_hotels = __esm({
             }
             if (!cityId) throw new AcquisitionError("EMPTY_RESPONSE", `Agoda has no city page for "${city}"`);
             const los0 = Math.max(1, Math.round((Date.parse(`${checkout}T00:00:00Z`) - Date.parse(`${checkin}T00:00:00Z`)) / 864e5));
-            const shell = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
+            const shell2 = await cffiFetch(`https://www.agoda.com/search?city=${cityId}&checkIn=${checkin}&los=${los0}`, {
               impersonate: "chrome",
               timeoutMs: 25e3,
               headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
             });
-            if (shell.status === 403 || shell.status === 429) {
-              throw new AcquisitionError(shell.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda blocked: ${shell.status}`, shell.status);
+            if (shell2.status === 403 || shell2.status === 429) {
+              throw new AcquisitionError(shell2.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Agoda blocked: ${shell2.status}`, shell2.status);
             }
-            if (shell.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda HTTP ${shell.status}`, shell.status);
-            const cfg = extractAgodaPageConfig(shell.body);
+            if (shell2.status !== 200) throw new AcquisitionError("SERVER_ERROR", `Agoda HTTP ${shell2.status}`, shell2.status);
+            const cfg = extractAgodaPageConfig(shell2.body);
             if (!cfg) throw new AcquisitionError("MALFORMED_RESPONSE", "Agoda SRP carried no pageConfig");
             const gqlHeaders = () => ({
               ...agodaGateHeaders(cfg, Date.now()),
@@ -9510,15 +9510,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start2 = pageHtml.indexOf("{", i + 20);
   if (start2 < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc2 = false;
+  let depth = 0, end = -1, inStr = false, esc3 = false;
   for (let k = start2; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc2) {
-      esc2 = false;
+    if (esc3) {
+      esc3 = false;
       continue;
     }
     if (c === "\\") {
-      esc2 = true;
+      esc3 = true;
       continue;
     }
     if (c === '"') {
@@ -17541,8 +17541,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm3 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc2 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc2}\\b`);
+  const esc3 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc3}\\b`);
   return cities.find((c) => norm3(c.name) === t) || cities.find((c) => rx.test(norm3(c.name))) || cities.find((c) => norm3(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -18486,11 +18486,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc2 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc3 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc2(k)}\\b`).test(t) || new RegExp(`\\b${esc2(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc3(k)}\\b`).test(t) || new RegExp(`\\b${esc3(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -20874,7 +20874,7 @@ var init_uberGoProducts = __esm({
 // server/workers/verticals/cab.ts
 async function rapidoLiveFaresSafe(ctx, rt, city) {
   try {
-    const [pa, pb] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    const [pa, pb] = await Promise.all([geocodePudo(rt.from, city), geocodePudo(rt.to, city)]);
     if (!pa?.lat || !pb?.lat || pa?.lon == null || pb?.lon == null) return [];
     const outcome = await rapidoGuestFares(
       { lat: pa.lat, lng: pa.lon, label: rt.from },
@@ -20899,6 +20899,26 @@ function routeFromQuery2(raw) {
   const m = cleaned.match(/(.{2,40}?)\s+(?:to|→)\s+(.{2,40})/);
   if (!m) return null;
   return { from: m[1].trim(), to: m[2].trim() };
+}
+function ctxCity(ctx) {
+  const c = String(ctx?.query?.location?.city || "").trim();
+  return c || void 0;
+}
+async function geocodePudo(name, city) {
+  const clean3 = String(name || "").trim();
+  if (!clean3) return null;
+  if (city && !clean3.toLowerCase().includes(city.toLowerCase())) {
+    const biased = await photonGeocode(`${clean3}, ${city}`);
+    if (biased) return biased;
+  }
+  return geocodePlace(clean3);
+}
+function cabRoute(ctx) {
+  const p = ctx?.query?.pudo;
+  const f = String(p?.from || "").trim().slice(0, 120);
+  const t2 = String(p?.to || "").trim().slice(0, 120);
+  if (f && t2) return { from: f, to: t2 };
+  return routeFromQuery2(String(ctx?.query?.rawQuery || ""));
 }
 async function uberBearerToken(appId, appSecret) {
   if (_uberTokenCache && Date.now() < _uberTokenCache.expiresAt) return _uberTokenCache.token;
@@ -20975,7 +20995,8 @@ async function uberPudoPlace(bias, query, type) {
 }
 async function uberGoFlowSafe(ctx, rt) {
   try {
-    const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+    const city = ctxCity(ctx);
+    const [a, b] = await Promise.all([geocodePudo(rt.from, city), geocodePudo(rt.to, city)]);
     if (!a || !b) return [];
     const [pu, dr] = await Promise.all([uberPudoPlace(a, rt.from, "PICKUP"), uberPudoPlace(b, rt.to, "DROPOFF")]);
     const pickup = pu ?? { lat: a.lat, lng: a.lon, name: rt.from.slice(0, 120) };
@@ -21194,7 +21215,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
   if (!city) {
     throw new AcquisitionError("EMPTY_RESPONSE", `Ola fare unavailable (${reason}); "${rt.from}" is not an Ola operating city in Ola's own BPD registry (${cities.length} IN cities).`);
   }
-  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePlace(rt.from), geocodePlace(rt.to)]);
+  const [cards, a, b] = await Promise.all([olaRateCards(city.id, city.timezone), geocodePudo(rt.from, city.name), geocodePudo(rt.to, city.name)]);
   if (!a || !b) return [];
   const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15e3, headers: { Accept: "application/json" } });
   if (osrm.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OSRM HTTP ${osrm.status}`, osrm.status);
@@ -21311,10 +21332,11 @@ var init_cab = __esm({
           timeoutMs: 4e4,
           run: async (ctx) => {
             const key = String(process.env.OLA_API_KEY || "").trim();
-            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            const rt = cabRoute(ctx);
             if (!rt) return [];
             if (!key) return olaRateCardFallback(ctx, rt, "OLA_API_KEY not configured in hPanel env");
-            const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+            const city = ctxCity(ctx);
+            const [a, b] = await Promise.all([geocodePudo(rt.from, city), geocodePudo(rt.to, city)]);
             if (!a || !b) return [];
             const url = `https://devapi.olacabs.com/v1/products?pickup_lat=${a.lat}&pickup_lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}&category=sedan&response_type=json`;
             const r = await cffiFetch(url, { timeoutMs: 18e3, headers: { "X-APP-TOKEN": key, Accept: "application/json" } });
@@ -21370,7 +21392,7 @@ var init_cab = __esm({
           maxPerMinute: 10,
           timeoutMs: 4e4,
           run: async (ctx) => {
-            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            const rt = cabRoute(ctx);
             if (!rt) return [];
             let authHeaders = null;
             const appId = String(process.env.UBER_APPLICATION_ID || "").trim();
@@ -21383,7 +21405,7 @@ var init_cab = __esm({
             if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
             const noCredsPath = async (why) => uberSsrFallback(ctx, rt, why, await uberGoFlowSafe(ctx, rt));
             if (!authHeaders) return noCredsPath("official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)");
-            const [a, b] = await Promise.all([geocodePlace(rt.from), geocodePlace(rt.to)]);
+            const [a, b] = await Promise.all([geocodePudo(rt.from, ctxCity(ctx)), geocodePudo(rt.to, ctxCity(ctx))]);
             if (!a || !b) return [];
             const apiHost = String(process.env.UBER_API_HOST || "api.uber.com").trim() || "api.uber.com";
             const url = `https://${apiHost}/v1.2/estimates/price?start_latitude=${a.lat}&start_longitude=${a.lon}&end_latitude=${b.lat}&end_longitude=${b.lon}`;
@@ -21461,7 +21483,7 @@ var init_cab = __esm({
           name: "Cab worker: Rapido live city fares (Bike/Auto/Cab, guest fare API) + availability fallback",
           priority: 15,
           run: async (ctx) => {
-            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            const rt = cabRoute(ctx);
             if (!rt) return [];
             const fetchText = async (url) => {
               const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 15e3, headers: { Accept: "application/xml,text/xml,*/*" } });
@@ -21542,7 +21564,7 @@ var init_cab = __esm({
           maxPerMinute: 6,
           timeoutMs: 3e4,
           run: async (ctx) => {
-            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            const rt = cabRoute(ctx);
             if (!rt) return [];
             const url = `https://www.bharattaxi.com/${bharatTaxiSlug(cityFromRouteText(rt.from))}/to/${bharatTaxiSlug(cityFromRouteText(rt.to))}`;
             const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 3e4 });
@@ -21600,7 +21622,7 @@ var init_cab = __esm({
           maxPerMinute: 10,
           timeoutMs: 3e4,
           run: async (ctx) => {
-            const rt = routeFromQuery2(String(ctx.query.rawQuery || ""));
+            const rt = cabRoute(ctx);
             if (!rt) return [];
             const lookup3 = async (x) => {
               const byCity = await indriveCityLookup(cityFromRouteText(x));
@@ -29816,7 +29838,8 @@ __export(searchOrchestrator_exports, {
   busSelfHealTtl: () => busSelfHealTtl,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
-  runSearchPolled: () => runSearchPolled
+  runSearchPolled: () => runSearchPolled,
+  thinResultTtl: () => thinResultTtl
 });
 function parseCatalogueAttributes(raw) {
   if (!raw) return {};
@@ -29889,6 +29912,12 @@ function busSelfHealTtl(vertical, response, ttlSec, staleSec) {
     const wasAttempted = attempted.some((x) => String(x).includes(seller));
     if (wasAttempted && !sellers.includes(seller)) return { ttlSec: 120, staleSec: 240 };
   }
+  return { ttlSec, staleSec };
+}
+function thinResultTtl(response, ttlSec, staleSec) {
+  const n = response.results?.length || 0;
+  const succeeded = (response.state?.sourcesSucceeded || []).length;
+  if (n <= 2 && succeeded >= 5) return { ttlSec: 120, staleSec: 240 };
   return { ttlSec, staleSec };
 }
 async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
@@ -30015,6 +30044,7 @@ async function runSearch(input) {
     lng: input.lng
   });
   if (input.vertical) parsed.vertical = input.vertical;
+  if (input.from?.trim() && input.to?.trim()) parsed.pudo = { from: input.from.trim().slice(0, 120), to: input.to.trim().slice(0, 120) };
   if (input.travelDates?.depart) parsed.travelDates = { ...parsed.travelDates, depart: input.travelDates.depart, ...input.travelDates.return ? { return: input.travelDates.return } : {} };
   if (input.guests) parsed.parties = { ...parsed.parties, guests: input.guests };
   if (input.locality) parsed.location = { ...parsed.location, locality: input.locality };
@@ -30087,7 +30117,8 @@ async function runSearch(input) {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
         if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
         else {
-          const bt = busSelfHealTtl(vertical, response, t, st);
+          const bs = busSelfHealTtl(vertical, response, t, st);
+          const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
           cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
         }
         return response;
@@ -30122,7 +30153,8 @@ async function runSearch(input) {
     if (response.results.length === 0) {
       cachePut(cacheKey, response, 45, 45);
     } else {
-      const bt = busSelfHealTtl(vertical, response, ttlSec, staleSec);
+      const bs = busSelfHealTtl(vertical, response, ttlSec, staleSec);
+      const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
       cachePut(cacheKey, response, bt.ttlSec, bt.staleSec);
     }
     return response;
@@ -35110,7 +35142,7 @@ async function buildTopPicksList() {
   try {
     const { listTopPicks: listTopPicks2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
     const { itemFromOffer: itemFromOffer2, imageFromAttributes: imageFromAttributes2, fetchVerticalOffers: fetchVerticalOffers2, pickTopOfferRow: pickTopOfferRow2, ageDays: ageDays2, logoAnswers: logoAnswers2, realMerchantDomain: realMerchantDomain2, nameDomainOf: nameDomainOf2 } = await Promise.resolve().then(() => (init_showcase(), showcase_exports));
-    const VERTICALS2 = [
+    const VERTICALS3 = [
       "ecommerce",
       "grocery",
       "food",
@@ -35147,7 +35179,7 @@ async function buildTopPicksList() {
         // admin-curated pick
       });
     }
-    for (const v of VERTICALS2) {
+    for (const v of VERTICALS3) {
       if (covered.has(v)) continue;
       const rows = await fetchVerticalOffers2(v, 300);
       const row = pickTopOfferRow2(rows);
@@ -35320,7 +35352,9 @@ var init_routes = __esm({
     init_bookmyshow();
     init_merchantCrispLogo();
     apiRouter = (0, import_express.Router)();
-    apiRouter.get("/health", async (_req, res) => {
+    apiRouter.get("/health", authMiddleware, async (req, res) => {
+      const admin = req.user?.role === "admin";
+      if (!admin) return res.json({ status: "online", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
       const store2 = getStore();
       const missing = assertProductionReadiness();
       res.json({
@@ -35333,7 +35367,7 @@ var init_routes = __esm({
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
     });
-    apiRouter.get("/health/transport", async (_req, res) => {
+    apiRouter.get("/health/transport", authMiddleware, requireAdmin, async (_req, res) => {
       try {
         res.json({ ok: true, ...await pythonDiagnostics() });
       } catch (e) {
@@ -35596,7 +35630,7 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: "showcase_unavailable" });
       }
     });
-    apiRouter.get("/sources/recovery-log", async (_req, res) => {
+    apiRouter.get("/sources/recovery-log", authMiddleware, requireAdmin, async (_req, res) => {
       try {
         const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
         const rows = await getStore3().query(
@@ -35608,7 +35642,7 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 120) });
       }
     });
-    apiRouter.get("/status", (_req, res) => {
+    apiRouter.get("/status", authMiddleware, requireAdmin, (_req, res) => {
       res.json({
         success: true,
         sources: sourcesStatusReport(),
@@ -35642,7 +35676,9 @@ var init_routes = __esm({
           depart: String(req.body.travelDates.depart || "").slice(0, 10) || void 0,
           return: String(req.body.travelDates.return || "").slice(0, 10) || void 0
         } : void 0,
-        guests: Number(req.body.guests) || void 0
+        guests: Number(req.body.guests) || void 0,
+        from: String(req.body.from || "").slice(0, 120) || void 0,
+        to: String(req.body.to || "").slice(0, 120) || void 0
       };
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
@@ -35693,7 +35729,9 @@ var init_routes = __esm({
         guests: Number(req.body.guests) || void 0,
         // Exact map pin (MapPinPicker, 17 Oct): the engine gets the precise point, not just the city.
         lat: typeof req.body.coordinates?.lat === "number" ? req.body.coordinates.lat : void 0,
-        lng: typeof req.body.coordinates?.lng === "number" ? req.body.coordinates.lng : void 0
+        lng: typeof req.body.coordinates?.lng === "number" ? req.body.coordinates.lng : void 0,
+        from: String(req.body.from || "").slice(0, 120) || void 0,
+        to: String(req.body.to || "").slice(0, 120) || void 0
       };
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
@@ -36345,7 +36383,7 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e?.message || "Could not load quick apps" });
       }
     });
-    apiRouter.get("/provenance", async (_req, res) => {
+    apiRouter.get("/provenance", authMiddleware, requireAdmin, async (_req, res) => {
       try {
         const rows = await getStore().query(
           `SELECT offer_id, source_id, source_method, source_url, fetched_at, extracted_fields, evidence_hash
@@ -36818,12 +36856,12 @@ function parseMyx(html) {
   const start2 = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start2) return null;
   const from = start2.index + start2[0].length - 1;
-  let depth = 0, inStr = false, esc2 = false, end = -1;
+  let depth = 0, inStr = false, esc3 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc2) esc2 = false;
-      else if (ch === "\\") esc2 = true;
+      if (esc3) esc3 = false;
+      else if (ch === "\\") esc3 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -40114,6 +40152,929 @@ var init_loopWatchdog = __esm({
   }
 });
 
+// server/seo/data.ts
+function verticalBySlug(slug2) {
+  return VERTICALS2.find((v) => v.slug === slug2.replace(/\/$/, ""));
+}
+function routeSlug(a, b, noun) {
+  return `${a}-to-${b}-${noun}`;
+}
+function listSeoPaths() {
+  const paths = ["/", "/about", "/privacy"];
+  for (const v of VERTICALS2) {
+    paths.push(`/${v.slug}`);
+    if (v.id === "hotels" || v.id === "grocery" || v.id === "food" || v.id === "movie" || v.id === "cab") {
+      for (const c of CITIES) paths.push(`/${v.slug}/${c.slug}`);
+    }
+    if (v.id === "ecommerce") for (const c of ECOM_CATS) paths.push(`/${v.slug}/${c.slug}`);
+    if (v.id === "loans") for (const t of LOAN_TYPES) paths.push(`/${v.slug}/${t.slug}`);
+    if (v.id === "insurance") for (const t of INSURANCE_TYPES) paths.push(`/${v.slug}/${t.slug}`);
+    if (v.id === "creditcards") for (const t of CARD_TYPES) paths.push(`/${v.slug}/${t.slug}`);
+    if (v.id === "banking") for (const t of BANKING_TYPES) paths.push(`/${v.slug}/${t.slug}`);
+  }
+  for (const [a, b] of FLIGHT_ROUTES) paths.push(`/flights/${routeSlug(a, b, "flights")}`);
+  for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
+  return [...new Set(paths)];
+}
+function resolveAppRoute(path14) {
+  const seg = path14.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (seg.length === 0) return null;
+  const head = seg[0];
+  const tail = seg[1];
+  const vmap = {
+    flights: "flights",
+    hotels: "hotels",
+    bus: "bus",
+    ecommerce: "ecommerce",
+    grocery: "grocery",
+    food: "food",
+    movies: "movie",
+    loans: "loans",
+    insurance: "insurance",
+    cabs: "cab",
+    "credit-cards": "creditcards",
+    "bank-accounts": "account",
+    banking: "banking"
+  };
+  const vid = vmap[head];
+  if (!vid) return null;
+  if (!tail) return { vertical: vid };
+  if (head === "flights" || head === "bus") {
+    const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-(flights|bus)$/.exec(tail);
+    if (m) {
+      const A = m[1].replace(/-/g, " "), B = m[2].replace(/-/g, " ");
+      const pretty = (x) => titleCase(x);
+      if (head === "flights") {
+        const aI = IATA2[m[1]] ? ` (${IATA2[m[1]]})` : "";
+        const bI = IATA2[m[2]] ? ` (${IATA2[m[2]]})` : "";
+        return { vertical: "flights", query: `${pretty(A)}${aI} to ${pretty(B)}${bI}` };
+      }
+      return { vertical: "bus", query: `${pretty(A)} to ${pretty(B)}` };
+    }
+    return { vertical: vid };
+  }
+  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head)) {
+    return { vertical: vid, query: cityName(tail) };
+  }
+  const table = {
+    ecommerce: ECOM_CATS,
+    loans: LOAN_TYPES,
+    insurance: INSURANCE_TYPES,
+    "credit-cards": CARD_TYPES,
+    banking: BANKING_TYPES
+  };
+  if (table[head]) {
+    const t = table[head].find((x) => x.slug === tail);
+    if (t) return { vertical: vid, query: t.query };
+    return { vertical: vid };
+  }
+  return { vertical: vid };
+}
+function resolveSeoPage(path14) {
+  const clean3 = path14.split("?")[0].replace(/\/+$/, "") || "/";
+  if (clean3 === "/about" || clean3 === "/privacy") {
+    const isAbout = clean3 === "/about";
+    return {
+      path: clean3,
+      title: isAbout ? "About Us \u2014 Try1Second" : "Privacy Policy \u2014 Try1Second",
+      description: isAbout ? "Try1Second is an independent Indian metasearch engine comparing live prices across 13 verticals \u2014 travel, shopping, everyday and finance." : "How Try1Second collects, uses and protects your data: account info, search and location data, cookies, advertising and your rights.",
+      h1: isAbout ? "About Try1Second" : "Privacy Policy",
+      intro: [isAbout ? "Try1Second compares live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking \u2014 ranked lowest first, never sponsored." : "This policy explains what Try1Second collects (account, search, location and technical data), why, and the rights you have over it."],
+      faqs: isAbout ? [
+        { q: "What is Try1Second?", a: "An independent metasearch engine: one search asks every provider for its live price at the same moment and ranks the results lowest first." },
+        { q: "Is Try1Second free?", a: "Yes. Comparison is free; we earn from labelled advertising and affiliate commissions, never by selling your data." }
+      ] : [
+        { q: "What data does Try1Second collect?", a: "Account info when you sign in with Google, your search queries, approximate location for local searches, and basic technical data to keep the service fast and safe." },
+        { q: "How do I delete my data?", a: "Email info@try1second.com and we will delete your account and associated data within a reasonable period." }
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: isAbout ? "About" : "Privacy", path: clean3 }],
+      links: [{ label: isAbout ? "Privacy Policy" : "About Us", href: isAbout ? "/privacy" : "/about" }]
+    };
+  }
+  const app = resolveAppRoute(clean3);
+  if (clean3 !== "/" && !app) return null;
+  if (clean3 === "/") {
+    return {
+      path: "/",
+      title: "Try1Second \u2014 Compare Flights, Hotels, Cabs, Groceries & Loans in One Second",
+      description: "India\u2019s one-second price comparison across flights, hotels, cabs, groceries, loans and more. NRIs book India flights from Dubai, USA, UK or Singapore at the same INR fares.",
+      h1: "Compare Anything. One Second Is All It Takes.",
+      intro: [
+        "Try1Second is an independent metasearch engine: one search, and we ask airlines, stores, banks, insurers and cab apps for their live price at the same moment \u2014 then rank them lowest first.",
+        "No aggregator middlemen, no sponsored rankings. Every row is a real offer from a real seller with a direct link to book or buy where the price actually is.",
+        "Booking from abroad? NRIs in Dubai, the USA, UK, Singapore and the Gulf get the same live INR fares \u2014 compare here, then pay on the airline or travel site in your country of residence."
+      ],
+      faqs: [
+        { q: "What is Try1Second?", a: "A metasearch engine that compares live prices across 13 verticals \u2014 flights, hotels, bus, ecommerce, grocery, food delivery, movies, loans, insurance, cabs, credit cards, bank accounts and banking products." },
+        { q: "Is it free to use?", a: "Yes, comparison is completely free. We earn from ads and affiliate commissions from sellers \u2014 never by selling your data." },
+        { q: "How fast is a comparison?", a: "The first live rows arrive in about a second, and the scan keeps enriching results in the background while you look." },
+        { q: "Can NRIs book flights to and within India from abroad?", a: "Yes. Compare live INR fares from anywhere in the world, then complete payment on the airline or OTA checkout in your country \u2014 the same fare, no India-only restrictions." },
+        { q: "Is Try1Second available outside India?", a: "Yes. Anyone can compare prices on try1second.com from any country; flight, hotel and finance comparisons show the same live India prices in INR." }
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }],
+      links: VERTICALS2.map((v) => ({ label: v.label, href: `/${v.slug}` }))
+    };
+  }
+  const seg = clean3.split("/").filter(Boolean);
+  const head = seg[0];
+  const tail = seg[1];
+  const meta = verticalBySlug(head);
+  if (!meta) return null;
+  if (!tail) {
+    return {
+      path: clean3,
+      title: meta.title,
+      description: meta.description,
+      h1: meta.h1,
+      intro: meta.intro,
+      faqs: meta.faqs,
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: clean3 }],
+      links: seoLinksFor(clean3)
+    };
+  }
+  if (head === "flights" && /-to-.*-flights$/.test(tail)) {
+    const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-flights$/.exec(tail);
+    const A = cityName(m[1]), B = cityName(m[2]);
+    const aI = IATA2[m[1]], bI = IATA2[m[2]];
+    const routeName = `${A} to ${B}`;
+    const codeSuffix = aI && bI ? ` (${aI}\u2013${bI})` : "";
+    return {
+      path: clean3,
+      title: `${A} to ${B} Flights \u2014 Compare Live Airfares${codeSuffix} | Try1Second`,
+      description: `Compare live ${A} to ${B} flight fares across 16+ airlines and OTAs. Every ${routeName} airfare ranked lowest first, direct booking links included.`,
+      h1: `${A} to ${B} Flights \u2014 Live Fare Comparison`,
+      intro: [
+        `This page compares live airfares for the ${routeName} route. One search asks airlines and travel sites together, and every fare lands in one ranked list \u2014 cheapest first.`,
+        `Fares on ${routeName} change through the day and differ between airlines and OTAs. We show the live price each source reports right now, with a direct link to book on that seller.`
+      ],
+      faqs: [
+        { q: `How do I find the cheapest ${A} to ${B} flight?`, a: `Run the comparison on this page: we query airlines and OTAs live for ${routeName} and rank every returned fare lowest first. Pick the top verified row.` },
+        { q: `Are ${A} to ${B} fares shown live?`, a: `Yes. Each fare is fetched live from the seller at scan time. Re-run the search before booking to see the very latest price.` },
+        { q: "Do you add any booking fee?", a: "No. You book on the airline or OTA site at their price \u2014 Try1Second only finds and ranks the fares." },
+        { q: `Can I book ${A} to ${B} flights from outside India?`, a: `Yes. NRIs and travellers in Dubai, Singapore, London, New York and the Gulf see the same live INR fares for ${routeName} and pay on the airline or OTA checkout from any country.` }
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Flights", path: "/flights" }, { name: `${A} to ${B}`, path: clean3 }],
+      links: [
+        { label: "All flight routes", href: "/flights" },
+        ...FLIGHT_ROUTES.filter(([a, b]) => a === m[1] || b === m[2]).slice(0, 5).map(([a, b]) => ({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, "flights")}` })),
+        { label: `${A} hotels`, href: `/hotels/${m[1]}` },
+        { label: `${A} cabs`, href: `/cabs/${m[1]}` }
+      ]
+    };
+  }
+  if (head === "bus" && /-to-.*-bus$/.test(tail)) {
+    const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-bus$/.exec(tail);
+    const A = cityName(m[1]), B = cityName(m[2]);
+    return {
+      path: clean3,
+      title: `${A} to ${B} Bus Tickets \u2014 Compare Live Fares & Operators | Try1Second`,
+      description: `Compare live ${A} to ${B} bus fares across redBus, zingbus, AbhiBus and state carriers. Every operator and price on one screen, cheapest seat first.`,
+      h1: `${A} to ${B} Bus \u2014 Fare and Operator Comparison`,
+      intro: [
+        `One search compares every bus operator running the ${A} to ${B} route \u2014 private carriers and state RTCs together, fares lowest first.`,
+        `Filter by operator, departure window and price, then book on the platform with the genuine lowest fare. No single seller decides what you see.`
+      ],
+      faqs: [
+        { q: `Which operators run ${A} to ${B} buses?`, a: `The comparison on this page lists every operator our sources return live for the route \u2014 typically private carriers plus state road transport buses.` },
+        { q: "Are bus fares live?", a: "Fares are fetched live at search time from the booking platforms we query. Confirm the final fare on the booking page." }
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Bus", path: "/bus" }, { name: `${A} to ${B}`, path: clean3 }],
+      links: [
+        { label: "All bus routes", href: "/bus" },
+        { label: `${A} to ${B} flights`, href: `/flights/${routeSlug(m[1], m[2], "flights")}` },
+        { label: `${B} hotels`, href: `/hotels/${m[2]}` },
+        { label: `${A} cabs`, href: `/cabs/${m[1]}` }
+      ]
+    };
+  }
+  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head)) {
+    const c = cityName(tail);
+    const vmeta = meta;
+    const nounMap = {
+      hotels: "hotel rates",
+      cabs: "cab fares",
+      grocery: "grocery prices",
+      food: "food delivery prices",
+      movies: "movie ticket prices"
+    };
+    const noun = nounMap[head] || vmeta.label.toLowerCase();
+    const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
+    return {
+      path: clean3,
+      title: `${vmeta.label} in ${c} \u2014 Compare Live Prices | Try1Second`,
+      description: `Compare live ${noun} in ${c} across every major provider in one second. All of ${c}\u2019s prices side by side, lowest first.`,
+      h1: `${vmeta.label} in ${c} \u2014 Live Price Comparison`,
+      intro: [
+        `This page compares live ${noun} for ${c}. One search asks every major provider serving the city at once, and the results land in a single lowest-first list.`,
+        `Prices in ${c} move hour to hour. We show what each source reports right now with direct links, so the deal you see is the deal you get.`,
+        `${cityList()} and 30+ other cities are covered the same way \u2014 change city anytime from inside the app.`
+      ],
+      faqs: [
+        { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time \u2014 no stale listings, no manual uploads.` },
+        { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head}` }, { name: c, path: clean3 }],
+      links: [
+        { label: `${vmeta.label} home`, href: `/${head}` },
+        ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head}/${x.slug}` })),
+        ...head === "hotels" ? [{ label: `${c} flights search`, href: "/flights" }] : []
+      ]
+    };
+  }
+  const table = {
+    ecommerce: ECOM_CATS,
+    loans: LOAN_TYPES,
+    insurance: INSURANCE_TYPES,
+    "credit-cards": CARD_TYPES,
+    banking: BANKING_TYPES
+  };
+  if (table[head]) {
+    const t = table[head].find((x) => x.slug === tail);
+    if (!t) return null;
+    const label = t.label;
+    const isEcom = head === "ecommerce";
+    return {
+      path: clean3,
+      title: isEcom ? `Compare ${label} Prices Across Amazon, Flipkart & More | Try1Second` : `Compare ${label} \u2014 Live Rates & Offers Across India | Try1Second`,
+      description: isEcom ? `Compare live ${label.toLowerCase()} prices across Amazon, Flipkart, Myntra and more in one second. Every store\u2019s price for the same product, lowest first.` : `Compare live ${label.toLowerCase()} rates and offers across Indian providers in one second. Real numbers, ranked, with direct apply links.`,
+      h1: isEcom ? `${label} Price Comparison \u2014 Every Store, One List` : `${label} Comparison \u2014 Live Rates Side by Side`,
+      intro: isEcom ? [
+        `Every store prices the same ${label.toLowerCase().replace(/s$/, "")} differently. This page compares live listings across India\u2019s biggest online stores and ranks them lowest first.`,
+        `Each row is a real, current listing with a direct product link \u2014 verify the deal in one tap and buy on the store you already trust.`
+      ] : [
+        `${label} rates and terms differ provider to provider and change often. This page compares current published offers live and ranks the best first.`,
+        `Compare the real numbers here, then apply on the provider\u2019s own page. Your details go to the provider \u2014 never to a broker.`
+      ],
+      faqs: [
+        { q: `How fresh are the ${label.toLowerCase()} results?`, a: "Every number is scanned live from provider sources at search time \u2014 the page never shows stale manual listings." },
+        { q: "Is this comparison free?", a: "Yes. Comparison is always free; we may earn a commission when you complete a purchase or application on the provider\u2019s site." }
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head}` }, { name: label, path: clean3 }],
+      links: [
+        { label: `${meta.label} home`, href: `/${head}` },
+        ...table[head].filter((x) => x.slug !== tail).slice(0, 6).map((x) => ({ label: x.label, href: `/${head}/${x.slug}` }))
+      ]
+    };
+  }
+  return null;
+}
+function seoLinksFor(verticalPath) {
+  const head = verticalPath.split("/").filter(Boolean)[0];
+  const links = [];
+  if (head === "flights") {
+    for (const [a, b] of FLIGHT_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, "flights")}` });
+  } else if (head === "bus") {
+    for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, "bus")}` });
+  } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head)) {
+    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head}/${c.slug}` });
+  }
+  return links;
+}
+var SEO_HOST, CITIES, IATA2, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList;
+var init_data = __esm({
+  "server/seo/data.ts"() {
+    SEO_HOST = "https://www.try1second.com";
+    CITIES = [
+      { slug: "mumbai", name: "Mumbai" },
+      { slug: "delhi", name: "Delhi" },
+      { slug: "bengaluru", name: "Bengaluru" },
+      { slug: "hyderabad", name: "Hyderabad" },
+      { slug: "chennai", name: "Chennai" },
+      { slug: "kolkata", name: "Kolkata" },
+      { slug: "pune", name: "Pune" },
+      { slug: "ahmedabad", name: "Ahmedabad" },
+      { slug: "jaipur", name: "Jaipur" },
+      { slug: "lucknow", name: "Lucknow" },
+      { slug: "indore", name: "Indore" },
+      { slug: "bhopal", name: "Bhopal" },
+      { slug: "nagpur", name: "Nagpur" },
+      { slug: "patna", name: "Patna" },
+      { slug: "surat", name: "Surat" },
+      { slug: "vadodara", name: "Vadodara" },
+      { slug: "gurugram", name: "Gurugram" },
+      { slug: "noida", name: "Noida" },
+      { slug: "kochi", name: "Kochi" },
+      { slug: "coimbatore", name: "Coimbatore" },
+      { slug: "vijayawada", name: "Vijayawada" },
+      { slug: "visakhapatnam", name: "Visakhapatnam" },
+      { slug: "guwahati", name: "Guwahati" },
+      { slug: "chandigarh", name: "Chandigarh" },
+      { slug: "dehradun", name: "Dehradun" },
+      { slug: "ludhiana", name: "Ludhiana" },
+      { slug: "agra", name: "Agra" },
+      { slug: "varanasi", name: "Varanasi" },
+      { slug: "kanpur", name: "Kanpur" },
+      { slug: "ranchi", name: "Ranchi" },
+      { slug: "nashik", name: "Nashik" },
+      { slug: "rajkot", name: "Rajkot" },
+      { slug: "jabalpur", name: "Jabalpur" },
+      { slug: "amritsar", name: "Amritsar" },
+      { slug: "udaipur", name: "Udaipur" },
+      { slug: "jodhpur", name: "Jodhpur" },
+      { slug: "goa", name: "Goa" },
+      { slug: "shimla", name: "Shimla" }
+    ];
+    IATA2 = {
+      mumbai: "BOM",
+      delhi: "DEL",
+      bengaluru: "BLR",
+      hyderabad: "HYD",
+      chennai: "MAA",
+      kolkata: "CCU",
+      pune: "PNQ",
+      ahmedabad: "AMD",
+      jaipur: "JAI",
+      lucknow: "LKO",
+      indore: "IDR",
+      bhopal: "BHO",
+      nagpur: "NAG",
+      patna: "PAT",
+      surat: "STV",
+      vadodara: "BDQ",
+      gurugram: "DEL",
+      noida: "DEL",
+      kochi: "COK",
+      coimbatore: "CJB",
+      vijayawada: "VGA",
+      visakhapatnam: "VTZ",
+      guwahati: "GAU",
+      chandigarh: "IXC",
+      dehradun: "DED",
+      ludhiana: "LUH",
+      agra: "AGR",
+      varanasi: "VNS",
+      kanpur: "KNU",
+      ranchi: "IXR",
+      nashik: "ISK",
+      rajkot: "RAJ",
+      jabalpur: "JLR",
+      amritsar: "ATQ",
+      udaipur: "UDR",
+      jodhpur: "JDH",
+      goa: "GOI",
+      shimla: "SLV"
+    };
+    FLIGHT_ROUTES = [
+      ["delhi", "mumbai"],
+      ["delhi", "bengaluru"],
+      ["mumbai", "bengaluru"],
+      ["delhi", "goa"],
+      ["mumbai", "goa"],
+      ["delhi", "hyderabad"],
+      ["delhi", "chennai"],
+      ["mumbai", "delhi"],
+      ["bengaluru", "hyderabad"],
+      ["delhi", "kolkata"],
+      ["mumbai", "kolkata"],
+      ["bengaluru", "chennai"],
+      ["delhi", "pune"],
+      ["mumbai", "hyderabad"],
+      ["chennai", "hyderabad"],
+      ["delhi", "srinagar"],
+      ["mumbai", "jaipur"],
+      ["delhi", "jaipur"],
+      ["bengaluru", "kolkata"],
+      ["pune", "delhi"],
+      ["indore", "delhi"],
+      ["indore", "mumbai"],
+      ["delhi", "indore"],
+      ["bhopal", "delhi"],
+      ["jaipur", "mumbai"],
+      ["kochi", "delhi"],
+      ["guwahati", "delhi"],
+      ["patna", "delhi"],
+      ["varanasi", "delhi"],
+      ["lucknow", "delhi"],
+      ["chandigarh", "delhi"],
+      ["nagpur", "delhi"],
+      ["surat", "delhi"],
+      ["amritsar", "delhi"],
+      ["ranchi", "delhi"],
+      ["dehradun", "delhi"],
+      ["udaipur", "delhi"],
+      ["vadodara", "delhi"],
+      ["coimbatore", "delhi"],
+      ["visakhapatnam", "delhi"]
+    ];
+    BUS_ROUTES = [
+      ["delhi", "jaipur"],
+      ["delhi", "agra"],
+      ["delhi", "lucknow"],
+      ["delhi", "chandigarh"],
+      ["delhi", "dehradun"],
+      ["delhi", "varanasi"],
+      ["mumbai", "pune"],
+      ["mumbai", "goa"],
+      ["mumbai", "surat"],
+      ["mumbai", "ahmedabad"],
+      ["bengaluru", "hyderabad"],
+      ["bengaluru", "chennai"],
+      ["bengaluru", "mangaluru"],
+      ["bengaluru", "coimbatore"],
+      ["chennai", "coimbatore"],
+      ["chennai", "madurai"],
+      ["chennai", "bengaluru"],
+      ["hyderabad", "vijayawada"],
+      ["hyderabad", "nagpur"],
+      ["pune", "nagpur"],
+      ["indore", "bhopal"],
+      ["indore", "ujjain"],
+      ["bhopal", "jabalpur"],
+      ["jaipur", "udaipur"],
+      ["ahmedabad", "udaipur"],
+      ["ahmedabad", "mumbai"],
+      ["kolkata", "puri"],
+      ["patna", "ranchi"],
+      ["lucknow", "kanpur"],
+      ["surat", "vadodara"],
+      ["amritsar", "chandigarh"],
+      ["delhi", "haridwar"]
+    ];
+    VERTICALS2 = [
+      {
+        id: "flights",
+        slug: "flights",
+        label: "Flights",
+        title: "Compare Flight Prices Live in India \u2014 Cheapest Airfare Scanner | Try1Second",
+        description: "Scan 16+ airline and OTA fares side by side in one second. Compare IndiGo, Akasa, Air India, Vistara and travel-site prices live, then book on the seller you trust.",
+        h1: "Flight Price Comparison \u2014 Live Fares Across Airlines and Travel Sites",
+        intro: [
+          "Try1Second scans airlines and online travel agencies at the same time and lines every fare up in one list, so the cheapest flight is never buried on page four of an OTA.",
+          "Every result is a live price from a real seller with a direct booking link. No dark patterns, no fake discounts \u2014 just the lowest verified fare we can find in one second."
+        ],
+        faqs: [
+          { q: "How does Try1Second find cheap flights?", a: "We query airlines and travel sites in parallel for your exact route and date, then rank every returned fare lowest-first. Each row links straight to the seller." },
+          { q: "Can I book this flight from outside India?", a: "Yes. NRIs and travellers in Dubai, Singapore, London, New York and the Gulf compare the same live INR fares here and pay on the airline or OTA checkout from any country." },
+          { q: "Is Try1Second a travel agent?", a: "No. We are an independent metasearch engine. We show you live fares and send you to the airline or OTA to book \u2014 we never resell tickets." },
+          { q: "Are the flight prices live or cached?", a: "Prices are fetched live from each source on every search. A completed scan shows exact fares at scan time; re-run the search before booking to confirm." }
+        ]
+      },
+      {
+        id: "hotels",
+        slug: "hotels",
+        label: "Hotels",
+        title: "Compare Hotel Prices \u2014 Live Rates Across Booking Sites | Try1Second",
+        description: "One-second hotel price comparison across top booking sites for your city and dates. See live rates side by side and book on the site with the real lowest price.",
+        h1: "Hotel Price Comparison \u2014 Live Rates Across Booking Sites",
+        intro: [
+          "The same hotel room can cost very different amounts on different booking sites. Try1Second checks them together and shows you the live rate from each, lowest first.",
+          'Pick your city and dates, and the scanner returns real, current rates with direct links to book \u2014 no inflated "discounts" from a single seller.'
+        ],
+        faqs: [
+          { q: "Does Try1Second book hotel rooms?", a: "No \u2014 we compare live rates across booking sites and link you to the one with the best price. Booking happens on the seller site you choose." },
+          { q: "How current are the hotel rates?", a: "Rates are pulled live at search time from each booking site for your chosen city and stay dates." }
+        ]
+      },
+      {
+        id: "bus",
+        slug: "bus",
+        label: "Bus",
+        title: "Compare Bus Tickets \u2014 Live Fares Across redBus, zingbus & More | Try1Second",
+        description: "Compare live bus fares and operators across redBus, zingbus, AbhiBus and more state carriers in one scan. Filter by operator, timing and price, then book direct.",
+        h1: "Bus Ticket Price Comparison \u2014 Live Fares, All Operators",
+        intro: [
+          "Bus fares for the same route vary wildly between operators and booking platforms. Try1Second queries them together so you see every live option on one screen.",
+          "Filter by operator, departure time and price, then jump straight to the booking page. Works for state RTCs and private operators alike."
+        ],
+        faqs: [
+          { q: "Which bus booking sites do you compare?", a: "redBus, zingbus, AbhiBus and more, including state road transport corporation results where available for your route." },
+          { q: "Do you charge a booking fee?", a: "Never. Comparison is free; you book on the operator or platform site at their normal price." }
+        ]
+      },
+      {
+        id: "ecommerce",
+        slug: "ecommerce",
+        label: "Online Shopping",
+        title: "Compare Product Prices \u2014 Amazon, Flipkart, Myntra & More | Try1Second",
+        description: "Compare live product prices across Amazon, Flipkart, Myntra, Meesho and more Indian stores in one second. One product, every price, lowest first.",
+        h1: "Product Price Comparison Across India\u2019s Biggest Online Stores",
+        intro: [
+          "Search any product and Try1Second asks Amazon, Flipkart, Myntra and other major stores for its current price at the same moment \u2014 then ranks them lowest first.",
+          "Every row is a real listing from a real store with a direct product link, so you can verify the deal in one tap before buying."
+        ],
+        faqs: [
+          { q: "Is Try1Second a shopping site?", a: "No \u2014 we are a price comparison engine. We show live listings from Indian ecommerce stores and link you to the store to buy." },
+          { q: "Why is a price sometimes different on the store site?", a: "Prices change constantly. We show the live price at scan time; the store page always has the final word at checkout." }
+        ]
+      },
+      {
+        id: "grocery",
+        slug: "grocery",
+        label: "10-Minute Grocery",
+        title: "Compare Quick-Commerce Grocery Prices \u2014 Blinkit, Zepto & More | Try1Second",
+        description: "One-second grocery price comparison across quick-commerce and supermarket apps for your pincode. Same cart, every store, lowest total first.",
+        h1: "Grocery Price Comparison \u2014 Quick Commerce vs Supermarkets",
+        intro: [
+          "Blinkit, Zepto, BigBasket and supermarkets all price the same packet differently. Try1Second checks your pincode\u2019s stores together and shows each live price side by side.",
+          "Build your SmartCart and we total it across every store, so you know exactly where the full basket is cheapest \u2014 not just one headline item."
+        ],
+        faqs: [
+          { q: "Does Try1Second deliver groceries?", a: "No. We compare live prices from quick-commerce and supermarket apps for your location and send you to the app with the best price." },
+          { q: "How do you know which stores serve my area?", a: "Your city and pincode drive the scan \u2014 only sources that actually deliver to you are queried." }
+        ]
+      },
+      {
+        id: "food",
+        slug: "food",
+        label: "Food Delivery",
+        title: "Compare Food Delivery Prices \u2014 Swiggy, Zomato & More | Try1Second",
+        description: "Compare the same dish across Swiggy, Zomato and other delivery apps live. Same biryani, every app\u2019s price, fees included, lowest first.",
+        h1: "Food Delivery Price Comparison \u2014 Same Dish, Every App",
+        intro: [
+          "The same dish from the same restaurant can cost differently on Swiggy and Zomato. Try1Second shows both live prices, plus menu prices from the restaurant itself.",
+          "Search a dish or restaurant near you and compare delivered prices in one second \u2014 then order in the app that is genuinely cheapest."
+        ],
+        faqs: [
+          { q: "Does Try1Second deliver food?", a: "No \u2014 we compare live prices across delivery apps and restaurant menus, then link you to the cheapest way to order." },
+          { q: "Are delivery fees included?", a: "We compare the prices each app reports live; final checkout totals on the app are always the source of truth." }
+        ]
+      },
+      {
+        id: "movie",
+        slug: "movies",
+        label: "Movies",
+        title: "Compare Movie Ticket Prices \u2014 BookMyShow & More | Try1Second",
+        description: "Compare live movie ticket prices across cinema booking platforms for your city. Same show, every platform\u2019s price, cheapest seat first.",
+        h1: "Movie Ticket Price Comparison \u2014 Same Show, Best Price",
+        intro: [
+          "Ticket prices for the same movie and showtime differ across booking platforms. Try1Second scans them together for your city and ranks the cheapest seat first.",
+          "See upcoming movies, compare showtime prices, and jump straight to the booking page with the best deal."
+        ],
+        faqs: [
+          { q: "Which platforms do you compare for movie tickets?", a: "Cinema booking platforms serving your city, compared live per showtime. You book on the platform you pick." },
+          { q: "Can I see upcoming releases?", a: "Yes \u2014 the movies vertical lists upcoming films with expected booking availability for your city." }
+        ]
+      },
+      {
+        id: "loans",
+        slug: "loans",
+        label: "Loans",
+        title: "Compare Loan Interest Rates \u2014 Personal, Home, Car & More | Try1Second",
+        description: "Compare live personal, home, car and education loan interest rates from Indian banks and NBFCs in one second. Real rates, lowest first, apply direct.",
+        h1: "Loan Interest Rate Comparison \u2014 Banks and NBFCs Side by Side",
+        intro: [
+          "Interest rates for the same loan type move bank to bank and week to week. Try1Second tracks live published rates from Indian banks and NBFCs and ranks them lowest first.",
+          "Pick a loan type, see the current rate table, and apply on the lender\u2019s own page. Your lead goes to the lender \u2014 never to a resale broker."
+        ],
+        faqs: [
+          { q: "Are the loan rates live?", a: "Yes \u2014 rates are the lenders\u2019 current published rates, scanned live and shown newest-first with the source link." },
+          { q: "Does Try1Second lend money?", a: "No. We are an independent comparison engine. Your application is submitted to the bank or NBFC you choose." }
+        ]
+      },
+      {
+        id: "insurance",
+        slug: "insurance",
+        label: "Insurance",
+        title: "Compare Insurance \u2014 Health, Car, Bike & Term Plans | Try1Second",
+        description: "Compare live premiums and plans across Indian insurers \u2014 health, motor, travel and term life. Real quotes, side by side, buy on the insurer\u2019s site.",
+        h1: "Insurance Comparison \u2014 Live Premiums Across Insurers",
+        intro: [
+          "Insurance premiums for the same cover vary sharply between insurers. Try1Second compares live health, car, bike, travel and term plans in one scan.",
+          "See what each insurer actually charges before you buy, then go straight to the insurer\u2019s page. We never resell your data."
+        ],
+        faqs: [
+          { q: "Is Try1Second an insurance broker?", a: "No \u2014 we compare live published plans and premiums from insurers and marketplaces. You buy directly from the insurer." },
+          { q: "How fresh are the premiums shown?", a: "Premiums are scanned live from insurer and marketplace sources at search time." }
+        ]
+      },
+      {
+        id: "cab",
+        slug: "cabs",
+        label: "Cabs",
+        title: "Compare Cab Fares \u2014 Ola, Uber, Rapido & More | Try1Second",
+        description: "Compare live cab fares for your route across Ola, Uber, Rapido and regional operators in one second. Same ride, every app\u2019s fare, cheapest first.",
+        h1: "Cab Fare Comparison \u2014 Ola, Uber, Rapido, All Apps",
+        intro: [
+          "The same ride can cost very different fares on Ola, Uber and Rapido. Try1Second estimates your route across all of them at once and shows the fare list lowest first.",
+          "Pick your pickup and drop, compare every category \u2014 bike, auto, sedan, SUV \u2014 then open the app with the best fare."
+        ],
+        faqs: [
+          { q: "How accurate are the cab fares?", a: "Fares are live estimates for your exact pickup and drop points, calculated from each app\u2019s current rate card. The app shows the final fare before you confirm." },
+          { q: "Can Try1Second book my ride?", a: "No \u2014 we compare fares and deep-link you to the winning app with your route pre-filled." }
+        ]
+      },
+      {
+        id: "creditcards",
+        slug: "credit-cards",
+        label: "Credit Cards",
+        title: "Compare Credit Cards \u2014 Fees, Rewards & Benefits Live | Try1Second",
+        description: "Compare Indian credit cards live: annual fees, reward rates, fuel and travel benefits side by side. Find the right card, apply on the bank\u2019s own site.",
+        h1: "Credit Card Comparison \u2014 Fees and Rewards Side by Side",
+        intro: [
+          "Credit card value depends on your spend pattern \u2014 fuel, travel, cashback. Try1Second compares live card terms from Indian banks side by side so you can match the card to your wallet.",
+          "No ranking is paid for. Cards are listed by how they fit what you searched, with the bank\u2019s official application link."
+        ],
+        faqs: [
+          { q: "Does Try1Second issue credit cards?", a: "No. We compare live card details from bank and card-network sources; you apply on the issuing bank\u2019s site." },
+          { q: "Are card recommendations sponsored?", a: "No \u2014 results are ranked by fit for your search, not by bank payments." }
+        ]
+      },
+      {
+        id: "account",
+        slug: "bank-accounts",
+        label: "Bank Accounts",
+        title: "Compare Savings Accounts & Bank Offers Live | Try1Second",
+        description: "Compare savings account interest rates, minimum balances and benefits across Indian banks live. Highest rate first, open on the bank\u2019s own page.",
+        h1: "Savings Account Comparison \u2014 Rates and Benefits Across Banks",
+        intro: [
+          "Savings account rates and minimum-balance rules differ widely between banks. Try1Second compares them live and ranks the best returns first.",
+          "See the rate, the fine print and the bank\u2019s own opening page \u2014 then decide with the full picture."
+        ],
+        faqs: [
+          { q: "Are the interest rates live?", a: "Yes \u2014 rates shown are the banks\u2019 current published savings rates, scanned live." },
+          { q: "Does Try1Second open accounts?", a: "No. We link you to the bank\u2019s official account-opening page." }
+        ]
+      },
+      {
+        id: "banking",
+        slug: "banking",
+        label: "Banking",
+        title: "Compare Banking Products \u2014 FDs, Deposits & More | Try1Second",
+        description: "Compare fixed deposit rates, savings rates and banking products across Indian banks live. Best returns first, straight from the bank\u2019s published rates.",
+        h1: "Banking Product Comparison \u2014 FDs, Deposits, Best Rates",
+        intro: [
+          "Fixed deposit and savings rates move often and differ bank to bank. Try1Second compares published rates across banks live, best return first.",
+          "Compare, then open on the bank\u2019s own site \u2014 your money and your data stay between you and the bank."
+        ],
+        faqs: [
+          { q: "Which banks do you compare?", a: "Major Indian banks and small-finance banks with published rates, compared live at search time." },
+          { q: "Is Try1Second affiliated with any bank?", a: "No \u2014 we are an independent comparison engine with no bank\u2019s ranking for sale." }
+        ]
+      }
+    ];
+    ECOM_CATS = [
+      { slug: "mobile-phones", label: "Mobile Phones", query: "mobile phone" },
+      { slug: "laptops", label: "Laptops", query: "laptop" },
+      { slug: "televisions", label: "Televisions", query: "television" },
+      { slug: "washing-machines", label: "Washing Machines", query: "washing machine" },
+      { slug: "refrigerators", label: "Refrigerators", query: "refrigerator" },
+      { slug: "air-conditioners", label: "Air Conditioners", query: "air conditioner" },
+      { slug: "headphones-earbuds", label: "Headphones & Earbuds", query: "wireless earbuds" },
+      { slug: "smartwatches", label: "Smartwatches", query: "smartwatch" },
+      { slug: "sports-shoes", label: "Sports Shoes", query: "sports shoes" },
+      { slug: "kitchen-appliances", label: "Kitchen Appliances", query: "kitchen appliance" },
+      { slug: "air-fryers", label: "Air Fryers", query: "air fryer" },
+      { slug: "water-purifiers", label: "Water Purifiers", query: "water purifier" },
+      { slug: "cameras", label: "Cameras", query: "camera" },
+      { slug: "power-banks", label: "Power Banks", query: "power bank" }
+    ];
+    LOAN_TYPES = [
+      { slug: "personal-loan", label: "Personal Loan", query: "personal loan" },
+      { slug: "home-loan", label: "Home Loan", query: "home loan" },
+      { slug: "car-loan", label: "Car Loan", query: "car loan" },
+      { slug: "education-loan", label: "Education Loan", query: "education loan" },
+      { slug: "gold-loan", label: "Gold Loan", query: "gold loan" },
+      { slug: "business-loan", label: "Business Loan", query: "business loan" },
+      { slug: "two-wheeler-loan", label: "Two-Wheeler Loan", query: "two wheeler loan" }
+    ];
+    INSURANCE_TYPES = [
+      { slug: "health-insurance", label: "Health Insurance", query: "health insurance" },
+      { slug: "car-insurance", label: "Car Insurance", query: "car insurance" },
+      { slug: "bike-insurance", label: "Bike Insurance", query: "bike insurance" },
+      { slug: "term-life-insurance", label: "Term Life Insurance", query: "term life insurance" },
+      { slug: "travel-insurance", label: "Travel Insurance", query: "travel insurance" },
+      { slug: "home-insurance", label: "Home Insurance", query: "home insurance" }
+    ];
+    CARD_TYPES = [
+      { slug: "best-credit-cards", label: "Best Credit Cards", query: "best credit card" },
+      { slug: "fuel-credit-cards", label: "Fuel Credit Cards", query: "fuel credit card" },
+      { slug: "travel-credit-cards", label: "Travel Credit Cards", query: "travel credit card" },
+      { slug: "cashback-credit-cards", label: "Cashback Credit Cards", query: "cashback credit card" },
+      { slug: "shopping-credit-cards", label: "Shopping Credit Cards", query: "shopping credit card" }
+    ];
+    BANKING_TYPES = [
+      { slug: "savings-account", label: "Savings Account", query: "savings account" },
+      { slug: "fixed-deposit", label: "Fixed Deposit", query: "fixed deposit" },
+      { slug: "demat-account", label: "Demat Account", query: "demat account" },
+      { slug: "current-account", label: "Current Account", query: "current account" }
+    ];
+    titleCase = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
+    cityName = (slug2) => CITIES.find((c) => c.slug === slug2)?.name || titleCase(slug2.replace(/-/g, " "));
+    cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(", ");
+  }
+});
+
+// server/seo/staticPages.ts
+function privacyHtml() {
+  return shell(
+    "Privacy Policy \u2014 Try1Second",
+    "How Try1Second collects, uses and protects your data: account info, search and location data, cookies, advertising and your rights.",
+    "/privacy",
+    `
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: 25 October 2026</p>
+<p>This Privacy Policy explains how Try1Second ("we", "our", the website try1second.com and the Try1Second mobile app) collects, uses, shares and protects your information. By using the service you agree to the practices described here.</p>
+
+<h2>1. Information we collect</h2>
+<div class="card">
+<p><strong>a) Account information.</strong> When you sign in with Google we receive from Firebase Authentication your name, email address and profile photo. We do not receive or store your Google password.</p>
+<p><strong>b) Search and comparison data.</strong> The queries you search (e.g. a flight route, a product, a dish) and the results you view. Searches are processed live and logged to keep the comparison working and improve relevance.</p>
+<p><strong>c) Location data.</strong> For local searches (grocery, food delivery, cabs, movies) we use the city, pincode and \u2014 only if you allow it \u2014 device GPS coordinates to query providers that actually serve your area. Precise location is used for your search and is not stored as your identity.</p>
+<p><strong>d) Technical data.</strong> Device model, operating system, browser type, language, IP address and basic analytics events (pages viewed, searches run, latency). We use this to keep the service fast and to detect abuse.</p>
+<p><strong>e) Leads you submit.</strong> For finance verticals (loans, insurance, credit cards, bank accounts) we store the details you explicitly submit (name, phone, city, requirement) and forward them only to the lender, insurer or bank you chose.</p>
+</div>
+
+<h2>2. How we use your information</h2>
+<ul>
+<li>To run live price comparisons and show you the lowest verified offers.</li>
+<li>To create and maintain your account and sign-in session.</li>
+<li>To remember your preferences (default city, last searches) on your device.</li>
+<li>To send optional notifications you have requested, such as price alerts.</li>
+<li>To operate advertising and affiliate commissions that keep the service free.</li>
+<li>To detect fraud, abuse and technical problems, and to improve the service.</li>
+</ul>
+
+<h2>3. Cookies and advertising</h2>
+<p>We use cookies and similar technologies, including Google AdSense and affiliate networks (such as LinkInR, EarnKaro/Ekaro, Admitad, Cuelinks and Amazon Associates). These partners may set their own cookies to show relevant ads and to attribute purchases you complete on a seller's site. You can control personalised advertising in your Google Ads Settings and block cookies in your browser at any time.</p>
+
+<h2>4. When you leave Try1Second</h2>
+<p>Our job ends when we send you to the airline, store, bank or restaurant's own website or app. Those sellers have their own privacy policies, which govern what they collect once you are on their platform. We recommend reading their terms before booking or buying.</p>
+
+<h2>5. How we share data</h2>
+<p>We do not sell your personal data. We share information only: (a) with the specific provider you choose (e.g. the lender you applied to); (b) with infrastructure providers that host and secure the service (hosting, database, analytics, error monitoring); (c) when required by law or to protect our rights.</p>
+
+<h2>6. Data retention and security</h2>
+<p>Account and preference data is kept while your account is active. Search logs are kept for operational improvement and are not linked to your identity in analytics. Lead data is retained for the period required to service your request or as required by law. We use encrypted connections (HTTPS) in transit and restrict access to our systems.</p>
+
+<h2>7. Your rights</h2>
+<ul>
+<li>Request a copy of the personal data we hold about you.</li>
+<li>Ask us to correct or delete your account data.</li>
+<li>Withdraw consent or opt out of optional notifications at any time.</li>
+<li>Use the service without signing in \u2014 comparison works without an account.</li>
+</ul>
+<p>To exercise any right, email us at <a href="mailto:info@try1second.com">info@try1second.com</a> and we will respond within a reasonable period.</p>
+
+<h2>8. Children</h2>
+<p>Try1Second is intended for users aged 18 and above, or younger users with a parent or guardian's consent. We do not knowingly collect data from children.</p>
+
+<h2>9. Changes to this policy</h2>
+<p>We may update this policy as the service evolves. The "Last updated" date above will change when we do, and significant changes will be highlighted on this page.</p>
+
+<h2>10. Contact</h2>
+<p>Questions about privacy? Write to <a href="mailto:info@try1second.com">info@try1second.com</a>.</p>
+`
+  );
+}
+function aboutHtml() {
+  return shell(
+    "About Us \u2014 Try1Second",
+    "Try1Second is an independent Indian metasearch engine comparing live prices across 13 verticals \u2014 flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking.",
+    "/about",
+    `
+<h1>About Try1Second</h1>
+<p class="updated">One second is all it takes to find the lowest price</p>
+<p>Try1Second is an independent metasearch engine for India. One search asks airlines, hotels, stores, quick-commerce apps, banks and insurers for their <strong>live price at the same moment</strong> \u2014 then we rank every real offer lowest first. The cheapest option is never buried on page four of a single seller's website.</p>
+
+<div class="card">
+<h2 style="margin-top:0">What we compare</h2>
+<ul>
+<li><strong>Travel:</strong> flights (airlines and OTAs), hotels, bus tickets and cab fares across Ola, Uber, Rapido and more.</li>
+<li><strong>Shopping:</strong> products across Amazon, Flipkart, Myntra and other major Indian stores.</li>
+<li><strong>Everyday:</strong> 10-minute grocery across Blinkit, Zepto and supermarkets; food delivery across Swiggy, Zomato and restaurant menus; movie tickets across booking platforms.</li>
+<li><strong>Finance:</strong> loans, insurance, credit cards, savings accounts and banking products from banks and NBFCs.</li>
+</ul>
+</div>
+
+<h2>How we are different</h2>
+<ul>
+<li><strong>Live, not cached:</strong> prices are fetched fresh from each source on every search.</li>
+<li><strong>Independent:</strong> rankings are never sold. Sponsored placements, if any, are labelled.</li>
+<li><strong>Transparent:</strong> every row is a real offer from a real seller with a direct link \u2014 we never resell tickets, rooms, groceries or loans.</li>
+<li><strong>Free:</strong> comparison is free. We earn from clearly labelled advertising and affiliate commissions from sellers, never by selling your data.</li>
+</ul>
+
+<h2>Our promise</h2>
+<p>What you see is what the seller reported at the moment of your search. The seller's page always has the final word at checkout \u2014 if a price moved in the seconds between our scan and your booking, the seller's own price applies.</p>
+
+<h2>Contact</h2>
+<p>Write to us at <a href="mailto:info@try1second.com">info@try1second.com</a> \u2014 for partnerships, feedback or a seller who wants to be included in comparisons.</p>
+`
+  );
+}
+var STYLE, shell;
+var init_staticPages = __esm({
+  "server/seo/staticPages.ts"() {
+    init_data();
+    STYLE = `
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; line-height: 1.7; }
+  header { background: #e7000b; padding: 18px 20px; }
+  header a { color: #fff; font-weight: 800; font-size: 20px; text-decoration: none; letter-spacing: -.02em; }
+  header span { color: #ffd7d9; font-size: 12px; display: block; font-weight: 500; }
+  main { max-width: 780px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -.02em; }
+  .updated { color: #64748b; font-size: 13px; margin-bottom: 26px; }
+  h2 { font-size: 17px; margin: 30px 0 8px; }
+  p, li { font-size: 15px; color: #334155; }
+  ul { padding-left: 22px; }
+  a { color: #dc2626; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin: 14px 0; }
+  footer { border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 16px; color: #64748b; font-size: 13px; }
+`;
+    shell = (title, description, path14, body) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${title}</title>
+<meta name="description" content="${description}" />
+<link rel="canonical" href="${SEO_HOST}${path14}" />
+<meta name="robots" content="index, follow" />
+<meta property="og:title" content="${title}" />
+<meta property="og:description" content="${description}" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Try1Second" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+<style>${STYLE}</style>
+</head>
+<body>
+<header><a href="/">Try1Second</a><span>One second is all it takes to find the lowest price</span></header>
+<main>
+${body}
+<footer>Try1Second is an independent metasearch engine and is not a seller of any product or service shown. &copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Try1Second &middot; <a href="/privacy">Privacy Policy</a> &middot; <a href="/about">About Us</a> &middot; info@try1second.com</footer>
+</main>
+</body>
+</html>`;
+  }
+});
+
+// server/seo/sitemap.ts
+var sitemap_exports = {};
+__export(sitemap_exports, {
+  registerSeoRoutes: () => registerSeoRoutes,
+  robotsText: () => robotsText,
+  sitemapXml: () => sitemapXml
+});
+function robotsText() {
+  return [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /admin",
+    "Disallow: /merchant",
+    "Disallow: /api",
+    "Disallow: /*?ref=",
+    // referral codes — keep crawl budget on content
+    "",
+    "User-agent: GPTBot",
+    "Allow: /",
+    "",
+    `Sitemap: ${SEO_HOST}/sitemap.xml`,
+    ""
+  ].join("\n");
+}
+function sitemapXml() {
+  const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const urls = listSeoPaths();
+  const body = urls.map((p) => {
+    const deep = p.split("/").filter(Boolean).length > 1;
+    const freq = deep ? "daily" : "weekly";
+    const pri = p === "/" ? "1.0" : deep ? "0.8" : "0.6";
+    return [
+      "  <url>",
+      `    <loc>${SEO_HOST}${p === "/" ? "/" : p}</loc>`,
+      `    <lastmod>${today2}</lastmod>`,
+      `    <changefreq>${freq}</changefreq>`,
+      `    <priority>${pri}</priority>`,
+      "  </url>"
+    ].join("\n");
+  }).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${body}
+</urlset>
+`;
+}
+function registerSeoRoutes(app) {
+  app.get("/privacy", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(privacyHtml());
+  });
+  app.get("/about", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(aboutHtml());
+  });
+  app.get("/robots.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(robotsText());
+  });
+  app.get("/sitemap.xml", (_req, res) => {
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(sitemapXml());
+  });
+}
+var init_sitemap = __esm({
+  "server/seo/sitemap.ts"() {
+    init_data();
+    init_staticPages();
+  }
+});
+
 // server/common/singleton.ts
 var singleton_exports = {};
 __export(singleton_exports, {
@@ -40206,6 +41167,151 @@ var init_singleton = __esm({
   }
 });
 
+// server/seo/render.ts
+var render_exports = {};
+__export(render_exports, {
+  enhanceHtml: () => enhanceHtml,
+  listSeoPaths: () => listSeoPaths
+});
+function jsonLd(path14) {
+  const page = resolveSeoPage(path14);
+  const blocks = [];
+  const org = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Try1Second",
+    url: SEO_HOST,
+    logo: `${SEO_HOST}/logo-icon.webp`,
+    description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
+  };
+  blocks.push(JSON.stringify(org));
+  if (path14 === "/") {
+    blocks.push(JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Try1Second",
+      url: SEO_HOST,
+      potentialAction: {
+        "@type": "SearchAction",
+        target: { "@type": "EntryPoint", urlTemplate: `${SEO_HOST}/#vertical=ecommerce&q={search_term_string}` },
+        "query-input": "required name=search_term_string"
+      }
+    }));
+  }
+  if (page) {
+    blocks.push(JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: page.title,
+      description: page.description,
+      url: `${SEO_HOST}${page.path}`
+    }));
+    if (page.breadcrumbs.length > 1) {
+      blocks.push(JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: page.breadcrumbs.map((b, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          name: b.name,
+          item: `${SEO_HOST}${b.path}`
+        }))
+      }));
+    }
+    if (page.faqs.length) {
+      blocks.push(JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: page.faqs.map((f) => ({
+          "@type": "Question",
+          name: f.q,
+          acceptedAnswer: { "@type": "Answer", text: f.a }
+        }))
+      }));
+    }
+  }
+  return blocks;
+}
+function prerenderBody(path14) {
+  const page = resolveSeoPage(path14);
+  if (!page) return "";
+  const faqHtml = page.faqs.map((f) => `
+    <dt>${esc2(f.q)}</dt><dd>${esc2(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc2(l.href)}">${esc2(l.label)}</a>`).join("");
+  return [
+    `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
+    `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc2(b.name) : `<a href="${esc2(b.path)}" style="color:#6b7280">${esc2(b.name)}</a>`)).join(""),
+    `</nav>`,
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc2(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc2(p)}</p>`),
+    `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
+    `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
+    links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
+    `<p style="font-size:13px;color:#6b7280;margin-top:24px">Try1Second is an independent metasearch engine \u2014 live prices, lowest first, direct links to the seller. <a href="/" style="color:#dc2626;font-weight:600">Open the live comparison app</a> &middot; <a href="/about" style="color:#6b7280">About</a> &middot; <a href="/privacy" style="color:#6b7280">Privacy</a>.</p>`,
+    `</section>`
+  ].join("");
+}
+function enhanceHtml(html, path14) {
+  const page = resolveSeoPage(path14);
+  const isNoindex = /^\/(admin|merchant|api)/.test(path14);
+  const title = page ? page.title : DEFAULT_TITLE;
+  const desc = page ? page.description : DEFAULT_DESC;
+  const canonical = `${SEO_HOST}${(path14 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
+  let out = html;
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc2(title)}</title>`);
+  out = out.replace(
+    /<meta name="description" content="[^"]*" \/>/,
+    `<meta name="description" content="${esc2(desc)}" />`
+  );
+  out = out.replace(
+    /<meta property="og:title" content="[^"]*" \/>/,
+    `<meta property="og:title" content="${esc2(title)}" />`
+  );
+  out = out.replace(
+    /<meta property="og:description" content="[^"]*" \/>/,
+    `<meta property="og:description" content="${esc2(desc)}" />`
+  );
+  const head = [
+    `<link rel="canonical" href="${esc2(canonical)}" />`,
+    `<meta property="og:url" content="${esc2(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc2(title)}" />`,
+    `<meta name="twitter:description" content="${esc2(desc)}" />`,
+    `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
+    `<meta name="geo.region" content="IN" />`,
+    `<meta name="geo.placename" content="India" />`,
+    `<meta property="og:site_name" content="Try1Second" />`,
+    `<meta property="og:locale" content="en_IN" />`,
+    `<meta property="og:image" content="${SEO_HOST}/og-image.jpg" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
+    `<link rel="alternate" hreflang="en-in" href="${esc2(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc2(canonical)}" />`
+  ];
+  if (!isNoindex) for (const b of jsonLd(path14)) head.push(`<script type="application/ld+json">${b}</script>`);
+  out = out.replace("</head>", `${head.join("\n")}
+</head>`);
+  if (!isNoindex) {
+    const body = prerenderBody(path14);
+    if (body) {
+      out = out.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
+    }
+  }
+  return out;
+}
+var esc2, DEFAULT_TITLE, DEFAULT_DESC;
+var init_render = __esm({
+  "server/seo/render.ts"() {
+    init_data();
+    esc2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
+    DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
+  }
+});
+
 // server.prod.ts
 var import_path8 = __toESM(require("path"), 1);
 var import_fs7 = __toESM(require("fs"), 1);
@@ -40242,6 +41348,8 @@ async function createApp() {
   app.use("/api/admin", adminRouter2);
   bootstrapDealsSync2();
   app.use("/api/v1", affiliateRouter2);
+  const { registerSeoRoutes: registerSeoRoutes2 } = await Promise.resolve().then(() => (init_sitemap(), sitemap_exports));
+  registerSeoRoutes2(app);
   await bootstrapBackend2();
   if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
@@ -40271,14 +41379,25 @@ async function createApp() {
     app.use(import_express4.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
+      index: false,
+      // '/' falls through to the SEO-enhanced catch-all below
       setHeaders: (res, filePath) => {
         if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store, must-revalidate");
         else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       }
     }));
-    app.get("*", (_req, res) => {
+    const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
+    const baseHtml = import_fs6.default.readFileSync(import_path7.default.join(dist, "index.html"), "utf8");
+    app.get("*", (req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
-      res.sendFile(import_path7.default.join(dist, "index.html"));
+      const acc = String(req.headers.accept || "");
+      const isAsset = /\.[a-z0-9]{2,5}$/i.test(req.path.replace(/\/$/, ""));
+      const wantsShell = acc === "" || acc.includes("text/html") || acc.includes("*/*");
+      if (isAsset || !wantsShell) {
+        res.sendFile(import_path7.default.join(dist, "index.html"));
+        return;
+      }
+      res.send(enhanceHtml2(baseHtml, req.path));
     });
   } else if (settings3.isProduction) {
     log2.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");

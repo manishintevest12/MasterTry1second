@@ -4,7 +4,6 @@ import 'core/app_state.dart';
 import 'core/theme.dart';
 import 'ui/main_shell.dart';
 import 'ui/screens/product_screen.dart';
-import 'ui/screens/radar_screen.dart';
 import 'ui/splash_gate.dart';
 
 void main() {
@@ -60,7 +59,6 @@ class _Try1SecondAppState extends State<Try1SecondApp> {
       themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
       navigatorKey: AppState.instance.navigator,
       routes: {
-        'radar': (_) => const RadarScreen(),
         'product': (_) => _ProductRoute(),
       },
       home: SplashGate(ready: _ready, child: const MainShell()),

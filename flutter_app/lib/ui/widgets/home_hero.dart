@@ -200,8 +200,7 @@ class _HomeHeroState extends State<HomeHero> {
               ]),
             ),
           ),
-          // Owner 23 Oct: 'Open Live Scanner Radar' button hidden from the home
-          // hero per owner request (Radar stays reachable via the nav tab).
+          // Owner 25 Oct: Live Scanner Radar fully removed from the app.
         ]),
       ]),
     );

@@ -136,7 +136,7 @@ export const Navbar: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-bold text-slate-800">TRY1SECOND ENGINE ACTIVE</span>
             <span className="text-slate-300">·</span>
-            <span className="text-slate-500 font-mono">14.2M+ Scanner Radar</span>
+            <span className="text-slate-500 font-mono">14.2M+ Sources Synced</span>
           </div>
 
           {/* ZONE 3 (mobile): compact Compare + hamburger */}
@@ -204,9 +204,6 @@ export const Navbar: React.FC = () => {
                 </div>
                 <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
                   <span className="text-slate-500 font-medium">{authUser ? `${userPoints} pts` : 'Sign in to earn'}</span>
-                  <button onClick={() => { handleNavClick('radar'); setMobileOpen(false); }} className="text-red-600 font-bold hover:underline cursor-pointer">
-                    Open Radar →
-                  </button>
                 </div>
               </div>
             )}
@@ -265,17 +262,8 @@ export const Navbar: React.FC = () => {
                     })}
                   </div>
 
-                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center text-[11px]">
                     <span className="text-slate-500 font-medium">150+ Platforms Synced</span>
-                    <button
-                      onClick={() => {
-                        setActiveNavTab('radar');
-                        setIsCompareMenuOpen(false);
-                      }}
-                      className="text-red-600 font-bold hover:underline"
-                    >
-                      Open Radar →
-                    </button>
                   </div>
                 </div>
               )}

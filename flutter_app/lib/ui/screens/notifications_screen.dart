@@ -7,7 +7,7 @@ import '../../core/theme.dart';
 import '../widgets/kit.dart';
 
 /// Notifications hub (website NotificationsDrawer): price drops + admin
-/// broadcasts from GET /api/notifications, mark-read, and a radar shortcut.
+/// broadcasts from GET /api/notifications and mark-read.
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -119,8 +119,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ),
               const SizedBox(height: 8),
             ],
-          const SizedBox(height: 12),
-          RedButton('Open Live Scanner Radar', onTap: () { Navigator.pop(context); AppState.instance.openRadar(); }, expand: true, icon: Icons.radar_rounded),
         ],
       ),
     );

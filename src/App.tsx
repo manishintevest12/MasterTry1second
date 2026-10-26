@@ -10,7 +10,6 @@ import { VerticalNav } from './components/VerticalNav';
 import { SearchAndFilterHeader } from './components/SearchAndFilterHeader';
 const ComparisonFeed = lazy(() => import('./components/ComparisonFeed').then((m) => ({ default: m.ComparisonFeed })));
 import { HomeView } from './components/HomeView';
-const RadarView = lazy(() => import('./components/RadarView').then((m) => ({ default: m.RadarView })));
 const QuickAppsView = lazy(() => import('./components/QuickAppsView').then((m) => ({ default: m.QuickAppsView })));
 const AiInsightsView = lazy(() => import('./components/AiInsightsView').then((m) => ({ default: m.AiInsightsView })));
 const RewardsHub = lazy(() => import('./components/RewardsHub').then((m) => ({ default: m.RewardsHub })));
@@ -80,7 +79,6 @@ const MainContent: React.FC = () => {
         <Suspense fallback={<div className="min-h-[40vh]" aria-busy="true" />}>
         {activeNavTab === 'home' && <HomeView />}
         {activeNavTab === 'quickapps' && <QuickAppsView />}
-        {activeNavTab === 'radar' && <RadarView />}
         {activeNavTab === 'insights' && <AiInsightsView />}
         {activeNavTab === 'tracker' && <PriceAlertsView />}
         {activeNavTab === 'spendlens' && <SpendLensView />}
@@ -116,7 +114,7 @@ const MainContent: React.FC = () => {
       {/* Comprehensive Footer with About Us, Privacy Policy, Terms, etc. */}
       {!isFullDashboard && <Footer />}
 
-      {/* Fixed Bottom Bar: Home, Radar, AI Insights, Compare, Rewards */}
+      {/* Fixed Bottom Bar: Home, AI Insights, Compare, Rewards */}
       {!isFullDashboard && <FixedBottomBar />}
     </div>
   );
