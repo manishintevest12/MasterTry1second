@@ -23124,12 +23124,18 @@ function bmsDiscoverHeaders(region) {
 function bmsBuyTicketsUrl(region, eventCode, dateISO) {
   const code = String(eventCode || "").trim();
   if (!code || !region?.regionCode || !region?.regionSlug) return "";
+  if (!/^ET\d{6,}$/i.test(code)) return "";
   const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dateISO || "")) ? String(dateISO) : istTodayISO();
   return `https://in.bookmyshow.com/movies/${region.regionCode}/${region.regionSlug}/buytickets/${encodeURIComponent(code)}/${d.replace(/-/g, "")}`;
 }
 function istTodayISO(now = /* @__PURE__ */ new Date()) {
   const ist = new Date(now.getTime() + (5 * 60 + 30) * 6e4);
   return ist.toISOString().slice(0, 10);
+}
+function bmsBookingCode(pageUrl) {
+  const parts = String(pageUrl || "").split("/movies/")[1]?.split("/").filter(Boolean) || [];
+  const last = parts[parts.length - 1] || "";
+  return /^[A-Z]{2}\d{6,}$/i.test(last) ? last.toUpperCase() : "";
 }
 function parseMovieCards(payload, source, region, query, fingerprint) {
   const listings = Array.isArray(payload?.listings) ? payload.listings : [];
@@ -23143,6 +23149,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
       const title = String(text[0]?.components?.[0]?.text || "").trim();
       if (!title || title.length > 120) continue;
       const eventCode = String(card?.id || "");
+      const pageCode = bmsBookingCode(ctaUrl);
       const key = eventCode || ctaUrl;
       if (seen.has(key)) continue;
       if (query && !matchesQuery(title, query)) continue;
@@ -23156,7 +23163,9 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
         // Book must land on THIS movie's showtimes for the user's city/date, not the
         // movie page (owner 27 Oct). Falls back to the movie page when the event
         // code is missing.
-        sellerUrl: bmsBuyTicketsUrl(region, eventCode) || ctaUrl,
+        // Booking code MUST be the one from the page URL (ET…); the card id (EG…) is an
+        // event code whose buytickets page says "no shows available" — LIVE-VERIFIED.
+        sellerUrl: bmsBuyTicketsUrl(region, pageCode) || ctaUrl,
         availability: "in_stock",
         // now-showing in this region per BMS itself
         location: { city: region.regionName },
@@ -23166,7 +23175,8 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
           ...lang ? { language: lang } : {},
           ...eventCode ? { event_code: eventCode } : {},
           movie_page_url: ctaUrl,
-          ...eventCode ? { booking_url: bmsBuyTicketsUrl(region, eventCode) } : {},
+          ...pageCode ? { booking_code: pageCode } : {},
+          ...pageCode ? { booking_url: bmsBuyTicketsUrl(region, pageCode) } : {},
           platform: "BookMyShow"
         },
         evidence: {

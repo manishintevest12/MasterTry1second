@@ -75,8 +75,10 @@ import { bmsBuyTicketsUrl as bmsBuy } from '../server/workers/parsers/bookmyshow
 // Owner 27 Oct: "book krne ke baad ussi theatre pr land hona chahiye".
 test('movies: BookMyShow book button lands on that movie’s city+date showtimes', () => {
   const region = { regionCode: 'IND', regionSlug: 'indore', regionName: 'Indore' };
-  const url = bmsBuy(region, 'EG00514650', '2026-10-29');
-  assert.equal(url, 'https://in.bookmyshow.com/movies/IND/indore/buytickets/EG00514650/20261029');
+  const url = bmsBuy(region, 'ET00514650', '2026-10-29');
+  assert.equal(url, 'https://in.bookmyshow.com/movies/IND/indore/buytickets/ET00514650/20261029');
+  // an event id (EG…) produces a dead "no shows" page, so it is refused
+  assert.equal(bmsBuy(region, 'EG00514650', '2026-10-29'), '');
   // missing event code -> no invented link
   assert.equal(bmsBuy(region, ''), '');
 });

@@ -161,6 +161,9 @@ export function bmsDiscoverHeaders(region: BmsRegion): Record<string, string> {
 export function bmsBuyTicketsUrl(region: BmsRegion, eventCode: string, dateISO?: string | null): string {
   const code = String(eventCode || '').trim();
   if (!code || !region?.regionCode || !region?.regionSlug) return '';
+  // Only movie event codes ("ET…") render a showtime list; anything else (an "EG…"
+  // event id) would land on "There are no shows available in this region".
+  if (!/^ET\d{6,}$/i.test(code)) return '';
   const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dateISO || '')) ? String(dateISO) : istTodayISO();
   return `https://in.bookmyshow.com/movies/${region.regionCode}/${region.regionSlug}/buytickets/${encodeURIComponent(code)}/${d.replace(/-/g, '')}`;
 }
@@ -169,6 +172,20 @@ export function bmsBuyTicketsUrl(region: BmsRegion, eventCode: string, dateISO?:
 export function istTodayISO(now: Date = new Date()): string {
   const ist = new Date(now.getTime() + (5 * 60 + 30) * 60_000);
   return ist.toISOString().slice(0, 10);
+}
+
+/**
+ * Booking code for a BMS movie (owner 27 Oct, LIVE-VERIFIED):
+ * the discover card `id` is an EVENT code ("EG...") and a buytickets URL built from it
+ * renders "There are no shows available in this region". The code in the card's
+ * ctaUrl (".../movies/indore/pehla-pyaar-dosri-baar/ET00517731" -> "ET00517731") is the
+ * one BMS itself uses and returns the real cinema+showtime list (258 KB, 7 Indore
+ * cinemas verified 27 Oct). Returns '' when the URL carries no usable code.
+ */
+export function bmsBookingCode(pageUrl: string): string {
+  const parts = String(pageUrl || '').split('/movies/')[1]?.split('/').filter(Boolean) || [];
+  const last = parts[parts.length - 1] || '';
+  return /^[A-Z]{2}\d{6,}$/i.test(last) ? last.toUpperCase() : '';
 }
 
 /** Movie slug from a BMS movie page URL (".../movies/indore/pehla-pyaar/ET1" -> "pehla-pyaar"). */
@@ -189,6 +206,7 @@ export function parseMovieCards(payload: any, source: SourceConfig, region: BmsR
       const title = String(text[0]?.components?.[0]?.text || '').trim();
       if (!title || title.length > 120) continue;
       const eventCode = String(card?.id || '');
+      const pageCode = bmsBookingCode(ctaUrl);
       const key = eventCode || ctaUrl;
       if (seen.has(key)) continue;
       if (query && !matchesQuery(title, query)) continue; // strict token boundary — drop, never substitute
@@ -202,7 +220,9 @@ export function parseMovieCards(payload: any, source: SourceConfig, region: BmsR
         // Book must land on THIS movie's showtimes for the user's city/date, not the
         // movie page (owner 27 Oct). Falls back to the movie page when the event
         // code is missing.
-        sellerUrl: bmsBuyTicketsUrl(region, eventCode) || ctaUrl,
+        // Booking code MUST be the one from the page URL (ET…); the card id (EG…) is an
+        // event code whose buytickets page says "no shows available" — LIVE-VERIFIED.
+        sellerUrl: bmsBuyTicketsUrl(region, pageCode) || ctaUrl,
         availability: 'in_stock', // now-showing in this region per BMS itself
         location: { city: region.regionName },
         attributes: {
@@ -211,7 +231,8 @@ export function parseMovieCards(payload: any, source: SourceConfig, region: BmsR
           ...(lang ? { language: lang } : {}),
           ...(eventCode ? { event_code: eventCode } : {}),
           movie_page_url: ctaUrl,
-          ...(eventCode ? { booking_url: bmsBuyTicketsUrl(region, eventCode) } : {}),
+          ...(pageCode ? { booking_code: pageCode } : {}),
+          ...(pageCode ? { booking_url: bmsBuyTicketsUrl(region, pageCode) } : {}),
           platform: 'BookMyShow',
         },
         evidence: {
