@@ -72,15 +72,26 @@ export const ProductPageView: React.FC = () => {
     return () => clearTimeout(t);
   }, [searchBox]);
 
+  // OWNER 27 Oct: "kisi bhi halat mai results 1 second ke andar chahiye" + "loader lgao".
+  // The server answers within ~0.9s with whatever real rows exist and flags pendingRefresh
+  // while slower sellers (Amazon/Croma/JioMart) are still arriving. The page keeps its
+  // loader/skeleton up and re-polls every 600ms, so the first prices paint in under a second
+  // and the rest fill in progressively instead of the page sitting empty ("Price unavailable").
   useEffect(() => {
     if (!productPageRequest) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const POLL_MS = 600;
+    const MAX_POLLS = 8; // ~5s of progressive filling, then we stop asking
     setLoading(true); setError(null); setData(null); setActiveImg(0); setAlertSet(null);
-    (async () => {
+    const load = async (attempt: number) => {
       try {
         const res = await fetch('/api/product-page', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: productPageRequest.input, query: productPageRequest.query, seed: productPageRequest.seed, gallery: productPageRequest.gallery }),
+          // paint2 tells the server this is a follow-up poll: it then also returns the
+          // quick-commerce (10-min grocery) comparison, which the first paint warms in the
+          // background so the under-a-second first answer stays fast.
+          body: JSON.stringify({ input: productPageRequest.input, query: productPageRequest.query, seed: productPageRequest.seed, gallery: productPageRequest.gallery, paint2: attempt > 0 }),
         });
         const d: PageData = await res.json();
         if (cancelled) return;
@@ -88,13 +99,22 @@ export const ProductPageView: React.FC = () => {
         setData(d);
         const cur = d.cheapest?.price ?? d.product?.pagePrice ?? 0;
         if (cur) setAlertPrice(String(Math.round(cur * 0.95)));
+        const stillComing = (d as any).pendingRefresh === true;
+        const hasRows = ((d.offers || []).length > 0) || Boolean(d.cheapest);
+        // Keep the loader up until we actually have something to show, and keep polling
+        // while slower sources are still landing rows.
+        if (stillComing && attempt < MAX_POLLS && (!hasRows || attempt < 4)) {
+          setLoading(!hasRows);
+          timer = setTimeout(() => { void load(attempt + 1); }, POLL_MS);
+          return;
+        }
+        setLoading(false);
       } catch (e: any) {
-        if (!cancelled) setError(String(e?.message || e));
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { setError(String(e?.message || e)); setLoading(false); }
       }
-    })();
-    return () => { cancelled = true; };
+    };
+    void load(0);
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [productPageRequest?.nonce]);
 
   const cheapest = data?.cheapest || null;
@@ -194,7 +214,9 @@ export const ProductPageView: React.FC = () => {
         </div>
       )}
 
-      {data && data.found && (
+      {/* Never paint an empty "Price unavailable" shell while results are still landing:
+          the loader above owns that moment (owner 27 Oct). */}
+      {data && data.found && (offers.length > 0 || !loading) && (
         <>
           <div className="grid grid-cols-1 min-w-0 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)_minmax(0,0.95fr)] gap-5 items-start">
             {/* ---------- gallery ---------- */}

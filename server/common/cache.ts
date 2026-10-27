@@ -77,6 +77,18 @@ async function l2Get(key: string): Promise<string | null> {
 }
 
 /** The single write path L2 uses: writes to whichever backend(s) are configured. */
+async function l2Del(key: string): Promise<void> {
+  const r = await getRedis();
+  if (r) { try { await r.del(`t1s:${key}`); } catch { /* non-fatal */ } }
+  if (settings.redisRestUrl) {
+    try {
+      await fetch(`${settings.redisRestUrl}/del/${encodeURIComponent(`t1s:${key}`)}`, {
+        headers: settings.redisRestToken ? { Authorization: `Bearer ${settings.redisRestToken}` } : {},
+      });
+    } catch { /* non-fatal */ }
+  }
+}
+
 async function l2Set(key: string, value: string, ttlSec: number): Promise<void> {
   if (value.length > MAX_L2_BYTES) return; // L1 still holds it; skip oversized L2 payloads
   const r = await getRedis();
@@ -104,6 +116,13 @@ export function cachePut(key: string, value: unknown, ttlSec: number, staleSec?:
   l1.set(key, { value, expiresAt: Date.now() + ttlSec * 1000, staleUntil: Date.now() + stale });
   const payload = JSON.stringify(value);
   void l2Set(key, payload, ttlSec);
+}
+
+/** Drop one entry from L1 and L2 (used to evict poisoned snapshots immediately). */
+export function cacheDel(key: string): void {
+  l1.delete(key);
+  inflight.delete(key);
+  void l2Del(key);
 }
 
 /**

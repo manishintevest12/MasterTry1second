@@ -15,7 +15,7 @@
  */
 import type { AdapterResult, NormalizedOffer, ParsedQuery, SearchResponse, SearchStateFlags, SourceConfig } from '../types';
 import { recordSourcePrices, enrichFailedWithLastPrice } from '../common/lastPrice';
-import { buildCacheKey, cacheGet, cachePut, revalidateInBackground } from '../common/cache';
+import { buildCacheKey, cacheGet, cachePut, cacheDel, revalidateInBackground } from '../common/cache';
 import { log } from '../common/logger';
 import { aiAssistedUnderstanding, understandQuery } from '../query/queryUnderstanding';
 import { selectSources } from '../sources/registry';
@@ -47,6 +47,13 @@ export interface SearchInput {
   /** Explicit travel dates from the frontend (YYYY-MM-DD); override defaults when present. */
   travelDates?: { depart?: string; return?: string };
   guests?: number;
+  /**
+   * Per-request ceiling on the COLD first-paint wait (owner 27 Oct, "1 second ke andar
+   * results chahiye"). The product page passes ~900ms: it answers with whatever real rows
+   * exist by then and keeps the rest arriving via pendingRefresh polling. Other verticals
+   * keep the 3.2s default so their slow sources still make the first paint.
+   */
+  coldDeadlineMs?: number;
   /** Explicit pickup/drop labels (cab, owner 25 Oct): the app's granular picker
    * knows the exact Photon label + city; regex route extraction from rawQuery
    * loses the city for bare locality names ("Rajwada" -> Nashik). */
@@ -391,15 +398,23 @@ async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed
  */
 export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): Promise<SearchResponse> {
   const started = Date.now();
-  let best = await runSearch(input);
-  if ((best.results || []).length > 0) return best;
-  // Cold query: give the pipeline one more beat, bounded by the cold budget.
-  while (Date.now() - started < coldBudgetMs) {
-    await new Promise((r) => setTimeout(r, 400));
+  // One shared 3s wait no matter how many callers join: poll the SAME pipeline until real
+  // rows exist. Returning an empty "still acquiring" marker here is what made the product
+  // page paint 'Price unavailable' while sources were still landing rows (owner 27 Oct).
+  let best: SearchResponse = await runSearch(input);
+  const rows = (r: SearchResponse) => (r.results || []).length;
+  if (rows(best) > 0) return best;
+  const hardStop = started + Math.max(coldBudgetMs, 400);
+  while (Date.now() < hardStop) {
+    await new Promise((r) => setTimeout(r, 200));
+    // Never let a follow-up attempt push the response PAST the caller's ceiling: each retry
+    // gets only the budget that is actually left (owner 27 Oct, "1 second ke andar").
+    const left = hardStop - Date.now();
+    if (left < 200) break;
     let next: SearchResponse;
-    try { next = await runSearch(input); } catch { break; }
-    if ((next.results || []).length > (best.results || []).length) best = next;
-    if ((best.results || []).length > 0) return best;
+    try { next = await runSearch({ ...input, coldDeadlineMs: Math.max(200, left - 120) }); } catch { break; }
+    if (rows(next) > rows(best)) best = next;
+    if (rows(next) > 0) return next;
   }
   return best;
 }
@@ -465,8 +480,19 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
 
   const { ttlSec, staleSec } = searchCacheTtl(vertical);
   const cachedSearch = await cacheGet<SearchResponse>(cacheKey);
-  if (cachedSearch.value) {
-    const v = cachedSearch.value as SearchResponse;
+  // OWNER 27 Oct ("product naam daalo to kuch nahi aata"): the killer bug. A
+  // 'still acquiring' marker and a transient zero-result snapshot were cached and then
+  // replayed as the ANSWER (45s for empties, 6s for the marker) while a perfectly good
+  // live pipeline was still running in the background. The product page makes ONE call,
+  // so the user got an empty page even though Myntra/Flipkart/Ajio had rows 1s later.
+  // A cached snapshot with no rows (or one that merely says "still acquiring") is NOT an
+  // answer: evict it and fall through to the live/join path instead.
+  const cachedValue = cachedSearch.value as SearchResponse | null;
+  if (cachedValue && (((cachedValue.results || []).length === 0) || cachedValue.state?.pendingRefresh === true)) {
+    cacheDel(cacheKey);
+    log.info('Search', 'Evicted empty/still-acquiring cache entry, going live', { key: cacheKey, rows: (cachedValue.results || []).length });
+  } else if (cachedValue) {
+    const v = cachedValue as SearchResponse;
     // Honesty rule (Section 9): a replayed live result is CACHED_VERIFIED, never LIVE_VERIFIED.
     for (const o of v.results as any[]) {
       if (o.freshnessStatus === 'LIVE_VERIFIED') o.freshnessStatus = 'CACHED_VERIFIED';
@@ -525,7 +551,9 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       const pipeline = runLivePipeline(input, parsed)
         .then((response) => {
           const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
-          if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
+          // Empty live result: negative-cache only briefly. Fix 1 evicts it on read anyway,
+          // so a source flake costs the user one extra acquisition, never an empty page.
+          if (response.results.length === 0) cachePut(cacheKey, response, 12, 12);
           else { const bs = busSelfHealTtl(vertical, response, t, st); const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec); cachePut(cacheKey, response, bt.ttlSec, bt.staleSec); }
           return response;
         })
@@ -546,7 +574,14 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // that finished so far; slower sources land seconds later via the client top-up.
   // If nothing real has arrived by the deadline we keep waiting for the full
   // pipeline — an honest wait, never a fabricated instant answer.
-  const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2_200;
+  // OWNER 27 Oct ("1 second ke andar results"): when the caller states a first-paint
+  // ceiling, EVERY stage honours it — the first race included, not just the late deadline.
+  // Leaving this at 2.2s let a cold product search take 2.4s even though the route asked
+  // for 900ms. 150ms is reserved for the catalogue floor lookup that follows the race.
+  const reqDeadlineMs = Math.max(250, Number((input as any).coldDeadlineMs) || 0);
+  const FIRST_PAINT_MS = reqDeadlineMs
+    ? Math.max(250, reqDeadlineMs - 150)
+    : (Number(process.env.T1S_FIRST_PAINT_MS) || 2_200);
   const partialRef: { current: AcquisitionOutcome | null } = { current: null };
   // FIRST-LIVE-ROW signal (owner 22 Oct, 'sab verticals slow'): slow verticals
   // (hotels 5-15s per source) never had a row inside a fixed 2.2s window, so the
@@ -573,7 +608,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       // responses are cached briefly (45s) so the very next search re-acquires live,
       // while per-source rate limits still bound the retry pressure.
       if (response.results.length === 0) {
-        cachePut(cacheKey, response, 45, 45);
+        cachePut(cacheKey, response, 12, 12);
       } else {
         const bs = busSelfHealTtl(vertical, response, ttlSec, staleSec);
         const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
@@ -628,7 +663,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // pendingRefresh marker — the app's 2s polls then stream rows in progressively.
   // Deadline is measured from the START of the search (not from after the floor
   // lookup) so the whole cold path answers in ~3s, matching the app loader countdown.
-  const COLD_DEADLINE_MS = Number(process.env.T1S_COLD_DEADLINE_MS) || 3_200;
+  const COLD_DEADLINE_MS = Math.max(300, Number(input.coldDeadlineMs) || Number(process.env.T1S_COLD_DEADLINE_MS) || 3_200);
   const deadlineRemaining = Math.max(0, COLD_DEADLINE_MS - (Date.now() - totalStart));
   const next: ColdOutcome = await Promise.race([
     full.then((r): ColdOutcome => ({ kind: 'full', r })),
@@ -642,7 +677,9 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // The full pipeline keeps acquiring and caches the completed set (zero-result
   // guard applies); the client's next polls pick it up.
   const marker = await stillAcquiringResponse(parsed, totalStart);
-  cachePut(cacheKey, marker, 6, 6);
+  // OWNER 27 Oct: do NOT cache the marker. Caching it made the next request take the
+  // cache branch (returning the empty marker) instead of joining the pipeline that is
+  // still fetching — the exact reason results never appeared.
   return marker;
 }
 

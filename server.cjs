@@ -332,6 +332,23 @@ async function l2Get(key) {
   }
   return restGet(`t1s:${key}`);
 }
+async function l2Del(key) {
+  const r = await getRedis();
+  if (r) {
+    try {
+      await r.del(`t1s:${key}`);
+    } catch {
+    }
+  }
+  if (settings.redisRestUrl) {
+    try {
+      await fetch(`${settings.redisRestUrl}/del/${encodeURIComponent(`t1s:${key}`)}`, {
+        headers: settings.redisRestToken ? { Authorization: `Bearer ${settings.redisRestToken}` } : {}
+      });
+    } catch {
+    }
+  }
+}
 async function l2Set(key, value, ttlSec) {
   if (value.length > MAX_L2_BYTES) return;
   const r = await getRedis();
@@ -363,6 +380,11 @@ function cachePut(key, value, ttlSec, staleSec) {
   l1.set(key, { value, expiresAt: Date.now() + ttlSec * 1e3, staleUntil: Date.now() + stale });
   const payload = JSON.stringify(value);
   void l2Set(key, payload, ttlSec);
+}
+function cacheDel(key) {
+  l1.delete(key);
+  inflight.delete(key);
+  void l2Del(key);
 }
 function revalidateInBackground(key, ttlSec, refresh) {
   if (inflight.has(key)) return;
@@ -30879,17 +30901,21 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
 async function runSearchFast(input, coldBudgetMs = 1500) {
   const started3 = Date.now();
   let best = await runSearch(input);
-  if ((best.results || []).length > 0) return best;
-  while (Date.now() - started3 < coldBudgetMs) {
-    await new Promise((r) => setTimeout(r, 400));
+  const rows = (r) => (r.results || []).length;
+  if (rows(best) > 0) return best;
+  const hardStop = started3 + Math.max(coldBudgetMs, 400);
+  while (Date.now() < hardStop) {
+    await new Promise((r) => setTimeout(r, 200));
+    const left = hardStop - Date.now();
+    if (left < 200) break;
     let next;
     try {
-      next = await runSearch(input);
+      next = await runSearch({ ...input, coldDeadlineMs: Math.max(200, left - 120) });
     } catch {
       break;
     }
-    if ((next.results || []).length > (best.results || []).length) best = next;
-    if ((best.results || []).length > 0) return best;
+    if (rows(next) > rows(best)) best = next;
+    if (rows(next) > 0) return next;
   }
   return best;
 }
@@ -30951,8 +30977,12 @@ async function runSearch(input) {
   });
   const { ttlSec, staleSec } = searchCacheTtl(vertical);
   const cachedSearch = await cacheGet(cacheKey);
-  if (cachedSearch.value) {
-    const v = cachedSearch.value;
+  const cachedValue = cachedSearch.value;
+  if (cachedValue && ((cachedValue.results || []).length === 0 || cachedValue.state?.pendingRefresh === true)) {
+    cacheDel(cacheKey);
+    log.info("Search", "Evicted empty/still-acquiring cache entry, going live", { key: cacheKey, rows: (cachedValue.results || []).length });
+  } else if (cachedValue) {
+    const v = cachedValue;
     for (const o of v.results) {
       if (o.freshnessStatus === "LIVE_VERIFIED") o.freshnessStatus = "CACHED_VERIFIED";
       if (o.provenance) o.provenance.replayedFromCache = true;
@@ -30994,7 +31024,7 @@ async function runSearch(input) {
     if (offers.length >= 4) {
       const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
-        if (response.results.length === 0) cachePut(cacheKey, response, 45, 45);
+        if (response.results.length === 0) cachePut(cacheKey, response, 12, 12);
         else {
           const bs = busSelfHealTtl(vertical, response, t, st);
           const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
@@ -31010,7 +31040,8 @@ async function runSearch(input) {
       return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     }
   }
-  const FIRST_PAINT_MS = Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
+  const reqDeadlineMs = Math.max(250, Number(input.coldDeadlineMs) || 0);
+  const FIRST_PAINT_MS = reqDeadlineMs ? Math.max(250, reqDeadlineMs - 150) : Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
   const partialRef = { current: null };
   let firstRowResolve = null;
   const firstRow = new Promise((resolve) => {
@@ -31030,7 +31061,7 @@ async function runSearch(input) {
     }
   }).then((response) => {
     if (response.results.length === 0) {
-      cachePut(cacheKey, response, 45, 45);
+      cachePut(cacheKey, response, 12, 12);
     } else {
       const bs = busSelfHealTtl(vertical, response, ttlSec, staleSec);
       const bt = thinResultTtl(response, bs.ttlSec, bs.staleSec);
@@ -31070,7 +31101,7 @@ async function runSearch(input) {
   if (floorOffers.length > 0) {
     return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
   }
-  const COLD_DEADLINE_MS = Number(process.env.T1S_COLD_DEADLINE_MS) || 3200;
+  const COLD_DEADLINE_MS = Math.max(300, Number(input.coldDeadlineMs) || Number(process.env.T1S_COLD_DEADLINE_MS) || 3200);
   const deadlineRemaining = Math.max(0, COLD_DEADLINE_MS - (Date.now() - totalStart));
   const next = await Promise.race([
     full.then((r) => ({ kind: "full", r })),
@@ -31083,7 +31114,6 @@ async function runSearch(input) {
   const p2 = await servePartial();
   if (p2) return p2;
   const marker = await stillAcquiringResponse(parsed, totalStart);
-  cachePut(cacheKey, marker, 6, 6);
   return marker;
 }
 async function buildLiveCtx(parsedIn, input) {
@@ -33684,6 +33714,145 @@ var init_showcase = __esm({
   }
 });
 
+// server/lens/sameProduct.ts
+var sameProduct_exports = {};
+__export(sameProduct_exports, {
+  capacitiesOf: () => capacitiesOf,
+  identityTokens: () => identityTokens,
+  isAccessory: () => isAccessory,
+  isSameProduct: () => isSameProduct,
+  normalizeBrandSpelling: () => normalizeBrandSpelling,
+  sharesIdentity: () => sharesIdentity
+});
+function normalizeBrandSpelling(t) {
+  let out = String(t || "");
+  for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
+  return out;
+}
+function canonicalQuantity(t) {
+  return String(t || "").replace(/\bpack\s+of\s+(\d+)\b/gi, "$1 pack").replace(/\b(ltrs?|litres?|liters?)\b/gi, "l").replace(/\b(gms?|grams?)\b/gi, "g").replace(/\b(kgs?|kilos?|kilograms?)\b/gi, "kg").replace(/\b(packs?|packets?|pk)\b/gi, "pack");
+}
+function words(t) {
+  return canonicalQuantity(normalizeBrandSpelling(t)).toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l|pack)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
+}
+function isAccessory(title) {
+  const t = ` ${title.toLowerCase()} `;
+  const hits = ACCESSORY_WORDS.filter((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
+  if (hits.length === 0) return false;
+  const packagingOnly = hits.every((w) => w === "pouch");
+  const quantified = /\d+(?:\.\d+)?\s?(?:g|kg|ml|l|pack|ltr|litre)\b/i.test(title);
+  if (packagingOnly && quantified) return false;
+  return true;
+}
+function identityTokens(title) {
+  return Array.from(new Set(words(title).filter((w) => !STOP3.has(w) && !COLORS.has(w) && w.length > 1)));
+}
+function capacitiesOf(title) {
+  const caps = /* @__PURE__ */ new Set();
+  for (const m of String(title || "").matchAll(/\b(\d+(?:\.\d+)?)\s?(gb|tb)\b/gi)) {
+    const n = parseFloat(m[1]) * (/^tb$/i.test(m[2]) ? 1024 : 1);
+    if (n > 0) caps.add(String(n));
+  }
+  return caps;
+}
+function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
+  const wantsAccessory = isAccessory(pastedTitle);
+  if (!wantsAccessory && isAccessory(candidateTitle)) return false;
+  const wantCaps = capacitiesOf(pastedTitle);
+  const haveCaps = capacitiesOf(candidateTitle);
+  if (mode === "typed" && !wantCaps.size) {
+  } else if (wantCaps.size || haveCaps.size) {
+    if (!wantCaps.size || !haveCaps.size) return false;
+    for (const c of wantCaps) if (!haveCaps.has(c)) return false;
+  }
+  const need = identityTokens(pastedTitle);
+  if (need.length === 0) return false;
+  const have = new Set(words(candidateTitle));
+  const isPackSize = (w) => /^\d+(?:\.\d+)?(?:g|kg|ml|l|pack)$/.test(w);
+  const hard = need.filter((w) => /\d/.test(w) && !isPackSize(w));
+  if (hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w) || isPackSize(w));
+  if (soft.length === 0) return hard.length > 0;
+  const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
+  const wantTiers = tiersOf(need);
+  const haveTiers = tiersOf(words(candidateTitle));
+  if (mode === "typed" && !wantTiers.size) {
+  } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
+  const hit = soft.filter((w) => have.has(w)).length;
+  return hit / soft.length >= 0.6;
+}
+function sharesIdentity(queryTitle, candidateTitle) {
+  if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
+  const need = identityTokens(queryTitle);
+  if (!need.length) return false;
+  const have = new Set(words(candidateTitle));
+  const hard = need.filter((w) => /\d/.test(w));
+  if (hard.length && hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w));
+  if (!soft.length) return hard.length > 0;
+  return soft.some((w) => have.has(w));
+}
+var ACCESSORY_WORDS, STOP3, TIERS, COLORS, BRAND_JOINS;
+var init_sameProduct = __esm({
+  "server/lens/sameProduct.ts"() {
+    ACCESSORY_WORDS = [
+      "case",
+      "cover",
+      "back cover",
+      "pouch",
+      "sleeve",
+      "skin",
+      "screen guard",
+      "screen protector",
+      "tempered",
+      "protector",
+      "charger",
+      "adapter",
+      "adaptor",
+      "cable",
+      "strap",
+      "band",
+      "stand",
+      "holder",
+      "mount",
+      "stylus",
+      "sticker",
+      "cleaner",
+      "refill",
+      "replacement",
+      "spare",
+      "lens guard",
+      "camera protector",
+      "magsafe",
+      "mag-safe",
+      "pop socket",
+      "popsocket",
+      "bumper",
+      "ring light",
+      "tripod",
+      "dock",
+      "wallet"
+    ];
+    STOP3 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
+    TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
+    COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
+    BRAND_JOINS = [
+      [/\bi\s*phone\b/gi, "iphone"],
+      [/\bapple\s+mobile\b/gi, "apple"],
+      [/\bone\s*plus\b/gi, "oneplus"],
+      [/\bred\s*mi\b/gi, "redmi"],
+      [/\breal\s*me\b/gi, "realme"],
+      [/\bsam\s*sung\b/gi, "samsung"],
+      [/\bnothing\s*phone\b/gi, "nothing phone"],
+      [/\bmoto\s*rola\b/gi, "motorola"],
+      [/\bgalaxy\s*m\b/gi, "galaxy m"],
+      [/\bmac\s*book\b/gi, "macbook"],
+      [/\bmagic\s*book\b/gi, "magicbook"],
+      [/\bb\s*t\s*w\b/gi, "btw"]
+    ];
+  }
+});
+
 // server/lens/productLink.ts
 function isSafePublicUrl(raw) {
   let u;
@@ -33745,6 +33914,14 @@ function cleanTitle(t) {
 function priceNum(v) {
   const n = Math.round(parseFloat(String(v ?? "").replace(/[^\d.]/g, "")));
   return Number.isFinite(n) && n > 0 && n < 1e8 ? n : null;
+}
+function normalizeTypedProductQuery(t) {
+  let out = String(t || "").replace(/\s+/g, " ").trim();
+  if (!out) return "";
+  out = normalizeBrandSpelling(out);
+  const kept = out.split(" ").filter((w) => w && !TYPED_FILLER.test(w.replace(/[^a-z0-9]/gi, "")));
+  const joined = kept.join(" ").replace(/\s+/g, " ").trim();
+  return joined || out;
 }
 function searchableTitle(t) {
   const paren = t.match(/\(([^)]{2,40})\)/);
@@ -33898,11 +34075,12 @@ async function resolveProductFromLink(rawUrl) {
   if (slugTitle) return { title: slugTitle, titleSource: "url-slug", merchant, domain, pagePrice: null, image: null, fetchStatus };
   return { title: null, titleSource: "none", merchant, domain, pagePrice: null, image: null, fetchStatus };
 }
-var cheerio6, MERCHANTS, JUNK_SLUG, GENERIC_TITLE_RE, ERROR_TITLE_RE;
+var cheerio6, MERCHANTS, JUNK_SLUG, TYPED_FILLER, GENERIC_TITLE_RE, ERROR_TITLE_RE;
 var init_productLink = __esm({
   "server/lens/productLink.ts"() {
     cheerio6 = __toESM(require("cheerio"), 1);
     init_curlCffiFetch();
+    init_sameProduct();
     MERCHANTS = [
       [/(^|\.)amazon\.(in|com)$/, "Amazon India"],
       [/(^|\.)flipkart\.com$/, "Flipkart"],
@@ -33924,6 +34102,7 @@ var init_productLink = __esm({
       [/(^|\.)pricehistory\.app$/, "PriceHistory"]
     ];
     JUNK_SLUG = /^(dp|gp|p|product|products|item|itm|buy|pd|shop|s|ip|sku|b0[a-z0-9]{8}|[a-z]{0,3}\d[a-z0-9]{6,})$/i;
+    TYPED_FILLER = /^(buy|purchase|price|prices|cost|rate|rates|best|cheapest|lowest|online|new|latest|original|genuine|offer|offers|deal|deals|sale|flipkart|amazon|myntra|ajio|meesho|india|in)$/i;
     GENERIC_TITLE_RE = /^(products?|shop|store|search|search results|buy online|online store|best sellers?|deals?|all products?|cart|checkout|home)$/i;
     ERROR_TITLE_RE = /(^|\b)(service unavailable|temporarily unavailable|access denied|forbidden|page not found|just a moment|unusual traffic|robot check|are you a human|human verification|error\s*(40[034]|50[023])?|40[034]|50[023]|429)(\b|$)/i;
   }
@@ -34020,136 +34199,6 @@ var init_assistantIntent = __esm({
     };
     FILLER = /\b(batao|bata\s*do|bataiye|dikhao|dikha\s*do|dikhaiye|dhundo|dhoondo|chahiye|chahie|kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|ka\s*rate|rate|rates|price|prices|fare|fares|kimat|keemat|please|pls|show|tell|me|find|search|check|what|is|are|the|of|for|a|an|i|want|need|looking|cheapest|sasta|sabse|best|flight|flights|airfare|ticket|tickets|bus|buses|hotel|hotels|cab|taxi)\b/gi;
     MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-  }
-});
-
-// server/lens/sameProduct.ts
-var sameProduct_exports = {};
-__export(sameProduct_exports, {
-  capacitiesOf: () => capacitiesOf,
-  identityTokens: () => identityTokens,
-  isAccessory: () => isAccessory,
-  isSameProduct: () => isSameProduct,
-  normalizeBrandSpelling: () => normalizeBrandSpelling,
-  sharesIdentity: () => sharesIdentity
-});
-function normalizeBrandSpelling(t) {
-  let out = String(t || "");
-  for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
-  return out;
-}
-function words(t) {
-  return normalizeBrandSpelling(t).toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
-}
-function isAccessory(title) {
-  const t = ` ${title.toLowerCase()} `;
-  return ACCESSORY_WORDS.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
-}
-function identityTokens(title) {
-  return Array.from(new Set(words(title).filter((w) => !STOP3.has(w) && !COLORS.has(w) && w.length > 1)));
-}
-function capacitiesOf(title) {
-  const caps = /* @__PURE__ */ new Set();
-  for (const m of String(title || "").matchAll(/\b(\d+(?:\.\d+)?)\s?(gb|tb)\b/gi)) {
-    const n = parseFloat(m[1]) * (/^tb$/i.test(m[2]) ? 1024 : 1);
-    if (n > 0) caps.add(String(n));
-  }
-  return caps;
-}
-function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
-  const wantsAccessory = isAccessory(pastedTitle);
-  if (!wantsAccessory && isAccessory(candidateTitle)) return false;
-  const wantCaps = capacitiesOf(pastedTitle);
-  const haveCaps = capacitiesOf(candidateTitle);
-  if (mode === "typed" && !wantCaps.size) {
-  } else if (wantCaps.size || haveCaps.size) {
-    if (!wantCaps.size || !haveCaps.size) return false;
-    for (const c of wantCaps) if (!haveCaps.has(c)) return false;
-  }
-  const need = identityTokens(pastedTitle);
-  if (need.length === 0) return false;
-  const have = new Set(words(candidateTitle));
-  const hard = need.filter((w) => /\d/.test(w));
-  if (hard.some((w) => !have.has(w))) return false;
-  const soft = need.filter((w) => !/\d/.test(w));
-  if (soft.length === 0) return hard.length > 0;
-  const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
-  const wantTiers = tiersOf(need);
-  const haveTiers = tiersOf(words(candidateTitle));
-  if (mode === "typed" && !wantTiers.size) {
-  } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
-  const hit = soft.filter((w) => have.has(w)).length;
-  return hit / soft.length >= 0.6;
-}
-function sharesIdentity(queryTitle, candidateTitle) {
-  if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
-  const need = identityTokens(queryTitle);
-  if (!need.length) return false;
-  const have = new Set(words(candidateTitle));
-  const hard = need.filter((w) => /\d/.test(w));
-  if (hard.length && hard.some((w) => !have.has(w))) return false;
-  const soft = need.filter((w) => !/\d/.test(w));
-  if (!soft.length) return hard.length > 0;
-  return soft.some((w) => have.has(w));
-}
-var ACCESSORY_WORDS, STOP3, TIERS, COLORS, BRAND_JOINS;
-var init_sameProduct = __esm({
-  "server/lens/sameProduct.ts"() {
-    ACCESSORY_WORDS = [
-      "case",
-      "cover",
-      "back cover",
-      "pouch",
-      "sleeve",
-      "skin",
-      "screen guard",
-      "screen protector",
-      "tempered",
-      "protector",
-      "charger",
-      "adapter",
-      "adaptor",
-      "cable",
-      "strap",
-      "band",
-      "stand",
-      "holder",
-      "mount",
-      "stylus",
-      "sticker",
-      "cleaner",
-      "refill",
-      "replacement",
-      "spare",
-      "lens guard",
-      "camera protector",
-      "magsafe",
-      "mag-safe",
-      "pop socket",
-      "popsocket",
-      "bumper",
-      "ring light",
-      "tripod",
-      "dock",
-      "wallet"
-    ];
-    STOP3 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
-    TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
-    COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
-    BRAND_JOINS = [
-      [/\bi\s*phone\b/gi, "iphone"],
-      [/\bapple\s+mobile\b/gi, "apple"],
-      [/\bone\s*plus\b/gi, "oneplus"],
-      [/\bred\s*mi\b/gi, "redmi"],
-      [/\breal\s*me\b/gi, "realme"],
-      [/\bsam\s*sung\b/gi, "samsung"],
-      [/\bnothing\s*phone\b/gi, "nothing phone"],
-      [/\bmoto\s*rola\b/gi, "motorola"],
-      [/\bgalaxy\s*m\b/gi, "galaxy m"],
-      [/\bmac\s*book\b/gi, "macbook"],
-      [/\bmagic\s*book\b/gi, "magicbook"],
-      [/\bb\s*t\s*w\b/gi, "btw"]
-    ];
   }
 });
 
@@ -37231,7 +37280,7 @@ var init_routes = __esm({
       const q3 = String(req.body?.query || "").trim().slice(0, 120);
       res.json({ success: true, warming: q3.length >= 2 });
       if (q3.length < 2) return;
-      const lensQuery = searchableTitle(q3);
+      const lensQuery = searchableTitle(normalizeTypedProductQuery(q3));
       void Promise.resolve().then(() => runSearchFast({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, 4e3)).catch(() => {
       });
     });
@@ -37259,7 +37308,7 @@ var init_routes = __esm({
         }
         lensQuery = searchableTitle(product.title);
       } else if (textQuery.length >= 2) {
-        lensQuery = searchableTitle(textQuery);
+        lensQuery = searchableTitle(normalizeTypedProductQuery(textQuery));
         product = { title: textQuery, titleSource: "typed", merchant: "", domain: "", pagePrice: null, image: null, fetchStatus: "skipped" };
       } else {
         return res.status(400).json({ success: false, error: "Paste a product link or type a product name." });
@@ -37270,12 +37319,35 @@ var init_routes = __esm({
         const keep = toks2.filter((t) => !caps.has(t.toLowerCase().replace(/\s/g, ""))).slice(0, 4).join(" ");
         return keep && keep !== lensQuery ? keep : "";
       })();
-      const COLD_BUDGET_MS = 1500;
+      const FIRST_PAINT_MS = 900;
+      const cold = { coldDeadlineMs: FIRST_PAINT_MS };
+      const pid = req.body?.pincode || "452001";
+      const cid = req.body?.city || "Indore";
+      const paint2 = req.body?.paint2 === true;
+      const groceryInput = { query: lensQuery, vertical: "grocery", city: cid, pincode: pid, ...cold };
+      const groceryWarm = runSearchFast(groceryInput, FIRST_PAINT_MS);
+      groceryWarm.catch(() => {
+      });
       const searches = [
-        runSearchFast({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, COLD_BUDGET_MS)
+        // Retail search stays location-free (its catalogue rows are keyed without a pincode —
+        // passing one silently emptied it), while quick-commerce NEEDS the delivery location.
+        runSearchFast({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode, ...cold }, FIRST_PAINT_MS)
       ];
-      if (broadQuery) searches.push(runSearchFast({ query: broadQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, COLD_BUDGET_MS));
-      const responses = await Promise.all(searches);
+      if (paint2) searches.push(groceryWarm);
+      if (broadQuery && req.body?.deepFallback === true) {
+        searches.push(runSearchFast({ query: broadQuery, vertical: "ecommerce", city: cid, pincode: pid, ...cold }, FIRST_PAINT_MS));
+      }
+      const HARD_CAP_MS = 950;
+      let cappedOut = false;
+      const responses = await Promise.race([
+        Promise.all(searches),
+        new Promise((resolve) => {
+          setTimeout(() => {
+            cappedOut = true;
+            resolve([]);
+          }, HARD_CAP_MS);
+        })
+      ]);
       const seenIds = /* @__PURE__ */ new Set();
       const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
       const all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf2(o) })).filter((x) => x.price > 0);
@@ -37345,19 +37417,24 @@ var init_routes = __esm({
       const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 10);
       let history = [];
       let historyEntity = null;
-      try {
+      const historyLookup = (async () => {
         const { priceHistoryForEntity: priceHistoryForEntity2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
         for (const r of offers) {
           const eid = Number(r.canonicalEntityId);
           if (!eid) continue;
           const rows = await priceHistoryForEntity2(eid, 120);
           const pts = rows.map((x) => ({ price: Number(x.effective_price), capturedAt: x.captured_at })).filter((p) => p.price > 0);
-          if (pts.length) {
-            history = pts.reverse();
-            historyEntity = eid;
-            break;
-          }
+          if (pts.length) return { history: pts.reverse(), historyEntity: eid };
         }
+        return { history, historyEntity };
+      })();
+      try {
+        const got = await Promise.race([
+          historyLookup,
+          new Promise((resolve) => setTimeout(() => resolve({ history: [], historyEntity: null }), 220))
+        ]);
+        history = got.history;
+        historyEntity = got.historyEntity;
       } catch {
       }
       const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
@@ -37378,6 +37455,10 @@ var init_routes = __esm({
         deal,
         pageVsCheapest,
         servedFrom: responses[0]?.state?.servedFrom,
+        // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
+        // A capped-out answer IS pending by definition: the page must keep polling, otherwise it
+        // would stop on an empty shell and never pick up the rows that land a moment later.
+        pendingRefresh: cappedOut || responses.some((r) => r.state?.pendingRefresh === true),
         closestOnly,
         message: offers.length ? closestOnly ? "No exact match right now. Showing the closest live variants of this product." : void 0 : "No verified listing of this product was found on our sources right now."
       });

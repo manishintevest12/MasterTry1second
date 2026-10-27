@@ -47,13 +47,36 @@ export function normalizeBrandSpelling(t: string): string {
   return out;
 }
 
+/**
+ * Quantity units in one canonical spelling (owner 27 Oct, grocery comparison): the same
+ * pack is written "1 l", "1 ltr", "1 litre" by different shops, and "1l" vs "1 ltr" was a
+ * hard-token mismatch, so a Blinkit milk row never matched the query typed as "1 l".
+ * Normalises litre/gram/pack synonyms BEFORE tokenising (both sides of every comparison).
+ */
+function canonicalQuantity(t: string): string {
+  return String(t || '')
+    .replace(/\bpack\s+of\s+(\d+)\b/gi, '$1 pack')
+    .replace(/\b(ltrs?|litres?|liters?)\b/gi, 'l')
+    .replace(/\b(gms?|grams?)\b/gi, 'g')
+    .replace(/\b(kgs?|kilos?|kilograms?)\b/gi, 'kg')
+    .replace(/\b(packs?|packets?|pk)\b/gi, 'pack');
+}
+
 function words(t: string): string[] {
-  return normalizeBrandSpelling(t).toLowerCase().replace(/[()\[\],:;|]/g, ' ').replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, '$1$2').split(/[^a-z0-9.+]+/).filter(Boolean);
+  return canonicalQuantity(normalizeBrandSpelling(t)).toLowerCase().replace(/[()\[\],:;|]/g, ' ').replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l|pack)\b/g, '$1$2').split(/[^a-z0-9.+]+/).filter(Boolean);
 }
 
 export function isAccessory(title: string): boolean {
   const t = ` ${title.toLowerCase()} `;
-  return ACCESSORY_WORDS.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
+  const hits = ACCESSORY_WORDS.filter((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
+  if (hits.length === 0) return false;
+  // Grocery packs are sold in a "pouch"/"packet": that is packaging, not an accessory, and
+  // it silently blocked every grocery row ("Tata Salt, 1 kg Pouch"). Only packaging words
+  // with a weight/volume in the same title are excused.
+  const packagingOnly = hits.every((w) => w === 'pouch');
+  const quantified = /\d+(?:\.\d+)?\s?(?:g|kg|ml|l|pack|ltr|litre)\b/i.test(title);
+  if (packagingOnly && quantified) return false;
+  return true;
 }
 
 /** Tokens that identify the exact product: numbers/capacities/model codes and brand/model words (not colours/filler). */
@@ -102,9 +125,14 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
   if (need.length === 0) return false;
   const have = new Set(words(candidateTitle));
   // Numeric/model tokens (iphone "17", "256gb", "s24") must ALL match, so iPhone 16 is never an iPhone 17.
-  const hard = need.filter((w) => /\d/.test(w));
+  // Pack sizes are the exception (owner 27 Oct, grocery comparison): shops title the same pack
+  // as "Tata Salt 1 kg", "Tata Salt 1000 g" or just "Tata Salt Crystal", so a stated weight or
+  // volume must not veto an otherwise exact product match. Storage capacity (GB/TB) is still
+  // strict via capacitiesOf above, so the 512-vs-256 GB rule is untouched.
+  const isPackSize = (w: string) => /^\d+(?:\.\d+)?(?:g|kg|ml|l|pack)$/.test(w);
+  const hard = need.filter((w) => /\d/.test(w) && !isPackSize(w));
   if (hard.some((w) => !have.has(w))) return false;
-  const soft = need.filter((w) => !/\d/.test(w));
+  const soft = need.filter((w) => !/\d/.test(w) || isPackSize(w));
   if (soft.length === 0) return hard.length > 0;
   // Tier words must match exactly both ways: no '17 Pro' when the user pasted '17', no 'Air' for 'Pro'.
   const tiersOf = (ws: string[]) => new Set(ws.filter((w) => TIERS.has(w)));

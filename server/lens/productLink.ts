@@ -133,6 +133,29 @@ function priceNum(v: unknown): number | null {
  * Marketplace titles are keyword-stuffed ("boAt Airdopes 141/8, Low Latency, ENx Tech, 42HRS Battery ...").
  * The product identity is the part before the first marketing comma; keep brand + model + a capacity/variant in parens.
  */
+/**
+ * Normalise what the user TYPES into a query the sources can actually match (owner 27 Oct:
+ * "product naam daalo to kuch nahi aata"). Two passes:
+ *   1. spoken brand joins  ("i phone 18" -> "iphone 18", "one plus 15" -> "oneplus 15",
+ *      "mac book air" -> "macbook air") — listings write the brand as one word;
+ *   2. shopping filler removed    ("buy", "price of", "online", "best", "india"...) so the
+ *      remaining words are the product identity the shop indexes.
+ * Typed product names only — pasted product titles keep their exact words.
+ */
+const TYPED_FILLER = /^(buy|purchase|price|prices|cost|rate|rates|best|cheapest|lowest|online|new|latest|original|genuine|offer|offers|deal|deals|sale|flipkart|amazon|myntra|ajio|meesho|india|in)$/i;
+
+export function normalizeTypedProductQuery(t: string): string {
+  let out = String(t || '').replace(/\s+/g, ' ').trim();
+  if (!out) return '';
+  out = normalizeBrandSpelling(out);
+  // Strip shopping filler anywhere in the phrase, but never leave it empty.
+  const kept = out.split(' ').filter((w) => w && !TYPED_FILLER.test(w.replace(/[^a-z0-9]/gi, '')));
+  const joined = kept.join(' ').replace(/\s+/g, ' ').trim();
+  return joined || out;
+}
+
+import { normalizeBrandSpelling } from './sameProduct';
+
 export function searchableTitle(t: string): string {
   const paren = t.match(/\(([^)]{2,40})\)/);
   const noParen = t.replace(/\([^)]*\)/g, ' ');

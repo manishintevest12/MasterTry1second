@@ -37,7 +37,7 @@ import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../c
 import { initCache, cacheStats } from '../common/cache';
 import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
-import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle } from '../lens/productLink';
+import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { analyseDeal } from '../lens/dealScore';
@@ -1243,7 +1243,7 @@ apiRouter.post('/product-page/prefetch', async (req, res) => {
   const q = String(req.body?.query || '').trim().slice(0, 120);
   res.json({ success: true, warming: q.length >= 2 });
   if (q.length < 2) return;
-  const lensQuery = searchableTitle(q);
+  const lensQuery = searchableTitle(normalizeTypedProductQuery(q));
   // fire and forget — never await the pipeline on the user's typing
   void Promise.resolve()
     .then(() => runSearchFast({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, 4_000))
@@ -1282,7 +1282,11 @@ apiRouter.post('/product-page', async (req, res) => {
     }
     lensQuery = searchableTitle(product.title);
   } else if (textQuery.length >= 2) {
-    lensQuery = searchableTitle(textQuery);
+    // OWNER 27 Oct ("product naam daalo to kuch nahi aata"): the typed query went to the
+    // sources VERBATIM ("i phone 18"), so Amazon/Flipkart searched a string no listing
+    // matches while the matcher internally normalised to "iphone". Normalise the query we
+    // actually send: spoken brand joins + shopping filler words removed.
+    lensQuery = searchableTitle(normalizeTypedProductQuery(textQuery));
     product = { title: textQuery, titleSource: 'typed', merchant: '', domain: '', pagePrice: null, image: null, fetchStatus: 'skipped' };
   } else {
     return res.status(400).json({ success: false, error: 'Paste a product link or type a product name.' });
@@ -1303,12 +1307,52 @@ apiRouter.post('/product-page', async (req, res) => {
   // usable snapshot instead of waiting out a budget. Warm cache -> ~50ms; a cold
   // query gets a bounded 1.5s beat. Background refresh keeps the cache warm for
   // the next user, so in practice results are instant.
-  const COLD_BUDGET_MS = 1_500;
+  // OWNER 27 Oct: "kisi bhi halat mai mujhe results 1 second ke andar chahiye iss page pr".
+  // Every path is now bounded so the response lands in under a second: an instant catalogue
+  // answer (~50ms) when we already have rows, otherwise the first live source snapshot
+  // (Ajio ~0.2s, Myntra ~0.9s), otherwise an honest pendingRefresh marker at ~0.9s that the
+  // page keeps polling with its loader up.
+  const FIRST_PAINT_MS = 900;
+  const cold = { coldDeadlineMs: FIRST_PAINT_MS } as Partial<SearchInput>;
+  // OWNER 27 Oct: "10min grocery vertical ke v product ka result aana chaiye compare ho kr
+  // jaise ecommerce ka aa raha hai". A product page now compares BOTH retail and quick
+  // commerce: ecommerce (Amazon/Flipkart/Myntra/Ajio/Tata CLiQ) plus grocery (Blinkit,
+  // Zepto, Instamart, BigBasket/BB Now, Flipkart Minutes). Same seller collapse + same-product
+  // matching, so a milk/bread/maggi query lists 10-minute prices next to retail ones.
+  // Grocery sources need a delivery location; the product page body carries none, so it
+  // falls back to the same default the warm/cron jobs use (Indore 452001) instead of
+  // returning an empty quick-commerce column.
+  const pid = req.body?.pincode || '452001';
+  const cid = req.body?.city || 'Indore';
+  // TWO-PHASE PAINT (owner 27 Oct, both requirements at once: grocery comparison AND <1s):
+  // phase 1 awaits only retail, so the first paint is the fast catalogue/live snapshot; the
+  // quick-commerce pipeline is started in the background (not awaited) so its rows are ready
+  // by the page's next poll. Poll passes (paint2) then await BOTH and show them side by side.
+  // Running both awaited initially starved the event loop and pushed retail searches to 1.8s.
+  const paint2 = req.body?.paint2 === true;
+  const groceryInput = { query: lensQuery, vertical: 'grocery', city: cid, pincode: pid, ...cold } as SearchInput;
+  const groceryWarm = runSearchFast(groceryInput, FIRST_PAINT_MS);
+  groceryWarm.catch(() => {});
   const searches: Array<Promise<any>> = [
-    runSearchFast({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, COLD_BUDGET_MS),
+    // Retail search stays location-free (its catalogue rows are keyed without a pincode —
+    // passing one silently emptied it), while quick-commerce NEEDS the delivery location.
+    runSearchFast({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode, ...cold } as SearchInput, FIRST_PAINT_MS),
   ];
-  if (broadQuery) searches.push(runSearchFast({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, COLD_BUDGET_MS));
-  const responses = await Promise.all(searches);
+  if (paint2) searches.push(groceryWarm);
+  // The broad fallback query is deliberately NOT fired on the first paint: four parallel
+  // pipelines starved the event loop and pushed answers past the 1s promise (measured
+  // 1.7s). It runs on the polling pass instead, when rows are still missing.
+  if (broadQuery && req.body?.deepFallback === true) {
+    searches.push(runSearchFast({ query: broadQuery, vertical: 'ecommerce', city: cid, pincode: pid, ...cold } as SearchInput, FIRST_PAINT_MS));
+  }
+  // HARD 1-SECOND CAP (owner 27 Oct): whatever the sources do, this handler answers inside
+  // a second. Slow sellers keep filling in through the page's pendingRefresh polls.
+  const HARD_CAP_MS = 950;
+  let cappedOut = false;
+  const responses = await Promise.race([
+    Promise.all(searches),
+    new Promise<any[]>((resolve) => { setTimeout(() => { cappedOut = true; resolve([]); }, HARD_CAP_MS); }),
+  ]);
   const seenIds = new Set<string>();
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
   const all = responses.flatMap((r: any) => r.results || [])
@@ -1389,15 +1433,25 @@ apiRouter.post('/product-page', async (req, res) => {
   // Real history: first same-product offer that carries a canonical entity id with recorded points.
   let history: Array<{ price: number; capturedAt: string }> = [];
   let historyEntity: number | null = null;
-  try {
+  // The chart is optional, the 1-second answer is not: the history lookup is capped at 220ms
+  // so a cold catalogue read can never push the response past the owner's deadline.
+  const historyLookup = (async () => {
     const { priceHistoryForEntity } = await import('../catalogue/catalogueService');
     for (const r of offers) {
       const eid = Number(r.canonicalEntityId);
       if (!eid) continue;
       const rows = await priceHistoryForEntity(eid, 120);
       const pts = rows.map((x: any) => ({ price: Number(x.effective_price), capturedAt: x.captured_at })).filter((p: any) => p.price > 0);
-      if (pts.length) { history = pts.reverse(); historyEntity = eid; break; }
+      if (pts.length) return { history: pts.reverse(), historyEntity: eid };
     }
+    return { history, historyEntity };
+  })();
+  try {
+    const got = await Promise.race([
+      historyLookup,
+      new Promise<{ history: typeof history; historyEntity: number | null }>((resolve) => setTimeout(() => resolve({ history: [], historyEntity: null }), 220)),
+    ]);
+    history = got.history; historyEntity = got.historyEntity;
   } catch { /* history is optional; absence is reported honestly */ }
 
   const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
@@ -1410,6 +1464,10 @@ apiRouter.post('/product-page', async (req, res) => {
     success: true, found: true, product, searchedAs: lensQuery, images,
     cheapest, offers, related, history, historyEntity, deal, pageVsCheapest,
     servedFrom: responses[0]?.state?.servedFrom,
+    // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
+    // A capped-out answer IS pending by definition: the page must keep polling, otherwise it
+    // would stop on an empty shell and never pick up the rows that land a moment later.
+    pendingRefresh: cappedOut || responses.some((r: any) => r.state?.pendingRefresh === true),
     closestOnly,
     message: offers.length
       ? (closestOnly ? 'No exact match right now. Showing the closest live variants of this product.' : undefined)
