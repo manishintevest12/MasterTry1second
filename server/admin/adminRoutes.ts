@@ -309,6 +309,34 @@ adminRouter.post('/deals/sync', async (_req, res) => {
   catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Sync failed' }); }
 });
 
+// ---- Manual finance inventory (owner 27 Oct): loans / credit cards / insurance / account.
+// The owner types a lender, card or plan himself; it is stored in the same `offers`
+// table the scraped rows use, so a gated source can never blank a finance vertical.
+adminRouter.get('/finance-offers', async (req, res) => {
+  try {
+    const { listManualFinanceOffers, FINANCE_VERTICALS } = await import('../marketing/financeOffers');
+    res.json({ success: true, verticals: FINANCE_VERTICALS, offers: await listManualFinanceOffers(String(req.query.vertical || '') || undefined) });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load manual finance entries' }); }
+});
+adminRouter.post('/finance-offers', async (req, res) => {
+  try {
+    const { saveManualFinanceOffer } = await import('../marketing/financeOffers');
+    const r = await saveManualFinanceOffer({ ...req.body, actor: (req as any).adminUser || 'owner' });
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    audit(req, req.body?.id ? 'finance_offer.update' : 'finance_offer.create', String(req.body?.title || ''));
+    res.json({ success: true, id: r.id });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save the entry' }); }
+});
+adminRouter.delete('/finance-offers/:id', async (req, res) => {
+  try {
+    const { deleteManualFinanceOffer } = await import('../marketing/financeOffers');
+    const r = await deleteManualFinanceOffer(Number(req.params.id), (req as any).adminUser || 'owner');
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    audit(req, 'finance_offer.delete', String(req.params.id));
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete the entry' }); }
+});
+
 // ---- Affiliate profiles: network + tracking template per company, applied server-side on every click ----
 adminRouter.get('/affiliate-profiles', async (_req, res) => {
   try {

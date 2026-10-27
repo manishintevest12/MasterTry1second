@@ -1,0 +1,153 @@
+/**
+ * Manual finance inventory (owner 27 Oct): "muje option do loan, credit card, insurance,
+ * account verticals ka manually v add krne ka".
+ *
+ * The four finance verticals are scraped, so a gated source (BankBazaar etc.) could leave
+ * them empty and the owner had no way to publish a lender/card he holds a direct deal
+ * with. This tab writes the entry into the SAME offers table the scraped rows use
+ * (source_id 'admin_manual'), which means it appears in the live feed, comparison cards
+ * and lead forms with no second pipeline.
+ */
+import { useEffect, useState } from 'react';
+import { Plus, Save, Trash2, Loader2, Wallet, CreditCard, ShieldCheck, Landmark } from 'lucide-react';
+
+interface Row {
+  id: number; vertical: string; title: string; seller: string; rate_label: string;
+  highlights: string; price: number | null; url: string; city: string | null; active: boolean;
+}
+
+const VERTICALS = [
+  { key: 'loans', label: 'Loans', icon: Wallet, hint: 'Personal / home / car / business loan' },
+  { key: 'creditcards', label: 'Credit Cards', icon: CreditCard, hint: 'Card with annual fee + joining perks' },
+  { key: 'insurance', label: 'Insurance', icon: ShieldCheck, hint: 'Health / term / motor plan' },
+  { key: 'account', label: 'Accounts', icon: Landmark, hint: 'Savings / demat / current account' },
+];
+
+const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10';
+const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
+
+const blank = { id: undefined as number | undefined, vertical: 'loans', title: '', seller: '', rate_label: '', price: '', highlights: '', url: '', city: '', active: true };
+
+export const FinanceVerticalsTab: React.FC = () => {
+  const [token] = useState(() => localStorage.getItem('t1s_admin_token') || '');
+  const [rows, setRows] = useState<Row[]>([]);
+  const [form, setForm] = useState<any>(blank);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+  const load = async () => {
+    try {
+      const res = await fetch('/api/admin/finance-offers', { headers });
+      const d = await res.json();
+      if (d.success) setRows(d.offers || []);
+      else setMsg({ ok: false, text: d.error || 'Could not load entries' });
+    } catch { setMsg({ ok: false, text: 'Could not load entries' }); }
+  };
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    if (!form.title.trim()) return setMsg({ ok: false, text: 'Product name likho (e.g. HDFC Personal Loan)' });
+    if (!/^https:\/\//i.test(form.url.trim())) return setMsg({ ok: false, text: 'Apply/partner URL https:// se shuru hona chahiye' });
+    setBusy(true);
+    try {
+      const res = await fetch('/api/admin/finance-offers', { method: 'POST', headers, body: JSON.stringify({ ...form, id: form.id || undefined }) });
+      const d = await res.json();
+      if (d.success) {
+        setMsg({ ok: true, text: form.id ? 'Entry updated — live feed me turant update ho jayegi.' : 'Entry added — ye live feed me dikhegi (scraped rows ke saath).' });
+        setForm({ ...blank, vertical: form.vertical });
+        await load();
+      } else setMsg({ ok: false, text: d.error || 'Save failed' });
+    } catch { setMsg({ ok: false, text: 'Save failed' }); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (id: number) => {
+    if (!confirm('Ye entry live feed se hata denge. Pakka?')) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/finance-offers/${id}`, { method: 'DELETE', headers });
+      const d = await res.json();
+      if (d.success) { setMsg({ ok: true, text: 'Entry removed' }); await load(); }
+      else setMsg({ ok: false, text: d.error || 'Delete failed' });
+    } catch { setMsg({ ok: false, text: 'Delete failed' }); }
+    finally { setBusy(false); }
+  };
+
+  const edit = (r: Row) => {
+    setForm({ id: r.id, vertical: r.vertical, title: r.title, seller: r.seller, rate_label: r.rate_label, price: r.price ?? '', highlights: r.highlights, url: r.url, city: r.city || '', active: r.active });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const active = VERTICALS.find((v) => v.key === form.vertical) || VERTICALS[0];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5">
+        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><Plus className="w-4 h-4" /> Finance verticals — manually add</h3>
+        <p className="text-[11px] text-slate-500 mt-1">
+          Loans / Credit Cards / Insurance / Accounts ka apna lender, card ya plan yahan add karo. Entry usi offers table me jaati hai jise scrape rows use karti hain — live feed, comparison card aur lead form sab me automatic dikhegi. Koi source gate ho jaye to bhi vertical khali nahi rahega.
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {VERTICALS.map((v) => {
+            const Icon = v.icon;
+            const on = form.vertical === v.key;
+            return (
+              <button key={v.key} type="button" onClick={() => set('vertical', v.key)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold cursor-pointer transition-colors ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}>
+                <Icon className="w-3.5 h-3.5" /> {v.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[10px] text-slate-400 mt-1.5">{active.hint}</p>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="md:col-span-2"><label className={labelCls}>Product name *</label><input className={inputCls} value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="HDFC Personal Loan" /></div>
+          <div><label className={labelCls}>Bank / insurer / broker</label><input className={inputCls} value={form.seller} onChange={(e) => set('seller', e.target.value)} placeholder="HDFC Bank" /></div>
+          <div><label className={labelCls}>Rate / fee shown</label><input className={inputCls} value={form.rate_label} onChange={(e) => set('rate_label', e.target.value)} placeholder="10.25% p.a. · ₹0 joining" /></div>
+          <div><label className={labelCls}>Numeric value (sorting)</label><input className={inputCls} value={form.price} onChange={(e) => set('price', e.target.value)} placeholder="10.25" /></div>
+          <div><label className={labelCls}>City (optional)</label><input className={inputCls} value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Indore" /></div>
+          <div className="md:col-span-2"><label className={labelCls}>Apply / partner URL *</label><input className={inputCls} value={form.url} onChange={(e) => set('url', e.target.value)} placeholder="https://www.hdfcbank.com/personal/loan" /></div>
+          <div className="md:col-span-4"><label className={labelCls}>Highlights (one line)</label><input className={inputCls} value={form.highlights} onChange={(e) => set('highlights', e.target.value)} placeholder="Instant approval · 7.5L max · no foreclosure charge" /></div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold cursor-pointer disabled:opacity-60">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}{form.id ? 'Update entry' : 'Add to live feed'}
+          </button>
+          {form.id ? <button onClick={() => setForm({ ...blank, vertical: form.vertical })} className="text-[11px] text-slate-500 cursor-pointer">Cancel edit</button> : null}
+          {msg ? <span className={`text-[11px] font-semibold ${msg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{msg.text}</span> : null}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Manual entries ({rows.length})</h4>
+        {rows.length === 0 ? (
+          <p className="text-[11px] text-slate-500">Abhi koi manual entry nahi. Upar se add karo — live feed me turant dikhegi.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {rows.map((r) => (
+              <div key={r.id} className="flex items-start gap-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <strong className="text-xs text-slate-900">{r.title}</strong>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-600">{r.vertical}</span>
+                    {r.active ? null : <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-700">inactive</span>}
+                  </div>
+                  <p className="text-[11px] text-slate-500 truncate">{r.seller}{r.rate_label ? ` · ${r.rate_label}` : ''}{r.city ? ` · ${r.city}` : ''}</p>
+                  {r.highlights ? <p className="text-[10px] text-slate-400 truncate">{r.highlights}</p> : null}
+                </div>
+                <button onClick={() => edit(r)} className="text-[11px] text-slate-500 cursor-pointer">Edit</button>
+                <button onClick={() => void remove(r.id)} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

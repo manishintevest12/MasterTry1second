@@ -749,6 +749,38 @@ async function finalizeLive(
     combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined, [...(outcome.succeeded || []), ...honestEmpty]))];
   }
 
+  // 7.9 MANUAL FINANCE INVENTORY (owner 27 Oct): entries the owner typed in the admin
+  // panel (loans / credit cards / insurance / account) join the feed exactly like a
+  // scraped row, so a gated source can never leave a vertical empty again.
+  if (['loans', 'creditcards', 'insurance', 'account'].includes(String(vertical))) {
+    try {
+      const { liveManualFinanceOffers } = await import('../marketing/financeOffers');
+      const manual = await liveManualFinanceOffers(String(vertical));
+      if (manual.length) {
+        const mapped = manual.map((m: any) => {
+          let attrs: any = {};
+          try { attrs = typeof m.attributes === 'string' ? JSON.parse(m.attributes) : (m.attributes || {}); } catch { attrs = {}; }
+          return {
+            id: `manual-${m.id}`,
+            vertical: String(m.vertical),
+            title: String(m.title || ''),
+            seller: String(m.seller || m.title || ''),
+            vendor: String(m.seller || m.title || ''),
+            price: m.effective_price === null ? 0 : Number(m.effective_price),
+            currency: 'INR',
+            sellerUrl: String(m.seller_url || ''),
+            attributes: { ...attrs, manual: 1 },
+            freshnessStatus: 'LIVE_VERIFIED',
+            validationStatus: 'VALID',
+            sourceId: 'admin_manual',
+            locationCity: m.location_city || null,
+          } as any;
+        });
+        combined = [...mapped, ...combined];
+      }
+    } catch { /* manual inventory is optional — never break a vertical */ }
+  }
+
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules
   const engine = getVerticalEngine(vertical as any);
   combined = await engine.execute(combined, parsed);

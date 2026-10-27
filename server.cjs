@@ -30424,6 +30424,162 @@ var init_affiliateNetwork = __esm({
   }
 });
 
+// server/marketing/financeOffers.ts
+var financeOffers_exports = {};
+__export(financeOffers_exports, {
+  FINANCE_VERTICALS: () => FINANCE_VERTICALS,
+  deleteManualFinanceOffer: () => deleteManualFinanceOffer,
+  listManualFinanceOffers: () => listManualFinanceOffers,
+  liveManualFinanceOffers: () => liveManualFinanceOffers,
+  saveManualFinanceOffer: () => saveManualFinanceOffer,
+  validateFinanceOffer: () => validateFinanceOffer
+});
+function normalizeVertical(v) {
+  const s = String(v || "").trim().toLowerCase().replace(/[\s_-]/g, "");
+  if (s === "loans" || s === "loan") return "loans";
+  if (s === "creditcards" || s === "creditcard" || s === "cards") return "creditcards";
+  if (s === "insurance") return "insurance";
+  if (s === "account" || s === "accounts" || s === "banking" || s === "savings") return "account";
+  return null;
+}
+function validateFinanceOffer(i) {
+  const vertical = normalizeVertical(i.vertical);
+  if (!vertical) return { ok: false, error: "Vertical must be loans, creditcards, insurance or account" };
+  const title = String(i.title || "").trim().slice(0, 200);
+  if (title.length < 3) return { ok: false, error: "Product name is required (e.g. HDFC Personal Loan)" };
+  const rawUrl = String(i.url || "").trim();
+  if (!rawUrl) return { ok: false, error: "Apply/partner URL is required" };
+  let probe;
+  try {
+    probe = new URL(rawUrl);
+  } catch {
+    return { ok: false, error: "URL must be a full https:// link" };
+  }
+  if (probe.protocol !== "https:") return { ok: false, error: "URL must start with https://" };
+  const price = i.price === null || i.price === void 0 || i.price === "" ? null : Number(i.price);
+  if (price !== null && !Number.isFinite(price)) return { ok: false, error: "Price/rate value must be a number" };
+  return {
+    ok: true,
+    clean: {
+      id: i.id ? Number(i.id) : void 0,
+      vertical,
+      title,
+      seller: String(i.seller || "").trim().slice(0, 160) || title,
+      rate_label: String(i.rate_label || "").trim().slice(0, 80) || null,
+      price: price === null ? null : Math.max(0, price),
+      highlights: String(i.highlights || "").trim().slice(0, 300) || null,
+      url: rawUrl.slice(0, 1500),
+      city: String(i.city || "").trim().slice(0, 120) || null,
+      active: i.active === false ? 0 : 1,
+      actor: String(i.actor || "").trim().slice(0, 120) || null
+    }
+  };
+}
+async function listManualFinanceOffers(vertical) {
+  const v = vertical ? normalizeVertical(vertical) : null;
+  const rows = await getStore().query(
+    `SELECT id, vertical, title, seller, seller_url, effective_price, attributes, location_city, freshness_status, created_at, updated_at
+       FROM offers WHERE source_id = ? ${v ? "AND vertical = ?" : ""} ORDER BY id DESC LIMIT 400`,
+    v ? [SOURCE_ID, v] : [SOURCE_ID]
+  ).catch(() => []);
+  return rows.map((r) => {
+    const a = attrsOf(r);
+    return {
+      id: Number(r.id),
+      vertical: r.vertical,
+      title: r.title,
+      seller: r.seller,
+      rate_label: a.rate_label || "",
+      highlights: a.highlights || "",
+      price: r.effective_price === null ? null : Number(r.effective_price),
+      url: r.seller_url || "",
+      city: r.location_city || null,
+      active: r.freshness_status !== "INVALID",
+      created_at: r.created_at,
+      updated_at: r.updated_at
+    };
+  });
+}
+async function log2(offerId, vertical, action, actor, snapshot) {
+  await getStore().execute(
+    "INSERT INTO finance_manual_log (offer_id, vertical, action, actor, snapshot) VALUES (?,?,?,?,?)",
+    [offerId, vertical, action, actor, JSON.stringify(snapshot).slice(0, 4e3)]
+  ).catch(() => {
+  });
+}
+async function saveManualFinanceOffer(input) {
+  const v = validateFinanceOffer(input);
+  if (!v.ok) return { ok: false, error: v.error };
+  const c = v.clean;
+  const store2 = getStore();
+  const attributes = JSON.stringify({
+    manual: 1,
+    rate_label: c.rate_label,
+    highlights: c.highlights,
+    // Finance summary rows carry their category in attributes on the scraped side too,
+    // so the vertical engine treats a manual row exactly like a published-rate page.
+    ...c.vertical === "loans" ? { loan_type: "personal loan" } : {},
+    ...c.vertical === "creditcards" ? { card_type: "credit card" } : {},
+    ...c.vertical === "insurance" ? { insurance_type: "insurance plan" } : {},
+    ...c.vertical === "account" ? { account_type: "savings account" } : {},
+    ...c.rate_label ? { unit: c.rate_label } : {}
+  });
+  if (c.id) {
+    const ex = await store2.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
+    if (!ex.length) return { ok: false, error: "That entry does not exist (or is not a manual finance entry)" };
+    await store2.execute(
+      `UPDATE offers SET vertical=?, title=?, seller=?, seller_url=?, effective_price=?, attributes=?,
+         location_city=?, freshness_status=?, validation_status='VALID', fetched_at=NOW()
+       WHERE id=? AND source_id=?`,
+      [c.vertical, c.title, c.seller, c.url, c.price, attributes, c.city, c.active ? "LIVE_VERIFIED" : "INVALID", c.id, SOURCE_ID]
+    );
+    await log2(c.id, c.vertical, "update", c.actor, c);
+    return { ok: true, id: c.id };
+  }
+  const res = await store2.execute(
+    `INSERT INTO offers (vertical, title, vendor, seller, seller_url, effective_price, attributes,
+        location_city, currency, availability, match_state, freshness_status, validation_status, confidence,
+        source_id, source_method, source_url, fetched_at, validated_at)
+     VALUES (?,?,?,?,?,?,?,?, 'INR', 'in_stock', 'MATCHED', ?, 'VALID', 1.0, ?, 'manual_admin', ?, NOW(), NOW())`,
+    [c.vertical, c.title, c.seller, c.seller, c.url, c.price, attributes, c.city, c.active ? "LIVE_VERIFIED" : "INVALID", SOURCE_ID, c.url]
+  );
+  const id = Number(res?.insertId || res?.insert_id || 0);
+  if (id) await log2(id, c.vertical, "create", c.actor, c);
+  return { ok: true, id };
+}
+async function deleteManualFinanceOffer(id, actor) {
+  const store2 = getStore();
+  const rows = await store2.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
+  if (!rows.length) return { ok: false, error: "Entry not found" };
+  await store2.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
+  await log2(Number(id), rows[0].vertical, "delete", actor || null, rows[0]);
+  return { ok: true };
+}
+async function liveManualFinanceOffers(vertical) {
+  const v = normalizeVertical(vertical);
+  if (!v) return [];
+  return getStore().query(
+    `SELECT id, vertical, title, seller, seller_url, effective_price, attributes, location_city
+       FROM offers WHERE source_id = ? AND vertical = ? AND freshness_status <> 'INVALID' ORDER BY id DESC LIMIT 50`,
+    [SOURCE_ID, v]
+  ).catch(() => []);
+}
+var FINANCE_VERTICALS, SOURCE_ID, attrsOf;
+var init_financeOffers = __esm({
+  "server/marketing/financeOffers.ts"() {
+    init_db();
+    FINANCE_VERTICALS = ["loans", "creditcards", "insurance", "account"];
+    SOURCE_ID = "admin_manual";
+    attrsOf = (row) => {
+      try {
+        return typeof row.attributes === "string" ? JSON.parse(row.attributes) : row.attributes || {};
+      } catch {
+        return {};
+      }
+    };
+  }
+});
+
 // server/search/searchOrchestrator.ts
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
@@ -30862,6 +31018,39 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   if (String(vertical) === "flights") {
     const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId).filter((id) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
     combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
+  }
+  if (["loans", "creditcards", "insurance", "account"].includes(String(vertical))) {
+    try {
+      const { liveManualFinanceOffers: liveManualFinanceOffers2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
+      const manual = await liveManualFinanceOffers2(String(vertical));
+      if (manual.length) {
+        const mapped = manual.map((m) => {
+          let attrs = {};
+          try {
+            attrs = typeof m.attributes === "string" ? JSON.parse(m.attributes) : m.attributes || {};
+          } catch {
+            attrs = {};
+          }
+          return {
+            id: `manual-${m.id}`,
+            vertical: String(m.vertical),
+            title: String(m.title || ""),
+            seller: String(m.seller || m.title || ""),
+            vendor: String(m.seller || m.title || ""),
+            price: m.effective_price === null ? 0 : Number(m.effective_price),
+            currency: "INR",
+            sellerUrl: String(m.seller_url || ""),
+            attributes: { ...attrs, manual: 1 },
+            freshnessStatus: "LIVE_VERIFIED",
+            validationStatus: "VALID",
+            sourceId: "admin_manual",
+            locationCity: m.location_city || null
+          };
+        });
+        combined = [...mapped, ...combined];
+      }
+    } catch {
+    }
   }
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
@@ -39351,6 +39540,36 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Sync failed" });
       }
     });
+    adminRouter.get("/finance-offers", async (req, res) => {
+      try {
+        const { listManualFinanceOffers: listManualFinanceOffers2, FINANCE_VERTICALS: FINANCE_VERTICALS2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
+        res.json({ success: true, verticals: FINANCE_VERTICALS2, offers: await listManualFinanceOffers2(String(req.query.vertical || "") || void 0) });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load manual finance entries" });
+      }
+    });
+    adminRouter.post("/finance-offers", async (req, res) => {
+      try {
+        const { saveManualFinanceOffer: saveManualFinanceOffer2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
+        const r = await saveManualFinanceOffer2({ ...req.body, actor: req.adminUser || "owner" });
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        audit(req, req.body?.id ? "finance_offer.update" : "finance_offer.create", String(req.body?.title || ""));
+        res.json({ success: true, id: r.id });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save the entry" });
+      }
+    });
+    adminRouter.delete("/finance-offers/:id", async (req, res) => {
+      try {
+        const { deleteManualFinanceOffer: deleteManualFinanceOffer2 } = await Promise.resolve().then(() => (init_financeOffers(), financeOffers_exports));
+        const r = await deleteManualFinanceOffer2(Number(req.params.id), req.adminUser || "owner");
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        audit(req, "finance_offer.delete", String(req.params.id));
+        res.json({ success: true });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete the entry" });
+      }
+    });
     adminRouter.get("/affiliate-profiles", async (_req, res) => {
       try {
         const profiles = await listProfiles();
@@ -42211,7 +42430,7 @@ async function createApp() {
   const { bootstrapDealsSync: bootstrapDealsSync2 } = await Promise.resolve().then(() => (init_bootstrap(), bootstrap_exports));
   const { startWorkers: startWorkers2 } = await Promise.resolve().then(() => (init_refreshWorker(), refreshWorker_exports));
   const { affiliateRouter: affiliateRouter2, bootstrapAffiliateSync: bootstrapAffiliateSync2 } = await Promise.resolve().then(() => (init_api(), api_exports));
-  const { log: log2 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
+  const { log: log3 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
   const { startLoopWatchdog: startLoopWatchdog2 } = await Promise.resolve().then(() => (init_loopWatchdog(), loopWatchdog_exports));
   startLoopWatchdog2();
   app.use("/api", apiRouter2);
@@ -42235,7 +42454,7 @@ async function createApp() {
         void runSingleton2("background", startBackgroundDuties).then((now) => {
           if (now) {
             clearInterval(takeover);
-            log2.info("Bootstrap", "Background lock takeover: this instance now runs the keep-warm workers");
+            log3.info("Bootstrap", "Background lock takeover: this instance now runs the keep-warm workers");
           }
         }).catch(() => void 0);
       }, 12 * 6e4);
@@ -42270,7 +42489,7 @@ async function createApp() {
       res.send(enhanceHtml2(baseHtml, req.path));
     });
   } else if (settings3.isProduction) {
-    log2.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
+    log3.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
   }
   return app;
 }
