@@ -9,6 +9,7 @@
  * Electronics strictness (iPhone 16 vs 17, 256 vs 512 GB) must stay intact.
  */
 import { isSameProduct, identityTokens, isAccessory } from '../server/lens/sameProduct';
+import { fixSpelling } from '../server/lens/spellFix';
 import { normalizeTypedProductQuery } from '../server/lens/productLink';
 
 let passed = 0, failed = 0;
@@ -37,6 +38,21 @@ t('salt with omitted weight still matches',
 t('iphone 16 never matches 17', isSameProduct('iphone 16', 'Apple iPhone 17 128 GB', 'typed') === false);
 t('256 GB never matches 512 GB', isSameProduct('iphone 16 256gb', 'Apple iPhone 16 512 GB', 'typed') === false);
 t('iphone 16 matches its own listing', isSameProduct('iphone 16', 'Apple iPhone 16 (Black, 128 GB)', 'typed') === true);
+
+// 4b. The leading brand word is required in typed mode
+t('amul butter keeps Amul', isSameProduct('amul butter 500 g', 'Amul Salted Butter', 'typed') === true);
+t('amul butter rejects peanut butter',
+  isSameProduct('amul butter 500 g', 'Sundrop Peanut Butter Chocolate Crunchy, 500g', 'typed') === false);
+t('atta keeps Aashirvaad atta',
+  isSameProduct('atta 5 kg', 'Aashirvaad Whole Wheat Atta 5 kg', 'typed') === true);
+
+// 4c. Spelling tolerance (owner 27 Oct): typos are repaired, real words are left alone
+t('buter -> butter', fixSpelling('amul buter 500 g').query === 'amul butter 500 g');
+t('iphnoe -> iphone', fixSpelling('iphnoe 16').query === 'iphone 16');
+t('slat -> salt (transposition)', fixSpelling('tata slat 1 kg').query === 'tata salt 1 kg');
+t('a valid phrase is untouched', fixSpelling('amul butter 500 g').corrected === false);
+t('model numbers are never corrected', fixSpelling('sony wh-1000xm5').query === 'sony wh-1000xm5');
+t('correction reports the original', fixSpelling('blinkt milk').original === 'blinkt milk');
 
 // 5. Typed queries reach the sources in a usable form
 t('glued brand repaired', normalizeTypedProductQuery('i phone 18').includes('iphone 18'));

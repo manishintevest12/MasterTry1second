@@ -33779,7 +33779,10 @@ function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   if (mode === "typed" && !wantTiers.size) {
   } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
-  return hit / soft.length >= 0.6;
+  if (hit / soft.length < 0.6) return false;
+  const lead = need.find((w) => !isPackSize(w) && !/\d/.test(w));
+  if (mode === "typed" && lead && !have.has(lead)) return false;
+  return true;
 }
 function sharesIdentity(queryTitle, candidateTitle) {
   if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
@@ -34199,6 +34202,301 @@ var init_assistantIntent = __esm({
     };
     FILLER = /\b(batao|bata\s*do|bataiye|dikhao|dikha\s*do|dikhaiye|dhundo|dhoondo|chahiye|chahie|kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|ka\s*rate|rate|rates|price|prices|fare|fares|kimat|keemat|please|pls|show|tell|me|find|search|check|what|is|are|the|of|for|a|an|i|want|need|looking|cheapest|sasta|sabse|best|flight|flights|airfare|ticket|tickets|bus|buses|hotel|hotels|cab|taxi)\b/gi;
     MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  }
+});
+
+// server/lens/spellFix.ts
+function editDistance(a, b, cap = 3) {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  const rows = [];
+  for (let i = 0; i <= a.length; i++) rows.push(new Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) rows[i][0] = i;
+  for (let j = 0; j <= b.length; j++) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let rowMin = Infinity;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, rows[i - 2][j - 2] + 1);
+      }
+      rows[i][j] = best;
+      if (best < rowMin) rowMin = best;
+    }
+    if (rowMin > cap) return cap + 1;
+  }
+  return rows[a.length][b.length];
+}
+function maxDistanceFor(word) {
+  if (word.length <= 5) return 1;
+  if (word.length <= 7) return 2;
+  return 2;
+}
+function closestWord(token) {
+  const w = token.toLowerCase();
+  if (w.length < 4 || VOCAB_SET.has(w)) return null;
+  const cap = maxDistanceFor(w);
+  let best = null;
+  let bestDist = cap + 1;
+  let tie = false;
+  for (let len = w.length - cap; len <= w.length + cap; len++) {
+    const bucket = BY_LEN.get(len);
+    if (!bucket) continue;
+    for (const cand of bucket) {
+      const d = editDistance(w, cand, cap);
+      if (d > cap) continue;
+      if (d < bestDist) {
+        bestDist = d;
+        best = cand;
+        tie = false;
+      } else if (d === bestDist) {
+        tie = true;
+      }
+    }
+  }
+  if (!best) return null;
+  if (tie) return null;
+  if (bestDist > cap) return null;
+  if (bestDist / w.length > 1 / 3) return null;
+  return best;
+}
+function fixSpelling(query) {
+  const original = String(query || "").trim();
+  if (!original) return { query: original, original, corrected: false, fixes: [] };
+  const fixes = [];
+  const out = original.split(/(\s+)/).map((chunk) => {
+    if (!chunk.trim()) return chunk;
+    if (!/^[A-Za-z]{4,}$/.test(chunk)) return chunk;
+    const fixed = closestWord(chunk);
+    if (!fixed || fixed === chunk.toLowerCase()) return chunk;
+    fixes.push({ from: chunk, to: fixed });
+    return fixed;
+  }).join("");
+  if (!fixes.length) return { query: original, original, corrected: false, fixes: [] };
+  return { query: out.replace(/\s+/g, " ").trim(), original, corrected: true, fixes };
+}
+var VOCAB, VOCAB_SET, BY_LEN;
+var init_spellFix = __esm({
+  "server/lens/spellFix.ts"() {
+    VOCAB = [
+      // retail brands
+      "amazon",
+      "flipkart",
+      "myntra",
+      "ajio",
+      "meesho",
+      "tatacliq",
+      "croma",
+      "reliance",
+      "apple",
+      "iphone",
+      "ipad",
+      "macbook",
+      "airpods",
+      "samsung",
+      "galaxy",
+      "oneplus",
+      "oppo",
+      "vivo",
+      "realme",
+      "redmi",
+      "xiaomi",
+      "poco",
+      "nothing",
+      "motorola",
+      "nokia",
+      "google",
+      "pixel",
+      "sony",
+      "boat",
+      "noise",
+      "boult",
+      "jbl",
+      "bose",
+      "sennheiser",
+      "logitech",
+      "hp",
+      "dell",
+      "lenovo",
+      "asus",
+      "acer",
+      "msi",
+      "toshiba",
+      "whirlpool",
+      "haier",
+      "godrej",
+      "voltas",
+      "hitachi",
+      "panasonic",
+      "philips",
+      "havells",
+      "bajaj",
+      "prestige",
+      "pigeon",
+      "butterfly",
+      "nike",
+      "adidas",
+      "puma",
+      "reebok",
+      "levis",
+      "zara",
+      "hm",
+      "decathlon",
+      "titan",
+      "fastrack",
+      // grocery
+      "amul",
+      "tata",
+      "maggi",
+      "nestle",
+      "britannia",
+      "parle",
+      "aashirvaad",
+      "atta",
+      "suji",
+      "besan",
+      "dal",
+      "rice",
+      "basmati",
+      "sugar",
+      "salt",
+      "oil",
+      "ghee",
+      "butter",
+      "cheese",
+      "paneer",
+      "curd",
+      "dahi",
+      "milk",
+      "taaza",
+      "toned",
+      "fullcream",
+      "cream",
+      "lassi",
+      "chaas",
+      "bread",
+      "bun",
+      "pav",
+      "eggs",
+      "egg",
+      "noodles",
+      "pasta",
+      "sauce",
+      "ketchup",
+      "jam",
+      "chocolate",
+      "biscuit",
+      "biscuits",
+      "cookies",
+      "chips",
+      "namkeen",
+      "bhujia",
+      "papad",
+      "masala",
+      "haldi",
+      "turmeric",
+      "chilli",
+      "mirch",
+      "jeera",
+      "dhaniya",
+      "garam",
+      "tea",
+      "coffee",
+      "juice",
+      "water",
+      "soda",
+      "coke",
+      "pepsi",
+      "sprite",
+      "thums",
+      "redbull",
+      "detergent",
+      "surf",
+      "ariel",
+      "rin",
+      "harpic",
+      "lizol",
+      "colgate",
+      "pepsodent",
+      "dettol",
+      "shampoo",
+      "soap",
+      "harpic",
+      "dove",
+      "lifebuoy",
+      "nivea",
+      "ponds",
+      "gillette",
+      "potato",
+      "onion",
+      "tomato",
+      "banana",
+      "apple",
+      "mango",
+      "grapes",
+      "orange",
+      "lemon",
+      "chicken",
+      "mutton",
+      "fish",
+      "prawns",
+      "paneer",
+      "soya",
+      "oats",
+      "cornflakes",
+      "honey",
+      // grocery platforms
+      "blinkit",
+      "zepto",
+      "instamart",
+      "swiggy",
+      "bigbasket",
+      "dunzo",
+      "jiomart",
+      "dmart",
+      // categories
+      "mobile",
+      "phone",
+      "laptop",
+      "tablet",
+      "headphones",
+      "earbuds",
+      "earphone",
+      "speaker",
+      "charger",
+      "cable",
+      "powerbank",
+      "television",
+      "fridge",
+      "refrigerator",
+      "washing",
+      "machine",
+      "microwave",
+      "mixer",
+      "grinder",
+      "cooler",
+      "fan",
+      "iron",
+      "trimmer",
+      "watch",
+      "shoes",
+      "sandals",
+      "shirt",
+      "tshirt",
+      "jeans",
+      "kurta",
+      "saree",
+      "bag",
+      "wallet"
+    ];
+    VOCAB_SET = new Set(VOCAB);
+    BY_LEN = /* @__PURE__ */ new Map();
+    for (const w of VOCAB) {
+      const arr = BY_LEN.get(w.length) || [];
+      arr.push(w);
+      BY_LEN.set(w.length, arr);
+    }
   }
 });
 
@@ -35388,7 +35686,24 @@ var init_warm = __esm({
       { query: "laptop", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "smart tv", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "refrigerator", vertical: "ecommerce", city: "Indore", pincode: "452001" },
-      { query: "washing machine", vertical: "ecommerce", city: "Indore", pincode: "452001" }
+      { query: "washing machine", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      // Owner 27 Oct ("result fast aane hi chaiye"): the product page compares retail AND
+      // 10-minute grocery, so the everyday grocery basket is warmed too — these are the
+      // queries that were landing cold and taking the full deadline.
+      { query: "tata salt 1 kg", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "amul taaza toned milk 1 l", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "amul butter 500 g", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "maggi 2 minute noodles 12 pack", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "atta 5 kg", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "sunflower oil 1 l", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "bread", vertical: "grocery", city: "Indore", pincode: "452001" },
+      { query: "eggs", vertical: "grocery", city: "Indore", pincode: "452001" },
+      // Popular retail product lookups (product page first paint reads this catalogue).
+      { query: "iphone 16", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "samsung galaxy s25", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "oneplus 12", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "sony wh-1000xm5", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "boat earbuds", vertical: "ecommerce", city: "Indore", pincode: "452001" }
     ];
     FINANCE_DAILY_SEEDS = [
       // Loans — every BankBazaar loan-type page the worker routes to.
@@ -36079,6 +36394,16 @@ __export(routes_exports, {
   bootstrapBackend: () => bootstrapBackend,
   quickAppsPartnerFirst: () => quickAppsPartnerFirst
 });
+function deployedCommit() {
+  try {
+    const head = require("fs").readFileSync(require("path").join(process.cwd(), ".git", "HEAD"), "utf8").trim();
+    if (!head.startsWith("ref:")) return head.slice(0, 7);
+    const ref = require("path").join(process.cwd(), ".git", head.replace("ref:", "").trim());
+    return require("fs").readFileSync(ref, "utf8").trim().slice(0, 7);
+  } catch {
+    return process.env.BUILD_COMMIT || "unknown";
+  }
+}
 function domainHost(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
@@ -36604,7 +36929,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto29, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, leadHits, validHex, bannerGradient;
+var import_express, import_crypto29, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_express = require("express");
@@ -36638,6 +36963,7 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_sameProduct();
+    init_spellFix();
     init_dealScore();
     init_priceAlerts();
     init_notifications();
@@ -36651,11 +36977,13 @@ var init_routes = __esm({
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", authMiddleware, async (req, res) => {
       const admin = req.user?.role === "admin";
-      if (!admin) return res.json({ status: "online", timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+      if (!admin) return res.json({ status: "online", commit: deployedCommit(), timestamp: (/* @__PURE__ */ new Date()).toISOString() });
       const store2 = getStore();
       const missing = assertProductionReadiness();
       res.json({
         status: "online",
+        commit: deployedCommit(),
+        nodeUptimeSec: Math.round(process.uptime()),
         engine: "Try1Second Independent Metasearch Engine v1.0",
         dataSource: store2.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
         l2Cache: settings.redisUrl ? "redis" : settings.redisRestUrl ? "redis-rest (Upstash HTTPS)" : "disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)",
@@ -37284,9 +37612,13 @@ var init_routes = __esm({
       void Promise.resolve().then(() => runSearchFast({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, 4e3)).catch(() => {
       });
     });
+    lastGoodOffers = /* @__PURE__ */ new Map();
+    deepRefreshInFlight = /* @__PURE__ */ new Set();
+    deepRefreshLast = /* @__PURE__ */ new Map();
     apiRouter.post("/product-page", async (req, res) => {
       const input = String(req.body?.input || req.body?.url || "").trim().slice(0, 2e3);
       const textQuery = String(req.body?.query || "").trim().slice(0, 200);
+      let spellingFix = null;
       const seedRaw = Array.isArray(req.body?.seed) ? req.body.seed.slice(0, 12) : [];
       const seed = seedRaw.map((x) => ({
         seller: String(x?.seller || "").trim().slice(0, 60),
@@ -37308,8 +37640,10 @@ var init_routes = __esm({
         }
         lensQuery = searchableTitle(product.title);
       } else if (textQuery.length >= 2) {
-        lensQuery = searchableTitle(normalizeTypedProductQuery(textQuery));
-        product = { title: textQuery, titleSource: "typed", merchant: "", domain: "", pagePrice: null, image: null, fetchStatus: "skipped" };
+        const fixed = fixSpelling(normalizeTypedProductQuery(textQuery));
+        spellingFix = fixed;
+        lensQuery = searchableTitle(fixed.query);
+        product = { title: fixed.corrected ? fixed.query : textQuery, titleSource: "typed", merchant: "", domain: "", pagePrice: null, image: null, fetchStatus: "skipped" };
       } else {
         return res.status(400).json({ success: false, error: "Paste a product link or type a product name." });
       }
@@ -37319,13 +37653,17 @@ var init_routes = __esm({
         const keep = toks2.filter((t) => !caps.has(t.toLowerCase().replace(/\s/g, ""))).slice(0, 4).join(" ");
         return keep && keep !== lensQuery ? keep : "";
       })();
-      const FIRST_PAINT_MS = 900;
+      const FIRST_PAINT_MS = 550;
       const cold = { coldDeadlineMs: FIRST_PAINT_MS };
       const pid = req.body?.pincode || "452001";
       const cid = req.body?.city || "Indore";
       const paint2 = req.body?.paint2 === true;
       const groceryInput = { query: lensQuery, vertical: "grocery", city: cid, pincode: pid, ...cold };
-      const groceryWarm = runSearchFast(groceryInput, FIRST_PAINT_MS);
+      const groceryWarm = new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(runSearchFast(groceryInput, FIRST_PAINT_MS));
+        }, 120);
+      });
       groceryWarm.catch(() => {
       });
       const searches = [
@@ -37337,10 +37675,23 @@ var init_routes = __esm({
       if (broadQuery && req.body?.deepFallback === true) {
         searches.push(runSearchFast({ query: broadQuery, vertical: "ecommerce", city: cid, pincode: pid, ...cold }, FIRST_PAINT_MS));
       }
-      const HARD_CAP_MS = 950;
+      const HARD_CAP_MS = 600;
       let cappedOut = false;
       const responses = await Promise.race([
         Promise.all(searches),
+        new Promise((resolve) => {
+          let settled = 0;
+          searches.forEach((p) => {
+            p.then((r) => {
+              settled++;
+              if ((r?.results || []).length > 0) resolve([r]);
+              else if (settled === searches.length) resolve([]);
+            }).catch(() => {
+              settled++;
+              if (settled === searches.length) resolve([]);
+            });
+          });
+        }),
         new Promise((resolve) => {
           setTimeout(() => {
             cappedOut = true;
@@ -37404,6 +37755,18 @@ var init_routes = __esm({
         });
       }
       offers.sort((a, b) => a.price - b.price);
+      const staleKey = `${lensQuery}|${pid}`;
+      let staleSeconds = 0;
+      if (offers.length > 0) {
+        lastGoodOffers.set(staleKey, { at: Date.now(), offers, product, images: [] });
+      } else {
+        const remembered = lastGoodOffers.get(staleKey);
+        if (remembered && Date.now() - remembered.at < 30 * 6e4) {
+          staleSeconds = Math.round((Date.now() - remembered.at) / 1e3);
+          if (!product?.pagePrice && remembered.product?.pagePrice) product = { ...product, ...remembered.product };
+          offers.push(...remembered.offers);
+        }
+      }
       let closestOnly = false;
       if (!offers.length) {
         const alt = all.filter((x) => sharesIdentity(lensQuery, String(x.o.title || ""))).map((x) => ({ ...toRow(x), variantCount: 0 })).slice(0, 6);
@@ -37437,6 +37800,16 @@ var init_routes = __esm({
         historyEntity = got.historyEntity;
       } catch {
       }
+      if (!paint2 && (offers.length === 0 || cappedOut) && deepRefreshInFlight.size < 2) {
+        const key = `${lensQuery}|${pid || ""}`;
+        if (!deepRefreshInFlight.has(key) && Date.now() - (deepRefreshLast.get(key) || 0) > 6e4) {
+          deepRefreshInFlight.add(key);
+          deepRefreshLast.set(key, Date.now());
+          void runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode, coldDeadlineMs: 4e3 }).catch(() => {
+          }).then(() => runSearch({ ...groceryInput, coldDeadlineMs: 4e3 }).catch(() => {
+          })).finally(() => deepRefreshInFlight.delete(key));
+        }
+      }
       const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
       const deal = analyseDeal(currentPrice, history, cheapest?.price ?? null);
       const pageVsCheapest = product.pagePrice && cheapest ? { pagePrice: product.pagePrice, cheapest: cheapest.price, saving: Math.max(0, product.pagePrice - cheapest.price) } : null;
@@ -37447,6 +37820,11 @@ var init_routes = __esm({
         product,
         searchedAs: lensQuery,
         images,
+        // Honest spelling report: the user sees what was searched, and why it worked.
+        originalQuery: spellingFix?.corrected ? spellingFix.original : textQuery,
+        spellingCorrected: Boolean(spellingFix?.corrected),
+        spellingFixes: spellingFix?.fixes || [],
+        staleSeconds,
         cheapest,
         offers,
         related,

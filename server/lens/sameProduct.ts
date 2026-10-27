@@ -146,7 +146,13 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
     // no tier stated: any tier is acceptable
   } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
-  return hit / soft.length >= 0.6;
+  if (hit / soft.length < 0.6) return false;
+  // The leading word of a product query is its brand ("amul butter", "tata salt", "sony
+  // wh-1000xm5"). A 60% word overlap let "amul butter 500 g" collect Sundrop/Myntra PEANUT
+  // butter at the same weight, so the brand word is now required in typed mode.
+  const lead = need.find((w) => !isPackSize(w) && !/\d/.test(w));
+  if (mode === 'typed' && lead && !have.has(lead)) return false;
+  return true;
 }
 
 /**

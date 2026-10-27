@@ -53,6 +53,23 @@ export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: strin
   { query: 'smart tv', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'refrigerator', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'washing machine', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  // Owner 27 Oct ("result fast aane hi chaiye"): the product page compares retail AND
+  // 10-minute grocery, so the everyday grocery basket is warmed too — these are the
+  // queries that were landing cold and taking the full deadline.
+  { query: 'tata salt 1 kg', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'amul taaza toned milk 1 l', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'amul butter 500 g', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'maggi 2 minute noodles 12 pack', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'atta 5 kg', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'sunflower oil 1 l', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'bread', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  { query: 'eggs', vertical: 'grocery', city: 'Indore', pincode: '452001' },
+  // Popular retail product lookups (product page first paint reads this catalogue).
+  { query: 'iphone 16', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  { query: 'samsung galaxy s25', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  { query: 'oneplus 12', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  { query: 'sony wh-1000xm5', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  { query: 'boat earbuds', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
 ];
 
 /**

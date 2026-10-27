@@ -40,6 +40,7 @@ import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
+import { fixSpelling } from '../lens/spellFix';
 import { analyseDeal } from '../lens/dealScore';
 import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
 import { userNotifications, broadcastNotifications, markRead, markAllRead } from '../notifications/notifications';
@@ -55,13 +56,25 @@ export const apiRouter = Router();
 // ============ System ============
 // Owner 25 Oct: public probe answers 'online' only. Store/redis/production
 // internals are admin-only so nothing about our stack leaks to the frontend.
+/** Deployed commit, so "is the new code actually live?" is answered by one request. */
+function deployedCommit(): string {
+  try {
+    const head = require('fs').readFileSync(require('path').join(process.cwd(), '.git', 'HEAD'), 'utf8').trim();
+    if (!head.startsWith('ref:')) return head.slice(0, 7);
+    const ref = require('path').join(process.cwd(), '.git', head.replace('ref:', '').trim());
+    return require('fs').readFileSync(ref, 'utf8').trim().slice(0, 7);
+  } catch { return process.env.BUILD_COMMIT || 'unknown'; }
+}
+
 apiRouter.get('/health', authMiddleware, async (req: any, res: Response) => {
   const admin = req.user?.role === 'admin';
-  if (!admin) return res.json({ status: 'online', timestamp: new Date().toISOString() });
+  if (!admin) return res.json({ status: 'online', commit: deployedCommit(), timestamp: new Date().toISOString() });
   const store = getStore();
   const missing = assertProductionReadiness();
   res.json({
     status: 'online',
+    commit: deployedCommit(),
+    nodeUptimeSec: Math.round(process.uptime()),
     engine: 'Try1Second Independent Metasearch Engine v1.0',
     dataSource: store.kind === 'mysql' ? 'mysql' : 'file-fallback (set MYSQL_URL for production)',
     l2Cache: settings.redisUrl ? 'redis' : (settings.redisRestUrl ? 'redis-rest (Upstash HTTPS)' : 'disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)'),
@@ -1250,9 +1263,17 @@ apiRouter.post('/product-page/prefetch', async (req, res) => {
     .catch(() => { /* warm-up failures are silent; the real request retries */ });
 });
 
+// Last non-empty offer set per product query (30-minute memory, see the stale fallback below).
+const lastGoodOffers = new Map<string, { at: number; offers: any[]; product: any; images: string[] }>();
+
+// Guards the one-per-minute deep refresh (below) so polls can never fan out searches.
+const deepRefreshInFlight = new Set<string>();
+const deepRefreshLast = new Map<string, number>();
+
 apiRouter.post('/product-page', async (req, res) => {
   const input = String(req.body?.input || req.body?.url || '').trim().slice(0, 2000);
   const textQuery = String(req.body?.query || '').trim().slice(0, 200);
+  let spellingFix: { query: string; original: string; corrected: boolean; fixes: Array<{ from: string; to: string }> } | null = null;
   // Seed offers come from the exact card the user clicked "Compare" on. The engine's
   // fresh search can flake per-attempt (a source circuit may be in backoff right now),
   // so the sellers that were ALREADY found for this product stay visible on the
@@ -1286,8 +1307,14 @@ apiRouter.post('/product-page', async (req, res) => {
     // sources VERBATIM ("i phone 18"), so Amazon/Flipkart searched a string no listing
     // matches while the matcher internally normalised to "iphone". Normalise the query we
     // actually send: spoken brand joins + shopping filler words removed.
-    lensQuery = searchableTitle(normalizeTypedProductQuery(textQuery));
-    product = { title: textQuery, titleSource: 'typed', merchant: '', domain: '', pagePrice: null, image: null, fetchStatus: 'skipped' };
+    // OWNER 27 Oct ("spelling agar galat bhi hai tho uske closest search kar de"): repair
+    // obvious typos BEFORE the sources are asked ("amul buter" -> "amul butter"), so a miss
+    // costs nothing. The original text is still echoed back for the "showing results for"
+    // line — we never pretend the user typed something they did not.
+    const fixed = fixSpelling(normalizeTypedProductQuery(textQuery));
+    spellingFix = fixed;
+    lensQuery = searchableTitle(fixed.query);
+    product = { title: fixed.corrected ? fixed.query : textQuery, titleSource: 'typed', merchant: '', domain: '', pagePrice: null, image: null, fetchStatus: 'skipped' };
   } else {
     return res.status(400).json({ success: false, error: 'Paste a product link or type a product name.' });
   }
@@ -1312,7 +1339,12 @@ apiRouter.post('/product-page', async (req, res) => {
   // answer (~50ms) when we already have rows, otherwise the first live source snapshot
   // (Ajio ~0.2s, Myntra ~0.9s), otherwise an honest pendingRefresh marker at ~0.9s that the
   // page keeps polling with its loader up.
-  const FIRST_PAINT_MS = 900;
+  // Owner 27 Oct ("result fast aane hi chaiye"): 550ms search budget, 600ms hard cap.
+  // Warm catalogue answers land in 20-250ms; a cold product gets a truthful partial plus
+  // pendingRefresh, and the page's poll (600ms later) brings the rest while the loader
+  // is still on screen — never an empty shell. Measured event-loop contention was pushing
+  // a 750ms cap out to ~865ms, so the ceiling is set with that headroom.
+  const FIRST_PAINT_MS = 550;
   const cold = { coldDeadlineMs: FIRST_PAINT_MS } as Partial<SearchInput>;
   // OWNER 27 Oct: "10min grocery vertical ke v product ka result aana chaiye compare ho kr
   // jaise ecommerce ka aa raha hai". A product page now compares BOTH retail and quick
@@ -1331,7 +1363,11 @@ apiRouter.post('/product-page', async (req, res) => {
   // Running both awaited initially starved the event loop and pushed retail searches to 1.8s.
   const paint2 = req.body?.paint2 === true;
   const groceryInput = { query: lensQuery, vertical: 'grocery', city: cid, pincode: pid, ...cold } as SearchInput;
-  const groceryWarm = runSearchFast(groceryInput, FIRST_PAINT_MS);
+  // Staggered so the two pipelines never fight for the event loop during the first paint
+  // (that contention was what pushed 750ms budgets out to ~980ms).
+  const groceryWarm = new Promise<any>((resolve) => {
+    setTimeout(() => { resolve(runSearchFast(groceryInput, FIRST_PAINT_MS)); }, 120);
+  });
   groceryWarm.catch(() => {});
   const searches: Array<Promise<any>> = [
     // Retail search stays location-free (its catalogue rows are keyed without a pincode —
@@ -1347,10 +1383,31 @@ apiRouter.post('/product-page', async (req, res) => {
   }
   // HARD 1-SECOND CAP (owner 27 Oct): whatever the sources do, this handler answers inside
   // a second. Slow sellers keep filling in through the page's pendingRefresh polls.
-  const HARD_CAP_MS = 950;
+  const HARD_CAP_MS = 600;
   let cappedOut = false;
+  // FIRST USABLE SNAPSHOT wins: each vertical races on its own, so a warm retail answer
+  // returns in ~80ms instead of waiting for the slower quick-commerce pipeline. Waiting on
+  // Promise.all was why a second request for the same product could sit until the cap and
+  // then paint an empty shell while rows were already available.
+  // FIRST NON-EMPTY SNAPSHOT wins. Racing every promise individually was wrong: an empty
+  // quick-commerce answer could win the race and hide retail rows that were one tick away
+  // (that is why a poll could paint 0 offers after the first paint had shown 4). Now the
+  // first response that actually CARRIES ROWS is used; all-empty falls through to the cap.
   const responses = await Promise.race([
     Promise.all(searches),
+    new Promise<any[]>((resolve) => {
+      let settled = 0;
+      searches.forEach((p) => {
+        p.then((r: any) => {
+          settled++;
+          if (((r?.results) || []).length > 0) resolve([r]);
+          else if (settled === searches.length) resolve([]);
+        }).catch(() => {
+          settled++;
+          if (settled === searches.length) resolve([]);
+        });
+      });
+    }),
     new Promise<any[]>((resolve) => { setTimeout(() => { cappedOut = true; resolve([]); }, HARD_CAP_MS); }),
   ]);
   const seenIds = new Set<string>();
@@ -1406,6 +1463,23 @@ apiRouter.post('/product-page', async (req, res) => {
     });
   }
   offers.sort((a: any, b: any) => a.price - b.price);
+  // LAST-GOOD MEMORY (owner 27 Oct, "results fast aane hi chaiye"): upstream sources answer
+  // intermittently, and one empty attempt must not blank a page that had real prices a second
+  // ago — that flicker is what made a poll paint 0 offers after the first paint showed 4.
+  // Keep the last non-empty payload per query and serve it for up to 30 minutes, flagged as
+  // cached so the UI can be honest about freshness.
+  const staleKey = `${lensQuery}|${pid}`;
+  let staleSeconds = 0;
+  if (offers.length > 0) {
+    lastGoodOffers.set(staleKey, { at: Date.now(), offers, product, images: [] as string[] });
+  } else {
+    const remembered = lastGoodOffers.get(staleKey);
+    if (remembered && Date.now() - remembered.at < 30 * 60_000) {
+      staleSeconds = Math.round((Date.now() - remembered.at) / 1000);
+      if (!product?.pagePrice && remembered.product?.pagePrice) product = { ...product, ...remembered.product };
+      offers.push(...remembered.offers);
+    }
+  }
   // Owner 27 Oct: never leave the page empty when the sources DO carry this
   // product family. If no listing is the exact product, promote the closest
   // real variants (same brand + model number) so the user sees live prices.
@@ -1454,6 +1528,23 @@ apiRouter.post('/product-page', async (req, res) => {
     history = got.history; historyEntity = got.historyEntity;
   } catch { /* history is optional; absence is reported honestly */ }
 
+  // COLD PRODUCT (owner 27 Oct, "result fast aane hi chaiye"): when the budget expired
+  // before sources answered, keep working in the background so the page's next poll reads
+  // warm rows instead of another empty shell. One deep run per query per minute.
+  // Concurrency is bounded to TWO background runs and never on a poll: unbounded 9s
+  // refreshes starved the event loop and made the very next request miss its 600ms cap.
+  if (!paint2 && (offers.length === 0 || cappedOut) && deepRefreshInFlight.size < 2) {
+    const key = `${lensQuery}|${pid || ''}`;
+    if (!deepRefreshInFlight.has(key) && Date.now() - (deepRefreshLast.get(key) || 0) > 60_000) {
+      deepRefreshInFlight.add(key);
+      deepRefreshLast.set(key, Date.now());
+      void runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode, coldDeadlineMs: 4_000 } as SearchInput)
+        .catch(() => {})
+        .then(() => runSearch({ ...groceryInput, coldDeadlineMs: 4_000 }).catch(() => {}))
+        .finally(() => deepRefreshInFlight.delete(key));
+    }
+  }
+
   const currentPrice = cheapest?.price ?? product.pagePrice ?? 0;
   const deal = analyseDeal(currentPrice, history, cheapest?.price ?? null);
   const pageVsCheapest = product.pagePrice && cheapest
@@ -1462,6 +1553,11 @@ apiRouter.post('/product-page', async (req, res) => {
 
   res.json({
     success: true, found: true, product, searchedAs: lensQuery, images,
+    // Honest spelling report: the user sees what was searched, and why it worked.
+    originalQuery: spellingFix?.corrected ? spellingFix.original : textQuery,
+    spellingCorrected: Boolean(spellingFix?.corrected),
+    spellingFixes: spellingFix?.fixes || [],
+    staleSeconds,
     cheapest, offers, related, history, historyEntity, deal, pageVsCheapest,
     servedFrom: responses[0]?.state?.servedFrom,
     // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
