@@ -19,7 +19,11 @@ test('cab.ts parses localized Uber estimate strings (₹ / range / Metered)', ()
 // Owner rule: Ola deeplinks must carry BOTH endpoints (payment-page depth).
 test('cab.ts Ola deeplinks prefill pickup AND drop coordinates', () => {
   assert.ok(cabSrc.includes("ul.searchParams.set('drop_lat', String(b.lat));"), 'rate-card branch prefills drop');
-  assert.ok(/sellerUrl: `https:\/\/book\.olacabs\.com\/\?lat=\$\{a\.lat\}&lng=\$\{a\.lon\}&drop_lat=\$\{b\.lat\}&drop_lng=\$\{b\.lon\}`/.test(cabSrc), 'API branch prefills drop');
+  // Owner 27 Oct: the CTA is now the app-level bridge (native scheme first, web
+  // fallback inside it) so the coords still have to be prefilled on BOTH legs.
+  assert.ok(/cabAppOpenUrl\(cabLinks\('Ola'/.test(cabSrc), 'API branch uses the app-level bridge');
+  assert.ok(/drop_lat=\$\{b\.lat\}&drop_lng=\$\{b\.lon\}/.test(cabSrc), 'web fallback prefills drop');
+  assert.ok(/pickup: \{ lat: Number\(a\.lat\), lng: Number\(a\.lon\) \}/.test(cabSrc), 'app scheme prefills pickup');
 });
 
 // Owner 24 Oct: app-only cab rows (Uber/Rapido catalog, price_basis=app_only_fares)

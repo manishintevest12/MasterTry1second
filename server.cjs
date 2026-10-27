@@ -390,8 +390,8 @@ async function withLock(name, fn, opts = {}) {
   const r = await getRedis();
   if (r) {
     const token = import_crypto.default.randomUUID();
-    const ok = await r.set(`lock:${name}`, token, "PX", opts.ttlMs ?? 3e4, "NX");
-    if (!ok) return null;
+    const ok2 = await r.set(`lock:${name}`, token, "PX", opts.ttlMs ?? 3e4, "NX");
+    if (!ok2) return null;
     locks.add(name);
     try {
       return await fn();
@@ -5167,7 +5167,7 @@ function parseOyoPreloadedState(html) {
 function parseOyoHotels(state) {
   const raw = state?.listing?.hotels;
   if (!Array.isArray(raw)) return [];
-  const num11 = (x) => {
+  const num12 = (x) => {
     if (x == null || x === "") return null;
     const n = Number(x);
     return Number.isFinite(n) ? n : null;
@@ -5188,17 +5188,17 @@ function parseOyoHotels(state) {
       city: typeof h.city === "string" ? h.city : null,
       category: typeof h.category === "string" ? h.category : null,
       oneLiner: typeof h.oneLinerText === "string" ? h.oneLinerText : null,
-      rating: num11(rating.value),
-      ratingCount: num11(rating.count),
-      pricePerNight: num11(pricing.bookingPrice),
-      tax: num11(tax.total_tax),
-      priceInclusive: num11(tax.final_price_with_tax),
-      slashedPrice: num11(pricing.slashedPrice),
-      discountPercentage: num11(pricing.discountPercentage),
+      rating: num12(rating.value),
+      ratingCount: num12(rating.count),
+      pricePerNight: num12(pricing.bookingPrice),
+      tax: num12(tax.total_tax),
+      priceInclusive: num12(tax.final_price_with_tax),
+      slashedPrice: num12(pricing.slashedPrice),
+      discountPercentage: num12(pricing.discountPercentage),
       imageUrl: images[0] || null,
       images: images.slice(0, 6),
-      lat: num11(geo.lat ?? geo.latitude),
-      lon: num11(geo.lng ?? geo.long ?? geo.longitude),
+      lat: num12(geo.lat ?? geo.latitude),
+      lon: num12(geo.lng ?? geo.long ?? geo.longitude),
       soldOut: Boolean(h.isSoldOut) || h.status === "Soldout"
     });
   }
@@ -7923,8 +7923,8 @@ function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, 
     const carrier = String(segs[0].marketingCarrier?.name || carrierCode || brand.brand);
     const flightNos = segs.map((s) => {
       const code = String(s.marketingCarrier?.code || "");
-      const num11 = String(s.flightNumber || "");
-      return num11.startsWith(code) && code ? num11 : `${code}${num11}`;
+      const num12 = String(s.flightNumber || "");
+      return num12.startsWith(code) && code ? num12 : `${code}${num12}`;
     }).join("-");
     const depTime = String(segs[0].departuredAt || "").slice(11, 16);
     const arrTime = String(segs[segs.length - 1].arrivedAt || "").slice(11, 16);
@@ -9593,9 +9593,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     const last = legs[legs.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
-    const num11 = String(first?.flightNumber || "").trim();
+    const num12 = String(first?.flightNumber || "").trim();
     const carrier = String(first?.carrierCode || "AI");
-    if (!depTime || !arrTime || !num11) continue;
+    if (!depTime || !arrTime || !num12) continue;
     const validity = first?.validityPeriod || {};
     const starts = String(validity.start || "").slice(0, 10);
     const ends = String(validity.end || "").slice(0, 10);
@@ -9608,7 +9608,7 @@ function parseAirIndiaSchedules(body, wantDateIso) {
     }
     const durSecs = Number(entry?.duration ?? first?.flightDuration);
     out.push({
-      flightNo: `${carrier}${num11}`,
+      flightNo: `${carrier}${num12}`,
       dateIso: wantDateIso,
       depTime,
       arrTime,
@@ -15794,13 +15794,13 @@ var init_flights = __esm({
               cookies
             });
             if (ov.status !== 200 || slIsImpervaStub(ov.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan override page gated (Imperva)", 403);
-            const enc = slEncFromOverridePage(ov.body || "");
-            if (!enc) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan override page carried no ENC token (chain shape changed or gated)", 403);
+            const enc2 = slEncFromOverridePage(ov.body || "");
+            if (!enc2) throw new AcquisitionError("ACCESS_CHALLENGE", "SriLankan override page carried no ENC token (chain shape changed or gated)", 403);
             const ibe = await cffiFetch(SL_IBE_OVERRIDE, {
               impersonate: "chrome",
               timeoutMs: 25e3,
               method: "POST",
-              body: `SITE=${SL_IBE_SITE}&LANGUAGE=GB&EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=${enc}`,
+              body: `SITE=${SL_IBE_SITE}&LANGUAGE=GB&EMBEDDED_TRANSACTION=FlexPricerAvailability&ENCT=1&ENC=${enc2}`,
               headers: { ...H, "Content-Type": "application/x-www-form-urlencoded", Origin: "https://www.srilankan.com", Referer: "https://www.srilankan.com/" }
             });
             if (slIsImpervaStub(ibe.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", 'SriLankan IBE Imperva-gated ("Pardon Our Interruption")', 403);
@@ -17509,6 +17509,97 @@ var init_food = __esm({
       ]
     };
     registerVerticalWorker(foodWorker);
+  }
+});
+
+// server/affiliate/cabLinks.ts
+function uberScheme(r) {
+  const p = r.pickup;
+  const d = r.drop;
+  if (!ok(d)) return "";
+  const parts = ["action=setPickup"];
+  if (ok(p)) {
+    parts.push(`pickup[latitude]=${p.lat}`, `pickup[longitude]=${p.lng}`);
+    if (p.name) parts.push(`pickup[nickname]=${enc(p.name)}`);
+  } else {
+    parts.push("pickup=my_location");
+  }
+  parts.push(`dropoff[latitude]=${d.lat}`, `dropoff[longitude]=${d.lng}`);
+  if (d.name) parts.push(`dropoff[nickname]=${enc(d.name)}`);
+  return `uber://?${parts.join("&")}`;
+}
+function olaScheme(r) {
+  if (!ok(r.pickup) || !ok(r.drop)) return "";
+  return `olacabs://app/launch?lat=${r.pickup.lat}&lng=${r.pickup.lng}&drop_lat=${r.drop.lat}&drop_lng=${r.drop.lng}`;
+}
+function rapidoScheme(r) {
+  if (!ok(r.pickup) || !ok(r.drop)) return "";
+  return `rapido://ride?pickup_lat=${r.pickup.lat}&pickup_lng=${r.pickup.lng}&drop_lat=${r.drop.lat}&drop_lng=${r.drop.lng}`;
+}
+function indriveScheme(r) {
+  if (!ok(r.drop)) return "";
+  const p = ok(r.pickup) ? r.pickup : null;
+  const q3 = new URLSearchParams({
+    dropLat: String(r.drop.lat),
+    dropLng: String(r.drop.lng),
+    ...p ? { pickupLat: String(p.lat), pickupLng: String(p.lng) } : {}
+  });
+  return `indrive://route?${q3.toString()}`;
+}
+function isCabAppScheme(url) {
+  const m = String(url || "").match(/^([a-z]+):\/\//i);
+  if (!m) return false;
+  return CAB_APP_SCHEMES.includes(m[1].toLowerCase());
+}
+function cabLinks(merchant, route2 = {}, webFallback = "") {
+  const v = String(merchant || "").toLowerCase();
+  const p = ok(route2.pickup) ? route2.pickup : null;
+  const d = ok(route2.drop) ? route2.drop : null;
+  const lat = p?.lat;
+  const lng = p?.lng;
+  const dlat = d?.lat;
+  const dlng = d?.lng;
+  if (v.includes("uber")) {
+    return {
+      scheme: uberScheme({ pickup: p, drop: d }),
+      web: webFallback || "https://m.uber.com/looking"
+    };
+  }
+  if (v.includes("ola")) {
+    return {
+      scheme: olaScheme({ pickup: p, drop: d }),
+      web: webFallback || `https://book.olacabs.com/${lat !== void 0 ? `?lat=${lat}&lng=${lng}&drop_lat=${dlat}&drop_lng=${dlng}` : ""}`
+    };
+  }
+  if (v.includes("rapido")) {
+    return {
+      scheme: rapidoScheme({ pickup: p, drop: d }),
+      web: webFallback || `https://m.rapido.bike/${lat !== void 0 && dlat !== void 0 ? `?pickup_lat=${lat}&pickup_lng=${lng}&drop_lat=${dlat}&drop_lng=${dlng}` : ""}`
+    };
+  }
+  if (v.includes("indrive") || v.includes("in drive")) {
+    return { scheme: indriveScheme({ pickup: p, drop: d }), web: webFallback || "https://indrive.com/" };
+  }
+  if (v.includes("meru")) return { scheme: d ? "meru://" : "", web: webFallback || "https://www.meru.in/" };
+  if (v.includes("fastdeal") || v.includes("snap")) return { scheme: "", web: webFallback || "https://www.fastdeals.in/" };
+  return { scheme: "", web: webFallback };
+}
+function cabAppOpenUrl(links, offerId) {
+  if (!links.scheme) return "";
+  const q3 = new URLSearchParams({ s: links.scheme, w: links.web });
+  if (offerId) q3.set("o", String(offerId));
+  return `/api/app-open?${q3.toString()}`;
+}
+var num9, ok, enc, CAB_APP_SCHEMES;
+var init_cabLinks = __esm({
+  "server/affiliate/cabLinks.ts"() {
+    num9 = (n) => {
+      const v = Number(n);
+      return Number.isFinite(v) ? v : null;
+    };
+    ok = (p) => !!p && num9(p.lat) !== null && num9(p.lng) !== null;
+    enc = encodeURIComponent;
+    CAB_APP_SCHEMES = ["uber", "olacabs", "rapido", "indrive", "meru"];
   }
 });
 
@@ -21220,13 +21311,17 @@ async function uberGoFlowSafe(ctx, rt) {
     const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
     const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);
+    const uberApp = cabAppOpenUrl(cabLinks("Uber", {
+      pickup: { lat: Number(pickup.lat), lng: Number(pickup.lng), name: pickup.name },
+      drop: { lat: Number(drop.lat), lng: Number(drop.lng), name: drop.name }
+    }, bookUrl));
     const route2 = `${rt.from} to ${rt.to}`.toLowerCase();
     return products.map((p) => newRawItem(ctx.source, {
       title: `${rt.from} to ${rt.to} Uber ${p.displayName} (app quote)`,
       brand: "Uber",
       ...p.fare != null ? { price: p.fare, currency: "INR" } : { currency: "INR" },
       seller: "Uber",
-      sellerUrl: bookUrl,
+      sellerUrl: uberApp || bookUrl,
       travel: { route: route2, seatType: "unknown" },
       attributes: {
         pickup: rt.from,
@@ -21453,6 +21548,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
 var _uberTokenCache, UBER_CITY_SLUGS, OLA_RC_BASE, OLA_RC_KEY, _olaCityCache, OLA_CATEGORY_LABELS, cabWorker;
 var init_cab = __esm({
   "server/workers/verticals/cab.ts"() {
+    init_cabLinks();
     init_verticalWorker();
     init_savaariCabs();
     init_bharatTaxi();
@@ -21553,7 +21649,10 @@ var init_cab = __esm({
                 price,
                 currency: "INR",
                 seller: "Ola",
-                sellerUrl: `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`,
+                sellerUrl: cabAppOpenUrl(cabLinks("Ola", {
+                  pickup: { lat: Number(a.lat), lng: Number(a.lon) },
+                  drop: { lat: Number(b.lat), lng: Number(b.lon) }
+                }, `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`)) || `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`,
                 travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: "unknown" },
                 attributes: {
                   pickup: rt.from,
@@ -22253,9 +22352,9 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
     for (const p of products) {
       const name = String(p.desc || "").trim();
       if (!name) continue;
-      const sp = num9(p.pricing?.discount?.prim_price?.sp);
+      const sp = num10(p.pricing?.discount?.prim_price?.sp);
       if (!sp) continue;
-      const mrp = num9(p.pricing?.discount?.mrp);
+      const mrp = num10(p.pricing?.discount?.mrp);
       const pack = String(p.w || "").trim();
       const id = String(p.id || "");
       const key = id || `${name}|${pack}`;
@@ -22291,11 +22390,11 @@ function parseBigbasket(rawBody, source, pageUrl, cityLabel, cap = 16) {
   }
   return out;
 }
-var num9;
+var num10;
 var init_bigbasket = __esm({
   "server/workers/parsers/bigbasket.ts"() {
     init_contract();
-    num9 = (v) => {
+    num10 = (v) => {
       const n = Number(String(v ?? "").replace(/,/g, ""));
       return Number.isFinite(n) && n > 0 ? n : null;
     };
@@ -23663,6 +23762,12 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("myntra")) return `https://www.myntra.com/${slug(t)}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
+  if (has("nykaa")) return `https://www.nykaa.com/search/result/?q=${q3}`;
+  if (has("croma")) return `https://www.croma.com/searchB?q=${q3}`;
+  if (has("xiaomi") || has("mi.com")) return `https://www.mi.com/in/search/?keyword=${q3}`;
+  if (has("oppo")) return `https://www.oppo.com/in/search/?q=${q3}`;
+  if (has("realme")) return `https://www.realme.com/in/search?keyword=${q3}`;
+  if (has("lenovo")) return `https://www.lenovo.com/in/en/search?fq=${q3}`;
   if (has("instamart")) return `https://www.swiggy.com/instamart/search?query=${q3}`;
   if (has("blinkit")) return `https://blinkit.com/s/?q=${q3}`;
   if (has("zepto")) return `https://www.zepto.com/search?query=${q3}`;
@@ -24555,7 +24660,7 @@ function extractRedBusRouteInfo(html) {
     const m = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(html);
     return m ? m[1] : null;
   };
-  const num11 = (key) => {
+  const num12 = (key) => {
     const m = new RegExp(`"${key}"\\s*:\\s*([0-9]+)`).exec(html);
     return m ? m[1] : null;
   };
@@ -24566,8 +24671,8 @@ function extractRedBusRouteInfo(html) {
     source,
     destination: field("destination") || "",
     minFare,
-    servicecount: Number(num11("servicecount")) || 0,
-    operators: field("operators") || num11("operators") || "",
+    servicecount: Number(num12("servicecount")) || 0,
+    operators: field("operators") || num12("operators") || "",
     avgDuration: field("avgDuration") || "",
     firstBus: field("firstBus") || "",
     lastBus: field("lastBus") || ""
@@ -27320,17 +27425,17 @@ function pickCommonsLogoHit(titles, institution) {
     const file = String(raw || "").replace(/^File:/i, "");
     if (!/logo|\.svg$/i.test(file)) continue;
     const have = new Set(normTokens(file));
-    let ok = true;
+    let ok2 = true;
     for (const w of want) if (!have.has(w)) {
-      ok = false;
+      ok2 = false;
       break;
     }
-    if (!ok) continue;
+    if (!ok2) continue;
     for (const t of have) if (OTHER_BANK_TOKENS.has(t) && !want.has(t)) {
-      ok = false;
+      ok2 = false;
       break;
     }
-    if (!ok) continue;
+    if (!ok2) continue;
     return file;
   }
   return null;
@@ -32667,7 +32772,7 @@ function merchantLogoCandidates(row) {
 async function logoAnswers(url) {
   const hit = logoCache.get(url);
   if (hit && Date.now() - hit.at < LOGO_TTL_MS) return hit.ok;
-  let ok = false;
+  let ok2 = false;
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 3500);
@@ -32675,12 +32780,12 @@ async function logoAnswers(url) {
     clearTimeout(t);
     const ct = String(res.headers.get("content-type") || "");
     const len = Number(res.headers.get("content-length") || 0);
-    ok = res.status === 200 && ct.startsWith("image/") && (len === 0 || len > 400);
+    ok2 = res.status === 200 && ct.startsWith("image/") && (len === 0 || len > 400);
   } catch {
-    ok = false;
+    ok2 = false;
   }
-  logoCache.set(url, { at: Date.now(), ok });
-  return ok;
+  logoCache.set(url, { at: Date.now(), ok: ok2 });
+  return ok2;
 }
 function uploadKeyOf(name) {
   return String(name || "").toLowerCase().replace(/\.(com|in|co\.in)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ")[0] || "";
@@ -32704,7 +32809,7 @@ async function resolveMerchantLogo(row) {
 function itemFromAffiliate(row, resolvedLogo = null) {
   const url = row.affiliate_url || row.original_url;
   if (!url) return null;
-  const dv = num10(row.discount_value);
+  const dv = num11(row.discount_value);
   const badge = row.coupon_code ? `Code: ${row.coupon_code}` : dv && row.discount_type === "percent" ? `${dv}% OFF` : dv ? `Upto \u20B9${dv} off` : null;
   const logo = resolvedLogo ?? merchantLogoCandidates(row)[0] ?? null;
   return {
@@ -32797,7 +32902,7 @@ async function fetchAffiliateRows(limit) {
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
       []
     );
-    rows.sort((a, b) => (num10(b.discount_value) ?? 0) - (num10(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
+    rows.sort((a, b) => (num11(b.discount_value) ?? 0) - (num11(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
   } catch (e2) {
     log.debug("Showcase", "affiliate pool query failed", { error: String(e2).slice(0, 100) });
@@ -33058,7 +33163,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num10, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
+var num11, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -33066,7 +33171,7 @@ var init_showcase = __esm({
     init_deeplink();
     init_merchantCrispLogo();
     init_merchantLogos();
-    num10 = (v) => {
+    num11 = (v) => {
       if (v === null || v === void 0 || v === "") return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
@@ -33077,8 +33182,8 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf = (r) => num10(r.effective_price) ?? num10(r.mandatory_total) ?? 0;
-    mrpOf = (r) => num10(r.list_price) ?? 0;
+    priceOf = (r) => num11(r.effective_price) ?? num11(r.mandatory_total) ?? 0;
+    mrpOf = (r) => num11(r.list_price) ?? 0;
     pctOf = (r) => {
       const p = priceOf(r), m = mrpOf(r);
       if (m && m > p) return (m - p) / m;
@@ -34683,7 +34788,7 @@ async function keepWarmDestinations() {
   await warmRows(slice, "DestWarm");
 }
 async function warmRows(rows, tag) {
-  let ok = 0;
+  let ok2 = 0;
   for (const r of rows) {
     try {
       const res = await runSearchPolled({
@@ -34692,14 +34797,14 @@ async function warmRows(rows, tag) {
         pincode: r.pincode ? String(r.pincode) : void 0,
         city: r.city ? String(r.city) : void 0
       }, 2e4);
-      ok += 1;
+      ok2 += 1;
       log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
     } catch (e2) {
       log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e2?.message || e2).slice(0, 120) });
     }
     await new Promise((r2) => setImmediate(r2));
   }
-  log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
+  log.info(tag, `Warmer finished: ${ok2}/${rows.length} queries warmed`);
 }
 async function bootWarm() {
   try {
@@ -35200,7 +35305,7 @@ async function tableColumns(store2, table) {
   }
 }
 async function importRows(store2, table, cols, rows) {
-  let ok = 0;
+  let ok2 = 0;
   let skipped = 0;
   const chunk = 100;
   for (let i = 0; i < rows.length; i += chunk) {
@@ -35222,7 +35327,7 @@ async function importRows(store2, table, cols, rows) {
         `INSERT IGNORE INTO \`${table}\` (${useCols.map((c) => `\`${c}\``).join(",")}) VALUES ${placeholders}`,
         params
       );
-      ok += typeof r.affectedRows === "number" ? r.affectedRows : batch.length;
+      ok2 += typeof r.affectedRows === "number" ? r.affectedRows : batch.length;
     } catch {
       for (const r of batch) {
         try {
@@ -35235,14 +35340,14 @@ async function importRows(store2, table, cols, rows) {
             `INSERT IGNORE INTO \`${table}\` (${rc.map((c) => `\`${c}\``).join(",")}) VALUES (${rc.map(() => "?").join(",")})`,
             rc.map((c) => typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : r[c])
           );
-          ok += typeof rr.affectedRows === "number" ? rr.affectedRows : 1;
+          ok2 += typeof rr.affectedRows === "number" ? rr.affectedRows : 1;
         } catch {
           skipped++;
         }
       }
     }
   }
-  return { ok, skipped };
+  return { ok: ok2, skipped };
 }
 async function importFileStoreIntoMysql() {
   const store2 = getStore();
@@ -35266,8 +35371,8 @@ async function importFileStoreIntoMysql() {
         log.warn("FileImport", `Skipping '${table}' (${data[table].length} rows) \u2014 no such MySQL table`);
         continue;
       }
-      const { ok, skipped } = await importRows(store2, table, cols, data[table]);
-      log.info("FileImport", `'${table}': imported ${ok}, skipped ${skipped} of ${data[table].length}`);
+      const { ok: ok2, skipped } = await importRows(store2, table, cols, data[table]);
+      log.info("FileImport", `'${table}': imported ${ok2}, skipped ${skipped} of ${data[table].length}`);
     }
     const done = import_path6.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
     import_fs5.default.renameSync(lock, done);
@@ -35842,6 +35947,7 @@ var init_routes = __esm({
     init_affiliateNetwork();
     init_spendLens();
     init_deeplink();
+    init_cabLinks();
     init_interstitial();
     init_cabDeeplink();
     init_showcase();
@@ -36669,8 +36775,8 @@ var init_routes = __esm({
     });
     apiRouter.delete("/alerts/:id", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
-      const ok = await deleteAlert(Number(user.id), Number(req.params.id));
-      res.status(ok ? 200 : 404).json({ success: ok });
+      const ok2 = await deleteAlert(Number(user.id), Number(req.params.id));
+      res.status(ok2 ? 200 : 404).json({ success: ok2 });
     });
     apiRouter.get("/spend", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
@@ -36693,8 +36799,8 @@ var init_routes = __esm({
     });
     apiRouter.delete("/spend/:id", authMiddleware, requireAuth, async (req, res) => {
       const user = req.user;
-      const ok = await deleteSpendEntry(Number(user.id), Number(req.params.id));
-      if (!ok) return res.status(404).json({ success: false });
+      const ok2 = await deleteSpendEntry(Number(user.id), Number(req.params.id));
+      if (!ok2) return res.status(404).json({ success: false });
       res.json({ success: true, ...await spendSummary(Number(user.id)) });
     });
     apiRouter.get("/notifications", authMiddleware, async (req, res) => {
@@ -37045,6 +37151,40 @@ var init_routes = __esm({
         });
       }
       res.redirect(302, pointer.startsWith("/api/out") ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
+    });
+    apiRouter.get("/app-open", async (req, res) => {
+      const scheme = String(req.query.s || "");
+      const web = String(req.query.w || "");
+      const offerId = req.query.o ? String(req.query.o) : void 0;
+      if (!isCabAppScheme(scheme)) return res.status(400).send("Unsupported app link");
+      const webCheck = validateDestination(web);
+      const safeWeb = webCheck.valid ? web : "https://www.try1second.com/";
+      let tracked = safeWeb;
+      try {
+        tracked = await recordPointerClick(safeWeb, offerId, "cab_app") || safeWeb;
+      } catch {
+      }
+      const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
+      const esc3 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      res.setHeader("content-type", "text/html; charset=utf-8");
+      res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opening ${esc3(appName)}\u2026</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+.card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
+.muted{color:#94a3b8;font-size:13px;margin-top:10px}</style></head><body><div class="card">
+<h2 style="margin:0 0 6px">Opening ${esc3(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc3(appName)} app\u2026</p>
+<a class="btn" href="${esc3(tracked)}">Continue on the website</a>
+<p class="muted">Fare and availability are shown by ${esc3(appName)} itself.</p>
+</div>
+<script>
+  var scheme = ${JSON.stringify(scheme)};
+  var web = ${JSON.stringify(tracked)};
+  var fell = false;
+  function goWeb(){ if(!fell){ fell = true; location.href = web; } }
+  setTimeout(goWeb, 1600);
+  try { location.href = scheme; } catch (e) { /* fallback timer handles it */ }
+</script></body></html>`);
     });
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));
@@ -37769,7 +37909,7 @@ function parsePsiResponse(json, strategy) {
   try {
     const lr = json?.lighthouseResult;
     const scoreRaw = lr?.categories?.performance?.score;
-    const num11 = (v) => {
+    const num12 = (v) => {
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : null;
     };
@@ -37780,8 +37920,8 @@ function parsePsiResponse(json, strategy) {
     return {
       strategy,
       score: Math.round(Number(scoreRaw) * 100),
-      lcp_ms: num11(lr.audits?.["largest-contentful-paint"]?.numericValue),
-      tbt_ms: num11(lr.audits?.["total-blocking-time"]?.numericValue),
+      lcp_ms: num12(lr.audits?.["largest-contentful-paint"]?.numericValue),
+      tbt_ms: num12(lr.audits?.["total-blocking-time"]?.numericValue),
       cls: Math.round(Number(lr.audits?.["cumulative-layout-shift"]?.numericValue) * 1e4) / 1e4 || null,
       url: String(lr.finalDisplayedUrl || json?.id || ""),
       scanned_at,
@@ -38495,8 +38635,8 @@ async function runProbe2(targetId, name, vertical, probe) {
     r = await httpGet(probe.url);
   }
   const latency = httpGet.lastMs || null;
-  const ok = r.status === 200;
-  if (ok && probe.parser) {
+  const ok2 = r.status === 200;
+  if (ok2 && probe.parser) {
     try {
       let items = [];
       if (probe.parser === "amazonIn") items = parseAmazonIn(r.body, SRC, probe.url);
@@ -38538,7 +38678,7 @@ async function runProbe2(targetId, name, vertical, probe) {
   if (r.status >= 500) {
     return { ...base, status: "TEMPORARILY_UNAVAILABLE", failure_category: "SERVER_ERROR", http_status: r.status, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP ${r.status} from origin`, next_action: "Retry later" };
   }
-  if (ok) {
+  if (ok2) {
     if (r.bytes < 15e4 && JS_SHELL_RE.test(r.body)) {
       return { ...base, status: "LIVE_TEST_FAILED", failure_category: "JS_SHELL_NO_DATA", http_status: 200, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP 200 but client-rendered shell (${r.bytes}B) \u2014 no data in plain HTML`, next_action: "Playwright render fallback or partner API" };
     }
@@ -38856,8 +38996,8 @@ var init_adminRoutes = __esm({
       res.json({ success: true, fulfilments: rows });
     });
     adminRouter.post("/fulfilments/:id/status", async (req, res) => {
-      const ok = await updateFulfilmentStatus(Number(req.params.id), String(req.body.status || ""));
-      if (!ok) return res.status(400).json({ success: false, error: "Invalid status or record" });
+      const ok2 = await updateFulfilmentStatus(Number(req.params.id), String(req.body.status || ""));
+      if (!ok2) return res.status(400).json({ success: false, error: "Invalid status or record" });
       audit(req, "fulfilment.status", req.params.id, { status: req.body.status });
       res.json({ success: true });
     });
@@ -39023,8 +39163,8 @@ var init_adminRoutes = __esm({
     });
     adminRouter.delete("/notifications/:id", async (req, res) => {
       try {
-        const ok = await deactivateNotification(Number(req.params.id));
-        if (!ok) return res.status(404).json({ success: false, error: "Notification not found" });
+        const ok2 = await deactivateNotification(Number(req.params.id));
+        if (!ok2) return res.status(404).json({ success: false, error: "Notification not found" });
         audit(req, "notification.delete", req.params.id);
         res.json({ success: true });
       } catch (e2) {
@@ -41688,9 +41828,9 @@ async function acquireSingletonLock(name) {
     if (r === "other") return false;
     log.warn("Bootstrap", `MySQL lock unavailable \u2014 falling back to file lock (pid ${process.pid})`);
   }
-  const ok = fileLock(name);
-  if (ok) log.info("Bootstrap", `Background singleton acquired via file lock (pid ${process.pid})`);
-  return ok;
+  const ok2 = fileLock(name);
+  if (ok2) log.info("Bootstrap", `Background singleton acquired via file lock (pid ${process.pid})`);
+  return ok2;
 }
 async function runSingleton(name, fn) {
   const held = await acquireSingletonLock(name);

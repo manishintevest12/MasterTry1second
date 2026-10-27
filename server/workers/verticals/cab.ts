@@ -3,6 +3,7 @@
  * Real road distance/duration from OSRM between two places; the fare is a
  * transparent, labelled estimate (never a live operator quote).
  */
+import { cabLinks, cabAppOpenUrl } from '../../affiliate/cabLinks';
 import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { parseSavaariCabs, savaariRouteSlug } from '../parsers/savaariCabs'
 import { bharatTaxiSlug, parseBharatTaxiCabs } from '../parsers/bharatTaxi';;
@@ -254,13 +255,19 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
     const uberClientId = String(process.env.UBER_CLIENT_ID || 'vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w').trim();
     const today = new Date().toISOString().slice(0, 10);
     const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);
+    // Owner 27 Oct: app-level deeplink — the CTA opens the installed Uber app with
+    // pickup/drop prefilled, tracked through /api/app-open, web page as fallback.
+    const uberApp = cabAppOpenUrl(cabLinks('Uber', {
+      pickup: { lat: Number(pickup.lat), lng: Number(pickup.lng), name: pickup.name },
+      drop: { lat: Number(drop.lat), lng: Number(drop.lng), name: drop.name },
+    }, bookUrl));
     const route = `${rt.from} to ${rt.to}`.toLowerCase();
     return products.map((p) => newRawItem(ctx.source, {
       title: `${rt.from} to ${rt.to} Uber ${p.displayName} (app quote)`,
       brand: 'Uber',
       ...(p.fare != null ? { price: p.fare, currency: 'INR' } : { currency: 'INR' }),
       seller: 'Uber',
-      sellerUrl: bookUrl,
+      sellerUrl: uberApp || bookUrl,
       travel: { route, seatType: 'unknown' },
       attributes: {
         pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,
@@ -587,7 +594,11 @@ export const cabWorker: VerticalWorker = {
             brand: 'Ola',
             price, currency: 'INR',
             seller: 'Ola',
-            sellerUrl: `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`,
+            sellerUrl: cabAppOpenUrl(cabLinks('Ola', {
+              pickup: { lat: Number(a.lat), lng: Number(a.lon) },
+              drop: { lat: Number(b.lat), lng: Number(b.lon) },
+            }, `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`))
+              || `https://book.olacabs.com/?lat=${a.lat}&lng=${a.lon}&drop_lat=${b.lat}&drop_lng=${b.lon}`,
             travel: { route: `${rt.from} to ${rt.to}`.toLowerCase(), seatType: 'unknown' },
             attributes: {
               pickup: rt.from, drop: rt.to, route: `${rt.from} to ${rt.to}`,

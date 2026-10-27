@@ -27,6 +27,7 @@ import {
 import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetwork';
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
+import { isCabAppScheme } from '../affiliate/cabLinks';
 import { createInterstitialPointer, isInAppWebView } from '../redirect/interstitial';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
@@ -1985,6 +1986,45 @@ apiRouter.get('/cab/book', async (req, res) => {
     });
   }
   res.redirect(302, pointer.startsWith('/api/out') ? pointer : `/api/out?t=${encodeURIComponent(pointer)}`);
+});
+
+/**
+ * App-open bridge (owner 27 Oct: "jo app pr available hai jaise uber, ola, rapido
+ * unko app level mai deeplink kro"). Tries the NATIVE scheme first, then offers the
+ * merchant's web page. Only cab-app schemes are accepted, the click is recorded
+ * server-side like /api/out, and the destination is never echoed as raw HTML.
+ */
+apiRouter.get('/app-open', async (req, res) => {
+  const scheme = String(req.query.s || '');
+  const web = String(req.query.w || '');
+  const offerId = req.query.o ? String(req.query.o) : undefined;
+  if (!isCabAppScheme(scheme)) return res.status(400).send('Unsupported app link');
+  const webCheck = validateDestination(web);
+  const safeWeb = webCheck.valid ? web : 'https://www.try1second.com/';
+  // Keep tracking identical to /api/out (network/affiliate attaches on the web leg).
+  let tracked = safeWeb;
+  try { tracked = (await recordPointerClick(safeWeb, offerId, 'cab_app')) || safeWeb; } catch { /* tracking is best-effort */ }
+  const appName = (scheme.split('://')[0] || 'app').replace(/^olacabs$/, 'ola');
+  const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+  res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opening ${esc(appName)}…</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+.card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
+.muted{color:#94a3b8;font-size:13px;margin-top:10px}</style></head><body><div class="card">
+<h2 style="margin:0 0 6px">Opening ${esc(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc(appName)} app…</p>
+<a class="btn" href="${esc(tracked)}">Continue on the website</a>
+<p class="muted">Fare and availability are shown by ${esc(appName)} itself.</p>
+</div>
+<script>
+  var scheme = ${JSON.stringify(scheme)};
+  var web = ${JSON.stringify(tracked)};
+  var fell = false;
+  function goWeb(){ if(!fell){ fell = true; location.href = web; } }
+  setTimeout(goWeb, 1600);
+  try { location.href = scheme; } catch (e) { /* fallback timer handles it */ }
+</script></body></html>`);
 });
 
 apiRouter.get('/out', async (req, res) => {

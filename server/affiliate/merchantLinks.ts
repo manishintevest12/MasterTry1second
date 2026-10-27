@@ -99,6 +99,12 @@ export function merchantDeepLink(merchant: string, title: string, vertical?: str
   if (has('myntra')) return `https://www.myntra.com/${slug(t)}`;
   if (has('ajio')) return `https://www.ajio.com/search/?text=${q}`;
   if (has('tata') && has('cliq')) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q}`;
+  if (has('nykaa')) return `https://www.nykaa.com/search/result/?q=${q}`;
+  if (has('croma')) return `https://www.croma.com/searchB?q=${q}`;
+  if (has('xiaomi') || has('mi.com')) return `https://www.mi.com/in/search/?keyword=${q}`;
+  if (has('oppo')) return `https://www.oppo.com/in/search/?q=${q}`;
+  if (has('realme')) return `https://www.realme.com/in/search?keyword=${q}`;
+  if (has('lenovo')) return `https://www.lenovo.com/in/en/search?fq=${q}`;
 
   // ---------------- 10-min grocery ----------------
   if (has('instamart')) return `https://www.swiggy.com/instamart/search?query=${q}`;
