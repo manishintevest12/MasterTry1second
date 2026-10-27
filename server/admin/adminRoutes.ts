@@ -677,6 +677,67 @@ adminRouter.post('/speedtest/run', async (req, res) => {
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Speed test failed' }); }
 });
 
+// ---- AdSense revenue (owner 27 Oct): "admin mai ek section ye v bnao ki adsence se hume
+// kitna revenue aaya hai". Live API when configured, otherwise the owner's own CSV export.
+// Numbers are always the owner's real earnings or an honest "not connected yet" state.
+adminRouter.get('/adsense-revenue', async (req, res) => {
+  try {
+    const days = Math.min(365, Math.max(7, Number((req.query as any).days) || 90));
+    const mod = await import('../marketing/adsenseRevenue');
+    const rows = await mod.dailyRows(days);
+    const summary = mod.summarize(rows);
+    const cfg = mod.adsenseApiConfig();
+    const circuit = mod.adsenseApiCircuit();
+    const slots = await getStore().query<any>(
+      "SELECT slot_key, provider, adsense_client, adsense_slot, is_active FROM ad_slots WHERE provider = 'adsense'",
+    ).catch(() => []);
+    res.json({
+      success: true,
+      summary,
+      days: rows.slice(0, 60),
+      api: {
+        configured: cfg.configured,
+        account: cfg.accountId ? `${cfg.accountId.slice(0, 6)}…` : '',
+        currency: cfg.currency,
+        parked: circuit.parked,
+        park_reason: circuit.reason,
+        retry_after: circuit.until,
+        missing: [
+          !process.env.ADSENSE_ACCOUNT_ID && 'ADSENSE_ACCOUNT_ID',
+          !process.env.ADSENSE_OAUTH_CLIENT_ID && 'ADSENSE_OAUTH_CLIENT_ID',
+          !process.env.ADSENSE_OAUTH_CLIENT_SECRET && 'ADSENSE_OAUTH_CLIENT_SECRET',
+          !process.env.ADSENSE_REFRESH_TOKEN && 'ADSENSE_REFRESH_TOKEN',
+        ].filter(Boolean),
+      },
+      slots_configured: (slots || []).filter((s) => s.is_active).length,
+      recent_syncs: await mod.lastSyncs(5),
+      generated_at: new Date().toISOString(),
+    });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load AdSense revenue' }); }
+});
+
+adminRouter.post('/adsense-revenue/sync', async (req, res) => {
+  try {
+    const { syncFromAdsenseApi } = await import('../marketing/adsenseRevenue');
+    const days = Math.min(365, Math.max(7, Number(req.body?.days) || 30));
+    const out = await syncFromAdsenseApi(days);
+    audit(req, 'adsense.sync', String(days), out.ok ? `${out.rows} days` : String(out.error || 'failed'));
+    res.status(out.ok ? 200 : 400).json({ success: out.ok, ...out });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Sync failed' }); }
+});
+
+adminRouter.post('/adsense-revenue/csv', async (req, res) => {
+  try {
+    const text = String(req.body?.csv || '');
+    if (text.trim().length < 10) return res.status(400).json({ success: false, error: 'CSV text is empty' });
+    if (text.length > 2_000_000) return res.status(400).json({ success: false, error: 'CSV too large — export a shorter date range' });
+    const { importAdsenseCsv } = await import('../marketing/adsenseRevenue');
+    const out = await importAdsenseCsv(text, String(req.body?.currency || 'INR').toUpperCase());
+    audit(req, 'adsense.csv_import', String(out.rows), out.ok ? `${out.rows} days` : String(out.error || 'failed'));
+    res.status(out.ok ? 200 : 400).json({ success: out.ok, ...out });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Import failed' }); }
+});
+
 // ---- Affiliate partner map: Excel download (owner 27 Oct "ab muje ek excel sheet
 // download ka option v do admin kaun si company kiski partner hai"). Two sheets:
 // Partners (merchant -> network + OUR id) and Coupons (every manual promo).

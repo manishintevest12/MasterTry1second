@@ -26,6 +26,7 @@ import {
   Gauge,
   MousePointerClick,
   Ticket,
+  BarChart3,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Try1SecondLogo } from '../Try1SecondLogo';
@@ -45,6 +46,7 @@ import { HomeBannersTab } from './HomeBannersTab';
 import { PlacementsTab } from './PlacementsTab';
 import { FinanceVerticalsTab } from './FinanceVerticalsTab';
 import { PromoOffersTab } from './PromoOffersTab';
+import { AdsenseRevenueTab } from './AdsenseRevenueTab';
 import { AppLinksTab } from './AppLinksTab';
 import { NotificationsTab } from './NotificationsTab';
 import { DealsTab } from './DealsTab';
@@ -67,6 +69,7 @@ export type AdminTab =
   | 'payouts'
   | 'affiliate_ids'
   | 'promo_offers'
+  | 'adsense_revenue'
   | 'affiliate_networks'
   | 'cab_book_links'
   | 'scrapers'
@@ -285,6 +288,18 @@ export const AdminDashboard: React.FC = () => {
             <span>Network Payouts (Real)</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => setActiveTab('adsense_revenue')}
+            className={`py-3 px-3.5 border-b-2 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${
+              activeTab === 'adsense_revenue'
+                ? 'border-rose-600 text-rose-600 font-bold bg-rose-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            AdSense Revenue
+          </button>
           <button
             type="button"
             onClick={() => setActiveTab('promo_offers')}
@@ -538,6 +553,7 @@ export const AdminDashboard: React.FC = () => {
         {/* ================= TAB 3: AFFILIATE IDS & LINK BUILDER ================= */}
         {activeTab === 'affiliate_ids' && <AffiliateProfilesPanel />}
         {activeTab === 'promo_offers' && <PromoOffersTab />}
+        {activeTab === 'adsense_revenue' && <AdsenseRevenueTab />}
 
         {/* ================= TAB 4: DYNAMIC WEB SCRAPERS (White Theme) ================= */}
         {activeTab === 'scrapers' && <SourcesTab />}

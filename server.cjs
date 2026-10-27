@@ -39750,6 +39750,404 @@ var init_coverage = __esm({
   }
 });
 
+// server/marketing/adsenseRevenue.ts
+var adsenseRevenue_exports = {};
+__export(adsenseRevenue_exports, {
+  _resetAdsenseCircuit: () => _resetAdsenseCircuit,
+  adsenseApiCircuit: () => adsenseApiCircuit,
+  adsenseApiConfig: () => adsenseApiConfig,
+  countOf: () => countOf,
+  dailyRows: () => dailyRows,
+  importAdsenseCsv: () => importAdsenseCsv,
+  lastSyncs: () => lastSyncs,
+  moneyToMicros: () => moneyToMicros,
+  parseAdsenseCsv: () => parseAdsenseCsv,
+  parseAdsenseDate: () => parseAdsenseDate,
+  splitCsvLine: () => splitCsvLine,
+  summarize: () => summarize,
+  syncFromAdsenseApi: () => syncFromAdsenseApi,
+  upsertDays: () => upsertDays
+});
+function moneyToMicros(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return 0;
+  const neg = /^\(.*\)$/.test(s) || s.trim().startsWith("-");
+  const digits = s.replace(/[^0-9.]/g, "");
+  if (!digits) return 0;
+  const [intPart = "0", fracPart = ""] = digits.split(".");
+  const frac = (fracPart + "000000").slice(0, 6);
+  const v = Number(intPart || "0") * 1e6 + Number(frac || "0");
+  if (!Number.isFinite(v)) return 0;
+  return neg ? -Math.round(v) : Math.round(v);
+}
+function countOf(raw) {
+  const s = String(raw ?? "").trim().replace(/[^0-9-]/g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+}
+function parseAdsenseDate(raw) {
+  const s = String(raw ?? "").trim().replace(/^"|"$/g, "");
+  if (!s) return null;
+  let m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(s);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec(s);
+  if (m) return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  const MONTHS2 = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  m = /^(\d{1,2})[ -]([A-Za-z]{3,})[ -](\d{4})$/.exec(s);
+  if (m) {
+    const mi = MONTHS2.indexOf(m[2].slice(0, 3).toLowerCase());
+    if (mi >= 0) return `${m[3]}-${String(mi + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  }
+  m = /^([A-Za-z]{3,})[ .]+(\d{1,2}),?[ ]+(\d{4})$/.exec(s);
+  if (m) {
+    const mi = MONTHS2.indexOf(m[1].slice(0, 3).toLowerCase());
+    if (mi >= 0) return `${m[3]}-${String(mi + 1).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  }
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return null;
+}
+function splitCsvLine(line) {
+  const out = [];
+  let cell = "";
+  let q3 = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q3) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else q3 = false;
+      } else cell += ch;
+    } else if (ch === '"') q3 = true;
+    else if (ch === ",") {
+      out.push(cell);
+      cell = "";
+    } else cell += ch;
+  }
+  out.push(cell);
+  return out.map((c) => c.trim());
+}
+function headerIndex(headers, key) {
+  const wanted = HEADER_ALIASES[key] || [];
+  const norm3 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  for (const w of wanted) {
+    const i = norm3.findIndex((h) => h === w || h.startsWith(`${w} `));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+function parseAdsenseCsv(text, currencyDefault = "INR") {
+  const raw = String(text || "").replace(/^\uFEFF/, "");
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (!lines.length) return { rows: [], skipped: 0, error: "Empty file" };
+  const delim = lines[0].includes("	") && !lines[0].includes(",") ? "	" : ",";
+  const headers = delim === "	" ? lines[0].split("	").map((c) => c.trim()) : splitCsvLine(lines[0]);
+  const iDay = headerIndex(headers, "day");
+  const iEarn = headerIndex(headers, "earnings");
+  if (iDay < 0 || iEarn < 0) {
+    return { rows: [], skipped: 0, error: 'Could not find "Date" and "Estimated earnings" columns \u2014 export the report from AdSense with a Date column.' };
+  }
+  const iImp = headerIndex(headers, "impressions");
+  const iClicks = headerIndex(headers, "clicks");
+  const iViews = headerIndex(headers, "page_views");
+  const iRpm = headerIndex(headers, "rpm");
+  const iCur = headerIndex(headers, "currency");
+  const byDay = /* @__PURE__ */ new Map();
+  let skipped = 0;
+  for (const line of lines.slice(1)) {
+    const cells = delim === "	" ? line.split("	").map((c) => c.trim()) : splitCsvLine(line);
+    const day = parseAdsenseDate(cells[iDay]);
+    if (!day) {
+      skipped++;
+      continue;
+    }
+    if (/^(total|totals|sum)/i.test(String(cells[iDay]))) {
+      skipped++;
+      continue;
+    }
+    const row = {
+      day,
+      source: "adsense_csv",
+      currency: (iCur >= 0 ? String(cells[iCur] || "").trim().toUpperCase() : "") || currencyDefault,
+      earnings_micros: moneyToMicros(cells[iEarn]),
+      impressions: iImp >= 0 ? countOf(cells[iImp]) : 0,
+      clicks: iClicks >= 0 ? countOf(cells[iClicks]) : 0,
+      page_views: iViews >= 0 ? countOf(cells[iViews]) : 0,
+      rpm_micros: iRpm >= 0 ? moneyToMicros(cells[iRpm]) : 0
+    };
+    const prev = byDay.get(day);
+    if (prev) {
+      prev.earnings_micros += row.earnings_micros;
+      prev.impressions += row.impressions;
+      prev.clicks += row.clicks;
+      prev.page_views += row.page_views;
+      prev.rpm_micros = Math.max(prev.rpm_micros, row.rpm_micros);
+    } else byDay.set(day, row);
+  }
+  return { rows: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)), skipped };
+}
+async function ensureTables() {
+  if (ensured7) return;
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS adsense_daily (
+    day DATE NOT NULL, source VARCHAR(20) NOT NULL DEFAULT 'adsense_api', currency VARCHAR(8) NOT NULL DEFAULT 'INR',
+    earnings_micros BIGINT NOT NULL DEFAULT 0, impressions BIGINT NOT NULL DEFAULT 0, clicks BIGINT NOT NULL DEFAULT 0,
+    page_views BIGINT NOT NULL DEFAULT 0, rpm_micros BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (day, source), KEY idx_adsense_day (day)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {
+  });
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS adsense_sync_log (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, kind VARCHAR(20) NOT NULL, ok TINYINT(1) NOT NULL,
+    rows_seen INT NOT NULL DEFAULT 0, message VARCHAR(400) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_adsense_sync (created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {
+  });
+  ensured7 = true;
+}
+async function upsertDays(rows) {
+  await ensureTables();
+  if (!rows.length) return 0;
+  for (const r of rows) {
+    await getStore().execute(
+      `INSERT INTO adsense_daily (day, source, currency, earnings_micros, impressions, clicks, page_views, rpm_micros)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE currency=VALUES(currency), earnings_micros=VALUES(earnings_micros),
+         impressions=VALUES(impressions), clicks=VALUES(clicks), page_views=VALUES(page_views), rpm_micros=VALUES(rpm_micros)`,
+      [r.day, r.source, r.currency, r.earnings_micros, r.impressions, r.clicks, r.page_views, r.rpm_micros]
+    ).catch(() => {
+    });
+  }
+  return rows.length;
+}
+async function logSync(kind, ok2, rowsSeen, message) {
+  await ensureTables();
+  await getStore().execute(
+    "INSERT INTO adsense_sync_log (kind, ok, rows_seen, message) VALUES (?,?,?,?)",
+    [kind, ok2 ? 1 : 0, rowsSeen, String(message || "").slice(0, 400)]
+  ).catch(() => {
+  });
+}
+async function dailyRows(sinceDays = 90) {
+  await ensureTables();
+  const since = new Date(Date.now() - sinceDays * 864e5).toISOString().slice(0, 10);
+  const rows = await getStore().query(
+    "SELECT day, source, currency, earnings_micros, impressions, clicks, page_views, rpm_micros FROM adsense_daily WHERE day >= ? ORDER BY day DESC",
+    [since]
+  ).catch(() => []);
+  const byDay = /* @__PURE__ */ new Map();
+  const csv2 = [];
+  for (const r of rows) {
+    const day = r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day).slice(0, 10);
+    const row = {
+      day,
+      source: r.source,
+      currency: r.currency || "INR",
+      earnings_micros: Number(r.earnings_micros) || 0,
+      impressions: Number(r.impressions) || 0,
+      clicks: Number(r.clicks) || 0,
+      page_views: Number(r.page_views) || 0,
+      rpm_micros: Number(r.rpm_micros) || 0
+    };
+    if (row.source === "adsense_api") byDay.set(day, row);
+    else csv2.push(row);
+  }
+  for (const r of csv2) if (!byDay.has(r.day)) byDay.set(r.day, r);
+  return [...byDay.values()].sort((a, b) => b.day.localeCompare(a.day));
+}
+function summarize(rows, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
+  const day = (offset) => new Date((/* @__PURE__ */ new Date(`${today2}T00:00:00Z`)).getTime() - offset * 864e5).toISOString().slice(0, 10);
+  const inRange = (r, from, to) => r.day >= from && r.day <= to;
+  const sum = (list) => list.reduce((a, r) => a + r.earnings_micros, 0);
+  const monthStart = `${today2.slice(0, 7)}-01`;
+  const prevMonthEnd = (() => {
+    const d = /* @__PURE__ */ new Date(`${monthStart}T00:00:00Z`);
+    d.setUTCDate(0);
+    return d.toISOString().slice(0, 10);
+  })();
+  const prevMonthStart = `${prevMonthEnd.slice(0, 7)}-01`;
+  const last30 = rows.filter((r) => inRange(r, day(29), today2));
+  const thisMonthRows = rows.filter((r) => r.day >= monthStart);
+  const prevMonthRows = rows.filter((r) => inRange(r, prevMonthStart, prevMonthEnd));
+  const last30Sum = sum(last30);
+  const prevMonthSum = sum(prevMonthRows);
+  const monthToDate = sum(thisMonthRows);
+  const impressions30 = last30.reduce((a, r) => a + r.impressions, 0);
+  const pageViews30 = last30.reduce((a, r) => a + r.page_views, 0);
+  const clicks30 = last30.reduce((a, r) => a + r.clicks, 0);
+  const rpm30 = pageViews30 > 0 ? Math.round(last30Sum / pageViews30 * 1e3) : 0;
+  const best = rows.length ? rows.reduce((a, r) => r.earnings_micros > a.earnings_micros ? r : a, rows[0]) : null;
+  const currency = rows.find((r) => r.currency)?.currency || "INR";
+  const lastDataDay = rows.length ? rows.map((r) => r.day).sort().slice(-1)[0] : null;
+  const staleDays = lastDataDay ? Math.max(0, Math.round(((/* @__PURE__ */ new Date(`${today2}T00:00:00Z`)).getTime() - (/* @__PURE__ */ new Date(`${lastDataDay}T00:00:00Z`)).getTime()) / 864e5)) : null;
+  return {
+    currency,
+    today: sum(rows.filter((r) => r.day === today2)),
+    yesterday: sum(rows.filter((r) => r.day === day(1))),
+    last7: sum(rows.filter((r) => inRange(r, day(6), today2))),
+    last30: last30Sum,
+    thisMonth: monthToDate,
+    prevMonth: prevMonthSum,
+    lifetime: sum(rows),
+    impressions30,
+    clicks30,
+    pageViews30,
+    rpm30,
+    // Month-over-month, only when the previous month actually has data (never invent a delta).
+    changePct: prevMonthSum > 0 ? Math.round((monthToDate - prevMonthSum) / prevMonthSum * 1e3) / 10 : null,
+    bestDay: best ? { day: best.day, amount: best.earnings_micros } : null,
+    daysWithData: rows.length,
+    lastDataDay,
+    staleDays
+  };
+}
+function adsenseApiConfig() {
+  const accountId = String(process.env.ADSENSE_ACCOUNT_ID || "").trim();
+  const clientId = String(process.env.ADSENSE_OAUTH_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.ADSENSE_OAUTH_CLIENT_SECRET || "").trim();
+  const refreshToken = String(process.env.ADSENSE_REFRESH_TOKEN || "").trim();
+  const currency = String(process.env.ADSENSE_CURRENCY || "INR").trim().toUpperCase();
+  const configured = Boolean(accountId && clientId && clientSecret && refreshToken);
+  const credentialHash = import_crypto31.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
+  return { accountId, clientId, clientSecret, refreshToken, currency, configured, credentialHash };
+}
+function adsenseApiCircuit() {
+  const cfg = adsenseApiConfig();
+  if (!circuit) return { parked: false, reason: "", until: null };
+  if (circuit.credentialHash !== cfg.credentialHash) {
+    circuit = null;
+    return { parked: false, reason: "", until: null };
+  }
+  if (Date.now() >= circuit.until) {
+    circuit = null;
+    return { parked: false, reason: "", until: null };
+  }
+  return { parked: true, reason: circuit.reason, until: new Date(circuit.until).toISOString() };
+}
+function _resetAdsenseCircuit() {
+  circuit = null;
+}
+async function syncFromAdsenseApi(days = 30) {
+  const cfg = adsenseApiConfig();
+  if (!cfg.configured) {
+    return { ok: false, rows: 0, error: "AdSense API not configured yet \u2014 add ADSENSE_ACCOUNT_ID, ADSENSE_OAUTH_CLIENT_ID, ADSENSE_OAUTH_CLIENT_SECRET and ADSENSE_REFRESH_TOKEN in hPanel, or import the CSV export instead." };
+  }
+  const parked = adsenseApiCircuit();
+  if (parked.parked) return { ok: false, parked: true, rows: 0, error: `AdSense API paused: ${parked.reason} (retry after ${parked.until})` };
+  try {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: cfg.clientId,
+        client_secret: cfg.clientSecret,
+        refresh_token: cfg.refreshToken,
+        grant_type: "refresh_token"
+      }).toString()
+    });
+    const tokenJson = await tokenRes.json().catch(() => ({}));
+    if (!tokenRes.ok || !tokenJson?.access_token) {
+      const reason = String(tokenJson?.error_description || tokenJson?.error || `HTTP ${tokenRes.status}`);
+      circuit = { until: Date.now() + 6 * 36e5, reason: `token: ${reason}`, credentialHash: cfg.credentialHash };
+      await logSync("api", false, 0, `token: ${reason}`);
+      return { ok: false, rows: 0, error: `AdSense rejected the OAuth token (${reason}). Re-generate ADSENSE_REFRESH_TOKEN.` };
+    }
+    const end = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    const start2 = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+    const account = cfg.accountId.startsWith("accounts/") ? cfg.accountId : `accounts/${cfg.accountId}`;
+    const url = new URL(`https://adsense.googleapis.com/v2/${account}/reports:generate`);
+    url.searchParams.set("dateRange", "CUSTOM");
+    url.searchParams.set("startDate.year", start2.slice(0, 4));
+    url.searchParams.set("startDate.month", String(Number(start2.slice(5, 7))));
+    url.searchParams.set("startDate.day", String(Number(start2.slice(8, 10))));
+    url.searchParams.set("endDate.year", end.slice(0, 4));
+    url.searchParams.set("endDate.month", String(Number(end.slice(5, 7))));
+    url.searchParams.set("endDate.day", String(Number(end.slice(8, 10))));
+    for (const m of ["ESTIMATED_EARNINGS", "IMPRESSIONS", "CLICKS", "PAGE_VIEWS", "PAGE_VIEWS_RPM"]) url.searchParams.append("metrics", m);
+    url.searchParams.set("dimensions", "DATE");
+    url.searchParams.set("currencyCode", cfg.currency);
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${tokenJson.access_token}` } });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = String(json?.error?.message || `HTTP ${res.status}`);
+      if (res.status === 401 || res.status === 403) {
+        circuit = { until: Date.now() + 6 * 36e5, reason: msg, credentialHash: cfg.credentialHash };
+      } else if (res.status === 429 || /quota|rate limit/i.test(msg)) {
+        circuit = { until: Date.now() + 60 * 6e4, reason: `quota: ${msg}`, credentialHash: cfg.credentialHash };
+      }
+      await logSync("api", false, 0, msg);
+      return { ok: false, rows: 0, error: `AdSense API: ${msg}` };
+    }
+    const headers = (json?.headers || []).map((h) => String(h?.name || "").toUpperCase());
+    const iDay = headers.indexOf("DATE");
+    const iEarn = headers.indexOf("ESTIMATED_EARNINGS");
+    const iImp = headers.indexOf("IMPRESSIONS");
+    const iClicks = headers.indexOf("CLICKS");
+    const iViews = headers.indexOf("PAGE_VIEWS");
+    const iRpm = headers.indexOf("PAGE_VIEWS_RPM");
+    const rows = [];
+    for (const r of json?.rows || []) {
+      const cells = r?.cells || [];
+      const day = parseAdsenseDate(iDay >= 0 ? cells[iDay] : "");
+      if (!day) continue;
+      rows.push({
+        day,
+        source: "adsense_api",
+        currency: cfg.currency,
+        earnings_micros: moneyToMicros(iEarn >= 0 ? cells[iEarn] : 0),
+        impressions: countOf(iImp >= 0 ? cells[iImp] : 0),
+        clicks: countOf(iClicks >= 0 ? cells[iClicks] : 0),
+        page_views: countOf(iViews >= 0 ? cells[iViews] : 0),
+        rpm_micros: moneyToMicros(iRpm >= 0 ? cells[iRpm] : 0)
+      });
+    }
+    await upsertDays(rows);
+    circuit = null;
+    await logSync("api", true, rows.length, `${rows.length} days`);
+    return { ok: true, rows: rows.length };
+  } catch (e2) {
+    const msg = String(e2?.message || "network error");
+    await logSync("api", false, 0, msg);
+    return { ok: false, rows: 0, error: `AdSense API unreachable: ${msg}` };
+  }
+}
+async function importAdsenseCsv(text, currency = "INR") {
+  const parsed = parseAdsenseCsv(text, currency);
+  if (parsed.error) {
+    await logSync("csv", false, 0, parsed.error);
+    return { ok: false, rows: 0, skipped: 0, error: parsed.error };
+  }
+  if (!parsed.rows.length) {
+    const error = "No day rows found in that file.";
+    await logSync("csv", false, 0, error);
+    return { ok: false, rows: 0, skipped: parsed.skipped, error };
+  }
+  await upsertDays(parsed.rows);
+  await logSync("csv", true, parsed.rows.length, `${parsed.rows.length} days, ${parsed.skipped} skipped`);
+  return { ok: true, rows: parsed.rows.length, skipped: parsed.skipped };
+}
+async function lastSyncs(limit = 5) {
+  await ensureTables();
+  return getStore().query("SELECT kind, ok, rows_seen, message, created_at FROM adsense_sync_log ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
+}
+var import_crypto31, HEADER_ALIASES, ensured7, circuit;
+var init_adsenseRevenue = __esm({
+  "server/marketing/adsenseRevenue.ts"() {
+    import_crypto31 = __toESM(require("crypto"), 1);
+    init_db();
+    HEADER_ALIASES = {
+      day: ["date", "day", "din"],
+      earnings: ["estimated earnings", "earnings", "revenue", "estimated revenue", "total earnings"],
+      impressions: ["impressions", "ad impressions"],
+      clicks: ["clicks", "ad clicks"],
+      page_views: ["page views", "pageviews", "views"],
+      rpm: ["page rpm", "rpm", "page rpm (inr)", "rpm (inr)", "page rpm (usd)"],
+      currency: ["currency", "currency code"]
+    };
+    ensured7 = false;
+    circuit = null;
+  }
+});
+
 // server/admin/xlsx.ts
 var xlsx_exports = {};
 __export(xlsx_exports, {
@@ -40568,6 +40966,67 @@ var init_adminRoutes = __esm({
         res.json({ success: true, scores });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Speed test failed" });
+      }
+    });
+    adminRouter.get("/adsense-revenue", async (req, res) => {
+      try {
+        const days = Math.min(365, Math.max(7, Number(req.query.days) || 90));
+        const mod = await Promise.resolve().then(() => (init_adsenseRevenue(), adsenseRevenue_exports));
+        const rows = await mod.dailyRows(days);
+        const summary = mod.summarize(rows);
+        const cfg = mod.adsenseApiConfig();
+        const circuit2 = mod.adsenseApiCircuit();
+        const slots = await getStore().query(
+          "SELECT slot_key, provider, adsense_client, adsense_slot, is_active FROM ad_slots WHERE provider = 'adsense'"
+        ).catch(() => []);
+        res.json({
+          success: true,
+          summary,
+          days: rows.slice(0, 60),
+          api: {
+            configured: cfg.configured,
+            account: cfg.accountId ? `${cfg.accountId.slice(0, 6)}\u2026` : "",
+            currency: cfg.currency,
+            parked: circuit2.parked,
+            park_reason: circuit2.reason,
+            retry_after: circuit2.until,
+            missing: [
+              !process.env.ADSENSE_ACCOUNT_ID && "ADSENSE_ACCOUNT_ID",
+              !process.env.ADSENSE_OAUTH_CLIENT_ID && "ADSENSE_OAUTH_CLIENT_ID",
+              !process.env.ADSENSE_OAUTH_CLIENT_SECRET && "ADSENSE_OAUTH_CLIENT_SECRET",
+              !process.env.ADSENSE_REFRESH_TOKEN && "ADSENSE_REFRESH_TOKEN"
+            ].filter(Boolean)
+          },
+          slots_configured: (slots || []).filter((s) => s.is_active).length,
+          recent_syncs: await mod.lastSyncs(5),
+          generated_at: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load AdSense revenue" });
+      }
+    });
+    adminRouter.post("/adsense-revenue/sync", async (req, res) => {
+      try {
+        const { syncFromAdsenseApi: syncFromAdsenseApi2 } = await Promise.resolve().then(() => (init_adsenseRevenue(), adsenseRevenue_exports));
+        const days = Math.min(365, Math.max(7, Number(req.body?.days) || 30));
+        const out = await syncFromAdsenseApi2(days);
+        audit(req, "adsense.sync", String(days), out.ok ? `${out.rows} days` : String(out.error || "failed"));
+        res.status(out.ok ? 200 : 400).json({ success: out.ok, ...out });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Sync failed" });
+      }
+    });
+    adminRouter.post("/adsense-revenue/csv", async (req, res) => {
+      try {
+        const text = String(req.body?.csv || "");
+        if (text.trim().length < 10) return res.status(400).json({ success: false, error: "CSV text is empty" });
+        if (text.length > 2e6) return res.status(400).json({ success: false, error: "CSV too large \u2014 export a shorter date range" });
+        const { importAdsenseCsv: importAdsenseCsv2 } = await Promise.resolve().then(() => (init_adsenseRevenue(), adsenseRevenue_exports));
+        const out = await importAdsenseCsv2(text, String(req.body?.currency || "INR").toUpperCase());
+        audit(req, "adsense.csv_import", String(out.rows), out.ok ? `${out.rows} days` : String(out.error || "failed"));
+        res.status(out.ok ? 200 : 400).json({ success: out.ok, ...out });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Import failed" });
       }
     });
     adminRouter.get("/affiliate-partners.xlsx", async (_req, res) => {
