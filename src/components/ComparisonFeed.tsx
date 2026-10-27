@@ -305,9 +305,12 @@ export const ComparisonFeed: React.FC = () => {
           <SortAndSummaryTabs />
 
           {sorted.length === 0 ? (
-            isScrapingLive ? (
-              // First open: default-city results are being fetched live — never show a
-              // dead "no options" page while the default search is still running.
+            (isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) ? (
+              // First open: default-city results are being fetched live. Never show a
+              // dead "no options" page while the search is still running: the chain of
+              // pendingRefresh polls keeps isScrapingLive true, so the ONE please-wait
+              // loader stays mounted instead of flashing "nothing found" between polls
+              // (owner 27 Oct, movie vertical: loader + "not found" repeated 3 times).
               // WarpLoader (owner 22 Oct): animated 3-2-1 countdown keeps the user
               // engaged; results render automatically here the moment they arrive.
               <WarpResultsLoader query={searchQuery || undefined} />

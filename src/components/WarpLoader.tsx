@@ -32,7 +32,7 @@ export const WarpBanner: React.FC = () => (
       <Zap className="relative h-3.5 w-3.5 text-red-600" />
     </span>
     <span className="leading-snug">
-      Comparing prices across the web at warp speed... Your ultimate steal is arriving in <span className="font-black tabular-nums">3, 2, 1...</span>
+      Please wait, we are getting the best deal for you. Comparing live prices across the web...
     </span>
   </div>
 );
@@ -69,9 +69,12 @@ export const WarpResultsLoader: React.FC<{ query?: string }> = ({ query }) => {
         <h3 className="text-base sm:text-lg font-extrabold text-slate-900 leading-snug">
           Comparing prices across the web at warp speed{query ? <> for <span className="text-red-600">“{query}”</span></> : ''}...
         </h3>
-        <p className="mt-1.5 text-xs sm:text-[13px] text-slate-500 max-w-md mx-auto leading-relaxed animate-pulse-subtle">
+        <p className="mt-2 text-sm sm:text-[15px] font-bold text-slate-800 max-w-md mx-auto leading-relaxed">
+          Please wait, we are getting the best deal for you.
+        </p>
+        <p className="mt-1 text-xs sm:text-[13px] text-slate-500 max-w-md mx-auto leading-relaxed animate-pulse-subtle">
           Your ultimate steal is arriving in <span className="font-bold text-red-600 tabular-nums">3, 2, 1...</span>
-          Keep watching — live results appear on this page automatically in a few seconds.
+          {' '}Live prices from every seller land on this page automatically. Nothing is missing: the scan is still running, so there is nothing for you to redo.
         </p>
         {/* Progress shimmer */}
         <div className="mt-6 max-w-md mx-auto">

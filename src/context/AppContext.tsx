@@ -854,6 +854,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Real-Time Native Web Scraper State
   const [isScrapingLive, setIsScrapingLive] = useState<boolean>(false);
+  // How many extra pendingRefresh polls one search may make (2s each). The chain is
+  // bounded so a source that never finishes can't hold the loader forever: after
+  // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.
+  const pollCountRef = useRef(0);
+  const repollingRef = useRef(false);
+  const MAX_PENDING_POLLS = 8; // ~16s of background acquisition before we stop promising results
   const [sourcesReport, setSourcesReport] = useState<Record<string, SourcesReport>>({});
   const [lastScrapeInfo, setLastScrapeInfo] = useState<{
     timestamp: string;
@@ -874,6 +880,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     overrideTravel?: { depart?: string; return?: string },
   ) => {
     setIsScrapingLive(true);
+    // Fresh search = fresh poll budget. Only the chained poll (no explicit query)
+    // keeps counting; a new user search starts from zero again.
+    if (overrideQuery !== undefined) { pollCountRef.current = 0; repollingRef.current = false; }
     // Mobile UX: a user-initiated search (header buttons, voice, quick picks, AI assistant)
     // auto-scrolls to the results section so the user never has to hunt for results on a
     // small screen. Tab-switch/background triggers (no explicit query) never scroll.
@@ -966,8 +975,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // instantly and is still acquiring live prices in the background. Re-post
         // the same search a few seconds later; the finished pipeline lands in cache
         // and this poll replaces the partial rows with the full live set.
-        if (data.pendingRefresh) {
-          setTimeout(() => { void triggerLiveLocationScrape(); }, 2000);
+        // OWNER 27 Oct (movie vertical: loader 3x + "results not found" 3x before the
+        // real rows landed): the poll used to release isScrapingLive in `finally`,
+        // so every 2s gap flashed a FALSE "no matching options" page between polls.
+        // Keep acquiring continuous for the whole chain (bounded below) and let the
+        // feed show one steady "getting the best deal" panel instead.
+        if (data.pendingRefresh && pollCountRef.current < MAX_PENDING_POLLS) {
+          pollCountRef.current += 1;
+          repollingRef.current = true;
+          setTimeout(() => {
+            repollingRef.current = false;
+            void triggerLiveLocationScrape();
+          }, 2000);
         }
         if (!data.results || data.results.length === 0) {
           // A search shows ONLY what was searched: drop stale rows of an earlier query for this vertical.
@@ -1002,7 +1021,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       // second hop: land at the top of the freshly rendered results (or empty state)
       if (userInitiated) scrollToResults();
-      setIsScrapingLive(false);
+      // A scheduled pendingRefresh poll keeps the loader up (no false empty state
+      // in between); only the final poll releases it.
+      if (!repollingRef.current) setIsScrapingLive(false);
     }
 
     // No fabricated fallback: when the backend returns no verified offers, the feed

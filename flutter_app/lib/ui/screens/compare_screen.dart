@@ -622,14 +622,21 @@ class _CompareScreenState extends State<CompareScreen> {
                   onSort: (s) => setState(() => _sort = s),
                 ),
                 const SizedBox(height: 12),
-              ] else if (!_loading && _error == null) ...[
+              // OWNER 27 Oct (movie vertical: loader + "results not found" repeated 3x
+              // before the real rows landed): a pendingRefresh poll leaves _loading false
+              // for ~2s between attempts, which used to flip this screen to the honest
+              // "No matching options found" card. While the engine is still acquiring,
+              // that card is FALSE information — show the please-wait panel instead.
+              ] else if (!_loading && !(_res?.pendingRefresh ?? false) && _error == null) ...[
                 const SizedBox(height: 26),
                 _EmptyState(onSearch: () => _runSearch(force: true)),
-              ] else if (_loading && !_loaderDone && (_res == null || _res!.items.isEmpty)) ...[
-                // WarpLoader (owner 22 Oct): engaging 3-2-1 countdown while the live
-                // search runs in the background — results replace it automatically.
+              ] else if ((_res == null || _res!.items.isEmpty) &&
+                  (_loading || (_res?.pendingRefresh ?? false))) ...[
+                // WarpLoader (owner 22 Oct) then the patient please-wait panel: the
+                // countdown runs once, and the wait card stays until real rows land.
                 const SizedBox(height: 20),
-                const _WarpLoader(key: ValueKey('warp-loader')),
+                if (!_loaderDone) const _WarpLoader(key: ValueKey('warp-loader'))
+                else const _BestDealWait(),
               ],
               ];
 
@@ -1890,7 +1897,7 @@ class _StatusStrip extends StatelessWidget {
         child: Row(children: [
           const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.amber400)),
           const SizedBox(width: 11),
-          Expanded(child: Text('Comparing prices across the web at warp speed. Your ultimate steal is arriving in 3, 2, 1...', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
+          Expanded(child: Text('Please wait, we are getting the best deal for you. Comparing live prices across the web...', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
         ]),
       );
     }
@@ -2102,6 +2109,29 @@ class _WarpLoaderState extends State<_WarpLoader> with SingleTickerProviderState
             ),
           ],
         ]),
+      ]),
+    );
+  }
+}
+
+/// OWNER 27 Oct: the honest "still working on it" card. Shown instead of
+/// "No matching options found" while the engine is still acquiring deals, so the
+/// user waits calmly and never reads a false "nothing found".
+class _BestDealWait extends StatelessWidget {
+  const _BestDealWait();
+  @override
+  Widget build(BuildContext context) {
+    return Box(
+      padding: const EdgeInsets.all(22),
+      radius: 16,
+      child: Column(children: [
+        const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: T1SColors.red)),
+        const SizedBox(height: 14),
+        Text('Please wait, we are getting the best deal for you',
+            textAlign: TextAlign.center, style: tx(context, 14, w: FontWeight.w900)),
+        const SizedBox(height: 6),
+        Text('Live prices from every seller are still landing. They appear here automatically, nothing to redo.',
+            textAlign: TextAlign.center, style: tx(context, 11.5, color: muted(context), h: 1.4)),
       ]),
     );
   }
