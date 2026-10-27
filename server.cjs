@@ -37654,7 +37654,8 @@ var init_routes = __esm({
         return keep && keep !== lensQuery ? keep : "";
       })();
       const FIRST_PAINT_MS = 550;
-      const cold = { coldDeadlineMs: FIRST_PAINT_MS };
+      const pollPass = req.body?.paint2 === true;
+      const cold = { coldDeadlineMs: pollPass ? 2400 : FIRST_PAINT_MS };
       const pid = req.body?.pincode || "452001";
       const cid = req.body?.city || "Indore";
       const paint2 = req.body?.paint2 === true;
@@ -37675,7 +37676,7 @@ var init_routes = __esm({
       if (broadQuery && req.body?.deepFallback === true) {
         searches.push(runSearchFast({ query: broadQuery, vertical: "ecommerce", city: cid, pincode: pid, ...cold }, FIRST_PAINT_MS));
       }
-      const HARD_CAP_MS = 600;
+      const HARD_CAP_MS = paint2 ? 2600 : 600;
       let cappedOut = false;
       const responses = await Promise.race([
         Promise.all(searches),

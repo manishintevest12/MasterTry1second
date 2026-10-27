@@ -1345,7 +1345,8 @@ apiRouter.post('/product-page', async (req, res) => {
   // is still on screen — never an empty shell. Measured event-loop contention was pushing
   // a 750ms cap out to ~865ms, so the ceiling is set with that headroom.
   const FIRST_PAINT_MS = 550;
-  const cold = { coldDeadlineMs: FIRST_PAINT_MS } as Partial<SearchInput>;
+  const pollPass = req.body?.paint2 === true;
+  const cold = { coldDeadlineMs: pollPass ? 2_400 : FIRST_PAINT_MS } as Partial<SearchInput>;
   // OWNER 27 Oct: "10min grocery vertical ke v product ka result aana chaiye compare ho kr
   // jaise ecommerce ka aa raha hai". A product page now compares BOTH retail and quick
   // commerce: ecommerce (Amazon/Flipkart/Myntra/Ajio/Tata CLiQ) plus grocery (Blinkit,
@@ -1383,7 +1384,10 @@ apiRouter.post('/product-page', async (req, res) => {
   }
   // HARD 1-SECOND CAP (owner 27 Oct): whatever the sources do, this handler answers inside
   // a second. Slow sellers keep filling in through the page's pendingRefresh polls.
-  const HARD_CAP_MS = 600;
+  // Poll passes get a much longer leash: the loader is already on screen, so waiting for a
+  // slow seller is invisible to the user, while a 600ms poll cap meant Amazon/Croma/JioMart
+  // (1.5-4s) never made it into the offer list at all.
+  const HARD_CAP_MS = paint2 ? 2_600 : 600;
   let cappedOut = false;
   // FIRST USABLE SNAPSHOT wins: each vertical races on its own, so a warm retail answer
   // returns in ~80ms instead of waiting for the slower quick-commerce pipeline. Waiting on
