@@ -38217,6 +38217,17 @@ var init_acquisition = __esm({
 });
 
 // server/admin/speedtest.ts
+function isQuotaError(json, httpStatus) {
+  if (httpStatus === 429) return true;
+  const msg = String(json?.error?.message || "");
+  if (/quota exceeded|quotaExceeded|rate.?limit|dailyLimitExceeded/i.test(msg)) return true;
+  const reasons = [json?.error?.errors, json?.error?.details].flat().map((x) => String(x?.reason || ""));
+  return reasons.some((r) => /quota|rate[_ ]?limit|daily[_ ]?limit/i.test(r));
+}
+function nextQuotaReset(at = Date.now()) {
+  const d = new Date(at);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0)).toISOString();
+}
 function parsePsiResponse(json, strategy) {
   const scanned_at = (/* @__PURE__ */ new Date()).toISOString();
   try {
@@ -38261,13 +38272,79 @@ async function ensureTable2() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   ensured5 = true;
 }
+async function ensureQuotaTable() {
+  if (quotaEnsured) return;
+  const store2 = await getStore();
+  await store2.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
+    strategy VARCHAR(10) NOT NULL PRIMARY KEY,
+    blocked_until TIMESTAMP NULL,
+    last_error VARCHAR(500) NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  quotaEnsured = true;
+}
+async function quotaBlock(strategy) {
+  await ensureQuotaTable();
+  const rows = await getStore().query("SELECT blocked_until, last_error FROM speed_quota_state WHERE strategy = ?", [String(strategy).slice(0, 10)]).catch(() => []);
+  const r = rows?.[0];
+  if (!r) return { blocked_until: null, last_error: null };
+  const until = r.blocked_until ? new Date(r.blocked_until).toISOString() : null;
+  return { blocked_until: until && new Date(until).getTime() > Date.now() ? until : null, last_error: r.last_error || null };
+}
+async function setQuotaBlock(strategy, error, untilIso) {
+  await ensureQuotaTable();
+  await getStore().execute(
+    `INSERT INTO speed_quota_state (strategy, blocked_until, last_error) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE blocked_until = VALUES(blocked_until), last_error = VALUES(last_error)`,
+    [String(strategy).slice(0, 10), untilIso.slice(0, 19).replace("T", " "), String(error).slice(0, 500)]
+  ).catch(() => {
+  });
+}
+async function clearQuotaBlock(strategy) {
+  await ensureQuotaTable();
+  await getStore().execute("UPDATE speed_quota_state SET blocked_until = NULL, last_error = NULL WHERE strategy = ?", [String(strategy).slice(0, 10)]).catch(() => {
+  });
+}
+async function lastGood(strategy) {
+  const rows = await getStore().query(
+    "SELECT * FROM speed_scores WHERE strategy = ? AND score IS NOT NULL ORDER BY scanned_at DESC LIMIT 1",
+    [String(strategy).slice(0, 10)]
+  ).catch(() => []);
+  return rows?.[0] || null;
+}
 async function latestScores() {
   await ensureTable2();
   const store2 = await getStore();
   const out = [];
   for (const strategy of STRATEGIES) {
-    const rows = await store2.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
-    if (rows.length) out.push(rowToScore(rows[0]));
+    const good = await lastGood(strategy);
+    const block = await quotaBlock(strategy);
+    if (good) {
+      const score = rowToScore(good);
+      const newest = await store2.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
+      const laterFailure = newest?.[0] && (!good.scanned_at || new Date(newest[0].scanned_at).getTime() > new Date(good.scanned_at).getTime());
+      out.push({
+        ...score,
+        cached: Boolean(laterFailure),
+        quota_blocked: Boolean(block.blocked_until),
+        quota_reset_at: block.blocked_until,
+        note: block.blocked_until ? `PageSpeed ka daily quota khatam hai \u2014 last good score dikha rahe hain. Reset: ${block.blocked_until} UTC.` : laterFailure ? "Last successful scan dikha rahe hain (naya run fail hua)." : null
+      });
+    } else if (block.blocked_until || block.last_error) {
+      out.push({
+        strategy,
+        score: null,
+        lcp_ms: null,
+        tbt_ms: null,
+        cls: null,
+        url: "",
+        scanned_at: (/* @__PURE__ */ new Date()).toISOString(),
+        error: block.last_error,
+        quota_blocked: Boolean(block.blocked_until),
+        quota_reset_at: block.blocked_until,
+        note: block.blocked_until ? `Pehla scan abhi possible nahi \u2014 PageSpeed quota reset: ${block.blocked_until} UTC.` : null
+      });
+    }
   }
   return out;
 }
@@ -38311,12 +38388,12 @@ async function fetchWithTimeout2(url) {
   const t = setTimeout(() => ctrl.abort(), PSI_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "try1second-admin-speedtest" } });
-    return await res.json();
+    return { status: res.status, json: await res.json().catch(() => ({})) };
   } finally {
     clearTimeout(t);
   }
 }
-async function runSpeedTest(siteUrl) {
+async function runSpeedTest(siteUrl, opts = {}) {
   const url = String(siteUrl || "https://www.try1second.com").trim().slice(0, 300);
   await ensureTable2();
   const store2 = await getStore();
@@ -38329,26 +38406,45 @@ async function runSpeedTest(siteUrl) {
   }));
   const runs = await Promise.all(STRATEGIES.map(async (strategy, i) => {
     const strategyKey = strategy === "desktop" ? "desktop" : "mobile";
+    const block = await quotaBlock(strategy);
+    if (block.blocked_until && !opts.force) {
+      const good = await lastGood(strategy);
+      const cachedNote = `PageSpeed daily quota reset ${block.blocked_until} UTC \u2014 last good score.`;
+      if (good) return { ...rowToScore(good), cached: true, quota_blocked: true, quota_reset_at: block.blocked_until, note: cachedNote };
+      return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: block.last_error, quota_blocked: true, quota_reset_at: block.blocked_until, note: cachedNote };
+    }
     if (gaps[i] !== 0 && gaps[i] < MIN_RUN_GAP_MS) {
       const existing = await store2.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
-      if (existing.length) return rowToScore(existing[0]);
+      if (existing.length) return { ...rowToScore(existing[0]), cached: true };
     }
     try {
       const key = (process.env.PAGESPEED_API_KEY || "").trim();
-      const psi = await fetchWithTimeout2(`${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategyKey}&category=performance${key ? `&key=${encodeURIComponent(key)}` : ""}`);
+      const { status, json: psi } = await fetchWithTimeout2(`${PSI_ENDPOINT}?url=${encodeURIComponent(url)}&strategy=${strategyKey}&category=performance${key ? `&key=${encodeURIComponent(key)}` : ""}`);
+      if (isQuotaError(psi, status)) {
+        const resetAt = nextQuotaReset();
+        const raw = String(psi?.error?.message || "PageSpeed quota exceeded").slice(0, 500);
+        await setQuotaBlock(strategy, raw, resetAt);
+        await persistScore({ strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: raw });
+        const good = await lastGood(strategy);
+        const note = `PageSpeed daily quota khatam \u2014 reset ${resetAt} UTC. ${good ? "Last good score dikha rahe hain." : "Quota reset ke baad pehla scan chalega."}`;
+        return good ? { ...rowToScore(good), cached: true, quota_blocked: true, quota_reset_at: resetAt, note } : { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: raw, quota_blocked: true, quota_reset_at: resetAt, note };
+      }
       const parsed = parsePsiResponse(psi, strategyKey);
       const s = { ...parsed, url: parsed.url || url };
       await persistScore(s);
+      if (s.score != null) await clearQuotaBlock(strategy);
+      else if (s.error && /quota/i.test(s.error)) await setQuotaBlock(strategy, s.error, nextQuotaReset());
       return s;
     } catch (e2) {
-      const s = { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: (e2?.name === "AbortError" ? "PageSpeed run timed out (45s)" : e2?.message) || "PageSpeed request failed" };
-      await persistScore(s);
-      return s;
+      const raw = (e2?.name === "AbortError" ? "PageSpeed run timed out (45s)" : e2?.message) || "PageSpeed request failed";
+      await persistScore({ strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: raw });
+      const good = await lastGood(strategy);
+      return good ? { ...rowToScore(good), cached: true, note: "Naya run fail hua \u2014 last good score dikha rahe hain." } : { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: raw };
     }
   }));
   return runs;
 }
-var STRATEGIES, PSI_ENDPOINT, PSI_TIMEOUT_MS, MIN_RUN_GAP_MS, MAX_ROWS_PER_STRATEGY, ensured5;
+var STRATEGIES, PSI_ENDPOINT, PSI_TIMEOUT_MS, MIN_RUN_GAP_MS, MAX_ROWS_PER_STRATEGY, ensured5, quotaEnsured;
 var init_speedtest = __esm({
   "server/admin/speedtest.ts"() {
     init_db();
@@ -38358,6 +38454,7 @@ var init_speedtest = __esm({
     MIN_RUN_GAP_MS = 6e4;
     MAX_ROWS_PER_STRATEGY = 50;
     ensured5 = false;
+    quotaEnsured = false;
   }
 });
 
@@ -39967,7 +40064,7 @@ var init_adminRoutes = __esm({
     });
     adminRouter.post("/speedtest/run", async (req, res) => {
       try {
-        const scores = await runSpeedTest(req.body?.url || "https://www.try1second.com");
+        const scores = await runSpeedTest(req.body?.url || "https://www.try1second.com", { force: Boolean(req.body?.force) });
         audit(req, "speedtest.run", "pagespeed", scores.map((s) => `${s.strategy}=${s.score ?? "err"}`).join(" "));
         res.json({ success: true, scores });
       } catch (e2) {

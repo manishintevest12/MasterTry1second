@@ -671,7 +671,7 @@ adminRouter.get('/speedtest/history', async (req, res) => {
 
 adminRouter.post('/speedtest/run', async (req, res) => {
   try {
-    const scores = await runSpeedTest(req.body?.url || 'https://www.try1second.com');
+    const scores = await runSpeedTest(req.body?.url || 'https://www.try1second.com', { force: Boolean(req.body?.force) });
     audit(req, 'speedtest.run', 'pagespeed', scores.map((s) => `${s.strategy}=${s.score ?? 'err'}`).join(' '));
     res.json({ success: true, scores });
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Speed test failed' }); }

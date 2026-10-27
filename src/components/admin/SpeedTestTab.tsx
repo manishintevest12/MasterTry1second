@@ -16,6 +16,12 @@ interface Score {
   url: string;
   scanned_at: string;
   error?: string | null;
+  // Owner 27 Oct: PSI ka daily quota khatam hone par widget last GOOD score dikhata hai,
+  // raw Google error ki jagah, aur reset time batata hai.
+  cached?: boolean;
+  quota_blocked?: boolean;
+  quota_reset_at?: string | null;
+  note?: string | null;
 }
 
 /** Ring colors per the reference image: green ≥90, amber 50-89, red below 50. */
@@ -56,7 +62,12 @@ const ScoreRing: React.FC<{ score: Score }> = ({ score }) => {
       <div className="text-sm font-bold text-slate-900">{score.strategy === 'desktop' ? 'Desktop' : 'Mobile'}</div>
       <div className="text-xs text-slate-400">Last scanned:</div>
       <div className="text-xs text-slate-500">{score.scanned_at ? fmtScanned(score.scanned_at) : 'never'}</div>
-      {score.error
+      {score.quota_blocked ? (
+        <div className="text-[10px] max-w-[150px] text-center leading-tight text-amber-700">
+          PageSpeed quota reset {fmtScanned(score.quota_reset_at || '')} UTC
+          {score.score != null ? <div className="text-slate-500 mt-0.5">last good score</div> : null}
+        </div>
+      ) : score.error
         ? <div className="text-[10px] text-red-600 max-w-[140px] text-center leading-tight">{score.error}</div>
         : (score.score != null && (
           <div className="text-[10px] text-slate-400 text-center leading-tight">
@@ -94,7 +105,13 @@ export const SpeedTestTab: React.FC = () => {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Speed test failed');
       setScores(data.scores || []);
-      setMsg({ ok: true, text: 'Speed test complete.' });
+      const quota = (data.scores || []).find((x: Score) => x.quota_blocked);
+      if (quota) {
+        setMsg({ ok: true, text: quota.note || `PageSpeed daily quota khatam — reset ${fmtScanned(quota.quota_reset_at || '')} UTC. Last good score dikha rahe hain.` });
+      } else {
+        const cached = (data.scores || []).some((x: Score) => x.cached);
+        setMsg({ ok: true, text: cached ? 'Cached score (60s gap) — thodi der baad naya run.' : 'Speed test complete.' });
+      }
     } catch (e: any) { setMsg({ ok: false, text: e?.message || 'Speed test failed' }); }
     finally { setRunning(false); }
   };
