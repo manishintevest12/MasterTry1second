@@ -16,6 +16,11 @@ const __dirname = process.cwd();
 
 export async function createApp(): Promise<express.Express> {
   const app = express();
+  // OWNER 27 Oct: expose nothing. Express advertises "X-Powered-By: Express" on every
+  // response, which tells a scanner exactly what stack to attack; the Server header is
+  // blanked for the same reason.
+  app.disable('x-powered-by');
+  app.use((_req, res, next) => { res.removeHeader('X-Powered-By'); res.removeHeader('Server'); next(); });
   app.use(compression()); // gzip BEFORE routes so API JSON + static both compress
   app.use(express.json({ limit: '256kb' }));
 

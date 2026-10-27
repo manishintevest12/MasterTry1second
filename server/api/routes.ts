@@ -66,9 +66,12 @@ function deployedCommit(): string {
   } catch { return process.env.BUILD_COMMIT || 'unknown'; }
 }
 
+// OWNER 27 Oct: "frontend se hide rakho, mai kuch bhi expose nahi karna chahta".
+// The public probe is liveness and NOTHING else — no commit hash, no build info, no
+// uptime, no timestamps. Everything diagnostic lives behind requireAdmin below.
 apiRouter.get('/health', authMiddleware, async (req: any, res: Response) => {
   const admin = req.user?.role === 'admin';
-  if (!admin) return res.json({ status: 'online', commit: deployedCommit(), timestamp: new Date().toISOString() });
+  if (!admin) { res.setHeader('Cache-Control', 'no-store'); return res.json({ status: 'online' }); }
   const store = getStore();
   const missing = assertProductionReadiness();
   res.json({
@@ -1668,7 +1671,9 @@ apiRouter.post('/assist/intent', (req, res) => {
 });
 
 // ============ Catalogue & provenance ============
-apiRouter.get('/catalogue', async (_req, res) => {
+// OWNER 27 Oct: raw offers (source_id, seller_url, validation/freshness state) answer the
+// question "where does this price come from" — that is internal intel, not public API.
+apiRouter.get('/catalogue', authMiddleware, requireAdmin, async (_req, res) => {
   try {
     const rows = await getStore().query<any>(
       `SELECT id, vertical, title, vendor, seller, seller_url, source_url, location_city, mandatory_total, effective_price, currency, availability,
@@ -1908,7 +1913,7 @@ apiRouter.post('/partner-inquiry', async (req, res) => {
 });
 
 // GET /api/merchant/leads?vendorId=&category= -> finance leads for the merchant portal.
-apiRouter.get('/merchant/leads', async (req, res) => {
+apiRouter.get('/merchant/leads', authMiddleware, requireAuth, async (req, res) => {
   try {
     const vendorId = String(req.query.vendorId || '').trim();
     if (!vendorId) return res.status(400).json({ success: false, error: 'vendorId required' });
@@ -2003,7 +2008,7 @@ apiRouter.get('/go', async (req, res) => {
 // affiliate_conversions). No PII is returned (user ids excluded); vendors see
 // platform-level, and vertical-level where the schema allows it. This is the
 // honest replacement for the old mock orders/metrics datasets.
-apiRouter.get('/vendor/traffic', async (req: any, res) => {
+apiRouter.get('/vendor/traffic', authMiddleware, requireAuth, async (req: any, res) => {
   try {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');

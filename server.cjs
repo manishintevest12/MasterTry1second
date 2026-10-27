@@ -36977,7 +36977,10 @@ var init_routes = __esm({
     apiRouter = (0, import_express.Router)();
     apiRouter.get("/health", authMiddleware, async (req, res) => {
       const admin = req.user?.role === "admin";
-      if (!admin) return res.json({ status: "online", commit: deployedCommit(), timestamp: (/* @__PURE__ */ new Date()).toISOString() });
+      if (!admin) {
+        res.setHeader("Cache-Control", "no-store");
+        return res.json({ status: "online" });
+      }
       const store2 = getStore();
       const missing = assertProductionReadiness();
       res.json({
@@ -37923,7 +37926,7 @@ var init_routes = __esm({
       const text = String(req.body?.text || "").slice(0, 300);
       res.json({ success: true, ...interpretAssistantQuestion(text) });
     });
-    apiRouter.get("/catalogue", async (_req, res) => {
+    apiRouter.get("/catalogue", authMiddleware, requireAdmin, async (_req, res) => {
       try {
         const rows = await getStore().query(
           `SELECT id, vertical, title, vendor, seller, seller_url, source_url, location_city, mandatory_total, effective_price, currency, availability,
@@ -38050,7 +38053,7 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not save your inquiry" });
       }
     });
-    apiRouter.get("/merchant/leads", async (req, res) => {
+    apiRouter.get("/merchant/leads", authMiddleware, requireAuth, async (req, res) => {
       try {
         const vendorId = String(req.query.vendorId || "").trim();
         if (!vendorId) return res.status(400).json({ success: false, error: "vendorId required" });
@@ -38129,7 +38132,7 @@ var init_routes = __esm({
       if (!decision.allowed) return res.status(400).json({ success: false, error: `Refused: ${decision.reason}` });
       res.json({ success: true, clickId: decision.clickId, redirectUrl: decision.destination, viaNetwork: decision.viaNetwork });
     });
-    apiRouter.get("/vendor/traffic", async (req, res) => {
+    apiRouter.get("/vendor/traffic", authMiddleware, requireAuth, async (req, res) => {
       try {
         const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " ");
@@ -44075,6 +44078,12 @@ var import_compression = __toESM(require("compression"), 1);
 var __dirname2 = process.cwd();
 async function createApp() {
   const app = (0, import_express4.default)();
+  app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.removeHeader("X-Powered-By");
+    res.removeHeader("Server");
+    next();
+  });
   app.use((0, import_compression.default)());
   app.use(import_express4.default.json({ limit: "256kb" }));
   app.use((req, res, next) => {
