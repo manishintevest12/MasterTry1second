@@ -58,6 +58,20 @@ export const ProductPageView: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [searchBox, setSearchBox] = useState('');
 
+  // Owner 27 Oct (1s goal): warm the comparison cache while the user types, so the
+  // page opens with prices already prepared instead of waiting for live sources.
+  useEffect(() => {
+    const q = searchBox.trim();
+    if (q.length < 3) return;
+    const t = setTimeout(() => {
+      fetch('/api/product-page/prefetch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q }),
+      }).catch(() => { /* warm-up is best-effort */ });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchBox]);
+
   useEffect(() => {
     if (!productPageRequest) return;
     let cancelled = false;

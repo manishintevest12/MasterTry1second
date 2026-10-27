@@ -380,6 +380,30 @@ async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed
  * response seen. Polls are cheap: they coalesce onto the inflight pipeline and
  * serve partial snapshots within 600ms.
  */
+/**
+ * Fast path (owner 27 Oct): "we need fast results" — 8s budget was used even when
+ * rows already existed, because the poll loop kept waiting while a background
+ * refresh was pending. This returns the FIRST usable snapshot:
+ *   1. cached/live rows from a single runSearch pass  -> ~50ms when cache is warm
+ *   2. if that pass is empty, one short extra pass (sources often need a beat)
+ * It never waits on pendingRefresh: refresh continues in the background and the
+ * next request is served from cache.
+ */
+export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): Promise<SearchResponse> {
+  const started = Date.now();
+  let best = await runSearch(input);
+  if ((best.results || []).length > 0) return best;
+  // Cold query: give the pipeline one more beat, bounded by the cold budget.
+  while (Date.now() - started < coldBudgetMs) {
+    await new Promise((r) => setTimeout(r, 400));
+    let next: SearchResponse;
+    try { next = await runSearch(input); } catch { break; }
+    if ((next.results || []).length > (best.results || []).length) best = next;
+    if ((best.results || []).length > 0) return best;
+  }
+  return best;
+}
+
 export async function runSearchPolled(input: SearchInput, deadlineMs = 15_000): Promise<SearchResponse> {
   const deadline = Date.now() + deadlineMs;
   let best = await runSearch(input);

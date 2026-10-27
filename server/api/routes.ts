@@ -7,7 +7,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
-import { runSearch, runSearchPolled, type SearchInput } from '../search/searchOrchestrator';
+import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
@@ -1232,6 +1232,23 @@ apiRouter.post('/lens', async (req, res) => {
 
 // ============ In-site product page (BuyHatke-style): one call returns everything ============
 // Same-product offers across sites + REAL recorded price history + honest deal score + related products.
+/**
+ * Cache pre-warm (owner 27 Oct, "1s" speed). The web search box calls this on a
+ * typing pause; it starts the acquisition in the background and answers at once,
+ * so by the time the user taps Find the comparison is already cached (~50ms).
+ * Admin-free by design: it only warms a public search cache, exposes nothing.
+ */
+apiRouter.post('/product-page/prefetch', async (req, res) => {
+  const q = String(req.body?.query || '').trim().slice(0, 120);
+  res.json({ success: true, warming: q.length >= 2 });
+  if (q.length < 2) return;
+  const lensQuery = searchableTitle(q);
+  // fire and forget — never await the pipeline on the user's typing
+  void Promise.resolve()
+    .then(() => runSearchFast({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, 4_000))
+    .catch(() => { /* warm-up failures are silent; the real request retries */ });
+});
+
 apiRouter.post('/product-page', async (req, res) => {
   const input = String(req.body?.input || req.body?.url || '').trim().slice(0, 2000);
   const textQuery = String(req.body?.query || '').trim().slice(0, 200);
@@ -1281,14 +1298,15 @@ apiRouter.post('/product-page', async (req, res) => {
     const keep = toks.filter((t: string) => !caps.has(t.toLowerCase().replace(/\s/g, ''))).slice(0, 4).join(' ');
     return keep && keep !== lensQuery ? keep : '';
   })();
-  // Owner 27 Oct: a typed product name waited ~22s on a blank screen and then
-  // said "Price unavailable". The page now commits to a hard 8s budget: partial
-  // (or cached) rows beat a long blank screen, and the loader stops spinning.
-  const PRODUCT_PAGE_BUDGET_MS = 8_000;
+  // Owner 27 Oct ("speed 8s se 1s mai lao"): the page now answers from the first
+  // usable snapshot instead of waiting out a budget. Warm cache -> ~50ms; a cold
+  // query gets a bounded 1.5s beat. Background refresh keeps the cache warm for
+  // the next user, so in practice results are instant.
+  const COLD_BUDGET_MS = 1_500;
   const searches: Array<Promise<any>> = [
-    runSearchPolled({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, PRODUCT_PAGE_BUDGET_MS),
+    runSearchFast({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, COLD_BUDGET_MS),
   ];
-  if (broadQuery) searches.push(runSearchPolled({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, PRODUCT_PAGE_BUDGET_MS));
+  if (broadQuery) searches.push(runSearchFast({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, COLD_BUDGET_MS));
   const responses = await Promise.all(searches);
   const seenIds = new Set<string>();
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
