@@ -168,12 +168,30 @@ echo "==> smoke test"
 curl -s -X POST "$URL" -H "x-relay-token: ${TOKEN}" -H 'content-type: application/json' \
   -d '{"url":"https://m.uber.com/looking","impersonate":"chrome"}' | head -c 160; echo
 
+
+echo "==> API Gateway (HTTP API in front of the Lambda)"
+LAMBDA_ARN="$(aws lambda get-function --function-name "$FN" --query Configuration.FunctionArn --output text)"
+API_ID="$(aws apigatewayv2 get-apis --query "Items[?Name=='${FN}-api'].ApiId | [0]" --output text)"
+if [ -z "$API_ID" ] || [ "$API_ID" = "None" ]; then
+  API_ID="$(aws apigatewayv2 create-api --name "${FN}-api" --protocol-type HTTP --query ApiId --output text)"
+  INTEG="$(aws apigatewayv2 create-integration --api-id "$API_ID" --integration-type AWS_PROXY \
+    --integration-uri "$LAMBDA_ARN" --payload-format-version "2.0" --query IntegrationId --output text)"
+  aws apigatewayv2 create-route --api-id "$API_ID" --route-key 'POST /' --target "integrations/${INTEG}" >/dev/null
+  aws apigatewayv2 create-stage --api-id "$API_ID" --stage-name prod --auto-deploy >/dev/null
+  aws lambda add-permission --function-name "$FN" --statement-id apigw-invoke \
+    --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+    --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT}:${API_ID}/*" >/dev/null 2>&1 || true
+fi
+API_URL="https://${API_ID}.execute-api.${REGION}.amazonaws.com/prod/"
+echo "API Gateway URL: ${API_URL}"
+
 cat <<EOF
 
 ============================================================
 DONE. Paste these two into hPanel -> Node app -> Environment Variables:
 
-EDGE_RELAY_AWS_URL=${URL}
+EDGE_RELAY_AWS_URL=${API_URL}
+# (Lambda Function URL also works: ${URL})
 EDGE_RELAY_AWS_TOKEN=${TOKEN}
 
 Then restart the Node app. No app/website build needed.
