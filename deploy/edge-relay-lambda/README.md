@@ -53,6 +53,22 @@ EDGE_RELAY_AWS_TOKEN=<same token>
 Restart the Node app. That's it — Uber, Rapido, Booking.com, Hotels.com,
 Expedia, MakeMyTrip and Goibibo now auto-escalate to Lambda when gated.
 
+
+## Path A2 — CloudShell, no docker (fastest, works everywhere)
+
+AWS CloudShell has python3 + boto3 and your account credentials already, but NO
+docker daemon. So use the pre-built zip instead of `deploy.sh`:
+
+```bash
+curl -fsSL https://base44.app/api/apps/6ac8c95404695b89e61bf5c4/files/mp/public/6ac8c95404695b89e61bf5c4/RELAY_ZIP_URL -o edge_relay_lambda.zip
+curl -fsSL https://base44.app/api/apps/6ac8c95404695b89e61bf5c4/files/mp/public/6ac8c95404695b89e61bf5c4/DEPLOY_PY_URL -o deploy_zip.py
+python3 deploy_zip.py
+```
+
+`deploy_zip.py` prints the two hPanel env vars when it finishes. It also fails
+fast with a clear message if the account is blocked by an Organizations SCP
+(SCPs do not apply to the management account, so run it there).
+
 ## Path B — Cloudflare Worker (secondary, zero-docker)
 
 ```bash
