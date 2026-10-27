@@ -113,6 +113,45 @@ function errorPage(title: string, message: string): string {
  * AdSense responsive unit sits directly under the header — above the fold on
  * every viewport — rendered only when the admin configured the slot.
  */
+/**
+ * Ad block for any monetizable exit page (owner 27 Oct: "adsense aur affiliate dono
+ * ek link mai add kro jiss se paise hr link se company ko aaye").
+ *
+ * One link already carries BOTH: /api/out attaches the affiliate deeplink and then
+ * lands on a page that shows an AdSense unit. This helper is the single source of
+ * that ad unit, used by the /redirect interstitial AND the cab /api/app-open bridge.
+ *
+ * Configuration: the admin ad_slots row for the key wins; when the row is missing or
+ * the DB is unavailable we fall back to env (ADSENSE_CLIENT / <SLOTKEY>_SLOT or
+ * ADSENSE_SLOT). With nothing configured we render NOTHING — never a blank iframe or
+ * a fake ad.
+ */
+export async function adBlockHtml(slotKey: string): Promise<string> {
+  const esc = (x: unknown) => String(x ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+  let client = '';
+  let slot = '';
+  let customHtml = '';
+  try {
+    const cfg = await getAdSlot(slotKey);
+    if (cfg) {
+      client = String(cfg.adsense_client || '');
+      slot = String(cfg.adsense_slot || '');
+      customHtml = String(cfg.custom_html || '');
+    }
+  } catch { /* DB unavailable: fall through to env */ }
+  if (!client || !slot) {
+    client = client || String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || '');
+    slot = slot || String(
+      process.env[`${slotKey.toUpperCase()}_AD_SLOT`] || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || '',
+    );
+  }
+  if (customHtml.trim()) return customHtml;
+  if (!client || !slot) return '';
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc(client)}" data-ad-slot="${esc(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins>` +
+    `<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script>` +
+    `<script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+}
+
 export function renderInterstitialPage(opts: {
   targetUrl: string;
   seconds?: number;
@@ -252,6 +291,14 @@ export async function redirectRouteHandler(req: Request, res: Response): Promise
     return;
   }
   let adSlot: any = null;
-  try { adSlot = await getAdSlot('redirect_interstitial'); } catch { /* no fabrication: page renders without an ad */ }
+  try { adSlot = await getAdSlot('redirect_interstitial'); } catch { /* DB down: env fallback below */ }
+  // Owner 27 Oct ("adsense aur affiliate dono ek link mai"): when no ad_slots row is
+  // configured but the AdSense ids exist in the environment, still monetize the exit
+  // page. Nothing is fabricated — the ids come from the owner's own AdSense account.
+  if (!adSlot) {
+    const client = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || '');
+    const slot = String(process.env.REDIRECT_INTERSTITIAL_AD_SLOT || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || '');
+    if (client && slot) adSlot = { provider: 'adsense', adsense_client: client, adsense_slot: slot };
+  }
   res.status(200).type('html').send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }

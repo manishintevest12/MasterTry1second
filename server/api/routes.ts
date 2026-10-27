@@ -28,7 +28,7 @@ import { resolveRedirect, validateDestination } from '../affiliate/affiliateNetw
 import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from '../spend/spendLens';
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
-import { createInterstitialPointer, isInAppWebView } from '../redirect/interstitial';
+import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
@@ -2004,6 +2004,10 @@ apiRouter.get('/app-open', async (req, res) => {
   // Keep tracking identical to /api/out (network/affiliate attaches on the web leg).
   let tracked = safeWeb;
   try { tracked = (await recordPointerClick(safeWeb, offerId, 'cab_app')) || safeWeb; } catch { /* tracking is best-effort */ }
+  // Owner 27 Oct: the cab exit page earns too — same ad unit as /redirect, so one
+  // link carries the affiliate leg AND AdSense.
+  let adHtml = '';
+  try { adHtml = await adBlockHtml('app_open_interstitial'); } catch { /* no ad configured: page still works */ }
   const appName = (scheme.split('://')[0] || 'app').replace(/^olacabs$/, 'ola');
   const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
   res.setHeader('content-type', 'text/html; charset=utf-8');
@@ -2011,10 +2015,11 @@ apiRouter.get('/app-open', async (req, res) => {
 <title>Opening ${esc(appName)}…</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
-.muted{color:#94a3b8;font-size:13px;margin-top:10px}</style></head><body><div class="card">
+.muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
 <h2 style="margin:0 0 6px">Opening ${esc(appName)}</h2>
 <p class="muted">Handing your pickup and drop to the ${esc(appName)} app…</p>
 <a class="btn" href="${esc(tracked)}">Continue on the website</a>
+${adHtml ? `<div class="ad">${adHtml}</div>` : ''}
 <p class="muted">Fare and availability are shown by ${esc(appName)} itself.</p>
 </div>
 <script>

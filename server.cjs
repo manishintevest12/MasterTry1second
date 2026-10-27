@@ -32203,6 +32203,7 @@ var init_placements = __esm({
 // server/redirect/interstitial.ts
 var interstitial_exports = {};
 __export(interstitial_exports, {
+  adBlockHtml: () => adBlockHtml,
   createInterstitialPointer: () => createInterstitialPointer,
   isInAppWebView: () => isInAppWebView,
   redirectRouteHandler: () => redirectRouteHandler,
@@ -32253,6 +32254,30 @@ function jsStr(s) {
 }
 function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
+}
+async function adBlockHtml(slotKey) {
+  const esc3 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  let client = "";
+  let slot = "";
+  let customHtml = "";
+  try {
+    const cfg = await getAdSlot(slotKey);
+    if (cfg) {
+      client = String(cfg.adsense_client || "");
+      slot = String(cfg.adsense_slot || "");
+      customHtml = String(cfg.custom_html || "");
+    }
+  } catch {
+  }
+  if (!client || !slot) {
+    client = client || String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "");
+    slot = slot || String(
+      process.env[`${slotKey.toUpperCase()}_AD_SLOT`] || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || ""
+    );
+  }
+  if (customHtml.trim()) return customHtml;
+  if (!client || !slot) return "";
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc3(client)}" data-ad-slot="${esc3(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -32380,6 +32405,11 @@ async function redirectRouteHandler(req, res) {
   try {
     adSlot = await getAdSlot("redirect_interstitial");
   } catch {
+  }
+  if (!adSlot) {
+    const client = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "");
+    const slot = String(process.env.REDIRECT_INTERSTITIAL_AD_SLOT || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "");
+    if (client && slot) adSlot = { provider: "adsense", adsense_client: client, adsense_slot: slot };
   }
   res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }
@@ -37191,6 +37221,11 @@ var init_routes = __esm({
         tracked = await recordPointerClick(safeWeb, offerId, "cab_app") || safeWeb;
       } catch {
       }
+      let adHtml = "";
+      try {
+        adHtml = await adBlockHtml("app_open_interstitial");
+      } catch {
+      }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
       const esc3 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
@@ -37198,10 +37233,11 @@ var init_routes = __esm({
 <title>Opening ${esc3(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
-.muted{color:#94a3b8;font-size:13px;margin-top:10px}</style></head><body><div class="card">
+.muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
 <h2 style="margin:0 0 6px">Opening ${esc3(appName)}</h2>
 <p class="muted">Handing your pickup and drop to the ${esc3(appName)} app\u2026</p>
 <a class="btn" href="${esc3(tracked)}">Continue on the website</a>
+${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
 <p class="muted">Fare and availability are shown by ${esc3(appName)} itself.</p>
 </div>
 <script>
