@@ -36,7 +36,11 @@ test('bms: parses real movie cards with poster, deeplink, language; drops promo 
   const it = items[0];
   assert.equal(it.title, 'Premada Oorali');
   assert.equal(it.seller, 'BookMyShow');
-  assert.equal(it.sellerUrl, 'https://in.bookmyshow.com/movies/bengaluru/premada-oorali/ET00412717');
+  // Owner 27 Oct: Book must land on this movie's showtimes for the city/date, not
+  // the movie page (live-verified canonical buytickets URL). The movie page stays
+  // available as movie_page_url.
+  assert.ok(/\/movies\/BANG\/bengaluru\/buytickets\/EG00410984\/\d{8}$/.test(it.sellerUrl || ''), `unexpected sellerUrl: ${it.sellerUrl}`);
+  assert.equal(it.attributes!.movie_page_url, 'https://in.bookmyshow.com/movies/bengaluru/premada-oorali/ET00412717');
   assert.equal(it.attributes!.image_url, 'https://assets-in.bmscdn.com/discovery-catalog/events/et00412717-portrait.jpg');
   assert.equal(it.attributes!.language, 'Kannada');
   assert.equal(it.attributes!.certification, 'UA16+');

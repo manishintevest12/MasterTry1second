@@ -15,6 +15,7 @@ import {
   parseCinepolisCities, cinepolisCityIdFor, splitNowPlaying,
 } from '../parsers/cinepolis';
 import { parseDistrictMovies, parseDistrictOffers, districtPriceBands, DISTRICT_MOVIES_URL } from '../parsers/district';
+import { movieTheatreLink } from '../../affiliate/merchantLinks';
 import { gwCitySlug, gwCityMovieAggregates, gwCritique, gwMatch, extractTrailerUrl, type GwMovieAgg } from '../parsers/districtGw';
 import { imdbRatingFor } from '../parsers/imdbRatings';
 import { createHash } from 'node:crypto';
@@ -61,6 +62,16 @@ async function enrichWithGw(
     o.attributes['theatre_count'] = agg.theatres.length;
     o.attributes['shows_today'] = agg.showCount;
     o.attributes['showtimes'] = JSON.stringify(agg.shows.slice(0, 5)); // [{time,theatre,areas:[{label,price}]}]
+    // Owner 27 Oct: every theatre row needs its OWN working booking link, so the
+    // user lands on that cinema instead of searching it again. TicketNew exposes
+    // a verified venue URL; other sources fall back to their city page honestly.
+    {
+      const cityName = String((o.location as any)?.city || '');
+      const links = agg.shows.slice(0, 8)
+        .map((sh) => ({ theatre: sh.theatre, time: sh.time, url: movieTheatreLink(gwHost === 'district' ? 'District' : 'TicketNew', { city: cityName, cinemaId: sh.cinemaId, theatre: sh.theatre }) }))
+        .filter((x) => x.url);
+      if (links.length) o.attributes['theatre_links'] = JSON.stringify(links);
+    }
     o.attributes['data_note'] = forSite
       ? `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${gwHost === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.`
       : `Real area-level seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;

@@ -68,3 +68,22 @@ test('movies and finance land on the right product page, never "/"', () => {
 test('unknown merchant returns empty so the offer keeps its own URL', () => {
   assert.equal(merchantDeepLink('SomeUnknownShop', 'anything', 'ecommerce', {}), '');
 });
+
+import { movieTheatreLink, movieCityLink } from '../server/affiliate/merchantLinks';
+import { bmsBuyTicketsUrl as bmsBuy } from '../server/workers/parsers/bookmyshow';
+
+// Owner 27 Oct: "book krne ke baad ussi theatre pr land hona chahiye".
+test('movies: BookMyShow book button lands on that movie’s city+date showtimes', () => {
+  const region = { regionCode: 'IND', regionSlug: 'indore', regionName: 'Indore' };
+  const url = bmsBuy(region, 'EG00514650', '2026-10-29');
+  assert.equal(url, 'https://in.bookmyshow.com/movies/IND/indore/buytickets/EG00514650/20261029');
+  // missing event code -> no invented link
+  assert.equal(bmsBuy(region, ''), '');
+});
+
+test('movies: TicketNew gets a venue-level link, District stays honest', () => {
+  assert.equal(movieTheatreLink('TicketNew', { city: 'Indore', cinemaId: 7709 }), 'https://ticketnew.com/movies/indore/cinemas/7709');
+  assert.equal(movieTheatreLink('District', { city: 'Indore', cinemaId: 7709 }), '');
+  assert.equal(movieTheatreLink('TicketNew', { city: 'Indore' }), '');
+  assert.equal(movieCityLink('BookMyShow', { city: 'Indore' }), 'https://in.bookmyshow.com/explore/movies-indore');
+});

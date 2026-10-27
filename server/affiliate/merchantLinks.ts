@@ -262,3 +262,55 @@ export function isDeepLink(url: string): boolean {
     return false;
   }
 }
+
+/* ===================== MOVIES: theatre-level links ===================== */
+
+export interface MovieCtx {
+  /** city as the user searched it ("Indore") */
+  city?: string;
+  /** ISO date YYYY-MM-DD the showtimes belong to */
+  date?: string;
+  /** gw cinema id (District/TicketNew sessions gateway) */
+  cinemaId?: number | string;
+  /** theatre name as published by the source */
+  theatre?: string;
+}
+
+/**
+ * Theatre-level movie deeplink (owner 27 Oct: "book krne ke baad ussi theatre pr
+ * land hona chahiye, dobara search na karna pade").
+ *
+ * LIVE-VERIFIED 27 Oct from production-style curl_cffi fetches:
+ *  - TicketNew:  https://ticketnew.com/movies/{city}/cinemas/{cinemaId}  -> 200, showtimes
+ *  - BookMyShow: canonical buytickets URL is built in the BMS parser (needs the
+ *                BMS region code + event code, which only that parser has)
+ *  - District:   no public venue URL resolves (both /movies/{city}/cinemas/{id} and
+ *                the slug form 404) -> returns '' rather than a dead link
+ *  - PVR / Cinepolis: bot-gated (403 / timeout) -> returns ''
+ */
+export function movieTheatreLink(merchant: string, ctx: MovieCtx = {}): string {
+  const v = String(merchant || '').toLowerCase();
+  const city = slug(ctx.city || '');
+  const id = String(ctx.cinemaId ?? '').trim();
+  if (!v) return '';
+  if (v.includes('ticketnew') && city && id) return `https://ticketnew.com/movies/${city}/cinemas/${id}`;
+  if (v.includes('bookmyshow') || v.includes('book my show')) {
+    // Venue-level BMS links need the venue code from BMS's own showtimes payload;
+    // the parser hands out the movie+city+date buytickets link instead.
+    return '';
+  }
+  return '';
+}
+
+/** Movie-level link for a city+date when no venue-level page exists. */
+export function movieCityLink(merchant: string, ctx: MovieCtx = {}): string {
+  const v = String(merchant || '').toLowerCase();
+  const city = slug(ctx.city || '');
+  if (v.includes('bookmyshow') || v.includes('book my show')) {
+    return ctx.city ? `https://in.bookmyshow.com/explore/movies-${city}` : 'https://in.bookmyshow.com/explore/movies';
+  }
+  if (v.includes('district')) return 'https://www.district.in/movies';
+  if (v.includes('paytm')) return 'https://paytm.com/movies/';
+  if (v.includes('ticketnew')) return city ? `https://ticketnew.com/movies/${city}/cinemas` : 'https://www.ticketnew.com/';
+  return '';
+}

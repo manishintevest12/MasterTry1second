@@ -23121,6 +23121,16 @@ function bmsDiscoverHeaders(region) {
     "x-bms-id": "1"
   };
 }
+function bmsBuyTicketsUrl(region, eventCode, dateISO) {
+  const code = String(eventCode || "").trim();
+  if (!code || !region?.regionCode || !region?.regionSlug) return "";
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dateISO || "")) ? String(dateISO) : istTodayISO();
+  return `https://in.bookmyshow.com/movies/${region.regionCode}/${region.regionSlug}/buytickets/${encodeURIComponent(code)}/${d.replace(/-/g, "")}`;
+}
+function istTodayISO(now = /* @__PURE__ */ new Date()) {
+  const ist = new Date(now.getTime() + (5 * 60 + 30) * 6e4);
+  return ist.toISOString().slice(0, 10);
+}
 function parseMovieCards(payload, source, region, query, fingerprint) {
   const listings = Array.isArray(payload?.listings) ? payload.listings : [];
   const seen = /* @__PURE__ */ new Set();
@@ -23143,8 +23153,10 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
       out.push(newRawItem(source, {
         title: title.slice(0, 200),
         seller: "BookMyShow",
-        sellerUrl: ctaUrl,
-        // the deeplink goes ONLY to the price-owning platform (owner policy)
+        // Book must land on THIS movie's showtimes for the user's city/date, not the
+        // movie page (owner 27 Oct). Falls back to the movie page when the event
+        // code is missing.
+        sellerUrl: bmsBuyTicketsUrl(region, eventCode) || ctaUrl,
         availability: "in_stock",
         // now-showing in this region per BMS itself
         location: { city: region.regionName },
@@ -23154,6 +23166,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
           ...lang ? { language: lang } : {},
           ...eventCode ? { event_code: eventCode } : {},
           movie_page_url: ctaUrl,
+          ...eventCode ? { booking_url: bmsBuyTicketsUrl(region, eventCode) } : {},
           platform: "BookMyShow"
         },
         evidence: {
@@ -23592,6 +23605,237 @@ var init_district = __esm({
   }
 });
 
+// server/affiliate/merchantLinks.ts
+function dates(d) {
+  const s = String(d || "");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [, yyyy, mm, dd] = m;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return { iso: s, ymd: `${yyyy}${mm}${dd}`, dmy: `${dd}/${mm}/${yyyy}`, dMonY: `${dd}-${months[Number(mm) - 1] || "Jan"}-${yyyy}`, dd, mm, yyyy };
+}
+function route(t) {
+  const legs = String(t || "").split(/\s+to\s+/i);
+  if (legs.length !== 2) return null;
+  const from = legs[0].trim();
+  const to = legs[1].trim();
+  return from && to ? { from, to } : null;
+}
+function hotelCity(title, ctx) {
+  if (ctx.city) return String(ctx.city).trim();
+  const r = route(ctx.route);
+  if (!r) {
+    const single = String(ctx.route || "").trim();
+    if (single && !/\s/.test(single)) return single;
+  } else if (r.to) {
+    return r.to;
+  }
+  const m = String(title || "").match(/\b(?:hotels?|stays?)\s+in\s+([a-z\s]{3,24})/i);
+  return m ? m[1].trim() : "";
+}
+function merchantDeepLink(merchant, title, vertical, ctx = {}) {
+  const v = String(merchant || "").toLowerCase();
+  if (!v) return "";
+  if (!String(title || "").trim() && !String(ctx.route || "").trim() && !String(ctx.city || "").trim()) return "";
+  const has = (...keys) => keys.some((k) => v.includes(k));
+  const q3 = e(String(title || "").trim().slice(0, 80));
+  const t = String(title || "").trim();
+  const r = route(ctx.route);
+  const d = dates(ctx.date);
+  const city = hotelCity(t, ctx);
+  const cq = city ? e(city) : "";
+  const from = r ? cityCode(r.from) || r.from : "";
+  const to = r ? cityCode(r.to) || r.to : "";
+  if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
+  if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
+  if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
+  if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
+  if (has("myntra")) return `https://www.myntra.com/${slug(t)}`;
+  if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
+  if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
+  if (has("instamart")) return `https://www.swiggy.com/instamart/search?query=${q3}`;
+  if (has("blinkit")) return `https://blinkit.com/s/?q=${q3}`;
+  if (has("zepto")) return `https://www.zepto.com/search?query=${q3}`;
+  if (has("bigbasket", "bb now", "bbnow")) return `https://www.bigbasket.com/ps/?q=${q3}`;
+  if (has("swiggy")) return `https://www.swiggy.com/search?query=${q3}`;
+  if (has("zomato")) return `https://www.zomato.com/search?query=${q3}`;
+  if (has("domino")) return `https://www.dominos.co.in/menu`;
+  if (has("ovenstory", "oven story")) return `https://www.ovenstory.in/menu`;
+  if (has("eatsure", "eat sure")) return `https://www.eatsure.com/search?q=${q3}`;
+  if (has("bookmyshow", "book my show")) return city ? `https://in.bookmyshow.com/explore/movies-${slug(city)}` : "https://in.bookmyshow.com/explore/movies";
+  if (has("district")) return "https://www.district.in/movies";
+  if (has("paytm")) return "https://paytm.com/movies/";
+  if (has("pvr")) return "https://www.pvrcinemas.com/";
+  if (has("cinepolis")) return "https://www.cinepolisindia.com/";
+  if (has("ticketnew", "ticket new")) return "https://www.ticketnew.com/";
+  if (!has("hotel") && (vertical === "flights" || has("air", "airline", "goindigo", "indigo", "akasa", "spicejet", "vistara"))) {
+    const dd = d ? d.dmy : "";
+    const isoD = d ? d.iso : "";
+    const ymd = d ? d.ymd : "";
+    if (has("makemytrip")) {
+      if (from && to && d && cityCode(r.from) && cityCode(r.to)) {
+        return `https://www.makemytrip.com/flight/search?itinerary=${e(`${from}-${to}-${d.dd}/${d.mm}/${d.yyyy}`)}&tripType=O&paxType=1-A-C&intl=false&cabinClass=E&cc=INR`;
+      }
+      return "https://www.makemytrip.com/flights/";
+    }
+    if (has("easemytrip", "ease my trip")) {
+      return from && to && dd ? `https://www.easemytrip.com/flight-search/?from=${e(from)}&to=${e(to)}&ddate=${e(dd)}` : "https://www.easemytrip.com/flights.html";
+    }
+    if (has("ixigo")) {
+      return from && to && ymd ? `https://www.ixigo.com/flights?from=${e(from)}&to=${e(to)}&depart=${ymd}` : "https://www.ixigo.com/flights";
+    }
+    if (has("yatra")) {
+      return from && to && dd ? `https://www.yatra.com/flight/search?flight-type=on&from=${e(from)}&to=${e(to)}&departDate=${e(dd)}&adults=1&child=0&infant=0&class=Economy&flexi=0` : "https://www.yatra.com/flights";
+    }
+    if (has("cleartrip")) {
+      return from && to && isoD ? `https://www.cleartrip.com/flights/results?from=${e(from)}&to=${e(to)}&depart_date=${isoD}&adults=1&childs=0&infants=0&class=Economy` : "https://www.cleartrip.com/flights";
+    }
+    if (has("akasa")) {
+      return from && to && isoD ? `https://www.akasaair.com/booking/search?from=${e(from)}&to=${e(to)}&date=${isoD}&adults=1` : "https://www.akasaair.com/";
+    }
+    if (has("goindigo", "indigo")) {
+      return from && to && isoD ? `https://www.goindigo.in/booking.html?from=${e(from)}&to=${e(to)}&date=${isoD}` : "https://www.goindigo.in/booking.html";
+    }
+  }
+  if (vertical === "bus" || has("bus")) {
+    if (has("redbus")) {
+      return r ? `https://www.redbus.in/bus-tickets/${slug(r.from)}-to-${slug(r.to)}${d ? `?onward=${e(d.dMonY)}` : ""}` : "https://www.redbus.in/bus-tickets";
+    }
+    if (has("abhibus")) {
+      return r ? `https://www.abhibus.com/bus_search/${slug(r.from)}/${slug(r.to)}/${d ? d.iso : ""}/1` : "https://www.abhibus.com/";
+    }
+    if (has("ixigo")) {
+      return r ? `https://www.ixigo.com/buses/${slug(r.from)}-to-${slug(r.to)}${d ? `-${d.ymd}` : ""}` : "https://www.ixigo.com/buses";
+    }
+    if (has("yatra")) {
+      return r ? `https://www.yatra.com/bus/search?from=${e(r.from)}&to=${e(r.to)}${d ? `&date=${e(d.dmy)}` : ""}` : "https://www.yatra.com/bus";
+    }
+    if (has("makemytrip")) {
+      return r && d ? `https://www.makemytrip.com/bus/search/${slug(r.from)}/${slug(r.to)}/${d.dd}-${d.mm}-${d.yyyy}` : "https://www.makemytrip.com/bus/";
+    }
+  }
+  if (vertical === "hotels" || has("hotel", "stay", "rooms", "oyo")) {
+    const ci = d ? d.iso : "";
+    const co = (() => {
+      if (!d) return "";
+      const dt = /* @__PURE__ */ new Date(`${d.iso}T00:00:00Z`);
+      dt.setUTCDate(dt.getUTCDate() + 1);
+      return dt.toISOString().slice(0, 10);
+    })();
+    if (has("makemytrip")) {
+      return city ? `https://www.makemytrip.com/hotels/hotel-listing/?city=${e(city.toUpperCase())}${ci ? `&checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.makemytrip.com/hotels/";
+    }
+    if (has("goibibo")) {
+      return city ? `https://www.goibibo.com/hotels/find-hotels-in-${slug(city)}/${ci && co ? `?checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.goibibo.com/hotels/";
+    }
+    if (has("booking")) {
+      return city ? `https://www.booking.com/searchresults.html?ss=${cq}${ci ? `&checkin=${ci}&checkout=${co}` : ""}&group_adults=2&no_rooms=1&group_children=0` : "https://www.booking.com/searchresults.html";
+    }
+    if (has("agoda")) {
+      return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&los=1` : ""}` : "https://www.agoda.com/";
+    }
+    if (has("yatra")) {
+      return city ? `https://www.yatra.com/hotels/hotels-in-${slug(city)}` : "https://www.yatra.com/hotels";
+    }
+    if (has("cleartrip")) {
+      return city ? `https://www.cleartrip.com/hotels/india/${slug(city)}-hotels` : "https://www.cleartrip.com/hotels";
+    }
+    if (has("easemytrip", "ease my trip")) {
+      return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : "https://www.easemytrip.com/hotels/";
+    }
+    if (has("oyo")) {
+      return city ? `https://www.oyorooms.com/search?location=${cq}` : "https://www.oyorooms.com/";
+    }
+    if (has("saffron")) {
+      return city ? `https://www.saffronstays.com/search?q=${cq}` : "https://www.saffronstays.com/";
+    }
+  }
+  if (vertical === "cab" || has("cab", "ride", "taxi", "ola", "uber")) {
+    if (has("uber")) return "https://m.uber.com/looking";
+    if (has("ola")) return "https://book.olacabs.com/";
+    if (has("indrive", "in drive")) return "https://indrive.com/";
+    if (has("meru")) return "https://www.meru.in/";
+    if (has("fastdeal", "snap")) return "https://www.fastdeals.in/";
+  }
+  const loanish = /loan|credit\s*card|personal\s*loan|home\s*loan/i.test(`${t} ${vertical || ""}`);
+  const insurish = /insurance|policy|cover/i.test(`${t} ${vertical || ""}`);
+  const insKind = /two\s*wheeler|bike|scooter/i.test(t) ? "bike" : /car|motor|vehicle/i.test(t) ? "car" : /health|mediclaim|hospital/i.test(t) ? "health" : /term|life/i.test(t) ? "life" : /travel/i.test(t) ? "travel" : "";
+  const loanKind = /home\s*loan/i.test(t) ? "home-loan" : /car\s*loan|auto\s*loan/i.test(t) ? "car-loan" : /business\s*loan/i.test(t) ? "business-loan" : /credit\s*card/i.test(t) ? "credit-card" : "personal-loan";
+  if (loanish || insurish || vertical === "loans" || vertical === "insurance" || vertical === "creditcards") {
+    if (has("paisabazaar")) return insurish ? `https://www.paisabazaar.com/insurance/${insKind ? insKind + "-insurance/" : ""}` : `https://www.paisabazaar.com/${loanKind}/`;
+    if (has("bankbazaar")) return insurish ? "https://www.bankbazaar.com/insurance.html" : `https://www.bankbazaar.com/${loanKind}.html`;
+    if (has("policybazaar")) return insurish ? `https://www.policybazaar.com/insurance/${insKind ? insKind + "-insurance/" : ""}` : "https://www.policybazaar.com/";
+    if (has("moneyview", "money view")) return "https://moneyview.in/loans";
+    if (has("kreditbee", "kredit bee")) return "https://www.kreditbee.in/";
+    if (has("navi")) return "https://navi.com/loans";
+    if (has("ditto")) return "https://joinditto.in/health-insurance/";
+    if (has("insurancedekho", "insurance dekho")) return insKind ? `https://www.insurancedekho.com/${insKind}-insurance` : "https://www.insurancedekho.com/";
+    if (has("acko")) return insKind ? `https://www.acko.com/${insKind}-insurance/` : "https://www.acko.com/";
+    if (has("godigit", "digit")) return insKind ? `https://www.godigit.com/${insKind}-insurance` : "https://www.godigit.com/";
+    if (has("coverfox")) return insKind ? `https://www.coverfox.com/${insKind}-insurance/` : "https://www.coverfox.com/";
+  }
+  if (has("makemytrip")) return "https://www.makemytrip.com/";
+  return "";
+}
+function movieTheatreLink(merchant, ctx = {}) {
+  const v = String(merchant || "").toLowerCase();
+  const city = slug(ctx.city || "");
+  const id = String(ctx.cinemaId ?? "").trim();
+  if (!v) return "";
+  if (v.includes("ticketnew") && city && id) return `https://ticketnew.com/movies/${city}/cinemas/${id}`;
+  if (v.includes("bookmyshow") || v.includes("book my show")) {
+    return "";
+  }
+  return "";
+}
+var IATA2, cityCode, slug, e;
+var init_merchantLinks = __esm({
+  "server/affiliate/merchantLinks.ts"() {
+    IATA2 = {
+      // shared subset used by the airline/OTA SRPs
+      delhi: "DEL",
+      "new delhi": "DEL",
+      mumbai: "BOM",
+      bengaluru: "BLR",
+      bangalore: "BLR",
+      hyderabad: "HYD",
+      chennai: "MAA",
+      kolkata: "CCU",
+      pune: "PNQ",
+      ahmedabad: "AMD",
+      goa: "GOI",
+      jaipur: "JAI",
+      lucknow: "LKO",
+      indore: "IDR",
+      bhopal: "BHO",
+      patna: "PAT",
+      chandigarh: "IXC",
+      kochi: "COK",
+      coimbatore: "CJB",
+      varanasi: "VNS",
+      nagpur: "NAG",
+      surat: "STV",
+      visakhapatnam: "VTZ",
+      bhubaneswar: "BBI",
+      guwahati: "GAU",
+      srinagar: "SXR",
+      dibrugarh: "DIB",
+      ranchi: "IXR",
+      raipur: "RPR",
+      trivandrum: "TRV",
+      amritsar: "ATQ",
+      udaipur: "UDR",
+      manali: "KUU",
+      dehradun: "DED",
+      bagdogra: "IXB",
+      madurai: "IXM"
+    };
+    cityCode = (name) => IATA2[String(name || "").toLowerCase().trim()] || "";
+    slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
+    e = encodeURIComponent;
+  }
+});
+
 // server/workers/parsers/districtGw.ts
 function gwCitySlug(city) {
   return (city || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -23687,7 +23931,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       if (!agg.theatres.includes(cinema.name)) agg.theatres.push(cinema.name);
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || "").trim();
-        if (t) agg.shows.push({ time: t, theatre: cinema.name, areas: areas.slice(0, 4) });
+        if (t) agg.shows.push({ time: t, theatre: cinema.name, cinemaId: cinema.id, areas: areas.slice(0, 4) });
       }
       const contentId = contentByTitle.get(key);
       if (contentId && !agg.contentId) agg.contentId = contentId;
@@ -23928,6 +24172,11 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.attributes["theatre_count"] = agg.theatres.length;
     o.attributes["shows_today"] = agg.showCount;
     o.attributes["showtimes"] = JSON.stringify(agg.shows.slice(0, 5));
+    {
+      const cityName2 = String(o.location?.city || "");
+      const links = agg.shows.slice(0, 8).map((sh) => ({ theatre: sh.theatre, time: sh.time, url: movieTheatreLink(gwHost === "district" ? "District" : "TicketNew", { city: cityName2, cinemaId: sh.cinemaId, theatre: sh.theatre }) })).filter((x) => x.url);
+      if (links.length) o.attributes["theatre_links"] = JSON.stringify(links);
+    }
     o.attributes["data_note"] = forSite ? `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${gwHost === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.` : `Real area-level seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live sessions across ${agg.theatres.length} theatres via District/TicketNew's public sessions gateway`;
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
     const crit = agg.contentId ? await gwCritique(gwHost, agg.contentId).catch(() => null) : null;
@@ -23962,6 +24211,7 @@ var init_movies = __esm({
     init_ticketnew();
     init_cinepolis();
     init_district();
+    init_merchantLinks();
     init_districtGw();
     init_imdbRatings();
     import_node_crypto4 = require("node:crypto");
@@ -27429,226 +27679,6 @@ var init_ekaro = __esm({
     inFlight = /* @__PURE__ */ new Map();
     authWarned = false;
     trimUrl = (u) => u.replace(/[.,;!)'"\]]+$/, "");
-  }
-});
-
-// server/affiliate/merchantLinks.ts
-function dates(d) {
-  const s = String(d || "");
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  const [, yyyy, mm, dd] = m;
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return { iso: s, ymd: `${yyyy}${mm}${dd}`, dmy: `${dd}/${mm}/${yyyy}`, dMonY: `${dd}-${months[Number(mm) - 1] || "Jan"}-${yyyy}`, dd, mm, yyyy };
-}
-function route(t) {
-  const legs = String(t || "").split(/\s+to\s+/i);
-  if (legs.length !== 2) return null;
-  const from = legs[0].trim();
-  const to = legs[1].trim();
-  return from && to ? { from, to } : null;
-}
-function hotelCity(title, ctx) {
-  if (ctx.city) return String(ctx.city).trim();
-  const r = route(ctx.route);
-  if (!r) {
-    const single = String(ctx.route || "").trim();
-    if (single && !/\s/.test(single)) return single;
-  } else if (r.to) {
-    return r.to;
-  }
-  const m = String(title || "").match(/\b(?:hotels?|stays?)\s+in\s+([a-z\s]{3,24})/i);
-  return m ? m[1].trim() : "";
-}
-function merchantDeepLink(merchant, title, vertical, ctx = {}) {
-  const v = String(merchant || "").toLowerCase();
-  if (!v) return "";
-  if (!String(title || "").trim() && !String(ctx.route || "").trim() && !String(ctx.city || "").trim()) return "";
-  const has = (...keys) => keys.some((k) => v.includes(k));
-  const q3 = e(String(title || "").trim().slice(0, 80));
-  const t = String(title || "").trim();
-  const r = route(ctx.route);
-  const d = dates(ctx.date);
-  const city = hotelCity(t, ctx);
-  const cq = city ? e(city) : "";
-  const from = r ? cityCode(r.from) || r.from : "";
-  const to = r ? cityCode(r.to) || r.to : "";
-  if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
-  if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
-  if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
-  if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
-  if (has("myntra")) return `https://www.myntra.com/${slug(t)}`;
-  if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
-  if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
-  if (has("instamart")) return `https://www.swiggy.com/instamart/search?query=${q3}`;
-  if (has("blinkit")) return `https://blinkit.com/s/?q=${q3}`;
-  if (has("zepto")) return `https://www.zepto.com/search?query=${q3}`;
-  if (has("bigbasket", "bb now", "bbnow")) return `https://www.bigbasket.com/ps/?q=${q3}`;
-  if (has("swiggy")) return `https://www.swiggy.com/search?query=${q3}`;
-  if (has("zomato")) return `https://www.zomato.com/search?query=${q3}`;
-  if (has("domino")) return `https://www.dominos.co.in/menu`;
-  if (has("ovenstory", "oven story")) return `https://www.ovenstory.in/menu`;
-  if (has("eatsure", "eat sure")) return `https://www.eatsure.com/search?q=${q3}`;
-  if (has("bookmyshow", "book my show")) return city ? `https://in.bookmyshow.com/explore/movies-${slug(city)}` : "https://in.bookmyshow.com/explore/movies";
-  if (has("district")) return "https://www.district.in/movies";
-  if (has("paytm")) return "https://paytm.com/movies/";
-  if (has("pvr")) return "https://www.pvrcinemas.com/";
-  if (has("cinepolis")) return "https://www.cinepolisindia.com/";
-  if (has("ticketnew", "ticket new")) return "https://www.ticketnew.com/";
-  if (!has("hotel") && (vertical === "flights" || has("air", "airline", "goindigo", "indigo", "akasa", "spicejet", "vistara"))) {
-    const dd = d ? d.dmy : "";
-    const isoD = d ? d.iso : "";
-    const ymd = d ? d.ymd : "";
-    if (has("makemytrip")) {
-      if (from && to && d && cityCode(r.from) && cityCode(r.to)) {
-        return `https://www.makemytrip.com/flight/search?itinerary=${e(`${from}-${to}-${d.dd}/${d.mm}/${d.yyyy}`)}&tripType=O&paxType=1-A-C&intl=false&cabinClass=E&cc=INR`;
-      }
-      return "https://www.makemytrip.com/flights/";
-    }
-    if (has("easemytrip", "ease my trip")) {
-      return from && to && dd ? `https://www.easemytrip.com/flight-search/?from=${e(from)}&to=${e(to)}&ddate=${e(dd)}` : "https://www.easemytrip.com/flights.html";
-    }
-    if (has("ixigo")) {
-      return from && to && ymd ? `https://www.ixigo.com/flights?from=${e(from)}&to=${e(to)}&depart=${ymd}` : "https://www.ixigo.com/flights";
-    }
-    if (has("yatra")) {
-      return from && to && dd ? `https://www.yatra.com/flight/search?flight-type=on&from=${e(from)}&to=${e(to)}&departDate=${e(dd)}&adults=1&child=0&infant=0&class=Economy&flexi=0` : "https://www.yatra.com/flights";
-    }
-    if (has("cleartrip")) {
-      return from && to && isoD ? `https://www.cleartrip.com/flights/results?from=${e(from)}&to=${e(to)}&depart_date=${isoD}&adults=1&childs=0&infants=0&class=Economy` : "https://www.cleartrip.com/flights";
-    }
-    if (has("akasa")) {
-      return from && to && isoD ? `https://www.akasaair.com/booking/search?from=${e(from)}&to=${e(to)}&date=${isoD}&adults=1` : "https://www.akasaair.com/";
-    }
-    if (has("goindigo", "indigo")) {
-      return from && to && isoD ? `https://www.goindigo.in/booking.html?from=${e(from)}&to=${e(to)}&date=${isoD}` : "https://www.goindigo.in/booking.html";
-    }
-  }
-  if (vertical === "bus" || has("bus")) {
-    if (has("redbus")) {
-      return r ? `https://www.redbus.in/bus-tickets/${slug(r.from)}-to-${slug(r.to)}${d ? `?onward=${e(d.dMonY)}` : ""}` : "https://www.redbus.in/bus-tickets";
-    }
-    if (has("abhibus")) {
-      return r ? `https://www.abhibus.com/bus_search/${slug(r.from)}/${slug(r.to)}/${d ? d.iso : ""}/1` : "https://www.abhibus.com/";
-    }
-    if (has("ixigo")) {
-      return r ? `https://www.ixigo.com/buses/${slug(r.from)}-to-${slug(r.to)}${d ? `-${d.ymd}` : ""}` : "https://www.ixigo.com/buses";
-    }
-    if (has("yatra")) {
-      return r ? `https://www.yatra.com/bus/search?from=${e(r.from)}&to=${e(r.to)}${d ? `&date=${e(d.dmy)}` : ""}` : "https://www.yatra.com/bus";
-    }
-    if (has("makemytrip")) {
-      return r && d ? `https://www.makemytrip.com/bus/search/${slug(r.from)}/${slug(r.to)}/${d.dd}-${d.mm}-${d.yyyy}` : "https://www.makemytrip.com/bus/";
-    }
-  }
-  if (vertical === "hotels" || has("hotel", "stay", "rooms", "oyo")) {
-    const ci = d ? d.iso : "";
-    const co = (() => {
-      if (!d) return "";
-      const dt = /* @__PURE__ */ new Date(`${d.iso}T00:00:00Z`);
-      dt.setUTCDate(dt.getUTCDate() + 1);
-      return dt.toISOString().slice(0, 10);
-    })();
-    if (has("makemytrip")) {
-      return city ? `https://www.makemytrip.com/hotels/hotel-listing/?city=${e(city.toUpperCase())}${ci ? `&checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.makemytrip.com/hotels/";
-    }
-    if (has("goibibo")) {
-      return city ? `https://www.goibibo.com/hotels/find-hotels-in-${slug(city)}/${ci && co ? `?checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.goibibo.com/hotels/";
-    }
-    if (has("booking")) {
-      return city ? `https://www.booking.com/searchresults.html?ss=${cq}${ci ? `&checkin=${ci}&checkout=${co}` : ""}&group_adults=2&no_rooms=1&group_children=0` : "https://www.booking.com/searchresults.html";
-    }
-    if (has("agoda")) {
-      return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&los=1` : ""}` : "https://www.agoda.com/";
-    }
-    if (has("yatra")) {
-      return city ? `https://www.yatra.com/hotels/hotels-in-${slug(city)}` : "https://www.yatra.com/hotels";
-    }
-    if (has("cleartrip")) {
-      return city ? `https://www.cleartrip.com/hotels/india/${slug(city)}-hotels` : "https://www.cleartrip.com/hotels";
-    }
-    if (has("easemytrip", "ease my trip")) {
-      return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : "https://www.easemytrip.com/hotels/";
-    }
-    if (has("oyo")) {
-      return city ? `https://www.oyorooms.com/search?location=${cq}` : "https://www.oyorooms.com/";
-    }
-    if (has("saffron")) {
-      return city ? `https://www.saffronstays.com/search?q=${cq}` : "https://www.saffronstays.com/";
-    }
-  }
-  if (vertical === "cab" || has("cab", "ride", "taxi", "ola", "uber")) {
-    if (has("uber")) return "https://m.uber.com/looking";
-    if (has("ola")) return "https://book.olacabs.com/";
-    if (has("indrive", "in drive")) return "https://indrive.com/";
-    if (has("meru")) return "https://www.meru.in/";
-    if (has("fastdeal", "snap")) return "https://www.fastdeals.in/";
-  }
-  const loanish = /loan|credit\s*card|personal\s*loan|home\s*loan/i.test(`${t} ${vertical || ""}`);
-  const insurish = /insurance|policy|cover/i.test(`${t} ${vertical || ""}`);
-  const insKind = /two\s*wheeler|bike|scooter/i.test(t) ? "bike" : /car|motor|vehicle/i.test(t) ? "car" : /health|mediclaim|hospital/i.test(t) ? "health" : /term|life/i.test(t) ? "life" : /travel/i.test(t) ? "travel" : "";
-  const loanKind = /home\s*loan/i.test(t) ? "home-loan" : /car\s*loan|auto\s*loan/i.test(t) ? "car-loan" : /business\s*loan/i.test(t) ? "business-loan" : /credit\s*card/i.test(t) ? "credit-card" : "personal-loan";
-  if (loanish || insurish || vertical === "loans" || vertical === "insurance" || vertical === "creditcards") {
-    if (has("paisabazaar")) return insurish ? `https://www.paisabazaar.com/insurance/${insKind ? insKind + "-insurance/" : ""}` : `https://www.paisabazaar.com/${loanKind}/`;
-    if (has("bankbazaar")) return insurish ? "https://www.bankbazaar.com/insurance.html" : `https://www.bankbazaar.com/${loanKind}.html`;
-    if (has("policybazaar")) return insurish ? `https://www.policybazaar.com/insurance/${insKind ? insKind + "-insurance/" : ""}` : "https://www.policybazaar.com/";
-    if (has("moneyview", "money view")) return "https://moneyview.in/loans";
-    if (has("kreditbee", "kredit bee")) return "https://www.kreditbee.in/";
-    if (has("navi")) return "https://navi.com/loans";
-    if (has("ditto")) return "https://joinditto.in/health-insurance/";
-    if (has("insurancedekho", "insurance dekho")) return insKind ? `https://www.insurancedekho.com/${insKind}-insurance` : "https://www.insurancedekho.com/";
-    if (has("acko")) return insKind ? `https://www.acko.com/${insKind}-insurance/` : "https://www.acko.com/";
-    if (has("godigit", "digit")) return insKind ? `https://www.godigit.com/${insKind}-insurance` : "https://www.godigit.com/";
-    if (has("coverfox")) return insKind ? `https://www.coverfox.com/${insKind}-insurance/` : "https://www.coverfox.com/";
-  }
-  if (has("makemytrip")) return "https://www.makemytrip.com/";
-  return "";
-}
-var IATA2, cityCode, slug, e;
-var init_merchantLinks = __esm({
-  "server/affiliate/merchantLinks.ts"() {
-    IATA2 = {
-      // shared subset used by the airline/OTA SRPs
-      delhi: "DEL",
-      "new delhi": "DEL",
-      mumbai: "BOM",
-      bengaluru: "BLR",
-      bangalore: "BLR",
-      hyderabad: "HYD",
-      chennai: "MAA",
-      kolkata: "CCU",
-      pune: "PNQ",
-      ahmedabad: "AMD",
-      goa: "GOI",
-      jaipur: "JAI",
-      lucknow: "LKO",
-      indore: "IDR",
-      bhopal: "BHO",
-      patna: "PAT",
-      chandigarh: "IXC",
-      kochi: "COK",
-      coimbatore: "CJB",
-      varanasi: "VNS",
-      nagpur: "NAG",
-      surat: "STV",
-      visakhapatnam: "VTZ",
-      bhubaneswar: "BBI",
-      guwahati: "GAU",
-      srinagar: "SXR",
-      dibrugarh: "DIB",
-      ranchi: "IXR",
-      raipur: "RPR",
-      trivandrum: "TRV",
-      amritsar: "ATQ",
-      udaipur: "UDR",
-      manali: "KUU",
-      dehradun: "DED",
-      bagdogra: "IXB",
-      madurai: "IXM"
-    };
-    cityCode = (name) => IATA2[String(name || "").toLowerCase().trim()] || "";
-    slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
-    e = encodeURIComponent;
   }
 });
 

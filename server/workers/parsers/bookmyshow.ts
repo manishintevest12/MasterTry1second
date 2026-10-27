@@ -151,6 +151,32 @@ export function bmsDiscoverHeaders(region: BmsRegion): Record<string, string> {
 }
 
 /** Parse discovery listings into offers. Filtered strictly by the movie query when one was typed. */
+/**
+ * Canonical BMS "buytickets" URL for a movie + region + date (owner 27 Oct: the Book
+ * CTA landed on the movie page and the user had to re-pick city/date/theatre).
+ * LIVE-VERIFIED 27 Oct: the legacy `/buytickets/{slug}/movie-{REGION}-{EVENT}-MT/{YYYYMMDD}`
+ * form 301s to `https://in.bookmyshow.com/movies/{REGION}/{regionSlug}/buytickets/{EVENT}/{YYYYMMDD}`
+ * and returns 200 with that movie's cinema/showtime list already loaded.
+ */
+export function bmsBuyTicketsUrl(region: BmsRegion, eventCode: string, dateISO?: string | null): string {
+  const code = String(eventCode || '').trim();
+  if (!code || !region?.regionCode || !region?.regionSlug) return '';
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(String(dateISO || '')) ? String(dateISO) : istTodayISO();
+  return `https://in.bookmyshow.com/movies/${region.regionCode}/${region.regionSlug}/buytickets/${encodeURIComponent(code)}/${d.replace(/-/g, '')}`;
+}
+
+/** Today's date in IST as YYYY-MM-DD (BMS showtimes are always dated in IST). */
+export function istTodayISO(now: Date = new Date()): string {
+  const ist = new Date(now.getTime() + (5 * 60 + 30) * 60_000);
+  return ist.toISOString().slice(0, 10);
+}
+
+/** Movie slug from a BMS movie page URL (".../movies/indore/pehla-pyaar/ET1" -> "pehla-pyaar"). */
+export function bmsMovieSlug(pageUrl: string): string {
+  const parts = String(pageUrl || '').split('/movies/')[1]?.split('/').filter(Boolean) || [];
+  return parts.length >= 2 ? parts[1] : '';
+}
+
 export function parseMovieCards(payload: any, source: SourceConfig, region: BmsRegion, query: string, fingerprint: string): RawSourceItem[] {
   const listings: any[] = Array.isArray(payload?.listings) ? payload.listings : [];
   const seen = new Set<string>();
@@ -173,7 +199,10 @@ export function parseMovieCards(payload: any, source: SourceConfig, region: BmsR
       out.push(newRawItem(source, {
         title: title.slice(0, 200),
         seller: 'BookMyShow',
-        sellerUrl: ctaUrl, // the deeplink goes ONLY to the price-owning platform (owner policy)
+        // Book must land on THIS movie's showtimes for the user's city/date, not the
+        // movie page (owner 27 Oct). Falls back to the movie page when the event
+        // code is missing.
+        sellerUrl: bmsBuyTicketsUrl(region, eventCode) || ctaUrl,
         availability: 'in_stock', // now-showing in this region per BMS itself
         location: { city: region.regionName },
         attributes: {
@@ -182,6 +211,7 @@ export function parseMovieCards(payload: any, source: SourceConfig, region: BmsR
           ...(lang ? { language: lang } : {}),
           ...(eventCode ? { event_code: eventCode } : {}),
           movie_page_url: ctaUrl,
+          ...(eventCode ? { booking_url: bmsBuyTicketsUrl(region, eventCode) } : {}),
           platform: 'BookMyShow',
         },
         evidence: {

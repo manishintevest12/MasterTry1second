@@ -91,6 +91,8 @@ export interface GwAreaPrice {
 }
 
 export interface GwShowtime {
+  /** gw cinema id — enables a venue-level deeplink (TicketNew verified live 27 Oct) */
+  cinemaId?: number;
   /** show time exactly as the platform states it, e.g. '12:30 PM' — never reformatted/invented */
   time: string;
   theatre: string;
@@ -182,7 +184,7 @@ export async function gwCityMovieAggregates(
       // per-show time + seat-class prices (cap 8 shows, earliest first per source order)
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || '').trim();
-        if (t) agg.shows.push({ time: t, theatre: cinema.name, areas: areas.slice(0, 4) });
+        if (t) agg.shows.push({ time: t, theatre: cinema.name, cinemaId: cinema.id, areas: areas.slice(0, 4) });
       }
       const contentId = contentByTitle.get(key);
       if (contentId && !agg.contentId) agg.contentId = contentId;
