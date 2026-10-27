@@ -96,7 +96,7 @@ var init_settings = __esm({
       // Default = the OAuth client in flutter_app/android/app/google-services.json: the
       // google_sign_in Android plugin uses it as the audience via default_web_client_id,
       // so every plain build works without owner env setup. Override/extend via env.
-      googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com").split(",").map((e) => e.trim()).filter(Boolean),
+      googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com,49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com,49438102645-ek7dp1kea0dfj0moi7jphamqrngjg1lk.apps.googleusercontent.com").split(",").map((e) => e.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
       // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
       // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
@@ -30028,6 +30028,7 @@ __export(searchOrchestrator_exports, {
   busSelfHealTtl: () => busSelfHealTtl,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
+  runSearchFast: () => runSearchFast,
   runSearchPolled: () => runSearchPolled,
   thinResultTtl: () => thinResultTtl
 });
@@ -30203,6 +30204,23 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
     offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
   }
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
+}
+async function runSearchFast(input, coldBudgetMs = 1500) {
+  const started3 = Date.now();
+  let best = await runSearch(input);
+  if ((best.results || []).length > 0) return best;
+  while (Date.now() - started3 < coldBudgetMs) {
+    await new Promise((r) => setTimeout(r, 400));
+    let next;
+    try {
+      next = await runSearch(input);
+    } catch {
+      break;
+    }
+    if ((next.results || []).length > (best.results || []).length) best = next;
+    if ((best.results || []).length > 0) return best;
+  }
+  return best;
 }
 async function runSearchPolled(input, deadlineMs = 15e3) {
   const deadline = Date.now() + deadlineMs;
@@ -31213,6 +31231,13 @@ async function getGoogleCertificates() {
   googleCertCache = { certs, fetchedAt: Date.now() };
   return certs;
 }
+function audienceAllowed(aud, allowedAudiences) {
+  if (!aud) return false;
+  if (allowedAudiences.includes(aud)) return true;
+  if (String(process.env.GOOGLE_AUDIENCE_ANY_PROJECT_CLIENT || "1") === "0") return false;
+  if (!aud.startsWith(PROJECT_AUDIENCE_PREFIX)) return false;
+  return /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/i.test(aud);
+}
 async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOauthClientIds, certsOverride) {
   if (!allowedAudiences.length) return null;
   try {
@@ -31221,7 +31246,7 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const header = JSON.parse(base64UrlDecode(parts[0]).toString("utf8"));
     const payload = JSON.parse(base64UrlDecode(parts[1]).toString("utf8"));
     if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
-    if (!allowedAudiences.includes(String(payload.aud))) return null;
+    if (!audienceAllowed(String(payload.aud), allowedAudiences)) return null;
     if (payload.iss !== "https://accounts.google.com" && payload.iss !== "accounts.google.com") return null;
     const now = Math.floor(Date.now() / 1e3);
     if (typeof payload.exp !== "number" || payload.exp <= now) return null;
@@ -31249,7 +31274,7 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto26, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache;
+var import_crypto26, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache, PROJECT_AUDIENCE_PREFIX;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
     import_crypto26 = __toESM(require("crypto"), 1);
@@ -31260,6 +31285,7 @@ var init_firebaseAuth = __esm({
     CERT_TTL_MS = 60 * 60 * 1e3;
     GOOGLE_CERT_URL = "https://www.googleapis.com/oauth2/v1/certs";
     googleCertCache = null;
+    PROJECT_AUDIENCE_PREFIX = "49438102645-";
   }
 });
 
@@ -33204,10 +33230,17 @@ __export(sameProduct_exports, {
   capacitiesOf: () => capacitiesOf,
   identityTokens: () => identityTokens,
   isAccessory: () => isAccessory,
-  isSameProduct: () => isSameProduct
+  isSameProduct: () => isSameProduct,
+  normalizeBrandSpelling: () => normalizeBrandSpelling,
+  sharesIdentity: () => sharesIdentity
 });
+function normalizeBrandSpelling(t) {
+  let out = String(t || "");
+  for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
+  return out;
+}
 function words(t) {
-  return t.toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
+  return normalizeBrandSpelling(t).toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
 }
 function isAccessory(title) {
   const t = ` ${title.toLowerCase()} `;
@@ -33224,12 +33257,13 @@ function capacitiesOf(title) {
   }
   return caps;
 }
-function isSameProduct(pastedTitle, candidateTitle) {
+function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   const wantsAccessory = isAccessory(pastedTitle);
   if (!wantsAccessory && isAccessory(candidateTitle)) return false;
   const wantCaps = capacitiesOf(pastedTitle);
   const haveCaps = capacitiesOf(candidateTitle);
-  if (wantCaps.size || haveCaps.size) {
+  if (mode === "typed" && !wantCaps.size) {
+  } else if (wantCaps.size || haveCaps.size) {
     if (!wantCaps.size || !haveCaps.size) return false;
     for (const c of wantCaps) if (!haveCaps.has(c)) return false;
   }
@@ -33243,11 +33277,23 @@ function isSameProduct(pastedTitle, candidateTitle) {
   const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
   const wantTiers = tiersOf(need);
   const haveTiers = tiersOf(words(candidateTitle));
-  if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
+  if (mode === "typed" && !wantTiers.size) {
+  } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
   return hit / soft.length >= 0.6;
 }
-var ACCESSORY_WORDS, STOP3, TIERS, COLORS;
+function sharesIdentity(queryTitle, candidateTitle) {
+  if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
+  const need = identityTokens(queryTitle);
+  if (!need.length) return false;
+  const have = new Set(words(candidateTitle));
+  const hard = need.filter((w) => /\d/.test(w));
+  if (hard.length && hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w));
+  if (!soft.length) return hard.length > 0;
+  return soft.some((w) => have.has(w));
+}
+var ACCESSORY_WORDS, STOP3, TIERS, COLORS, BRAND_JOINS;
 var init_sameProduct = __esm({
   "server/lens/sameProduct.ts"() {
     ACCESSORY_WORDS = [
@@ -33291,6 +33337,20 @@ var init_sameProduct = __esm({
     STOP3 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
     TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
     COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
+    BRAND_JOINS = [
+      [/\bi\s*phone\b/gi, "iphone"],
+      [/\bapple\s+mobile\b/gi, "apple"],
+      [/\bone\s*plus\b/gi, "oneplus"],
+      [/\bred\s*mi\b/gi, "redmi"],
+      [/\breal\s*me\b/gi, "realme"],
+      [/\bsam\s*sung\b/gi, "samsung"],
+      [/\bnothing\s*phone\b/gi, "nothing phone"],
+      [/\bmoto\s*rola\b/gi, "motorola"],
+      [/\bgalaxy\s*m\b/gi, "galaxy m"],
+      [/\bmac\s*book\b/gi, "macbook"],
+      [/\bmagic\s*book\b/gi, "magicbook"],
+      [/\bb\s*t\s*w\b/gi, "btw"]
+    ];
   }
 });
 
@@ -36169,6 +36229,14 @@ var init_routes = __esm({
         results
       });
     });
+    apiRouter.post("/product-page/prefetch", async (req, res) => {
+      const q3 = String(req.body?.query || "").trim().slice(0, 120);
+      res.json({ success: true, warming: q3.length >= 2 });
+      if (q3.length < 2) return;
+      const lensQuery = searchableTitle(q3);
+      void Promise.resolve().then(() => runSearchFast({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, 4e3)).catch(() => {
+      });
+    });
     apiRouter.post("/product-page", async (req, res) => {
       const input = String(req.body?.input || req.body?.url || "").trim().slice(0, 2e3);
       const textQuery = String(req.body?.query || "").trim().slice(0, 200);
@@ -36204,15 +36272,17 @@ var init_routes = __esm({
         const keep = toks2.filter((t) => !caps.has(t.toLowerCase().replace(/\s/g, ""))).slice(0, 4).join(" ");
         return keep && keep !== lensQuery ? keep : "";
       })();
+      const COLD_BUDGET_MS = 1500;
       const searches = [
-        runSearchPolled({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode })
+        runSearchFast({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, COLD_BUDGET_MS)
       ];
-      if (broadQuery) searches.push(runSearchPolled({ query: broadQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }));
+      if (broadQuery) searches.push(runSearchFast({ query: broadQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode }, COLD_BUDGET_MS));
       const responses = await Promise.all(searches);
       const seenIds = /* @__PURE__ */ new Set();
       const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
       const all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf2(o) })).filter((x) => x.price > 0);
-      const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ""))).sort((a, b) => a.price - b.price);
+      const matchMode = textQuery ? "typed" : "strict";
+      const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).sort((a, b) => a.price - b.price);
       const toRow = ({ o, price }) => {
         const attrs = o.attributes || {};
         const imgs = Array.from(new Set([
@@ -36264,9 +36334,17 @@ var init_routes = __esm({
         });
       }
       offers.sort((a, b) => a.price - b.price);
+      let closestOnly = false;
+      if (!offers.length) {
+        const alt = all.filter((x) => sharesIdentity(lensQuery, String(x.o.title || ""))).map((x) => ({ ...toRow(x), variantCount: 0 })).slice(0, 6);
+        if (alt.length) {
+          offers.push(...alt);
+          closestOnly = true;
+        }
+      }
       const cheapest = offers[0] || null;
       const seen = new Set(offers.map((r) => r.title.toLowerCase()));
-      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""))).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 10);
+      const related = all.filter((x) => !isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).map(toRow).filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase())).slice(0, 10);
       let history = [];
       let historyEntity = null;
       try {
@@ -36302,7 +36380,8 @@ var init_routes = __esm({
         deal,
         pageVsCheapest,
         servedFrom: responses[0]?.state?.servedFrom,
-        message: offers.length ? void 0 : "No verified listing of this exact product was found on our sources right now."
+        closestOnly,
+        message: offers.length ? closestOnly ? "No exact match right now. Showing the closest live variants of this product." : void 0 : "No verified listing of this product was found on our sources right now."
       });
     });
     apiRouter.get("/alerts", authMiddleware, requireAuth, async (req, res) => {
