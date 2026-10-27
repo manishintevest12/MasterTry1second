@@ -1,3 +1,4 @@
+import { AdBannerSlot } from './AdBannerSlot';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { parseSmartFilter, matchSmartFilter } from '../utils/smartFilter';
@@ -418,6 +419,9 @@ export const ComparisonFeed: React.FC = () => {
                   onRemove={(id) => toggleCcCompare(ccCompare.find((c) => c.id === id))}
                 />
               )}
+
+        {/* AdSense: vertical feed unit (renders nothing when unset) */}
+        <div className="my-4"><AdBannerSlot slotKey="vertical_feed" /></div>
 
               {/* Load More Button Section: only appears if at least 4 results displayed on screen and more remain */}
               {shouldShowLoadMore && (

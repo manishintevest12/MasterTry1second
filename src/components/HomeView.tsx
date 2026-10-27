@@ -1,3 +1,4 @@
+import { AdBannerSlot } from './AdBannerSlot';
 import React, { lazy, Suspense } from 'react';
 import {
   Zap,
@@ -236,6 +237,11 @@ export const HomeView: React.FC = () => {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* AdSense: owner-configured homepage unit (renders nothing when unset) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <AdBannerSlot slotKey="home_feed" />
       </section>
       </Deferred>
 
