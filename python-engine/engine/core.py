@@ -18,7 +18,7 @@ VERTICAL_TARGETS: Dict[str, List[str]] = {
     "flights":   ["makemytrip", "easemytrip", "ixigo", "yatra", "cleartrip", "akasaair", "indigo"],
     "ecommerce": ["amazon", "flipkart", "meesho", "myntra", "ajio", "tatacliq", "nykaa", "croma", "xiaomi", "oppo", "realme", "lenovo"],
     "grocery":   ["blinkit", "zepto", "swiggy-instamart", "bigbasket", "flipkart-minutes"],
-    "bus":       ["redbus", "abhibus", "makemytrip", "yatra", "ixigo"],
+    "bus":       ["redbus", "abhibus", "zingbus", "makemytrip", "yatra", "ixigo"],
     "cab":       ["olacabs", "uber", "indrive", "meru", "fastdeals", "snap-e", "rapido"],
     "movies":    ["bookmyshow", "district", "paytm", "pvrinox", "cinepolis", "ticketnew"],
     "food":      ["zomato", "swiggy", "dominos", "ovenstory", "eatsure"],

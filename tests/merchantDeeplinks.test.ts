@@ -89,3 +89,33 @@ test('movies: TicketNew gets a venue-level link, District stays honest', () => {
   assert.equal(movieTheatreLink('TicketNew', { city: 'Indore' }), '');
   assert.equal(movieCityLink('BookMyShow', { city: 'Indore' }), 'https://in.bookmyshow.com/explore/movies-indore');
 });
+
+// Owner 27 Oct ("ek baar aur ache se check kro ki kuch bach tho ni gaya"): the
+// acceptance registry marks these merchants "mandated" but they had no builder at
+// all. Each one now resolves to a live-checked entry page.
+test('mandated registry merchants without a builder are now covered', () => {
+  const H = { city: 'Goa', date: '2026-11-10' };
+  const F = { route: 'delhi to dubai', date: '2026-11-10' };
+  const cases: Array<[string, string, string, any, RegExp]> = [
+    ['Hotels.com', 'Hotels in Goa', 'hotels', H, /^https:\/\/www\.hotels\.com\/Hotel-Search\?destination=Goa/],
+    ['Hotwire', 'Hotels in Goa', 'hotels', H, /hotwire\.com\/hotels\/search\?destination=Goa/],
+    ['Orbitz', 'Hotels in Goa', 'hotels', H, /orbitz\.com\/Hotel-Search\?destination=Goa/],
+    ['Destinia', 'Hotels in Goa', 'hotels', H, /destinia\.com\/hotels/],
+    ['Tiket.com', 'Hotels in Goa', 'hotels', H, /tiket\.com\/en-us\/hotel/],
+    ['LastMinute.com', 'Hotels in Goa', 'hotels', H, /lastminute\.com\/hotels/],
+    ['IHG Hotels & Resorts', 'Hotels in Goa', 'hotels', H, /ihg\.com\/hotels\/us\/en\/reservation/],
+    ['Emirates', 'Delhi to Dubai', 'flights', F, /emirates\.com\/in\/english\/book/],
+    ['Qatar Airways', 'Delhi to Doha', 'flights', F, /qatarairways\.com\/en-in\/book\.html/],
+    ['Singapore Airlines', 'Delhi to Singapore', 'flights', F, /singaporeair\.com/],
+    ['IntrCity SmartBus', 'Indore to Bhopal', 'bus', { route: 'indore to bhopal', date: '2026-11-10' }, /intrcity\.com/],
+    ['BluSmart', 'Indore cab', 'cab', {}, /blusmart\.in/],
+    ['CASHe', 'personal loan', 'loans', {}, /cashe\.co\.in/],
+    ['mPokket', 'personal loan', 'loans', {}, /mpokket\.in/],
+  ];
+  for (const [merchant, title, vertical, ctx, pattern] of cases) {
+    const url = merchantDeepLink(merchant, title, vertical, ctx);
+    assert.ok(pattern.test(url), `${merchant} -> ${url}`);
+  }
+  // Toing's domain does not resolve, so no link is invented.
+  assert.equal(merchantDeepLink('Toing', 'biryani', 'food', {}), '');
+});

@@ -23811,10 +23811,18 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
     if (has("goindigo", "indigo")) {
       return from && to && isoD ? `https://www.goindigo.in/booking.html?from=${e(from)}&to=${e(to)}&date=${isoD}` : "https://www.goindigo.in/booking.html";
     }
+    if (has("emirates")) return "https://www.emirates.com/in/english/book/";
+    if (has("qatar")) return "https://www.qatarairways.com/en-in/book.html";
+    if (has("singapore")) return "https://www.singaporeair.com/en_UK/in/plan-travel/";
+    if (has("airindia", "air india")) return "https://www.airindia.com/";
   }
   if (vertical === "bus" || has("bus")) {
     if (has("redbus")) {
       return r ? `https://www.redbus.in/bus-tickets/${slug(r.from)}-to-${slug(r.to)}${d ? `?onward=${e(d.dMonY)}` : ""}` : "https://www.redbus.in/bus-tickets";
+    }
+    if (has("intrcity", "intr city")) return "https://www.intrcity.com/";
+    if (has("zingbus")) {
+      return r ? `https://www.zingbus.com/bus-tickets/${slug(r.from)}-to-${slug(r.to)}-bus-route` : "https://www.zingbus.com/";
     }
     if (has("abhibus")) {
       return r ? `https://www.abhibus.com/bus_search/${slug(r.from)}/${slug(r.to)}/${d ? d.iso : ""}/1` : "https://www.abhibus.com/";
@@ -23837,6 +23845,18 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
       dt.setUTCDate(dt.getUTCDate() + 1);
       return dt.toISOString().slice(0, 10);
     })();
+    if (has("hotels.com")) return `https://www.hotels.com/Hotel-Search?destination=${cq || "Goa"}`;
+    if (has("hotwire")) return `https://www.hotwire.com/hotels/search?destination=${cq}`;
+    if (has("orbitz")) return `https://www.orbitz.com/Hotel-Search?destination=${cq}`;
+    if (has("traveloka")) return "https://www.traveloka.com/en-in/hotel";
+    if (has("hostelworld")) return "https://www.hostelworld.com/";
+    if (has("destinia")) return "https://www.destinia.com/hotels";
+    if (has("tiket")) return "https://www.tiket.com/en-us/hotel";
+    if (has("lastminute")) return "https://www.lastminute.com/hotels";
+    if (has("marriott")) return `https://www.marriott.com/search/findHotels.mi${city ? `?destinationAddress.destination=${cq}` : ""}`;
+    if (has("hilton")) return `https://www.hilton.com/en/search/${city ? `?q=${cq}` : ""}`;
+    if (has("ihg")) return "https://www.ihg.com/hotels/us/en/reservation";
+    if (has("happyeasygo", "happy easy go")) return "https://www.happyeasygo.com/";
     if (has("makemytrip")) {
       return city ? `https://www.makemytrip.com/hotels/hotel-listing/?city=${e(city.toUpperCase())}${ci ? `&checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.makemytrip.com/hotels/";
     }
@@ -23871,6 +23891,11 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
     if (has("indrive", "in drive")) return "https://indrive.com/";
     if (has("meru")) return "https://www.meru.in/";
     if (has("fastdeal", "snap")) return "https://www.fastdeals.in/";
+    if (has("blusmart", "blu smart")) return "https://blusmart.in/";
+    if (has("rapido")) {
+      const lat = ctx.city ? "" : "";
+      return `https://m.rapido.bike/${lat}`.replace(/\/$/, "");
+    }
   }
   const loanish = /loan|credit\s*card|personal\s*loan|home\s*loan/i.test(`${t} ${vertical || ""}`);
   const insurish = /insurance|policy|cover/i.test(`${t} ${vertical || ""}`);
@@ -23888,6 +23913,8 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
     if (has("acko")) return insKind ? `https://www.acko.com/${insKind}-insurance/` : "https://www.acko.com/";
     if (has("godigit", "digit")) return insKind ? `https://www.godigit.com/${insKind}-insurance` : "https://www.godigit.com/";
     if (has("coverfox")) return insKind ? `https://www.coverfox.com/${insKind}-insurance/` : "https://www.coverfox.com/";
+    if (has("cashe")) return "https://www.cashe.co.in/";
+    if (has("mpokket", "m pokket")) return "https://www.mpokket.in/";
   }
   if (has("makemytrip")) return "https://www.makemytrip.com/";
   return "";
