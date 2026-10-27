@@ -2126,12 +2126,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start2 = -1, inStr = false, esc3 = false;
+  let depth = 0, start2 = -1, inStr = false, esc4 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc3) esc3 = false;
-      else if (ch === "\\") esc3 = true;
+      if (esc4) esc4 = false;
+      else if (ch === "\\") esc4 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -2246,12 +2246,12 @@ function parseMyntra(html, source, pageUrl) {
     const start2 = /window\.__myx\s*=\s*\{/.exec(html);
     if (start2) {
       const from = start2.index + start2[0].length - 1;
-      let depth = 0, inStr = false, esc3 = false, end = -1;
+      let depth = 0, inStr = false, esc4 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc3) esc3 = false;
-          else if (ch === "\\") esc3 = true;
+          if (esc4) esc4 = false;
+          else if (ch === "\\") esc4 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -3141,12 +3141,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc3 = false, end = -1;
+  let depth = 0, inStr = false, esc4 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc3) esc3 = false;
-      else if (ch === "\\") esc3 = true;
+      if (esc4) esc4 = false;
+      else if (ch === "\\") esc4 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -4879,12 +4879,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc3 = false, end = -1;
+  let depth = 0, inStr = false, esc4 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc3) esc3 = false;
-      else if (c === "\\") esc3 = true;
+      if (esc4) esc4 = false;
+      else if (c === "\\") esc4 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -5015,12 +5015,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc3 = false, end = -1;
+    let depth = 0, inStr = false, esc4 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc3) esc3 = false;
-        else if (c === "\\") esc3 = true;
+        if (esc4) esc4 = false;
+        else if (c === "\\") esc4 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -9700,15 +9700,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start2 = pageHtml.indexOf("{", i + 20);
   if (start2 < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc3 = false;
+  let depth = 0, end = -1, inStr = false, esc4 = false;
   for (let k = start2; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc3) {
-      esc3 = false;
+    if (esc4) {
+      esc4 = false;
       continue;
     }
     if (c === "\\") {
-      esc3 = true;
+      esc4 = true;
       continue;
     }
     if (c === '"') {
@@ -17822,8 +17822,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm3 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc3 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc3}\\b`);
+  const esc4 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc4}\\b`);
   return cities.find((c) => norm3(c.name) === t) || cities.find((c) => rx.test(norm3(c.name))) || cities.find((c) => norm3(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -18767,11 +18767,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc3 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc4 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc3(k)}\\b`).test(t) || new RegExp(`\\b${esc3(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc4(k)}\\b`).test(t) || new RegExp(`\\b${esc4(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -32566,7 +32566,7 @@ function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc3 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc4 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot = "";
   let customHtml = "";
@@ -32587,7 +32587,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc3(client)}" data-ad-slot="${esc3(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc4(client)}" data-ad-slot="${esc4(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -32647,7 +32647,17 @@ function renderInterstitialPage(opts) {
   .fine{font-size:11px;color:var(--muted);margin-top:14px}
   .ad-wrap{margin:18px auto 0;max-width:560px;min-height:0}
   @media(min-width:760px){h1{font-size:20px}main{padding-top:16px}}
-</style>
+:root{color-scheme:light}
+  .promo{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid #e5e7eb;border-radius:12px;padding:10px;margin:8px 0;background:#fff}
+  .promo img{width:44px;height:44px;border-radius:9px;object-fit:cover;flex:0 0 auto;border:1px solid #eee}
+  .promo .pi{flex:1;min-width:0}
+  .promo .pt{font-size:13px;font-weight:700;color:#111827;line-height:1.25}
+  .promo .pd{font-size:11px;color:#6b7280;margin-top:2px;line-height:1.3}
+  .promo .pc{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;color:#111827;background:#f3f4f6;border:1px dashed #d1d5db;border-radius:8px;padding:4px 8px;cursor:pointer}
+  .promo .pcb{flex:0 0 auto;font-size:11px;font-weight:700;color:#fff;background:#E11D48;border:0;border-radius:8px;padding:8px 10px;cursor:pointer}
+  .promo .kind{font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#059669}
+  .promo .cb{color:#059669}
+  </style>
 </head>
 <body>
 <header><span class="tab"><span class="dot"></span><span class="nm">${esc(shown)}</span></span><span class="brand">Try1Second redirecting to ${esc(shown)} site</span></header>
@@ -32655,6 +32665,10 @@ function renderInterstitialPage(opts) {
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
   <h2>Sit tight \u2014 ${esc(shown)} is opening with your best price.</h2>
+  <!-- Owner 27 Oct: manual coupons / offers / cashback for THIS merchant, copied right here
+       (the codes are added in Admin -> Offers & Coupons). Filled in by JS after load; the
+       countdown and the "Go now" link never wait for it. -->
+  <div id="promos" style="display:none;margin:14px 0 4px"></div>
   ${adBlock}
   <div class="store" style="margin-top:18px">
     <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
@@ -32678,6 +32692,56 @@ function renderInterstitialPage(opts) {
   }, 1000);
   var go = document.getElementById('go');
   if (go) go.addEventListener('click', function () { clearInterval(t); });
+
+  // Manual coupons / offers / cashback for this merchant (never blocks the redirect).
+  var partner = ${jsStr(String(opts.partner || "").slice(0, 160))};
+  var box = document.getElementById('promos');
+  function esc(t) { return String(t || '').replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  function copy(text, btn, id) {
+    var done = function () {
+      btn.textContent = 'Copied';
+      if (id) { try { fetch('/api/promo-offers/' + id + '/copy', { method: 'POST', keepalive: true }); } catch (e) {} }
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(); });
+    } else { fallback(); }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { btn.textContent = 'Tap to copy'; }
+      document.body.removeChild(ta);
+    }
+  }
+  if (partner && box) {
+    fetch('/api/promo-offers?merchant=' + encodeURIComponent(partner), { credentials: 'omit' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var list = (d && d.offers) || [];
+        if (!list.length) return;
+        var html = '<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Codes for ' + esc(partner) + '</div>';
+        list.forEach(function (o, i) {
+          var img = o.image_url ? '<img src="' + esc(o.image_url) + '" alt="" loading="lazy">' : '';
+          var disc = o.discount_label ? '<div class="pd cb"><b>' + esc(o.discount_label) + '</b></div>' : '';
+          var desc = o.description ? '<div class="pd">' + esc(o.description) + '</div>' : '';
+          var codeBlock = o.code
+            ? '<span class="pc" data-code="' + esc(o.code) + '" data-id="' + (o.id || '') + '" role="button" tabindex="0" title="Copy code">' + esc(o.code) + '</span>'
+            : '';
+          html += '<div class="promo">' + img + '<div class="pi"><div class="kind">' + esc(o.kind || 'offer') + '</div>' +
+                  '<div class="pt">' + esc(o.title) + '</div>' + disc + desc + codeBlock + '</div>' +
+                  (o.code ? '<button class="pcb" data-code="' + esc(o.code) + '" data-id="' + (o.id || '') + '">Copy</button>' : '') +
+                  '</div>';
+        });
+        box.innerHTML = html;
+        box.style.display = 'block';
+        Array.prototype.forEach.call(box.querySelectorAll('[data-code]'), function (el) {
+          el.addEventListener('click', function () { copy(el.getAttribute('data-code'), el.getAttribute('data-id') ? el : el, el.getAttribute('data-id')); });
+          el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
+        });
+      })
+      .catch(function () { /* promos are a bonus, never a blocker */ });
+  }
 })();
 </script>
 </body>
@@ -35657,6 +35721,204 @@ var init_appLinks = __esm({
   }
 });
 
+// server/marketing/promoOffers.ts
+var promoOffers_exports = {};
+__export(promoOffers_exports, {
+  PROMO_KINDS: () => PROMO_KINDS,
+  bumpPromoCounter: () => bumpPromoCounter,
+  cleanDomain: () => cleanDomain,
+  cleanSlug: () => cleanSlug,
+  deletePromoOffer: () => deletePromoOffer,
+  ensurePromoTable: () => ensurePromoTable,
+  isPromoLive: () => isPromoLive,
+  listPromoOffers: () => listPromoOffers,
+  promosForMerchant: () => promosForMerchant,
+  savePromoOffer: () => savePromoOffer,
+  validatePromoOffer: () => validatePromoOffer
+});
+async function ensurePromoTable() {
+  if (ensured5) return;
+  await getStore().execute(`CREATE TABLE IF NOT EXISTS promo_offers (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    merchant_slug VARCHAR(80) NOT NULL,
+    merchant_domain VARCHAR(160) NOT NULL,
+    kind VARCHAR(20) NOT NULL DEFAULT 'coupon',
+    title VARCHAR(200) NOT NULL,
+    code VARCHAR(60) NULL,
+    discount_label VARCHAR(80) NULL,
+    description VARCHAR(500) NULL,
+    image_url VARCHAR(500) NULL,
+    url VARCHAR(700) NULL,
+    affiliate_url VARCHAR(900) NULL,
+    starts_at DATE NULL,
+    ends_at DATE NULL,
+    priority INT NOT NULL DEFAULT 100,
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    clicks INT NOT NULL DEFAULT 0,
+    copies INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_promo_merchant (merchant_slug, active),
+    KEY idx_promo_domain (merchant_domain, active)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(() => {
+  });
+  ensured5 = true;
+}
+function cleanDomain(raw) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return "";
+  try {
+    const u = new URL(s.includes("://") ? s : `https://${s}`);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return s.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  }
+}
+function cleanSlug(raw) {
+  return String(raw || "").trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+}
+function isoDate2(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = /* @__PURE__ */ new Date(`${s}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : s;
+}
+function validatePromoOffer(input) {
+  const merchant_slug = cleanSlug(input?.merchant_slug);
+  const merchant_domain = cleanDomain(input?.merchant_domain);
+  if (!merchant_slug) return { ok: false, error: "Merchant slug is required" };
+  if (!merchant_domain) return { ok: false, error: "Merchant domain is required (e.g. agoda.com)" };
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(merchant_domain)) return { ok: false, error: "Merchant domain looks wrong" };
+  const kind = String(input?.kind || "coupon").toLowerCase();
+  if (!PROMO_KINDS.includes(kind)) return { ok: false, error: `Kind must be one of ${PROMO_KINDS.join(", ")}` };
+  const title = String(input?.title || "").trim();
+  if (title.length < 3) return { ok: false, error: "Title is required (e.g. Flat \u20B9500 off on hotels)" };
+  if (title.length > 200) return { ok: false, error: "Title is too long (max 200)" };
+  const code = String(input?.code || "").trim().toUpperCase().slice(0, 60) || null;
+  if (kind === "coupon" && !code) return { ok: false, error: "A coupon needs a code so the user can copy it" };
+  const image_raw = String(input?.image_url || "").trim();
+  if (image_raw && !/^https:\/\//i.test(image_raw) && !/^\/api\/logos\/[A-Za-z0-9._-]+$/.test(image_raw)) {
+    return { ok: false, error: "Image must be an uploaded photo (/api/logos/\u2026) or an https image link" };
+  }
+  const url = String(input?.url || "").trim() || null;
+  if (url && !/^https:\/\//i.test(url)) return { ok: false, error: "Destination must be an https link" };
+  const aff = String(input?.affiliate_url || "").trim() || null;
+  if (aff) {
+    if (!/^https:\/\//i.test(aff)) return { ok: false, error: "Affiliate link must be https" };
+    if (!aff.includes("{url}")) return { ok: false, error: "Affiliate link must contain {url} so the exact offer page opens" };
+  }
+  const starts_at = isoDate2(input?.starts_at);
+  const ends_at = isoDate2(input?.ends_at);
+  if (starts_at && ends_at && ends_at < starts_at) return { ok: false, error: "End date is before the start date" };
+  const priority = Number.isFinite(Number(input?.priority)) ? Math.max(1, Math.min(9999, Math.round(Number(input.priority)))) : 100;
+  return {
+    ok: true,
+    clean: {
+      merchant_slug,
+      merchant_domain,
+      kind,
+      title,
+      code,
+      discount_label: String(input?.discount_label || "").trim().slice(0, 80) || null,
+      description: String(input?.description || "").trim().slice(0, 500) || null,
+      image_url: image_raw || null,
+      url,
+      affiliate_url: aff,
+      starts_at,
+      ends_at,
+      priority,
+      active: input?.active === void 0 ? true : Boolean(input.active)
+    }
+  };
+}
+function isPromoLive(row, today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)) {
+  if (!row) return false;
+  if (String(row.active ?? 1) === "0" || row.active === false) return false;
+  const s = row.starts_at ? String(row.starts_at).slice(0, 10) : "";
+  const e2 = row.ends_at ? String(row.ends_at).slice(0, 10) : "";
+  if (s && today2 < s) return false;
+  if (e2 && today2 > e2) return false;
+  return true;
+}
+function rowToPromo(r) {
+  const d = (v) => v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null;
+  return {
+    id: Number(r.id),
+    merchant_slug: r.merchant_slug,
+    merchant_domain: r.merchant_domain,
+    kind: r.kind,
+    title: r.title,
+    code: r.code || null,
+    discount_label: r.discount_label || null,
+    description: r.description || null,
+    image_url: r.image_url || null,
+    url: r.url || null,
+    affiliate_url: r.affiliate_url || null,
+    starts_at: d(r.starts_at),
+    ends_at: d(r.ends_at),
+    priority: r.priority == null ? 100 : Number(r.priority),
+    active: !(String(r.active ?? 1) === "0" || r.active === false),
+    clicks: r.clicks == null ? 0 : Number(r.clicks),
+    copies: r.copies == null ? 0 : Number(r.copies)
+  };
+}
+async function listPromoOffers() {
+  await ensurePromoTable();
+  const rows = await getStore().query("SELECT * FROM promo_offers ORDER BY priority ASC, id DESC LIMIT 500").catch(() => []);
+  return rows.map(rowToPromo);
+}
+async function savePromoOffer(input) {
+  await ensurePromoTable();
+  const v = validatePromoOffer(input);
+  if (!v.ok) return { ok: false, error: v.error };
+  const c = v.clean;
+  const cols = [c.merchant_slug, c.merchant_domain, c.kind, c.title, c.code, c.discount_label, c.description, c.image_url, c.url, c.affiliate_url, c.starts_at, c.ends_at, c.priority, c.active ? 1 : 0];
+  const id = Number(input?.id) || 0;
+  if (id) {
+    await getStore().execute(
+      `UPDATE promo_offers SET merchant_slug=?, merchant_domain=?, kind=?, title=?, code=?, discount_label=?, description=?, image_url=?, url=?, affiliate_url=?, starts_at=?, ends_at=?, priority=?, active=? WHERE id=?`,
+      [...cols, id]
+    );
+    return { ok: true, id };
+  }
+  await getStore().execute(
+    `INSERT INTO promo_offers (merchant_slug, merchant_domain, kind, title, code, discount_label, description, image_url, url, affiliate_url, starts_at, ends_at, priority, active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    cols
+  );
+  const back = await getStore().query("SELECT id FROM promo_offers WHERE merchant_slug = ? ORDER BY id DESC LIMIT 1", [c.merchant_slug]).catch(() => []);
+  return { ok: true, id: back?.[0]?.id ? Number(back[0].id) : void 0 };
+}
+async function deletePromoOffer(id) {
+  await ensurePromoTable();
+  await getStore().execute("DELETE FROM promo_offers WHERE id = ?", [Number(id) || 0]);
+}
+async function promosForMerchant(merchant, limit = 3) {
+  await ensurePromoTable();
+  const slug3 = cleanSlug(merchant);
+  const domain = cleanDomain(merchant);
+  if (!slug3 && !domain) return [];
+  const rows = await getStore().query(
+    "SELECT * FROM promo_offers WHERE (merchant_slug = ? OR merchant_domain = ?) ORDER BY priority ASC, id DESC LIMIT 40",
+    [slug3, domain]
+  ).catch(() => []);
+  return rows.map(rowToPromo).filter((r) => isPromoLive(r)).slice(0, Math.max(1, Math.min(5, limit)));
+}
+async function bumpPromoCounter(id, field) {
+  await ensurePromoTable();
+  const col = field === "copies" ? "copies" : "clicks";
+  await getStore().execute(`UPDATE promo_offers SET ${col} = ${col} + 1 WHERE id = ?`, [Number(id) || 0]).catch(() => {
+  });
+}
+var PROMO_KINDS, ensured5;
+var init_promoOffers = __esm({
+  "server/marketing/promoOffers.ts"() {
+    init_db();
+    PROMO_KINDS = ["coupon", "offer", "cashback"];
+    ensured5 = false;
+  }
+});
+
 // server/common/fileImport.ts
 var fileImport_exports = {};
 __export(fileImport_exports, {
@@ -37537,18 +37799,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc3 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc4 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc3(appName)}\u2026</title>
+<title>Opening ${esc4(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc3(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc3(appName)} app\u2026</p>
-<a class="btn" href="${esc3(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc4(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc4(appName)} app\u2026</p>
+<a class="btn" href="${esc4(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc3(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc4(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -37586,6 +37848,27 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       } catch {
       }
       res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
+    });
+    apiRouter.get("/promo-offers", async (req, res) => {
+      try {
+        const { promosForMerchant: promosForMerchant2 } = await Promise.resolve().then(() => (init_promoOffers(), promoOffers_exports));
+        const merchant = String(req.query.merchant || "").slice(0, 160);
+        const limit = Math.min(5, Math.max(1, Number(req.query.limit) || 3));
+        const offers = merchant ? await promosForMerchant2(merchant, limit) : [];
+        res.setHeader("Cache-Control", "public, max-age=120");
+        res.json({ success: true, offers });
+      } catch {
+        res.json({ success: true, offers: [] });
+      }
+    });
+    apiRouter.post("/promo-offers/:id/copy", async (req, res) => {
+      try {
+        const { bumpPromoCounter: bumpPromoCounter2 } = await Promise.resolve().then(() => (init_promoOffers(), promoOffers_exports));
+        await bumpPromoCounter2(Number(req.params.id), "copies");
+        res.json({ success: true });
+      } catch {
+        res.json({ success: false });
+      }
     });
     apiRouter.post("/auth/register", async (req, res) => {
       const r = await registerUser(String(req.body.email || ""), String(req.body.password || ""), req.body.displayName);
@@ -37829,6 +38112,14 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
 });
 
 // server/affiliate/profiles.ts
+var profiles_exports = {};
+__export(profiles_exports, {
+  AFFILIATE_NETWORKS: () => AFFILIATE_NETWORKS,
+  deleteProfile: () => deleteProfile,
+  listProfiles: () => listProfiles,
+  saveProfile: () => saveProfile,
+  validateProfile: () => validateProfile
+});
 function validateProfile(i) {
   const slug3 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
@@ -37924,12 +38215,12 @@ function parseMyx(html) {
   const start2 = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start2) return null;
   const from = start2.index + start2[0].length - 1;
-  let depth = 0, inStr = false, esc3 = false, end = -1;
+  let depth = 0, inStr = false, esc4 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc3) esc3 = false;
-      else if (ch === "\\") esc3 = true;
+      if (esc4) esc4 = false;
+      else if (ch === "\\") esc4 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -38339,7 +38630,7 @@ function parsePsiResponse(json, strategy) {
   }
 }
 async function ensureTable2() {
-  if (ensured5) return;
+  if (ensured6) return;
   const store2 = await getStore();
   await store2.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -38353,7 +38644,7 @@ async function ensureTable2() {
     scanned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_strategy_time (strategy, scanned_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  ensured5 = true;
+  ensured6 = true;
 }
 async function ensureQuotaTable() {
   if (quotaEnsured) return;
@@ -38527,7 +38818,7 @@ async function runSpeedTest(siteUrl, opts = {}) {
   }));
   return runs;
 }
-var STRATEGIES, PSI_ENDPOINT, PSI_TIMEOUT_MS, MIN_RUN_GAP_MS, MAX_ROWS_PER_STRATEGY, ensured5, quotaEnsured;
+var STRATEGIES, PSI_ENDPOINT, PSI_TIMEOUT_MS, MIN_RUN_GAP_MS, MAX_ROWS_PER_STRATEGY, ensured6, quotaEnsured;
 var init_speedtest = __esm({
   "server/admin/speedtest.ts"() {
     init_db();
@@ -38536,7 +38827,7 @@ var init_speedtest = __esm({
     PSI_TIMEOUT_MS = 45e3;
     MIN_RUN_GAP_MS = 6e4;
     MAX_ROWS_PER_STRATEGY = 50;
-    ensured5 = false;
+    ensured6 = false;
     quotaEnsured = false;
   }
 });
@@ -39459,6 +39750,131 @@ var init_coverage = __esm({
   }
 });
 
+// server/admin/xlsx.ts
+var xlsx_exports = {};
+__export(xlsx_exports, {
+  buildXlsx: () => buildXlsx,
+  crc32: () => crc32,
+  zipStore: () => zipStore
+});
+function crc32(buf) {
+  let c = 4294967295;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 255] ^ c >>> 8;
+  return (c ^ 4294967295) >>> 0;
+}
+function zipStore(files) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = Buffer.from(f.name, "utf8");
+    const crc = crc32(f.data);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(67324752, 0);
+    lh.writeUInt16LE(20, 4);
+    lh.writeUInt16LE(0, 6);
+    lh.writeUInt16LE(0, 8);
+    lh.writeUInt16LE(0, 10);
+    lh.writeUInt16LE(0, 12);
+    lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(f.data.length, 18);
+    lh.writeUInt32LE(f.data.length, 22);
+    lh.writeUInt16LE(name.length, 26);
+    lh.writeUInt16LE(0, 28);
+    locals.push(lh, name, f.data);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(33639248, 0);
+    ch.writeUInt16LE(20, 4);
+    ch.writeUInt16LE(20, 6);
+    ch.writeUInt16LE(0, 8);
+    ch.writeUInt16LE(0, 10);
+    ch.writeUInt16LE(0, 12);
+    ch.writeUInt32LE(crc, 16);
+    ch.writeUInt32LE(f.data.length, 20);
+    ch.writeUInt32LE(f.data.length, 24);
+    ch.writeUInt16LE(name.length, 28);
+    ch.writeUInt16LE(0, 30);
+    ch.writeUInt16LE(0, 32);
+    ch.writeUInt16LE(0, 34);
+    ch.writeUInt16LE(0, 36);
+    ch.writeUInt32LE(0, 38);
+    ch.writeUInt32LE(offset, 42);
+    centrals.push(ch, name);
+    offset += lh.length + name.length + f.data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(101010256, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+  return Buffer.concat([...locals, cd, eocd]);
+}
+function esc2(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function colName(i) {
+  let n = i + 1;
+  let out = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    out = String.fromCharCode(65 + r) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+function sheetXml(s) {
+  const rows = s.rows.map((cells, r) => {
+    const cs = cells.map((v, c) => {
+      const ref = `${colName(c)}${r + 1}`;
+      if (v === null || v === void 0 || v === "") return `<c r="${ref}" s="${r === 0 ? 1 : 0}"/>`;
+      if (typeof v === "number" && Number.isFinite(v)) return `<c r="${ref}" s="${r === 0 ? 1 : 0}"><v>${v}</v></c>`;
+      return `<c r="${ref}" s="${r === 0 ? 1 : 0}" t="inlineStr"><is><t xml:space="preserve">${esc2(String(v))}</t></is></c>`;
+    }).join("");
+    return `<row r="${r + 1}"${r === 0 ? ' ht="20" customHeight="1"' : ""}>${cs}</row>`;
+  }).join("");
+  const cols = s.widths && s.widths.length ? `<cols>${s.widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("")}</cols>` : "";
+  const lastCol = colName(Math.max(0, (s.rows[0]?.length || 1) - 1));
+  const dim = `A1:${lastCol}${Math.max(1, s.rows.length)}`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${dim}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>${cols}<sheetData>${rows}</sheetData><autoFilter ref="${dim}"/></worksheet>`;
+}
+function buildXlsx(sheets) {
+  const safe = sheets.length ? sheets : [{ name: "Sheet1", rows: [["No data"]] }];
+  const files = [];
+  const push = (name, xml) => files.push({ name, data: Buffer.from(xml, "utf8") });
+  push("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${safe.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`);
+  push("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
+  push("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${safe.map((s, i) => `<sheet name="${esc2((s.name || `Sheet${i + 1}`).slice(0, 31))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("")}</sheets></workbook>`);
+  push("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${safe.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  push("xl/styles.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF111827"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>`);
+  safe.forEach((s, i) => push(`xl/worksheets/sheet${i + 1}.xml`, sheetXml(s)));
+  return zipStore(files);
+}
+var CRC_TABLE;
+var init_xlsx = __esm({
+  "server/admin/xlsx.ts"() {
+    CRC_TABLE = (() => {
+      const t = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+        t[i] = c >>> 0;
+      }
+      return t;
+    })();
+  }
+});
+
 // server/admin/adminRoutes.ts
 var adminRoutes_exports = {};
 __export(adminRoutes_exports, {
@@ -40152,6 +40568,121 @@ var init_adminRoutes = __esm({
         res.json({ success: true, scores });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Speed test failed" });
+      }
+    });
+    adminRouter.get("/affiliate-partners.xlsx", async (_req, res) => {
+      try {
+        const { listProfiles: listProfiles2 } = await Promise.resolve().then(() => (init_profiles(), profiles_exports));
+        const { resolveEffective: resolveEffective2 } = await Promise.resolve().then(() => (init_coverageMap(), coverageMap_exports));
+        const { buildXlsx: buildXlsx2 } = await Promise.resolve().then(() => (init_xlsx(), xlsx_exports));
+        const { listPromoOffers: listPromoOffers2 } = await Promise.resolve().then(() => (init_promoOffers(), promoOffers_exports));
+        const profiles = await listProfiles2();
+        const eff = await resolveEffective2(profiles);
+        const bySlug = new Map(eff.map((e2) => [String(e2.slug), e2]));
+        const partners = [[
+          "Merchant",
+          "Slug",
+          "Domain",
+          "Vertical",
+          "Network (registry)",
+          "Effective partner",
+          "Our affiliate id (masked)",
+          "Monetization",
+          "Active"
+        ]];
+        for (const p of profiles) {
+          const e2 = bySlug.get(String(p.slug));
+          partners.push([
+            String(p.display_name || p.slug),
+            String(p.slug),
+            String(p.company_domain || ""),
+            String(p.vertical || ""),
+            String(p.network || ""),
+            String(e2?.effective_source || p.network || ""),
+            String(e2?.effective_id_masked || (p.affiliate_id ? `\u2026${String(p.affiliate_id).slice(-4)}` : "")),
+            String(p.monetization || ""),
+            p.active ? "yes" : "no"
+          ]);
+        }
+        const coupons = [[
+          "Merchant",
+          "Domain",
+          "Kind",
+          "Title",
+          "Code",
+          "Discount",
+          "Description",
+          "Image",
+          "Destination",
+          "Affiliate link",
+          "Starts",
+          "Ends",
+          "Priority",
+          "Active",
+          "Clicks",
+          "Copies"
+        ]];
+        for (const c of await listPromoOffers2()) {
+          coupons.push([
+            String(c.merchant_slug),
+            String(c.merchant_domain),
+            String(c.kind),
+            String(c.title),
+            c.code || "",
+            c.discount_label || "",
+            c.description || "",
+            c.image_url || "",
+            c.url || "",
+            c.affiliate_url || "",
+            c.starts_at || "",
+            c.ends_at || "",
+            Number(c.priority || 100),
+            c.active ? "yes" : "no",
+            Number(c.clicks || 0),
+            Number(c.copies || 0)
+          ]);
+        }
+        const buf = buildXlsx2([
+          { name: "Partners", rows: partners, widths: [24, 20, 26, 14, 18, 20, 24, 14, 8] },
+          { name: "Coupons", rows: coupons, widths: [22, 24, 10, 40, 16, 16, 40, 34, 40, 40, 12, 12, 9, 8, 8, 8] }
+        ]);
+        const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        audit(_req, "affiliate_partners.export", "xlsx", `${profiles.length} partners, ${coupons.length - 1} coupons`);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="try1second-partners-${stamp}.xlsx"`);
+        res.setHeader("Cache-Control", "no-store");
+        res.status(200).end(buf);
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not build the Excel sheet" });
+      }
+    });
+    adminRouter.get("/promo-offers", async (_req, res) => {
+      try {
+        const { listPromoOffers: listPromoOffers2 } = await Promise.resolve().then(() => (init_promoOffers(), promoOffers_exports));
+        res.json({ success: true, offers: await listPromoOffers2() });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load offers" });
+      }
+    });
+    adminRouter.post("/promo-offers", async (req, res) => {
+      try {
+        const { savePromoOffer: savePromoOffer2 } = await Promise.resolve().then(() => (init_promoOffers(), promoOffers_exports));
+        const out = await savePromoOffer2(req.body || {});
+        if (!out.ok) return res.status(400).json({ success: false, error: out.error });
+        audit(req, req.body?.id ? "promo_offer.update" : "promo_offer.create", String(req.body?.merchant_slug || ""), String(req.body?.title || ""));
+        res.json({ success: true, id: out.id });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save the offer" });
+      }
+    });
+    adminRouter.delete("/promo-offers/:id", async (req, res) => {
+      try {
+        const { deletePromoOffer: deletePromoOffer2 } = await Promise.resolve().then(() => (init_promoOffers(), promoOffers_exports));
+        await deletePromoOffer2(Number(req.params.id));
+        audit(req, "promo_offer.delete", String(req.params.id));
+        res.json({ success: true });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete the offer" });
       }
     });
     BANNER_SECTIONS = ["home", "rewards", "quickapps"];
@@ -42536,15 +43067,15 @@ function prerenderBody(path14) {
   const page = resolveSeoPage(path14);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
-    <dt>${esc2(f.q)}</dt><dd>${esc2(f.a)}</dd>`).join("");
-  const links = page.links.slice(0, 10).map((l) => `<a href="${esc2(l.href)}">${esc2(l.label)}</a>`).join("");
+    <dt>${esc3(f.q)}</dt><dd>${esc3(f.a)}</dd>`).join("");
+  const links = page.links.slice(0, 10).map((l) => `<a href="${esc3(l.href)}">${esc3(l.label)}</a>`).join("");
   return [
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
-    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc2(b.name) : `<a href="${esc2(b.path)}" style="color:#6b7280">${esc2(b.name)}</a>`)).join(""),
+    page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc3(b.name) : `<a href="${esc3(b.path)}" style="color:#6b7280">${esc3(b.name)}</a>`)).join(""),
     `</nav>`,
-    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc2(page.h1)}</h1>`,
-    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc2(p)}</p>`),
+    `<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${esc3(page.h1)}</h1>`,
+    ...page.intro.map((p) => `<p style="font-size:14.5px;line-height:1.65;color:#374151;margin:0 0 12px">${esc3(p)}</p>`),
     `<h2 style="font-size:15px;margin:20px 0 8px">Frequently asked questions</h2>`,
     `<dl style="font-size:13.5px;line-height:1.6;color:#374151">${faqHtml}</dl>`,
     links ? `<h2 style="font-size:15px;margin:20px 0 8px">Popular comparisons</h2><p style="font-size:13px;line-height:2">${links}</p>` : "",
@@ -42559,24 +43090,24 @@ function enhanceHtml(html, path14) {
   const desc = page ? page.description : DEFAULT_DESC;
   const canonical = `${SEO_HOST}${(path14 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
-  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc2(title)}</title>`);
+  out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc3(title)}</title>`);
   out = out.replace(
     /<meta name="description" content="[^"]*" \/>/,
-    `<meta name="description" content="${esc2(desc)}" />`
+    `<meta name="description" content="${esc3(desc)}" />`
   );
   out = out.replace(
     /<meta property="og:title" content="[^"]*" \/>/,
-    `<meta property="og:title" content="${esc2(title)}" />`
+    `<meta property="og:title" content="${esc3(title)}" />`
   );
   out = out.replace(
     /<meta property="og:description" content="[^"]*" \/>/,
-    `<meta property="og:description" content="${esc2(desc)}" />`
+    `<meta property="og:description" content="${esc3(desc)}" />`
   );
   const head = [
-    `<link rel="canonical" href="${esc2(canonical)}" />`,
-    `<meta property="og:url" content="${esc2(canonical)}" />`,
-    `<meta name="twitter:title" content="${esc2(title)}" />`,
-    `<meta name="twitter:description" content="${esc2(desc)}" />`,
+    `<link rel="canonical" href="${esc3(canonical)}" />`,
+    `<meta property="og:url" content="${esc3(canonical)}" />`,
+    `<meta name="twitter:title" content="${esc3(title)}" />`,
+    `<meta name="twitter:description" content="${esc3(desc)}" />`,
     `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1"}" />`,
     `<meta name="geo.region" content="IN" />`,
     `<meta name="geo.placename" content="India" />`,
@@ -42588,8 +43119,8 @@ function enhanceHtml(html, path14) {
     `<meta property="og:image:alt" content="Try1Second \u2014 live price comparison across flights, hotels, cabs, groceries and finance in India" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:image" content="${SEO_HOST}/og-image.jpg" />`,
-    `<link rel="alternate" hreflang="en-in" href="${esc2(canonical)}" />`,
-    `<link rel="alternate" hreflang="x-default" href="${esc2(canonical)}" />`
+    `<link rel="alternate" hreflang="en-in" href="${esc3(canonical)}" />`,
+    `<link rel="alternate" hreflang="x-default" href="${esc3(canonical)}" />`
   ];
   if (!isNoindex) for (const b of jsonLd(path14)) head.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head.join("\n")}
@@ -42602,11 +43133,11 @@ function enhanceHtml(html, path14) {
   }
   return out;
 }
-var esc2, DEFAULT_TITLE, DEFAULT_DESC;
+var esc3, DEFAULT_TITLE, DEFAULT_DESC;
 var init_render = __esm({
   "server/seo/render.ts"() {
     init_data();
-    esc2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    esc3 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     DEFAULT_TITLE = "Try1Second \u2014 One Second Is All It Takes to Find the Lowest Price";
     DEFAULT_DESC = "Compare live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in one second.";
   }

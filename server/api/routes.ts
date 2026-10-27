@@ -2070,6 +2070,30 @@ apiRouter.get('/out', async (req, res) => {
   res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
 });
 
+// ---- Manual coupons / offers / cashback for the exit page (owner 27 Oct) ----
+// Public read: the /redirect interstitial asks for the promos of the merchant the user is
+// leaving for, so the coupon sits right next to the AdSense unit. Codes are public
+// marketing material, no user data involved.
+apiRouter.get('/promo-offers', async (req, res) => {
+  try {
+    const { promosForMerchant } = await import('../marketing/promoOffers');
+    const merchant = String((req.query as any).merchant || '').slice(0, 160);
+    const limit = Math.min(5, Math.max(1, Number((req.query as any).limit) || 3));
+    const offers = merchant ? await promosForMerchant(merchant, limit) : [];
+    res.setHeader('Cache-Control', 'public, max-age=120');
+    res.json({ success: true, offers });
+  } catch { res.json({ success: true, offers: [] }); }
+});
+
+/** Copy tracking: how many users copied a code (owner wants honest numbers). */
+apiRouter.post('/promo-offers/:id/copy', async (req, res) => {
+  try {
+    const { bumpPromoCounter } = await import('../marketing/promoOffers');
+    await bumpPromoCounter(Number(req.params.id), 'copies');
+    res.json({ success: true });
+  } catch { res.json({ success: false }); }
+});
+
 // ============ Auth ============
 apiRouter.post('/auth/register', async (req, res) => {
   const r = await registerUser(String(req.body.email || ''), String(req.body.password || ''), req.body.displayName);

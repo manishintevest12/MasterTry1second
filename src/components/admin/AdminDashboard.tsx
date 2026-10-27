@@ -25,6 +25,7 @@ import {
   Link2,
   Gauge,
   MousePointerClick,
+  Ticket,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Try1SecondLogo } from '../Try1SecondLogo';
@@ -43,6 +44,7 @@ import { QuickAppsAdminTab } from './QuickAppsAdminTab';
 import { HomeBannersTab } from './HomeBannersTab';
 import { PlacementsTab } from './PlacementsTab';
 import { FinanceVerticalsTab } from './FinanceVerticalsTab';
+import { PromoOffersTab } from './PromoOffersTab';
 import { AppLinksTab } from './AppLinksTab';
 import { NotificationsTab } from './NotificationsTab';
 import { DealsTab } from './DealsTab';
@@ -64,6 +66,7 @@ export type AdminTab =
   | 'purchases'
   | 'payouts'
   | 'affiliate_ids'
+  | 'promo_offers'
   | 'affiliate_networks'
   | 'cab_book_links'
   | 'scrapers'
@@ -284,6 +287,17 @@ export const AdminDashboard: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => setActiveTab('promo_offers')}
+            className={`py-3 px-3.5 border-b-2 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${
+              activeTab === 'promo_offers'
+                ? 'border-rose-600 text-rose-600 font-bold bg-rose-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Ticket className="w-4 h-4" />
+            Offers &amp; Coupons
+          </button>
+          <button
             onClick={() => setActiveTab('affiliate_ids')}
             className={`py-3 px-3.5 border-b-2 whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${
               activeTab === 'affiliate_ids'
@@ -523,6 +537,7 @@ export const AdminDashboard: React.FC = () => {
 
         {/* ================= TAB 3: AFFILIATE IDS & LINK BUILDER ================= */}
         {activeTab === 'affiliate_ids' && <AffiliateProfilesPanel />}
+        {activeTab === 'promo_offers' && <PromoOffersTab />}
 
         {/* ================= TAB 4: DYNAMIC WEB SCRAPERS (White Theme) ================= */}
         {activeTab === 'scrapers' && <SourcesTab />}

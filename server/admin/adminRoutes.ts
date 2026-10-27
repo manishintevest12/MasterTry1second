@@ -677,6 +677,91 @@ adminRouter.post('/speedtest/run', async (req, res) => {
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Speed test failed' }); }
 });
 
+// ---- Affiliate partner map: Excel download (owner 27 Oct "ab muje ek excel sheet
+// download ka option v do admin kaun si company kiski partner hai"). Two sheets:
+// Partners (merchant -> network + OUR id) and Coupons (every manual promo).
+adminRouter.get('/affiliate-partners.xlsx', async (_req, res) => {
+  try {
+    const { listProfiles } = await import('../affiliate/profiles');
+    const { resolveEffective } = await import('../affiliate/coverageMap');
+    const { buildXlsx } = await import('./xlsx');
+    const { listPromoOffers } = await import('../marketing/promoOffers');
+
+    const profiles = await listProfiles();
+    const eff = await resolveEffective(profiles);
+    const bySlug = new Map(eff.map((e: any) => [String(e.slug), e]));
+
+    const partners: any[][] = [[
+      'Merchant', 'Slug', 'Domain', 'Vertical', 'Network (registry)',
+      'Effective partner', 'Our affiliate id (masked)', 'Monetization', 'Active',
+    ]];
+    for (const p of profiles) {
+      const e = bySlug.get(String(p.slug)) as any;
+      partners.push([
+        String(p.display_name || p.slug), String(p.slug), String(p.company_domain || ''),
+        String(p.vertical || ''), String(p.network || ''),
+        String(e?.effective_source || p.network || ''),
+        String(e?.effective_id_masked || (p.affiliate_id ? `…${String(p.affiliate_id).slice(-4)}` : '')),
+        String(p.monetization || ''), p.active ? 'yes' : 'no',
+      ]);
+    }
+
+    const coupons: any[][] = [[
+      'Merchant', 'Domain', 'Kind', 'Title', 'Code', 'Discount', 'Description',
+      'Image', 'Destination', 'Affiliate link', 'Starts', 'Ends', 'Priority', 'Active', 'Clicks', 'Copies',
+    ]];
+    for (const c of await listPromoOffers()) {
+      coupons.push([
+        String(c.merchant_slug), String(c.merchant_domain), String(c.kind), String(c.title),
+        c.code || '', c.discount_label || '', c.description || '', c.image_url || '',
+        c.url || '', c.affiliate_url || '', c.starts_at || '', c.ends_at || '',
+        Number(c.priority || 100), c.active ? 'yes' : 'no', Number(c.clicks || 0), Number(c.copies || 0),
+      ]);
+    }
+
+    const buf = buildXlsx([
+      { name: 'Partners', rows: partners, widths: [24, 20, 26, 14, 18, 20, 24, 14, 8] },
+      { name: 'Coupons', rows: coupons, widths: [22, 24, 10, 40, 16, 16, 40, 34, 40, 40, 12, 12, 9, 8, 8, 8] },
+    ]);
+    const stamp = new Date().toISOString().slice(0, 10);
+    audit(_req, 'affiliate_partners.export', 'xlsx', `${profiles.length} partners, ${coupons.length - 1} coupons`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="try1second-partners-${stamp}.xlsx"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).end(buf);
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not build the Excel sheet' });
+  }
+});
+
+// ---- Manual coupons / offers / cashback (owner 27 Oct): image + affiliate link per row,
+// and the /redirect exit page shows them with a one-tap Copy code.
+adminRouter.get('/promo-offers', async (_req, res) => {
+  try {
+    const { listPromoOffers } = await import('../marketing/promoOffers');
+    res.json({ success: true, offers: await listPromoOffers() });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load offers' }); }
+});
+
+adminRouter.post('/promo-offers', async (req, res) => {
+  try {
+    const { savePromoOffer } = await import('../marketing/promoOffers');
+    const out = await savePromoOffer(req.body || {});
+    if (!out.ok) return res.status(400).json({ success: false, error: out.error });
+    audit(req, req.body?.id ? 'promo_offer.update' : 'promo_offer.create', String(req.body?.merchant_slug || ''), String(req.body?.title || ''));
+    res.json({ success: true, id: out.id });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save the offer' }); }
+});
+
+adminRouter.delete('/promo-offers/:id', async (req, res) => {
+  try {
+    const { deletePromoOffer } = await import('../marketing/promoOffers');
+    await deletePromoOffer(Number(req.params.id));
+    audit(req, 'promo_offer.delete', String(req.params.id));
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete the offer' }); }
+});
+
 // ---- Home banners (owner 23 Oct): wide landscape strips rendered between
 // every home section on web + app. Admin controls image, link (vertical id or
 // https URL), title/subtitle, order and active state. ----

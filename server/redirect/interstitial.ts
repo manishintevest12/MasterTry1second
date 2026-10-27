@@ -225,7 +225,17 @@ export function renderInterstitialPage(opts: {
   .fine{font-size:11px;color:var(--muted);margin-top:14px}
   .ad-wrap{margin:18px auto 0;max-width:560px;min-height:0}
   @media(min-width:760px){h1{font-size:20px}main{padding-top:16px}}
-</style>
+:root{color-scheme:light}
+  .promo{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid #e5e7eb;border-radius:12px;padding:10px;margin:8px 0;background:#fff}
+  .promo img{width:44px;height:44px;border-radius:9px;object-fit:cover;flex:0 0 auto;border:1px solid #eee}
+  .promo .pi{flex:1;min-width:0}
+  .promo .pt{font-size:13px;font-weight:700;color:#111827;line-height:1.25}
+  .promo .pd{font-size:11px;color:#6b7280;margin-top:2px;line-height:1.3}
+  .promo .pc{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;color:#111827;background:#f3f4f6;border:1px dashed #d1d5db;border-radius:8px;padding:4px 8px;cursor:pointer}
+  .promo .pcb{flex:0 0 auto;font-size:11px;font-weight:700;color:#fff;background:#E11D48;border:0;border-radius:8px;padding:8px 10px;cursor:pointer}
+  .promo .kind{font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#059669}
+  .promo .cb{color:#059669}
+  </style>
 </head>
 <body>
 <header><span class="tab"><span class="dot"></span><span class="nm">${esc(shown)}</span></span><span class="brand">Try1Second redirecting to ${esc(shown)} site</span></header>
@@ -233,6 +243,10 @@ export function renderInterstitialPage(opts: {
   <div class="ring" aria-hidden="true"><div class="track"></div><div class="arc"></div><div class="n" id="n">${seconds}</div></div>
   <h1>Connecting to the cheapest store...</h1>
   <h2>Sit tight — ${esc(shown)} is opening with your best price.</h2>
+  <!-- Owner 27 Oct: manual coupons / offers / cashback for THIS merchant, copied right here
+       (the codes are added in Admin -> Offers & Coupons). Filled in by JS after load; the
+       countdown and the "Go now" link never wait for it. -->
+  <div id="promos" style="display:none;margin:14px 0 4px"></div>
   ${adBlock}
   <div class="store" style="margin-top:18px">
     <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
@@ -256,6 +270,56 @@ export function renderInterstitialPage(opts: {
   }, 1000);
   var go = document.getElementById('go');
   if (go) go.addEventListener('click', function () { clearInterval(t); });
+
+  // Manual coupons / offers / cashback for this merchant (never blocks the redirect).
+  var partner = ${jsStr(String(opts.partner || '').slice(0, 160))};
+  var box = document.getElementById('promos');
+  function esc(t) { return String(t || '').replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+  function copy(text, btn, id) {
+    var done = function () {
+      btn.textContent = 'Copied';
+      if (id) { try { fetch('/api/promo-offers/' + id + '/copy', { method: 'POST', keepalive: true }); } catch (e) {} }
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(); });
+    } else { fallback(); }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { btn.textContent = 'Tap to copy'; }
+      document.body.removeChild(ta);
+    }
+  }
+  if (partner && box) {
+    fetch('/api/promo-offers?merchant=' + encodeURIComponent(partner), { credentials: 'omit' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var list = (d && d.offers) || [];
+        if (!list.length) return;
+        var html = '<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Codes for ' + esc(partner) + '</div>';
+        list.forEach(function (o, i) {
+          var img = o.image_url ? '<img src="' + esc(o.image_url) + '" alt="" loading="lazy">' : '';
+          var disc = o.discount_label ? '<div class="pd cb"><b>' + esc(o.discount_label) + '</b></div>' : '';
+          var desc = o.description ? '<div class="pd">' + esc(o.description) + '</div>' : '';
+          var codeBlock = o.code
+            ? '<span class="pc" data-code="' + esc(o.code) + '" data-id="' + (o.id || '') + '" role="button" tabindex="0" title="Copy code">' + esc(o.code) + '</span>'
+            : '';
+          html += '<div class="promo">' + img + '<div class="pi"><div class="kind">' + esc(o.kind || 'offer') + '</div>' +
+                  '<div class="pt">' + esc(o.title) + '</div>' + disc + desc + codeBlock + '</div>' +
+                  (o.code ? '<button class="pcb" data-code="' + esc(o.code) + '" data-id="' + (o.id || '') + '">Copy</button>' : '') +
+                  '</div>';
+        });
+        box.innerHTML = html;
+        box.style.display = 'block';
+        Array.prototype.forEach.call(box.querySelectorAll('[data-code]'), function (el) {
+          el.addEventListener('click', function () { copy(el.getAttribute('data-code'), el.getAttribute('data-id') ? el : el, el.getAttribute('data-id')); });
+          el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
+        });
+      })
+      .catch(function () { /* promos are a bonus, never a blocker */ });
+  }
 })();
 </script>
 </body>
