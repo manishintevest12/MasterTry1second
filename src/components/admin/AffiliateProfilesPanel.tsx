@@ -6,7 +6,7 @@ import { Link2, Trash2, Save, Search } from 'lucide-react';
  * your own affiliate / publisher ID). Every customer click then goes through /api/out and the
  * server wraps the merchant page with the matching template. No ID is ever shown in the browser.
  */
-interface Profile { slug: string; company_domain: string; network: string; template: string; campaign_key: string | null; active: number | boolean }
+interface Profile { slug: string; company_domain: string; vertical?: string | null; display_name?: string | null; network: string; affiliate_id?: string | null; monetization?: string | null; template: string | null; campaign_key: string | null; active: number | boolean }
 interface AutoCampaign { name: string; domain: string; payout: string; type: string; categories: string }
 interface Coverage {
   manual: Profile[];
@@ -19,7 +19,7 @@ interface Coverage {
 
 const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10';
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
-const blank = { slug: '', company_domain: '', network: 'cuelinks', template: '', campaign_key: '' };
+const blank = { slug: '', company_domain: '', network: 'cuelinks', template: '', campaign_key: '', affiliate_id: '', monetization: 'affiliate' };
 
 export const AffiliateProfilesPanel: React.FC = () => {
   const [token] = useState(() => localStorage.getItem('t1s_admin_token') || '');
@@ -74,10 +74,16 @@ export const AffiliateProfilesPanel: React.FC = () => {
         <div><label className={labelCls}>Website</label><input className={inputCls} value={form.company_domain} onChange={(e) => set('company_domain', e.target.value)} placeholder="flipkart.com" /></div>
         <div><label className={labelCls}>Network</label><select className={inputCls} value={form.network} onChange={(e) => set('network', e.target.value)}>{networks.map((n) => <option key={n} value={n}>{n}</option>)}</select></div>
         <div><label className={labelCls}>Campaign (optional)</label><input className={inputCls} value={form.campaign_key} onChange={(e) => set('campaign_key', e.target.value)} /></div>
+        <div><label className={labelCls}>Your affiliate ID</label><input className={inputCls} value={form.affiliate_id || ''} onChange={(e) => set('affiliate_id', e.target.value)} placeholder="e.g. try1second-21 (khali chhod do agar abhi nahi mila)" /></div>
+        <div><label className={labelCls}>Monetization</label><select className={inputCls} value={form.monetization || 'affiliate'} onChange={(e) => set('monetization', e.target.value)}>
+          <option value="affiliate">Affiliate (ID / template)</option>
+          <option value="adsense">AdSense (koi affiliate program nahi)</option>
+        </select></div>
         <div className="md:col-span-4"><label className={labelCls}>Tracking link template</label><input className={inputCls} value={form.template} onChange={(e) => set('template', e.target.value)} placeholder="https://track.vcommission.com/click?campaign_id=...&pub_id=...&url={url}" /></div>
       </div>
       <div className="flex items-center gap-3">
         <button onClick={save} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold cursor-pointer"><Save className="w-3.5 h-3.5" />Save affiliate ID</button>
+        <p className="text-[10px] text-slate-400 md:col-span-4">Template khali chhod sakte ho — merchant registry me rehta hai, affiliate ID aane par yahin paste karo. Monetization = AdSense wale merchants (Blinkit/Zepto/Instamart/BigBasket) exit page ke AdSense se kamate hain, direct hop se jaate hain.</p>
         {msg && <span className={`text-xs font-semibold ${msg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{msg.text}</span>}
       </div>
       <div className="border-t border-slate-100 pt-3">
@@ -116,9 +122,23 @@ export const AffiliateProfilesPanel: React.FC = () => {
         <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl">
           {rows.map((r) => (
             <div key={r.slug} className="flex items-center gap-3 px-3 py-2">
-              <div className="min-w-0 flex-1"><strong className="text-xs text-slate-900">{r.slug}</strong> <span className="text-[11px] text-slate-500">{r.company_domain} · {r.network}</span>
-                <p className="text-[10px] font-mono text-slate-400 truncate">{r.template.replace(/(pub_id|cid|aff|affid|pid|id)=[^&]+/gi, '$1=••••')}</p></div>
-              <button onClick={() => { setForm({ slug: r.slug, company_domain: r.company_domain, network: r.network, template: r.template, campaign_key: r.campaign_key || '' }); }} className="text-[11px] text-slate-500 cursor-pointer">Edit</button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <strong className="text-xs text-slate-900">{r.display_name || r.slug}</strong>
+                  <span className="text-[11px] text-slate-500">{r.company_domain} · {r.network}</span>
+                  {(r.monetization || 'affiliate') === 'adsense' ? (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-700">AdSense</span>
+                  ) : r.affiliate_id || r.template ? (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700">Affiliate</span>
+                  ) : (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500">ID pending</span>
+                  )}
+                </div>
+                <p className="text-[10px] font-mono text-slate-400 truncate">
+                  {r.template ? r.template.replace(/(pub_id|cid|aff|affid|pid|id)=[^&]+/gi, '$1=••••') : (r.affiliate_id ? `id: ${r.affiliate_id}` : 'koi affiliate ID nahi — aate hi yahan paste karo')}
+                </p>
+              </div>
+              <button onClick={() => { setForm({ slug: r.slug, company_domain: r.company_domain, network: r.network, template: r.template || '', campaign_key: r.campaign_key || '', affiliate_id: r.affiliate_id || '', monetization: r.monetization || 'affiliate' }); }} className="text-[11px] text-slate-500 cursor-pointer">Edit</button>
               <button onClick={() => void remove(r.slug)} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}

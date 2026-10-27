@@ -27913,12 +27913,15 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
     const rows = await store2.query(
-      `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
+      `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
       [slug3, domain, parent2, parent3]
     );
     const r = rows?.[0];
+    if (r && String(r.monetization || "").toLowerCase() === "adsense" && !r.template) {
+      return { trackingUrl: targetUrl, network: "direct", matchedProfile: "adsense_only" };
+    }
     if (r?.template) {
       const extra = parseJsonObj(r.extra_params);
       const url = renderTemplate(String(r.template), targetUrl, extra, String(r.subid_param || "subid"));
@@ -37527,6 +37530,22 @@ function validateProfile(i) {
   if (!slug3) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
+  if (!template) {
+    const clean3 = {
+      slug: slug3,
+      company_domain: domain,
+      network: AFFILIATE_NETWORKS.includes(network) ? network : "direct",
+      template: null,
+      campaign_key: String(i.campaign_key ?? "").trim().slice(0, 160) || null,
+      subid_param: String(i.subid_param ?? "subid").trim().replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "subid",
+      affiliate_id: String(i.affiliate_id ?? "").trim().slice(0, 190) || null,
+      monetization: String(i.monetization || "").trim().toLowerCase() === "adsense" ? "adsense" : "affiliate",
+      vertical: String(i.vertical ?? "").trim().slice(0, 32) || null,
+      display_name: String(i.display_name ?? "").trim().slice(0, 120) || null,
+      active: i.active === false ? 0 : 1
+    };
+    return { ok: true, clean: clean3 };
+  }
   if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
   let probe;
   try {
@@ -37545,12 +37564,18 @@ function validateProfile(i) {
       template,
       campaign_key: String(i.campaign_key ?? "").trim().slice(0, 160) || null,
       subid_param: String(i.subid_param ?? "subid").trim().replace(/[^a-z0-9_]/gi, "").slice(0, 40) || "subid",
+      affiliate_id: String(i.affiliate_id ?? "").trim().slice(0, 190) || null,
+      monetization: String(i.monetization || "").trim().toLowerCase() === "adsense" ? "adsense" : "affiliate",
+      vertical: String(i.vertical ?? "").trim().slice(0, 32) || null,
+      display_name: String(i.display_name ?? "").trim().slice(0, 120) || null,
       active: i.active === false ? 0 : 1
     }
   };
 }
 async function listProfiles() {
-  return getStore().query("SELECT id, slug, company_domain, network, campaign_key, template, subid_param, active FROM affiliate_configs ORDER BY slug ASC LIMIT 300").catch(() => []);
+  return getStore().query(
+    "SELECT id, slug, company_domain, vertical, display_name, network, affiliate_id, monetization, campaign_key, template, subid_param, active FROM affiliate_configs ORDER BY vertical ASC, slug ASC LIMIT 400"
+  ).catch(() => []);
 }
 async function saveProfile(i) {
   const v = validateProfile(i);
@@ -37558,15 +37583,16 @@ async function saveProfile(i) {
   const c = v.clean;
   const store2 = getStore();
   const ex = await store2.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
+  const cols = [c.company_domain, c.network, c.affiliate_id, c.monetization, c.campaign_key, c.template, c.subid_param, c.active];
   if (ex.length) {
     await store2.execute(
-      "UPDATE affiliate_configs SET company_domain=?, network=?, campaign_key=?, template=?, subid_param=?, active=? WHERE slug=?",
-      [c.company_domain, c.network, c.campaign_key, c.template, c.subid_param, c.active, c.slug]
+      "UPDATE affiliate_configs SET company_domain=?, network=?, affiliate_id=?, monetization=?, campaign_key=?, template=?, subid_param=?, active=? WHERE slug=?",
+      [...cols, c.slug]
     );
   } else {
     await store2.execute(
-      "INSERT INTO affiliate_configs (slug, company_domain, network, campaign_key, template, subid_param, active) VALUES (?,?,?,?,?,?,?)",
-      [c.slug, c.company_domain, c.network, c.campaign_key, c.template, c.subid_param, c.active]
+      "INSERT INTO affiliate_configs (slug, company_domain, network, affiliate_id, monetization, campaign_key, template, subid_param, active) VALUES (?,?,?,?,?,?,?,?,?)",
+      [c.slug, ...cols]
     );
   }
   return { ok: true };

@@ -24,7 +24,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -145,10 +145,17 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
     const parent2 = labels.length >= 2 ? labels.slice(-2).join('.') : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join('.') : domain;
     const rows = await store.query<any>(
-      `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
+      `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`, [slug, domain, parent2, parent3]);
     const r = rows?.[0];
+    // Owner 27 Oct: merchants with NO affiliate program (Blinkit/Zepto/Instamart/BigBasket)
+    // are marked monetization='adsense' in the admin registry. They take the honest direct
+    // hop — the money comes from the AdSense unit on the exit page — instead of a pointless
+    // Cuelinks/Ekaro conversion attempt that can only fail and add latency.
+    if (r && String(r.monetization || '').toLowerCase() === 'adsense' && !r.template) {
+      return { trackingUrl: targetUrl, network: 'direct', matchedProfile: 'adsense_only' };
+    }
     if (r?.template) {
       const extra = parseJsonObj(r.extra_params);
       const url = renderTemplate(String(r.template), targetUrl, extra, String(r.subid_param || 'subid'));

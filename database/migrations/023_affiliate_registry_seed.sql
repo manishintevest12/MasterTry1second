@@ -1,0 +1,106 @@
+-- Module 4b (owner 27 Oct): every registry merchant gets an admin row even when we
+-- have NO affiliate ID yet, so the owner can paste an ID/template the day a program is
+-- approved. Two extra knobs:
+--   affiliate_id   the owner's own ID for that merchant (Amazon tag, EMS/Impact id, ...)
+--   monetization   'affiliate' (default) or 'adsense' when no affiliate program exists —
+--                  those merchants are monetized with AdSense instead of a fake deeplink.
+-- template is now NULLABLE: an empty template means "no affiliate configured yet" and
+-- buildSecureDeeplink() then takes the honest direct hop instead of a broken conversion.
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS affiliate_configs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  slug VARCHAR(64) NOT NULL,
+  company_domain VARCHAR(190) NOT NULL,
+  network ENUM('cuelinks','vcommission','admitad','optimise','direct') NOT NULL DEFAULT 'direct',
+  campaign_key VARCHAR(160) NULL,
+  template VARCHAR(500) NULL,
+  subid_param VARCHAR(40) DEFAULT 'subid',
+  extra_params JSON NULL,
+  active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_affcfg_slug (slug), KEY k_affcfg_domain (company_domain)
+) ENGINE=InnoDB;
+
+ALTER TABLE affiliate_configs
+  MODIFY COLUMN template VARCHAR(500) NULL,
+  ADD COLUMN IF NOT EXISTS affiliate_id VARCHAR(190) NULL AFTER network,
+  ADD COLUMN IF NOT EXISTS monetization ENUM('affiliate','adsense') NOT NULL DEFAULT 'affiliate' AFTER affiliate_id,
+  ADD COLUMN IF NOT EXISTS vertical VARCHAR(32) NULL AFTER company_domain,
+  ADD COLUMN IF NOT EXISTS display_name VARCHAR(120) NULL AFTER vertical;
+
+-- One empty row per registry merchant (never overwrites an ID the owner already saved).
+INSERT IGNORE INTO affiliate_configs (slug, company_domain, network, template, affiliate_id, monetization, display_name, active) VALUES
+  ('amazon','amazon.in','direct',NULL,NULL,'affiliate','Amazon India',1),
+  ('expedia','expedia.com','direct',NULL,NULL,'affiliate','Expedia',1),
+  ('agoda','agoda.com','direct',NULL,NULL,'affiliate','Agoda',1),
+  ('trip-com','us.trip.com','direct',NULL,NULL,'affiliate','Trip.com',1),
+  ('priceline','priceline.com','direct',NULL,NULL,'affiliate','Priceline',1),
+  ('airbnb','airbnb.com','direct',NULL,NULL,'affiliate','Airbnb',1),
+  ('hotwire','hotwire.com','direct',NULL,NULL,'affiliate','Hotwire',1),
+  ('orbitz','orbitz.com','direct',NULL,NULL,'affiliate','Orbitz',1),
+  ('traveloka','traveloka.com','direct',NULL,NULL,'affiliate','Traveloka',1),
+  ('hotels-com','hotels.com','direct',NULL,NULL,'affiliate','Hotels.com',1),
+  ('hostelworld','hostelworld.com','direct',NULL,NULL,'affiliate','Hostelworld',1),
+  ('destinia','destinia.com','direct',NULL,NULL,'affiliate','Destinia',1),
+  ('tiket-com','tiket.com','direct',NULL,NULL,'affiliate','Tiket.com',1),
+  ('lastminute-com','lastminute.com','direct',NULL,NULL,'affiliate','LastMinute.com',1),
+  ('marriott','marriott.com','direct',NULL,NULL,'affiliate','Marriott Bonvoy',1),
+  ('hilton','hilton.com','direct',NULL,NULL,'affiliate','Hilton',1),
+  ('ihg','ihg.com','direct',NULL,NULL,'affiliate','IHG Hotels & Resorts',1),
+  ('emirates','emirates.com','direct',NULL,NULL,'affiliate','Emirates',1),
+  ('qatar-airways','qatarairways.com','direct',NULL,NULL,'affiliate','Qatar Airways',1),
+  ('singapore-airlines','singaporeair.com','direct',NULL,NULL,'affiliate','Singapore Airlines',1),
+  ('makemytrip','makemytrip.com','direct',NULL,NULL,'affiliate','MakeMyTrip',1),
+  ('goibibo','goibibo.com','direct',NULL,NULL,'affiliate','Goibibo',1),
+  ('easemytrip','easemytrip.com','direct',NULL,NULL,'affiliate','EaseMyTrip',1),
+  ('yatra','yatra.com','direct',NULL,NULL,'affiliate','Yatra',1),
+  ('cleartrip','cleartrip.com','direct',NULL,NULL,'affiliate','Cleartrip',1),
+  ('oyo-rooms','oyorooms.com','direct',NULL,NULL,'affiliate','OYO Rooms',1),
+  ('happyeasygo','happyeasygo.com','direct',NULL,NULL,'affiliate','HappyEasyGo',1),
+  ('indigo','goindigo.in','direct',NULL,NULL,'affiliate','IndiGo',1),
+  ('air-india','airindia.com','direct',NULL,NULL,'affiliate','Air India',1),
+  ('akasa-air','akasaair.com','direct',NULL,NULL,'affiliate','Akasa Air',1),
+  ('ola-cabs','book.olacabs.com','direct',NULL,NULL,'affiliate','Ola Cabs',1),
+  ('uber-india','uber.com','direct',NULL,NULL,'affiliate','Uber India',1),
+  ('indrive','indrive.com','direct',NULL,NULL,'affiliate','inDrive',1),
+  ('blusmart','blu-smart.com','direct',NULL,NULL,'affiliate','BluSmart',1),
+  ('rapido','rapido.bike','direct',NULL,NULL,'affiliate','Rapido',1),
+  ('redbus','redbus.in','direct',NULL,NULL,'affiliate','redBus',1),
+  ('abhibus','abhibus.com','direct',NULL,NULL,'affiliate','AbhiBus',1),
+  ('zingbus','zingbus.com','direct',NULL,NULL,'affiliate','Zingbus',1),
+  ('intrcity','intrcity.com','direct',NULL,NULL,'affiliate','IntrCity SmartBus',1),
+  ('amazon-in','amazon.in','direct',NULL,NULL,'affiliate','Amazon India',1),
+  ('flipkart','flipkart.com','direct',NULL,NULL,'affiliate','Flipkart',1),
+  ('myntra','myntra.com','direct',NULL,NULL,'affiliate','Myntra',1),
+  ('meesho','meesho.com','direct',NULL,NULL,'affiliate','Meesho',1),
+  ('ajio','ajio.com','direct',NULL,NULL,'affiliate','AJIO',1),
+  ('blinkit','blinkit.com','direct',NULL,NULL,'adsense','Blinkit',1),
+  ('zepto','zeptonow.com','direct',NULL,NULL,'adsense','Zepto',1),
+  ('swiggy-instamart','swiggy.com','direct',NULL,NULL,'adsense','Swiggy Instamart',1),
+  ('bigbasket','bigbasket.com','direct',NULL,NULL,'adsense','BigBasket / BB Now',1),
+  ('flipkart-minutes','flipkart.com','direct',NULL,NULL,'affiliate','Flipkart Minutes',1),
+  ('bookmyshow','in.bookmyshow.com','direct',NULL,NULL,'affiliate','BookMyShow',1),
+  ('paytm-insider','insider.in','direct',NULL,NULL,'affiliate','Paytm Insider',1),
+  ('pvr-cinemas','pvrcinemas.com','direct',NULL,NULL,'affiliate','PVR Cinemas',1),
+  ('cinepolis-india','cinepolisindia.com','direct',NULL,NULL,'affiliate','Cinepolis India',1),
+  ('cashe','cashe.co.in','direct',NULL,NULL,'affiliate','CASHe',1),
+  ('mpokket','mpokket.com','direct',NULL,NULL,'affiliate','mPokket',1),
+  ('kreditbee','kreditbee.in','direct',NULL,NULL,'affiliate','KreditBee',1),
+  ('acko','acko.com','direct',NULL,NULL,'affiliate','ACKO General Insurance',1),
+  ('digit-insurance','godigit.com','direct',NULL,NULL,'affiliate','Digit Insurance',1),
+  ('navi-insurance','navi.com','direct',NULL,NULL,'affiliate','Navi Insurance',1),
+  ('zomato','zomato.com','direct',NULL,NULL,'affiliate','Zomato',1),
+  ('swiggy-food','swiggy.com','direct',NULL,NULL,'affiliate','Swiggy Food',1),
+  ('eatsure','eatsure.com','direct',NULL,NULL,'affiliate','EatSure',1),
+  ('uber-eats','ubereats.com','direct',NULL,NULL,'affiliate','Uber Eats',1),
+  ('toing','toing.com','direct',NULL,NULL,'affiliate','Toing',1),
+  ('cuelinks','cuelinks.com','direct',NULL,NULL,'affiliate','Cuelinks (affiliate)',1),
+  ('optimise-media','optimisemedia.com','direct',NULL,NULL,'affiliate','Optimise Media (affiliate)',1),
+  ('bankbazaar-loans','bankbazaar.com','direct',NULL,NULL,'affiliate','BankBazaar loans',1),
+  ('cardinsider','cardinsider.com','direct',NULL,NULL,'affiliate','CardInsider credit cards',1),
+  ('paisabazaar-cards','paisabazaar.com','direct',NULL,NULL,'affiliate','Paisabazaar credit cards',1),
+  ('bankbazaar-creditcards','bankbazaar.com','direct',NULL,NULL,'affiliate','BankBazaar credit cards',1),
+  ('bankbazaar-insurance','bankbazaar.com','direct',NULL,NULL,'affiliate','BankBazaar insurance',1),
+  ('open-library','openlibrary.org','direct',NULL,NULL,'affiliate','Open Library',1);
