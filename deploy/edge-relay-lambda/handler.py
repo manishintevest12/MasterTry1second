@@ -45,7 +45,10 @@ def lambda_handler(event, context):
         headers_in = {}
 
     token = os.environ.get("RELAY_TOKEN", "")
-    if token and headers_in.get("x-relay-token") != token:
+    # Fail closed: a relay without a token would be an open proxy.
+    if not token:
+        return _resp(503, {"error": "relay token not configured"})
+    if headers_in.get("x-relay-token") != token:
         return _resp(401, {"error": "unauthorized"})
 
     url = str(body_json.get("url") or "")
