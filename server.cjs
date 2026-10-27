@@ -448,6 +448,23 @@ var init_cache = __esm({
   }
 });
 
+// server/search/latencyBudget.ts
+function resultDeadlineMs(env = process.env) {
+  const raw = Number(env.T1S_RESULT_DEADLINE_MS);
+  const ceiling = Number.isFinite(raw) && raw > 0 ? raw : OWNER_RESULT_DEADLINE_MS;
+  return Math.max(500, ceiling - RESPONSE_ASSEMBLY_HEADROOM_MS);
+}
+function firstPaintMs(env = process.env) {
+  return Math.max(250, resultDeadlineMs(env) - 150);
+}
+var OWNER_RESULT_DEADLINE_MS, RESPONSE_ASSEMBLY_HEADROOM_MS;
+var init_latencyBudget = __esm({
+  "server/search/latencyBudget.ts"() {
+    OWNER_RESULT_DEADLINE_MS = 3e3;
+    RESPONSE_ASSEMBLY_HEADROOM_MS = 600;
+  }
+});
+
 // server/types.ts
 var ALL_VERTICALS;
 var init_types = __esm({
@@ -31021,8 +31038,10 @@ async function runSearch(input) {
     if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return await stillAcquiringResponse(parsed, totalStart);
   }
+  const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
+  const floorPromise = freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600).catch(() => []);
   {
-    const offers = await freshCatalogueOffers(vertical, input, parsed);
+    const offers = await floorPromise;
     if (offers.length >= 4) {
       const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
@@ -31043,7 +31062,7 @@ async function runSearch(input) {
     }
   }
   const reqDeadlineMs = Math.max(250, Number(input.coldDeadlineMs) || 0);
-  const FIRST_PAINT_MS = reqDeadlineMs ? Math.max(250, reqDeadlineMs - 150) : Number(process.env.T1S_FIRST_PAINT_MS) || 2200;
+  const FIRST_PAINT_MS = reqDeadlineMs ? Math.max(250, reqDeadlineMs - 150) : Number(process.env.T1S_FIRST_PAINT_MS) || firstPaintMs();
   const partialRef = { current: null };
   let firstRowResolve = null;
   const firstRow = new Promise((resolve) => {
@@ -31098,12 +31117,11 @@ async function runSearch(input) {
     const p = await servePartial();
     if (p) return p;
   }
-  const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
-  const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
+  const floorOffers = await floorPromise;
   if (floorOffers.length > 0) {
     return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
   }
-  const COLD_DEADLINE_MS = Math.max(300, Number(input.coldDeadlineMs) || Number(process.env.T1S_COLD_DEADLINE_MS) || 3200);
+  const COLD_DEADLINE_MS = Math.max(300, Number(input.coldDeadlineMs) || Number(process.env.T1S_COLD_DEADLINE_MS) || resultDeadlineMs());
   const deadlineRemaining = Math.max(0, COLD_DEADLINE_MS - (Date.now() - totalStart));
   const next = await Promise.race([
     full.then((r) => ({ kind: "full", r })),
@@ -31328,6 +31346,7 @@ var init_searchOrchestrator = __esm({
     init_lastPrice();
     init_cache();
     init_logger();
+    init_latencyBudget();
     init_queryUnderstanding();
     init_registry();
     init_orchestrator();
@@ -37015,6 +37034,7 @@ var init_routes = __esm({
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
+    init_latencyBudget();
     init_queryRelevance();
     init_basket();
     init_registry();
@@ -37391,7 +37411,28 @@ var init_routes = __esm({
       };
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
-      const response = await runSearch(input);
+      const searchStart = Date.now();
+      input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
+      const budgetMs = resultDeadlineMs();
+      const searched = runSearch(input);
+      searched.catch(() => void 0);
+      const response = await Promise.race([
+        searched,
+        new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
+      ]);
+      if (!response) {
+        return res.json({
+          results: [],
+          honestNotice: "Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.",
+          sourcesAttempted: [],
+          sourcesSucceeded: [],
+          sourcesFailed: [],
+          servedFrom: "unavailable",
+          pendingRefresh: true,
+          resultsCount: 0,
+          latencyMs: Date.now() - searchStart
+        });
+      }
       if (String(response.state?.servedFrom || "") !== "cache") {
         const now = Date.now();
         if (now - _lastEmergencyWarmAt > 10 * 6e4) {
@@ -37445,6 +37486,8 @@ var init_routes = __esm({
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
       }
+      input.coldDeadlineMs = resultDeadlineMs();
+      const searchStart = Date.now();
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (["flights", "bus", "cab"].includes(String(input.vertical))) {
         const rt = parseRouteQuery(input.query);
@@ -37464,7 +37507,25 @@ var init_routes = __esm({
           }
         }
       }
-      const response = await runSearch(input);
+      const searchedLive = runSearch(input);
+      searchedLive.catch(() => void 0);
+      const response = await Promise.race([
+        searchedLive,
+        new Promise((resolve) => setTimeout(() => resolve(null), resultDeadlineMs()))
+      ]);
+      if (!response) {
+        return res.json({
+          results: [],
+          honestNotice: "Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.",
+          sourcesAttempted: [],
+          sourcesSucceeded: [],
+          sourcesFailed: [],
+          servedFrom: "unavailable",
+          pendingRefresh: true,
+          resultsCount: 0,
+          latencyMs: Date.now() - searchStart
+        });
+      }
       if (String(response.state?.servedFrom || "") !== "cache") {
         const now = Date.now();
         if (now - _lastEmergencyWarmAt > 10 * 6e4) {

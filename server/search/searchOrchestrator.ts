@@ -17,6 +17,7 @@ import type { AdapterResult, NormalizedOffer, ParsedQuery, SearchResponse, Searc
 import { recordSourcePrices, enrichFailedWithLastPrice } from '../common/lastPrice';
 import { buildCacheKey, cacheGet, cachePut, cacheDel, revalidateInBackground } from '../common/cache';
 import { log } from '../common/logger';
+import { firstPaintMs, resultDeadlineMs } from './latencyBudget';
 import { aiAssistedUnderstanding, understandQuery } from '../query/queryUnderstanding';
 import { selectSources } from '../sources/registry';
 import { acquireParallel } from '../sources/orchestrator';
@@ -544,9 +545,14 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
     // rows land via the partial memo above as sources settle).
     return await stillAcquiringResponse(parsed, totalStart);
   }
+  // Speed (27 Oct): the honest catalogue floor is looked up ONCE, in parallel with the
+  // race below, so the cold answer never pays an extra DB round-trip after the timer.
+  const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
+  const floorPromise = freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600)
+    .catch(() => [] as NormalizedOffer[]);
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
   {
-    const offers = await freshCatalogueOffers(vertical, input, parsed);
+    const offers = await floorPromise;
     if (offers.length >= 4) {
       const pipeline = runLivePipeline(input, parsed)
         .then((response) => {
@@ -579,9 +585,11 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // Leaving this at 2.2s let a cold product search take 2.4s even though the route asked
   // for 900ms. 150ms is reserved for the catalogue floor lookup that follows the race.
   const reqDeadlineMs = Math.max(250, Number((input as any).coldDeadlineMs) || 0);
+  // Owner rule (27 Oct): the 3s promise is a single budget (latencyBudget.ts), so the
+  // no-caller-deadline path is bounded by it too instead of its own 2.2s literal.
   const FIRST_PAINT_MS = reqDeadlineMs
     ? Math.max(250, reqDeadlineMs - 150)
-    : (Number(process.env.T1S_FIRST_PAINT_MS) || 2_200);
+    : (Number(process.env.T1S_FIRST_PAINT_MS) || firstPaintMs());
   const partialRef: { current: AcquisitionOutcome | null } = { current: null };
   // FIRST-LIVE-ROW signal (owner 22 Oct, 'sab verticals slow'): slow verticals
   // (hotels 5-15s per source) never had a row inside a fixed 2.2s window, so the
@@ -647,8 +655,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // offers change slowly and borrow up to 24h. Every row is CACHED_VERIFIED
   // (replayedFromCache), nothing is invented; the top-up replaces them with
   // live prices seconds later.
-  const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
-  const floorOffers = await freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600);
+  const floorOffers = await floorPromise;
   if (floorOffers.length > 0) {
     return await progressiveCatalogueResponse(vertical, parsed, floorOffers, totalStart, true);
   }
@@ -663,7 +670,7 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // pendingRefresh marker — the app's 2s polls then stream rows in progressively.
   // Deadline is measured from the START of the search (not from after the floor
   // lookup) so the whole cold path answers in ~3s, matching the app loader countdown.
-  const COLD_DEADLINE_MS = Math.max(300, Number(input.coldDeadlineMs) || Number(process.env.T1S_COLD_DEADLINE_MS) || 3_200);
+  const COLD_DEADLINE_MS = Math.max(300, Number(input.coldDeadlineMs) || Number(process.env.T1S_COLD_DEADLINE_MS) || resultDeadlineMs());
   const deadlineRemaining = Math.max(0, COLD_DEADLINE_MS - (Date.now() - totalStart));
   const next: ColdOutcome = await Promise.race([
     full.then((r): ColdOutcome => ({ kind: 'full', r })),

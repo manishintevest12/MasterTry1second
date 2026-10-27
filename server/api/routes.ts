@@ -8,6 +8,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
+import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
 import { sourcesStatusReport } from '../sources/registry';
@@ -627,7 +628,30 @@ apiRouter.post('/search', async (req, res) => {
   };
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   if (!input.query?.trim()) return res.status(400).json({ success: false, error: 'A search query is required.' });
-  const response = await runSearch(input);
+  // OWNER RULE (27 Oct, "hr vertical ka results within 3 sec"): the pipeline budget
+  // bounds acquisition, but a cold vertical can still spend extra time afterwards
+  // (context build, ranking, image/lender enrichment). Measured: movies answered at
+  // 3.2s even with a 2.6s acquisition deadline, because assembly ran past it. So the
+  // HTTP handler ALSO races the whole search against the same ceiling: if assembly is
+  // still running at the deadline, answer with the honest still-acquiring marker
+  // (pendingRefresh) and let the pipeline finish into the cache the next poll reads.
+  const searchStart = Date.now();
+  input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
+  const budgetMs = resultDeadlineMs();
+  const searched = runSearch(input);
+  searched.catch(() => undefined); // the abandoned race leg must never crash the process
+  const response = (await Promise.race([
+    searched,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+  ])) as Awaited<ReturnType<typeof runSearch>> | null;
+  if (!response) {
+    return res.json({
+      results: [],
+      honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
+      sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [], servedFrom: 'unavailable',
+      pendingRefresh: true, resultsCount: 0, latencyMs: Date.now() - searchStart,
+    });
+  }
   // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
   // bahut late"): a search that did NOT come from the warm cache means the
   // background keep-warm rotation is dead (every vertical default should be
@@ -919,6 +943,12 @@ apiRouter.post('/scrape/live', async (req, res) => {
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
   }
+  // OWNER RULE (27 Oct, "muje hr vertical ka results within 3 sec chaiye"): every
+  // vertical gets the same budget, not just products. Claiming the deadline here means
+  // the pipeline must answer with real rows (or the honest still-acquiring marker)
+  // inside 3s regardless of vertical, and the client's 3-2-1 countdown is truthful.
+  input.coldDeadlineMs = resultDeadlineMs();
+  const searchStart = Date.now();
   // Cab: a bare location ("vijay nagar indore") is resolved to the city's standard outstation route.
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   // Same origin and destination is not a trip: refuse instead of showing some other route's fares.
@@ -936,7 +966,23 @@ apiRouter.post('/scrape/live', async (req, res) => {
       }
     }
   }
-  const response = await runSearch(input);
+  // Same 3s ceiling on this endpoint (owner rule 27 Oct): acquisition budget plus a
+  // hard race, so a slow assembly step answers with the honest pendingRefresh marker
+  // instead of making the app wait past the countdown.
+  const searchedLive = runSearch(input);
+  searchedLive.catch(() => undefined);
+  const response = (await Promise.race([
+    searchedLive,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), resultDeadlineMs())),
+  ])) as Awaited<ReturnType<typeof runSearch>> | null;
+  if (!response) {
+    return res.json({
+      results: [],
+      honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
+      sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [], servedFrom: 'unavailable',
+      pendingRefresh: true, resultsCount: 0, latencyMs: Date.now() - searchStart,
+    });
+  }
   // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
   // bahut late"): a search that did NOT come from the warm cache means the
   // background keep-warm rotation is dead (every vertical default should be
