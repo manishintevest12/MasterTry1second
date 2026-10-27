@@ -38,7 +38,7 @@ import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
-import { isSameProduct } from '../lens/sameProduct';
+import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { analyseDeal } from '../lens/dealScore';
 import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
 import { userNotifications, broadcastNotifications, markRead, markAllRead } from '../notifications/notifications';
@@ -1281,10 +1281,14 @@ apiRouter.post('/product-page', async (req, res) => {
     const keep = toks.filter((t: string) => !caps.has(t.toLowerCase().replace(/\s/g, ''))).slice(0, 4).join(' ');
     return keep && keep !== lensQuery ? keep : '';
   })();
+  // Owner 27 Oct: a typed product name waited ~22s on a blank screen and then
+  // said "Price unavailable". The page now commits to a hard 8s budget: partial
+  // (or cached) rows beat a long blank screen, and the loader stops spinning.
+  const PRODUCT_PAGE_BUDGET_MS = 8_000;
   const searches: Array<Promise<any>> = [
-    runSearchPolled({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput),
+    runSearchPolled({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, PRODUCT_PAGE_BUDGET_MS),
   ];
-  if (broadQuery) searches.push(runSearchPolled({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput));
+  if (broadQuery) searches.push(runSearchPolled({ query: broadQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode } as SearchInput, PRODUCT_PAGE_BUDGET_MS));
   const responses = await Promise.all(searches);
   const seenIds = new Set<string>();
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
@@ -1292,7 +1296,8 @@ apiRouter.post('/product-page', async (req, res) => {
     .filter((o: any) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id)))
     .map((o: any) => ({ o, price: priceOf(o) }))
     .filter((x) => x.price > 0);
-  const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ''))).sort((a, b) => a.price - b.price);
+  const matchMode: 'strict' | 'typed' = textQuery ? 'typed' : 'strict';
+  const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ''), matchMode)).sort((a, b) => a.price - b.price);
   const toRow = ({ o, price }: any) => {
     const attrs = o.attributes || {};
     const imgs = Array.from(new Set([
@@ -1338,12 +1343,26 @@ apiRouter.post('/product-page', async (req, res) => {
     });
   }
   offers.sort((a: any, b: any) => a.price - b.price);
+  // Owner 27 Oct: never leave the page empty when the sources DO carry this
+  // product family. If no listing is the exact product, promote the closest
+  // real variants (same brand + model number) so the user sees live prices.
+  let closestOnly = false;
+  if (!offers.length) {
+    const alt = all
+      .filter((x) => sharesIdentity(lensQuery, String(x.o.title || '')))
+      .map((x) => ({ ...toRow(x), variantCount: 0 }))
+      .slice(0, 6);
+    if (alt.length) {
+      offers.push(...alt);
+      closestOnly = true;
+    }
+  }
   const cheapest = offers[0] || null;
 
   // Related: other priced ecommerce results that are NOT this product (de-duplicated by title).
   const seen = new Set<string>(offers.map((r) => r.title.toLowerCase()));
   const related = all
-    .filter((x) => !isSameProduct(lensQuery, String(x.o.title || '')))
+    .filter((x) => !isSameProduct(lensQuery, String(x.o.title || ''), matchMode))
     .map(toRow)
     .filter((r) => r.title && !seen.has(r.title.toLowerCase()) && seen.add(r.title.toLowerCase()))
     .slice(0, 10);
@@ -1372,7 +1391,10 @@ apiRouter.post('/product-page', async (req, res) => {
     success: true, found: true, product, searchedAs: lensQuery, images,
     cheapest, offers, related, history, historyEntity, deal, pageVsCheapest,
     servedFrom: responses[0]?.state?.servedFrom,
-    message: offers.length ? undefined : 'No verified listing of this exact product was found on our sources right now.',
+    closestOnly,
+    message: offers.length
+      ? (closestOnly ? 'No exact match right now. Showing the closest live variants of this product.' : undefined)
+      : 'No verified listing of this product was found on our sources right now.',
   });
 });
 

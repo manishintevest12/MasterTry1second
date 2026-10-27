@@ -207,7 +207,15 @@ export const ProductPageView: React.FC = () => {
                     {FAV(cheapest.seller) && <img src={FAV(cheapest.seller)} alt="" className="w-4 h-4" />}{cheapest.seller}
                   </span>
                 )}
-                <h1 className="mt-2 text-base sm:text-lg font-black text-slate-900 leading-snug">{title}</h1>
+                <h1 className="mt-2 text-base sm:text-lg font-black text-slate-900 leading-snug">
+                  {title || (productPageRequest?.query || productPageRequest?.input || '')}
+                </h1>
+                {loading && (
+                  <p className="mt-1 text-[11px] font-bold text-slate-500 inline-flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+                    Comparing prices across the web at warp speed…
+                  </p>
+                )}
                 {cheapest?.rating ? (
                   <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-600">
                     <span className="inline-flex items-center gap-0.5 bg-emerald-600 text-white rounded px-1.5 py-0.5"><Star className="w-3 h-3 fill-white" />{cheapest.rating.toFixed(1)}</span>
@@ -215,7 +223,16 @@ export const ProductPageView: React.FC = () => {
                   </div>
                 ) : null}
                 <div className="mt-3 flex items-baseline gap-2 flex-wrap">
-                  <span className="text-3xl font-black text-slate-900">{current ? inr(current) : 'Price unavailable'}</span>
+                  {loading ? (
+                    // Owner 27 Oct: the wait used to be a silent blank card. A live
+                    // skeleton + message shows the comparison is running.
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-9 w-28 rounded-lg bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 animate-pulse" />
+                      <span className="text-xs font-bold text-slate-500">Comparing prices…</span>
+                    </span>
+                  ) : (
+                    <span className="text-3xl font-black text-slate-900">{current ? inr(current) : 'Price unavailable'}</span>
+                  )}
                   {listPrice > 0 && <span className="text-sm text-slate-400 line-through">{inr(listPrice)}</span>}
                 </div>
                 {off > 0 && <p className="mt-1 text-xs font-black text-emerald-600 inline-flex items-center gap-1"><TrendingDown className="w-3.5 h-3.5" />{off}% OFF</p>}

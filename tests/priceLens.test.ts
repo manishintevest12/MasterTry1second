@@ -226,3 +226,33 @@ test('affiliate: Amazon Associates tag injected on every amazon.* redirect (owne
   assert.equal(amazonAssociatesUrl('https://www.flipkart.com/item/1'), null);
   assert.equal(amazonAssociatesUrl('https://notamazon.in/dp/B0X'), null);
 });
+
+// Owner 27 Oct: a TYPED product name always answered "Price unavailable".
+// Root cause: typed names carry no capacity/tier, and both rules demanded an
+// exact match, so every real listing was filtered out. Link-pasted products keep
+// the strict rules (variant safety); typed names use the relaxed mode.
+test('typed product name matches real listings (26 Oct "Price unavailable" bug)', async () => {
+  const { isSameProduct, sharesIdentity } = await import('../server/lens/sameProduct');
+
+  // the exact reported case: user typed "i phone 18", Flipkart/others sell "iPhone 18 Pro"
+  assert.equal(isSameProduct('i phone 18', 'Apple iPhone 18 Pro (Glacier, 256 GB)', 'typed'), true);
+  assert.equal(isSameProduct('iphone 18', 'Apple iPhone 18 (Black, 128 GB)', 'typed'), true);
+  // spoken brand spellings
+  assert.equal(isSameProduct('one plus 12', 'OnePlus 12 (Silky Black, 256GB)', 'typed'), true);
+  assert.equal(isSameProduct('red mi note 13', 'Redmi Note 13 5G (Prism Gold, 128 GB)', 'typed'), true);
+
+  // strict mode (pasted link) must keep rejecting an unprovable variant
+  assert.equal(isSameProduct('iPhone 18', 'Apple iPhone 18 Pro (Glacier, 256 GB)', 'strict'), false);
+
+  // a stated capacity/tier is still binding in typed mode
+  assert.equal(isSameProduct('iphone 18 512GB', 'Apple iPhone 18 Pro (Glacier, 256 GB)', 'typed'), false);
+  assert.equal(isSameProduct('iphone 17 pro', 'Apple iPhone 18 Pro (Glacier, 256 GB)', 'typed'), false);
+
+  // never an unrelated product or an accessory
+  assert.equal(isSameProduct('i phone 18', 'Samsung Galaxy S25 Ultra', 'typed'), false);
+  assert.equal(isSameProduct('i phone 18', 'Apple iPhone 18 Pro Silicone Case', 'typed'), false);
+
+  // closest-variant fallback helper
+  assert.equal(sharesIdentity('i phone 18', 'Apple iPhone 18 Pro (Glacier, 256 GB)'), true);
+  assert.equal(sharesIdentity('i phone 18', 'iPhone 17 Pro'), false);
+});

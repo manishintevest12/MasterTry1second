@@ -19,8 +19,36 @@ const TIERS = new Set(['pro', 'max', 'plus', 'mini', 'ultra', 'lite', 'prime', '
 
 const COLORS = new Set(['black', 'white', 'blue', 'red', 'green', 'silver', 'gold', 'grey', 'gray', 'pink', 'purple', 'titanium', 'natural', 'midnight', 'starlight', 'yellow', 'orange', 'teal', 'ultramarine', 'lavender']);
 
+/**
+ * Users type brand names the way they SAY them: "i phone 18", "one plus 12",
+ * "red mi note", "real me 12". A listing writes them as one word. Without this
+ * the typed query could never match a real listing (26 Oct bug: "i phone 18"
+ * returned "Price unavailable" while Flipkart had the exact phone at 1.64L).
+ * Joining the spoken form BEFORE tokenising makes both sides agree.
+ */
+const BRAND_JOINS: Array<[RegExp, string]> = [
+  [/\bi\s*phone\b/gi, 'iphone'],
+  [/\bapple\s+mobile\b/gi, 'apple'],
+  [/\bone\s*plus\b/gi, 'oneplus'],
+  [/\bred\s*mi\b/gi, 'redmi'],
+  [/\breal\s*me\b/gi, 'realme'],
+  [/\bsam\s*sung\b/gi, 'samsung'],
+  [/\bnothing\s*phone\b/gi, 'nothing phone'],
+  [/\bmoto\s*rola\b/gi, 'motorola'],
+  [/\bgalaxy\s*m\b/gi, 'galaxy m'],
+  [/\bmac\s*book\b/gi, 'macbook'],
+  [/\bmagic\s*book\b/gi, 'magicbook'],
+  [/\bb\s*t\s*w\b/gi, 'btw'],
+];
+
+export function normalizeBrandSpelling(t: string): string {
+  let out = String(t || '');
+  for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
+  return out;
+}
+
 function words(t: string): string[] {
-  return t.toLowerCase().replace(/[()\[\],:;|]/g, ' ').replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, '$1$2').split(/[^a-z0-9.+]+/).filter(Boolean);
+  return normalizeBrandSpelling(t).toLowerCase().replace(/[()\[\],:;|]/g, ' ').replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l)\b/g, '$1$2').split(/[^a-z0-9.+]+/).filter(Boolean);
 }
 
 export function isAccessory(title: string): boolean {
@@ -43,7 +71,15 @@ export function capacitiesOf(title: string): Set<string> {
   return caps;
 }
 
-export function isSameProduct(pastedTitle: string, candidateTitle: string): boolean {
+/**
+ * @param mode 'strict' (default) — the pasted/pinned product: a variant that cannot
+ *   be proven identical is NOT this product (14 Oct 512-vs-256, tier rules).
+ *   'typed' — the user typed a product NAME with no variant detail ("i phone 18"),
+ *   so an unstated capacity/tier must not disqualify a listing (26 Oct bug:
+ *   invocation always answered "Price unavailable"). Brand spellings are normalised
+ *   in both modes.
+ */
+export function isSameProduct(pastedTitle: string, candidateTitle: string, mode: 'strict' | 'typed' = 'strict'): boolean {
   const wantsAccessory = isAccessory(pastedTitle);
   if (!wantsAccessory && isAccessory(candidateTitle)) return false;
   // Capacity is part of the product's identity (the 14 Oct bug: a 512 GB link
@@ -52,7 +88,13 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string): bool
   // variant cannot be verified is NOT this product (it stays in `related`).
   const wantCaps = capacitiesOf(pastedTitle);
   const haveCaps = capacitiesOf(candidateTitle);
-  if (wantCaps.size || haveCaps.size) {
+  // A TYPED name usually carries no capacity ("i phone 18"). Treating that as a
+  // mismatch rejected every real listing and produced "Price unavailable"
+  // (26 Oct bug). The rule now binds only when the QUERY states a capacity: then
+  // the candidate must state the SAME one (the 14 Oct 512-vs-256 bug stays fixed).
+  if (mode === 'typed' && !wantCaps.size) {
+    // typed name, no capacity stated: any capacity is acceptable
+  } else if (wantCaps.size || haveCaps.size) {
     if (!wantCaps.size || !haveCaps.size) return false;
     for (const c of wantCaps) if (!haveCaps.has(c)) return false;
   }
@@ -68,7 +110,34 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string): bool
   const tiersOf = (ws: string[]) => new Set(ws.filter((w) => TIERS.has(w)));
   const wantTiers = tiersOf(need);
   const haveTiers = tiersOf(words(candidateTitle));
-  if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
+  // Tier rule binds only when the user STATED a tier in TYPED mode. A typed name
+  // like "i phone 18" says nothing about Pro/Max, and demanding an exact tier
+  // match there rejected every listing (26 Oct "Price unavailable"). Pasted links
+  // stay strict both ways, so "17 Pro" never compares a plain "17" and vice versa.
+  if (mode === 'typed' && !wantTiers.size) {
+    // no tier stated: any tier is acceptable
+  } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
   return hit / soft.length >= 0.6;
+}
+
+/**
+ * Relaxed identity check for the comparison page (owner 27 Oct): when no listing
+ * matches every rule (e.g. the user typed "i phone 18" but sources only carry
+ * "iPhone 18 Pro"), showing the closest real variants with their live prices beats
+ * "Price unavailable". Rules kept strict: every numeric/model token must match and
+ * at least one word token must match, so it can never show an unrelated product.
+ * Never used to claim a "cheapest price" for the exact product — the route labels
+ * these rows as closest variants.
+ */
+export function sharesIdentity(queryTitle: string, candidateTitle: string): boolean {
+  if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
+  const need = identityTokens(queryTitle);
+  if (!need.length) return false;
+  const have = new Set(words(candidateTitle));
+  const hard = need.filter((w) => /\d/.test(w));
+  if (hard.length && hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w));
+  if (!soft.length) return hard.length > 0;
+  return soft.some((w) => have.has(w));
 }
