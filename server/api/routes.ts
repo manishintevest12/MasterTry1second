@@ -16,6 +16,7 @@ import { geoSearch, geoReverse, geoSuggest } from '../common/geoProxy';
 import { groupSameProduct } from '../pipeline/productGrouping';
 import { getAllHealth } from '../sources/health';
 import { authMiddleware, requireAuth, requireAdmin, loginUser, registerUser, SESSION_TTL_SEC } from '../auth/authService';
+import { resolveCatalogueImage } from '../lens/productImage';
 import { requestAdminOtp, verifyAdminOtp } from '../auth/otpService';
 import { verifyFirebaseIdTokenDetailed, verifyGoogleIdToken } from '../auth/firebaseAuth';
 import crypto from 'crypto';
@@ -1557,9 +1558,28 @@ apiRouter.post('/product-page', async (req, res) => {
   const pageVsCheapest = product.pagePrice && cheapest
     ? { pagePrice: product.pagePrice, cheapest: cheapest.price, saving: Math.max(0, product.pagePrice - cheapest.price) } : null;
   const images = Array.from(new Set([product.image, cheapest?.image, ...(cheapest?.images || []), ...offers.map((o) => o.image)].filter((u: any) => typeof u === 'string' && u.startsWith('https://')))).slice(0, 8);
+  // OWNER 27 Oct: "image ni aa raha". A live price with no photo looked broken. When none of
+  // THIS product's rows carried a picture, borrow the photo of the same product family from
+  // our own catalogue (same brand + distinctive tokens, any seller) before giving up.
+  if (images.length === 0 && offers.length > 0) {
+    // The product page mixes grocery and retail rows, so try the requested vertical first
+    // and then the other side of that pair — the photo may sit in either catalogue.
+    const askVertical = String(req.body?.vertical || '').toLowerCase();
+    const verticalOrder = Array.from(new Set([
+      askVertical, 'grocery', 'ecommerce',
+    ].filter((v) => v === 'grocery' || v === 'ecommerce')));
+    let borrowed: string | null = null;
+    for (const v of verticalOrder) {
+      borrowed = await resolveCatalogueImage(String(lensQuery || textQuery), v).catch(() => null);
+      if (borrowed) break;
+    }
+    if (borrowed) images.push(borrowed);
+  }
+  // Last resort so the tile is never an empty grey box: the seller's own logo.
+  const imageFallbackSeller = offers.length ? String((offers[0] as any).seller || '') : '';
 
   res.json({
-    success: true, found: true, product, searchedAs: lensQuery, images,
+    success: true, found: true, product, searchedAs: lensQuery, images, imageFallbackSeller,
     // Honest spelling report: the user sees what was searched, and why it worked.
     originalQuery: spellingFix?.corrected ? spellingFix.original : textQuery,
     spellingCorrected: Boolean(spellingFix?.corrected),

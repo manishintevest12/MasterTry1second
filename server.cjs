@@ -1761,7 +1761,7 @@ async function httpAcquire(url, opts) {
   }
   const gotSlot = await acquireSlot(sourceId, maxConcurrency, settings.http.globalMaxConcurrency);
   if (!gotSlot) throw new AcquisitionError("RATE_LIMITED", `Concurrency limit reached for ${sourceId}`);
-  const start2 = Date.now();
+  const start = Date.now();
   try {
     let attempt = 0;
     let retryAfterMs = 0;
@@ -1779,7 +1779,7 @@ async function httpAcquire(url, opts) {
                 status: cffi.status,
                 body: truncated,
                 contentType: expectJson ? "application/json" : "text/html",
-                latencyMs: Date.now() - start2
+                latencyMs: Date.now() - start
               };
             }
           }
@@ -1827,7 +1827,7 @@ async function httpAcquire(url, opts) {
           status: response.status,
           body: truncated,
           contentType,
-          latencyMs: Date.now() - start2
+          latencyMs: Date.now() - start
         };
       } catch (err) {
         clearTimeout(timer);
@@ -2148,7 +2148,7 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start2 = -1, inStr = false, esc4 = false;
+  let depth = 0, start = -1, inStr = false, esc4 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
@@ -2162,13 +2162,13 @@ function extractAssignedJson(html, marker) {
       continue;
     }
     if (ch === "{") {
-      if (start2 < 0) start2 = i;
+      if (start < 0) start = i;
       depth++;
     } else if (ch === "}") {
       depth--;
-      if (depth === 0 && start2 >= 0) {
+      if (depth === 0 && start >= 0) {
         try {
-          return JSON.parse(html.slice(start2, i + 1));
+          return JSON.parse(html.slice(start, i + 1));
         } catch {
           return null;
         }
@@ -2265,9 +2265,9 @@ function parseMyntra(html, source, pageUrl) {
     }
   }
   if (!root) {
-    const start2 = /window\.__myx\s*=\s*\{/.exec(html);
-    if (start2) {
-      const from = start2.index + start2[0].length - 1;
+    const start = /window\.__myx\s*=\s*\{/.exec(html);
+    if (start) {
+      const from = start.index + start[0].length - 1;
       let depth = 0, inStr = false, esc4 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
@@ -2901,9 +2901,9 @@ function parseOppoSearch(html) {
   const seen = /* @__PURE__ */ new Set();
   let idx = html.indexOf("buyLink");
   while (idx !== -1 && out.length < 40) {
-    const start2 = walkBackToObject(html, idx);
-    if (start2 !== -1) {
-      const obj = scanObject(html, start2);
+    const start = walkBackToObject(html, idx);
+    if (start !== -1) {
+      const obj = scanObject(html, start);
       if (obj && typeof obj.buyLink === "string" && /^https?:/.test(obj.buyLink)) {
         const title = String(obj.title || "").trim();
         const key = String(obj.buyLink);
@@ -2933,19 +2933,19 @@ function walkBackToObject(s, i) {
   }
   return -1;
 }
-function scanObject(s, start2) {
-  const end = findObjectEnd(s, start2);
+function scanObject(s, start) {
+  const end = findObjectEnd(s, start);
   if (end === -1) return null;
-  const body = s.slice(start2, end + 1);
+  const body = s.slice(start, end + 1);
   const out = {};
   const re = /"([A-Za-z0-9_]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
   let m;
   while (m = re.exec(body)) out[m[1]] = m[2];
   return Object.keys(out).length ? out : null;
 }
-function findObjectEnd(s, start2) {
+function findObjectEnd(s, start) {
   let depth = 0;
-  for (let k = start2; k < s.length && k < start2 + 2e4; k++) {
+  for (let k = start; k < s.length && k < start + 2e4; k++) {
     const c = s[k];
     if (c === "{") depth += 1;
     else if (c === "}") {
@@ -2962,17 +2962,17 @@ function parseOppoPdp(html) {
   let steps = 0;
   while (idx !== -1 && variants.length < 20 && steps < 120) {
     steps += 1;
-    let start2 = walkBackToObject(html, idx);
+    let start = walkBackToObject(html, idx);
     let v = null;
-    while (start2 !== -1) {
-      const end = findObjectEnd(html, start2);
+    while (start !== -1) {
+      const end = findObjectEnd(html, start);
       if (end === -1) break;
-      const body = html.slice(start2, end + 1);
+      const body = html.slice(start, end + 1);
       if (body.includes('"sku"') && body.includes('"priceCurrency"')) {
         v = extractVariant(body);
         break;
       }
-      start2 = walkBackToObject(html, start2 - 1);
+      start = walkBackToObject(html, start - 1);
     }
     if (v && !seenSku.has(v.sku)) {
       seenSku.add(v.sku);
@@ -4895,9 +4895,9 @@ var init_goibiboHotels = __esm({
 // server/workers/parsers/goibiboHotelSsr.ts
 function extractInitialState(body) {
   const marker = "window.__initial_state__=";
-  const start2 = body.indexOf(marker);
-  if (start2 < 0) return null;
-  let i = start2 + marker.length;
+  const start = body.indexOf(marker);
+  if (start < 0) return null;
+  let i = start + marker.length;
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
@@ -5162,9 +5162,9 @@ function oyoCityPaths(city) {
   return out.slice(0, 6);
 }
 function parseOyoPreloadedState(html) {
-  const start2 = html.indexOf("window.__PRELOADED_STATE__");
-  if (start2 === -1) return null;
-  const eq = html.indexOf("=", start2);
+  const start = html.indexOf("window.__PRELOADED_STATE__");
+  if (start === -1) return null;
+  const eq = html.indexOf("=", start);
   if (eq === -1) return null;
   let sub = html.slice(eq + 1).trim();
   if (sub.startsWith('JSON.parse("')) {
@@ -7760,8 +7760,8 @@ var init_indigoFlights = __esm({
 
 // server/workers/parsers/akasaFlights.ts
 function akasaFareCalendarUrl(fromCode, toCode, depIso) {
-  const start2 = `${depIso}T00:00:00%2B05:30`;
-  return `${AKASA_API_BASE}/availability/v2/search?origin=${fromCode}&destination=${toCode}&startDate=${start2}&numberOfPassengers=1&channel=WEB&currencyCode=INR`;
+  const start = `${depIso}T00:00:00%2B05:30`;
+  return `${AKASA_API_BASE}/availability/v2/search?origin=${fromCode}&destination=${toCode}&startDate=${start}&numberOfPassengers=1&channel=WEB&currencyCode=INR`;
 }
 function akasaHonestNoService(status, body) {
   return status === 422 && /INVALID_STATION/i.test(body || "");
@@ -9720,10 +9720,10 @@ function allianceAirSearchUrl(fromCode, toCode, depIso) {
 function extractAaDataSchedule(pageHtml) {
   const i = pageHtml.indexOf("this.dataSchedule = ");
   if (i < 0) return null;
-  const start2 = pageHtml.indexOf("{", i + 20);
-  if (start2 < 0) return null;
+  const start = pageHtml.indexOf("{", i + 20);
+  if (start < 0) return null;
   let depth = 0, end = -1, inStr = false, esc4 = false;
-  for (let k = start2; k < pageHtml.length; k++) {
+  for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
     if (esc4) {
       esc4 = false;
@@ -9749,7 +9749,7 @@ function extractAaDataSchedule(pageHtml) {
   }
   if (end < 0) return null;
   try {
-    return JSON.parse(pageHtml.slice(start2, end));
+    return JSON.parse(pageHtml.slice(start, end));
   } catch {
     return null;
   }
@@ -10011,21 +10011,21 @@ function parseSriLankanAvailability(html, depIso) {
   const b = html || "";
   const i = b.indexOf('"proposedBounds":');
   if (i < 0) return null;
-  let k = i, depth = 0, start2 = -1;
+  let k = i, depth = 0, start = -1;
   while (k > 0) {
     const c = b[k];
     if (c === "}") depth += 1;
     else if (c === "{") {
       if (depth === 0) {
-        start2 = k;
+        start = k;
         break;
       }
       depth -= 1;
     }
     k -= 1;
   }
-  if (start2 < 0) return null;
-  let end = start2;
+  if (start < 0) return null;
+  let end = start;
   depth = 0;
   while (end < b.length) {
     const c = b[end];
@@ -10038,7 +10038,7 @@ function parseSriLankanAvailability(html, depIso) {
   }
   let d;
   try {
-    d = JSON.parse(b.slice(start2, end + 1));
+    d = JSON.parse(b.slice(start, end + 1));
   } catch {
     return null;
   }
@@ -15327,12 +15327,12 @@ var init_flights = __esm({
             const toA = await resolveAirport(rt.to, rt.toCode);
             if (!fromA.code || !toA.code) return [];
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-            const start2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const start = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
             const end = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
             let body = "";
             let status = 0;
             const lastErr = [];
-            const aixPayload = aixLowFaresBody(fromA.code, toA.code, start2, end);
+            const aixPayload = aixLowFaresBody(fromA.code, toA.code, start, end);
             for (const a of [
               { label: "chrome-h2", opts: { impersonate: "chrome", timeoutMs: 22e3, headers: aixLowFaresHeaders(), httpVersion: void 0 } },
               { label: "chrome-h1", opts: { impersonate: "chrome", timeoutMs: 2e4, headers: aixLowFaresHeaders(), httpVersion: "1.1" } },
@@ -15905,9 +15905,9 @@ var init_flights = __esm({
             const dateHuman = (/* @__PURE__ */ new Date(dep + "T00:00:00Z")).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
             const UA6 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
             const H = { "User-Agent": UA6, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" };
-            const boot = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
-            if (siaIsGated(boot.status, boot.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "Singapore Airlines Akamai-gated from this IP (probe self-activates on a clean production IP)", boot.status);
-            const cookies = boot.cookies || {};
+            const boot2 = await cffiFetch(SIA_CHAT_PAGE, { impersonate: "chrome", timeoutMs: 18e3, headers: H, returnCookies: true });
+            if (siaIsGated(boot2.status, boot2.body || "")) throw new AcquisitionError("ACCESS_CHALLENGE", "Singapore Airlines Akamai-gated from this IP (probe self-activates on a clean production IP)", boot2.status);
+            const cookies = boot2.cookies || {};
             const uuid = () => typeof globalThis.crypto?.randomUUID === "function" ? globalThis.crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
               const r2 = Math.random() * 16 | 0;
               const v = c === "x" ? r2 : r2 & 3 | 8;
@@ -22204,7 +22204,9 @@ function parseZeptoSsr(html, max = 400) {
     const pack = (fwd.match(/"formattedPacksize":"([^"]{0,80})"/) || [])[1];
     const vid = (fwd.match(/"id":"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/) || [])[1];
     const mrpRaw = (fwd.match(/"mrp":(\d+)/) || [])[1];
-    const imgPath = (fwd.match(/"path":"(cms\/[^"]{5,200}\.(?:jpe?g|png|webp))"/) || [])[1];
+    const imgRel = (fwd.match(/"path":"((?:cms\/)?[^"]{5,200}\.(?:jpe?g|png|webp))"/) || [])[1];
+    const imgAbs = (fwd.match(/"(?:imageUrl|image_url|image)":"(https?:\/\/[^"]{5,240}\.(?:jpe?g|png|webp)[^"]*)"/) || [])[1];
+    const imgPath = imgAbs || (imgRel ? IMG_CDN + imgRel : void 0);
     const availRaw = (fwd.match(/"availableQuantity":(\d+)/) || [])[1];
     if (price && price > 0 && price < 5e5 && name && name.trim().length > 1) {
       const key = vid || `${brandName(bm)}|${name}|${price}`;
@@ -22217,7 +22219,7 @@ function parseZeptoSsr(html, max = 400) {
           price: Math.round(price * 100) / 100,
           mrp: mrp && mrp >= price ? Math.round(mrp * 100) / 100 : void 0,
           pack: pack ? pack.trim() : void 0,
-          image: imgPath ? IMG_CDN + imgPath : void 0,
+          image: imgPath || void 0,
           variantId: vid,
           availableQuantity: availRaw !== void 0 ? Number(availRaw) : void 0
         });
@@ -30804,7 +30806,7 @@ function thinResultTtl(response, ttlSec, staleSec) {
   if (n <= 2 && succeeded >= 5) return { ttlSec: 120, staleSec: 240 };
   return { ttlSec, staleSec };
 }
-async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2, pending) {
+async function progressiveCatalogueResponse(vertical, inputQuery, offers, start, pending) {
   const anyOffers = offers;
   if (String(vertical) === "flights") {
     const presence = await buildFlightSellerPresence(inputQuery, anyOffers);
@@ -30826,11 +30828,11 @@ async function progressiveCatalogueResponse(vertical, inputQuery, offers, start2
       triggeredRefresh: true,
       pendingRefresh: pending
     },
-    latencyMs: Date.now() - start2,
-    totalSearchLatencyMs: Date.now() - start2
+    latencyMs: Date.now() - start,
+    totalSearchLatencyMs: Date.now() - start
   };
 }
-async function stillAcquiringResponse(parsed, start2) {
+async function stillAcquiringResponse(parsed, start) {
   return {
     query: parsed,
     results: [],
@@ -30844,8 +30846,8 @@ async function stillAcquiringResponse(parsed, start2) {
       pendingRefresh: true,
       honestNotice: "Live sources are still scanning for exactly what you typed \u2014 results start arriving within seconds."
     },
-    latencyMs: Date.now() - start2,
-    totalSearchLatencyMs: Date.now() - start2
+    latencyMs: Date.now() - start,
+    totalSearchLatencyMs: Date.now() - start
   };
 }
 function routeFloorMatches(rawQuery, offer) {
@@ -31751,6 +31753,84 @@ var init_authService = __esm({
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
+  }
+});
+
+// server/lens/productImage.ts
+function imageTokens(query) {
+  return String(query || "").toLowerCase().replace(/[^a-z0-9.\- ]+/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !STOP3.has(t) && !/^\d+(\.\d+)?$/.test(t)).slice(0, 3);
+}
+function firstHttps(doc) {
+  if (!doc) return null;
+  const list = [
+    doc.image_url,
+    ...String(doc.image_urls || "").split("|"),
+    doc.image,
+    doc.thumbnail
+  ];
+  for (const u of list) {
+    const s = String(u || "").trim();
+    if (s.startsWith("https://")) return s;
+  }
+  return null;
+}
+async function resolveCatalogueImage(query, vertical, opts = {}) {
+  const tokens2 = imageTokens(query);
+  if (!tokens2.length) return null;
+  const store2 = getStore();
+  const params = [vertical];
+  let where = `vertical = ? AND attributes IS NOT NULL AND attributes LIKE '%image%'`;
+  for (const t of tokens2) {
+    where += " AND LOWER(title) LIKE ?";
+    params.push(`%${t.replace(/[%_]/g, "")}%`);
+  }
+  try {
+    const rows = await store2.query(
+      `SELECT title, attributes FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT 40`,
+      params
+    );
+    const skip = String(opts.excludeSeller || "").toLowerCase().trim();
+    for (const r of rows) {
+      if (skip && String(r.title || "").toLowerCase().includes(skip)) continue;
+      const url = firstHttps(typeof r.attributes === "string" ? JSON.parse(r.attributes) : r.attributes);
+      if (url) return url;
+    }
+  } catch {
+  }
+  return null;
+}
+var STOP3;
+var init_productImage = __esm({
+  "server/lens/productImage.ts"() {
+    init_db();
+    STOP3 = /* @__PURE__ */ new Set([
+      "with",
+      "from",
+      "pack",
+      "combo",
+      "offer",
+      "free",
+      "best",
+      "india",
+      "indian",
+      "the",
+      "and",
+      "for",
+      "ml",
+      "kg",
+      "gm",
+      "ltr",
+      "litre",
+      "liter",
+      "gram",
+      "pcs",
+      "piece",
+      "pieces",
+      "count",
+      "now",
+      "fresh",
+      "new"
+    ]);
   }
 });
 
@@ -33745,7 +33825,7 @@ function isAccessory(title) {
   return true;
 }
 function identityTokens(title) {
-  return Array.from(new Set(words(title).filter((w) => !STOP3.has(w) && !COLORS.has(w) && w.length > 1)));
+  return Array.from(new Set(words(title).filter((w) => !STOP4.has(w) && !COLORS.has(w) && w.length > 1)));
 }
 function capacitiesOf(title) {
   const caps = /* @__PURE__ */ new Set();
@@ -33795,7 +33875,7 @@ function sharesIdentity(queryTitle, candidateTitle) {
   if (!soft.length) return hard.length > 0;
   return soft.some((w) => have.has(w));
 }
-var ACCESSORY_WORDS, STOP3, TIERS, COLORS, BRAND_JOINS;
+var ACCESSORY_WORDS, STOP4, TIERS, COLORS, BRAND_JOINS;
 var init_sameProduct = __esm({
   "server/lens/sameProduct.ts"() {
     ACCESSORY_WORDS = [
@@ -33836,7 +33916,7 @@ var init_sameProduct = __esm({
       "dock",
       "wallet"
     ];
-    STOP3 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
+    STOP4 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
     TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
     COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
     BRAND_JOINS = [
@@ -36943,6 +37023,7 @@ var init_routes = __esm({
     init_productGrouping();
     init_health();
     init_authService();
+    init_productImage();
     init_otpService();
     init_firebaseAuth();
     import_crypto29 = __toESM(require("crypto"), 1);
@@ -37394,8 +37475,8 @@ var init_routes = __esm({
       if (process.env.LOG_LEVEL === "debug") {
         console.error(JSON.stringify({ dbg: "scrape/live runSearch", q: input.query, v: String(input.vertical), n: response.results.length, servedFrom: response.state.servedFrom }));
       }
-      const STOP4 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
-      const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP4.has(w));
+      const STOP5 = /* @__PURE__ */ new Set(["in", "near", "the", "a", "an", "of", "for", "to", "from", "with", "and", "best", "cheap", "cheapest", "online", "buy", "price", "under", "below"]);
+      const words2 = input.query.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP5.has(w));
       const stem = (w) => w.replace(/(ies|es|s)$/, "");
       const SYNONYM = {
         television: ["tv", "telly"],
@@ -37818,12 +37899,28 @@ var init_routes = __esm({
       const deal = analyseDeal(currentPrice, history, cheapest?.price ?? null);
       const pageVsCheapest = product.pagePrice && cheapest ? { pagePrice: product.pagePrice, cheapest: cheapest.price, saving: Math.max(0, product.pagePrice - cheapest.price) } : null;
       const images = Array.from(new Set([product.image, cheapest?.image, ...cheapest?.images || [], ...offers.map((o) => o.image)].filter((u) => typeof u === "string" && u.startsWith("https://")))).slice(0, 8);
+      if (images.length === 0 && offers.length > 0) {
+        const askVertical = String(req.body?.vertical || "").toLowerCase();
+        const verticalOrder = Array.from(new Set([
+          askVertical,
+          "grocery",
+          "ecommerce"
+        ].filter((v) => v === "grocery" || v === "ecommerce")));
+        let borrowed = null;
+        for (const v of verticalOrder) {
+          borrowed = await resolveCatalogueImage(String(lensQuery || textQuery), v).catch(() => null);
+          if (borrowed) break;
+        }
+        if (borrowed) images.push(borrowed);
+      }
+      const imageFallbackSeller = offers.length ? String(offers[0].seller || "") : "";
       res.json({
         success: true,
         found: true,
         product,
         searchedAs: lensQuery,
         images,
+        imageFallbackSeller,
         // Honest spelling report: the user sees what was searched, and why it worked.
         originalQuery: spellingFix?.corrected ? spellingFix.original : textQuery,
         spellingCorrected: Boolean(spellingFix?.corrected),
@@ -38675,9 +38772,9 @@ function usd(n) {
   return Number.isFinite(v) && v > 0 ? Math.round(v) : null;
 }
 function parseMyx(html) {
-  const start2 = /window\.__myx\s*=\s*\{/.exec(html);
-  if (!start2) return null;
-  const from = start2.index + start2[0].length - 1;
+  const start = /window\.__myx\s*=\s*\{/.exec(html);
+  if (!start) return null;
+  const from = start.index + start[0].length - 1;
   let depth = 0, inStr = false, esc4 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
@@ -40515,13 +40612,13 @@ async function syncFromAdsenseApi(days = 30) {
       return { ok: false, rows: 0, error: `AdSense rejected the OAuth token (${reason}). Re-generate ADSENSE_REFRESH_TOKEN.` };
     }
     const end = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-    const start2 = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+    const start = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
     const account = cfg.accountId.startsWith("accounts/") ? cfg.accountId : `accounts/${cfg.accountId}`;
     const url = new URL(`https://adsense.googleapis.com/v2/${account}/reports:generate`);
     url.searchParams.set("dateRange", "CUSTOM");
-    url.searchParams.set("startDate.year", start2.slice(0, 4));
-    url.searchParams.set("startDate.month", String(Number(start2.slice(5, 7))));
-    url.searchParams.set("startDate.day", String(Number(start2.slice(8, 10))));
+    url.searchParams.set("startDate.year", start.slice(0, 4));
+    url.searchParams.set("startDate.month", String(Number(start.slice(5, 7))));
+    url.searchParams.set("startDate.day", String(Number(start.slice(8, 10))));
     url.searchParams.set("endDate.year", end.slice(0, 4));
     url.searchParams.set("endDate.month", String(Number(end.slice(5, 7))));
     url.searchParams.set("endDate.day", String(Number(end.slice(8, 10))));
@@ -44164,8 +44261,42 @@ async function createApp() {
   return app;
 }
 
+// server/multiCore.ts
+var import_node_cluster = __toESM(require("node:cluster"), 1);
+var import_node_os2 = __toESM(require("node:os"), 1);
+function workerCount(env = process.env) {
+  const raw = String(env.WEB_CONCURRENCY || "").trim().toLowerCase();
+  if (!raw || raw === "1" || raw === "off" || raw === "false") return 1;
+  if (raw === "auto" || raw === "true") return Math.max(1, import_node_os2.default.cpus().length);
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 1 ? Math.min(Math.floor(n), 32) : 1;
+}
+async function boot(start, label = "Try1Second") {
+  const workers = workerCount();
+  if (workers > 1 && import_node_cluster.default.isPrimary) {
+    console.log(`[${label}] primary ${process.pid}: forking ${workers} workers (${import_node_os2.default.cpus().length} vCPU, WEB_CONCURRENCY=${process.env.WEB_CONCURRENCY})`);
+    let shuttingDown = false;
+    const fork = () => import_node_cluster.default.fork();
+    for (let i = 0; i < workers; i++) fork();
+    import_node_cluster.default.on("exit", (worker, code, signal) => {
+      if (shuttingDown) return;
+      console.warn(`[${label}] worker ${worker.process.pid} exited (${signal || code}) \u2014 respawning in 2s`);
+      setTimeout(fork, 2e3);
+    });
+    const stop = () => {
+      shuttingDown = true;
+      for (const w of Object.values(import_node_cluster.default.workers || {})) w?.kill();
+      process.exit(0);
+    };
+    process.on("SIGTERM", stop);
+    process.on("SIGINT", stop);
+    return;
+  }
+  await start();
+}
+
 // server.prod.ts
-async function start() {
+async function startWorker() {
   const app = await createApp();
   const dist = import_path8.default.resolve(process.cwd(), "dist");
   if (import_fs7.default.existsSync(dist)) {
@@ -44185,7 +44316,7 @@ async function start() {
   const PORT = Number(process.env.PORT || 3e3);
   app.listen(PORT, () => console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`));
 }
-start().catch((e2) => {
+boot(startWorker, "try1second").catch((e2) => {
   console.error("[try1second] FATAL: server failed to start:", e2);
   process.exit(1);
 });

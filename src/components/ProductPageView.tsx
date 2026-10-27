@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ExternalLink, Bell, BellRing, Loader2, AlertCircle, TrendingDown, ShieldCheck, Copy, Share2,
-  ChevronRight, Star, Search, Check, Link2, Sparkles,
+  ChevronRight, Star, Search, Check, Link2, Sparkles, ImageOff,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -25,6 +25,10 @@ interface Deal {
 }
 interface PageData {
   success: boolean; found?: boolean; error?: string; message?: string; searchedAs?: string;
+  /** Who sells the cheapest live row — drives the branded tile when no photo exists. */
+  imageFallbackSeller?: string;
+  /** Honest spelling report from the server (27 Oct spelling repair). */
+  originalQuery?: string; spellingCorrected?: boolean;
   product?: { title: string | null; merchant: string; domain: string; pagePrice: number | null; image: string | null };
   images?: string[]; cheapest?: Offer | null; offers?: Offer[]; related?: Offer[];
   history?: Array<{ price: number; capturedAt: string }>; deal?: Deal;
@@ -51,6 +55,11 @@ export const ProductPageView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeImg, setActiveImg] = useState(0);
+  // A seller CDN can refuse a hotlinked photo (or return 404). We keep the URL but remember
+  // which ones failed, so the tile falls back to the seller's logo instead of a dead <img>
+  // or an empty grey box (owner 27 Oct: "image ni aa raha").
+  const [brokenImgs, setBrokenImgs] = useState<Record<string, true>>({});
+  useEffect(() => { setActiveImg(0); setBrokenImgs({}); }, [data?.searchedAs, data?.originalQuery]);
   const [range, setRange] = useState<(typeof RANGES)[number]['id']>('max');
   const [alertPrice, setAlertPrice] = useState('');
   const [alertBusy, setAlertBusy] = useState(false);
@@ -222,13 +231,38 @@ export const ProductPageView: React.FC = () => {
             {/* ---------- gallery ---------- */}
             <div className="bg-white rounded-2xl border border-slate-200 p-3 min-w-0">
               <div className="aspect-square rounded-xl bg-slate-50 flex items-center justify-center overflow-hidden">
-                {images[activeImg] ? <img src={images[activeImg]} alt={title} className="w-full h-full object-contain" /> : <span className="text-xs text-slate-400">No photo available</span>}
+                {images[activeImg] && !brokenImgs[images[activeImg]] ? (
+                  <img
+                    src={images[activeImg]}
+                    alt={title}
+                    className="w-full h-full object-contain"
+                    onError={() => setBrokenImgs((prev) => ({ ...prev, [images[activeImg]]: true }))}
+                  />
+                ) : (
+                  // No usable photo: show who is selling it and the live price, so the tile
+                  // still carries information instead of an empty "No photo available" box.
+                  <div className="flex flex-col items-center justify-center gap-2 px-4 text-center">
+                    {(data as any)?.imageFallbackSeller && FAV((data as any).imageFallbackSeller) ? (
+                      <img src={FAV((data as any).imageFallbackSeller)} alt="" className="w-16 h-16 object-contain" />
+                    ) : (
+                      <ImageOff className="w-8 h-8 text-slate-300" />
+                    )}
+                    <span className="text-[11px] leading-tight text-slate-400">
+                      Photo unavailable right now
+                    </span>
+                    {cheapest?.seller && (
+                      <span className="text-[11px] font-semibold text-slate-500">Live on {cheapest.seller}{current ? ` · ₹${current}` : ''}</span>
+                    )}
+                  </div>
+                )}
               </div>
               {images.length > 1 && (
                 <div className="flex gap-2 mt-3 overflow-x-auto">
                   {images.map((u, i) => (
                     <button key={u + i} onClick={() => setActiveImg(i)} className={`w-14 h-14 shrink-0 rounded-lg border bg-white p-1 cursor-pointer ${i === activeImg ? 'border-red-500 ring-2 ring-red-500/20' : 'border-slate-200'}`}>
-                      <img src={u} alt="" className="w-full h-full object-contain" loading="lazy" />
+                      {brokenImgs[u]
+                        ? <span className="flex h-full w-full items-center justify-center text-[9px] text-slate-400">{cheapest?.seller ? cheapest.seller.slice(0, 2).toUpperCase() : '—'}</span>
+                        : <img src={u} alt="" className="w-full h-full object-contain" loading="lazy" onError={() => setBrokenImgs((prev) => ({ ...prev, [u]: true }))} />}
                     </button>
                   ))}
                 </div>

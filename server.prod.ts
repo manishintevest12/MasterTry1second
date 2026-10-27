@@ -6,8 +6,9 @@ import path from 'path';
 import fs from 'fs';
 import express from 'express';
 import { createApp } from './server/index';
+import { boot } from './server/multiCore';
 
-async function start() {
+async function startWorker() {
   const app = await createApp();
   const dist = path.resolve(process.cwd(), 'dist');
   if (fs.existsSync(dist)) {
@@ -25,7 +26,8 @@ async function start() {
   app.listen(PORT, () => console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`));
 }
 
-start().catch((e) => {
+// WEB_CONCURRENCY=6 (or 'auto') lets all 6 vCPUs serve requests; unset keeps one worker.
+boot(startWorker, 'try1second').catch((e) => {
   console.error('[try1second] FATAL: server failed to start:', e);
   process.exit(1);
 });

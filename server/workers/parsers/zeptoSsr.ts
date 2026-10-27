@@ -76,7 +76,13 @@ export function parseZeptoSsr(html: string, max = 400): ZeptoSsrProduct[] {
     const pack = (fwd.match(/"formattedPacksize":"([^"]{0,80})"/) || [])[1];
     const vid = (fwd.match(/"id":"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/) || [])[1];
     const mrpRaw = (fwd.match(/"mrp":(\d+)/) || [])[1];
-    const imgPath = (fwd.match(/"path":"(cms\/[^"]{5,200}\.(?:jpe?g|png|webp))"/) || [])[1];
+    // Zepto ships images in several shapes across rails: cms/... paths, bare
+    // product_variant/... paths, plain imageUrl and absolute CDN urls. Missing the
+    // non-cms shapes is why rows landed without a photo and the page showed
+    // "No photo available" (owner 27 Oct).
+    const imgRel = (fwd.match(/"path":"((?:cms\/)?[^"]{5,200}\.(?:jpe?g|png|webp))"/) || [])[1];
+    const imgAbs = (fwd.match(/"(?:imageUrl|image_url|image)":"(https?:\/\/[^"]{5,240}\.(?:jpe?g|png|webp)[^"]*)"/) || [])[1];
+    const imgPath = imgAbs || (imgRel ? IMG_CDN + imgRel : undefined);
     const availRaw = (fwd.match(/"availableQuantity":(\d+)/) || [])[1];
     if (price && price > 0 && price < 500000 && name && name.trim().length > 1) {
       const key = vid || `${brandName(bm)}|${name}|${price}`;
@@ -89,7 +95,7 @@ export function parseZeptoSsr(html: string, max = 400): ZeptoSsrProduct[] {
           price: Math.round(price * 100) / 100,
           mrp: mrp && mrp >= price ? Math.round(mrp * 100) / 100 : undefined,
           pack: pack ? pack.trim() : undefined,
-          image: imgPath ? IMG_CDN + imgPath : undefined,
+          image: imgPath || undefined,
           variantId: vid,
           availableQuantity: availRaw !== undefined ? Number(availRaw) : undefined,
         });

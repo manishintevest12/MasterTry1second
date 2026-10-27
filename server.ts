@@ -6,11 +6,12 @@
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { boot } from './server/multiCore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
+async function startPrimary() {
   const { createApp } = await import('./server/index.js');
   const app = await createApp();
 
@@ -44,7 +45,8 @@ async function startServer() {
   });
 }
 
-startServer().catch((e) => {
+// Multi-core is opt-in via WEB_CONCURRENCY (see server/multiCore.ts): unset = one worker.
+boot(startPrimary).catch((e) => {
   console.error('[Try1Second] Server failed to start:', e);
   process.exit(1);
 });
