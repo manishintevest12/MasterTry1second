@@ -24,7 +24,7 @@ import { getStore } from '../common/db';
 export interface SecureDeeplinkResult {
   trackingUrl: string;      // network tracking URL, or the raw destination when no network matches
   network: string | null;   // null = direct
-  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'direct';
+  matchedProfile: 'affiliate_configs' | 'affiliate_links' | 'amazon_associates' | 'cuelinks_fallback' | 'linkinr' | 'ekaro_converter' | 'adsense_only' | 'already_tracked' | 'direct';
 }
 
 const AFFILIATE_TTL_SEC = 24 * 60 * 60; // pointers live one day
@@ -132,7 +132,21 @@ export function amazonAssociatesUrl(dest: string): string | null {
  * product URL. Never invents IDs: an unconfigured company resolves to a
  * direct hop (network=null) and the user still reaches the exact destination.
  */
-export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug?: string } = {}): Promise<SecureDeeplinkResult> {
+/** Tracking/redirect hosts: a URL already on one of these is OUR monetized link
+ *  (manual finance inventory template, a cab book link, an owner-typed affiliate URL).
+ *  Re-converting it would double-wrap and lose the destination page, so
+ *  buildSecureDeeplink returns it untouched (owner 27 Oct). */
+const ALREADY_TRACKED_HOSTS = /(^|\.)(linksredirect\.com|fktr\.in|myntr\.it|earnkaro\.com|ekaro\.[a-z.]+|affiliaters\.in|bitli\.in|linkinr\.[a-z.]+|vcommission\.com|inr\.deals|cuelinks\.com|cashkaro\.com|amzn\.to|go\.redirectingat\.com|sjv\.io|linksynergy\.com|clicweb|pxf\.io|dl\.flipkart\.com)$/i;
+
+export function looksAlreadyTracked(url: string): boolean {
+  try { return ALREADY_TRACKED_HOSTS.test(new URL(url).hostname.toLowerCase()); } catch { return false; }
+}
+
+export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug?: string } = {}): Promise<SecureDeeplinkResult> { 
+  // Already-tracked link: pass through untouched (never double-monetize).
+  if (looksAlreadyTracked(targetUrl)) {
+    return { trackingUrl: targetUrl, network: 'already_tracked', matchedProfile: 'already_tracked' };
+  }
   const domain = safeDomain(targetUrl);
   const store = getStore();
   // 1. Admin-managed affiliate_configs (slug, exact domain, or registrable-domain

@@ -27832,6 +27832,7 @@ __export(deeplink_exports, {
   createMaskingPointer: () => createMaskingPointer,
   cuelinksKnownMerchants: () => cuelinksKnownMerchants,
   cuelinksMerchantUrl: () => cuelinksMerchantUrl,
+  looksAlreadyTracked: () => looksAlreadyTracked,
   merchantSearchFallback: () => merchantSearchFallback,
   recordPointerClick: () => recordPointerClick,
   resolveMaskingPointer: () => resolveMaskingPointer,
@@ -27908,7 +27909,17 @@ function amazonAssociatesUrl(dest) {
   u.searchParams.set("tag", tag);
   return u.toString();
 }
+function looksAlreadyTracked(url) {
+  try {
+    return ALREADY_TRACKED_HOSTS.test(new URL(url).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
 async function buildSecureDeeplink(targetUrl, opts = {}) {
+  if (looksAlreadyTracked(targetUrl)) {
+    return { trackingUrl: targetUrl, network: "already_tracked", matchedProfile: "already_tracked" };
+  }
   const domain = safeDomain(targetUrl);
   const store2 = getStore();
   try {
@@ -28036,7 +28047,7 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto22, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS;
+var import_crypto22, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
@@ -28050,6 +28061,7 @@ var init_deeplink = __esm({
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com"]);
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
+    ALREADY_TRACKED_HOSTS = /(^|\.)(linksredirect\.com|fktr\.in|myntr\.it|earnkaro\.com|ekaro\.[a-z.]+|affiliaters\.in|bitli\.in|linkinr\.[a-z.]+|vcommission\.com|inr\.deals|cuelinks\.com|cashkaro\.com|amzn\.to|go\.redirectingat\.com|sjv\.io|linksynergy\.com|clicweb|pxf\.io|dl\.flipkart\.com)$/i;
   }
 });
 
@@ -30458,6 +30470,17 @@ function validateFinanceOffer(i) {
   if (probe.protocol !== "https:") return { ok: false, error: "URL must start with https://" };
   const price = i.price === null || i.price === void 0 || i.price === "" ? null : Number(i.price);
   if (price !== null && !Number.isFinite(price)) return { ok: false, error: "Price/rate value must be a number" };
+  const image = String(i.image_url || "").trim();
+  if (image) {
+    const okImage = /^https:\/\//i.test(image) || /^\/api\/logos\/[A-Za-z0-9._-]+$/.test(image);
+    if (!okImage) return { ok: false, error: "Photo must be an uploaded file or a full https:// image link" };
+  }
+  const aff = String(i.affiliate_url || "").trim();
+  if (aff) {
+    if (!/^https:\/\//i.test(aff)) return { ok: false, error: "Affiliate link must start with https://" };
+    if (!aff.includes("{url}")) return { ok: false, error: "Affiliate link me {url} hona chahiye \u2014 wahan merchant ka sahi apply page jaata hai" };
+    if (aff.length > 1500) return { ok: false, error: "Affiliate link is too long (1500 chars max)" };
+  }
   return {
     ok: true,
     clean: {
@@ -30470,6 +30493,8 @@ function validateFinanceOffer(i) {
       highlights: String(i.highlights || "").trim().slice(0, 300) || null,
       url: rawUrl.slice(0, 1500),
       city: String(i.city || "").trim().slice(0, 120) || null,
+      image_url: image || null,
+      affiliate_url: aff || null,
       active: i.active === false ? 0 : 1,
       actor: String(i.actor || "").trim().slice(0, 120) || null
     }
@@ -30494,6 +30519,8 @@ async function listManualFinanceOffers(vertical) {
       price: r.effective_price === null ? null : Number(r.effective_price),
       url: r.seller_url || "",
       city: r.location_city || null,
+      image_url: a.image || "",
+      affiliate_url: a.affiliate_template || "",
       active: r.freshness_status !== "INVALID",
       created_at: r.created_at,
       updated_at: r.updated_at
@@ -30516,6 +30543,9 @@ async function saveManualFinanceOffer(input) {
     manual: 1,
     rate_label: c.rate_label,
     highlights: c.highlights,
+    // Card photo + our own tracking template (rendered at click, see deeplink guard).
+    ...c.image_url ? { image: c.image_url } : {},
+    ...c.affiliate_url ? { affiliate_template: c.affiliate_url } : {},
     // Finance summary rows carry their category in attributes on the scraped side too,
     // so the vertical engine treats a manual row exactly like a published-rate page.
     ...c.vertical === "loans" ? { loan_type: "personal loan" } : {},
@@ -31039,7 +31069,8 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
             vendor: String(m.seller || m.title || ""),
             price: m.effective_price === null ? 0 : Number(m.effective_price),
             currency: "INR",
-            sellerUrl: String(m.seller_url || ""),
+            sellerUrl: attrs.affiliate_template ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || ""))) : String(m.seller_url || ""),
+            imageUrl: attrs.image || void 0,
             attributes: { ...attrs, manual: 1 },
             freshnessStatus: "LIVE_VERIFIED",
             validationStatus: "VALID",

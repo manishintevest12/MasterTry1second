@@ -49,3 +49,32 @@ test('a non-numeric price is rejected rather than silently zeroed', () => {
   const r = validateFinanceOffer({ vertical: 'loans', title: 'X', url: 'https://e.com/a', price: 'cheap' });
   assert.equal(r.ok, false);
 });
+
+// ---- Owner 27 Oct: "photo upload, affiliate link daalne wala option hai?" ----
+test('a photo can be an admin upload (/api/logos/<key>) or an https image', () => {
+  const up = validateFinanceOffer({ vertical: 'loans', title: 'HDFC Personal Loan', url: 'https://hdfc.com/loan', image_url: '/api/logos/finance-loans-hdfc' });
+  assert.equal(up.ok, true, up.error);
+  assert.equal(up.clean!.image_url, '/api/logos/finance-loans-hdfc');
+  const ext = validateFinanceOffer({ vertical: 'loans', title: 'HDFC Personal Loan', url: 'https://hdfc.com/loan', image_url: 'https://cdn.example.com/card.jpg' });
+  assert.equal(ext.ok, true, ext.error);
+  const bad = validateFinanceOffer({ vertical: 'loans', title: 'HDFC Loan', url: 'https://e.com/a', image_url: 'blob:http://localhost/abc' });
+  assert.equal(bad.ok, false);
+});
+
+test('an affiliate link must be https AND carry {url} so the apply page survives', () => {
+  const ok = validateFinanceOffer({ vertical: 'creditcards', title: 'HDFC Millennia', url: 'https://hdfcbank.com/card', affiliate_url: 'https://track.network/click?affid=42&url={url}' });
+  assert.equal(ok.ok, true, ok.error);
+  assert.equal(ok.clean!.affiliate_url, 'https://track.network/click?affid=42&url={url}');
+  const noPlaceholder = validateFinanceOffer({ vertical: 'creditcards', title: 'HDFC Card', url: 'https://e.com/a', affiliate_url: 'https://track.network/click?affid=42' });
+  assert.equal(noPlaceholder.ok, false);
+  assert.match(String(noPlaceholder.error), /\{url\}/);
+  const insecure = validateFinanceOffer({ vertical: 'creditcards', title: 'HDFC Card', url: 'https://e.com/a', affiliate_url: 'http://track.network/?url={url}' });
+  assert.equal(insecure.ok, false);
+});
+
+test('both fields are optional — an entry still saves without photo or affiliate link', () => {
+  const r = validateFinanceOffer({ vertical: 'account', title: 'SBI Savings Account', url: 'https://sbi.co.in/savings' });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.clean!.image_url, null);
+  assert.equal(r.clean!.affiliate_url, null);
+});

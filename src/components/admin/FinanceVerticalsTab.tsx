@@ -9,11 +9,12 @@
  * and lead forms with no second pipeline.
  */
 import { useEffect, useState } from 'react';
-import { Plus, Save, Trash2, Loader2, Wallet, CreditCard, ShieldCheck, Landmark } from 'lucide-react';
+import { Plus, Save, Trash2, Loader2, Wallet, CreditCard, ShieldCheck, Landmark, ImagePlus, Link2 } from 'lucide-react';
 
 interface Row {
   id: number; vertical: string; title: string; seller: string; rate_label: string;
   highlights: string; price: number | null; url: string; city: string | null; active: boolean;
+  image_url: string; affiliate_url: string;
 }
 
 const VERTICALS = [
@@ -26,13 +27,14 @@ const VERTICALS = [
 const inputCls = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900/10';
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1';
 
-const blank = { id: undefined as number | undefined, vertical: 'loans', title: '', seller: '', rate_label: '', price: '', highlights: '', url: '', city: '', active: true };
+const blank = { id: undefined as number | undefined, vertical: 'loans', title: '', seller: '', rate_label: '', price: '', highlights: '', url: '', city: '', active: true, image_url: '', affiliate_url: '' };
 
 export const FinanceVerticalsTab: React.FC = () => {
   const [token] = useState(() => localStorage.getItem('t1s_admin_token') || '');
   const [rows, setRows] = useState<Row[]>([]);
   const [form, setForm] = useState<any>(blank);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
@@ -47,6 +49,34 @@ export const FinanceVerticalsTab: React.FC = () => {
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+
+  // Photo upload (owner 27 Oct): the file goes to the existing admin merchant-logo
+  // store, and the entry keeps /api/logos/<key> — a stable absolute URL the web card,
+  // Flutter app and emails can all render (never a blob: URL that dies on reload).
+  const uploadPhoto = async (file: File) => {
+    if (!file.type.startsWith('image/')) return setMsg({ ok: false, text: 'Sirf image file (png/jpg/webp)' });
+    if (file.size > 4 * 1024 * 1024) return setMsg({ ok: false, text: 'Photo 4MB se choti honi chahiye' });
+    setUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(String(fr.result || ''));
+        fr.onerror = () => reject(new Error('read failed'));
+        fr.readAsDataURL(file);
+      });
+      const name = (form.title || file.name || 'finance').toString().trim();
+      const res = await fetch('/api/admin/merchant-logos', {
+        method: 'POST', headers,
+        body: JSON.stringify({ name: `finance-${form.vertical}-${name}`, logo: dataUrl }),
+      });
+      const d = await res.json();
+      if (d.success) {
+        set('image_url', `/api/logos/${d.name_key}`);
+        setMsg({ ok: true, text: 'Photo uploaded — card pe dikhegi.' });
+      } else setMsg({ ok: false, text: d.error || 'Upload failed' });
+    } catch { setMsg({ ok: false, text: 'Upload failed' }); }
+    finally { setUploading(false); }
+  };
 
   const save = async () => {
     if (!form.title.trim()) return setMsg({ ok: false, text: 'Product name likho (e.g. HDFC Personal Loan)' });
@@ -77,7 +107,7 @@ export const FinanceVerticalsTab: React.FC = () => {
   };
 
   const edit = (r: Row) => {
-    setForm({ id: r.id, vertical: r.vertical, title: r.title, seller: r.seller, rate_label: r.rate_label, price: r.price ?? '', highlights: r.highlights, url: r.url, city: r.city || '', active: r.active });
+    setForm({ id: r.id, vertical: r.vertical, title: r.title, seller: r.seller, rate_label: r.rate_label, price: r.price ?? '', highlights: r.highlights, url: r.url, city: r.city || '', active: r.active, image_url: r.image_url || '', affiliate_url: r.affiliate_url || '' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -112,6 +142,24 @@ export const FinanceVerticalsTab: React.FC = () => {
           <div><label className={labelCls}>Numeric value (sorting)</label><input className={inputCls} value={form.price} onChange={(e) => set('price', e.target.value)} placeholder="10.25" /></div>
           <div><label className={labelCls}>City (optional)</label><input className={inputCls} value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Indore" /></div>
           <div className="md:col-span-2"><label className={labelCls}>Apply / partner URL *</label><input className={inputCls} value={form.url} onChange={(e) => set('url', e.target.value)} placeholder="https://www.hdfcbank.com/personal/loan" /></div>
+          <div className="md:col-span-2">
+            <label className={labelCls}>Photo (card image)</label>
+            <div className="flex items-center gap-2">
+              {form.image_url ? <img src={form.image_url} alt="preview" className="w-10 h-10 rounded-lg object-cover border border-slate-200" /> : null}
+              <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 cursor-pointer hover:border-slate-300">
+                {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+                {form.image_url ? 'Change photo' : 'Upload photo'}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadPhoto(f); }} />
+              </label>
+              {form.image_url ? <button type="button" onClick={() => set('image_url', '')} className="text-[11px] text-slate-400 cursor-pointer">remove</button> : null}
+            </div>
+            <input className={`${inputCls} mt-1.5`} value={form.image_url} onChange={(e) => set('image_url', e.target.value)} placeholder="…ya https:// image link paste karo" />
+          </div>
+          <div className="md:col-span-2">
+            <label className={labelCls}>Affiliate / tracking link</label>
+            <input className={inputCls} value={form.affiliate_url} onChange={(e) => set('affiliate_url', e.target.value)} placeholder="https://track.network/click?affid=123&url={url}" />
+            <p className="text-[10px] text-slate-400 mt-1">Khali chhod do to system apna network (Amazon / Cuelinks / LinkInR / Ekaro / direct) khud lagayega. Bharte ho to <strong>{'{url}'}</strong> zaroori hai — wahan asli apply page jaata hai.</p>
+          </div>
           <div className="md:col-span-4"><label className={labelCls}>Highlights (one line)</label><input className={inputCls} value={form.highlights} onChange={(e) => set('highlights', e.target.value)} placeholder="Instant approval · 7.5L max · no foreclosure charge" /></div>
         </div>
 
@@ -140,6 +188,10 @@ export const FinanceVerticalsTab: React.FC = () => {
                   </div>
                   <p className="text-[11px] text-slate-500 truncate">{r.seller}{r.rate_label ? ` · ${r.rate_label}` : ''}{r.city ? ` · ${r.city}` : ''}</p>
                   {r.highlights ? <p className="text-[10px] text-slate-400 truncate">{r.highlights}</p> : null}
+                  <p className="text-[10px] flex items-center gap-2 mt-0.5">
+                    <span className={r.image_url ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>{r.image_url ? 'Photo ✓' : 'no photo'}</span>
+                    <span className={r.affiliate_url ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>{r.affiliate_url ? 'Affiliate link ✓' : 'no affiliate link'}</span>
+                  </p>
                 </div>
                 <button onClick={() => edit(r)} className="text-[11px] text-slate-500 cursor-pointer">Edit</button>
                 <button onClick={() => void remove(r.id)} className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>

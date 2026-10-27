@@ -26,6 +26,8 @@ export interface FinanceOfferInput {
   price?: number | string | null; // numeric value when the card sorts by price/rate
   highlights?: string | null;  // one line of USPs
   url: string;                 // merchant / apply page (routed through /api/out)
+  image_url?: string | null;   // admin-uploaded card photo (/api/logos/<key>) or https URL
+  affiliate_url?: string | null; // tracking template, {url} = merchant page
   city?: string | null;
   active?: boolean;
   actor?: string | null;
@@ -52,6 +54,22 @@ export function validateFinanceOffer(i: FinanceOfferInput): { ok: boolean; error
   if (probe.protocol !== 'https:') return { ok: false, error: 'URL must start with https://' };
   const price = i.price === null || i.price === undefined || i.price === '' ? null : Number(i.price);
   if (price !== null && !Number.isFinite(price)) return { ok: false, error: 'Price/rate value must be a number' };
+
+  // Owner 27 Oct: the four finance verticals need a PHOTO and a real AFFILIATE link.
+  // Photo is either an admin upload (/api/logos/<key>) or an https image.
+  const image = String(i.image_url || '').trim();
+  if (image) {
+    const okImage = /^https:\/\//i.test(image) || /^\/api\/logos\/[A-Za-z0-9._-]+$/.test(image);
+    if (!okImage) return { ok: false, error: 'Photo must be an uploaded file or a full https:// image link' };
+  }
+  // Affiliate link: our tracking template. It must be https and carry {url} so the
+  // user still lands on the exact apply page (never a bare campaign homepage).
+  const aff = String(i.affiliate_url || '').trim();
+  if (aff) {
+    if (!/^https:\/\//i.test(aff)) return { ok: false, error: 'Affiliate link must start with https://' };
+    if (!aff.includes('{url}')) return { ok: false, error: 'Affiliate link me {url} hona chahiye — wahan merchant ka sahi apply page jaata hai' };
+    if (aff.length > 1500) return { ok: false, error: 'Affiliate link is too long (1500 chars max)' };
+  }
   return {
     ok: true,
     clean: {
@@ -64,6 +82,8 @@ export function validateFinanceOffer(i: FinanceOfferInput): { ok: boolean; error
       highlights: String(i.highlights || '').trim().slice(0, 300) || null,
       url: rawUrl.slice(0, 1500),
       city: String(i.city || '').trim().slice(0, 120) || null,
+      image_url: image || null,
+      affiliate_url: aff || null,
       active: i.active === false ? 0 : 1,
       actor: String(i.actor || '').trim().slice(0, 120) || null,
     },
@@ -89,6 +109,7 @@ export async function listManualFinanceOffers(vertical?: string): Promise<any[]>
       rate_label: a.rate_label || '', highlights: a.highlights || '',
       price: r.effective_price === null ? null : Number(r.effective_price),
       url: r.seller_url || '', city: r.location_city || null,
+      image_url: a.image || '', affiliate_url: a.affiliate_template || '',
       active: r.freshness_status !== 'INVALID',
       created_at: r.created_at, updated_at: r.updated_at,
     };
@@ -109,6 +130,9 @@ export async function saveManualFinanceOffer(input: FinanceOfferInput): Promise<
   const store = getStore();
   const attributes = JSON.stringify({
     manual: 1, rate_label: c.rate_label, highlights: c.highlights,
+    // Card photo + our own tracking template (rendered at click, see deeplink guard).
+    ...(c.image_url ? { image: c.image_url } : {}),
+    ...(c.affiliate_url ? { affiliate_template: c.affiliate_url } : {}),
     // Finance summary rows carry their category in attributes on the scraped side too,
     // so the vertical engine treats a manual row exactly like a published-rate page.
     ...(c.vertical === 'loans' ? { loan_type: 'personal loan' } : {}),

@@ -768,7 +768,13 @@ async function finalizeLive(
             vendor: String(m.seller || m.title || ''),
             price: m.effective_price === null ? 0 : Number(m.effective_price),
             currency: 'INR',
-            sellerUrl: String(m.seller_url || ''),
+            sellerUrl: attrs.affiliate_template
+              // Owner 27 Oct: a manual finance entry can carry its OWN tracking
+              // template — {url} is swapped for the real apply page so the user still
+              // lands on the exact product, and the deeplink guard leaves it untouched.
+              ? String(attrs.affiliate_template).replace(/\{url\}/g, encodeURIComponent(String(m.seller_url || '')))
+              : String(m.seller_url || ''),
+            imageUrl: attrs.image || undefined,
             attributes: { ...attrs, manual: 1 },
             freshnessStatus: 'LIVE_VERIFIED',
             validationStatus: 'VALID',
