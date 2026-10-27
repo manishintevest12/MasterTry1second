@@ -30,6 +30,14 @@
           }
         },
         {
+          "client_id": "49438102645-fdq83q923v1gia32k3v4qefs78i0n8bm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.try1second.try1second",
+            "certificate_hash": "4e7cc1c1586ad01e66da09cebb4580f526b5afe3"
+          }
+        },
+        {
           "client_id": "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com",
           "client_type": 3
         }
