@@ -242,7 +242,13 @@ export async function recordPointerClick(dest: string, offerId: string | undefin
  *  URL): the user lands on the merchant's own search for exactly that item,
  *  the affiliate converter (/api/out → Cuelinks/Ekaro) wraps it unchanged.
  *  Unknown vendor -> '' (old behaviour, no invention). */
-export function merchantSearchFallback(vendor: string, title: string, vertical?: string, travel?: { route?: string; date?: string }): string {
+import { merchantDeepLink } from './merchantLinks';
+
+export function merchantSearchFallback(vendor: string, title: string, vertical?: string, travel?: { route?: string; date?: string; city?: string }): string {
+  // Owner 27 Oct ("kuch website pr deeplink ho raha hai par kuch pr ni — sb pr ho
+  // jaye"): the full confirmed merchant registry is served by merchantDeepLink.
+  const deep = merchantDeepLink(vendor, title, vertical, travel || {});
+  if (deep) return deep;
   const v = String(vendor || '').toLowerCase();
   const q = encodeURIComponent(String(title || '').trim().slice(0, 80));
   if (!v || !q) return '';

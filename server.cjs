@@ -8,8 +8,8 @@ var __esm = (fn, res, err) => function __init() {
   if (err) throw err[0];
   try {
     return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  } catch (e) {
-    throw err = [e], e;
+  } catch (e2) {
+    throw err = [e2], e2;
   }
 };
 var __export = (target, all) => {
@@ -77,7 +77,7 @@ var init_settings = __esm({
       /** First-admin bootstrap: any account registered with this email gets the admin role. */
       adminBootstrapEmail: (process.env.ADMIN_EMAIL || "").toLowerCase(),
       /** Allowed admin login emails (email-OTP). ADMIN_EMAILS is a comma-separated list. */
-      adminEmails: (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean),
+      adminEmails: (process.env.ADMIN_EMAILS || process.env.ADMIN_EMAIL || "").split(",").map((e2) => e2.trim().toLowerCase()).filter(Boolean),
       aiAssistEnabled: process.env.AI_ASSIST !== "false" && Boolean(process.env.GEMINI_API_KEY),
       searchApi: {
         apiKey: process.env.SEARCHAPI_API_KEY || "",
@@ -96,7 +96,7 @@ var init_settings = __esm({
       // Default = the OAuth client in flutter_app/android/app/google-services.json: the
       // google_sign_in Android plugin uses it as the audience via default_web_client_id,
       // so every plain build works without owner env setup. Override/extend via env.
-      googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com,49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com,49438102645-ek7dp1kea0dfj0moi7jphamqrngjg1lk.apps.googleusercontent.com").split(",").map((e) => e.trim()).filter(Boolean),
+      googleOauthClientIds: (process.env.GOOGLE_OAUTH_CLIENT_IDS || "49438102645-f7uut2ihal2lk8llc44ai711r4v3i7je.apps.googleusercontent.com,49438102645-bs97o329ipulmr198avioeoasu7jm6v9.apps.googleusercontent.com,49438102645-ek7dp1kea0dfj0moi7jphamqrngjg1lk.apps.googleusercontent.com").split(",").map((e2) => e2.trim()).filter(Boolean),
       mailFrom: process.env.MAIL_FROM || "Try1Second <onboarding@resend.dev>",
       // Amazon Associates (owner's own store, Oct 2026): tag= on every amazon.* click
       // through /api/out. This is ATTRIBUTION ONLY — it does not grant any product-data
@@ -204,8 +204,8 @@ function recordSourcePrices(vertical, query, offers) {
 function enrichFailedWithLastPrice(vertical, failed) {
   const store2 = load();
   return (failed || []).map((f) => {
-    const e = store2[`${vertical}|${f.sourceId}`];
-    return e ? { ...f, lastPrice: { ...e } } : f;
+    const e2 = store2[`${vertical}|${f.sourceId}`];
+    return e2 ? { ...f, lastPrice: { ...e2 } } : f;
   });
 }
 var import_node_fs, import_node_path, FILE, cache, lastSave, saveTimer;
@@ -286,10 +286,10 @@ async function getRedis() {
     const mod = await import("ioredis");
     const Redis = mod.default;
     redis = new Redis(settings.redisUrl, { maxRetriesPerRequest: 2, lazyConnect: false });
-    redis.on("error", (e) => log.warn("Cache", "Redis error", { error: e.message }));
+    redis.on("error", (e2) => log.warn("Cache", "Redis error", { error: e2.message }));
     log.info("Cache", "L2 Redis connected");
-  } catch (e) {
-    log.warn("Cache", "L2 Redis unavailable, running with L1 only", { error: e.message });
+  } catch (e2) {
+    log.warn("Cache", "L2 Redis unavailable, running with L1 only", { error: e2.message });
     redis = null;
   }
   return redis;
@@ -752,9 +752,9 @@ async function recoverMysqlWithLocalHost(url = settings.mysqlUrl) {
       store = probe;
       log.warn("DataStore", `MySQL access denied on host '${originalHost}' \u2014 SELF-HEALED via co-located host '${host}'. Set DB_HOST=${host} in hPanel env vars to make it permanent.`);
       return true;
-    } catch (e) {
+    } catch (e2) {
       candidate?.end?.().catch?.(() => void 0);
-      log.warn("DataStore", `Self-heal candidate '${host}' rejected: ${e.code || ""} ${String(e.message || "")}`);
+      log.warn("DataStore", `Self-heal candidate '${host}' rejected: ${e2.code || ""} ${String(e2.message || "")}`);
     }
   }
   if (["localhost", "127.0.0.1", "::1"].includes(originalHost)) {
@@ -1327,8 +1327,8 @@ async function persist(h) {
        ON DUPLICATE KEY UPDATE state=VALUES(state), consecutive_failures=VALUES(consecutive_failures), last_success_at=VALUES(last_success_at), last_failure_at=VALUES(last_failure_at), last_failure_class=VALUES(last_failure_class), circuit_open_until=VALUES(circuit_open_until), total_attempts=VALUES(total_attempts), total_successes=VALUES(total_successes), avg_latency_ms=VALUES(avg_latency_ms)`,
       [h.sourceId, h.state, h.consecutiveFailures, h.lastSuccessAt, h.lastFailureAt, h.lastFailureClass, h.circuitOpenUntil, h.totalAttempts, h.totalSuccesses, h.avgLatencyMs]
     );
-  } catch (e) {
-    log.debug("Health", "Persist failed (file store / no table)", { error: String(e).slice(0, 120) });
+  } catch (e2) {
+    log.debug("Health", "Persist failed (file store / no table)", { error: String(e2).slice(0, 120) });
   }
 }
 var CIRCUIT_THRESHOLD, CIRCUIT_COOLDOWN_MS, CHALLENGE_COOLDOWN_STEPS_MS, challengeOpenings, health;
@@ -1468,10 +1468,10 @@ async function edgeRelayFetch(url, opts = {}) {
       stats.servedByRelay++;
       stats.lastVia = leg.name;
       return { status, body, headers: data.headers, via: leg.name };
-    } catch (e) {
+    } catch (e2) {
       breakerFail(leg.name);
       stats.failed++;
-      stats.lastError = String(e?.message || e).slice(0, 160);
+      stats.lastError = String(e2?.message || e2).slice(0, 160);
       log.warn("EdgeRelay", `relay leg ${leg.name} failed`, { url: url.slice(0, 120), error: stats.lastError });
     }
   }
@@ -1522,8 +1522,8 @@ function runProbe(bin) {
     let child;
     try {
       child = (0, import_node_child_process.spawn)(bin, [HELPER, "--probe"], { stdio: ["ignore", "pipe", "pipe"] });
-    } catch (e) {
-      return resolve({ bin, cffi: false, error: String(e?.message || e) });
+    } catch (e2) {
+      return resolve({ bin, cffi: false, error: String(e2?.message || e2) });
     }
     const timer = setTimeout(() => {
       try {
@@ -1535,7 +1535,7 @@ function runProbe(bin) {
     child.stdout?.on("data", (d) => {
       out += d.toString();
     });
-    child.on("error", (e) => fin({ bin, cffi: false, error: e.message }));
+    child.on("error", (e2) => fin({ bin, cffi: false, error: e2.message }));
     child.on("close", () => {
       try {
         const j = JSON.parse(out);
@@ -1591,9 +1591,9 @@ async function cffiFetchDirect(url, opts = {}) {
     child.stderr.on("data", (d) => {
       err += d.toString();
     });
-    child.on("error", (e) => {
+    child.on("error", (e2) => {
       clearTimeout(timer);
-      reject(new AcquisitionError("CAPABILITY_UNAVAILABLE", `python3 bridge unavailable: ${e.message}`));
+      reject(new AcquisitionError("CAPABILITY_UNAVAILABLE", `python3 bridge unavailable: ${e2.message}`));
     });
     child.on("close", () => {
       clearTimeout(timer);
@@ -1614,8 +1614,8 @@ async function cffiFetch(url, opts = {}) {
   let directError = null;
   try {
     direct = await cffiFetchDirect(url, opts);
-  } catch (e) {
-    directError = e;
+  } catch (e2) {
+    directError = e2;
   }
   const { hostInPolicy: hostInPolicy2, isGatedResponse: isGatedResponse2, relayConfigured: relayConfigured2, edgeRelayFetch: edgeRelayFetch2, noteDirectGate: noteDirectGate2 } = await Promise.resolve().then(() => (init_edgeRelay(), edgeRelay_exports));
   const policyHit = hostInPolicy2(url);
@@ -1841,8 +1841,8 @@ async function httpHealthCheck(url, sourceId) {
   try {
     const r = await httpAcquire(url, { sourceId, retries: 0, timeoutMs: 4e3 });
     return { healthy: r.ok, latencyMs: r.latencyMs, status: r.status };
-  } catch (e) {
-    return { healthy: false, latencyMs: 0, failureClass: e.failureClass || "UNKNOWN" };
+  } catch (e2) {
+    return { healthy: false, latencyMs: 0, failureClass: e2.failureClass || "UNKNOWN" };
   }
 }
 var acquisitionWarnDedupe, AcquisitionError, buckets, inflightPerSource, globalInflight, DEFAULT_UA;
@@ -1984,15 +1984,15 @@ async function runTask(worker, task, source, query) {
       return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started3);
     }
     return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started3, fetchedAt };
-  } catch (e) {
-    const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
-    log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });
+  } catch (e2) {
+    const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
+    log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e2?.message || e2).slice(0, 140) });
     const fixtures = buildDevFixtures(source, worker.vertical, String(query.rawQuery || query.entityName || ""));
     if (fixtures.length) {
       log.warn("VerticalWorker", `Using DEV fixture for ${source.id} (dev-mode fallback for ${fc})`);
       return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: fixtures, latencyMs: Date.now() - started3, fetchedAt };
     }
-    return failedResult(source, fc, String(e?.message || e).slice(0, 200), Date.now() - started3, e?.httpStatus);
+    return failedResult(source, fc, String(e2?.message || e2).slice(0, 200), Date.now() - started3, e2?.httpStatus);
   }
 }
 function registerVerticalWorker(worker) {
@@ -2710,9 +2710,9 @@ function lenovoHeaders(term) {
 function lenovoTitle(p) {
   const summary = String(p.summary || "").trim();
   if (summary && summary.length >= 3) return summary.slice(0, 200);
-  const slug2 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
-  if (slug2.includes("-")) {
-    return slug2.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
+  const slug3 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
+  if (slug3.includes("-")) {
+    return slug3.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
   }
   const alt = String(p?.media?.gallery?.[0]?.imageAlt || "").trim();
   if (alt && !/^(front|side|back|top|bottom|left|right|angle)/i.test(alt)) {
@@ -3092,8 +3092,8 @@ function parseJiomart(body, source, pageUrl) {
     const price = Number.isFinite(eff) && eff > 0 ? eff : marked;
     if (!Number.isFinite(price) || price <= 0) continue;
     const brand = String(it.brand?.name || "").trim();
-    const slug2 = String(it.slug || "").trim();
-    const pdp = slug2 ? `https://www.jiomart.com/p/${slug2}` : "https://www.jiomart.com";
+    const slug3 = String(it.slug || "").trim();
+    const pdp = slug3 ? `https://www.jiomart.com/p/${slug3}` : "https://www.jiomart.com";
     const imgs = [...new Set(
       (it.medias || []).filter((m) => m?.type === "image" && typeof m.url === "string").map((m) => String(m.url).replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u))
     )].slice(0, 6);
@@ -3177,9 +3177,9 @@ function parseRelianceDigital(html, source, pageUrl) {
     const price = Number(it?.price?.effective?.min);
     if (!name || !Number.isFinite(price) || price <= 0) continue;
     if (it?.sellable === false) continue;
-    const slug2 = String(it?.slug || "").trim();
-    if (!slug2 || seen.has(slug2)) continue;
-    seen.add(slug2);
+    const slug3 = String(it?.slug || "").trim();
+    if (!slug3 || seen.has(slug3)) continue;
+    seen.add(slug3);
     const marked = Number(it?.price?.marked?.min);
     const mrp = Number.isFinite(marked) && marked > price ? marked : void 0;
     const brand = it?.brand?.name ? String(it.brand.name) : void 0;
@@ -3187,7 +3187,7 @@ function parseRelianceDigital(html, source, pageUrl) {
     const ean = Array.isArray(it?.attributes?.identifier?.ean) ? String(it.attributes.identifier.ean[0] || "") : "";
     const sku = Array.isArray(it?.attributes?.identifier?.sku_code) ? String(it.attributes.identifier.sku_code[0] || "") : "";
     const rating = Number(it?.rating);
-    const url = `${RELIANCE_WEB}/product/${slug2}`;
+    const url = `${RELIANCE_WEB}/product/${slug3}`;
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand,
@@ -3375,8 +3375,8 @@ var init_ecommerce = __esm({
           run: async (ctx) => {
             const term = q(ctx);
             if (!term) return [];
-            const slug2 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
-            const url = `https://www.myntra.com/${encodeURIComponent(slug2)}`;
+            const slug3 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+            const url = `https://www.myntra.com/${encodeURIComponent(slug3)}`;
             const r = await ctx.fetch(url);
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Myntra HTTP ${r.status}`, r.status);
             const items = parseMyntra(r.body, ctx.source, url);
@@ -4080,30 +4080,30 @@ async function geocodePlace(name) {
 function parseOverpassHotels(json, source, city, bbox, queryUrl) {
   const els = Array.isArray(json?.elements) ? json.elements : [];
   const out = [];
-  for (const e of els) {
-    const name = e.tags?.name;
+  for (const e2 of els) {
+    const name = e2.tags?.name;
     if (!name) continue;
-    const coords = e.type === "node" ? { lat: e.lat, lon: e.lon } : e.center;
-    const kind = e.tags.tourism || "hotel";
-    const stars = e.tags.stars ? String(parseInt(e.tags.stars, 10) || "") : "";
+    const coords = e2.type === "node" ? { lat: e2.lat, lon: e2.lon } : e2.center;
+    const kind = e2.tags.tourism || "hotel";
+    const stars = e2.tags.stars ? String(parseInt(e2.tags.stars, 10) || "") : "";
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
       seller: "OpenStreetMap (ODbL)",
-      sellerUrl: e.tags.website || e.tags["contact:website"] || `https://www.openstreetmap.org/${e.type}/${e.id}`,
+      sellerUrl: e2.tags.website || e2.tags["contact:website"] || `https://www.openstreetmap.org/${e2.type}/${e2.id}`,
       currency: "INR",
       location: { city },
       attributes: {
         property_type: kind,
         ...stars ? { stars } : {},
-        ...e.tags.phone || e.tags["contact:phone"] ? { phone: (e.tags.phone || e.tags["contact:phone"]).slice(0, 40) } : {},
-        ...e.tags["addr:street"] ? { address: e.tags["addr:street"].slice(0, 120) } : {},
+        ...e2.tags.phone || e2.tags["contact:phone"] ? { phone: (e2.tags.phone || e2.tags["contact:phone"]).slice(0, 40) } : {},
+        ...e2.tags["addr:street"] ? { address: e2.tags["addr:street"].slice(0, 120) } : {},
         ...coords ? { lat: coords.lat.toFixed(5), lon: coords.lon.toFixed(5) } : {},
         osm_license: "Data (c) OpenStreetMap contributors, ODbL"
       },
       evidence: {
         sourceUrl: queryUrl,
-        sourceReference: `osm:${e.type}/${e.id}`,
-        extractedFields: ["title", "location", ...stars ? ["stars"] : [], ...e.tags.phone ? ["phone"] : []]
+        sourceReference: `osm:${e2.type}/${e2.id}`,
+        extractedFields: ["title", "location", ...stars ? ["stars"] : [], ...e2.tags.phone ? ["phone"] : []]
       }
     }));
   }
@@ -4662,8 +4662,8 @@ var init_airbnbHotels = __esm({
 // server/workers/parsers/ixigoHotels.ts
 function pickImages2(h) {
   const out = [];
-  for (const e of Array.isArray(h.imageInfoList) ? h.imageInfoList : []) {
-    const u = e?.imageUrl || e?.url || e?.thumbUrl || e?.mainImage || e?.image || e?.dynamicImageUrl || e?.cdnUrl;
+  for (const e2 of Array.isArray(h.imageInfoList) ? h.imageInfoList : []) {
+    const u = e2?.imageUrl || e2?.url || e2?.thumbUrl || e2?.mainImage || e2?.image || e2?.dynamicImageUrl || e2?.cdnUrl;
     if (typeof u === "string" && u && !out.includes(u)) out.push(u.replace(/^http:/, "https:"));
   }
   return out.slice(0, 8);
@@ -4671,10 +4671,10 @@ function pickImages2(h) {
 function pickImage2(h) {
   const list = h.imageInfoList;
   if (Array.isArray(list)) {
-    for (const e of list) {
-      const u = e?.imageUrl || e?.url || e?.thumbUrl || e?.mainImage || e?.image;
+    for (const e2 of list) {
+      const u = e2?.imageUrl || e2?.url || e2?.thumbUrl || e2?.mainImage || e2?.image;
       if (typeof u === "string" && u) return u.replace(/^http:/, "https:");
-      const dyn = e?.dynamicImageUrl || e?.cdnUrl;
+      const dyn = e2?.dynamicImageUrl || e2?.cdnUrl;
       if (typeof dyn === "string" && dyn) return dyn.replace(/^http:/, "https:");
     }
   }
@@ -4854,8 +4854,8 @@ function parseGoibiboHotelsSsr(body) {
     let image = String(pickFirst(h.obj, IMG_KEYS) || "");
     if (image && image.startsWith("//")) image = "https:" + image;
     const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
-    const slug2 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
-    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug2 || void 0 });
+    const slug3 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
+    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug3 || void 0 });
     if (out.length >= 60) break;
   }
   return out;
@@ -5588,8 +5588,8 @@ var init_saffronStays = __esm({
 function agodaCitySlugs(city) {
   const out = [];
   for (const v of cityVariants(city)) {
-    const slug2 = `${slugOf(v)}-in`;
-    if (!out.includes(slug2)) out.push(slug2);
+    const slug3 = `${slugOf(v)}-in`;
+    if (!out.includes(slug3)) out.push(slug3);
   }
   return out.slice(0, 6);
 }
@@ -6007,7 +6007,7 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
-            const slug2 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const slug3 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
             const mmtChromeHeaders = {
               "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
               "sec-ch-ua-mobile": "?0",
@@ -6023,15 +6023,15 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             for (const url of [
-              `https://www.makemytrip.com/hotels-in-${slug2}/`,
-              `https://www.makemytrip.com/hotels/hotels-in-${slug2}/`
+              `https://www.makemytrip.com/hotels-in-${slug3}/`,
+              `https://www.makemytrip.com/hotels/hotels-in-${slug3}/`
             ]) {
               let bigBody = null;
               let r;
               try {
                 r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 25e3, headers: mmtChromeHeaders });
-              } catch (e) {
-                lastErr = new AcquisitionError("SERVER_ERROR", `MakeMyTrip hotels page unreachable: ${String(e?.message || e).slice(0, 70)}`);
+              } catch (e2) {
+                lastErr = new AcquisitionError("SERVER_ERROR", `MakeMyTrip hotels page unreachable: ${String(e2?.message || e2).slice(0, 70)}`);
                 continue;
               }
               if (r.status === 301 || r.status === 302) {
@@ -6111,8 +6111,8 @@ var init_hotels = __esm({
               } else if (hr.status !== 200) {
                 lastHermesErr = new AcquisitionError(hr.status === 403 || hr.status === 429 ? "ACCESS_CHALLENGE" : "SERVER_ERROR", `Goibibo hermes HTTP ${hr.status}`);
               }
-            } catch (e) {
-              lastHermesErr = new AcquisitionError("TIMEOUT", `Goibibo hermes unreachable: ${String(e?.message || e).slice(0, 60)}`);
+            } catch (e2) {
+              lastHermesErr = new AcquisitionError("TIMEOUT", `Goibibo hermes unreachable: ${String(e2?.message || e2).slice(0, 60)}`);
             }
             const giChromeHeaders = {
               "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
@@ -6137,8 +6137,8 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-            for (const slug2 of attempts) {
-              const url = `https://www.goibibo.com/hotels/${slug2}/`;
+            for (const slug3 of attempts) {
+              const url = `https://www.goibibo.com/hotels/${slug3}/`;
               let bigBody = null;
               for (let attempt = 1; attempt <= 4; attempt++) {
                 let r;
@@ -6146,8 +6146,8 @@ var init_hotels = __esm({
                 const imp = attempt === 3 ? "safari17_0" : "chrome";
                 try {
                   r = await cffiFetch(url, { impersonate: imp, timeoutMs: 25e3, headers });
-                } catch (e) {
-                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e?.message || e).slice(0, 80)}`);
+                } catch (e2) {
+                  lastErr = new AcquisitionError("SERVER_ERROR", `Goibibo hotels page unreachable (attempt ${attempt}/4): ${String(e2?.message || e2).slice(0, 80)}`);
                   await sleep(1500);
                   continue;
                 }
@@ -6397,8 +6397,8 @@ var init_hotels = __esm({
             let items;
             try {
               items = await expediaGroupSearch(ctx, "hotels.com", "safari17_0", city, checkin, checkout);
-            } catch (e) {
-              if (String(e?.failureClass) !== "ACCESS_CHALLENGE" && String(e?.failureClass) !== "RATE_LIMITED") throw e;
+            } catch (e2) {
+              if (String(e2?.failureClass) !== "ACCESS_CHALLENGE" && String(e2?.failureClass) !== "RATE_LIMITED") throw e2;
               items = await expediaGroupSearch(ctx, "hotels.com", "chrome_android", city, checkin, checkout);
             }
             return items;
@@ -6444,8 +6444,8 @@ var init_hotels = __esm({
                 json = JSON.parse(r.body);
                 usedUrl = mirror;
                 break;
-              } catch (e) {
-                lastErr = e;
+              } catch (e2) {
+                lastErr = e2;
               }
             }
             if (!json) throw lastErr || new AcquisitionError("SERVER_ERROR", "All Overpass mirrors failed");
@@ -6489,8 +6489,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let cityId = agodaCityIdCache.get(city.toLowerCase());
             if (!cityId) {
-              for (const slug2 of agodaCitySlugs(city)) {
-                const r = await cffiFetch(`https://www.agoda.com/city/${slug2}.html`, {
+              for (const slug3 of agodaCitySlugs(city)) {
+                const r = await cffiFetch(`https://www.agoda.com/city/${slug3}.html`, {
                   impersonate: "chrome",
                   timeoutMs: 2e4,
                   headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
@@ -6728,13 +6728,13 @@ var init_hotels = __esm({
 // server/workers/parsers/ixigoFlights.ts
 function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
   const iataOf = (city, code) => code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null;
-  const slug2 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
-  const fromTok = iataOf(from, fromCode) || slug2(from);
-  const toTok = iataOf(to, toCode) || slug2(to);
+  const slug3 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
+  const fromTok = iataOf(from, fromCode) || slug3(from);
+  const toTok = iataOf(to, toCode) || slug3(to);
   const alts = [];
   const altIata = iataOf(from, fromCode);
   if (altIata && altIata !== fromTok) alts.push(altIata);
-  if (altIata) alts.push(slug2(from));
+  if (altIata) alts.push(slug3(from));
   if (fromTok.includes("_")) alts.push(fromTok.replace(/_/g, "-"));
   return { fromTok, toTok, alts };
 }
@@ -6757,31 +6757,31 @@ function parseIxigoFlights(nextData, fromCode, toCode) {
   const entries = nextData?.props?.pageProps?.cheapFlightsData;
   if (!Array.isArray(entries)) return [];
   const flights = [];
-  for (const e of entries) {
-    const airline = String(e.airline || "").trim();
-    const fare = Number(e.fare);
+  for (const e2 of entries) {
+    const airline = String(e2.airline || "").trim();
+    const fare = Number(e2.fare);
     if (!airline || !Number.isFinite(fare) || fare <= 0) continue;
-    const legs = ixigoLegs(String(e.flightNumber || ""));
+    const legs = ixigoLegs(String(e2.flightNumber || ""));
     if (!legs.length) continue;
     if (fromCode && legs[0].from !== fromCode.toUpperCase()) continue;
     if (toCode && legs[legs.length - 1].to !== toCode.toUpperCase()) continue;
     const fn = legs.map((l) => l.flightNo).join("+");
     let duration = null;
-    const dur = parseInt(String(e.duration ?? ""), 10);
+    const dur = parseInt(String(e2.duration ?? ""), 10);
     if (Number.isFinite(dur) && dur > 0) duration = dur;
     flights.push({
       airline,
-      airlineCode: e.airlineCode ? String(e.airlineCode) : null,
+      airlineCode: e2.airlineCode ? String(e2.airlineCode) : null,
       flightNumber: fn,
       fare: Math.round(fare),
       // ISO dates (owner 24 Oct): the old DD-MM-YYYY strings broke the
       // flight-number+time compare grouping against other sellers' ISO dates.
-      departureDate: ixigoIsoDate(String(e.departure_date || e.date || "")),
-      departureTime: e.departure_time ? String(e.departure_time) : null,
-      arrivalDate: e.arrival_date ? ixigoIsoDate(String(e.arrival_date)) : null,
-      arrivalTime: e.arrival_time ? String(e.arrival_time) : null,
+      departureDate: ixigoIsoDate(String(e2.departure_date || e2.date || "")),
+      departureTime: e2.departure_time ? String(e2.departure_time) : null,
+      arrivalDate: e2.arrival_date ? ixigoIsoDate(String(e2.arrival_date)) : null,
+      arrivalTime: e2.arrival_time ? String(e2.arrival_time) : null,
       durationMinutes: duration,
-      stops: Number.isFinite(Number(e.numOfStops)) ? Number(e.numOfStops) : null,
+      stops: Number.isFinite(Number(e2.numOfStops)) ? Number(e2.numOfStops) : null,
       legs
     });
   }
@@ -6877,7 +6877,7 @@ function parseEmtFareCalendar(jsonText, wantDate) {
   }
   return fares;
 }
-function emtFareItems(fares, source, route, wantDate, fromCode = "", toCode = "") {
+function emtFareItems(fares, source, route2, wantDate, fromCode = "", toCode = "") {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const airline = (code) => code && EMT_AIRLINES[code] ? EMT_AIRLINES[code] : null;
   const exact = fares.find((f) => f.date === wantDate && airline(f.airlineCode));
@@ -6885,9 +6885,9 @@ function emtFareItems(fares, source, route, wantDate, fromCode = "", toCode = ""
   const chosen = exact || upcoming[0];
   if (!chosen) return [];
   const al = airline(chosen.airlineCode);
-  const emtSearchUrl = `https://www.easemytrip.com/flight-search?searchParams=${encodeURIComponent(`${fromCode}-${route.from}|${toCode}-${route.to}|${chosen.date}`)}`;
+  const emtSearchUrl = `https://www.easemytrip.com/flight-search?searchParams=${encodeURIComponent(`${fromCode}-${route2.from}|${toCode}-${route2.to}|${chosen.date}`)}`;
   const isExact = exact ? chosen.date === exact.date : false;
-  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  const routeLabel = `${route2.from} \u2192 ${route2.to}`;
   return [newRawItem(source, {
     title: `${al.name} ${routeLabel} ${isExact ? `on ${chosen.date}` : `(cheapest upcoming, ${chosen.date})`} from \u20B9${chosen.fare}`,
     brand: al.name,
@@ -6895,7 +6895,7 @@ function emtFareItems(fares, source, route, wantDate, fromCode = "", toCode = ""
     currency: "INR",
     seller: "EaseMyTrip",
     sellerUrl: emtSearchUrl,
-    travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}` },
+    travel: { route: `${route2.from.toLowerCase()} to ${route2.to.toLowerCase()}` },
     attributes: {
       route: routeLabel,
       travel_date: chosen.date,
@@ -6905,7 +6905,7 @@ function emtFareItems(fares, source, route, wantDate, fromCode = "", toCode = ""
       data_note: `Fare acquired via EaseMyTrip fare calendar on ${today2}; the ticket is SOLD by EaseMyTrip (seller). Cheapest carrier fare for this route/date; may change at checkout.`,
       image: ""
     },
-    identifiers: { sku: `emt-${chosen.airlineCode}-${route.from}-${route.to}-${chosen.date.replace(/\//g, "-")}` },
+    identifiers: { sku: `emt-${chosen.airlineCode}-${route2.from}-${route2.to}-${chosen.date.replace(/\//g, "-")}` },
     evidence: {
       sourceUrl: "https://flightservice-seo.easemytrip.com/EmtAppService/FareCalendar/FillCalendarDataByMonth",
       extractedFields: ["bookMsg (fare)", "AirlineCode", "fulDate"]
@@ -7049,10 +7049,10 @@ function parseEmtAirbus(jsonText) {
   }
   return out;
 }
-function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, fromCountry = "India", toCountry = "India", cap = 60) {
+function emtAirbusItems(flights, source, route2, fromCode, toCode, dateIso, fromCountry = "India", toCountry = "India", cap = 60) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const routeLabel = `${route.from} \u2192 ${route.to}`;
-  const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route.from)}-${encodeURIComponent(fromCountry || "India")}%7C${toCode}-${encodeURIComponent(route.to)}-${encodeURIComponent(toCountry || "India")}%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
+  const routeLabel = `${route2.from} \u2192 ${route2.to}`;
+  const emtListing = `https://www.easemytrip.com/flight-search/listing?srch=${fromCode}-${encodeURIComponent(route2.from)}-${encodeURIComponent(fromCountry || "India")}%7C${toCode}-${encodeURIComponent(route2.to)}-${encodeURIComponent(toCountry || "India")}%7C${dateIso.split("-").reverse().join("/")}&px=1-0-0&cbn=Economy&isow=true&isdm=true`;
   const seen = /* @__PURE__ */ new Set();
   const items = [];
   for (const f of flights.sort((a, b) => a.fare - b.fare)) {
@@ -7069,7 +7069,7 @@ function emtAirbusItems(flights, source, route, fromCode, toCode, dateIso, fromC
       currency: "INR",
       seller: "EaseMyTrip",
       sellerUrl: emtListing,
-      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso },
+      travel: { route: `${route2.from.toLowerCase()} to ${route2.to.toLowerCase()}`, date: dateIso },
       attributes: {
         route: routeLabel,
         airline: alName,
@@ -7181,8 +7181,8 @@ async function cityToAirport(city) {
     const ranked = bucket.map((a) => ({ a, rank: PREF_RANK.has(a.iata) ? PREF_RANK.get(a.iata) : 999 })).sort((x, y) => x.rank - y.rank);
     const preferred = ranked[0]?.a || bucket[0];
     return { code: preferred.iata, city: preferred.city, country: preferred.country };
-  } catch (e) {
-    log.warn("AirportLookup", `airports.dat unavailable: ${String(e?.message || e)}`);
+  } catch (e2) {
+    log.warn("AirportLookup", `airports.dat unavailable: ${String(e2?.message || e2)}`);
     return { code: null, city, country: "" };
   }
 }
@@ -7372,7 +7372,7 @@ async function kiwiSearch(fromIata, toIata, dateIso) {
   const itineraries = root.itineraries || [];
   return { itineraries, total: root.metadata?.itinerariesCount ?? itineraries.length };
 }
-function kiwiItems(itineraries, source, route, fromCode, toCode, dateIso, cap = 60) {
+function kiwiItems(itineraries, source, route2, fromCode, toCode, dateIso, cap = 60) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -7396,7 +7396,7 @@ function kiwiItems(itineraries, source, route, fromCode, toCode, dateIso, cap = 
     if (!fare || fare <= 0) continue;
     const rawUrl = it.bookingOptions?.edges?.[0]?.node?.bookingUrl || "";
     const bookingUrl = rawUrl.startsWith("http") ? rawUrl : rawUrl ? `https://www.kiwi.com${rawUrl}` : "";
-    const routeLabel = `${route.from} \u2192 ${route.to}`;
+    const routeLabel = `${route2.from} \u2192 ${route2.to}`;
     const alNames = [...new Set((it.sector?.carriers || []).map((c) => c.name))].join(" + ");
     out.push(newRawItem(source, {
       title: `${alNames || al0.name} ${flightNoKey} \xB7 ${routeLabel}`.slice(0, 200),
@@ -7405,7 +7405,7 @@ function kiwiItems(itineraries, source, route, fromCode, toCode, dateIso, cap = 
       currency: it.price?.currency?.code || "INR",
       seller: "Kiwi.com",
       sellerUrl: bookingUrl || `https://www.kiwi.com/en/search/results/${fromCode.toLowerCase()}/${toCode.toLowerCase()}/${dateIso}`,
-      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
+      travel: { route: `${route2.from.toLowerCase()} to ${route2.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
       attributes: {
         route: routeLabel,
         travel_date: dateIso,
@@ -7582,7 +7582,7 @@ function indigoItems(flights, source, fromCity, toCity, fromCode, toCode, depart
     const key = `${f.flightNo}|${f.depTime || ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const route = `${fromCity} to ${toCity}`.toLowerCase();
+    const route2 = `${fromCity} to ${toCity}`.toLowerCase();
     const dep = f.depTime ? `, departs ${f.depTime}` : "";
     const arr = f.arrTime ? `, arrives ${f.arrTime}` : "";
     const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${departIso}&pax=A1`;
@@ -7593,9 +7593,9 @@ function indigoItems(flights, source, fromCity, toCity, fromCode, toCode, depart
       currency: f.fareCurrency === "USD" ? "USD" : "INR",
       seller: "IndiGo",
       sellerUrl: deeplink,
-      travel: { route, seatType: f.cabin || "Economy", date: departIso },
+      travel: { route: route2, seatType: f.cabin || "Economy", date: departIso },
       attributes: {
-        route,
+        route: route2,
         flight_no: f.flightNo || "",
         from_iata: fromCode,
         to_iata: toCode,
@@ -7606,7 +7606,7 @@ function indigoItems(flights, source, fromCity, toCity, fromCode, toCode, depart
         seats_left: f.seatsLeft !== void 0 ? String(f.seatsLeft) : "",
         price_basis: `fare returned by IndiGo's own flight-search API for ${departIso}`
       },
-      identifiers: { sku: `indigo-${f.flightNo}-${route.replace(/\s+/g, "-")}-${departIso}` },
+      identifiers: { sku: `indigo-${f.flightNo}-${route2.replace(/\s+/g, "-")}-${departIso}` },
       evidence: {
         sourceUrl: "https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search",
         extractedFields: ["flightNumber", "totalFare", "departureTime", "arrivalTime"]
@@ -7673,10 +7673,10 @@ async function indigoWebFareCalendar(cffiFetch2, fromCode, toCode, depIso) {
     const d = JSON.parse(r.body);
     const low = d?.data?.lowFares;
     if (!Array.isArray(low)) return [];
-    return low.filter((e) => e?.date && Number(e?.price) > 0).map((e) => ({
-      date: String(e.date).slice(0, 10),
-      price: Math.round(Number(e.price)),
-      category: String(e.category || "")
+    return low.filter((e2) => e2?.date && Number(e2?.price) > 0).map((e2) => ({
+      date: String(e2.date).slice(0, 10),
+      price: Math.round(Number(e2.price)),
+      category: String(e2.category || "")
     }));
   } catch {
     return [];
@@ -7686,7 +7686,7 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
   const exact = fares.find((f) => f.date === depIso);
   if (!exact || exact.price <= 0) return [];
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const route = `${fromCity} to ${toCity}`.toLowerCase();
+  const route2 = `${fromCity} to ${toCity}`.toLowerCase();
   const deeplink = `https://www.goindigo.in/flight-booking/booking?journeyType=One%20Way&from=${fromCode}&to=${toCode}&depart=${depIso}&pax=A1`;
   return [newRawItem(source, {
     title: `IndiGo ${fromCode} to ${toCode} on ${depIso} from \u20B9${exact.price}`,
@@ -7695,7 +7695,7 @@ function indigoDayFareItems(fares, source, fromCity, toCity, fromCode, toCode, d
     currency: "INR",
     seller: "IndiGo",
     sellerUrl: deeplink,
-    travel: { route, seatType: "Economy", date: depIso },
+    travel: { route: route2, seatType: "Economy", date: depIso },
     attributes: {
       route: `${fromCity} \u2192 ${toCity}`,
       travel_date: depIso,
@@ -7812,11 +7812,11 @@ function parseBudgetAirCalendar(body) {
   const root = body ?? {};
   const list = Array.isArray(root.response) ? root.response : Array.isArray(body) ? body : [];
   const out = [];
-  for (const e of list) {
-    if (!e || typeof e !== "object") continue;
-    const date = String(e.date ?? "");
+  for (const e2 of list) {
+    if (!e2 || typeof e2 !== "object") continue;
+    const date = String(e2.date ?? "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    const raw = e.totalPrice;
+    const raw = e2.totalPrice;
     const price = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
     if (!Number.isFinite(price) || price <= 0) continue;
     out.push({ date, price });
@@ -7902,9 +7902,9 @@ function etraveliFlightFare(f) {
   if (!Number.isFinite(value) || value <= 0) return { fare: NaN, currency };
   return { fare: value / 100, currency };
 }
-function etraveliFlightsItems(flights, brand, source, route, fromCode, toCode, dateIso, searchPath, cap = 40) {
+function etraveliFlightsItems(flights, brand, source, route2, fromCode, toCode, dateIso, searchPath, cap = 40) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  const routeLabel = `${route2.from} \u2192 ${route2.to}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const f of flights) {
@@ -7943,7 +7943,7 @@ function etraveliFlightsItems(flights, brand, source, route, fromCode, toCode, d
       currency: "INR",
       seller: brand.brand,
       sellerUrl: deeplink,
-      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
+      travel: { route: `${route2.from.toLowerCase()} to ${route2.to.toLowerCase()}`, date: dateIso, seatType: "economy" },
       attributes: {
         route: routeLabel,
         travel_date: dateIso,
@@ -8661,8 +8661,8 @@ function yatraCalendarUrl(from, to, fromIso, toIso) {
 function airlineName(code, map) {
   const n = map?.[code];
   if (typeof n === "string" && n.trim()) return n.trim();
-  const e = EMT_AIRLINES[code];
-  if (e?.name) return e.name;
+  const e2 = EMT_AIRLINES[code];
+  if (e2?.name) return e2.name;
   return code;
 }
 function hhmm2(iso2, hm) {
@@ -8823,11 +8823,11 @@ var init_yatraFlights = __esm({
 
 // server/workers/parsers/goibiboFlights.ts
 function goibiboRouteUrl(fromCity, toCity) {
-  const slug2 = (c) => {
+  const slug3 = (c) => {
     const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").trim();
     return (SLUG_ALIASES[k] || k).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   };
-  return `https://www.goibibo.com/flights/${slug2(fromCity)}-to-${slug2(toCity)}-flights/`;
+  return `https://www.goibibo.com/flights/${slug3(fromCity)}-to-${slug3(toCity)}-flights/`;
 }
 function stripTags(s) {
   return String(s).replace(/<[^>]*>/g, "").trim();
@@ -10246,14 +10246,14 @@ function parseSiaChatStream(stream) {
   const re = /data:\s*(\{[\s\S]*?\})\s*(?=\ndata:|$)/g;
   let m;
   while (m = re.exec(stream || "")) {
-    let e;
+    let e2;
     try {
-      e = JSON.parse(m[1]);
+      e2 = JSON.parse(m[1]);
     } catch {
       continue;
     }
-    if (e?.type !== "tool-output-available" || !e.output?.data?.results) continue;
-    for (const res of e.output.data.results) {
+    if (e2?.type !== "tool-output-available" || !e2.output?.data?.results) continue;
+    for (const res of e2.output.data.results) {
       for (const d of res?.data || []) {
         for (const f of d?.fares || []) {
           const fare = Number(String(f.fare || "").replace(/[^\d.]/g, ""));
@@ -10282,14 +10282,14 @@ function siaRouteInvalid(stream) {
   const re = /data:\s*(\{[\s\S]*?\})\s*(?=\ndata:|$)/g;
   let m;
   while (m = re.exec(stream || "")) {
-    let e;
+    let e2;
     try {
-      e = JSON.parse(m[1]);
+      e2 = JSON.parse(m[1]);
     } catch {
       continue;
     }
-    if (e?.type !== "tool-output-available" || !e.output?.data?.airportDetails) continue;
-    const det = e.output.data.airportDetails[0];
+    if (e2?.type !== "tool-output-available" || !e2.output?.data?.airportDetails) continue;
+    const det = e2.output.data.airportDetails[0];
     if (det && (det.originInfo?.isValidAirportCode === false || det.destinationInfo?.isValidAirportCode === false)) return true;
   }
   return false;
@@ -14754,7 +14754,7 @@ function parseStops(v) {
   if (Number.isFinite(n)) return n === 0 ? "non-stop" : `${n} stop${n > 1 ? "s" : ""}`;
   return String(v);
 }
-function parseExpediaFlights(body, source, route, dateIso, srpUrl, fx, cap = 40) {
+function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap = 40) {
   let d;
   try {
     d = JSON.parse(body);
@@ -14763,7 +14763,7 @@ function parseExpediaFlights(body, source, route, dateIso, srpUrl, fx, cap = 40)
   }
   const listings = d?.data?.flightsSearch?.listingResult?.listings || [];
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const routeLabel = `${route.from} \u2192 ${route.to}`;
+  const routeLabel = `${route2.from} \u2192 ${route2.to}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const L of listings) {
@@ -14805,7 +14805,7 @@ function parseExpediaFlights(body, source, route, dateIso, srpUrl, fx, cap = 40)
       currency,
       seller: "Expedia",
       sellerUrl: srpUrl,
-      travel: { route: `${route.from.toLowerCase()} to ${route.to.toLowerCase()}`, date: dateIso },
+      travel: { route: `${route2.from.toLowerCase()} to ${route2.to.toLowerCase()}`, date: dateIso },
       attributes: {
         route: routeLabel,
         ...flightNo2 ? { flight_number: flightNo2 } : {},
@@ -14945,8 +14945,8 @@ async function etraveliBrandSearch(ctx, brand) {
         headers,
         body: JSON.stringify(etraveliSearchBody(brand, from, to, dep, offset))
       });
-    } catch (e) {
-      if (page === 0) throw new AcquisitionError("SERVER_ERROR", `${brand.brand} SearchOnResultPage unreachable: ${String(e?.message || e)}`);
+    } catch (e2) {
+      if (page === 0) throw new AcquisitionError("SERVER_ERROR", `${brand.brand} SearchOnResultPage unreachable: ${String(e2?.message || e2)}`);
       break;
     }
     if (r.status === 403 || r.status === 429) {
@@ -15070,7 +15070,7 @@ var init_flights = __esm({
               const gut = JSON.parse(rGut.body || "{}");
               if (!gut.STK) throw new Error("GUT STK missing");
               stk = gut.STK;
-            } catch (e) {
+            } catch (e2) {
               stk = "";
             }
             if (stk) {
@@ -15322,8 +15322,8 @@ var init_flights = __esm({
                 status = r.status;
                 if (status > 0 && status !== 429 && status < 500) break;
                 lastErr.push(`${a.label}: HTTP ${status}`);
-              } catch (e) {
-                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+              } catch (e2) {
+                lastErr.push(`${a.label}: ${String(e2?.message || e2).slice(0, 100)}`);
                 status = 0;
               }
             }
@@ -15414,8 +15414,8 @@ var init_flights = __esm({
                   tStatus = r.status;
                   if (tStatus === 200) break;
                   tErr.push(`${a}: HTTP ${tStatus}`);
-                } catch (e) {
-                  tErr.push(`${a}: ${String(e?.message || e).slice(0, 90)}`);
+                } catch (e2) {
+                  tErr.push(`${a}: ${String(e2?.message || e2).slice(0, 90)}`);
                 }
               }
               if (tStatus !== 200) {
@@ -15452,8 +15452,8 @@ var init_flights = __esm({
                 status = r.status;
                 if (status > 0 && status !== 429 && status < 500) break;
                 lastErr.push(`${a.label}: HTTP ${status}`);
-              } catch (e) {
-                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+              } catch (e2) {
+                lastErr.push(`${a.label}: ${String(e2?.message || e2).slice(0, 100)}`);
                 status = 0;
               }
             }
@@ -15529,8 +15529,8 @@ var init_flights = __esm({
                 status = r.status;
                 if (status > 0 && status !== 429 && status < 500) break;
                 lastErr.push(`${a.label}: HTTP ${status}`);
-              } catch (e) {
-                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+              } catch (e2) {
+                lastErr.push(`${a.label}: ${String(e2?.message || e2).slice(0, 100)}`);
                 status = 0;
               }
             }
@@ -15648,8 +15648,8 @@ var init_flights = __esm({
                 status = r.status;
                 if (status > 0 && status !== 429 && status < 500) break;
                 lastErr.push(`${a.label}: HTTP ${status}`);
-              } catch (e) {
-                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+              } catch (e2) {
+                lastErr.push(`${a.label}: ${String(e2?.message || e2).slice(0, 100)}`);
                 status = 0;
               }
             }
@@ -15731,8 +15731,8 @@ var init_flights = __esm({
                 status = r.status;
                 if (status > 0 && status !== 429 && status < 500) break;
                 lastErr.push(`${a.label}: results HTTP ${status}`);
-              } catch (e) {
-                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 100)}`);
+              } catch (e2) {
+                lastErr.push(`${a.label}: ${String(e2?.message || e2).slice(0, 100)}`);
                 status = 0;
               }
             }
@@ -16257,8 +16257,8 @@ var init_flights = __esm({
                 if (r.status < 500) break;
                 lastErr.push(`${a.label}: HTTP ${r.status}`);
                 r = void 0;
-              } catch (e) {
-                lastErr.push(`${a.label}: ${String(e?.message || e).slice(0, 120)}`);
+              } catch (e2) {
+                lastErr.push(`${a.label}: ${String(e2?.message || e2).slice(0, 120)}`);
                 r = void 0;
               }
             }
@@ -16317,8 +16317,8 @@ var init_flights = __esm({
                 t0 = await cffiFetch(yatraTriggerUrl(from, to, dep), a.opts);
                 yatraErrs.push("");
                 break;
-              } catch (e) {
-                yatraErrs.push(`${a.label}: ${String(e?.message || e).slice(0, 110)}`);
+              } catch (e2) {
+                yatraErrs.push(`${a.label}: ${String(e2?.message || e2).slice(0, 110)}`);
                 t0 = void 0;
               }
             }
@@ -16402,8 +16402,8 @@ var init_flights = __esm({
                 "x-unified-header": JSON.stringify({ platform: "desktop", trackingId: crypto.randomUUID?.() || String(Date.now()), source: "CLEARTRIP" }),
                 Referer: "https://www.cleartrip.com/flights"
               } });
-            } catch (e) {
-              throw new AcquisitionError("SERVER_ERROR", `Cleartrip search API unreachable: ${String(e?.message || e)}`);
+            } catch (e2) {
+              throw new AcquisitionError("SERVER_ERROR", `Cleartrip search API unreachable: ${String(e2?.message || e2)}`);
             }
             if (r.status === 403 || r.status === 429) {
               throw new AcquisitionError(r.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED", `Cleartrip edge-blocked search v2 (HTTP ${r.status}).`, r.status);
@@ -16467,8 +16467,8 @@ var init_flights = __esm({
               try {
                 r = await cffiFetch("https://api-prod-mobile-skyplus6e.goindigo.in/flightsearch/v1/flight/search", a.opts);
                 break;
-              } catch (e) {
-                indigoErrs.push(`${a.label}: ${String(e?.message || e).slice(0, 110)}`);
+              } catch (e2) {
+                indigoErrs.push(`${a.label}: ${String(e2?.message || e2).slice(0, 110)}`);
                 r = void 0;
               }
             }
@@ -16533,8 +16533,8 @@ var init_flights = __esm({
                 timeoutMs: 22e3,
                 headers: { Origin: "https://www.akasaair.com", Referer: "https://www.akasaair.com/booking" }
               });
-            } catch (e) {
-              throw new AcquisitionError("SERVER_ERROR", `Akasa Air API unreachable: ${String(e?.message || e)}`);
+            } catch (e2) {
+              throw new AcquisitionError("SERVER_ERROR", `Akasa Air API unreachable: ${String(e2?.message || e2)}`);
             }
             if (r.status === 403 || r.status === 429) {
               throw new AcquisitionError(
@@ -16762,8 +16762,8 @@ function parseZomatoMenuPage(html) {
       const tmp = [];
       walkMenuJson(JSON.parse(JSON.parse('"' + wrapped[1] + '"')), tmp);
       tmp.forEach(add);
-    } catch (e) {
-      if (process.env.ZOMATO_DEBUG) console.error("zomato state parse", e.message);
+    } catch (e2) {
+      if (process.env.ZOMATO_DEBUG) console.error("zomato state parse", e2.message);
     }
     if (dishes.length) return { dishes, hints };
   }
@@ -17169,12 +17169,12 @@ function citySlug(city, raw) {
 function zomatoNationalPresence(source, term, reason) {
   return zomatoPresence(source, "india", term, reason);
 }
-function zomatoPresence(source, slug2, term, reason) {
+function zomatoPresence(source, slug3, term, reason) {
   const q3 = encodeURIComponent(term || "restaurants");
-  const url = `https://www.zomato.com/${slug2}/restaurants?q=${q3}`;
+  const url = `https://www.zomato.com/${slug3}/restaurants?q=${q3}`;
   const label = term ? `\`${term}\`` : "restaurants";
   return [newRawItem(source, {
-    title: `Zomato: ${label} in ${slug2} \u2014 browse menus & order on Zomato`.slice(0, 200),
+    title: `Zomato: ${label} in ${slug3} \u2014 browse menus & order on Zomato`.slice(0, 200),
     seller: "Zomato",
     sellerUrl: url,
     currency: "INR",
@@ -17183,7 +17183,7 @@ function zomatoPresence(source, slug2, term, reason) {
       price_basis: "app_only_fares",
       data_note: `Zomato's edge blocked our listing crawl (${reason}); menus and live prices are on Zomato itself \u2014 this is a direct handoff, no prices invented.`
     },
-    identifiers: { sku: `zomato-search-${slug2}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
+    identifiers: { sku: `zomato-search-${slug3}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
     evidence: { sourceUrl: url, extractedFields: ["seller", "deeplink"], sourceReference: "Zomato search deeplink (availability handoff while the listing crawl is edge-gated)" }
   })];
 }
@@ -17363,17 +17363,17 @@ var init_food = __esm({
             const left = () => 24e3 - (Date.now() - t0);
             const raw = String(ctx.query.rawQuery || "");
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
-            const slug2 = citySlug(ctx.query.location?.city, raw);
-            if (!slug2) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
-            const url = `https://www.zomato.com/${slug2}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
+            const slug3 = citySlug(ctx.query.location?.city, raw);
+            if (!slug3) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
+            const url = `https://www.zomato.com/${slug3}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
             let r = await ctx.fetch(url, { timeoutMs: 4500 });
             for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429) && left() > 6e3; attempt++) {
               await new Promise((res) => setTimeout(res, 900));
               r = await ctx.fetch(url, { timeoutMs: 4500 });
             }
-            if (r.status !== 200) return zomatoPresence(ctx.source, slug2, term, `HTTP ${r.status}`);
+            if (r.status !== 200) return zomatoPresence(ctx.source, slug3, term, `HTTP ${r.status}`);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
-            if (!items.length) return zomatoPresence(ctx.source, slug2, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
+            if (!items.length) return zomatoPresence(ctx.source, slug3, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
             const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
             const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
@@ -17417,7 +17417,7 @@ var init_food = __esm({
             }
             if (dishItems.length) return dishItems;
             if (items.length) return items;
-            return zomatoPresence(ctx.source, slug2, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
+            return zomatoPresence(ctx.source, slug3, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
           }
         },
         {
@@ -17820,8 +17820,8 @@ async function throttledNominatim(path14) {
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
     cache4.set(path14, { at: Date.now(), value });
     return value;
-  } catch (e) {
-    log.warn("GeoProxy", `Nominatim unreachable: ${String(e?.message || e).slice(0, 80)}`);
+  } catch (e2) {
+    log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
     return null;
   }
 }
@@ -17871,8 +17871,8 @@ async function throttledPhoton(path14) {
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
     cache4.set(`photon:${path14}`, { at: Date.now(), value });
     return value;
-  } catch (e) {
-    log.warn("GeoProxy", `Photon unreachable: ${String(e?.message || e).slice(0, 80)}`);
+  } catch (e2) {
+    log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
     return null;
   }
 }
@@ -17975,14 +17975,14 @@ function rapidoCityLookup(cities, city) {
   return cities.find((c) => canonCity(c.name) === t) || null;
 }
 function buildRapidoIntercityNotice(inp) {
-  const route = `${inp.from} \u2192 ${inp.to}`;
+  const route2 = `${inp.from} \u2192 ${inp.to}`;
   return [newRawItem(inp.source, {
     title: `${inp.from} to ${inp.to} cab (Rapido \u2014 city rides only, app booking)`,
     currency: "INR",
     seller: "Rapido",
     sellerUrl: inp.mainPageUrl,
     availability: "unknown",
-    travel: { route },
+    travel: { route: route2 },
     location: { city: inp.fromCity },
     identifiers: { sku: `rapido-intercity-${rapidoCitySlug(inp.fromCity)}` },
     attributes: {
@@ -18001,14 +18001,14 @@ function buildRapidoIntercityNotice(inp) {
   })];
 }
 function buildRapidoAvailability(inp) {
-  const route = `${inp.from} \u2192 ${inp.to}`;
+  const route2 = `${inp.from} \u2192 ${inp.to}`;
   return SERVICES.map((svc, i) => newRawItem(inp.source, {
     title: `${inp.from} to ${inp.to} Rapido ${svc.vehicle} (city ride, one-way)`,
     currency: "INR",
     seller: "Rapido",
     sellerUrl: inp.mainPageUrl,
     availability: "unknown",
-    travel: { route },
+    travel: { route: route2 },
     location: { city: inp.city },
     identifiers: { sku: `rapido-${rapidoCitySlug(inp.city)}-${svc.vehicle.toLowerCase().replace(/\s+/g, "-")}` },
     attributes: {
@@ -18594,7 +18594,7 @@ async function rapidoGuestFares(pickup, drop) {
   return { status: "ok", quotes, detail: `HTTP 200, ${quotes.length} quotes` };
 }
 function buildRapidoFareRows(inp) {
-  const route = `${inp.from} \u2192 ${inp.to}`;
+  const route2 = `${inp.from} \u2192 ${inp.to}`;
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const rows = [];
   const seen = /* @__PURE__ */ new Set();
@@ -18633,7 +18633,7 @@ function buildRapidoFareRows(inp) {
       }
     }));
   }
-  void route;
+  void route2;
   return rows;
 }
 var import_crypto11, import_fs2, import_os, import_path3, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
@@ -20977,18 +20977,18 @@ var init_uberIndiaCities = __esm({
       "zamania-uttar-pradesh-in",
       "zira-punjab-in"
     ];
-    PARSED = SLUGS.map((slug2) => {
-      let rest = slug2.endsWith("-in") ? slug2.slice(0, -3).split("-") : slug2.split("-");
+    PARSED = SLUGS.map((slug3) => {
+      let rest = slug3.endsWith("-in") ? slug3.slice(0, -3).split("-") : slug3.split("-");
       const tail2 = rest.length > 2 ? `${rest[rest.length - 2]}-${rest[rest.length - 1]}` : "";
       const tail1 = rest[rest.length - 1];
       if (UBER_IN_STATE_SUFFIXES.has(tail2)) rest = rest.slice(0, -2);
       else if (UBER_IN_STATE_SUFFIXES.has(tail1)) rest = rest.slice(0, -1);
-      return { slug: slug2, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
+      return { slug: slug3, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
     });
     BY_CANON = /* @__PURE__ */ new Map();
-    for (const e of PARSED) {
-      const k = canonCity(e.city);
-      if (!BY_CANON.has(k)) BY_CANON.set(k, e);
+    for (const e2 of PARSED) {
+      const k = canonCity(e2.city);
+      if (!BY_CANON.has(k)) BY_CANON.set(k, e2);
     }
     UBER_INDIA_PAGE_COUNT = SLUGS.length;
   }
@@ -21147,8 +21147,8 @@ function uberDestMatchScore(routeEnd, destName) {
   for (const t of a) if (b.includes(t) || b.some((x) => x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x)))) hits++;
   return hits / a.length;
 }
-async function uberCityFares(slug2, city) {
-  const url = `https://www.uber.com/global/en/r/cities/${slug2}/`;
+async function uberCityFares(slug3, city) {
+  const url = `https://www.uber.com/global/en/r/cities/${slug3}/`;
   const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
   if (r.status !== 200 || !(r.body || "").includes("Average price with UberX")) throw new AcquisitionError("EMPTY_RESPONSE", `Uber city guide page unavailable (HTTP ${r.status}) for ${city}`);
   const out = [];
@@ -21160,7 +21160,7 @@ async function uberCityFares(slug2, city) {
     const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
     if (priceM && !/^\s*[₹]/.test(txts[i])) {
       const price = Number(priceM[1].replace(/,/g, ""));
-      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug2, fetchedUrl: url });
+      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug3, fetchedUrl: url });
     }
   }
   return out;
@@ -21220,14 +21220,14 @@ async function uberGoFlowSafe(ctx, rt) {
     const uberClientId = String(process.env.UBER_CLIENT_ID || "vjgXa6VEp5eVJNMBtlPEsYZ5agg9cy_w").trim();
     const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
     const bookUrl = buildUberGoBookUrl(uberClientId, pickup, drop);
-    const route = `${rt.from} to ${rt.to}`.toLowerCase();
+    const route2 = `${rt.from} to ${rt.to}`.toLowerCase();
     return products.map((p) => newRawItem(ctx.source, {
       title: `${rt.from} to ${rt.to} Uber ${p.displayName} (app quote)`,
       brand: "Uber",
       ...p.fare != null ? { price: p.fare, currency: "INR" } : { currency: "INR" },
       seller: "Uber",
       sellerUrl: bookUrl,
-      travel: { route, seatType: "unknown" },
+      travel: { route: route2, seatType: "unknown" },
       attributes: {
         pickup: rt.from,
         drop: rt.to,
@@ -21409,10 +21409,10 @@ async function olaRateCardFallback(ctx, rt, reason) {
   if (!a || !b) return [];
   const osrm = await cffiFetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`, { timeoutMs: 15e3, headers: { Accept: "application/json" } });
   if (osrm.status !== 200) throw new AcquisitionError("SERVER_ERROR", `OSRM HTTP ${osrm.status}`, osrm.status);
-  const route = (JSON.parse(osrm.body || "{}").routes || [])[0];
-  if (!route) throw new AcquisitionError("NOT_FOUND", `OSRM found no road route between ${rt.from} and ${rt.to}`);
-  const km = Number(route.distance) / 1e3;
-  const mins = Number(route.duration) / 60;
+  const route2 = (JSON.parse(osrm.body || "{}").routes || [])[0];
+  if (!route2) throw new AcquisitionError("NOT_FOUND", `OSRM found no road route between ${rt.from} and ${rt.to}`);
+  const km = Number(route2.distance) / 1e3;
+  const mins = Number(route2.duration) / 60;
   const best = olaPickCards(cards);
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const items = [];
@@ -22127,8 +22127,8 @@ var init_zeptoSsr = __esm({
 async function makeQuietVirtualConsole() {
   const { VirtualConsole } = await import("jsdom");
   const vc = new VirtualConsole();
-  vc.on("jsdomError", (e) => {
-    const msg = String(e?.message || e);
+  vc.on("jsdomError", (e2) => {
+    const msg = String(e2?.message || e2);
     if (!/not implemented|could not load/i.test(msg)) log.warn("AwsWaf", "jsdom error in WAF challenge", { error: msg.slice(0, 160) });
   });
   return vc;
@@ -22196,8 +22196,8 @@ ${v}\r
     };
     try {
       dom.window.eval(cj.body);
-    } catch (e) {
-      throw new Error(`challenge.js eval failed: ${String(e).slice(0, 120)}`);
+    } catch (e2) {
+      throw new Error(`challenge.js eval failed: ${String(e2).slice(0, 120)}`);
     }
     const deadline = Date.now() + (opts.maxMs ?? 6e4);
     while (Date.now() < deadline) {
@@ -22568,8 +22568,8 @@ var init_grocery = __esm({
                   pages404++;
                   if (url.endsWith(".com/") === false && url.includes("/delivery-in-")) pages.push("https://www.zepto.com/");
                 }
-              } catch (e) {
-                throw new AcquisitionError("ACCESS_CHALLENGE", `Zepto AWS WAF challenge unsolved: ${String(e?.message || e).slice(0, 140)}`);
+              } catch (e2) {
+                throw new AcquisitionError("ACCESS_CHALLENGE", `Zepto AWS WAF challenge unsolved: ${String(e2?.message || e2).slice(0, 140)}`);
               }
             }
             if (!products.size) {
@@ -22880,8 +22880,8 @@ async function collectCandidates(spec) {
         const abs = absolutize(s, page);
         if (spec.bundleFilter.test(abs)) bundleUrls.add(abs);
       }
-    } catch (e) {
-      notes.push(`entry ${page} -> ${String(e?.message || e).slice(0, 80)}`);
+    } catch (e2) {
+      notes.push(`entry ${page} -> ${String(e2?.message || e2).slice(0, 80)}`);
     }
   }
   const bundles = [...bundleUrls].slice(0, spec.maxBundles ?? DEFAULTS.maxBundles);
@@ -22905,8 +22905,8 @@ async function collectCandidates(spec) {
           if (candidates.filter((c) => c.key === rule.key).length >= 12) break;
         }
       }
-    } catch (e) {
-      notes.push(`bundle ${b.slice(-60)} -> ${String(e?.message || e).slice(0, 80)}`);
+    } catch (e2) {
+      notes.push(`bundle ${b.slice(-60)} -> ${String(e2?.message || e2).slice(0, 80)}`);
     }
   }
   return { bundles, candidates, notes };
@@ -23314,9 +23314,9 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     const title = String(mv.name || "").trim();
     if (!title) continue;
     if (queryTerm && !matchesQuery(title, queryTerm)) continue;
-    const slug2 = ticketnewSlug(title);
-    if (seen.has(slug2)) continue;
-    seen.add(slug2);
+    const slug3 = ticketnewSlug(title);
+    if (seen.has(slug3)) continue;
+    seen.add(slug3);
     const attrs = {
       image_url: mv.appImgPath ? String(mv.appImgPath) : null,
       language: mv.lang || null,
@@ -23329,7 +23329,7 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     out.push(newRawItem(source, {
       title,
       seller: "TicketNew",
-      sellerUrl: slug2 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug2}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
+      sellerUrl: slug3 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug3}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
       currency: "INR",
       attributes: attrs,
       evidence: {
@@ -23843,15 +23843,15 @@ async function imdbTconst(title) {
       titleCache.set(key, null);
       return null;
     }
-    const e = await fetchWithTimeout(
+    const e2 = await fetchWithTimeout(
       `https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&ids=${encodeURIComponent(pick3)}&props=claims`,
       1e4
     );
-    if (!e.ok) {
+    if (!e2.ok) {
       titleCache.set(key, null);
       return null;
     }
-    const ej = await e.json();
+    const ej = await e2.json();
     const claims = ej?.entities?.[pick3]?.claims || {};
     const p345 = claims?.P345?.[0]?.mainsnak?.datavalue?.value;
     const tt = typeof p345 === "string" && /^tt\d+$/.test(p345) ? p345 : null;
@@ -24075,9 +24075,9 @@ var init_movies = __esm({
                 const aggs = await gwCityMovieAggregates("ticketnew", key, 8).catch(() => null);
                 for (const o of offers.slice(0, 5)) await enrichWithGw(o, aggs, "ticketnew");
                 return offers;
-              } catch (e) {
-                lastErr = e;
-                if (e instanceof AcquisitionError && (e.failureClass === "FORBIDDEN" || e.failureClass === "RATE_LIMITED")) throw e;
+              } catch (e2) {
+                lastErr = e2;
+                if (e2 instanceof AcquisitionError && (e2.failureClass === "FORBIDDEN" || e2.failureClass === "RATE_LIMITED")) throw e2;
               }
             }
             if (lastErr instanceof AcquisitionError) throw lastErr;
@@ -24212,7 +24212,7 @@ async function resolveAbhiBusCity(fetchJson, city) {
   const chosen = exact || list[0];
   return { id: String(chosen.id), label: String(chosen.label || raw) };
 }
-function parseAbhiBusServices(json, source, route) {
+function parseAbhiBusServices(json, source, route2) {
   let d;
   try {
     d = JSON.parse(json);
@@ -24222,7 +24222,7 @@ function parseAbhiBusServices(json, source, route) {
   const services = Array.isArray(d?.services) ? d.services : [];
   if (!services.length) return [];
   const fingerprint = (0, import_crypto13.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
-  const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route.fromName)}/${route.fromId}/${encodeURIComponent(route.toName)}/${route.toId}/${route.jdate}`;
+  const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route2.fromName)}/${route2.fromId}/${encodeURIComponent(route2.toName)}/${route2.toId}/${route2.jdate}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const s of services) {
@@ -24244,7 +24244,7 @@ function parseAbhiBusServices(json, source, route) {
       seller: "AbhiBus",
       sellerUrl: searchUrl,
       availability: seats > 0 ? "in_stock" : "out_of_stock",
-      travel: { route: `${route.fromName} \u2192 ${route.toName}`, date: route.jdate, seatType: busType || "unknown" },
+      travel: { route: `${route2.fromName} \u2192 ${route2.toName}`, date: route2.jdate, seatType: busType || "unknown" },
       attributes: {
         operator: operator || "AbhiBus",
         ...t.startTime ? { departure: `${String(t.startTime)}${t.arriveTime ? ` \u2192 ${String(t.arriveTime)}` : ""}` } : {},
@@ -24320,7 +24320,7 @@ function parseRedBusRoute(html, source, pageUrl) {
   const fare = fareM ? Math.round(Number(fareM[1].replace(/,/g, ""))) : null;
   if (!fare || fare <= 0) return [];
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const route = `${info.source} to ${info.destination}`.toLowerCase();
+  const route2 = `${info.source} to ${info.destination}`.toLowerCase();
   return [newRawItem(source, {
     title: `${info.source} to ${info.destination} bus (lowest fare across ${info.servicecount || "all"} services)`,
     brand: "redBus",
@@ -24328,7 +24328,7 @@ function parseRedBusRoute(html, source, pageUrl) {
     currency: "INR",
     seller: "redBus",
     sellerUrl: pageUrl,
-    travel: { route, seatType: "varies (seater/sleeper/AC)" },
+    travel: { route: route2, seatType: "varies (seater/sleeper/AC)" },
     attributes: {
       route: `${info.source} to ${info.destination}`,
       min_fare: String(fare),
@@ -24341,7 +24341,7 @@ function parseRedBusRoute(html, source, pageUrl) {
       price_basis: `minimum route fare as published by redbus.in on ${today2}`,
       data_note: `Route-level fare summary (min fare across ${info.servicecount} services from ${info.operators} operators) scraped from redbus.in on ${today2}`
     },
-    identifiers: { sku: `redbus-${route.replace(/\s+/g, "-")}` },
+    identifiers: { sku: `redbus-${route2.replace(/\s+/g, "-")}` },
     evidence: { sourceUrl: pageUrl, extractedFields: ["dataInfo minFare", "servicecount", "operators", "avgDuration"] }
   })];
 }
@@ -24366,7 +24366,7 @@ function resolveRedBusCity(docs, city) {
   const chosen = exact || pool2[0];
   return chosen ? { id: Number(chosen.ID), name: String(chosen.Name || city) } : null;
 }
-function parseRedBusSearch(json, source, route) {
+function parseRedBusSearch(json, source, route2) {
   let d;
   try {
     d = JSON.parse(json);
@@ -24376,8 +24376,8 @@ function parseRedBusSearch(json, source, route) {
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
   const fingerprint = (0, import_crypto14.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
-  const slug2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-  const searchUrl = `https://www.redbus.in/bus-tickets/${slug2(route.fromName)}-to-${slug2(route.toName)}.aspx`;
+  const slug3 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+  const searchUrl = `https://www.redbus.in/bus-tickets/${slug3(route2.fromName)}-to-${slug3(route2.toName)}.aspx`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const inv of inventories) {
@@ -24402,7 +24402,7 @@ function parseRedBusSearch(json, source, route) {
       seller: "redBus",
       sellerUrl: searchUrl,
       availability: seats > 0 ? "in_stock" : "out_of_stock",
-      travel: { route: `${route.fromName} \u2192 ${route.toName}`, date: route.doj, seatType: busType || "unknown" },
+      travel: { route: `${route2.fromName} \u2192 ${route2.toName}`, date: route2.doj, seatType: busType || "unknown" },
       attributes: {
         operator,
         ...inv.departureTime ? { departure: `${inv.departureTime.slice(11, 16)}${inv.arrivalTime ? ` \u2192 ${inv.arrivalTime.slice(11, 16)} (+1)` : ""}` } : {},
@@ -24484,7 +24484,7 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
   const from = String(pTable.fromCityName || fromCity);
   const to = String(pTable.toCityName || toCity);
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const route = `${from} to ${to}`.toLowerCase();
+  const route2 = `${from} to ${to}`.toLowerCase();
   const busTypes = Array.isArray(pTable.busTypeArr) ? pTable.busTypeArr.slice(0, 4).join("; ") : "";
   return [newRawItem(source, {
     title: `${from} to ${to} zingbus (lowest fare across ${pTable.busCount || "all"} services)`,
@@ -24493,9 +24493,9 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
     currency: "INR",
     seller: "zingbus",
     sellerUrl: pageUrl,
-    travel: { route, seatType: busTypes || "varies (seater/sleeper/AC)" },
+    travel: { route: route2, seatType: busTypes || "varies (seater/sleeper/AC)" },
     attributes: {
-      route,
+      route: route2,
       min_fare: String(fare),
       max_fare: String(pTable.maxFare ?? ""),
       service_count: String(pTable.busCount ?? ""),
@@ -24506,7 +24506,7 @@ function parseZingbusRoute(html, source, pageUrl, fromCity, toCity) {
       price_basis: `minimum route fare as published by zingbus.com on ${today2}`,
       data_note: `Route-level fare summary (min Rs${fare}/max Rs${pTable.maxFare ?? "?"} across ${pTable.busCount ?? "?"} services) scraped from zingbus.com on ${today2}`
     },
-    identifiers: { sku: `zingbus-${route.replace(/\s+/g, "-")}` },
+    identifiers: { sku: `zingbus-${route2.replace(/\s+/g, "-")}` },
     evidence: { sourceUrl: pageUrl, extractedFields: ["pTableData minFare", "maxFare", "busCount", "travelTime", "firstBusTime"] }
   })];
 }
@@ -24567,8 +24567,8 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const slug2 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const pageUrl = `https://www.redbus.in/bus-tickets/${slug2(rt.from)}-to-${slug2(rt.to)}.aspx`;
+            const slug3 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const pageUrl = `https://www.redbus.in/bus-tickets/${slug3(rt.from)}-to-${slug3(rt.to)}.aspx`;
             const steps = [];
             const t0 = Date.now();
             let resolved = {};
@@ -24589,8 +24589,8 @@ var init_bus = __esm({
                 getJson3(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(rt.to.slice(0, 40))}&limit=3`)
               ]);
               resolved = { from: resolveRedBusCity(fromDocs?.response?.docs, rt.from), to: resolveRedBusCity(toDocs?.response?.docs, rt.to) };
-            } catch (e) {
-              if (e instanceof AcquisitionError && e.failureClass === "TIMEOUT") steps.push(`suggest=TIMEOUT(${steps.join(" ") || "none"})`);
+            } catch (e2) {
+              if (e2 instanceof AcquisitionError && e2.failureClass === "TIMEOUT") steps.push(`suggest=TIMEOUT(${steps.join(" ") || "none"})`);
             }
             const depart = String(ctx.query.travelDates?.depart || "");
             const doj = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
@@ -24600,7 +24600,7 @@ var init_bus = __esm({
               let r;
               try {
                 r = await cffiFetch(pageUrl, { impersonate: "chrome", timeoutMs: 15e3 });
-              } catch (e) {
+              } catch (e2) {
                 throw new AcquisitionError("TIMEOUT", `redBus domain unresponsive (tarpit) from this IP after ${Date.now() - t0}ms [${steps.join(" ") || "no steps recorded"}]`);
               }
               steps.push(`routePage=${Date.now() - rp}ms/${r.status}`);
@@ -24618,8 +24618,8 @@ var init_bus = __esm({
               routeP = p;
             };
             if (resolved.from && resolved.to) {
-              const route = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
-              const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route.fromId}&toCity=${route.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
+              const route2 = { fromName: resolved.from.name, fromId: resolved.from.id, toName: resolved.to.name, toId: resolved.to.id, doj };
+              const u = `https://www.redbus.in/rpw/api/searchResults?fromCity=${route2.fromId}&toCity=${route2.toId}&DOJ=${doj}&limit=15&offset=0&sort=0&sortOrder=0&from=web&meta=false&bT=1&getUuid=false`;
               const warmup = setTimeout(startRoutePage, 3e3);
               let r = { status: 0, body: "" };
               for (let attempt = 1; attempt <= 3; attempt++) {
@@ -24631,8 +24631,8 @@ var init_bus = __esm({
                   steps.push(`searchResults#${attempt}=cffi${Date.now() - sr}ms/${cr.status}`);
                   if (r.status === 200) break;
                   if (r.status === 403 || r.status === 429) break;
-                } catch (e) {
-                  steps.push(`searchResults#${attempt}=cffi${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
+                } catch (e2) {
+                  steps.push(`searchResults#${attempt}=cffi${e2 instanceof AcquisitionError && e2.failureClass || "ERROR"}@${Date.now() - sr}ms`);
                 }
                 if (attempt === 3) {
                   const sr2 = Date.now();
@@ -24646,15 +24646,15 @@ var init_bus = __esm({
                       body: "{}"
                     });
                     steps.push(`searchResults#fallback=${r.latencyMs ?? Date.now() - sr2}ms/${r.status}`);
-                  } catch (e) {
-                    steps.push(`searchResults#fallback=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr2}ms`);
+                  } catch (e2) {
+                    steps.push(`searchResults#fallback=${e2 instanceof AcquisitionError && e2.failureClass || "ERROR"}@${Date.now() - sr2}ms`);
                   }
                 }
                 await new Promise((z) => setTimeout(z, 800));
               }
               clearTimeout(warmup);
               if (r.status === 200) {
-                const items = parseRedBusSearch(r.body, ctx.source, route);
+                const items = parseRedBusSearch(r.body, ctx.source, route2);
                 if (items.length) return items;
                 return [];
               }
@@ -24684,8 +24684,8 @@ var init_bus = __esm({
               const r = await cffiFetch("https://www.yatra.com/bus-booking/delhi-to-jaipur-buses", { impersonate: "chrome", timeoutMs: 12e3 });
               const gated = r.status !== 200 || r.body.length < 5e3;
               throw new AcquisitionError(gated ? "ACCESS_CHALLENGE" : "EMPTY_RESPONSE", "Yatra bus pages fail/reset the HTTP/2 stream to browserless HTTP clients; no SSR fare data available.");
-            } catch (e) {
-              if (e instanceof AcquisitionError) throw e;
+            } catch (e2) {
+              if (e2 instanceof AcquisitionError) throw e2;
               throw new AcquisitionError("ACCESS_CHALLENGE", "Yatra bus pages fail/reset the HTTP/2 stream to browserless HTTP clients; no SSR fare data available.");
             }
           }
@@ -24728,7 +24728,7 @@ var init_bus = __esm({
             if (!from || !to) throw new AcquisitionError("NOT_FOUND", `AbhiBus: could not resolve '${rt.from}'/'${rt.to}' as stations`);
             const depart = String(ctx.query.travelDates?.depart || "");
             const jdate = /^\d{4}-\d{2}-\d{2}$/.test(depart) ? depart : new Date(Date.now() + 864e5).toISOString().slice(0, 10);
-            const route = { fromName: from.label, fromId: from.id, toName: to.label, toId: to.id, jdate };
+            const route2 = { fromName: from.label, fromId: from.id, toName: to.label, toId: to.id, jdate };
             const payload = JSON.stringify({
               source: from.label,
               sourceid: Number(from.id),
@@ -24756,8 +24756,8 @@ var init_bus = __esm({
                 r = { status: cr.status, body: cr.body };
                 if (r.status === 200) break;
                 if (r.status === 403 || r.status === 429) break;
-              } catch (e) {
-                steps.push(`services#${attempt}=cffi${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr}ms`);
+              } catch (e2) {
+                steps.push(`services#${attempt}=cffi${e2 instanceof AcquisitionError && e2.failureClass || "ERROR"}@${Date.now() - sr}ms`);
               }
               if (attempt === 3) {
                 const sr2 = Date.now();
@@ -24772,14 +24772,14 @@ var init_bus = __esm({
                   });
                   r = { status: fr.status, body: fr.body };
                   steps.push(`services#fallback=${fr.latencyMs ?? Date.now() - sr2}ms/${fr.status}`);
-                } catch (e) {
-                  steps.push(`services#fallback=${e instanceof AcquisitionError && e.failureClass || "ERROR"}@${Date.now() - sr2}ms`);
+                } catch (e2) {
+                  steps.push(`services#fallback=${e2 instanceof AcquisitionError && e2.failureClass || "ERROR"}@${Date.now() - sr2}ms`);
                 }
               }
               await new Promise((z) => setTimeout(z, 800));
             }
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `AbhiBus services HTTP ${r.status || "no-response"} [${steps.join(" ")}]`, r.status || void 0);
-            return parseAbhiBusServices(r.body, ctx.source, route);
+            return parseAbhiBusServices(r.body, ctx.source, route2);
           }
         },
         {
@@ -24901,9 +24901,9 @@ function parseIssuerIndex(html, bankSlug) {
   const re = new RegExp(`https://cardinsider\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi");
   const out = /* @__PURE__ */ new Set();
   for (const m of html.matchAll(re)) {
-    const slug2 = m[1];
-    if (!/credit-card$/.test(slug2)) continue;
-    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug2)) continue;
+    const slug3 = m[1];
+    if (!/credit-card$/.test(slug3)) continue;
+    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug3)) continue;
     out.add(m[0]);
   }
   return [...out];
@@ -25089,11 +25089,11 @@ async function bankCardIndex(bankSlug) {
       let h = raw;
       if (h.startsWith(hub.base)) h = h.slice(hub.base.length);
       if (!h.startsWith("/") || !hub.pathRe.test(h)) continue;
-      const slug2 = h.split("/").pop().replace(/\.page$/, "");
-      if (NOISE.test(slug2)) continue;
-      seen.set(hub.base + h, slug2);
+      const slug3 = h.split("/").pop().replace(/\.page$/, "");
+      if (NOISE.test(slug3)) continue;
+      seen.set(hub.base + h, slug3);
     }
-    const links = [...seen].map(([url, slug2]) => ({ url, slug: slug2 }));
+    const links = [...seen].map(([url, slug3]) => ({ url, slug: slug3 }));
     CACHE.set(bankSlug, { at: Date.now(), links });
     return links;
   } catch {
@@ -25535,9 +25535,9 @@ async function acquire(ctx, url, parse, label) {
       const items = parse(r.body);
       if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${label} page carried no publishable account data`);
       return items;
-    } catch (e) {
-      if (e instanceof AcquisitionError && ["ACCESS_CHALLENGE", "FORBIDDEN", "EMPTY_RESPONSE"].includes(e.failureClass)) throw e;
-      lastErr = e;
+    } catch (e2) {
+      if (e2 instanceof AcquisitionError && ["ACCESS_CHALLENGE", "FORBIDDEN", "EMPTY_RESPONSE"].includes(e2.failureClass)) throw e2;
+      lastErr = e2;
       await new Promise((res) => setTimeout(res, 2500));
     }
   }
@@ -25951,9 +25951,9 @@ var init_httpAcquisitionAdapter = __esm({
             })
           );
           return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: 200, latencyMs: res.latencyMs, fetchedAt };
-        } catch (e) {
-          const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
-          return failedResult(source, fc, String(e.message || e), 0, e?.httpStatus);
+        } catch (e2) {
+          const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
+          return failedResult(source, fc, String(e2.message || e2), 0, e2?.httpStatus);
         }
       }
       async healthCheck(source) {
@@ -26058,9 +26058,9 @@ var init_structuredDataAdapter = __esm({
             return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: 200, latencyMs: res.latencyMs, fetchedAt };
           }
           return failedResult(source, "SCHEMA_DRIFT", `No validator for schema '${source.config.schema}'`, res.latencyMs, 200);
-        } catch (e) {
-          const fc = e instanceof AcquisitionError ? e.failureClass : e.message?.includes("JSON") ? "MALFORMED_RESPONSE" : "UNKNOWN";
-          return failedResult(source, fc, String(e.message || e).slice(0, 200), 0);
+        } catch (e2) {
+          const fc = e2 instanceof AcquisitionError ? e2.failureClass : e2.message?.includes("JSON") ? "MALFORMED_RESPONSE" : "UNKNOWN";
+          return failedResult(source, fc, String(e2.message || e2).slice(0, 200), 0);
         }
       }
       async healthCheck(source) {
@@ -26069,8 +26069,8 @@ var init_structuredDataAdapter = __esm({
         try {
           const r = await httpAcquire(url, { sourceId: source.id, retries: 0, timeoutMs: 5e3 });
           return { healthy: r.ok, latencyMs: r.latencyMs };
-        } catch (e) {
-          return { healthy: false, failureClass: e.failureClass || "UNKNOWN", latencyMs: 0 };
+        } catch (e2) {
+          return { healthy: false, failureClass: e2.failureClass || "UNKNOWN", latencyMs: 0 };
         }
       }
       getFreshness(source) {
@@ -26165,9 +26165,9 @@ var init_feedAndApiAdapters = __esm({
             })
           );
           return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: 200, latencyMs: res.latencyMs, fetchedAt };
-        } catch (e) {
-          const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
-          return failedResult(source, fc, String(e.message || e).slice(0, 200), 0);
+        } catch (e2) {
+          const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
+          return failedResult(source, fc, String(e2.message || e2).slice(0, 200), 0);
         }
       }
       async healthCheck(source) {
@@ -26176,8 +26176,8 @@ var init_feedAndApiAdapters = __esm({
         try {
           const r = await httpAcquire(feedUrl, { sourceId: source.id, headers: { Authorization: `Bearer ${source.config.apiKey}` }, retries: 0, timeoutMs: 5e3 });
           return { healthy: r.ok, latencyMs: r.latencyMs };
-        } catch (e) {
-          return { healthy: false, failureClass: e.failureClass || "UNKNOWN", latencyMs: 0 };
+        } catch (e2) {
+          return { healthy: false, failureClass: e2.failureClass || "UNKNOWN", latencyMs: 0 };
         }
       }
       getFreshness(source) {
@@ -26215,9 +26215,9 @@ var init_feedAndApiAdapters = __esm({
             })
           ).filter((r) => r.title);
           return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: res.status, latencyMs: res.latencyMs, fetchedAt: (/* @__PURE__ */ new Date()).toISOString() };
-        } catch (e) {
-          const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
-          return failedResult(source, fc, String(e.message || e).slice(0, 200), 0);
+        } catch (e2) {
+          const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
+          return failedResult(source, fc, String(e2.message || e2).slice(0, 200), 0);
         }
       }
       async healthCheck(source) {
@@ -26225,8 +26225,8 @@ var init_feedAndApiAdapters = __esm({
         try {
           const r = await httpAcquire(String(source.config.feedUrl), { sourceId: source.id, retries: 0, timeoutMs: 5e3 });
           return { healthy: r.ok, latencyMs: r.latencyMs };
-        } catch (e) {
-          return { healthy: false, failureClass: e.failureClass || "UNKNOWN", latencyMs: 0 };
+        } catch (e2) {
+          return { healthy: false, failureClass: e2.failureClass || "UNKNOWN", latencyMs: 0 };
         }
       }
       getFreshness(source) {
@@ -26270,9 +26270,9 @@ var init_feedAndApiAdapters = __esm({
             })
           ).filter((r) => r.title);
           return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: res.status, latencyMs: res.latencyMs, fetchedAt: (/* @__PURE__ */ new Date()).toISOString() };
-        } catch (e) {
-          const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
-          return failedResult(source, fc, String(e.message || e).slice(0, 200), 0);
+        } catch (e2) {
+          const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
+          return failedResult(source, fc, String(e2.message || e2).slice(0, 200), 0);
         }
       }
       async healthCheck(source) {
@@ -26280,8 +26280,8 @@ var init_feedAndApiAdapters = __esm({
         try {
           const r = await httpAcquire(String(source.config.endpoint), { sourceId: source.id, retries: 0, timeoutMs: 5e3 });
           return { healthy: r.ok, latencyMs: r.latencyMs };
-        } catch (e) {
-          return { healthy: false, failureClass: e.failureClass || "UNKNOWN", latencyMs: 0 };
+        } catch (e2) {
+          return { healthy: false, failureClass: e2.failureClass || "UNKNOWN", latencyMs: 0 };
         }
       }
       getFreshness(source) {
@@ -26333,9 +26333,9 @@ var init_feedAndApiAdapters = __esm({
           );
           log.debug("SearchProvider", `SearchApi returned ${rawItems.length} candidates`);
           return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, httpStatus: 200, latencyMs: res.latencyMs, fetchedAt };
-        } catch (e) {
-          const fc = e instanceof AcquisitionError ? e.failureClass : "UNKNOWN";
-          return failedResult(source, fc, String(e.message || e).slice(0, 200), 0);
+        } catch (e2) {
+          const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
+          return failedResult(source, fc, String(e2.message || e2).slice(0, 200), 0);
         }
       }
       async healthCheck(source) {
@@ -26343,8 +26343,8 @@ var init_feedAndApiAdapters = __esm({
         try {
           const r = await httpAcquire("https://www.searchapi.io/api/v1/account", { sourceId: source.id, headers: { Authorization: `Bearer ${source.config.apiKey}` }, retries: 0, timeoutMs: 5e3 });
           return { healthy: r.ok, latencyMs: r.latencyMs };
-        } catch (e) {
-          return { healthy: false, failureClass: e.failureClass || "UNKNOWN", latencyMs: 0 };
+        } catch (e2) {
+          return { healthy: false, failureClass: e2.failureClass || "UNKNOWN", latencyMs: 0 };
         }
       }
       getFreshness(source) {
@@ -26455,8 +26455,8 @@ var init_browserRenderAdapter = __esm({
             latencyMs: Date.now() - started3,
             fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
           };
-        } catch (e) {
-          const msg = String(e?.message || e).slice(0, 160);
+        } catch (e2) {
+          const msg = String(e2?.message || e2).slice(0, 160);
           const klass = /Timeout|timed out/i.test(msg) ? "TIMEOUT" : /net::|ERR_/.test(msg) ? "CONNECTION_FAILURE" : "PARSER_FAILURE";
           return failedResult(source, klass, `Browser render failed: ${msg}`, Date.now() - started3);
         } finally {
@@ -26549,16 +26549,16 @@ async function acquireParallel(query, opts = {}) {
               browserResult.failureClass || "EMPTY_RESPONSE",
               browserResult.error || "Browser fallback found no usable data"
             );
-          } catch (e) {
-            recordFailure(browserSource.id, "UNKNOWN", String(e).slice(0, 120));
+          } catch (e2) {
+            recordFailure(browserSource.id, "UNKNOWN", String(e2).slice(0, 120));
           }
         }
       }
       recordFailure(source.id, failureClass, result.error || "No items");
       return { kind: "fail", sourceId: source.id, failureClass, error: result.error || "No items" };
-    } catch (e) {
-      recordFailure(source.id, "UNKNOWN", String(e).slice(0, 150));
-      return { kind: "fail", sourceId: source.id, failureClass: "UNKNOWN", error: String(e?.message || e).slice(0, 200) };
+    } catch (e2) {
+      recordFailure(source.id, "UNKNOWN", String(e2).slice(0, 150));
+      return { kind: "fail", sourceId: source.id, failureClass: "UNKNOWN", error: String(e2?.message || e2).slice(0, 200) };
     }
   };
   const runWithDeadline = async (source) => {
@@ -27091,9 +27091,9 @@ async function lookup(nameRaw) {
   const s = await getJson(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=5&search=${encodeURIComponent(name)}`);
   const ids = (s?.search || []).map((x) => x.id).filter(Boolean);
   if (!ids.length) return null;
-  const e = await getJson(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${ids.join("|")}`);
+  const e2 = await getJson(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${ids.join("|")}`);
   for (const id of ids) {
-    const ent = e?.entities?.[id];
+    const ent = e2?.entities?.[id];
     const desc = String(ent?.descriptions?.en?.value || "").toLowerCase();
     if (desc && !/(bank|insur|financ|lender|nbfc|credit|loan|capital|assurance|fintech|company|corporation|holding)/.test(desc)) continue;
     const file = ent?.claims?.P154?.[0]?.mainsnak?.datavalue?.value;
@@ -27298,8 +27298,8 @@ function loadRegistry() {
       const prev = map.get(domain);
       if (!prev || c.payoutScore > prev.payoutScore) map.set(domain, c);
     }
-  } catch (e) {
-    console.error("[linkinr] campaign sheet UNREADABLE \u2014 monetization OFF for this process:", String(e?.message || e));
+  } catch (e2) {
+    console.error("[linkinr] campaign sheet UNREADABLE \u2014 monetization OFF for this process:", String(e2?.message || e2));
   }
   return campaignByDomain = map;
 }
@@ -27432,6 +27432,226 @@ var init_ekaro = __esm({
   }
 });
 
+// server/affiliate/merchantLinks.ts
+function dates(d) {
+  const s = String(d || "");
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [, yyyy, mm, dd] = m;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return { iso: s, ymd: `${yyyy}${mm}${dd}`, dmy: `${dd}/${mm}/${yyyy}`, dMonY: `${dd}-${months[Number(mm) - 1] || "Jan"}-${yyyy}`, dd, mm, yyyy };
+}
+function route(t) {
+  const legs = String(t || "").split(/\s+to\s+/i);
+  if (legs.length !== 2) return null;
+  const from = legs[0].trim();
+  const to = legs[1].trim();
+  return from && to ? { from, to } : null;
+}
+function hotelCity(title, ctx) {
+  if (ctx.city) return String(ctx.city).trim();
+  const r = route(ctx.route);
+  if (!r) {
+    const single = String(ctx.route || "").trim();
+    if (single && !/\s/.test(single)) return single;
+  } else if (r.to) {
+    return r.to;
+  }
+  const m = String(title || "").match(/\b(?:hotels?|stays?)\s+in\s+([a-z\s]{3,24})/i);
+  return m ? m[1].trim() : "";
+}
+function merchantDeepLink(merchant, title, vertical, ctx = {}) {
+  const v = String(merchant || "").toLowerCase();
+  if (!v) return "";
+  if (!String(title || "").trim() && !String(ctx.route || "").trim() && !String(ctx.city || "").trim()) return "";
+  const has = (...keys) => keys.some((k) => v.includes(k));
+  const q3 = e(String(title || "").trim().slice(0, 80));
+  const t = String(title || "").trim();
+  const r = route(ctx.route);
+  const d = dates(ctx.date);
+  const city = hotelCity(t, ctx);
+  const cq = city ? e(city) : "";
+  const from = r ? cityCode(r.from) || r.from : "";
+  const to = r ? cityCode(r.to) || r.to : "";
+  if (has("amazon")) return `https://www.amazon.in/s?k=${q3}`;
+  if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
+  if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
+  if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
+  if (has("myntra")) return `https://www.myntra.com/${slug(t)}`;
+  if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
+  if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
+  if (has("instamart")) return `https://www.swiggy.com/instamart/search?query=${q3}`;
+  if (has("blinkit")) return `https://blinkit.com/s/?q=${q3}`;
+  if (has("zepto")) return `https://www.zepto.com/search?query=${q3}`;
+  if (has("bigbasket", "bb now", "bbnow")) return `https://www.bigbasket.com/ps/?q=${q3}`;
+  if (has("swiggy")) return `https://www.swiggy.com/search?query=${q3}`;
+  if (has("zomato")) return `https://www.zomato.com/search?query=${q3}`;
+  if (has("domino")) return `https://www.dominos.co.in/menu`;
+  if (has("ovenstory", "oven story")) return `https://www.ovenstory.in/menu`;
+  if (has("eatsure", "eat sure")) return `https://www.eatsure.com/search?q=${q3}`;
+  if (has("bookmyshow", "book my show")) return city ? `https://in.bookmyshow.com/explore/movies-${slug(city)}` : "https://in.bookmyshow.com/explore/movies";
+  if (has("district")) return "https://www.district.in/movies";
+  if (has("paytm")) return "https://paytm.com/movies/";
+  if (has("pvr")) return "https://www.pvrcinemas.com/";
+  if (has("cinepolis")) return "https://www.cinepolisindia.com/";
+  if (has("ticketnew", "ticket new")) return "https://www.ticketnew.com/";
+  if (!has("hotel") && (vertical === "flights" || has("air", "airline", "goindigo", "indigo", "akasa", "spicejet", "vistara"))) {
+    const dd = d ? d.dmy : "";
+    const isoD = d ? d.iso : "";
+    const ymd = d ? d.ymd : "";
+    if (has("makemytrip")) {
+      if (from && to && d && cityCode(r.from) && cityCode(r.to)) {
+        return `https://www.makemytrip.com/flight/search?itinerary=${e(`${from}-${to}-${d.dd}/${d.mm}/${d.yyyy}`)}&tripType=O&paxType=1-A-C&intl=false&cabinClass=E&cc=INR`;
+      }
+      return "https://www.makemytrip.com/flights/";
+    }
+    if (has("easemytrip", "ease my trip")) {
+      return from && to && dd ? `https://www.easemytrip.com/flight-search/?from=${e(from)}&to=${e(to)}&ddate=${e(dd)}` : "https://www.easemytrip.com/flights.html";
+    }
+    if (has("ixigo")) {
+      return from && to && ymd ? `https://www.ixigo.com/flights?from=${e(from)}&to=${e(to)}&depart=${ymd}` : "https://www.ixigo.com/flights";
+    }
+    if (has("yatra")) {
+      return from && to && dd ? `https://www.yatra.com/flight/search?flight-type=on&from=${e(from)}&to=${e(to)}&departDate=${e(dd)}&adults=1&child=0&infant=0&class=Economy&flexi=0` : "https://www.yatra.com/flights";
+    }
+    if (has("cleartrip")) {
+      return from && to && isoD ? `https://www.cleartrip.com/flights/results?from=${e(from)}&to=${e(to)}&depart_date=${isoD}&adults=1&childs=0&infants=0&class=Economy` : "https://www.cleartrip.com/flights";
+    }
+    if (has("akasa")) {
+      return from && to && isoD ? `https://www.akasaair.com/booking/search?from=${e(from)}&to=${e(to)}&date=${isoD}&adults=1` : "https://www.akasaair.com/";
+    }
+    if (has("goindigo", "indigo")) {
+      return from && to && isoD ? `https://www.goindigo.in/booking.html?from=${e(from)}&to=${e(to)}&date=${isoD}` : "https://www.goindigo.in/booking.html";
+    }
+  }
+  if (vertical === "bus" || has("bus")) {
+    if (has("redbus")) {
+      return r ? `https://www.redbus.in/bus-tickets/${slug(r.from)}-to-${slug(r.to)}${d ? `?onward=${e(d.dMonY)}` : ""}` : "https://www.redbus.in/bus-tickets";
+    }
+    if (has("abhibus")) {
+      return r ? `https://www.abhibus.com/bus_search/${slug(r.from)}/${slug(r.to)}/${d ? d.iso : ""}/1` : "https://www.abhibus.com/";
+    }
+    if (has("ixigo")) {
+      return r ? `https://www.ixigo.com/buses/${slug(r.from)}-to-${slug(r.to)}${d ? `-${d.ymd}` : ""}` : "https://www.ixigo.com/buses";
+    }
+    if (has("yatra")) {
+      return r ? `https://www.yatra.com/bus/search?from=${e(r.from)}&to=${e(r.to)}${d ? `&date=${e(d.dmy)}` : ""}` : "https://www.yatra.com/bus";
+    }
+    if (has("makemytrip")) {
+      return r && d ? `https://www.makemytrip.com/bus/search/${slug(r.from)}/${slug(r.to)}/${d.dd}-${d.mm}-${d.yyyy}` : "https://www.makemytrip.com/bus/";
+    }
+  }
+  if (vertical === "hotels" || has("hotel", "stay", "rooms", "oyo")) {
+    const ci = d ? d.iso : "";
+    const co = (() => {
+      if (!d) return "";
+      const dt = /* @__PURE__ */ new Date(`${d.iso}T00:00:00Z`);
+      dt.setUTCDate(dt.getUTCDate() + 1);
+      return dt.toISOString().slice(0, 10);
+    })();
+    if (has("makemytrip")) {
+      return city ? `https://www.makemytrip.com/hotels/hotel-listing/?city=${e(city.toUpperCase())}${ci ? `&checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.makemytrip.com/hotels/";
+    }
+    if (has("goibibo")) {
+      return city ? `https://www.goibibo.com/hotels/find-hotels-in-${slug(city)}/${ci && co ? `?checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.goibibo.com/hotels/";
+    }
+    if (has("booking")) {
+      return city ? `https://www.booking.com/searchresults.html?ss=${cq}${ci ? `&checkin=${ci}&checkout=${co}` : ""}&group_adults=2&no_rooms=1&group_children=0` : "https://www.booking.com/searchresults.html";
+    }
+    if (has("agoda")) {
+      return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&los=1` : ""}` : "https://www.agoda.com/";
+    }
+    if (has("yatra")) {
+      return city ? `https://www.yatra.com/hotels/hotels-in-${slug(city)}` : "https://www.yatra.com/hotels";
+    }
+    if (has("cleartrip")) {
+      return city ? `https://www.cleartrip.com/hotels/india/${slug(city)}-hotels` : "https://www.cleartrip.com/hotels";
+    }
+    if (has("easemytrip", "ease my trip")) {
+      return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : "https://www.easemytrip.com/hotels/";
+    }
+    if (has("oyo")) {
+      return city ? `https://www.oyorooms.com/search?location=${cq}` : "https://www.oyorooms.com/";
+    }
+    if (has("saffron")) {
+      return city ? `https://www.saffronstays.com/search?q=${cq}` : "https://www.saffronstays.com/";
+    }
+  }
+  if (vertical === "cab" || has("cab", "ride", "taxi", "ola", "uber")) {
+    if (has("uber")) return "https://m.uber.com/looking";
+    if (has("ola")) return "https://book.olacabs.com/";
+    if (has("indrive", "in drive")) return "https://indrive.com/";
+    if (has("meru")) return "https://www.meru.in/";
+    if (has("fastdeal", "snap")) return "https://www.fastdeals.in/";
+  }
+  const loanish = /loan|credit\s*card|personal\s*loan|home\s*loan/i.test(`${t} ${vertical || ""}`);
+  const insurish = /insurance|policy|cover/i.test(`${t} ${vertical || ""}`);
+  const insKind = /two\s*wheeler|bike|scooter/i.test(t) ? "bike" : /car|motor|vehicle/i.test(t) ? "car" : /health|mediclaim|hospital/i.test(t) ? "health" : /term|life/i.test(t) ? "life" : /travel/i.test(t) ? "travel" : "";
+  const loanKind = /home\s*loan/i.test(t) ? "home-loan" : /car\s*loan|auto\s*loan/i.test(t) ? "car-loan" : /business\s*loan/i.test(t) ? "business-loan" : /credit\s*card/i.test(t) ? "credit-card" : "personal-loan";
+  if (loanish || insurish || vertical === "loans" || vertical === "insurance" || vertical === "creditcards") {
+    if (has("paisabazaar")) return insurish ? `https://www.paisabazaar.com/insurance/${insKind ? insKind + "-insurance/" : ""}` : `https://www.paisabazaar.com/${loanKind}/`;
+    if (has("bankbazaar")) return insurish ? "https://www.bankbazaar.com/insurance.html" : `https://www.bankbazaar.com/${loanKind}.html`;
+    if (has("policybazaar")) return insurish ? `https://www.policybazaar.com/insurance/${insKind ? insKind + "-insurance/" : ""}` : "https://www.policybazaar.com/";
+    if (has("moneyview", "money view")) return "https://moneyview.in/loans";
+    if (has("kreditbee", "kredit bee")) return "https://www.kreditbee.in/";
+    if (has("navi")) return "https://navi.com/loans";
+    if (has("ditto")) return "https://joinditto.in/health-insurance/";
+    if (has("insurancedekho", "insurance dekho")) return insKind ? `https://www.insurancedekho.com/${insKind}-insurance` : "https://www.insurancedekho.com/";
+    if (has("acko")) return insKind ? `https://www.acko.com/${insKind}-insurance/` : "https://www.acko.com/";
+    if (has("godigit", "digit")) return insKind ? `https://www.godigit.com/${insKind}-insurance` : "https://www.godigit.com/";
+    if (has("coverfox")) return insKind ? `https://www.coverfox.com/${insKind}-insurance/` : "https://www.coverfox.com/";
+  }
+  if (has("makemytrip")) return "https://www.makemytrip.com/";
+  return "";
+}
+var IATA2, cityCode, slug, e;
+var init_merchantLinks = __esm({
+  "server/affiliate/merchantLinks.ts"() {
+    IATA2 = {
+      // shared subset used by the airline/OTA SRPs
+      delhi: "DEL",
+      "new delhi": "DEL",
+      mumbai: "BOM",
+      bengaluru: "BLR",
+      bangalore: "BLR",
+      hyderabad: "HYD",
+      chennai: "MAA",
+      kolkata: "CCU",
+      pune: "PNQ",
+      ahmedabad: "AMD",
+      goa: "GOI",
+      jaipur: "JAI",
+      lucknow: "LKO",
+      indore: "IDR",
+      bhopal: "BHO",
+      patna: "PAT",
+      chandigarh: "IXC",
+      kochi: "COK",
+      coimbatore: "CJB",
+      varanasi: "VNS",
+      nagpur: "NAG",
+      surat: "STV",
+      visakhapatnam: "VTZ",
+      bhubaneswar: "BBI",
+      guwahati: "GAU",
+      srinagar: "SXR",
+      dibrugarh: "DIB",
+      ranchi: "IXR",
+      raipur: "RPR",
+      trivandrum: "TRV",
+      amritsar: "ATQ",
+      udaipur: "UDR",
+      manali: "KUU",
+      dehradun: "DED",
+      bagdogra: "IXB",
+      madurai: "IXM"
+    };
+    cityCode = (name) => IATA2[String(name || "").toLowerCase().trim()] || "";
+    slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
+    e = encodeURIComponent;
+  }
+});
+
 // server/affiliate/deeplink.ts
 var deeplink_exports = {};
 __export(deeplink_exports, {
@@ -27516,7 +27736,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const domain = safeDomain(targetUrl);
   const store2 = getStore();
   try {
-    const slug2 = (opts.companySlug || "").toLowerCase().slice(0, 64);
+    const slug3 = (opts.companySlug || "").toLowerCase().slice(0, 64);
     const labels = domain.split(".").filter(Boolean);
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
@@ -27524,7 +27744,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
       `SELECT network, campaign_key, template, subid_param, extra_params FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
-      [slug2, domain, parent2, parent3]
+      [slug3, domain, parent2, parent3]
     );
     const r = rows?.[0];
     if (r?.template) {
@@ -27582,12 +27802,14 @@ async function recordPointerClick(dest, offerId, network) {
        VALUES (?, ?, ?, ?, ?, NULL)`,
       [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain(dest), dest.slice(0, 2e3), clickId]
     );
-  } catch (e) {
+  } catch (e2) {
     log.debug("Affiliate", "click recording skipped", {});
   }
   return clickId;
 }
 function merchantSearchFallback(vendor, title, vertical, travel) {
+  const deep = merchantDeepLink(vendor, title, vertical, travel || {});
+  if (deep) return deep;
   const v = String(vendor || "").toLowerCase();
   const q3 = encodeURIComponent(String(title || "").trim().slice(0, 80));
   if (!v || !q3) return "";
@@ -27645,6 +27867,7 @@ var init_deeplink = __esm({
     init_ekaro();
     init_logger();
     init_db();
+    init_merchantLinks();
     AFFILIATE_TTL_SEC = 24 * 60 * 60;
     CUELINKS_MERCHANTS = /* @__PURE__ */ new Set(["makemytrip.com", "goibibo.com"]);
     AMAZON_DOMAINS = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
@@ -28586,7 +28809,7 @@ async function ensureTable() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   ensured2 = true;
 }
-function slug(s) {
+function slug2(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 150);
 }
 function parseBingItems(html) {
@@ -28635,7 +28858,7 @@ async function lookupProductImage(seller, dish) {
     const r = await cffiFetch(`https://www.bing.com/images/async?q=${q3}&first=0&count=25&mmasync=1`, { impersonate: "chrome", timeoutMs: 1e4 });
     if (r.status !== 200) throw new Error(`bing HTTP ${r.status}`);
     html = String(r.body || "");
-  } catch (e) {
+  } catch (e2) {
     breakerUntil = Date.now() + BREAKER_MS;
     return null;
   }
@@ -28644,8 +28867,8 @@ async function lookupProductImage(seller, dish) {
     breakerUntil = Date.now() + BREAKER_MS;
     return null;
   }
-  const brandTok = slug(brand).split("-")[0] || "pizza";
-  const tokens2 = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
+  const brandTok = slug2(brand).split("-")[0] || "pizza";
+  const tokens2 = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug2(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
   const ranked = items.map((it) => ({ it, sc: scoreItem(it, tokens2, brandTok) })).filter((x) => x.sc > 2).sort((a, b) => b.sc - a.sc).slice(0, 3);
   for (const cand of ranked) {
     if (await verifyImage(cand.it.murl)) return String(cand.it.murl);
@@ -28673,7 +28896,7 @@ async function withProductImages(offers, budget = 5) {
     const dish = String(a.dish || o.title || "").replace(/\s*\([^)]*\)\s*/g, " ").trim();
     if (!dish) continue;
     const seller = String(o.seller || a.restaurant || "");
-    const key = slug(`${seller}|${dish}`).slice(0, 160);
+    const key = slug2(`${seller}|${dish}`).slice(0, 160);
     tasks.push((async () => {
       try {
         let url = await cachedImage(key);
@@ -28765,8 +28988,8 @@ async function pruneCatalogue(scale = 1) {
       const n = await batchedDelete(sql, params);
       removed += n;
       if (n > 0) log.info("Prune", `Deleted ${n} stale rows from ${name}`);
-    } catch (e) {
-      log.warn("Prune", `${name} prune skipped`, { error: String(e?.message || e).slice(0, 140) });
+    } catch (e2) {
+      log.warn("Prune", `${name} prune skipped`, { error: String(e2?.message || e2).slice(0, 140) });
     }
   }
   if (removed > 0) log.info("Prune", `Catalogue pruned: ${removed} dead rows removed`);
@@ -28779,8 +29002,8 @@ async function compactCatalogue() {
     try {
       await store2.query(`OPTIMIZE TABLE ${table}`);
       log.info("Prune", `Compacted ${table}`);
-    } catch (e) {
-      log.warn("Prune", `${table} compaction skipped`, { error: String(e?.message || e).slice(0, 140) });
+    } catch (e2) {
+      log.warn("Prune", `${table} compaction skipped`, { error: String(e2?.message || e2).slice(0, 140) });
     }
   }
 }
@@ -28816,8 +29039,8 @@ async function compactLargestTable() {
     await store2.query(`OPTIMIZE TABLE \`${first.tbl}\``);
     log.info("Prune", `Compacted ${first.tbl} (${Number(first.mb ?? 0).toFixed(0)} MB)`);
     return String(first.tbl);
-  } catch (e) {
-    log.warn("Prune", "size-gated compaction skipped", { error: String(e?.message || e).slice(0, 140) });
+  } catch (e2) {
+    log.warn("Prune", "size-gated compaction skipped", { error: String(e2?.message || e2).slice(0, 140) });
     return null;
   }
 }
@@ -28865,7 +29088,7 @@ async function startCatalogueRetention() {
     }
     if (sizeMb > 0) log.info("Prune", `Retention pass done (DB ${sizeMb.toFixed(0)} MB${emergency ? " EMERGENCY" : ""}, ${removed} rows removed)`);
   };
-  await runOnce().catch((e) => log.warn("Prune", "Initial retention pass failed", { error: String(e?.message || e).slice(0, 140) }));
+  await runOnce().catch((e2) => log.warn("Prune", "Initial retention pass failed", { error: String(e2?.message || e2).slice(0, 140) }));
   const timer = setInterval(() => {
     void runOnce().catch(() => void 0);
   }, 60 * 6e4);
@@ -28978,9 +29201,9 @@ async function resolveCanonicalEntity(offer) {
       matchState: "MATCHED",
       matchEvidence: "new canonical entity created from first observed offer"
     };
-  } catch (e) {
-    notifyWriteDenied(String(e));
-    log.warn("Matching", "Entity resolution store failure", { error: String(e).slice(0, 120) });
+  } catch (e2) {
+    notifyWriteDenied(String(e2));
+    log.warn("Matching", "Entity resolution store failure", { error: String(e2).slice(0, 120) });
     return { canonicalEntityId: null, canonicalVariantId: null, matchState: "REVIEW_REQUIRED", matchEvidence: "store unavailable" };
   }
 }
@@ -29447,9 +29670,9 @@ function getVerticalEngine(vertical) {
   return ENGINES[vertical] ?? new UnknownVerticalEngine(String(vertical));
 }
 function verticalStatusReport() {
-  return Object.values(ENGINES).map((e) => ({
-    vertical: e.config.vertical,
-    displayName: e.config.displayName,
+  return Object.values(ENGINES).map((e2) => ({
+    vertical: e2.config.vertical,
+    displayName: e2.config.displayName,
     engineImplemented: true,
     note: "Engine implemented; operational status depends on configured and verified sources for this vertical"
   }));
@@ -29775,9 +29998,9 @@ async function persistOffer(offer, raw, source) {
     } catch {
     }
     return res.insertId || 0;
-  } catch (e) {
-    notifyWriteDenied(String(e));
-    log.warn("Catalogue", "Offer persist failed", { error: String(e).slice(0, 150) });
+  } catch (e2) {
+    notifyWriteDenied(String(e2));
+    log.warn("Catalogue", "Offer persist failed", { error: String(e2).slice(0, 150) });
     return 0;
   }
 }
@@ -29821,8 +30044,8 @@ async function findCatalogueOffers(vertical, opts = {}) {
        FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT ?`,
       params
     );
-  } catch (e) {
-    log.debug("Catalogue", "Lookup failed (store unavailable)", { error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Catalogue", "Lookup failed (store unavailable)", { error: String(e2).slice(0, 100) });
     return [];
   }
 }
@@ -29865,8 +30088,8 @@ async function updateVolatileFields(rowId, patch) {
         rowId
       ]
     );
-  } catch (e) {
-    log.debug("Catalogue", "Volatile update failed", { error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Catalogue", "Volatile update failed", { error: String(e2).slice(0, 100) });
   }
 }
 async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
@@ -29889,15 +30112,15 @@ async function purgePhotolessHotelOffers() {
              OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL)
         AND fetched_at < (NOW() - INTERVAL 1 DAY)`
     );
-  } catch (e) {
+  } catch (e2) {
     try {
       await store2.execute(
         `DELETE FROM offers WHERE vertical = 'hotels'
           AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')
           AND fetched_at < (NOW() - INTERVAL 1 DAY)`
       );
-    } catch (e2) {
-      log.debug("Catalogue", "Photoless hotel purge failed", { error: String(e2).slice(0, 100) });
+    } catch (e22) {
+      log.debug("Catalogue", "Photoless hotel purge failed", { error: String(e22).slice(0, 100) });
     }
   }
 }
@@ -29907,8 +30130,8 @@ async function purgeStaleBankingOffers() {
     await store2.execute(
       `DELETE FROM offers WHERE vertical = 'banking' AND (attributes IS NULL OR attributes NOT LIKE '%"account_type"%')`
     );
-  } catch (e) {
-    log.debug("Catalogue", "Stale banking purge failed", { error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Catalogue", "Stale banking purge failed", { error: String(e2).slice(0, 100) });
   }
 }
 var init_catalogueService = __esm({
@@ -30557,8 +30780,8 @@ async function processAdapterResults(results, parsed, persist4 = true) {
           await recordPriceSnapshot(offer, rowId);
         }
         out.push(offer);
-      } catch (e) {
-        log.debug("Search", "Offer processing rejected an item", { error: String(e).slice(0, 120) });
+      } catch (e2) {
+        log.debug("Search", "Offer processing rejected an item", { error: String(e2).slice(0, 120) });
       }
     }
   }
@@ -31040,9 +31263,9 @@ async function sendEmail(to, subject, html, text) {
     }
     log.info("Mailer", `Email sent to ${to} (id: ${body?.id || "unknown"})`);
     return { ok: true, id: body?.id };
-  } catch (e) {
-    log.warn("Mailer", `Resend request failed: ${e?.message || e}`);
-    return { ok: false, error: e?.message || "network failure" };
+  } catch (e2) {
+    log.warn("Mailer", `Resend request failed: ${e2?.message || e2}`);
+    return { ok: false, error: e2?.message || "network failure" };
   }
 }
 var init_mailer = __esm({
@@ -31326,11 +31549,11 @@ async function registerReferral(referrerId, refereeId) {
     await tx.execute("UPDATE referrals SET status = ?, validated_at = NOW() WHERE id = ?", ["valid", referralId]);
     try {
       await tx.execute("INSERT INTO referral_point_events (user_id, referral_id, points) VALUES (?, ?, ?)", [referrerId, referralId, POINTS_PER_VALID_REFERRAL]);
-    } catch (e) {
-      if (String(e).includes("unique") || String(e).includes("Duplicate")) {
+    } catch (e2) {
+      if (String(e2).includes("unique") || String(e2).includes("Duplicate")) {
         return { ok: true, awarded: false };
       }
-      throw e;
+      throw e2;
     }
     return { ok: true, awarded: true };
   });
@@ -31394,13 +31617,13 @@ async function executeSpin(userId, idempotencyKey) {
         "INSERT INTO spins (user_id, eligibility_id, prize_id, idempotency_key) VALUES (?, ?, NULL, ?)",
         [userId, eligibilityId, key]
       );
-    } catch (e) {
+    } catch (e2) {
       const replay = await tx.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
       if (replay.length > 0) {
         const prize = await prizeForTx(tx, Number(replay[0].prize_id));
         return { status: "DUPLICATE", spinId: Number(replay[0].id), prize };
       }
-      log.warn("Rewards", "Spin race rejected by constraint", { error: String(e).slice(0, 120) });
+      log.warn("Rewards", "Spin race rejected by constraint", { error: String(e2).slice(0, 120) });
       return { status: "NO_ELIGIBILITY" };
     }
     const spinId = spinRes.insertId || 0;
@@ -31465,7 +31688,7 @@ async function submitFulfilmentDetails(userId, spinId, contact) {
     );
     if (res.affectedRows === 0) return { ok: false, error: "No fulfilment record for this spin" };
     return { ok: true };
-  } catch (e) {
+  } catch (e2) {
     return { ok: false, error: "Fulfilment update failed" };
   }
 }
@@ -31497,8 +31720,8 @@ async function ensureReferralCode(userId) {
       if (res.affectedRows > 0) return code;
       const again = await store2.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
       if (again[0]?.referral_code) return String(again[0].referral_code);
-    } catch (e) {
-      if (!/uq_referral_code|Duplicate/i.test(String(e?.message || ""))) throw e;
+    } catch (e2) {
+      if (!/uq_referral_code|Duplicate/i.test(String(e2?.message || ""))) throw e2;
     }
   }
   throw new Error("Could not allocate a referral code \u2014 please retry");
@@ -31598,17 +31821,17 @@ async function deleteSpendEntry(userId, id) {
   return true;
 }
 function summarizeSpend(entries) {
-  const total = entries.reduce((s, e) => s + e.amount, 0);
+  const total = entries.reduce((s, e2) => s + e2.amount, 0);
   const merchantMap = /* @__PURE__ */ new Map();
   const monthMap = /* @__PURE__ */ new Map();
-  for (const e of entries) {
-    const key = e.merchant.trim();
+  for (const e2 of entries) {
+    const key = e2.merchant.trim();
     const cur = merchantMap.get(key) || { merchant: key, total: 0, count: 0 };
-    cur.total += e.amount;
+    cur.total += e2.amount;
     cur.count += 1;
     merchantMap.set(key, cur);
-    const month = e.entryDate.slice(0, 7);
-    monthMap.set(month, (monthMap.get(month) || 0) + e.amount);
+    const month = e2.entryDate.slice(0, 7);
+    monthMap.set(month, (monthMap.get(month) || 0) + e2.amount);
   }
   const byMerchant = [...merchantMap.values()].sort((a, b) => b.total - a.total);
   const byMonth = [...monthMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12).map(([month, tot]) => ({ month, total: tot }));
@@ -32010,8 +32233,8 @@ async function getCabDeeplinkConfig() {
       const parsed = JSON.parse(rows[0].v);
       merged = { ...DEFAULTS2, ...parsed };
     }
-  } catch (e) {
-    log.debug("CabDeeplink", `app_settings read skipped: ${String(e?.message || e).slice(0, 60)}`);
+  } catch (e2) {
+    log.debug("CabDeeplink", `app_settings read skipped: ${String(e2?.message || e2).slice(0, 60)}`);
   }
   cache7 = { at: Date.now(), v: merged };
   return merged;
@@ -32191,10 +32414,10 @@ async function lookup2(nameRaw) {
   const s = await getJson2(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=20&search=${encodeURIComponent(name)}`);
   const results = (s?.search || []).filter((x) => x.id);
   if (!results.length) return null;
-  const e = await getJson2(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${results.map((x) => x.id).join("|")}`);
+  const e2 = await getJson2(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&ids=${results.map((x) => x.id).join("|")}`);
   const wantedTokens = name.toLowerCase().split(/\W+/).filter((t) => t.length >= 3);
   for (const r of results) {
-    const ent = e?.entities?.[r.id];
+    const ent = e2?.entities?.[r.id];
     const desc = String(ent?.descriptions?.en?.value || "");
     const label = String(r.label || "").toLowerCase();
     if (desc && !MERCHANT_DESC_RX.test(desc)) continue;
@@ -32474,8 +32697,8 @@ async function fetchVerticalOffers(vertical, limit) {
     );
     rows.sort((a, b) => tsOf(b.fetched_at) - tsOf(a.fetched_at));
     rows = rows.slice(0, limit);
-  } catch (e) {
-    log.debug("Showcase", "offers pool query failed", { vertical, error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Showcase", "offers pool query failed", { vertical, error: String(e2).slice(0, 100) });
     rows = [];
   }
   poolCache.set(key, { at: Date.now(), rows });
@@ -32505,14 +32728,14 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
       for (const k of c.keys) params.push(`%${k}%`, `%${k}%`);
       try {
         return [c.name, (await store2.query(perCitySql(like), params)).slice(0, perCityLimit)];
-      } catch (e) {
-        log.debug("Showcase", "per-city pool query failed", { vertical, city: c.name, error: String(e).slice(0, 100) });
+      } catch (e2) {
+        log.debug("Showcase", "per-city pool query failed", { vertical, city: c.name, error: String(e2).slice(0, 100) });
         return [c.name, []];
       }
     }));
     for (const [name, rows] of perCity) map.set(name, rows);
-  } catch (e) {
-    log.debug("Showcase", "by-city pool query failed", { vertical, error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Showcase", "by-city pool query failed", { vertical, error: String(e2).slice(0, 100) });
   }
   if (map.size === 0) {
     try {
@@ -32536,8 +32759,8 @@ async function fetchAffiliateRows(limit) {
     );
     rows.sort((a, b) => (num10(b.discount_value) ?? 0) - (num10(a.discount_value) ?? 0) || tsOf(b.last_seen_at) - tsOf(a.last_seen_at));
     return rows.slice(0, limit);
-  } catch (e) {
-    log.debug("Showcase", "affiliate pool query failed", { error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Showcase", "affiliate pool query failed", { error: String(e2).slice(0, 100) });
     return [];
   }
 }
@@ -33176,8 +33399,8 @@ function interpretAssistantQuestion(raw, now = istToday()) {
   const parsed = understandQuery(text);
   let vertical = parsed.vertical || null;
   const lower = text.toLowerCase();
-  const route = extractRoute(text);
-  if (!vertical && route) vertical = "flights";
+  const route2 = extractRoute(text);
+  if (!vertical && route2) vertical = "flights";
   if (vertical === "movies" || vertical === "movie") vertical = "movies";
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
@@ -33185,7 +33408,7 @@ function interpretAssistantQuestion(raw, now = istToday()) {
   const date = ["flights", "bus", "cab", "hotels", "movies"].includes(vertical) ? parseSpokenDate(text, now) : void 0;
   let query;
   if (["flights", "bus", "cab"].includes(vertical)) {
-    query = route || text.replace(FILLER, " ").replace(/\s+/g, " ").trim();
+    query = route2 || text.replace(FILLER, " ").replace(/\s+/g, " ").trim();
   } else if (vertical === "hotels") {
     const city = parsed.location?.city || (lower.match(/\b(?:in|at|near)\s+([a-z ]{3,30})/)?.[1] ?? "").trim();
     query = (city || text.replace(FILLER, " ")).replace(/\s+/g, " ").trim();
@@ -33473,8 +33696,8 @@ async function recordPriceDropNotification(alert, live) {
       seller: live.seller,
       createdBy: "alert-worker"
     });
-  } catch (e) {
-    log.warn("Notifications", `Could not persist drop notification for alert ${alert.id}`, { error: String(e?.message || e).slice(0, 100) });
+  } catch (e2) {
+    log.warn("Notifications", `Could not persist drop notification for alert ${alert.id}`, { error: String(e2?.message || e2).slice(0, 100) });
   }
 }
 async function listAllNotifications(limit = 100) {
@@ -33665,8 +33888,8 @@ async function checkAlertsOnce(findLivePrice, baseUrl) {
         await store2.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
         notified++;
       }
-    } catch (e) {
-      log.debug("PriceAlerts", `check failed for ${a.id}`, { error: String(e?.message || e).slice(0, 100) });
+    } catch (e2) {
+      log.debug("PriceAlerts", `check failed for ${a.id}`, { error: String(e2?.message || e2).slice(0, 100) });
     }
   }
   return { checked: all.length, notified };
@@ -34314,8 +34537,8 @@ async function customSlides() {
       url: /^https?:\/\//.test(String(r.link_url || "")) ? String(r.link_url) : null,
       launch: /^https?:\/\//.test(String(r.link_url || "")) ? null : { vertical: String(r.link_url || "ecommerce"), query: String(r.heading || r.title || "") }
     }));
-  } catch (e) {
-    log.debug("HeroBanners", "custom slides unavailable", { error: String(e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("HeroBanners", "custom slides unavailable", { error: String(e2).slice(0, 100) });
     return [];
   }
 }
@@ -34431,8 +34654,8 @@ async function warmRows(rows, tag) {
       }, 2e4);
       ok += 1;
       log.info(tag, "Warmed", { query: r.raw_query || r.query, vertical: r.v || r.vertical, results: res.results.length, servedFrom: res.state.servedFrom });
-    } catch (e) {
-      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e?.message || e).slice(0, 120) });
+    } catch (e2) {
+      log.warn(tag, "Warm pass failed (continuing)", { query: r.raw_query || r.query, error: String(e2?.message || e2).slice(0, 120) });
     }
     await new Promise((r2) => setImmediate(r2));
   }
@@ -34462,8 +34685,8 @@ async function bootWarm() {
     SEED_QUERIES.forEach(push);
     log.info("Cron", `Boot-warm starting (${targets.length} queries: all vertical defaults + top searches, background)`);
     void warmRows(targets, "BootWarm");
-  } catch (e) {
-    log.warn("Cron", "Boot-warm skipped", { error: String(e?.message || e).slice(0, 100) });
+  } catch (e2) {
+    log.warn("Cron", "Boot-warm skipped", { error: String(e2?.message || e2).slice(0, 100) });
   }
 }
 async function keepWarmDefaults() {
@@ -34504,8 +34727,8 @@ async function main() {
   log.info("Cron", `Interval mode: warm pass every ${intervalMin} min (no recent queries falls back to seeds)`);
   await warmPass(limit, verticalFilter, forceSeed);
   setInterval(() => {
-    warmPass(limit, verticalFilter, forceSeed).catch((e) => {
-      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 150) });
+    warmPass(limit, verticalFilter, forceSeed).catch((e2) => {
+      log.warn("Cron", "Interval warm pass failed (will retry next tick)", { error: String(e2?.message || e2).slice(0, 150) });
     });
   }, intervalMin * 6e4);
 }
@@ -34617,8 +34840,8 @@ var init_warm = __esm({
     destWarmCursor = 0;
     invokedAsScript = /cron/.test(String(process.argv[1] || ""));
     if (invokedAsScript) {
-      main().catch((e) => {
-        log.error("Cron", "Warmer crashed", { error: String(e) });
+      main().catch((e2) => {
+        log.error("Cron", "Warmer crashed", { error: String(e2) });
         process.exit(1);
       });
     }
@@ -35174,11 +35397,11 @@ async function buildQuickAppsList() {
     } catch {
     }
     const knownNames = new Set([...homeSix, ...curatedExtra, ...customApps].map((x) => String(x.name).toLowerCase()));
-    const ordered = quickAppsPartnerFirst(entries.filter((e) => !knownNames.has(e.name.toLowerCase())));
-    const logos = await Promise.all(ordered.map((e) => resolveMerchantCrispLogo(e.name).catch(() => null)));
-    const registryAffiliates = ordered.filter((e) => !curatedDomains.has(e.dom)).map((e, i) => ({
-      ...e.payload,
-      iconUrl: logos[i] || e.payload.iconUrl
+    const ordered = quickAppsPartnerFirst(entries.filter((e2) => !knownNames.has(e2.name.toLowerCase())));
+    const logos = await Promise.all(ordered.map((e2) => resolveMerchantCrispLogo(e2.name).catch(() => null)));
+    const registryAffiliates = ordered.filter((e2) => !curatedDomains.has(e2.dom)).map((e2, i) => ({
+      ...e2.payload,
+      iconUrl: logos[i] || e2.payload.iconUrl
     }));
     return [...homeSix, ...curatedExtra, ...customApps, ...registryAffiliates];
   } catch {
@@ -35455,8 +35678,8 @@ async function buildTopPicksList() {
       });
     }
     return picks;
-  } catch (e) {
-    throw new Error(e?.message || "top_picks_build_failed");
+  } catch (e2) {
+    throw new Error(e2?.message || "top_picks_build_failed");
   }
 }
 function leadRateOk(ip) {
@@ -35532,7 +35755,7 @@ async function bootstrapBackend() {
   try {
     const migrations = await runMigrations();
     if (migrations.applied.length > 0) log.info("Bootstrap", `Applied migrations: ${migrations.applied.join(", ")}`);
-    Promise.resolve().then(() => (init_fileImport(), fileImport_exports)).then(({ importFileStoreIntoMysql: importFileStoreIntoMysql2 }) => importFileStoreIntoMysql2()).catch((e) => log.error("Bootstrap", `file-store import failed: ${e && e.message}`));
+    Promise.resolve().then(() => (init_fileImport(), fileImport_exports)).then(({ importFileStoreIntoMysql: importFileStoreIntoMysql2 }) => importFileStoreIntoMysql2()).catch((e2) => log.error("Bootstrap", `file-store import failed: ${e2 && e2.message}`));
   } catch (err) {
     log.error("Bootstrap", `MySQL migrations failed: ${err.code || ""} ${err.message}`);
     if (String(err.code || "").includes("ER_ACCESS_DENIED") || /access denied/i.test(String(err.message || ""))) {
@@ -35620,8 +35843,8 @@ var init_routes = __esm({
     apiRouter.get("/health/transport", authMiddleware, requireAdmin, async (_req, res) => {
       try {
         res.json({ ok: true, ...await pythonDiagnostics() });
-      } catch (e) {
-        res.status(500).json({ ok: false, error: String(e?.message || e) });
+      } catch (e2) {
+        res.status(500).json({ ok: false, error: String(e2?.message || e2) });
       }
     });
     hotelLocationCache = /* @__PURE__ */ new Map();
@@ -35697,8 +35920,8 @@ var init_routes = __esm({
           if (oldest) hotelLocationCache.delete(oldest[0]);
         }
         return res.json({ locations });
-      } catch (e) {
-        return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+      } catch (e2) {
+        return res.json({ locations: [], error: String(e2?.message || e2).slice(0, 120) });
       }
     });
     busLocationCache = /* @__PURE__ */ new Map();
@@ -35737,8 +35960,8 @@ var init_routes = __esm({
           if (oldest) busLocationCache.delete(oldest[0]);
         }
         return res.json({ locations });
-      } catch (e) {
-        return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+      } catch (e2) {
+        return res.json({ locations: [], error: String(e2?.message || e2).slice(0, 120) });
       }
     });
     upcomingCache2 = /* @__PURE__ */ new Map();
@@ -35773,8 +35996,8 @@ var init_routes = __esm({
         }));
         if (movies.length) upcomingCache2.set(cacheKey, { at: Date.now(), movies });
         return res.json({ movies });
-      } catch (e) {
-        return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
+      } catch (e2) {
+        return res.json({ movies: [], error: String(e2?.message || e2).slice(0, 120) });
       }
     });
     apiRouter.get("/geo/search", async (req, res) => {
@@ -35876,7 +36099,7 @@ var init_routes = __esm({
       try {
         const sections = await cachedSection("home:showcase", () => buildShowcase());
         res.json({ success: true, sections });
-      } catch (e) {
+      } catch (e2) {
         res.status(500).json({ success: false, error: "showcase_unavailable" });
       }
     });
@@ -35888,8 +36111,8 @@ var init_routes = __esm({
        FROM source_recovery_log ORDER BY detected_at DESC LIMIT 100`
         );
         res.json({ success: true, recoveries: rows });
-      } catch (e) {
-        res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 120) });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: String(e2?.message || e2).slice(0, 120) });
       }
     });
     apiRouter.get("/status", authMiddleware, requireAdmin, (_req, res) => {
@@ -35909,8 +36132,8 @@ var init_routes = __esm({
         const rows = await priceHistoryForEntity2(entity, limit);
         const points = rows.map((r) => ({ price: Number(r.effective_price), capturedAt: r.captured_at })).filter((p) => Number.isFinite(p.price) && p.price > 0);
         res.json({ success: true, points });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "history lookup failed" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "history lookup failed" });
       }
     });
     apiRouter.post("/search", async (req, res) => {
@@ -36442,8 +36665,8 @@ var init_routes = __esm({
           return res.json({ success: true, signedIn: true, items, unread });
         }
         res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load notifications" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load notifications" });
       }
     });
     apiRouter.post("/notifications/read", authMiddleware, requireAuth, async (req, res) => {
@@ -36457,8 +36680,8 @@ var init_routes = __esm({
         }
         const { items, unread } = await userNotifications(Number(user.id));
         res.json({ success: true, items, unread });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not mark read" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not mark read" });
       }
     });
     apiRouter.post("/assist/intent", (req, res) => {
@@ -36483,16 +36706,16 @@ var init_routes = __esm({
         const { listTopPicks: listTopPicks2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
         const picks = await listTopPicks2(String(req.query.vertical || "") || void 0, false);
         res.json({ success: true, picks });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load picks" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load picks" });
       }
     });
     apiRouter.get("/rewards/top-picks", async (_req, res) => {
       try {
         const picks = await cachedSection("rewards:top-picks", buildTopPicksList);
         res.json({ success: true, picks });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load top picks" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load top picks" });
       }
     });
     apiRouter.get("/ads", async (req, res) => {
@@ -36500,8 +36723,8 @@ var init_routes = __esm({
         const { getAdSlot: getAdSlot2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
         const slot = await getAdSlot2(String(req.query.slot || ""));
         res.json({ success: true, active: Boolean(slot), slot });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load ad slot" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load ad slot" });
       }
     });
     apiRouter.get("/deals", async (req, res) => {
@@ -36541,8 +36764,8 @@ var init_routes = __esm({
         }));
         const comparison = computeStoreTotals(searches);
         res.json({ success: true, comparison });
-      } catch (e) {
-        res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 160) });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: String(e2?.message || e2).slice(0, 160) });
       }
     });
     apiRouter.get("/partners", async (_req, res) => {
@@ -36576,8 +36799,8 @@ var init_routes = __esm({
         let redirectUrl = null;
         if (destUrl && /^https:\/\//.test(destUrl)) redirectUrl = createMaskingPointer(destUrl, { offerId: `lead-${id}` });
         res.json({ success: true, id, redirectUrl });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save your enquiry" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save your enquiry" });
       }
     });
     apiRouter.post("/partner-inquiry", async (req, res) => {
@@ -36588,8 +36811,8 @@ var init_routes = __esm({
         const { saveLead: saveLead2 } = await Promise.resolve().then(() => (init_leads(), leads_exports));
         const id = await saveLead2({ ...req.body || {}, source: "partner_inquiry" });
         res.json({ success: true, id });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save your inquiry" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save your inquiry" });
       }
     });
     apiRouter.get("/merchant/leads", async (req, res) => {
@@ -36600,8 +36823,8 @@ var init_routes = __esm({
         const all = await listLeads2({ limit: 300 });
         const finance = all.filter((l) => ["loans", "insurance", "creditcards", "account"].includes(String(l.vertical || "")));
         res.json({ success: true, leads: finance });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load leads" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load leads" });
       }
     });
     apiRouter.get("/logos/:key", async (req, res) => {
@@ -36629,8 +36852,8 @@ var init_routes = __esm({
       try {
         const { getPublicAppLinks: getPublicAppLinks2 } = await Promise.resolve().then(() => (init_appLinks(), appLinks_exports));
         res.json({ success: true, links: await getPublicAppLinks2() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load app links" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load app links" });
       }
     });
     apiRouter.get("/quick-apps", async (_req, res) => {
@@ -36648,8 +36871,8 @@ var init_routes = __esm({
           badge: p.badge || null
         }));
         res.json({ success: true, apps });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load quick apps" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load quick apps" });
       }
     });
     apiRouter.get("/provenance", authMiddleware, requireAdmin, async (_req, res) => {
@@ -36718,8 +36941,8 @@ var init_routes = __esm({
           recentClicks: recentClicks.map((r) => ({ ...r, at: r.at })),
           conversions: conversions.map((r) => ({ ...r }))
         });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load live traffic" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load live traffic" });
       }
     });
     apiRouter.get("/cab/book", async (req, res) => {
@@ -36820,8 +37043,8 @@ var init_routes = __esm({
           const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
           const ar = await applyReferralCode2(Number(r.userId), refCode);
           if (!ar.ok) log.warn("auth", "referral_code_apply_failed", { refCode, error: ar.error });
-        } catch (e) {
-          log.warn("auth", "referral_code_apply_error", { refCode, error: e?.message });
+        } catch (e2) {
+          log.warn("auth", "referral_code_apply_error", { refCode, error: e2?.message });
         }
       }
       res.json({ success: true, userId: r.userId });
@@ -36837,8 +37060,8 @@ var init_routes = __esm({
           if (!ar.ok && ar.error && !/already/i.test(String(ar.error))) {
             log.warn("auth", "referral_code_apply_failed", { refCode, error: ar.error });
           }
-        } catch (e) {
-          log.warn("auth", "referral_code_apply_error", { refCode, error: e?.message });
+        } catch (e2) {
+          log.warn("auth", "referral_code_apply_error", { refCode, error: e2?.message });
         }
       }
       res.json({ success: true, token: r.token, user: r.user });
@@ -36877,8 +37100,8 @@ var init_routes = __esm({
             const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
             const ar = await applyReferralCode2(Number(row.id), refCode);
             if (!ar.ok) log.warn("FirebaseAuth", "referral_code_apply_failed", { refCode, error: ar.error });
-          } catch (e) {
-            log.warn("FirebaseAuth", "referral_code_apply_error", { refCode, error: e?.message });
+          } catch (e2) {
+            log.warn("FirebaseAuth", "referral_code_apply_error", { refCode, error: e2?.message });
           }
         }
         res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0 } });
@@ -36903,8 +37126,8 @@ var init_routes = __esm({
             const { applyReferralCode: applyReferralCode2 } = await Promise.resolve().then(() => (init_rewardsEngine(), rewardsEngine_exports));
             const ar = await applyReferralCode2(Number(row.id), refCode);
             if (!ar.ok) log.warn("GoogleAuth", "referral_code_apply_failed", { refCode, error: ar.error });
-          } catch (e) {
-            log.warn("GoogleAuth", "referral_code_apply_error", { refCode, error: e?.message });
+          } catch (e2) {
+            log.warn("GoogleAuth", "referral_code_apply_error", { refCode, error: e2?.message });
           }
         }
         res.json({ success: true, token, user: { id: Number(row.id), email: row.email, role: row.role, displayName: row.display_name || claims.displayName || void 0, picture: claims.picture } });
@@ -36981,8 +37204,8 @@ var init_routes = __esm({
         const stats2 = await referralStats2(user.id);
         const points = await validPointBalance2(user.id);
         res.json({ success: true, code, link: `https://www.try1second.com/?ref=${code}`, referredCount: stats2.referredCount, referredByCode: stats2.referredByCode, points });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "referral_unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "referral_unavailable" });
       }
     });
     apiRouter.post("/rewards/referral/apply", requireAuth, async (req, res) => {
@@ -36992,8 +37215,8 @@ var init_routes = __esm({
         const r = await applyReferralCode2(user.id, String(req.body?.code || ""));
         if (!r.ok) return res.status(400).json({ success: false, error: r.error });
         res.json({ success: true, awarded: !!r.awarded, referrerCode: r.referrerCode });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "referral_unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "referral_unavailable" });
       }
     });
     apiRouter.get("/home-banners", async (req, res) => {
@@ -37054,11 +37277,11 @@ var init_routes = __esm({
 
 // server/affiliate/profiles.ts
 function validateProfile(i) {
-  const slug2 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
+  const slug3 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   const network = String(i.network || "").trim().toLowerCase();
   const template = String(i.template || "").trim();
-  if (!slug2) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
+  if (!slug3) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
   if (!template.includes("{url}") && !template.includes("{url2}")) return { ok: false, error: "Template must contain {url} (or {url2}) where the merchant page goes" };
@@ -37073,7 +37296,7 @@ function validateProfile(i) {
   return {
     ok: true,
     clean: {
-      slug: slug2,
+      slug: slug3,
       company_domain: domain,
       network,
       template,
@@ -37105,8 +37328,8 @@ async function saveProfile(i) {
   }
   return { ok: true };
 }
-async function deleteProfile(slug2) {
-  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug2 || "").trim().toLowerCase()]);
+async function deleteProfile(slug3) {
+  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug3 || "").trim().toLowerCase()]);
 }
 var AFFILIATE_NETWORKS;
 var init_profiles = __esm({
@@ -37467,9 +37690,9 @@ async function syncAutoDeals() {
         saved++;
       }
       outcomes.push({ provider: p.provider, ok: true, deals: saved });
-    } catch (e) {
-      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip(String(e?.message || e), 160) });
-      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip(String(e?.message || e), 120) });
+    } catch (e2) {
+      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip(String(e2?.message || e2), 160) });
+      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip(String(e2?.message || e2), 120) });
     }
   }
   try {
@@ -37524,8 +37747,8 @@ function parsePsiResponse(json, strategy) {
       scanned_at,
       error: null
     };
-  } catch (e) {
-    return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url: "", scanned_at, error: e?.message || "Could not parse PageSpeed response" };
+  } catch (e2) {
+    return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url: "", scanned_at, error: e2?.message || "Could not parse PageSpeed response" };
   }
 }
 async function ensureTable2() {
@@ -37624,8 +37847,8 @@ async function runSpeedTest(siteUrl) {
       const s = { ...parsed, url: parsed.url || url };
       await persistScore(s);
       return s;
-    } catch (e) {
-      const s = { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: (e?.name === "AbortError" ? "PageSpeed run timed out (45s)" : e?.message) || "PageSpeed request failed" };
+    } catch (e2) {
+      const s = { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: (e2?.name === "AbortError" ? "PageSpeed run timed out (45s)" : e2?.message) || "PageSpeed request failed" };
       await persistScore(s);
       return s;
     }
@@ -38096,8 +38319,8 @@ async function httpGet(url, timeoutMs = 12e3, init = {}) {
     const r = await fetch(url, { headers: { "User-Agent": UA5, "Accept-Language": "en-IN,en;q=0.9", ...init.headers }, redirect: "follow", signal: ctrl.signal, ...init });
     const body = await r.text();
     return { status: r.status, body, bytes: body.length };
-  } catch (e) {
-    return { status: 0, body: "", bytes: 0, err: e?.name === "AbortError" ? "timeout" : String(e?.code || e?.message || e).slice(0, 120) };
+  } catch (e2) {
+    return { status: 0, body: "", bytes: 0, err: e2?.name === "AbortError" ? "timeout" : String(e2?.code || e2?.message || e2).slice(0, 120) };
   } finally {
     clearTimeout(t);
     httpGet.lastMs = Date.now() - t0;
@@ -38178,8 +38401,8 @@ async function specialProbe(kind) {
       });
       const items = parseRoute(airports, airlines, routes, SRC, "Delhi", "Mumbai", void 0, "https://raw.githubusercontent.com/jpatokal/openflights/master/data/routes.dat");
       return { status: "LIVE_VERIFIED", fc: null, http: 200, bytes: null, items: items.length, fields: "airline,route,airports", evidence: `OpenFlights: ${airports.length} airports, ${routes.length} routes; DEL-BOM served by ${items.length} airlines`, next: "Fares require airline APIs (blocked); route data is the honest ceiling" };
-    } catch (e) {
-      return { status: "LIVE_TEST_FAILED", fc: "SERVER_ERROR", http: null, bytes: null, items: 0, fields: "", evidence: `OpenFlights download failed: ${String(e?.message || e).slice(0, 100)}`, next: "Retry; dataset is static and cached 24h" };
+    } catch (e2) {
+      return { status: "LIVE_TEST_FAILED", fc: "SERVER_ERROR", http: null, bytes: null, items: 0, fields: "", evidence: `OpenFlights download failed: ${String(e2?.message || e2).slice(0, 100)}`, next: "Retry; dataset is static and cached 24h" };
     }
   }
   if (kind === "wikidata") {
@@ -38195,16 +38418,16 @@ async function specialProbe(kind) {
         if (n > 0) return { status: "LIVE_VERIFIED", fc: null, http: 200, bytes: r.bytes, items: n, fields: "title,release_date", evidence: `Wikidata SPARQL returned ${n} recent Indian film releases`, next: "Showtimes/ticket prices need a partner platform (BMS blocked)" };
       }
       return { status: "LIVE_TEST_FAILED", fc: "SERVER_ERROR", http: r.status, bytes: r.bytes, items: 0, fields: "", evidence: `Wikidata SPARQL HTTP ${r.status}`, next: "Retry (SPARQL load varies)" };
-    } catch (e) {
-      return { status: "LIVE_TEST_FAILED", fc: "SERVER_ERROR", http: null, bytes: null, items: 0, fields: "", evidence: `Wikidata error: ${String(e?.message || e).slice(0, 100)}`, next: "Retry" };
+    } catch (e2) {
+      return { status: "LIVE_TEST_FAILED", fc: "SERVER_ERROR", http: null, bytes: null, items: 0, fields: "", evidence: `Wikidata error: ${String(e2?.message || e2).slice(0, 100)}`, next: "Retry" };
     }
   }
   if (kind === "osrm") {
     const r = await httpGet("https://router.project-osrm.org/route/v1/driving/77.2090,28.6139;77.0266,28.4595?overview=false", 15e3);
     if (r.status === 200) {
       try {
-        const route = JSON.parse(r.body)?.routes?.[0];
-        if (route?.distance > 0) return { status: "LIVE_VERIFIED", fc: null, http: 200, bytes: r.bytes, items: 1, fields: "distance_km,duration_minutes", evidence: `OSRM real route Delhi\u2192Gurgaon: ${(route.distance / 1e3).toFixed(1)} km, ${Math.round(route.duration / 60)} min`, next: "Fares stay labelled indicative (real operator quotes need app APIs)" };
+        const route2 = JSON.parse(r.body)?.routes?.[0];
+        if (route2?.distance > 0) return { status: "LIVE_VERIFIED", fc: null, http: 200, bytes: r.bytes, items: 1, fields: "distance_km,duration_minutes", evidence: `OSRM real route Delhi\u2192Gurgaon: ${(route2.distance / 1e3).toFixed(1)} km, ${Math.round(route2.duration / 60)} min`, next: "Fares stay labelled indicative (real operator quotes need app APIs)" };
       } catch {
       }
     }
@@ -38222,8 +38445,8 @@ async function runProbe2(targetId, name, vertical, probe) {
     try {
       const r2 = await specialProbe(probe.url);
       return { ...base, status: r2.status, failure_category: r2.fc, http_status: r2.http, bytes: r2.bytes, latency_ms: null, items_extracted: r2.items, fields_verified: r2.fields || null, evidence: r2.evidence.slice(0, 300), next_action: r2.next || null };
-    } catch (e) {
-      return { ...base, status: "LIVE_TEST_FAILED", failure_category: "RUNNER_ERROR", http_status: null, bytes: null, latency_ms: null, items_extracted: 0, fields_verified: null, evidence: String(e?.message || e).slice(0, 200), next_action: "Fix runner probe" };
+    } catch (e2) {
+      return { ...base, status: "LIVE_TEST_FAILED", failure_category: "RUNNER_ERROR", http_status: null, bytes: null, latency_ms: null, items_extracted: 0, fields_verified: null, evidence: String(e2?.message || e2).slice(0, 200), next_action: "Fix runner probe" };
     }
   }
   let r = await httpGet(probe.url);
@@ -38259,8 +38482,8 @@ async function runProbe2(targetId, name, vertical, probe) {
         return { ...base, status: "LIVE_TEST_FAILED", failure_category: "JS_SHELL_NO_DATA", http_status: 200, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP 200 but ${r.bytes}B client-rendered shell \u2014 no extractable offer data via plain HTTP`, next_action: "Playwright headless render fallback (roadmap) or partner API" };
       }
       return { ...base, status: "LIVE_TEST_FAILED", failure_category: "NO_MATCHING_DATA", http_status: 200, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP 200, ${r.bytes}B but parser found no offers`, next_action: "Inspect page structure / adjust selectors" };
-    } catch (e) {
-      return { ...base, status: "LIVE_TEST_FAILED", failure_category: "PARSER_ERROR", http_status: 200, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `Parser error: ${String(e?.message || e).slice(0, 120)}`, next_action: "Fix parser" };
+    } catch (e2) {
+      return { ...base, status: "LIVE_TEST_FAILED", failure_category: "PARSER_ERROR", http_status: 200, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `Parser error: ${String(e2?.message || e2).slice(0, 120)}`, next_action: "Fix parser" };
     }
   }
   if (r.status === 401 || r.status === 403 || r.status === 406 || r.status === 429) {
@@ -38287,7 +38510,7 @@ async function runAcceptanceTests() {
   const jobs = [];
   for (const t of ACCEPTANCE_TARGETS) {
     for (const p of t.probes) {
-      jobs.push(runProbe2(t.id, t.name, t.vertical, p).catch((e) => ({
+      jobs.push(runProbe2(t.id, t.name, t.vertical, p).catch((e2) => ({
         source_id: t.id,
         source_name: t.name,
         vertical: t.vertical,
@@ -38299,7 +38522,7 @@ async function runAcceptanceTests() {
         latency_ms: null,
         items_extracted: 0,
         fields_verified: null,
-        evidence: String(e?.message || e).slice(0, 200),
+        evidence: String(e2?.message || e2).slice(0, 200),
         next_action: "Fix runner",
         tested_at: (/* @__PURE__ */ new Date()).toISOString()
       })));
@@ -38612,7 +38835,7 @@ var init_adminRoutes = __esm({
         await store2.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
         audit(req, "prize.create", String(name), { weight, quantity });
         res.json({ success: true, prizeId: prize.insertId });
-      } catch (e) {
+      } catch (e2) {
         res.status(500).json({ success: false, error: "Prize creation failed" });
       }
     });
@@ -38669,8 +38892,8 @@ var init_adminRoutes = __esm({
       try {
         const picks = await listTopPicks(String(req.query.vertical || "") || void 0, true);
         res.json({ success: true, picks });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load top picks" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load top picks" });
       }
     });
     adminRouter.post("/top-picks", async (req, res) => {
@@ -38680,8 +38903,8 @@ var init_adminRoutes = __esm({
         audit(req, "top_pick.upsert", String(result.id), { vertical: req.body?.vertical });
         log.info("Admin", `Top pick saved (id ${result.id})`);
         res.json({ success: true, id: result.id });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save top pick" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save top pick" });
       }
     });
     adminRouter.delete("/top-picks/:id", async (req, res) => {
@@ -38689,15 +38912,15 @@ var init_adminRoutes = __esm({
         await deleteTopPick(Number(req.params.id));
         audit(req, "top_pick.delete", req.params.id);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete top pick" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete top pick" });
       }
     });
     adminRouter.get("/ad-slots", async (_req, res) => {
       try {
         res.json({ success: true, slots: await listAdSlots() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load ad slots" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load ad slots" });
       }
     });
     adminRouter.post("/ad-slots", async (req, res) => {
@@ -38707,15 +38930,15 @@ var init_adminRoutes = __esm({
         audit(req, "ad_slot.upsert", req.body?.slot_key, { provider: req.body?.provider });
         log.info("Admin", `Ad slot saved (${req.body?.slot_key})`);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save ad slot" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save ad slot" });
       }
     });
     adminRouter.get("/app-links", async (_req, res) => {
       try {
         res.json({ success: true, links: await listAppLinks(true) });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load app links" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load app links" });
       }
     });
     adminRouter.post("/app-links", async (req, res) => {
@@ -38724,15 +38947,15 @@ var init_adminRoutes = __esm({
         if (!result.ok) return res.status(400).json({ success: false, error: result.error });
         audit(req, "app_link.upsert", req.body?.link_key, { url: req.body?.url, version: req.body?.version });
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save app link" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save app link" });
       }
     });
     adminRouter.get("/notifications", async (_req, res) => {
       try {
         res.json({ success: true, notifications: await listAllNotifications() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load notifications" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load notifications" });
       }
     });
     adminRouter.post("/notifications", async (req, res) => {
@@ -38754,8 +38977,8 @@ var init_adminRoutes = __esm({
         if (!r.ok) return res.status(400).json({ success: false, error: r.error });
         audit(req, "notification.create", String(r.id), { title: input.title, broadcast: !input.userId });
         res.json({ success: true, id: r.id });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not push notification" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not push notification" });
       }
     });
     adminRouter.delete("/notifications/:id", async (req, res) => {
@@ -38764,22 +38987,22 @@ var init_adminRoutes = __esm({
         if (!ok) return res.status(404).json({ success: false, error: "Notification not found" });
         audit(req, "notification.delete", req.params.id);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not remove notification" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not remove notification" });
       }
     });
     adminRouter.post("/deals/sync", async (_req, res) => {
       try {
         res.json({ success: true, outcomes: await syncAutoDeals() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Sync failed" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Sync failed" });
       }
     });
     adminRouter.get("/affiliate-profiles", async (_req, res) => {
       try {
         res.json({ success: true, networks: AFFILIATE_NETWORKS, profiles: await listProfiles() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load affiliate profiles" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load affiliate profiles" });
       }
     });
     adminRouter.post("/affiliate-profiles", async (req, res) => {
@@ -38788,8 +39011,8 @@ var init_adminRoutes = __esm({
         if (!r.ok) return res.status(400).json({ success: false, error: r.error });
         audit(req, "affiliate_profile.save", String(req.body?.slug || ""));
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save affiliate profile" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save affiliate profile" });
       }
     });
     adminRouter.delete("/affiliate-profiles/:slug", async (req, res) => {
@@ -38797,8 +39020,8 @@ var init_adminRoutes = __esm({
         await deleteProfile(req.params.slug);
         audit(req, "affiliate_profile.delete", req.params.slug);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete affiliate profile" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete affiliate profile" });
       }
     });
     adminRouter.get("/affiliate/coverage", async (_req, res) => {
@@ -38838,15 +39061,15 @@ var init_adminRoutes = __esm({
           ekaro: ekaroStats2(),
           capturedLinks
         });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load affiliate coverage" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load affiliate coverage" });
       }
     });
     adminRouter.get("/deals", async (_req, res) => {
       try {
         res.json({ success: true, kinds: DEAL_KINDS, deals: await listAllDeals() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load deals" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load deals" });
       }
     });
     adminRouter.post("/deals", async (req, res) => {
@@ -38855,8 +39078,8 @@ var init_adminRoutes = __esm({
         if (!r.ok) return res.status(400).json({ success: false, error: r.error });
         audit(req, req.body?.id ? "deal.update" : "deal.create", String(r.id ?? ""));
         res.json({ success: true, id: r.id });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save deal" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save deal" });
       }
     });
     adminRouter.delete("/deals/:id", async (req, res) => {
@@ -38864,8 +39087,8 @@ var init_adminRoutes = __esm({
         await deleteDeal(Number(req.params.id));
         audit(req, "deal.delete", req.params.id);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete deal" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete deal" });
       }
     });
     adminRouter.delete("/app-links/:key", async (req, res) => {
@@ -38873,8 +39096,8 @@ var init_adminRoutes = __esm({
         await deleteAppLink(req.params.key);
         audit(req, "app_link.delete", req.params.key);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete app link" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete app link" });
       }
     });
     adminRouter.post("/validate-destination", (req, res) => {
@@ -39003,8 +39226,8 @@ var init_adminRoutes = __esm({
         const rows = await getStore().query("SELECT * FROM source_acceptance_tests ORDER BY source_id, capability");
         const totals = acceptanceTotals(rows);
         res.json({ success: true, rows, totals });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "failed" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "failed" });
       }
     });
     adminRouter.post("/acceptance/run", async (req, res) => {
@@ -39015,8 +39238,8 @@ var init_adminRoutes = __esm({
         audit(req, "acceptance.run", "section16", totals);
         log.info("Admin", `Acceptance sweep complete: ${rows.length} capability rows`);
         res.json({ success: true, rows, totals });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "failed" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "failed" });
       }
     });
     adminRouter.get("/leads", async (req, res) => {
@@ -39029,16 +39252,16 @@ var init_adminRoutes = __esm({
           limit: Number(req.query.limit) || 500
         });
         res.json({ success: true, leads });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load leads" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load leads" });
       }
     });
     adminRouter.get("/partners", async (_req, res) => {
       try {
         const { listPartners: listPartners2 } = await Promise.resolve().then(() => (init_partners(), partners_exports));
         res.json({ success: true, partners: await listPartners2(false) });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load partners" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load partners" });
       }
     });
     adminRouter.patch("/partners/:id", async (req, res) => {
@@ -39048,8 +39271,8 @@ var init_adminRoutes = __esm({
         await updatePartnerStatus2(Number(req.params.id), status);
         audit(req, "partner_status_update", `partner:${req.params.id}`, req.body);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not update partner" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not update partner" });
       }
     });
     adminRouter.post("/leads/:id/approve-partner", async (req, res) => {
@@ -39071,8 +39294,8 @@ var init_adminRoutes = __esm({
         await updateLeadStatus2(Number(req.params.id), "converted");
         audit(req, "partner_approved", `lead:${req.params.id}`, { partnerId: r.partner.id });
         res.json({ success: true, partner: r.partner });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not approve partner" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not approve partner" });
       }
     });
     adminRouter.patch("/leads/:id", async (req, res) => {
@@ -39081,16 +39304,16 @@ var init_adminRoutes = __esm({
         await updateLeadStatus2(Number(req.params.id), String((req.body || {}).status || "new"));
         audit(req, "lead_status_update", `lead:${req.params.id}`, req.body);
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not update lead" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not update lead" });
       }
     });
     adminRouter.get("/merchant-logos", async (_req, res) => {
       try {
         const { listMerchantLogos: listMerchantLogos2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
         res.json({ success: true, logos: await listMerchantLogos2() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load logos" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load logos" });
       }
     });
     adminRouter.post("/merchant-logos", async (req, res) => {
@@ -39100,8 +39323,8 @@ var init_adminRoutes = __esm({
         if (!r.ok) return res.status(400).json(r);
         audit(req, "merchant_logo_upsert", r.name_key, { name: (req.body || {}).name });
         res.json(r);
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save logo" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save logo" });
       }
     });
     adminRouter.delete("/merchant-logos/:key", async (req, res) => {
@@ -39110,22 +39333,22 @@ var init_adminRoutes = __esm({
         await deleteMerchantLogo2(String(req.params.key));
         audit(req, "merchant_logo_delete", String(req.params.key));
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete logo" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete logo" });
       }
     });
     adminRouter.get("/speedtest", async (_req, res) => {
       try {
         res.json({ success: true, scores: await latestScores() });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load speed scores" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load speed scores" });
       }
     });
     adminRouter.get("/speedtest/history", async (req, res) => {
       try {
         res.json({ success: true, history: await scoreHistory(String(req.query.strategy || "mobile")) });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load speed history" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load speed history" });
       }
     });
     adminRouter.post("/speedtest/run", async (req, res) => {
@@ -39133,8 +39356,8 @@ var init_adminRoutes = __esm({
         const scores = await runSpeedTest(req.body?.url || "https://www.try1second.com");
         audit(req, "speedtest.run", "pagespeed", scores.map((s) => `${s.strategy}=${s.score ?? "err"}`).join(" "));
         res.json({ success: true, scores });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Speed test failed" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Speed test failed" });
       }
     });
     BANNER_SECTIONS = ["home", "rewards", "quickapps"];
@@ -39155,8 +39378,8 @@ var init_adminRoutes = __esm({
           gradientEnd: r.gradient_end ? String(r.gradient_end) : null
         }));
         res.json({ success: true, banners });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load banners" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load banners" });
       }
     });
     adminRouter.post("/home-banners", async (req, res) => {
@@ -39193,8 +39416,8 @@ var init_adminRoutes = __esm({
         }
         purgeSectionCache();
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save banner" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save banner" });
       }
     });
     adminRouter.delete("/home-banners/:id", async (req, res) => {
@@ -39203,8 +39426,8 @@ var init_adminRoutes = __esm({
         audit(req, "home_banner_delete", String(req.params.id));
         purgeSectionCache();
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete banner" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete banner" });
       }
     });
     adminRouter.get("/quick-apps", async (_req, res) => {
@@ -39221,8 +39444,8 @@ var init_adminRoutes = __esm({
           isActive: Number(r.is_active ?? 1) === 1
         }));
         res.json({ success: true, apps });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not load custom apps" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load custom apps" });
       }
     });
     adminRouter.post("/quick-apps", async (req, res) => {
@@ -39252,8 +39475,8 @@ var init_adminRoutes = __esm({
         }
         purgeSectionCache();
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not save merchant" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save merchant" });
       }
     });
     adminRouter.delete("/quick-apps/:id", async (req, res) => {
@@ -39262,8 +39485,8 @@ var init_adminRoutes = __esm({
         audit(req, "quick_app_delete", String(req.params.id));
         purgeSectionCache();
         res.json({ success: true });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Could not delete merchant" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not delete merchant" });
       }
     });
     sqlDate = (daysAgo2) => new Date(Date.now() - daysAgo2 * 864e5).toISOString().slice(0, 19).replace("T", " ");
@@ -39299,8 +39522,8 @@ var init_adminRoutes = __esm({
         );
         const total = byNetwork.reduce((s, r) => s + Number(r.count || 0), 0);
         res.json({ success: true, clicks, summary: { windowDays: days, total, byNetwork, byVendor, daily } });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Click log unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Click log unavailable" });
       }
     });
     adminRouter.get("/affiliate/conversions", async (_req, res) => {
@@ -39312,8 +39535,8 @@ var init_adminRoutes = __esm({
        ORDER BY v.id DESC LIMIT 200`
         );
         res.json({ success: true, conversions });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Conversions unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Conversions unavailable" });
       }
     });
     adminRouter.get("/traffic/real", async (req, res) => {
@@ -39362,8 +39585,8 @@ var init_adminRoutes = __esm({
             searchesWithResults: Number(totals[0]?.searches_with_results || 0)
           }
         });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Traffic data unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Traffic data unavailable" });
       }
     });
     adminRouter.get("/integrations", async (_req, res) => {
@@ -39396,8 +39619,8 @@ var init_adminRoutes = __esm({
             syncedAffiliateLinks: links
           }
         });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "Integration status unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Integration status unavailable" });
       }
     });
     adminRouter.get("/relay/health", (_req, res) => {
@@ -39409,8 +39632,8 @@ var init_adminRoutes = __esm({
           hosts: gatedHostPolicy(),
           stats: relayStats()
         });
-      } catch (e) {
-        res.status(500).json({ success: false, error: e?.message || "relay stats unavailable" });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "relay stats unavailable" });
       }
     });
   }
@@ -39422,7 +39645,7 @@ __export(bootstrap_exports, {
   bootstrapDealsSync: () => bootstrapDealsSync
 });
 function bootstrapDealsSync() {
-  const run = () => syncAutoDeals().catch((e) => log.warn("Deals", "auto sync crashed (isolated)", { error: String(e?.message || e).slice(0, 120) }));
+  const run = () => syncAutoDeals().catch((e2) => log.warn("Deals", "auto sync crashed (isolated)", { error: String(e2?.message || e2).slice(0, 120) }));
   setTimeout(() => {
     void run();
   }, 45e3).unref?.();
@@ -39521,9 +39744,9 @@ async function probeSource(candidate) {
     const failureClass = String(result?.failureClass || "EMPTY_RESPONSE");
     recordFailure(source.id, failureClass, result?.error || "recovery probe: no items");
     return { recovered: false, rows: 0, failureClass, error: result?.error || "no items" };
-  } catch (e) {
-    recordFailure(source.id, "TIMEOUT", String(e?.message || e).slice(0, 120));
-    return { recovered: false, rows: 0, failureClass: "TIMEOUT", error: String(e?.message || e).slice(0, 120) };
+  } catch (e2) {
+    recordFailure(source.id, "TIMEOUT", String(e2?.message || e2).slice(0, 120));
+    return { recovered: false, rows: 0, failureClass: "TIMEOUT", error: String(e2?.message || e2).slice(0, 120) };
   } finally {
     if (budgetTimer) clearTimeout(budgetTimer);
   }
@@ -39547,8 +39770,8 @@ async function warmRecoveredVertical(vertical) {
       await runSearchPolled2({ query: s.query, vertical: s.vertical, city: s.city, pincode: s.pincode }, 2e4);
       await new Promise((r) => setImmediate(r));
     }
-  } catch (e) {
-    log.debug("Recovery", "post-recovery warm skipped", { error: String(e?.message || e).slice(0, 100) });
+  } catch (e2) {
+    log.debug("Recovery", "post-recovery warm skipped", { error: String(e2?.message || e2).slice(0, 100) });
   }
 }
 async function recoveryScanPass(now = Date.now()) {
@@ -39583,8 +39806,8 @@ function startRecoveryScanner() {
   started = true;
   const SCAN_MS = 10 * 6e4;
   const timer = setInterval(() => {
-    void withLock("recovery-scanner", () => recoveryScanPass()).catch((e) => {
-      log.warn("Recovery", "Scan pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 120) });
+    void withLock("recovery-scanner", () => recoveryScanPass()).catch((e2) => {
+      log.warn("Recovery", "Scan pass failed (will retry next tick)", { error: String(e2?.message || e2).slice(0, 120) });
     });
   }, SCAN_MS);
   if (timer.unref) timer.unref();
@@ -39649,8 +39872,8 @@ function startWorkers() {
   try {
     const mod = (init_recoveryScanner(), __toCommonJS(recoveryScanner_exports));
     mod.startRecoveryScanner();
-  } catch (e) {
-    log.warn("Worker", "Recovery scanner failed to arm", { error: String(e?.message || e).slice(0, 120) });
+  } catch (e2) {
+    log.warn("Worker", "Recovery scanner failed to arm", { error: String(e2?.message || e2).slice(0, 120) });
   }
   const keepWarmTimer = setInterval(() => {
     void withLock("keep-warm", async () => {
@@ -39658,8 +39881,8 @@ function startWorkers() {
         const { keepWarmDefaults: keepWarmDefaults2, keepWarmDestinations: keepWarmDestinations2 } = await Promise.resolve().then(() => (init_warm(), warm_exports));
         await keepWarmDefaults2();
         await keepWarmDestinations2();
-      } catch (e) {
-        log.warn("Worker", "Keep-warm pass failed (will retry next tick)", { error: String(e?.message || e).slice(0, 120) });
+      } catch (e2) {
+        log.warn("Worker", "Keep-warm pass failed (will retry next tick)", { error: String(e2?.message || e2).slice(0, 120) });
       }
     }).catch(() => void 0);
   }, 12 * 6e4);
@@ -39684,8 +39907,8 @@ function startWorkers() {
           };
         }, settings3.appUrl || "https://www.try1second.com");
         if (r.checked) log.info("Worker", `Price alerts: ${r.checked} checked, ${r.notified} e-mailed`);
-      } catch (e) {
-        log.warn("Worker", "Price-alert pass failed (will retry)", { error: String(e?.message || e).slice(0, 120) });
+      } catch (e2) {
+        log.warn("Worker", "Price-alert pass failed (will retry)", { error: String(e2?.message || e2).slice(0, 120) });
       }
     }).catch(() => void 0);
   }, 30 * 6e4);
@@ -39737,8 +39960,8 @@ function startWorkers() {
             }
           }
         }
-      } catch (e) {
-        log.error("Worker", "Refresh cycle failed (old data preserved, not relabeled)", { error: String(e).slice(0, 150) });
+      } catch (e2) {
+        log.error("Worker", "Refresh cycle failed (old data preserved, not relabeled)", { error: String(e2).slice(0, 150) });
       }
     });
   }, settings.worker.refreshIntervalSec * 1e3);
@@ -39889,8 +40112,8 @@ var init_admitad = __esm({
               }
             }
           }
-        } catch (e) {
-          warnings.push(`admitad: website discovery failed (${String(e?.message || e).slice(0, 80)})`);
+        } catch (e2) {
+          warnings.push(`admitad: website discovery failed (${String(e2?.message || e2).slice(0, 80)})`);
         }
         if (websiteIds.length === 0) {
           const j = await this.apiGet("/coupons/", { limit: 100 });
@@ -39912,8 +40135,8 @@ var init_admitad = __esm({
             for (const c of results) {
               try {
                 offers.push(this.normalize(c));
-              } catch (e) {
-                warnings.push(`admitad: offer ${c?.id} skipped (${String(e).slice(0, 60)})`);
+              } catch (e2) {
+                warnings.push(`admitad: offer ${c?.id} skipped (${String(e2).slice(0, 60)})`);
               }
             }
           }
@@ -40104,8 +40327,8 @@ var init_cuelinks = __esm({
             if (!j?.meta?.next_page) break;
           }
           this.cacheAt = Date.now();
-        } catch (e) {
-          warnings.push(`cuelinks: offers fetch failed (${e?.message || "error"})`);
+        } catch (e2) {
+          warnings.push(`cuelinks: offers fetch failed (${e2?.message || "error"})`);
         }
         return { offers, count: offers.length, warnings };
       }
@@ -40283,9 +40506,9 @@ async function syncAllAffiliates(opts = {}) {
       const upserted = await upsertOffers(dedupOffers(res.offers));
       for (const w of res.warnings) log.warn("Affiliate", w);
       return { provider: p.id, ok: true, offers: upserted };
-    } catch (e) {
-      log.warn("Affiliate", `Sync failed for ${p.id} (isolated)`, { error: String(e?.message || e).slice(0, 160) });
-      return { provider: p.id, ok: false, offers: 0, error: String(e?.message || e).slice(0, 160) };
+    } catch (e2) {
+      log.warn("Affiliate", `Sync failed for ${p.id} (isolated)`, { error: String(e2?.message || e2).slice(0, 160) });
+      return { provider: p.id, ok: false, offers: 0, error: String(e2?.message || e2).slice(0, 160) };
     }
   }));
   const expired = await expirePastOffers();
@@ -40378,8 +40601,8 @@ var init_api = __esm({
           offset: Number(req.query.offset) || void 0
         });
         res.json({ success: true, count: rows.length, offers: rows });
-      } catch (e) {
-        res.status(500).json({ success: false, error: String(e?.message || e).slice(0, 160) });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: String(e2?.message || e2).slice(0, 160) });
       }
     });
     affiliateRouter.get("/providers", (_req, res) => res.json({ success: true, providers: registeredProviders() }));
@@ -40436,8 +40659,8 @@ var init_loopWatchdog = __esm({
 });
 
 // server/seo/data.ts
-function verticalBySlug(slug2) {
-  return VERTICALS2.find((v) => v.slug === slug2.replace(/\/$/, ""));
+function verticalBySlug(slug3) {
+  return VERTICALS2.find((v) => v.slug === slug3.replace(/\/$/, ""));
 }
 function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
@@ -40488,8 +40711,8 @@ function resolveAppRoute(path14) {
       const A = m[1].replace(/-/g, " "), B = m[2].replace(/-/g, " ");
       const pretty = (x) => titleCase(x);
       if (head === "flights") {
-        const aI = IATA2[m[1]] ? ` (${IATA2[m[1]]})` : "";
-        const bI = IATA2[m[2]] ? ` (${IATA2[m[2]]})` : "";
+        const aI = IATA3[m[1]] ? ` (${IATA3[m[1]]})` : "";
+        const bI = IATA3[m[2]] ? ` (${IATA3[m[2]]})` : "";
         return { vertical: "flights", query: `${pretty(A)}${aI} to ${pretty(B)}${bI}` };
       }
       return { vertical: "bus", query: `${pretty(A)} to ${pretty(B)}` };
@@ -40578,7 +40801,7 @@ function resolveSeoPage(path14) {
   if (head === "flights" && /-to-.*-flights$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-flights$/.exec(tail);
     const A = cityName(m[1]), B = cityName(m[2]);
-    const aI = IATA2[m[1]], bI = IATA2[m[2]];
+    const aI = IATA3[m[1]], bI = IATA3[m[2]];
     const routeName = `${A} to ${B}`;
     const codeSuffix = aI && bI ? ` (${aI}\u2013${bI})` : "";
     return {
@@ -40713,7 +40936,7 @@ function seoLinksFor(verticalPath) {
   }
   return links;
 }
-var SEO_HOST, CITIES, IATA2, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList;
+var SEO_HOST, CITIES, IATA3, FLIGHT_ROUTES, BUS_ROUTES, VERTICALS2, ECOM_CATS, LOAN_TYPES, INSURANCE_TYPES, CARD_TYPES, BANKING_TYPES, titleCase, cityName, cityList;
 var init_data = __esm({
   "server/seo/data.ts"() {
     SEO_HOST = "https://www.try1second.com";
@@ -40757,7 +40980,7 @@ var init_data = __esm({
       { slug: "goa", name: "Goa" },
       { slug: "shimla", name: "Shimla" }
     ];
-    IATA2 = {
+    IATA3 = {
       mumbai: "BOM",
       delhi: "DEL",
       bengaluru: "BLR",
@@ -41132,7 +41355,7 @@ var init_data = __esm({
       { slug: "current-account", label: "Current Account", query: "current account" }
     ];
     titleCase = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
-    cityName = (slug2) => CITIES.find((c) => c.slug === slug2)?.name || titleCase(slug2.replace(/-/g, " "));
+    cityName = (slug3) => CITIES.find((c) => c.slug === slug3)?.name || titleCase(slug3.replace(/-/g, " "));
     cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(", ");
   }
 });
@@ -41709,7 +41932,7 @@ async function start() {
   const PORT = Number(process.env.PORT || 3e3);
   app.listen(PORT, () => console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`));
 }
-start().catch((e) => {
-  console.error("[try1second] FATAL: server failed to start:", e);
+start().catch((e2) => {
+  console.error("[try1second] FATAL: server failed to start:", e2);
   process.exit(1);
 });
