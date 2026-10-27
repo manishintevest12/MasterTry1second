@@ -27830,6 +27830,7 @@ __export(deeplink_exports, {
   amazonAssociatesUrl: () => amazonAssociatesUrl,
   buildSecureDeeplink: () => buildSecureDeeplink,
   createMaskingPointer: () => createMaskingPointer,
+  cuelinksKnownMerchants: () => cuelinksKnownMerchants,
   cuelinksMerchantUrl: () => cuelinksMerchantUrl,
   merchantSearchFallback: () => merchantSearchFallback,
   recordPointerClick: () => recordPointerClick,
@@ -27878,6 +27879,9 @@ function safeDomain(url) {
   } catch {
     return "";
   }
+}
+function cuelinksKnownMerchants() {
+  return [...CUELINKS_MERCHANTS];
 }
 function cuelinksMerchantUrl(dest) {
   const c = settings.cuelinks;
@@ -38862,6 +38866,86 @@ var init_acceptanceRunner = __esm({
   }
 });
 
+// server/affiliate/coverageMap.ts
+var coverageMap_exports = {};
+__export(coverageMap_exports, {
+  maskId: () => maskId,
+  resolveEffective: () => resolveEffective
+});
+function maskId(id) {
+  const v = String(id || "").trim();
+  if (!v) return "";
+  if (v.length <= 4) return "\u2022\u2022\u2022\u2022";
+  return `${"\u2022".repeat(Math.min(8, v.length - 4))}${v.slice(-4)}`;
+}
+function idFromTemplate(template) {
+  const t = String(template || "");
+  for (const key of ["pub_id", "affid", "aff_id", "aff", "tag", "pid", "id", "cid"]) {
+    const m = t.match(new RegExp(`[?&]${key}=([^&]+)`, "i"));
+    if (m) {
+      const v = decodeURIComponent(m[1]);
+      if (v.length >= 3) return v;
+    }
+  }
+  return "";
+}
+async function cuelinksMerchantSet() {
+  if (cuelinksSet) return cuelinksSet;
+  const out = /* @__PURE__ */ new Set();
+  try {
+    const mod = await Promise.resolve().then(() => (init_deeplink(), deeplink_exports));
+    if (typeof mod.cuelinksKnownMerchants === "function") {
+      for (const d of mod.cuelinksKnownMerchants()) out.add(String(d).toLowerCase());
+    }
+  } catch {
+  }
+  cuelinksSet = out;
+  return out;
+}
+async function resolveEffective(rows) {
+  const amzTag = String(settings.amazonAssociates?.tag || "");
+  const cuelinksPub = String(settings.cuelinks?.publisherId || "");
+  const cuelinksOn = Boolean(settings.cuelinks?.enabled);
+  const ekaroOn = ekaroStats().enabled;
+  const linkinrOn = linkinrCampaignList().length > 0;
+  const linkinrDomains = /* @__PURE__ */ new Map();
+  for (const c of linkinrCampaignList()) linkinrDomains.set(String(c.domain || "").toLowerCase(), c.name || "");
+  const cueSet = await cuelinksMerchantSet();
+  return rows.map((r) => {
+    const domain = String(r.company_domain || "").toLowerCase().replace(/^www\./, "");
+    if (r.template) {
+      const id = String(r.affiliate_id || "") || idFromTemplate(r.template);
+      return { slug: r.slug, effective_source: "affiliate_configs", effective_id_masked: maskId(id), effective_label: `Manual template${id ? "" : " (no id in URL)"}` };
+    }
+    if (AMAZON_DOMAINS2.test(domain) && amzTag) {
+      return { slug: r.slug, effective_source: "amazon_associates", effective_id_masked: maskId(amzTag), effective_label: "Amazon Associates tag" };
+    }
+    if (cuelinksOn && cuelinksPub && (cueSet.size === 0 || cueSet.has(domain))) {
+      return { slug: r.slug, effective_source: "cuelinks", effective_id_masked: maskId(cuelinksPub), effective_label: "Cuelinks publisher" };
+    }
+    if (linkinrOn && linkinrDomains.has(domain)) {
+      return { slug: r.slug, effective_source: "linkinr", effective_id_masked: maskId(linkinrDomains.get(domain) || ""), effective_label: `LinkInR: ${linkinrDomains.get(domain)}` };
+    }
+    if (String(r.monetization || "").toLowerCase() === "adsense") {
+      return { slug: r.slug, effective_source: "adsense", effective_id_masked: "", effective_label: "AdSense (no affiliate program)" };
+    }
+    if (ekaroOn) {
+      return { slug: r.slug, effective_source: "ekaro", effective_id_masked: "", effective_label: "Ekaro attempt at click" };
+    }
+    return { slug: r.slug, effective_source: "direct", effective_id_masked: "", effective_label: "Direct hop (no affiliate yet)" };
+  });
+}
+var AMAZON_DOMAINS2, cuelinksSet;
+var init_coverageMap = __esm({
+  "server/affiliate/coverageMap.ts"() {
+    init_settings();
+    init_linkinr();
+    init_ekaro();
+    AMAZON_DOMAINS2 = /(^|\.)(amazon\.(?:in|com|co\.uk|de|ca|fr|it|es|nl|sg|ae|com\.au|com\.br|com\.mx|jp|co\.jp)|amzn\.to)$/i;
+    cuelinksSet = null;
+  }
+});
+
 // server/analytics/coverage.ts
 var coverage_exports = {};
 __export(coverage_exports, {
@@ -39269,7 +39353,18 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/affiliate-profiles", async (_req, res) => {
       try {
-        res.json({ success: true, networks: AFFILIATE_NETWORKS, profiles: await listProfiles() });
+        const profiles = await listProfiles();
+        const { resolveEffective: resolveEffective2 } = await Promise.resolve().then(() => (init_coverageMap(), coverageMap_exports));
+        const eff = await resolveEffective2(profiles);
+        const bySlug = new Map(eff.map((e2) => [e2.slug, e2]));
+        res.json({
+          success: true,
+          networks: AFFILIATE_NETWORKS,
+          profiles: profiles.map((p) => {
+            const e2 = bySlug.get(p.slug);
+            return { ...p, effective_source: e2?.effective_source || "direct", effective_id_masked: e2?.effective_id_masked || "", effective_label: e2?.effective_label || "" };
+          })
+        });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not load affiliate profiles" });
       }

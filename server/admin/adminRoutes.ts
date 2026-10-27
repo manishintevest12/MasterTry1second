@@ -311,7 +311,22 @@ adminRouter.post('/deals/sync', async (_req, res) => {
 
 // ---- Affiliate profiles: network + tracking template per company, applied server-side on every click ----
 adminRouter.get('/affiliate-profiles', async (_req, res) => {
-  try { res.json({ success: true, networks: AFFILIATE_NETWORKS, profiles: await listProfiles() }); }
+  try {
+    const profiles = await listProfiles();
+    // Owner 27 Oct: show the merchant's EFFECTIVE affiliate id too, so partnerships
+    // that already earn (Amazon tag, Cuelinks, LinkInR, Ekaro) are visible per row.
+    const { resolveEffective } = await import('../affiliate/coverageMap');
+    const eff = await resolveEffective(profiles);
+    const bySlug = new Map(eff.map((e) => [e.slug, e]));
+    res.json({
+      success: true,
+      networks: AFFILIATE_NETWORKS,
+      profiles: profiles.map((p: any) => {
+        const e = bySlug.get(p.slug);
+        return { ...p, effective_source: e?.effective_source || 'direct', effective_id_masked: e?.effective_id_masked || '', effective_label: e?.effective_label || '' };
+      }),
+    });
+  }
   catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load affiliate profiles' }); }
 });
 adminRouter.post('/affiliate-profiles', async (req, res) => {

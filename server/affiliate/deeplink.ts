@@ -87,6 +87,9 @@ export function safeDomain(url: string): string {
  * provider's campaign sync can discover newer per-vertical campaigns.
  */
 const CUELINKS_MERCHANTS = new Set(['makemytrip.com', 'goibibo.com']);
+
+/** Read-only accessor for the admin coverage view (owner 27 Oct). */
+export function cuelinksKnownMerchants(): string[] { return [...CUELINKS_MERCHANTS]; }
 // Campaign refs (public ids, for the dashboard): makemytrip.com = 3801
 // "MakeMyTrip (Hotels)" (access open, deeplink_allowed false — deep-path
 // commission not guaranteed but the hop lands on the exact page), goibibo.com =

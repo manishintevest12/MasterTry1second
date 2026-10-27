@@ -6,7 +6,8 @@ import { Link2, Trash2, Save, Search } from 'lucide-react';
  * your own affiliate / publisher ID). Every customer click then goes through /api/out and the
  * server wraps the merchant page with the matching template. No ID is ever shown in the browser.
  */
-interface Profile { slug: string; company_domain: string; vertical?: string | null; display_name?: string | null; network: string; affiliate_id?: string | null; monetization?: string | null; template: string | null; campaign_key: string | null; active: number | boolean }
+interface Profile { slug: string; company_domain: string; vertical?: string | null; display_name?: string | null; network: string; affiliate_id?: string | null; monetization?: string | null; template: string | null; campaign_key: string | null; active: number | boolean;
+  effective_source?: string; effective_id_masked?: string; effective_label?: string }
 interface AutoCampaign { name: string; domain: string; payout: string; type: string; categories: string }
 interface Coverage {
   manual: Profile[];
@@ -126,16 +127,34 @@ export const AffiliateProfilesPanel: React.FC = () => {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <strong className="text-xs text-slate-900">{r.display_name || r.slug}</strong>
                   <span className="text-[11px] text-slate-500">{r.company_domain} · {r.network}</span>
-                  {(r.monetization || 'affiliate') === 'adsense' ? (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-amber-50 text-amber-700">AdSense</span>
-                  ) : r.affiliate_id || r.template ? (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700">Affiliate</span>
-                  ) : (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500">ID pending</span>
-                  )}
+                  {(() => {
+                    // Owner 27 Oct: badge reflects the affiliate id that ACTUALLY fires —
+                    // including automatic layers (Amazon tag, Cuelinks, LinkInR, Ekaro).
+                    const src = r.effective_source || ((r.monetization || 'affiliate') === 'adsense' ? 'adsense' : r.template ? 'affiliate_configs' : 'direct');
+                    const map: Record<string, { label: string; cls: string }> = {
+                      affiliate_configs: { label: 'Affiliate (manual)', cls: 'bg-emerald-50 text-emerald-700' },
+                      amazon_associates: { label: 'Amazon tag', cls: 'bg-emerald-50 text-emerald-700' },
+                      cuelinks: { label: 'Cuelinks', cls: 'bg-emerald-50 text-emerald-700' },
+                      linkinr: { label: 'LinkInR', cls: 'bg-emerald-50 text-emerald-700' },
+                      ekaro: { label: 'Ekaro (click)', cls: 'bg-sky-50 text-sky-700' },
+                      adsense: { label: 'AdSense', cls: 'bg-amber-50 text-amber-700' },
+                      direct: { label: 'ID pending', cls: 'bg-slate-100 text-slate-500' },
+                    };
+                    const m = map[src] || map.direct;
+                    return (
+                      <>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${m.cls}`}>{m.label}</span>
+                        {r.effective_id_masked ? <span className="text-[9px] font-mono text-slate-400">{r.effective_id_masked}</span> : null}
+                      </>
+                    );
+                  })()}
                 </div>
                 <p className="text-[10px] font-mono text-slate-400 truncate">
-                  {r.template ? r.template.replace(/(pub_id|cid|aff|affid|pid|id)=[^&]+/gi, '$1=••••') : (r.affiliate_id ? `id: ${r.affiliate_id}` : 'koi affiliate ID nahi — aate hi yahan paste karo')}
+                  {r.template
+                    ? r.template.replace(/(pub_id|cid|aff|affid|pid|id|tag)=[^&]+/gi, '$1=••••')
+                    : r.affiliate_id
+                      ? `id: ${r.affiliate_id}`
+                      : (r.effective_label || 'koi affiliate ID nahi — aate hi yahan paste karo')}
                 </p>
               </div>
               <button onClick={() => { setForm({ slug: r.slug, company_domain: r.company_domain, network: r.network, template: r.template || '', campaign_key: r.campaign_key || '', affiliate_id: r.affiliate_id || '', monetization: r.monetization || 'affiliate' }); }} className="text-[11px] text-slate-500 cursor-pointer">Edit</button>
