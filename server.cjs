@@ -27579,11 +27579,78 @@ var init_lenderLogo = __esm({
   }
 });
 
+// server/affiliate/linkinr/deephop.ts
+var deephop_exports = {};
+__export(deephop_exports, {
+  _resetLinkInrHops: () => _resetLinkInrHops,
+  cjClickBase: () => cjClickBase,
+  cjDeepUrl: () => cjDeepUrl,
+  linkinrDeepUrl: () => linkinrDeepUrl
+});
+function cjClickBase(location) {
+  try {
+    const u = new URL(location);
+    if (!CJ_HOSTS.test(u.hostname)) return null;
+    for (const k of ["sid", "tag", "url", "SID"]) u.searchParams.delete(k);
+    let base = u.toString();
+    base = base.replace(/[?&]+$/, "");
+    return base;
+  } catch {
+    return null;
+  }
+}
+function cjDeepUrl(base, deepUrl) {
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}url=${encodeURIComponent(deepUrl)}`;
+}
+async function resolveHop(linkinrUrl, campaignId) {
+  const cached2 = hops.get(campaignId);
+  const now = Date.now();
+  if (cached2 && now - cached2.at < (cached2.ok ? HOP_TTL_MS : FAIL_TTL_MS)) return cached2;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6e3);
+    const res = await fetch(linkinrUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: ctrl.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36" }
+    }).finally(() => clearTimeout(t));
+    const loc = res.headers.get("location") || "";
+    const base = cjClickBase(loc);
+    const hop = base ? { base, at: now, ok: true } : { base: "", at: now, ok: false };
+    hops.set(campaignId, hop);
+    return hop;
+  } catch {
+    const hop = { base: "", at: now, ok: false };
+    hops.set(campaignId, hop);
+    return hop;
+  }
+}
+async function linkinrDeepUrl(plainUrl, campaignId, dest) {
+  const hop = await resolveHop(plainUrl, campaignId);
+  if (!hop?.ok || !hop.base) return null;
+  return cjDeepUrl(hop.base, dest);
+}
+function _resetLinkInrHops() {
+  hops.clear();
+}
+var CJ_HOSTS, HOP_TTL_MS, FAIL_TTL_MS, hops;
+var init_deephop = __esm({
+  "server/affiliate/linkinr/deephop.ts"() {
+    CJ_HOSTS = /(^|\.)(tkqlhce\.com|anrdoezrs\.net|dpbolvw\.net|jdoqocy\.com|kqzyfj\.com|emjcd\.com|ftjcfx\.com|qksrv\.net|sjv\.io)$/i;
+    HOP_TTL_MS = 6 * 60 * 60 * 1e3;
+    FAIL_TTL_MS = 15 * 60 * 1e3;
+    hops = /* @__PURE__ */ new Map();
+  }
+});
+
 // server/affiliate/linkinr/index.ts
 var linkinr_exports = {};
 __export(linkinr_exports, {
   linkinrCampaignFor: () => linkinrCampaignFor,
   linkinrCampaignList: () => linkinrCampaignList,
+  linkinrDeepTrackingUrl: () => linkinrDeepTrackingUrl,
   linkinrEnabled: () => linkinrEnabled,
   linkinrStats: () => linkinrStats,
   linkinrTrackingUrl: () => linkinrTrackingUrl
@@ -27708,9 +27775,25 @@ function linkinrTrackingUrl(dest) {
   if (!linkinrEnabled()) return null;
   const c = linkinrCampaignFor(dest);
   if (!c) return null;
+  return plainLinkInrUrl(c);
+}
+function plainLinkInrUrl(c) {
   const sub = process.env.LINKINR_SUB_ID || "try1second";
   const click = import_crypto21.default.randomBytes(4).toString("hex");
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
+}
+async function linkinrDeepTrackingUrl(dest) {
+  if (!linkinrEnabled()) return null;
+  const c = linkinrCampaignFor(dest);
+  if (!c) return null;
+  const plain = plainLinkInrUrl(c);
+  try {
+    const { linkinrDeepUrl: linkinrDeepUrl2 } = await Promise.resolve().then(() => (init_deephop(), deephop_exports));
+    const deep = await linkinrDeepUrl2(plain, c.id, dest);
+    return deep || plain;
+  } catch {
+    return plain;
+  }
 }
 function linkinrCampaignList() {
   const m = loadRegistry();
@@ -27962,7 +28045,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const cuelinks = cuelinksMerchantUrl(targetUrl);
   if (cuelinks) return { trackingUrl: cuelinks, network: "cuelinks", matchedProfile: "cuelinks_fallback" };
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
-  const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
+  const linkinr = cabBookLink ? null : await linkinrDeepTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: "linkinr", matchedProfile: "linkinr" };
   if (!cabBookLink) {
     const ekaro = await ekaroTrackingUrl(targetUrl);

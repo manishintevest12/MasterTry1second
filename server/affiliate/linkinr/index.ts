@@ -152,9 +152,32 @@ export function linkinrTrackingUrl(dest: string): string | null {
   if (!linkinrEnabled()) return null;
   const c = linkinrCampaignFor(dest);
   if (!c) return null;
+  return plainLinkInrUrl(c);
+}
+
+function plainLinkInrUrl(c: LinkInRCampaign): string {
   const sub = process.env.LINKINR_SUB_ID || 'try1second';
   const click = crypto.randomBytes(4).toString('hex');
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
+}
+
+/**
+ * DEEP, attributed LinkInR link (owner 27 Oct: "agoda wagera sb… deeplink iss affiliate
+ * id se"). LinkInR itself ignores &url=, but the CJ click URL it redirects to honours it,
+ * so we resolve that hop once and re-append the real destination — same attribution,
+ * and the user lands on the exact hotel/movie/product page instead of the homepage.
+ * Falls back to the plain hop whenever the bridge cannot resolve.
+ */
+export async function linkinrDeepTrackingUrl(dest: string): Promise<string | null> {
+  if (!linkinrEnabled()) return null;
+  const c = linkinrCampaignFor(dest);
+  if (!c) return null;
+  const plain = plainLinkInrUrl(c);
+  try {
+    const { linkinrDeepUrl } = await import('./deephop');
+    const deep = await linkinrDeepUrl(plain, c.id, dest);
+    return deep || plain;
+  } catch { return plain; }
 }
 
 /** Effective per-domain coverage (best campaign per domain), for the admin panel. */

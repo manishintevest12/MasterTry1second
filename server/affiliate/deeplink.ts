@@ -16,7 +16,7 @@
 import { IATA } from '../common/airportLookup';
 import crypto from 'crypto';
 import { settings } from '../common/settings';
-import { linkinrTrackingUrl } from './linkinr';
+import { linkinrTrackingUrl, linkinrDeepTrackingUrl } from './linkinr';
 import { ekaroTrackingUrl } from './ekaro';
 import { log } from '../common/logger';
 import { getStore } from '../common/db';
@@ -212,7 +212,7 @@ export async function buildSecureDeeplink(targetUrl: string, opts: { companySlug
   // attribution (client_id + admin utm params) is already baked into the URL by
   // /api/cab/book, so they stay direct here.
   const cabBookLink = /^https:\/\/(m\.uber\.com\/looking|book\.olacabs\.com\/|rapido\.cc\/)/.test(targetUrl);
-  const linkinr = cabBookLink ? null : linkinrTrackingUrl(targetUrl);
+  const linkinr = cabBookLink ? null : await linkinrDeepTrackingUrl(targetUrl);
   if (linkinr) return { trackingUrl: linkinr, network: 'linkinr', matchedProfile: 'linkinr' };
   // 3.7 Ekaro converter (owner rule 22 Oct): every remaining retailer deeplink
   //     with no direct partnership (today: grocery exits — Blinkit, Zepto,
