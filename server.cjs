@@ -30814,6 +30814,7 @@ var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
   busSelfHealTtl: () => busSelfHealTtl,
   filterRowsByAge: () => filterRowsByAge,
+  floorWindows: () => floorWindows,
   namesOtherCity: () => namesOtherCity,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
@@ -30990,6 +30991,10 @@ function namesOtherCity(text, city) {
   if (hay.includes(want)) return false;
   return MAJOR_CITIES2.some((c) => c !== want && new RegExp(`\\b${c}\\b`).test(hay));
 }
+function floorWindows(vertical) {
+  const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
+  return travelish ? { strict: 3600, fallback: 24 * 3600 } : { strict: 24 * 3600, fallback: 72 * 3600 };
+}
 function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID");
 }
@@ -31134,17 +31139,18 @@ async function runSearch(input) {
       }
       if (memo.response) return memo.response;
     }
-    const offers = await freshCatalogueOffers(vertical, input, parsed);
+    const w = floorWindows(vertical);
+    const offers = await freshCatalogueOffers(vertical, input, parsed, w.strict, w.fallback);
     if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return await stillAcquiringResponse(parsed, totalStart);
   }
-  const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
+  const windows = floorWindows(vertical);
   const floorPromise = freshCatalogueOffers(
     vertical,
     input,
     parsed,
-    travelish ? 3600 : 24 * 3600,
-    travelish ? 24 * 3600 : 72 * 3600
+    windows.strict,
+    windows.fallback
   ).catch(() => []);
   {
     const offers = await floorPromise;

@@ -375,6 +375,13 @@ export function namesOtherCity(text: string, city?: string): boolean {
   return MAJOR_CITIES.some((c) => c !== want && new RegExp(`\\b${c}\\b`).test(hay));
 }
 
+/** Floor windows per vertical (owner 28 Oct): travel rows are fetched in cycles, so a bus/hotel
+ *  answer older than an hour is still the honest last-verified fare. Exported for tests. */
+export function floorWindows(vertical: string): { strict: number; fallback: number } {
+  const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
+  return travelish ? { strict: 3600, fallback: 24 * 3600 } : { strict: 24 * 3600, fallback: 72 * 3600 };
+}
+
 /** Age window filter shared by the strict floor and its fallback (exported for tests). */
 export function filterRowsByAge(rows: any[], maxAgeSec: number, now = Date.now()): any[] {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < maxAgeSec && r.validation_status !== 'INVALID');
@@ -606,7 +613,12 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
       }
       if (memo.response) return memo.response;
     }
-    const offers = await freshCatalogueOffers(vertical, input, parsed);
+    // OWNER 28 Oct ('results kabhi aate hain kabhi nahi'): this branch called the floor with
+    // its DEFAULT one-hour window while a pipeline was in flight, so a poll that arrived between
+    // cache expiry and acquisition got ZERO rows ('servedFrom: unavailable') even though 267
+    // hotel rows were sitting in MySQL. Same windows as the real floor now.
+    const w = floorWindows(vertical);
+    const offers = await freshCatalogueOffers(vertical, input, parsed, w.strict, w.fallback);
     if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     // Owner 23 Oct: 'this caller waits' hung polls 30-40s on ecom cold searches —
     // the app's poll timer then died on its HTTP timeout and results never painted.
@@ -616,11 +628,9 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   }
   // Speed (27 Oct): the honest catalogue floor is looked up ONCE, in parallel with the
   // race below, so the cold answer never pays an extra DB round-trip after the timer.
-  const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
+  const windows = floorWindows(vertical);
   const floorPromise = freshCatalogueOffers(
-    vertical, input, parsed,
-    travelish ? 3600 : 24 * 3600,
-    travelish ? 24 * 3600 : 72 * 3600,
+    vertical, input, parsed, windows.strict, windows.fallback,
   ).catch(() => [] as NormalizedOffer[]);
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
   {

@@ -30,3 +30,17 @@ test('INVALID rows never enter a floor, however fresh', () => {
 test('a row exactly at the window edge is excluded, not included', () => {
   assert.equal(filterRowsByAge([row(60)], 3600, now).length, 0);
 });
+
+test('travel verticals get the wide fallback window (bus/hotels are fetched in cycles)', async () => {
+  const { floorWindows } = await import('../server/search/searchOrchestrator');
+  for (const v of ['flights', 'hotels', 'bus', 'cab']) {
+    assert.deepEqual(floorWindows(v), { strict: 3600, fallback: 24 * 3600 }, v);
+  }
+});
+
+test('non-travel verticals keep the 24h/72h pair', async () => {
+  const { floorWindows } = await import('../server/search/searchOrchestrator');
+  for (const v of ['ecommerce', 'grocery', 'food', 'movies', 'loans', 'insurance']) {
+    assert.deepEqual(floorWindows(v), { strict: 24 * 3600, fallback: 72 * 3600 }, v);
+  }
+});
