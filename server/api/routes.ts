@@ -42,6 +42,7 @@ import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
+import { dropImplausiblePrices } from '../lens/pricePlausibility';
 import { fixSpelling } from '../lens/spellFix';
 import { analyseDeal } from '../lens/dealScore';
 import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
@@ -1447,31 +1448,78 @@ apiRouter.post('/product-page', async (req, res) => {
   // quick-commerce answer could win the race and hide retail rows that were one tick away
   // (that is why a poll could paint 0 offers after the first paint had shown 4). Now the
   // first response that actually CARRIES ROWS is used; all-empty falls through to the cap.
-  const responses = await Promise.race([
-    Promise.all(searches),
-    new Promise<any[]>((resolve) => {
-      let settled = 0;
-      searches.forEach((p) => {
-        p.then((r: any) => {
-          settled++;
-          if (((r?.results) || []).length > 0) resolve([r]);
-          else if (settled === searches.length) resolve([]);
-        }).catch(() => {
-          settled++;
-          if (settled === searches.length) resolve([]);
-        });
-      });
-    }),
-    new Promise<any[]>((resolve) => { setTimeout(() => { cappedOut = true; resolve([]); }, HARD_CAP_MS); }),
-  ]);
+  // SELLER COVERAGE (owner 27 Oct, "ye product bahut saare sites pr hai, sirf Zepto+Flipkart
+  // kyun?"): the old race resolved the moment ANY vertical answered, so a fast Zepto/Blinkit
+  // reply ended the request while Amazon, Croma, Reliance and JioMart were still in flight —
+  // their rows never reached the comparison. Now every search is collected into one basket and
+  // the answer is assembled when they all settle OR after a short coalescing window, whichever
+  // comes first; a poll (paint2) gets the wider window and therefore the full seller list.
+  const COALESCE_MS = paint2 ? 2_200 : 1_000;
+  const gathered: any[] = [];
+  let allSettled = false;
+  const allDone = Promise.all(
+    searches.map((p: Promise<any>) => p.then((r: any) => { if (r) gathered.push(r); }).catch(() => {})),
+  ).then(() => { allSettled = true; });
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    allDone.then(finish);
+    setTimeout(() => { if (!allSettled) cappedOut = true; finish(); }, COALESCE_MS);
+    setTimeout(() => { cappedOut = true; finish(); }, HARD_CAP_MS);
+  });
+  const responses = gathered;
   const seenIds = new Set<string>();
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-  const all = responses.flatMap((r: any) => r.results || [])
+  let all = responses.flatMap((r: any) => r.results || [])
     .filter((o: any) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id)))
     .map((o: any) => ({ o, price: priceOf(o) }))
     .filter((x) => x.price > 0);
+  // SELLER COVERAGE from our own catalogue (owner 27 Oct, "sirf Zepto+Flipkart kyun?"):
+  // heavy retail sources (Amazon's cookie handshake, Tata CLiQ, JioMart) need 5-20s, far past
+  // a 2-3s page. Their earlier acquisitions are already persisted in MySQL with real prices,
+  // so a recent catalogue row for THIS exact product joins the comparison instead of the page
+  // pretending that seller does not exist. Freshness is capped at 6h and every row still has
+  // to pass the same identity rules (no accessory can sneak in this way either).
+  {
+    const { findCatalogueOffers } = await import('../catalogue/catalogueService');
+    const haveKey = new Set(all.map((x: any) => `${String(x.o.seller || '').toLowerCase()}|${String(x.o.title || '').toLowerCase()}`));
+    const now = Date.now();
+    for (const v of ['ecommerce', 'grocery']) {
+      const rows = await findCatalogueOffers(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+      for (const r of rows) {
+        const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
+        const title = String(r.title || '');
+        const seller = String(r.seller || r.vendor || '');
+        if (price <= 0 || !title) continue;
+        if ((now - new Date(r.fetched_at).getTime()) / 1000 > 6 * 3600) continue;
+        const k = `${seller.toLowerCase()}|${title.toLowerCase()}`;
+        if (haveKey.has(k)) continue;
+        haveKey.add(k);
+        all.push({
+          o: {
+            id: `catalogue-${r.id}`, title, seller,
+            sellerUrl: r.seller_url || '',
+            prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
+            attributes: {}, availability: r.availability || 'unknown',
+            canonicalEntityId: r.canonical_entity_id ?? null,
+          },
+          price,
+        });
+      }
+    }
+  }
   const matchMode: 'strict' | 'typed' = textQuery ? 'typed' : 'strict';
-  const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ''), matchMode)).sort((a, b) => a.price - b.price);
+  const sameMatched = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ''), matchMode)).sort((a, b) => a.price - b.price);
+  // Owner 27 Oct ("Rs.831 me iPhone 18 Pro, phir 99% costlier"): one seller's impossible price
+  // (mis-parsed tile, or a phone-titled accessory) must not become the "cheapest" of a
+  // Rs.50,000+ product. Rows far below the band every other shop agrees on are withheld.
+  const plausible = dropImplausiblePrices(sameMatched);
+  const same = plausible.kept;
+  if (plausible.dropped.length) {
+    log.info('ProductPage', 'Withheld implausible prices', {
+      query: lensQuery, dropped: plausible.dropped.slice(0, 3).map((x: any) => `${x.o?.seller}:${x.price}`), kept: same.length,
+    });
+  }
   const toRow = ({ o, price }: any) => {
     const attrs = o.attributes || {};
     const imgs = Array.from(new Set([
@@ -1498,7 +1546,7 @@ apiRouter.post('/product-page', async (req, res) => {
     if (!hit) bySeller.set(k, { row: x, count: 1 });
     else hit.count += 1; // `same` is price-ascending, so the first row per seller is its cheapest
   }
-  const offers = [...bySeller.values()]
+  let offers: any[] = [...bySeller.values()]
     .sort((a, b) => a.row.price - b.row.price)
     .slice(0, 30)
     .map(({ row, count }) => ({ ...toRow(row), variantCount: count }));
@@ -1517,6 +1565,10 @@ apiRouter.post('/product-page', async (req, res) => {
     });
   }
   offers.sort((a: any, b: any) => a.price - b.price);
+  // Same plausibility net after seed rows join: a clicked card's stale price can be as wrong
+  // as a live one, and it must not resurrect the impossible "cheapest" either.
+  const plausibleOffers = dropImplausiblePrices(offers);
+  if (plausibleOffers.dropped.length) offers = plausibleOffers.kept as typeof offers;
   // LAST-GOOD MEMORY (owner 27 Oct, "results fast aane hi chaiye"): upstream sources answer
   // intermittently, and one empty attempt must not blank a page that had real prices a second
   // ago — that flicker is what made a poll paint 0 offers after the first paint showed 4.
@@ -1632,9 +1684,9 @@ apiRouter.post('/product-page', async (req, res) => {
     if (!deepRefreshInFlight.has(key) && Date.now() - (deepRefreshLast.get(key) || 0) > 60_000) {
       deepRefreshInFlight.add(key);
       deepRefreshLast.set(key, Date.now());
-      void runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode, coldDeadlineMs: 4_000 } as SearchInput)
+      void runSearch({ query: lensQuery, vertical: 'ecommerce', city: req.body?.city, pincode: req.body?.pincode, coldDeadlineMs: 25_000 } as SearchInput)
         .catch(() => {})
-        .then(() => runSearch({ ...groceryInput, coldDeadlineMs: 4_000 }).catch(() => {}))
+        .then(() => runSearch({ ...groceryInput, coldDeadlineMs: 12_000 }).catch(() => {}))
         .finally(() => deepRefreshInFlight.delete(key));
     }
   }

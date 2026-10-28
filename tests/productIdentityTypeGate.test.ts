@@ -72,3 +72,26 @@ t('256 GB never matches 512 GB', isSameProduct('iphone 16 256gb', 'Apple iPhone 
 
 console.log(`productIdentityTypeGate: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
+
+// 8. Owner's SECOND report (27 Oct, screenshot): a cover whose title is pipe-suffixed with a
+//    real phone name was still accepted, because the accessory check only read the segment
+//    before the first "|": "Apple iPhone 18 Pro 5G | 512 GB | Burgundy | Mobile Cover" at
+//    Rs.831 became "the iPhone" and made a Rs.59,900 Flipkart phone look "99% costlier".
+import { accessoryScope, isAccessory } from '../server/lens/sameProduct';
+const PIPE_COVER = 'Apple iPhone 18 Pro 5G | 512 GB | Burgundy | Mobile Cover';
+t('pipe-suffixed mobile cover is rejected', isSameProduct('iphone 18 pro', PIPE_COVER, 'typed') === false);
+t('pipe-suffixed cover is an accessory', isAccessory(PIPE_COVER) === true);
+t('bundle clause is cut, pipe segments are not',
+  accessoryScope('Samsung Galaxy M35 5G (Grey) with Charger').includes('Charger') === false
+  && accessoryScope(PIPE_COVER).includes('Mobile Cover') === true);
+t('the plain phone title itself still matches',
+  isSameProduct('iphone 18 pro', 'Apple iPhone 18 Pro 5G | 512 GB | Burgundy', 'typed') === true);
+t('tempered glass guarded by a brand name is rejected',
+  isSameProduct('iphone 18 pro', 'Pokryt iPhone 18 Pro/17/17 Pro/16 Pro Tempered Glass (Transparent)', 'typed') === false);
+t('magSafe cover with a brand name is rejected',
+  isSameProduct('iphone 18 pro', 'Ohonesty Iphone 17 Pro/18 Pro MagSafe Mobile Cover (Transparent)', 'typed') === false);
+t('skin sticker is rejected', isSameProduct('iphone 15', 'GADGETSWRAP Printed Vinyl Skin Sticker for iPhone 15', 'typed') === false);
+t('lightning cable is rejected', isSameProduct('iphone 15', 'APFEN iPhone Fast Charging Type C to Lightning Cable (27 W)', 'typed') === false);
+
+if (failed) { console.error(`type gate: ${failed} failed`); process.exit(1); }
+console.log(`type gate total: ${passed} passed`);

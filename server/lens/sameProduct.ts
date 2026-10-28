@@ -55,6 +55,17 @@ export function primarySegment(title: string): string {
     .trim() || String(title || '');
 }
 
+/**
+ * Title scope for the "is this an accessory?" question. Only FREEBIE/bundle clauses are cut
+ * ("... with Charger", "... + 20W Adapter", "free case"): what follows a pipe or comma is
+ * still the seller's own description of the item, and that is where accessories hide —
+ * "Apple iPhone 18 Pro 5G | 512 GB | Burgundy | Mobile Cover" is a COVER at Rs.831
+ * (owner 27 Oct, second report: still compared a cover with a phone).
+ */
+export function accessoryScope(title: string): string {
+  return String(title || '').split(/\s+with\s+|\s+\+\s+|\s+free\s+|\s+freebie\s+|\s+comes\s+with\s+/i)[0].trim() || String(title || '');
+}
+
 /** Device types a title declares, matched on whole words so "smartwatch" is not a "watch" miss. */
 export function declaredTypes(title: string): Set<string> {
   const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
@@ -193,7 +204,7 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
   // Only the product part of the title decides "is this an accessory": Indian listings append
   // bundles ("... 128GB Storage) with Charger"), and a bundled charger must not disqualify
   // the phone itself.
-  if (!wantsAccessory && isAccessory(primarySegment(candidateTitle))) return false;
+  if (!wantsAccessory && isAccessory(accessoryScope(candidateTitle))) return false;
   // TYPE GATE (owner 27 Oct, "iphone search ne adapter dikhaya"): a listing that declares a
   // device type the user never asked for is a different product — a power bank, charger,
   // cable, case, earbuds or TV is never "the iPhone". Types stated BY the query are allowed.
@@ -266,7 +277,7 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
  * these rows as closest variants.
  */
 export function sharesIdentity(queryTitle: string, candidateTitle: string): boolean {
-  if (isAccessory(primarySegment(candidateTitle)) && !isAccessory(queryTitle)) return false;
+  if (isAccessory(accessoryScope(candidateTitle)) && !isAccessory(queryTitle)) return false;
   // Same type gate as isSameProduct: the closest-variant fallback must never surface a
   // different KIND of product (owner 27 Oct: adapter shown for an iPhone search).
   const wantTypes = declaredTypes(queryTitle);

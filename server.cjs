@@ -33895,6 +33895,7 @@ var init_showcase = __esm({
 // server/lens/sameProduct.ts
 var sameProduct_exports = {};
 __export(sameProduct_exports, {
+  accessoryScope: () => accessoryScope,
   capacitiesOf: () => capacitiesOf,
   declaredTypes: () => declaredTypes,
   identityTokens: () => identityTokens,
@@ -33907,6 +33908,9 @@ __export(sameProduct_exports, {
 });
 function primarySegment(title) {
   return String(title || "").split(/[|;]|\s-\s|\s+with\s+|\s+\+\s+|,|\s+free\s+/i)[0].trim() || String(title || "");
+}
+function accessoryScope(title) {
+  return String(title || "").split(/\s+with\s+|\s+\+\s+|\s+free\s+|\s+freebie\s+|\s+comes\s+with\s+/i)[0].trim() || String(title || "");
 }
 function declaredTypes(title) {
   const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
@@ -33958,7 +33962,7 @@ function capacitiesOf(title) {
 }
 function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   const wantsAccessory = isAccessory(pastedTitle);
-  if (!wantsAccessory && isAccessory(primarySegment(candidateTitle))) return false;
+  if (!wantsAccessory && isAccessory(accessoryScope(candidateTitle))) return false;
   const wantTypes = declaredTypes(pastedTitle);
   const haveTypes = declaredTypes(candidateTitle);
   for (const t of haveTypes) if (!wantTypes.has(t)) return false;
@@ -33991,7 +33995,7 @@ function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   return true;
 }
 function sharesIdentity(queryTitle, candidateTitle) {
-  if (isAccessory(primarySegment(candidateTitle)) && !isAccessory(queryTitle)) return false;
+  if (isAccessory(accessoryScope(candidateTitle)) && !isAccessory(queryTitle)) return false;
   const wantTypes = declaredTypes(queryTitle);
   for (const t of declaredTypes(candidateTitle)) if (!wantTypes.has(t)) return false;
   const need = identityTokens(queryTitle);
@@ -34500,6 +34504,31 @@ var init_assistantIntent = __esm({
     };
     FILLER = /\b(batao|bata\s*do|bataiye|dikhao|dikha\s*do|dikhaiye|dhundo|dhoondo|chahiye|chahie|kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|ka\s*rate|rate|rates|price|prices|fare|fares|kimat|keemat|please|pls|show|tell|me|find|search|check|what|is|are|the|of|for|a|an|i|want|need|looking|cheapest|sasta|sabse|best|flight|flights|airfare|ticket|tickets|bus|buses|hotel|hotels|cab|taxi)\b/gi;
     MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  }
+});
+
+// server/lens/pricePlausibility.ts
+function dropImplausiblePrices(rows) {
+  const priced = rows.filter((r) => Number.isFinite(r.price) && r.price > 0);
+  if (priced.length < 2) return { kept: rows, dropped: [] };
+  const prices = priced.map((r) => r.price).sort((a, b) => a - b);
+  const min = prices[0];
+  const max = prices[prices.length - 1];
+  if (max <= 0 || min / max >= 0.25) return { kept: rows, dropped: [] };
+  const median = prices[Math.floor(prices.length / 2)];
+  const cutoff = prices.length >= 3 ? median * 0.35 : max * 0.2;
+  const kept = [];
+  const dropped = [];
+  for (const r of rows) {
+    const isPriced = Number.isFinite(r.price) && r.price > 0;
+    if (isPriced && r.price < cutoff) dropped.push(r);
+    else kept.push(r);
+  }
+  if (!kept.some((r) => r.price > 0)) return { kept: rows, dropped: [] };
+  return { kept, dropped };
+}
+var init_pricePlausibility = __esm({
+  "server/lens/pricePlausibility.ts"() {
   }
 });
 
@@ -37263,6 +37292,7 @@ var init_routes = __esm({
     init_productLink();
     init_assistantIntent();
     init_sameProduct();
+    init_pricePlausibility();
     init_spellFix();
     init_dealScore();
     init_priceAlerts();
@@ -38022,33 +38052,81 @@ var init_routes = __esm({
       }
       const HARD_CAP_MS = paint2 ? 2600 : 600;
       let cappedOut = false;
-      const responses = await Promise.race([
-        Promise.all(searches),
-        new Promise((resolve) => {
-          let settled = 0;
-          searches.forEach((p) => {
-            p.then((r) => {
-              settled++;
-              if ((r?.results || []).length > 0) resolve([r]);
-              else if (settled === searches.length) resolve([]);
-            }).catch(() => {
-              settled++;
-              if (settled === searches.length) resolve([]);
-            });
-          });
-        }),
-        new Promise((resolve) => {
-          setTimeout(() => {
-            cappedOut = true;
-            resolve([]);
-          }, HARD_CAP_MS);
-        })
-      ]);
+      const COALESCE_MS = paint2 ? 2200 : 1e3;
+      const gathered = [];
+      let allSettled = false;
+      const allDone = Promise.all(
+        searches.map((p) => p.then((r) => {
+          if (r) gathered.push(r);
+        }).catch(() => {
+        }))
+      ).then(() => {
+        allSettled = true;
+      });
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (!done) {
+            done = true;
+            resolve();
+          }
+        };
+        allDone.then(finish);
+        setTimeout(() => {
+          if (!allSettled) cappedOut = true;
+          finish();
+        }, COALESCE_MS);
+        setTimeout(() => {
+          cappedOut = true;
+          finish();
+        }, HARD_CAP_MS);
+      });
+      const responses = gathered;
       const seenIds = /* @__PURE__ */ new Set();
       const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-      const all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf2(o) })).filter((x) => x.price > 0);
+      let all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf2(o) })).filter((x) => x.price > 0);
+      {
+        const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        const haveKey = new Set(all.map((x) => `${String(x.o.seller || "").toLowerCase()}|${String(x.o.title || "").toLowerCase()}`));
+        const now = Date.now();
+        for (const v of ["ecommerce", "grocery"]) {
+          const rows = await findCatalogueOffers2(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+          for (const r of rows) {
+            const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
+            const title = String(r.title || "");
+            const seller = String(r.seller || r.vendor || "");
+            if (price <= 0 || !title) continue;
+            if ((now - new Date(r.fetched_at).getTime()) / 1e3 > 6 * 3600) continue;
+            const k = `${seller.toLowerCase()}|${title.toLowerCase()}`;
+            if (haveKey.has(k)) continue;
+            haveKey.add(k);
+            all.push({
+              o: {
+                id: `catalogue-${r.id}`,
+                title,
+                seller,
+                sellerUrl: r.seller_url || "",
+                prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
+                attributes: {},
+                availability: r.availability || "unknown",
+                canonicalEntityId: r.canonical_entity_id ?? null
+              },
+              price
+            });
+          }
+        }
+      }
       const matchMode = textQuery ? "typed" : "strict";
-      const same = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).sort((a, b) => a.price - b.price);
+      const sameMatched = all.filter((x) => isSameProduct(lensQuery, String(x.o.title || ""), matchMode)).sort((a, b) => a.price - b.price);
+      const plausible = dropImplausiblePrices(sameMatched);
+      const same = plausible.kept;
+      if (plausible.dropped.length) {
+        log.info("ProductPage", "Withheld implausible prices", {
+          query: lensQuery,
+          dropped: plausible.dropped.slice(0, 3).map((x) => `${x.o?.seller}:${x.price}`),
+          kept: same.length
+        });
+      }
       const toRow = ({ o, price }) => {
         const attrs = o.attributes || {};
         const imgs = Array.from(new Set([
@@ -38078,7 +38156,7 @@ var init_routes = __esm({
         if (!hit) bySeller.set(k, { row: x, count: 1 });
         else hit.count += 1;
       }
-      const offers = [...bySeller.values()].sort((a, b) => a.row.price - b.row.price).slice(0, 30).map(({ row, count }) => ({ ...toRow(row), variantCount: count }));
+      let offers = [...bySeller.values()].sort((a, b) => a.row.price - b.row.price).slice(0, 30).map(({ row, count }) => ({ ...toRow(row), variantCount: count }));
       const offerSellers = new Set(offers.map((o) => String(o.seller).toLowerCase().trim()));
       for (const sd of seed) {
         const k = sd.seller.toLowerCase().trim();
@@ -38100,6 +38178,8 @@ var init_routes = __esm({
         });
       }
       offers.sort((a, b) => a.price - b.price);
+      const plausibleOffers = dropImplausiblePrices(offers);
+      if (plausibleOffers.dropped.length) offers = plausibleOffers.kept;
       const staleKey = `${lensQuery}|${pid}`;
       let staleSeconds = 0;
       if (offers.length > 0) {
@@ -38188,8 +38268,8 @@ var init_routes = __esm({
         if (!deepRefreshInFlight.has(key) && Date.now() - (deepRefreshLast.get(key) || 0) > 6e4) {
           deepRefreshInFlight.add(key);
           deepRefreshLast.set(key, Date.now());
-          void runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode, coldDeadlineMs: 4e3 }).catch(() => {
-          }).then(() => runSearch({ ...groceryInput, coldDeadlineMs: 4e3 }).catch(() => {
+          void runSearch({ query: lensQuery, vertical: "ecommerce", city: req.body?.city, pincode: req.body?.pincode, coldDeadlineMs: 25e3 }).catch(() => {
+          }).then(() => runSearch({ ...groceryInput, coldDeadlineMs: 12e3 }).catch(() => {
           })).finally(() => deepRefreshInFlight.delete(key));
         }
       }
