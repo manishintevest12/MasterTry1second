@@ -100,6 +100,11 @@ export function brandImageFor(o: NormalizedOffer): string | undefined {
  * logo in place of a product photo. Grocery/food rows without a real photo stay empty
  * and the UI renders its honest product placeholder instead of a misleading logo. */
 const PRODUCT_IMAGE_VERTICALS = new Set(['grocery', 'food']);
+// Owner 28 Oct ('results mai image ni aaya ... sirf agoda ka result'): hotel cards showed a
+// grey "a" tile because a photoless row fell back to the Agoda favicon — a booking-site logo
+// standing in for a property photo. Hotels join the same rule as products: real photo or
+// honest placeholder, never a merchant logo.
+const NO_LOGO_AS_PHOTO = new Set(['hotels']);
 // Owner 22 Oct: credit-card art is a PRODUCT photo — a bank logo must never
 // stand in for it either (the FD variants of Tata Neu/PhonePe cards showed the
 // HDFC logo stretched where the web showed the card). Borrowed sibling art
@@ -108,11 +113,13 @@ const CARD_ART_VERTICALS = new Set(['creditcards']);
 
 /** Attach a brand image only where the offer has none of its own. Never overwrites a real product/hotel photo. */
 export function withBrandImages(offers: NormalizedOffer[]): NormalizedOffer[] {
+  const skipLogoFor = (o: NormalizedOffer) => NO_LOGO_AS_PHOTO.has(String(o.vertical));
   for (const o of offers) {
     const a: any = o.attributes || (o.attributes = {} as any);
     if (a.image_url || a.image) continue;
     if (PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
     if (CARD_ART_VERTICALS.has(String(o.vertical))) continue;
+    if (skipLogoFor(o)) continue; // hotels: real photo or placeholder, never a booking-site logo
     const img = brandImageFor(o);
     if (img) { a.image_url = img; a.image_is_brand_logo = 'true'; }
   }
@@ -126,7 +133,9 @@ const FAVICON_URL = /s2\/favicons|brand-logos\//;
  * resurface as fake product photos on grocery/food cards. */
 export function stripMerchantLogoFallbacks(offers: NormalizedOffer[]): NormalizedOffer[] {
   for (const o of offers) {
-    if (!PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
+    // Hotels included from 28 Oct: catalogue rows written before the rule carry the
+    // booking site's favicon as the property photo (the grey "a" tile in the report).
+    if (!PRODUCT_IMAGE_VERTICALS.has(String(o.vertical)) && !NO_LOGO_AS_PHOTO.has(String(o.vertical))) continue;
     const a: any = o.attributes || {};
     const isLogo = (u?: string) => !u || a.image_is_brand_logo === 'true' || FAVICON_URL.test(u);
     if (isLogo(a.image_url)) { delete a.image_url; delete a.image_is_brand_logo; delete a.image_is_lender_logo; }

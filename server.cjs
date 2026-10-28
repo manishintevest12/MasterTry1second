@@ -28893,11 +28893,13 @@ function brandImageFor(o) {
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : void 0;
 }
 function withBrandImages(offers) {
+  const skipLogoFor = (o) => NO_LOGO_AS_PHOTO.has(String(o.vertical));
   for (const o of offers) {
     const a = o.attributes || (o.attributes = {});
     if (a.image_url || a.image) continue;
     if (PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
     if (CARD_ART_VERTICALS.has(String(o.vertical))) continue;
+    if (skipLogoFor(o)) continue;
     const img = brandImageFor(o);
     if (img) {
       a.image_url = img;
@@ -28908,7 +28910,7 @@ function withBrandImages(offers) {
 }
 function stripMerchantLogoFallbacks(offers) {
   for (const o of offers) {
-    if (!PRODUCT_IMAGE_VERTICALS.has(String(o.vertical))) continue;
+    if (!PRODUCT_IMAGE_VERTICALS.has(String(o.vertical)) && !NO_LOGO_AS_PHOTO.has(String(o.vertical))) continue;
     const a = o.attributes || {};
     const isLogo = (u) => !u || a.image_is_brand_logo === "true" || FAVICON_URL.test(u);
     if (isLogo(a.image_url)) {
@@ -29020,7 +29022,7 @@ async function withMerchantLogos(offers) {
   }
   return offers;
 }
-var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, PRODUCT_IMAGE_VERTICALS, CARD_ART_VERTICALS, FAVICON_URL, LENDER_VERTICAL_IDS, FD_VARIANT_RE, normCardTitle, uploadedLogosCache;
+var AIRLINE_IATA, BRAND_DOMAIN, LENDER_DOMAIN, LENDER_VERTICALS, DATA_HOST, HD_LOGO, PRODUCT_IMAGE_VERTICALS, NO_LOGO_AS_PHOTO, CARD_ART_VERTICALS, FAVICON_URL, LENDER_VERTICAL_IDS, FD_VARIANT_RE, normCardTitle, uploadedLogosCache;
 var init_brandImage = __esm({
   "server/pipeline/brandImage.ts"() {
     init_lenderLogo();
@@ -29183,6 +29185,7 @@ var init_brandImage = __esm({
       [/big ?basket|bb ?now/i, "/brand-logos/bigbasket.png"]
     ];
     PRODUCT_IMAGE_VERTICALS = /* @__PURE__ */ new Set(["grocery", "food"]);
+    NO_LOGO_AS_PHOTO = /* @__PURE__ */ new Set(["hotels"]);
     CARD_ART_VERTICALS = /* @__PURE__ */ new Set(["creditcards"]);
     FAVICON_URL = /s2\/favicons|brand-logos\//;
     LENDER_VERTICAL_IDS = /* @__PURE__ */ new Set(["loans", "insurance", "account"]);
@@ -30427,7 +30430,7 @@ async function findCatalogueOffers(vertical, opts = {}) {
       where += " AND (location_pincode = ? OR location_pincode IS NULL)";
       params.push(opts.pincode);
     } else if (opts.city) {
-      where += " AND (location_city = ? OR location_city IS NULL)";
+      where += opts.strictCity ? " AND location_city = ?" : " AND (location_city = ? OR location_city IS NULL)";
       params.push(opts.city);
     }
     params.push(opts.limit ?? 50);
@@ -30989,7 +30992,13 @@ function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID");
 }
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, fallbackMaxAgeSec) {
-  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  const CITY_VERTICALS = /* @__PURE__ */ new Set(["hotels", "grocery", "food", "cab", "movies", "movie"]);
+  const rows = await findCatalogueOffers(vertical, {
+    pincode: input.pincode,
+    city: input.city,
+    limit: 40,
+    strictCity: CITY_VERTICALS.has(vertical) && Boolean(input.city)
+  });
   const now = Date.now();
   const strict = filterRowsByAge(rows, maxAgeSec, now);
   const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(rows, fallbackMaxAgeSec, now);
@@ -30999,6 +31008,13 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, f
   }
   if (vertical === "bus" || vertical === "flights" || vertical === "cab") {
     offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
+  }
+  if (vertical === "hotels") {
+    const withPhoto = offers.filter((o) => {
+      const u = String(o.attributes?.image_url || o.attributes?.image || "");
+      return u && !/s2\/favicons|brand-logos\//.test(u);
+    });
+    if (withPhoto.length >= 4) offers = withPhoto;
   }
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
 }

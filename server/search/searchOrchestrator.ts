@@ -368,7 +368,15 @@ async function freshCatalogueOffers(
   maxAgeSec = 3600,
   fallbackMaxAgeSec?: number,
 ): Promise<any[]> {
-  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  // City-driven verticals (hotels/grocery/food/cab/movies) must prove the city they are
+  // borrowed for; route verticals keep their own stricter route gate below.
+  const CITY_VERTICALS = new Set(['hotels', 'grocery', 'food', 'cab', 'movies', 'movie']);
+  const rows = await findCatalogueOffers(vertical, {
+    pincode: input.pincode,
+    city: input.city,
+    limit: 40,
+    strictCity: CITY_VERTICALS.has(vertical) && Boolean(input.city),
+  });
   const now = Date.now();
   const strict = filterRowsByAge(rows, maxAgeSec, now);
   // Only reach for older rows when the strict window is thin; the caller needs >=4 rows
@@ -388,6 +396,17 @@ async function freshCatalogueOffers(
     // bus/flights: a borrowed cab row must name the queried origin AND
     // destination, or the floor is skipped for that row.
     offers = offers.filter((o) => routeFloorMatches(parsed.rawQuery ?? input.query, o));
+  }
+  // Hotel art gate (owner 28 Oct, 'results mai image ni aaya'): catalogue rows written by
+  // pre-gallery batches carry no photo, so the floor painted a booking-site logo where the
+  // property should be. Photo-bearing rows win the floor; photoless rows are allowed only
+  // when nothing better exists (they then render the honest placeholder, never a logo).
+  if (vertical === 'hotels') {
+    const withPhoto = offers.filter((o: any) => {
+      const u = String(o.attributes?.image_url || o.attributes?.image || '');
+      return u && !/s2\/favicons|brand-logos\//.test(u);
+    });
+    if (withPhoto.length >= 4) offers = withPhoto;
   }
   // Bank search bar (owner 21 Oct): a query that NAMES a provider must not serve every
   // other bank's catalogue rows during the instant cold-start window. Apply the SAME

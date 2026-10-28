@@ -94,7 +94,7 @@ export interface CatalogueRow {
 /** L3 catalogue lookup: eligible fresh offers for a vertical/location. */
 export async function findCatalogueOffers(
   vertical: string,
-  opts: { pincode?: string; city?: string; limit?: number } = {},
+  opts: { pincode?: string; city?: string; limit?: number; strictCity?: boolean } = {},
 ): Promise<CatalogueRow[]> {
   const store = getStore();
   try {
@@ -105,7 +105,10 @@ export async function findCatalogueOffers(
       where += ' AND (location_pincode = ? OR location_pincode IS NULL)';
       params.push(opts.pincode);
     } else if (opts.city) {
-      where += ' AND (location_city = ? OR location_city IS NULL)';
+      // Owner 28 Oct ('Indore dhoondha, Goa ke hotels aaye'): the NULL branch let rows with
+      // no city prove nothing yet be borrowed for ANY city. A city-driven floor must be
+      // explicit: strictCity requires the row's own city, so wrong-city rows can never paint.
+      where += opts.strictCity ? ' AND location_city = ?' : ' AND (location_city = ? OR location_city IS NULL)';
       params.push(opts.city);
     }
     params.push(opts.limit ?? 50);
