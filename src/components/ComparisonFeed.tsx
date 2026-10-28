@@ -2,6 +2,7 @@ import { AdBannerSlot } from './AdBannerSlot';
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { parseSmartFilter, matchSmartFilter } from '../utils/smartFilter';
+import { sameVertical } from '../lib/verticalAlias';
 import { PriceAdviceSidebar } from './PriceAdviceSidebar';
 import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
@@ -14,7 +15,7 @@ import { NativeAdCard } from './NativeAdCard';
 import { CreditCardCard } from './CreditCardCard';
 import { CreditCardsCompareModal } from './CreditCardsCompareModal';
 import { VERTICAL_META } from '../data/mockData';
-import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X, ShoppingCart } from 'lucide-react';
+import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X, ShoppingCart, Filter } from 'lucide-react';
 import { WarpBanner, WarpResultsLoader } from './WarpLoader';
 import { feedProgressGate } from '../lib/feedProgressGate';
 
@@ -120,7 +121,10 @@ export const ComparisonFeed: React.FC = () => {
         const registry = accountItems.filter((it: any) => !seen.has(`${String(it.title || '').toLowerCase()}|${it.primaryPrice || 0}`));
         return [...live, ...registry];
       })()
-    : items.filter((it) => it.vertical === vertical);
+    : items.filter((it) => sameVertical(it.vertical, vertical));
+  // Rows the engine actually returned for this vertical, before any filter runs. The gate
+  // needs this to tell "your filters hid everything" apart from "nothing was found".
+  const availableRows = filtered.length;
 
   // Filter by selected category
   if (selectedCategory && selectedCategory !== 'All' && !selectedCategory.toLowerCase().includes('all')) {
@@ -239,7 +243,13 @@ export const ComparisonFeed: React.FC = () => {
   // still in state, so every new search opens on the engaging panel instead of silently
   // swapping in rows of the old city with no feedback at all.
   const liveProgress = Boolean(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh);
-  const feedView = feedProgressGate({ rows: sorted.length, liveProgress, isNewSearchPending: Boolean(isNewSearchPending) });
+  const feedView = feedProgressGate({
+    rows: sorted.length,
+    availableRows,
+    liveProgress,
+    isNewSearchPending: Boolean(isNewSearchPending),
+    filtersActive: Boolean(smartFilterText.trim()) || Boolean(selectedCategory && selectedCategory !== 'All'),
+  });
 
   return (
     <div id="t1s-results-top" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 scroll-mt-16">
@@ -316,7 +326,33 @@ export const ComparisonFeed: React.FC = () => {
         <main className="flex-1 w-full min-w-0">
           <SortAndSummaryTabs />
 
-          {feedView !== 'rows' ? (
+          {feedView === 'filtered' ? (
+            // Rows ARE here - the user's own filter is hiding all of them. Showing the
+            // "No matching options found" page here is what broke trust (owner 28 Oct):
+            // the tab badge said 28 while the feed claimed nothing existed. Say what
+            // actually happened and give one tap back to the results.
+            <div className="bg-white rounded-xl border border-amber-200 p-8 sm:p-12 text-center">
+              <Filter className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-slate-900 mb-1">
+                Your filter is hiding {availableRows.toLocaleString('en-IN')} live {meta.name} result{availableRows === 1 ? '' : 's'}
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
+                We found real offers for this search, but none of them match
+                {smartFilterText.trim() ? ` "${smartFilterText.trim()}"` : ''}
+                {smartFilterText.trim() && selectedCategory && selectedCategory !== 'All' ? ' and' : ''}
+                {selectedCategory && selectedCategory !== 'All' ? ` the "${selectedCategory}" category` : ''}.
+                Clear it to see every price we collected.
+              </p>
+              <button
+                type="button"
+                onClick={() => { clearSmartFilter(); setSelectedCategory('All'); }}
+                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span>Show all {availableRows.toLocaleString('en-IN')} results</span>
+              </button>
+            </div>
+          ) : feedView !== 'rows' ? (
             feedView === 'progress' ? (
               // First open: default-city results are being fetched live. Never show a
               // dead "no options" page while the search is still running: the chain of

@@ -9,6 +9,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { sameVertical } from '../lib/verticalAlias';
 import { VERTICAL_META } from '../data/mockData';
 import { SponsoredSidebarTopPick } from './SponsoredSidebarTopPick';
 import { VoiceSearchButton } from './VoiceSearchButton';
@@ -26,7 +27,9 @@ export const PriceAdviceSidebar: React.FC = () => {
   } = useApp();
 
   const meta = VERTICAL_META[vertical] || VERTICAL_META.flights;
-  const currentVerticalItems = items.filter((it) => it.vertical === vertical);
+  // Same-vertical comparison, alias-aware: the engine can tag movie rows 'movies' while the
+  // tab is 'movie', and a strict === here said "still loading" next to a full results grid.
+  const currentVerticalItems = items.filter((it) => sameVertical(it.vertical, vertical));
 
   // Check if primary item or all items are tracked
   const firstItemId = currentVerticalItems[0]?.id;
@@ -70,8 +73,12 @@ export const PriceAdviceSidebar: React.FC = () => {
   const inr = (n: number) => `\u20B9${n.toLocaleString('en-IN')}`;
 
   let advice: 'book_now' | 'wait' | 'fair_price' = 'book_now';
-  let headline = 'Live prices are still loading for this search.';
-  let details = 'Advice appears once live offers with prices arrive from the sites.';
+  let headline = currentVerticalItems.length
+    ? 'These prices are app-only, so the sites do not publish them.'
+    : 'Live prices are still loading for this search.';
+  let details = currentVerticalItems.length
+    ? 'We found the live listings, but the seller shows the fare inside its own app. Tap a card to see it there.'
+    : 'Advice appears once live offers with prices arrive from the sites.';
   if (medianPrice > 0 && primaryItem?.primaryPrice) {
     const ratio = primaryItem.primaryPrice / medianPrice;
     if (ratio <= 0.9) {

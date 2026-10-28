@@ -1,4 +1,5 @@
 import { pollDecision } from '../lib/searchPolling';
+import { canonicalizeRows, sameVertical, canonicalVertical } from '../lib/verticalAlias';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 // canvas-confetti (~30KB): only needed when the Spin & Earn wheel actually wins.
 // Dynamic import keeps it out of the landing-page critical path (TBT fix).
@@ -891,6 +892,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // pipeline at 3-4s, so a 2s gap burned a whole cycle on an empty first answer. A 1.2s
   // cadence reaches the warmed cache sooner without extra load (the pipeline is shared).
   const MAX_PENDING_POLLS = 10; // ~12s of background acquisition before we stop promising results
+  // Owner 28 Oct ("loader ke baad 'No matching options found' nahi aana chahiye, result 100%"):
+  // a search that settles on zero rows is not the end of the story - the pipeline often lands
+  // in cache a few seconds later. Instead of leaving the user on a dead page, quietly re-ask
+  // a few times and swap the rows in the moment they exist. Silent: it never re-raises the
+  // progress panel or clears anything the user is looking at.
+  const lateWatchCountRef = useRef(0);
+  const lateWatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const LATE_WATCH_ATTEMPTS = 3;
+  const LATE_WATCH_DELAY_MS = 4000;
   const [sourcesReport, setSourcesReport] = useState<Record<string, SourcesReport>>({});
   const [lastScrapeInfo, setLastScrapeInfo] = useState<{
     timestamp: string;
@@ -905,6 +915,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
 
   /** YYYY-MM-DD travel dates for date-sensitive verticals (hotels/flights/bus/cab). */
+  /**
+   * Owner 28 Oct ("ek baar loader load hua to result 100%, ye trust break karta hai"):
+   * when a settled search comes back with zero rows, keep listening in the background for a
+   * short, bounded window and fill the feed the moment the pipeline's cached answer lands.
+   * Read-only and silent: it never re-opens the progress panel, never clears the user's view,
+   * and stops after LATE_WATCH_ATTEMPTS or as soon as rows arrive.
+   */
+  const scheduleLateRowWatch = (
+    watchVertical: string,
+    body: { query: string; city?: string; pincode?: string; locality?: string; coordinates?: unknown; travelDates?: unknown },
+  ) => {
+    if (lateWatchCountRef.current >= LATE_WATCH_ATTEMPTS) return;
+    if (lateWatchTimerRef.current) clearTimeout(lateWatchTimerRef.current);
+    lateWatchCountRef.current += 1;
+    lateWatchTimerRef.current = setTimeout(async () => {
+      lateWatchTimerRef.current = null;
+      try {
+        const r = await fetch('/api/scrape/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vertical: watchVertical, ...body }),
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        const rows = canonicalizeRows((data.results || []) as any[]);
+        if (rows.length === 0) {
+          // The pipeline says it is still working: keep the window open rather than counting it down.
+          if (data.pendingRefresh) lateWatchCountRef.current = Math.min(lateWatchCountRef.current, 1);
+          scheduleLateRowWatch(watchVertical, body);
+          return;
+        }
+        // Rows exist after all: they belong to the search the user is still looking at.
+        lateWatchCountRef.current = 0;
+        setItems((prev) => {
+          const others = prev.filter((it) => !sameVertical(it.vertical, watchVertical));
+          return [...rows, ...others];
+        });
+        setSourcesReport((prev) => ({
+          ...prev,
+          [watchVertical]: {
+            ...(prev[watchVertical] || { query: body.query, at: Date.now(), attempted: [], succeeded: [], failed: [] }),
+            resultsCount: data.resultsCount ?? rows.length,
+            servedFrom: data.servedFrom,
+            pendingRefresh: false,
+          },
+        }));
+      } catch { /* offline: the honest empty state stays */ }
+    }, LATE_WATCH_DELAY_MS);
+  };
+
   const triggerLiveLocationScrape = async (
     overrideQuery?: string,
     overrideLoc?: UserLocationState,
@@ -954,6 +1014,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };
     // Any new search (city, query, dates, vertical) raises the progress panel immediately.
     setPendingSearchKey(`${vertical}|${targetQuery}|${targetLoc.city || ''}|${targetLoc.pincode || ''}|${travel.depart || ''}`);
+    // A fresh search owns the late-row watch: cancel any earlier one so a previous vertical's
+    // retry can never inject rows into this one.
+    if (lateWatchTimerRef.current) { clearTimeout(lateWatchTimerRef.current); lateWatchTimerRef.current = null; }
+    lateWatchCountRef.current = 0;
 
     // A route with the same origin and destination (e.g. Delhi -> Delhi) is not a real trip:
     // never ask any source and never keep rows of an earlier, different route on screen.
@@ -964,7 +1028,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const code = (x: string) => (x.match(/\(([A-Za-z]{3})\)/) || [])[1]?.toUpperCase();
         const a = sides[0], b = sides[1];
         if ((code(a) && code(a) === code(b)) || (norm(a) && norm(a) === norm(b))) {
-          setItems((prev) => prev.filter((it) => it.vertical !== vertical));
+          setItems((prev) => prev.filter((it) => !sameVertical(it.vertical, vertical)));
           setSourcesReport((prev) => ({ ...prev, [vertical]: { query: targetQuery, at: Date.now(), attempted: [], succeeded: [], failed: [], resultsCount: 0, servedFrom: 'validation' } }));
           addToast('alert', 'Origin and destination are the same', 'Please choose two different places to search.');
           setIsScrapingLive(false);
@@ -1037,8 +1101,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           // Owner 28 Oct (Hotels stuck on skeletons): while the pipeline is STILL acquiring
           // (pendingRefresh) an empty answer must not wipe the rows already on screen —
           // that is what turned a normal poll gap into an endless loading page with no data.
-          setItems((prev) => prev.filter((it) => it.vertical !== vertical));
+          setItems((prev) => prev.filter((it) => !sameVertical(it.vertical, vertical)));
           setPendingSearchKey(null);
+          scheduleLateRowWatch(vertical, {
+            query: targetQuery,
+            city: targetLoc.city,
+            pincode: targetLoc.pincode,
+            locality: targetLoc.locality,
+            coordinates: targetLoc.coordinates,
+            travelDates: dateSensitive ? travel : undefined,
+          });
         }
         if (data.results && data.results.length > 0) {
           setPendingSearchKey(null);
@@ -1046,9 +1118,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // A search shows ONLY what was searched. Items of this vertical from earlier
             // searches or the catalogue are replaced by the fresh, relevance-ranked results
             // (other verticals are untouched). Identical dish+seller pairs are collapsed.
-            const otherVerticals = prev.filter((it) => it.vertical !== vertical);
+            // Rows are canonicalised first (movies -> movie): the engine answers a `movies`
+            // request with rows tagged `movies`, and the feed filters on `movie`, which is how
+            // a vertical holding 28 live rows rendered "No matching options found" (owner 28 Oct).
+            const otherVerticals = prev.filter((it) => !sameVertical(it.vertical, vertical));
             const seen = new Set<string>();
-            const fresh = (data.results as any[]).filter((it) => {
+            const fresh = canonicalizeRows(data.results as any[]).filter((it) => {
               const key = `${it.title}|${it.subtitle}|${it.primaryPrice}`;
               if (seen.has(key)) return false;
               seen.add(key);
@@ -1104,7 +1179,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       { id: 'flights', query: 'Indore (IDR) to Delhi (DEL)', dated: true },
       { id: 'bus', query: `${city} to Bhopal`, dated: true },
       { id: 'cab', query: `${city} to Bhopal`, dated: true },
-      { id: 'movies', query: 'movies', dated: true },
+      { id: 'movie', query: 'movies', dated: true },
       { id: 'loans', query: 'personal loan' },
       { id: 'insurance', query: 'health insurance' },
       { id: 'creditcards', query: 'hdfc credit card' },
@@ -1132,12 +1207,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (!r.ok) continue;
           const data = await r.json();
           if (cancelled || !data.results || data.results.length === 0) continue;
-          const vid = p.id;
+          const vid = canonicalVertical(p.id);
           setItems((prev) => {
-            const hasRows = prev.some((it) => it.vertical === vid || (vid === 'movies' && it.vertical === ('movie' as any)));
+            const hasRows = prev.some((it) => sameVertical(it.vertical, vid));
             if (hasRows) return prev; // user (or catalogue) already has data for this vertical
             const seen = new Set<string>();
-            const fresh = (data.results as any[]).filter((it) => {
+            const fresh = canonicalizeRows(data.results as any[]).filter((it) => {
               const k = `${it.title}|${it.subtitle}|${it.primaryPrice}`;
               if (seen.has(k)) return false;
               seen.add(k);

@@ -43,7 +43,9 @@ const REASON: Record<string, string> = {
 export default function SourcesPanel({ vertical }: { vertical: string }) {
   const { sourcesReport, isScrapingLive } = useApp();
   const [open, setOpen] = useState(true);
-  const key = vertical === 'movie' ? 'movies' : vertical;
+  // Sources are keyed by the vertical the engine was asked for; both spellings of the movie
+  // vertical exist in the codebase, so accept either one instead of silently showing nothing.
+  const key = sourcesReport[vertical] ? vertical : vertical === 'movie' ? 'movies' : vertical;
   const rep = sourcesReport[key];
   if (!rep) return isScrapingLive ? (
     <div className="mx-2 mt-2 text-[11px] text-slate-500 animate-pulse">Asking each website for live prices…</div>
