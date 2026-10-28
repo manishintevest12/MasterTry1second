@@ -843,8 +843,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [pendingAssistantSearch, setPendingAssistantSearch] = useState<{ vertical: string; query: string; date?: string } | null>(null);
   const [productPageRequest, setProductPageRequest] = useState<{ input?: string; query?: string; nonce: number; seed?: Array<{ seller: string; title: string; price: number; listPrice?: number; image?: string | null; url: string }>; gallery?: string[] } | null>(null);
 
+  // Canonical path per vertical (owner 28 Oct): clicking Hotels used to leave the URL at
+  // "www.try1second.com", so the page could not be shared, bookmarked or indexed as
+  // /hotels. Every vertical switch now writes its own path, and the popstate handler
+  // (below) already restores the vertical when the user goes Back.
   const handleSetVertical = (newVertical: VerticalId) => {
     setVertical(newVertical);
+    const paths: Record<string, string> = {
+      flights: '/flights', hotels: '/hotels', bus: '/bus', ecommerce: '/ecommerce',
+      grocery: '/grocery', food: '/food', movie: '/movies', loans: '/loans',
+      insurance: '/insurance', creditcards: '/credit-cards', account: '/bank-accounts',
+      cab: '/cabs', banking: '/banking',
+    };
+    const target = paths[String(newVertical)];
+    const current = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+    if (target && current !== target && !/admin|merchant/.test(current)) {
+      try { window.history.pushState({ vertical: newVertical }, '', target); } catch { /* history is optional */ }
+    }
     setSelectedCategory('All');
     // Sticky last search (owner 24 Oct): coming back to a vertical refills
     // ITS last query, never a blank box that re-seeds the default route.
@@ -988,8 +1003,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             void triggerLiveLocationScrape();
           }, 2000);
         }
-        if (!data.results || data.results.length === 0) {
-          // A search shows ONLY what was searched: drop stale rows of an earlier query for this vertical.
+        if ((!data.results || data.results.length === 0) && !data.pendingRefresh) {
+          // A search shows ONLY what was searched: drop stale rows of an earlier query.
+          // Owner 28 Oct (Hotels stuck on skeletons): while the pipeline is STILL acquiring
+          // (pendingRefresh) an empty answer must not wipe the rows already on screen —
+          // that is what turned a normal poll gap into an endless loading page with no data.
           setItems((prev) => prev.filter((it) => it.vertical !== vertical));
         }
         if (data.results && data.results.length > 0) {

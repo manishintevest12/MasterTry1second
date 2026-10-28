@@ -610,6 +610,30 @@ apiRouter.get('/history', async (req, res) => {
 });
 
 // ============ Search pipeline (Section 6) ============
+
+/**
+ * LAST-CHANCE ROWS (owner 28 Oct, "hotels loading bahut der, results nahi aa rahe"):
+ * when the 2.4s acquisition race times out the endpoint used to answer with an EMPTY
+ * result set and pendingRefresh:true. The client then kept polling, and between polls the
+ * screen had nothing to draw — an endless skeleton. Catalogue rows for this query are real,
+ * previously verified prices, so we now spend one short bounded attempt to fetch them and
+ * answer with rows. Costs at most `ms` (default 500ms), keeping the whole response inside
+ * the owner's 3s ceiling.
+ */
+async function lastChanceRows(input: SearchInput, ms = 500): Promise<any | null> {
+  try {
+    const attempt = runSearchFast({ ...input, coldDeadlineMs: Math.max(250, ms - 120) }, Math.max(250, ms - 120));
+    const raced = await Promise.race([
+      attempt,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+    ]) as any | null;
+    const rows = raced?.results?.length || 0;
+    return rows > 0 ? raced : null;
+  } catch {
+    return null;
+  }
+}
+
 apiRouter.post('/search', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || '').slice(0, 300),
@@ -646,6 +670,15 @@ apiRouter.post('/search', async (req, res) => {
     new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
   if (!response) {
+    const fallback = await lastChanceRows(input);
+    if (fallback) {
+      return res.json({
+        ...fallback,
+        pendingRefresh: true,
+        honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
+        latencyMs: Date.now() - searchStart,
+      });
+    }
     return res.json({
       results: [],
       honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
@@ -977,6 +1010,16 @@ apiRouter.post('/scrape/live', async (req, res) => {
     new Promise<null>((resolve) => setTimeout(() => resolve(null), resultDeadlineMs())),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
   if (!response) {
+    // Never answer a live search with nothing while we hold verified rows for it.
+    const fallback = await lastChanceRows(input);
+    if (fallback) {
+      return res.json({
+        ...fallback,
+        pendingRefresh: true,
+        honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
+        latencyMs: Date.now() - searchStart,
+      });
+    }
     return res.json({
       results: [],
       honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',

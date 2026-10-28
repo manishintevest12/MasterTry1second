@@ -36883,6 +36883,19 @@ async function buildQuickAppsList() {
     throw new Error("quick_apps_build_failed");
   }
 }
+async function lastChanceRows(input, ms = 500) {
+  try {
+    const attempt = runSearchFast({ ...input, coldDeadlineMs: Math.max(250, ms - 120) }, Math.max(250, ms - 120));
+    const raced = await Promise.race([
+      attempt,
+      new Promise((resolve) => setTimeout(() => resolve(null), ms))
+    ]);
+    const rows = raced?.results?.length || 0;
+    return rows > 0 ? raced : null;
+  } catch {
+    return null;
+  }
+}
 function hotelSellerLabel(o, rawSeller) {
   if (!o || String(o.vertical) !== "hotels") return rawSeller;
   const t = String(o.title || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -37650,6 +37663,15 @@ var init_routes = __esm({
         new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
       ]);
       if (!response) {
+        const fallback = await lastChanceRows(input);
+        if (fallback) {
+          return res.json({
+            ...fallback,
+            pendingRefresh: true,
+            honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
+            latencyMs: Date.now() - searchStart
+          });
+        }
         return res.json({
           results: [],
           honestNotice: "Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.",
@@ -37743,6 +37765,15 @@ var init_routes = __esm({
         new Promise((resolve) => setTimeout(() => resolve(null), resultDeadlineMs()))
       ]);
       if (!response) {
+        const fallback = await lastChanceRows(input);
+        if (fallback) {
+          return res.json({
+            ...fallback,
+            pendingRefresh: true,
+            honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
+            latencyMs: Date.now() - searchStart
+          });
+        }
         return res.json({
           results: [],
           honestNotice: "Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.",
