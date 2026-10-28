@@ -2165,12 +2165,12 @@ function extractAssignedJson(html, marker) {
   if (at < 0) return null;
   const eq = html.indexOf("=", at);
   if (eq < 0) return null;
-  let depth = 0, start = -1, inStr = false, esc4 = false;
+  let depth = 0, start = -1, inStr = false, esc5 = false;
   for (let i = eq + 1; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc4) esc4 = false;
-      else if (ch === "\\") esc4 = true;
+      if (esc5) esc5 = false;
+      else if (ch === "\\") esc5 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -2285,12 +2285,12 @@ function parseMyntra(html, source, pageUrl) {
     const start = /window\.__myx\s*=\s*\{/.exec(html);
     if (start) {
       const from = start.index + start[0].length - 1;
-      let depth = 0, inStr = false, esc4 = false, end = -1;
+      let depth = 0, inStr = false, esc5 = false, end = -1;
       for (let i = from; i < html.length; i++) {
         const ch = html[i];
         if (inStr) {
-          if (esc4) esc4 = false;
-          else if (ch === "\\") esc4 = true;
+          if (esc5) esc5 = false;
+          else if (ch === "\\") esc5 = true;
           else if (ch === '"') inStr = false;
           continue;
         }
@@ -3180,12 +3180,12 @@ function extractRelianceState(html) {
   if (eq < 0) return null;
   const s = html.slice(eq + 1).trimStart();
   if (s[0] !== "{") return null;
-  let depth = 0, inStr = false, esc4 = false, end = -1;
+  let depth = 0, inStr = false, esc5 = false, end = -1;
   for (let k = 0; k < s.length; k++) {
     const ch = s[k];
     if (inStr) {
-      if (esc4) esc4 = false;
-      else if (ch === "\\") esc4 = true;
+      if (esc5) esc5 = false;
+      else if (ch === "\\") esc5 = true;
       else if (ch === '"') inStr = false;
     } else if (ch === '"') inStr = true;
     else if (ch === "{") depth++;
@@ -4304,8 +4304,8 @@ async function fetchRateFrom(source) {
     const r = await cffiFetch(source, { timeoutMs: 12e3, headers: { Accept: "application/json" } });
     if (r.status !== 200) return null;
     const d = JSON.parse(r.body);
-    const inr = Number(d?.rates?.INR);
-    return Number.isFinite(inr) && inr > 20 && inr < 200 ? inr : null;
+    const inr2 = Number(d?.rates?.INR);
+    return Number.isFinite(inr2) && inr2 > 20 && inr2 < 200 ? inr2 : null;
   } catch {
     return null;
   }
@@ -4918,12 +4918,12 @@ function extractInitialState(body) {
   while (i < body.length && /\s/.test(body[i])) i++;
   if (body[i] !== "{") return null;
   const objStart = i;
-  let depth = 0, inStr = false, esc4 = false, end = -1;
+  let depth = 0, inStr = false, esc5 = false, end = -1;
   for (; i < body.length; i++) {
     const c = body[i];
     if (inStr) {
-      if (esc4) esc4 = false;
-      else if (c === "\\") esc4 = true;
+      if (esc5) esc5 = false;
+      else if (c === "\\") esc5 = true;
       else if (c === '"') inStr = false;
       continue;
     }
@@ -5054,12 +5054,12 @@ function parseMmtHotelLanding(body) {
       continue;
     }
     const objStart = j;
-    let depth = 0, inStr = false, esc4 = false, end = -1;
+    let depth = 0, inStr = false, esc5 = false, end = -1;
     for (; j < body.length; j++) {
       const c = body[j];
       if (inStr) {
-        if (esc4) esc4 = false;
-        else if (c === "\\") esc4 = true;
+        if (esc5) esc5 = false;
+        else if (c === "\\") esc5 = true;
         else if (c === '"') inStr = false;
         continue;
       }
@@ -9739,15 +9739,15 @@ function extractAaDataSchedule(pageHtml) {
   if (i < 0) return null;
   const start = pageHtml.indexOf("{", i + 20);
   if (start < 0) return null;
-  let depth = 0, end = -1, inStr = false, esc4 = false;
+  let depth = 0, end = -1, inStr = false, esc5 = false;
   for (let k = start; k < pageHtml.length; k++) {
     const c = pageHtml[k];
-    if (esc4) {
-      esc4 = false;
+    if (esc5) {
+      esc5 = false;
       continue;
     }
     if (c === "\\") {
-      esc4 = true;
+      esc5 = true;
       continue;
     }
     if (c === '"') {
@@ -17861,8 +17861,8 @@ function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
   const norm3 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
-  const esc4 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const rx = new RegExp(`^${esc4}\\b`);
+  const esc5 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rx = new RegExp(`^${esc5}\\b`);
   return cities.find((c) => norm3(c.name) === t) || cities.find((c) => rx.test(norm3(c.name))) || cities.find((c) => norm3(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
@@ -18806,11 +18806,11 @@ function uberIndiaCityFor(place) {
   const t = canonCity(place);
   const hit = BY_CANON.get(t);
   if (hit) return hit;
-  const esc4 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc5 = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   let best = null;
   let bestLen = 0;
   for (const [k, v] of BY_CANON) {
-    if (new RegExp(`\\b${esc4(k)}\\b`).test(t) || new RegExp(`\\b${esc4(t)}\\b`).test(k)) {
+    if (new RegExp(`\\b${esc5(k)}\\b`).test(t) || new RegExp(`\\b${esc5(t)}\\b`).test(k)) {
       if (k.length > bestLen) {
         best = v;
         bestLen = k.length;
@@ -32774,7 +32774,7 @@ function errorPage(title, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><meta name="robots" content="noindex,nofollow"></head><body style="margin:0;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="text-align:center;max-width:420px;padding:32px"><div style="font-size:34px;line-height:1">\u26A0\uFE0F</div><h1 style="font-size:19px;font-weight:800;margin:14px 0 8px">${esc(title)}</h1><p style="font-size:13.5px;color:#475569;line-height:1.55;margin:0 0 22px">${esc(message)}</p><a href="/" style="display:inline-block;background:#e11d48;color:#fff;font-weight:700;font-size:13px;padding:11px 22px;border-radius:10px;text-decoration:none">Search again on Try1Second</a></div></body></html>`;
 }
 async function adBlockHtml(slotKey) {
-  const esc4 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const esc5 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
   let slot = "";
   let customHtml = "";
@@ -32795,7 +32795,7 @@ async function adBlockHtml(slotKey) {
   }
   if (customHtml.trim()) return customHtml;
   if (!client || !slot) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc4(client)}" data-ad-slot="${esc4(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc5(client)}" data-ad-slot="${esc5(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -34923,10 +34923,10 @@ async function createNotification(i) {
   return { ok: true, id };
 }
 function priceDropCopy(a, price, seller) {
-  const inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
   const pct = Math.round((1 - price / Number(a.target_price)) * 100);
-  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr(price)}`;
-  const body = pct > 0 ? `Your tracked product just hit ${inr(price)} on ${seller} \u2014 ${pct}% below your ${inr(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr(price)} on ${seller}, matching your ${inr(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
+  const title = `Price drop: ${a.product_title.slice(0, 90)} is now ${inr2(price)}`;
+  const body = pct > 0 ? `Your tracked product just hit ${inr2(price)} on ${seller} \u2014 ${pct}% below your ${inr2(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page and grab the deal.` : `Your tracked product just hit ${inr2(price)} on ${seller}, matching your ${inr2(a.target_price)} target. Live price verified by Try1second a moment ago. Tap to open the product page.`;
   return { title, body };
 }
 async function recordPriceDropNotification(alert, live) {
@@ -35105,13 +35105,13 @@ function shouldNotify(alert, livePrice) {
   return Number.isFinite(livePrice) && livePrice > 0 && livePrice <= Number(alert.target_price);
 }
 function alertEmail(a, price, seller, url) {
-  const inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
-  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr(price)}`;
+  const inr2 = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  const subject = `Price drop: ${a.product_title.slice(0, 70)} is now ${inr2(price)}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px">
   <h2 style="color:#E7000B;margin:0 0 8px">Your Try1Second price alert hit</h2>
   <p><strong>${escapeHtml(a.product_title)}</strong></p>
-  <p style="font-size:22px;margin:6px 0"><strong>${inr(price)}</strong> on ${escapeHtml(seller)}</p>
-  <p style="color:#475569">Your target was ${inr(a.target_price)}.</p>
+  <p style="font-size:22px;margin:6px 0"><strong>${inr2(price)}</strong> on ${escapeHtml(seller)}</p>
+  <p style="color:#475569">Your target was ${inr2(a.target_price)}.</p>
   <p><a href="${url}" style="background:#E7000B;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Open the deal</a></p>
   <p style="color:#94a3b8;font-size:12px">Price observed live by Try1Second. Prices can change quickly.</p></div>`;
   return { subject, html };
@@ -38737,18 +38737,18 @@ var init_routes = __esm({
       } catch {
       }
       const appName = (scheme.split("://")[0] || "app").replace(/^olacabs$/, "ola");
-      const esc4 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const esc5 = (x) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Opening ${esc4(appName)}\u2026</title>
+<title>Opening ${esc5(appName)}\u2026</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
 .card{max-width:380px}.btn{display:block;margin-top:18px;background:#E11D48;color:#fff;text-decoration:none;font-weight:800;padding:14px 18px;border-radius:12px}
 .muted{color:#94a3b8;font-size:13px;margin-top:10px}.ad{margin-top:18px;background:#fff;border-radius:12px;padding:8px;color:#0f172a}</style></head><body><div class="card">
-<h2 style="margin:0 0 6px">Opening ${esc4(appName)}</h2>
-<p class="muted">Handing your pickup and drop to the ${esc4(appName)} app\u2026</p>
-<a class="btn" href="${esc4(tracked)}">Continue on the website</a>
+<h2 style="margin:0 0 6px">Opening ${esc5(appName)}</h2>
+<p class="muted">Handing your pickup and drop to the ${esc5(appName)} app\u2026</p>
+<a class="btn" href="${esc5(tracked)}">Continue on the website</a>
 ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
-<p class="muted">Fare and availability are shown by ${esc4(appName)} itself.</p>
+<p class="muted">Fare and availability are shown by ${esc5(appName)} itself.</p>
 </div>
 <script>
   var scheme = ${JSON.stringify(scheme)};
@@ -39153,12 +39153,12 @@ function parseMyx(html) {
   const start = /window\.__myx\s*=\s*\{/.exec(html);
   if (!start) return null;
   const from = start.index + start[0].length - 1;
-  let depth = 0, inStr = false, esc4 = false, end = -1;
+  let depth = 0, inStr = false, esc5 = false, end = -1;
   for (let i = from; i < html.length; i++) {
     const ch = html[i];
     if (inStr) {
-      if (esc4) esc4 = false;
-      else if (ch === "\\") esc4 = true;
+      if (esc5) esc5 = false;
+      else if (ch === "\\") esc5 = true;
       else if (ch === '"') inStr = false;
       continue;
     }
@@ -43459,7 +43459,41 @@ function resolveAppRoute(path14) {
   return { vertical: vid };
 }
 function resolveSeoPage(path14) {
-  const clean3 = path14.split("?")[0].replace(/\/+$/, "") || "/";
+  let clean3 = path14.split("?")[0].replace(/\/+$/, "") || "/";
+  const ALIAS = {
+    movie: "movies",
+    cab: "cabs",
+    creditcards: "credit-cards",
+    account: "bank-accounts",
+    ecom: "ecommerce",
+    grocery10: "grocery"
+  };
+  const aliasSeg = clean3.split("/").filter(Boolean);
+  if (aliasSeg.length && ALIAS[aliasSeg[0]]) clean3 = "/" + [ALIAS[aliasSeg[0]], ...aliasSeg.slice(1)].join("/");
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(clean3);
+  if (prod) {
+    const words2 = prod[1].split("-").filter((w) => w.length > 1);
+    const label = words2.map((w) => /^[0-9]+$/.test(w) ? w : w[0].toUpperCase() + w.slice(1)).join(" ");
+    return {
+      path: clean3,
+      title: `${label} \u2014 Live Prices From Every Store | Try1Second`,
+      description: `Compare live prices for ${label} across Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, JioMart and quick-commerce stores. Lowest verified price first, updated continuously.`,
+      h1: `${label} \u2014 compare live prices`,
+      intro: [
+        `Try1Second scans every store that sells ${label} and ranks the offers by the price you actually pay, including delivery fees where the seller publishes them.`,
+        `Prices on this page come from our own verified catalogue, so the list below is a real snapshot rather than an estimate. Open the live page to watch it update while the scan runs.`
+      ],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: "Shopping", path: "/ecommerce" }, { name: label, path: clean3 }],
+      faqs: [
+        { q: `Where is ${label} cheapest?`, a: `Try1Second compares Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, JioMart and the 10-minute stores, then shows the lowest verified price first. It changes by the hour, so the page is refreshed continuously.` },
+        { q: `Are these prices live?`, a: `The snapshot on this page is our last verified read and is stamped with the time it was captured. The live comparison page re-checks every source each time it opens.` }
+      ],
+      links: [
+        { label: "All shopping deals", href: "/ecommerce" },
+        { label: "Quick-commerce (10 minute) prices", href: "/grocery" }
+      ]
+    };
+  }
   if (clean3 === "/about" || clean3 === "/privacy") {
     const isAbout = clean3 === "/about";
     return {
@@ -44231,6 +44265,8 @@ ${body}
 // server/seo/sitemap.ts
 var sitemap_exports = {};
 __export(sitemap_exports, {
+  productSitemapPaths: () => productSitemapPaths,
+  productSlug: () => productSlug,
   registerSeoRoutes: () => registerSeoRoutes,
   robotsText: () => robotsText,
   sitemapXml: () => sitemapXml
@@ -44252,9 +44288,35 @@ function robotsText() {
     ""
   ].join("\n");
 }
-function sitemapXml() {
+function productSlug(title) {
+  return String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
+}
+async function productSitemapPaths(limit = 200) {
+  if (productPathCache && Date.now() - productPathCache.at < 36e5) return productPathCache.paths;
+  let paths = [];
+  try {
+    const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+    const seen = /* @__PURE__ */ new Set();
+    for (const v of ["ecommerce", "grocery"]) {
+      const rows = await findCatalogueOffers2(v, { limit: 200 }).catch(() => []);
+      for (const r of rows) {
+        const slug3 = productSlug(String(r.title || ""));
+        if (slug3.length < 3 || seen.has(slug3)) continue;
+        seen.add(slug3);
+        paths.push(`/product/${slug3}`);
+        if (paths.length >= limit) break;
+      }
+      if (paths.length >= limit) break;
+    }
+  } catch {
+    paths = [];
+  }
+  productPathCache = { at: Date.now(), paths };
+  return paths;
+}
+function sitemapXml(extraPaths = []) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const urls = listSeoPaths();
+  const urls = [...listSeoPaths(), ...extraPaths];
   const body = urls.map((p) => {
     const deep = p.split("/").filter(Boolean).length > 1;
     const freq = deep ? "daily" : "weekly";
@@ -44290,16 +44352,19 @@ function registerSeoRoutes(app) {
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.send(robotsText());
   });
-  app.get("/sitemap.xml", (_req, res) => {
+  app.get("/sitemap.xml", async (_req, res) => {
     res.setHeader("Content-Type", "application/xml; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    res.send(sitemapXml());
+    const extras = await productSitemapPaths().catch(() => []);
+    res.send(sitemapXml(extras));
   });
 }
+var productPathCache;
 var init_sitemap = __esm({
   "server/seo/sitemap.ts"() {
     init_data();
     init_staticPages();
+    productPathCache = null;
   }
 });
 
@@ -44540,6 +44605,126 @@ var init_render = __esm({
   }
 });
 
+// server/seo/liveSnapshot.ts
+var liveSnapshot_exports = {};
+__export(liveSnapshot_exports, {
+  clearSnapshotCache: () => clearSnapshotCache,
+  renderSnapshotHtml: () => renderSnapshotHtml,
+  selectSnapshotRows: () => selectSnapshotRows,
+  snapshotForPath: () => snapshotForPath,
+  snapshotJsonLd: () => snapshotJsonLd
+});
+function placementTokens(path14) {
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path14.replace(/\/+$/, ""));
+  if (prod) {
+    return prod[1].split("-").filter((t) => t.length > 1 && !/^(the|and|for|with)$/.test(t));
+  }
+  const route2 = resolveAppRoute(path14);
+  const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
+  return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
+}
+function selectSnapshotRows(candidates, path14, max = MAX_ROWS) {
+  const tokens2 = placementTokens(path14);
+  const relevant = tokens2.length ? candidates.filter((r) => {
+    const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
+    return tokens2.every((tok) => t.includes(tok));
+  }) : candidates;
+  const pool2 = tokens2.length ? relevant : candidates;
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const r of [...pool2].sort((a, b) => a.price - b.price)) {
+    const k = r.seller.toLowerCase().trim() || r.title.toLowerCase().trim();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
+  if (!snapshot || !snapshot.rows.length) return "";
+  const items = snapshot.rows.map((r) => `
+    <li style="display:flex;gap:10px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #eef2f7;padding:7px 0">
+      <span style="min-width:0;font-size:13.5px;color:#111827">${esc4(r.title)}</span>
+      <span style="white-space:nowrap;font-size:13.5px;font-weight:800;color:#111827">${esc4(inr(r.price))}</span>
+      <span style="white-space:nowrap;font-size:12px;color:#6b7280">${esc4(r.seller)}</span>
+    </li>`).join("");
+  return [
+    `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:0 16px 8px">`,
+    `<h2 style="font-size:15px;margin:18px 0 6px">${esc4(heading)}</h2>`,
+    `<ul style="list-style:none;padding:0;margin:0">${items}</ul>`,
+    `<p style="font-size:11.5px;color:#9ca3af;margin:8px 0 0">Verified ${esc4(new Date(snapshot.updatedAt).toUTCString())} \xB7 lowest first \xB7 seller links open through Try1Second</p>`,
+    `</section>`
+  ].join("");
+}
+function snapshotJsonLd(snapshot, path14) {
+  if (!snapshot || !snapshot.rows.length) return null;
+  const page = resolveSeoPage(path14);
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: page ? page.title : "Try1Second live prices",
+    itemListElement: snapshot.rows.map((r, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      item: {
+        "@type": "Product",
+        name: r.title,
+        offers: {
+          "@type": "Offer",
+          price: Math.round(r.price),
+          priceCurrency: "INR",
+          seller: { "@type": "Organization", name: r.seller },
+          availability: "https://schema.org/InStock"
+        }
+      }
+    }))
+  });
+}
+async function snapshotForPath(path14) {
+  const page = resolveSeoPage(path14);
+  if (!page) return null;
+  const key = (path14 || "/").replace(/\/+$/, "") || "/";
+  const hit = cache10.get(key);
+  if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.snap;
+  let snap = null;
+  try {
+    const route2 = resolveAppRoute(path14);
+    const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
+    const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
+    if (verticals.length) {
+      const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+      const rows = (await Promise.all(verticals.map((v) => findCatalogueOffers2(v, { limit: 120 }).catch(() => [])))).flat();
+      const candidates = rows.map((r) => ({
+        title: String(r.title || ""),
+        seller: String(r.seller || r.vendor || ""),
+        price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
+        url: r.seller_url || null
+      })).filter((r) => r.price > 0 && r.title && r.seller);
+      const picked = selectSnapshotRows(candidates, key);
+      if (picked.length) snap = { rows: picked, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
+    }
+  } catch {
+    snap = null;
+  }
+  cache10.set(key, { at: Date.now(), snap });
+  return snap;
+}
+function clearSnapshotCache() {
+  cache10.clear();
+}
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc4, inr;
+var init_liveSnapshot = __esm({
+  "server/seo/liveSnapshot.ts"() {
+    init_data();
+    SNAPSHOT_TTL_MS = 10 * 6e4;
+    MAX_ROWS = 6;
+    cache10 = /* @__PURE__ */ new Map();
+    esc4 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+  }
+});
+
 // server.prod.ts
 var import_path8 = __toESM(require("path"), 1);
 var import_fs7 = __toESM(require("fs"), 1);
@@ -44609,6 +44794,25 @@ async function createApp() {
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
   app.get("/redirect", redirectRouteHandler2);
   const dist = import_path7.default.resolve(__dirname2, "dist");
+  app.get(/^\/google[0-9a-f]+\.html$/i, (req, res) => {
+    const name = import_path7.default.basename(req.path);
+    const candidates = [import_path7.default.join(dist, name), import_path7.default.join(process.cwd(), "public", name)];
+    for (const file of candidates) {
+      if (import_fs6.default.existsSync(file)) {
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.send(import_fs6.default.readFileSync(file, "utf8"));
+        return;
+      }
+    }
+    const m = /^google([0-9a-f]+)\.html$/i.exec(name);
+    if (m) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(`google-site-verification: ${name}`);
+      return;
+    }
+    res.status(404).send("Not found");
+  });
   if (import_fs6.default.existsSync(dist)) {
     app.use(import_express4.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
@@ -44621,8 +44825,9 @@ async function createApp() {
       }
     }));
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
+    const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
     const baseHtml = import_fs6.default.readFileSync(import_path7.default.join(dist, "index.html"), "utf8");
-    app.get("*", (req, res) => {
+    app.get("*", async (req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
       const acc = String(req.headers.accept || "");
       const isAsset = /\.[a-z0-9]{2,5}$/i.test(req.path.replace(/\/$/, ""));
@@ -44631,7 +44836,17 @@ async function createApp() {
         res.sendFile(import_path7.default.join(dist, "index.html"));
         return;
       }
-      res.send(enhanceHtml2(baseHtml, req.path));
+      let html = enhanceHtml2(baseHtml, req.path);
+      try {
+        const snap = await snapshotForPath2(req.path);
+        const block = renderSnapshotHtml2(snap);
+        if (block) html = html.replace("</body>", `${block}</body>`);
+        const ld = snapshotJsonLd2(snap, req.path);
+        if (ld) html = html.replace("</head>", `<script type="application/ld+json">${ld}</script>
+</head>`);
+      } catch {
+      }
+      res.send(html);
     });
   } else if (settings3.isProduction) {
     log3.warn("Bootstrap", "dist/ not found \u2014 build the frontend with `npm run build` before serving");
