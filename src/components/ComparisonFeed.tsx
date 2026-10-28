@@ -293,7 +293,9 @@ export const ComparisonFeed: React.FC = () => {
           sourcesReport, so the banner only flashed during the instant catalogue hop
           and vanished before the eye could see it. Gate on the vertical key instead:
           it stays visible for the whole background live-price acquisition. */}
-      {(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) && <WarpBanner />}
+      {(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) && (
+        <WarpBanner vertical={vertical as string} query={searchQuery || undefined} />
+      )}
 
       {/* Main 2-Column Comparison Layout (Sidebar + Feed) */}
       <div className="flex flex-col lg:flex-row items-start gap-6">
