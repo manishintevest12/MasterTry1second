@@ -109,6 +109,9 @@ export async function createApp(): Promise<express.Express> {
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');
+  // Warm the sitemap at boot so the first crawler hit is instant (owner 28 Oct).
+  void import('./seo/sitemap').then((m) => m.warmSitemapSoon()).catch(() => {});
+
   // GOOGLE SEARCH CONSOLE VERIFICATION (owner 28 Oct): the token file must be served
   // verbatim. The SPA catch-all treats any *.html path as a shell and would hand back
   // index.html, so this explicit route (registered before static) guarantees the exact

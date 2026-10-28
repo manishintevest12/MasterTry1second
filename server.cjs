@@ -44269,7 +44269,9 @@ __export(sitemap_exports, {
   productSlug: () => productSlug,
   registerSeoRoutes: () => registerSeoRoutes,
   robotsText: () => robotsText,
-  sitemapXml: () => sitemapXml
+  sitemapResponse: () => sitemapResponse,
+  sitemapXml: () => sitemapXml,
+  warmSitemapSoon: () => warmSitemapSoon
 });
 function robotsText() {
   return [
@@ -44314,6 +44316,58 @@ async function productSitemapPaths(limit = 200) {
   productPathCache = { at: Date.now(), paths };
   return paths;
 }
+function readWarmFile() {
+  try {
+    const fs13 = require("node:fs");
+    if (fs13.existsSync(WARM_FILE)) return fs13.readFileSync(WARM_FILE, "utf8");
+  } catch {
+  }
+  return null;
+}
+function writeWarmFile(xml) {
+  try {
+    const fs13 = require("node:fs");
+    const path14 = require("node:path");
+    fs13.mkdirSync(path14.dirname(WARM_FILE), { recursive: true });
+    fs13.writeFileSync(WARM_FILE, xml);
+  } catch {
+  }
+}
+async function buildWarm() {
+  const extras = await productSitemapPaths().catch(() => []);
+  const xml = sitemapXml(extras);
+  warm = { xml, at: Date.now() };
+  writeWarmFile(xml);
+  return xml;
+}
+async function sitemapResponse() {
+  if (warm) {
+    if (Date.now() - warm.at > WARM_TTL_MS && !warming) {
+      warming = buildWarm().catch(() => warm.xml).finally(() => {
+        warming = null;
+      });
+    }
+    return warm.xml;
+  }
+  const fromDisk = readWarmFile();
+  if (fromDisk) {
+    warm = { xml: fromDisk, at: Date.now() };
+    warming = buildWarm().catch(() => fromDisk).finally(() => {
+      warming = null;
+    });
+    return fromDisk;
+  }
+  warming = buildWarm().finally(() => {
+    warming = null;
+  });
+  return warming;
+}
+function warmSitemapSoon() {
+  if (warm || warming) return;
+  warming = buildWarm().catch(() => "").finally(() => {
+    warming = null;
+  });
+}
 function sitemapXml(extraPaths = []) {
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const urls = [...listSeoPaths(), ...extraPaths];
@@ -44355,16 +44409,19 @@ function registerSeoRoutes(app) {
   app.get("/sitemap.xml", async (_req, res) => {
     res.setHeader("Content-Type", "application/xml; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=3600");
-    const extras = await productSitemapPaths().catch(() => []);
-    res.send(sitemapXml(extras));
+    res.send(await sitemapResponse());
   });
 }
-var productPathCache;
+var productPathCache, WARM_FILE, WARM_TTL_MS, warm, warming;
 var init_sitemap = __esm({
   "server/seo/sitemap.ts"() {
     init_data();
     init_staticPages();
     productPathCache = null;
+    WARM_FILE = "data/sitemap-cache.xml";
+    WARM_TTL_MS = 10 * 6e4;
+    warm = null;
+    warming = null;
   }
 });
 
@@ -44817,6 +44874,8 @@ async function createApp() {
   const { redirectRouteHandler: redirectRouteHandler2 } = await Promise.resolve().then(() => (init_interstitial(), interstitial_exports));
   app.get("/redirect", redirectRouteHandler2);
   const dist = import_path7.default.resolve(__dirname2, "dist");
+  void Promise.resolve().then(() => (init_sitemap(), sitemap_exports)).then((m) => m.warmSitemapSoon()).catch(() => {
+  });
   app.get(/^\/google[0-9a-f]+\.html$/i, (req, res) => {
     const name = import_path7.default.basename(req.path);
     const candidates = [import_path7.default.join(dist, name), import_path7.default.join(process.cwd(), "public", name)];
