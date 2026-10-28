@@ -115,7 +115,7 @@ async function renderCompareView(box, { title, seller, price, image = '', save =
 // ---------- search ----------
 async function doLens(input) {
   const box = $('#results');
-  box.innerHTML = spinnerRow('Comparing prices across the web at warp speed... your steal is arriving in 3, 2, 1...');
+  box.innerHTML = spinnerRow('Finding your best price… checking every store right now. Please wait, we are getting the best deal for you.');
   try {
     const res = await apiLens(input);
     if (!res.found) {
@@ -259,7 +259,7 @@ async function pageFlow(url, { auto = false } = {}) {
 /** Grouped vertical results list (the "vertical view" the popup shows for searches). */
 async function doVerticalSearch(query, vertical) {
   const box = $('#results');
-  box.innerHTML = spinnerRow(`Comparing prices for "${query}" at warp speed... your steal is arriving in 3, 2, 1...`);
+  box.innerHTML = spinnerRow(`Finding the best price for "${query}"… checking every store right now. Please wait, we are getting the best deal for you.`);
   try {
     const { t1sCity = '', t1sPincode = '' } = await chrome.storage.local.get(['t1sCity', 't1sPincode']);
     const res = await apiSearch(query, { vertical, city: t1sCity, pincode: t1sPincode });

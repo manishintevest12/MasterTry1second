@@ -4,6 +4,7 @@ import {
   ChevronRight, Star, Search, Check, Link2, Sparkles, ImageOff,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { SearchProgressPanel } from './SearchProgress';
 
 /**
  * In-site product page (opened from the home Price Lens "Find Cheapest").
@@ -203,12 +204,13 @@ export const ProductPageView: React.FC = () => {
       </div>
 
       {loading && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-10 flex flex-col items-center gap-3 text-slate-500">
-          <Loader2 className="w-7 h-7 animate-spin text-red-600" />
-          <style>{`@keyframes t1s-pulse-subtle-kf { 0%,100% { opacity:1; } 50% { opacity:0.78; } } .animate-pulse-subtle { animation: t1s-pulse-subtle-kf 1.8s ease-in-out infinite; }`}</style>
-          <p className="text-sm font-bold text-slate-900">Comparing prices across the web at warp speed...</p>
-          <p className="text-xs text-slate-500 font-semibold animate-pulse-subtle">Your ultimate steal is arriving in <span className="font-black text-red-600 tabular-nums">3, 2, 1...</span></p>
-        </div>
+        // Owner 27 Oct: real progress instead of a countdown — live site name, a hard
+        // "n of N stores" count and skeleton result cards (SearchProgress).
+        <SearchProgressPanel
+          vertical="ecommerce"
+          query={title || productPageRequest?.query || productPageRequest?.input || undefined}
+          skeletonRows={2}
+        />
       )}
 
       {error && (
@@ -282,8 +284,8 @@ export const ProductPageView: React.FC = () => {
                 </h1>
                 {loading && (
                   <p className="mt-1 text-[11px] font-bold text-slate-500 inline-flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
-                    Comparing prices across the web at warp speed…
+                    <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" /></span>
+                    Checking every store right now…
                   </p>
                 )}
                 {cheapest?.rating ? (

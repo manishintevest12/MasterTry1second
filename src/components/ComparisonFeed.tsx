@@ -313,7 +313,7 @@ export const ComparisonFeed: React.FC = () => {
               // (owner 27 Oct, movie vertical: loader + "not found" repeated 3 times).
               // WarpLoader (owner 22 Oct): animated 3-2-1 countdown keeps the user
               // engaged; results render automatically here the moment they arrive.
-              <WarpResultsLoader query={searchQuery || undefined} />
+              <WarpResultsLoader query={searchQuery || undefined} vertical={vertical as string} />
             ) : (
             <div className="bg-white rounded-xl border border-slate-200 p-8 sm:p-12 text-center">
               <SearchX className="w-12 h-12 text-slate-300 mx-auto mb-3" />
