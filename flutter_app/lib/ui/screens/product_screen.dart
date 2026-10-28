@@ -97,7 +97,7 @@ class _ProductScreenState extends State<ProductScreen> {
             builder: (c, snap) {
               if (snap.connectionState != ConnectionState.done) {
                 // OWNER 28 Oct: the product page shows the SAME progress panel as the
-                // feed (web parity) — live source name, real count, purple fill and
+                // feed (web parity) — live source name, real count, brand-red fill and
                 // result-shaped skeletons — never a bare grey shimmer.
                 return SearchProgressCard(
                   verticalId: 'ecommerce',

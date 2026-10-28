@@ -2186,6 +2186,13 @@ class _FeedBody {
       }
       // Owner 28 Oct: bare flight rows (no flight number / timings / duration)
       // sit at the very end of the list instead of taking the top slots.
+      // Same flight sold by several sites: timings from ANY row complete the
+      // card, then bare rows drop to the end of the feed.
+      if (meta.id == 'flights') {
+        for (final g in groups) {
+          cmp.liftGroupSchedule(g);
+        }
+      }
       groups = cmp.scheduleCompleteFirst(groups, meta.id);
 
       // Owner 22 Oct: cab prices must be segmented by ride type — Auto, Bike and
