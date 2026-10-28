@@ -138,10 +138,12 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
   try {
     const route = resolveAppRoute(path);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
-    const vertical = route?.vertical || (prod ? 'ecommerce' : '');
-    if (vertical) {
+    // A product can live in either catalogue (a milkshake is grocery, an iPhone is
+    // ecommerce), so product pages look in both instead of guessing.
+    const verticals = prod ? ['ecommerce', 'grocery'] : (route?.vertical ? [route.vertical] : []);
+    if (verticals.length) {
       const { findCatalogueOffers } = await import('../catalogue/catalogueService');
-      const rows = await findCatalogueOffers(vertical, { limit: 120 }).catch(() => []);
+      const rows = (await Promise.all(verticals.map((v) => findCatalogueOffers(v, { limit: 120 }).catch(() => [])))).flat();
       const candidates: SnapshotRow[] = rows
         .map((r: any) => ({
           title: String(r.title || ''),
