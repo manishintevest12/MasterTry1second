@@ -109,6 +109,30 @@ export async function createApp(): Promise<express.Express> {
 
   // Production static frontend (vite build output) — KVM4 serves `dist/`
   const dist = path.resolve(__dirname, 'dist');
+  // GOOGLE SEARCH CONSOLE VERIFICATION (owner 28 Oct): the token file must be served
+  // verbatim. The SPA catch-all treats any *.html path as a shell and would hand back
+  // index.html, so this explicit route (registered before static) guarantees the exact
+  // 53-byte token, with the same generic handler for any future google*.html token.
+  app.get(/^\/google[0-9a-f]+\.html$/i, (req: Request, res: Response) => {
+    const name = path.basename(req.path);
+    const candidates = [path.join(dist, name), path.join(process.cwd(), 'public', name)];
+    for (const file of candidates) {
+      if (fs.existsSync(file)) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.send(fs.readFileSync(file, 'utf8'));
+        return;
+      }
+    }
+    const m = /^google([0-9a-f]+)\.html$/i.exec(name);
+    if (m) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(`google-site-verification: ${name}`);
+      return;
+    }
+    res.status(404).send('Not found');
+  });
+
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
