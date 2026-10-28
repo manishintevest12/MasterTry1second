@@ -3,6 +3,8 @@
  * Legacy-compatible endpoints (/api/scrape/live, /api/scan/url, /api/catalogue,
  * /api/provenance) now run through the real orchestrator — fabricated deals are gone.
  */
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
@@ -55,6 +57,8 @@ import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
 import { bmsUpcomingUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion } from '../workers/parsers/bookmyshow';
 
 export const apiRouter = Router();
+/** Process start, reported by /api/version so a restart is provable. */
+const startedAtIso = new Date().toISOString();
 
 // ============ System ============
 // Owner 25 Oct: public probe answers 'online' only. Store/redis/production
@@ -959,6 +963,27 @@ function offerToComparisonItem(o: any) {
 /** Legacy-compatible endpoint used by the existing frontend. */
 /** Emergency keep-warm cooldown (self-heal safety net, owner 23 Oct). */
 let _lastEmergencyWarmAt = 0;
+
+// Deploy fingerprint (owner 28 Oct): the owner kept reporting 'phir wahi problem' while the
+// live site was still serving an OLD frontend bundle, so there was no way to prove a fix was
+// actually deployed. This answers in one line which bundle the server is serving and when it
+// started - compare `bundle` with the script tag in the page source after a restart.
+apiRouter.get('/version', async (_req, res) => {
+  let bundle: string | null = null;
+  try {
+    const html = await readFile(join(process.cwd(), 'dist/index.html'), 'utf8');
+    bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
+  } catch {
+    bundle = null;
+  }
+  res.json({
+    ok: true,
+    bundle,
+    startedAt: startedAtIso,
+    uptimeSec: Math.round(process.uptime()),
+    node: process.version,
+  });
+});
 
 apiRouter.post('/scrape/live', async (req, res) => {
   const input: SearchInput = {

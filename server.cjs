@@ -37301,9 +37301,11 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_express, import_crypto29, apiRouter, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path6, import_express, import_crypto29, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
+    import_promises2 = require("node:fs/promises");
+    import_node_path6 = require("node:path");
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
@@ -37350,6 +37352,7 @@ var init_routes = __esm({
     init_bookmyshow();
     init_merchantCrispLogo();
     apiRouter = (0, import_express.Router)();
+    startedAtIso = (/* @__PURE__ */ new Date()).toISOString();
     apiRouter.get("/health", authMiddleware, async (req, res) => {
       const admin = req.user?.role === "admin";
       if (!admin) {
@@ -37748,6 +37751,22 @@ var init_routes = __esm({
       w_hotels_wikidata: "Wikidata (CC0)"
     };
     _lastEmergencyWarmAt = 0;
+    apiRouter.get("/version", async (_req, res) => {
+      let bundle = null;
+      try {
+        const html = await (0, import_promises2.readFile)((0, import_node_path6.join)(process.cwd(), "dist/index.html"), "utf8");
+        bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
+      } catch {
+        bundle = null;
+      }
+      res.json({
+        ok: true,
+        bundle,
+        startedAt: startedAtIso,
+        uptimeSec: Math.round(process.uptime()),
+        node: process.version
+      });
+    });
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
@@ -44528,7 +44547,7 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path6.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path7.default.join(dataDir, `singleton-${name}.lock`);
   try {
     const st = import_node_fs6.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
@@ -44568,11 +44587,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs6, import_node_path6, import_promise3, STALE_MS;
+var import_node_fs6, import_node_path7, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
     import_node_fs6 = __toESM(require("node:fs"), 1);
-    import_node_path6 = __toESM(require("node:path"), 1);
+    import_node_path7 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();

@@ -1,3 +1,4 @@
+import { pollDecision } from '../lib/searchPolling';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 // canvas-confetti (~30KB): only needed when the Spin & Earn wheel actually wins.
 // Dynamic import keeps it out of the landing-page critical path (TBT fix).
@@ -975,6 +976,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       if (response.ok) {
         const data = await response.json();
+        // OWNER 28 Oct ('loader yahi ruk jaata hai, results aa hi ni rahe'): the panel is
+        // gated on `sourcesReport[vertical].pendingRefresh`, and that flag was copied from
+        // the LAST response forever. Once the poll chain hit MAX_PENDING_POLLS with zero
+        // rows, nothing ever cleared it, so the "Checking Cleartrip... 8 of 9" panel stayed
+        // mounted with no data coming - a permanent loader. The flag now only survives the
+        // chain that is actually still polling; an exhausted chain releases the panel to the
+        // honest empty state (which offers a retry) instead of hanging.
+        const rowsNow = (data.results && data.results.length) || 0;
+        const poll = pollDecision(!!data.pendingRefresh, pollCountRef.current, MAX_PENDING_POLLS, rowsNow);
+        const morePolls = poll.keepPolling;
         // Always record which websites were asked and what each one said (even when nothing came back).
         setSourcesReport((prev) => ({
           ...prev,
@@ -984,9 +995,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             attempted: data.sourcesAttempted || [],
             succeeded: data.sourcesSucceeded || [],
             failed: data.sourcesFailed || [],
-            resultsCount: data.resultsCount ?? (data.results?.length || 0),
+            resultsCount: data.resultsCount ?? rowsNow,
             servedFrom: data.servedFrom,
-            pendingRefresh: !!data.pendingRefresh,
+            pendingRefresh: poll.keepPendingFlag,
           },
         }));
         // PROGRESSIVE COLD-START (21 Oct): the server served fresh catalogue rows
@@ -998,7 +1009,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // so every 2s gap flashed a FALSE "no matching options" page between polls.
         // Keep acquiring continuous for the whole chain (bounded below) and let the
         // feed show one steady "getting the best deal" panel instead.
-        if (data.pendingRefresh && pollCountRef.current < MAX_PENDING_POLLS) {
+        if (morePolls) {
           pollCountRef.current += 1;
           repollingRef.current = true;
           setTimeout(() => {
