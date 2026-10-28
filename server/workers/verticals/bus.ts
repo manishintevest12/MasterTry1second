@@ -12,6 +12,7 @@ import { parseRedBusRoute } from '../parsers/redbusRoute';
 import { parseRedBusSearch, resolveRedBusCity, type RedBusRoute } from '../parsers/redbusSearch';
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { parseZingbusRoute, zingbusSlug } from '../parsers/zingbus';
+import { ixigoRoutePath, parseIxigoBusPage } from '../parsers/ixigoBuses';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw
@@ -216,12 +217,34 @@ export const busWorker: VerticalWorker = {
       },
     },
     {
+      // Ixigo LIVE per-service fares (owner 28 Oct: "inko add kro aur price le kr bhi aao inke").
+      // Browserless recon found what the old probe missed: /buses/<from>-<to>-sts is a
+      // server-rendered route page whose React flight payload embeds the real service list
+      // (operator, bus type, fare in rupees, start/arrive time, duration, rating) for the
+      // page's journeyDate. No session, no API key, no CSR shell.
+      // Honesty: rows are returned only for the route block that belongs to this route, and
+      // only when its journeyDate is the date the user asked for; otherwise the source
+      // reports why it contributed nothing instead of relabelling another date's fares.
       sourceId: 'w_bus_ixigo',
-      name: 'Bus worker: Ixigo bus (probe)',
-      priority: 15,
-      run: async () => {
-        await cffiFetch('https://www.ixigo.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'Ixigo publishes no bus SSR pages at all (sitemap has flights only); its bus results render from an AbhiBus-sourced CSR shell with no server-side fares.');
+      name: 'Bus worker: Ixigo live services (real fares, operator, timings)',
+      priority: 3,
+      maxPerMinute: 20,
+      timeoutMs: 30_000,
+      run: async (ctx) => {
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const pageUrl = `https://www.ixigo.com${ixigoRoutePath(rt.from, rt.to)}`;
+        const r = await cffiFetch(pageUrl, { impersonate: 'chrome', timeoutMs: 18_000 });
+        if (r.status === 404) {
+          throw new AcquisitionError('NOT_FOUND', `Ixigo has no route page for ${rt.from} to ${rt.to}`, 404);
+        }
+        if (r.status !== 200) {
+          throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `Ixigo route page HTTP ${r.status} for ${rt.from} to ${rt.to}`, r.status);
+        }
+        const depart = String(ctx.query.travelDates?.depart || '');
+        const parsed = parseIxigoBusPage(r.body, ctx.source, pageUrl, rt.from, rt.to, depart);
+        if (parsed.items.length) return parsed.items;
+        throw new AcquisitionError('EMPTY_RESPONSE', `Ixigo: ${parsed.reason || 'no services published for this route'}`);
       },
     },
     {
