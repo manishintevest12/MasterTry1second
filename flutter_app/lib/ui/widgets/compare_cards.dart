@@ -1442,7 +1442,28 @@ class GroupCard extends StatelessWidget {
                           _ChipSpecs(it: it, vertical: vertical),
                         ],
                       ),
-                      if (it.isMovie) _MovieShowtimes(raw: it.spec('showtimes')),
+                      if (it.isMovie)
+                        _MovieShowtimes(
+                          raw: it.spec('showtimes'),
+                          linksRaw: it.spec('theatre links', 'theatre_links'),
+                          cheapestRaw: it.spec('cheapest show', 'cheapest_show'),
+                          bookPlatform: it.spec('book platform', 'book_platform'),
+                          // Owner 28 Oct: tapping the cheapest show opens THAT show's seat
+                          // map through the tracked redirect (never straight to the raw
+                          // platform URL, so /api/out still records the click).
+                          onOpenSeats: (url) => _openRedirect(
+                            context,
+                            sellerName: it.spec('book platform', 'book_platform').isEmpty
+                                ? sellerName
+                                : it.spec('book platform', 'book_platform'),
+                            title: it.title,
+                            goUrl: url,
+                            vertical: it.vertical,
+                            price: g.best.price > 0 ? g.best.price : null,
+                            image: it.imageUrl,
+                            isLowest: true,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1647,7 +1668,57 @@ class GroupCard extends StatelessWidget {
 /// ("2026-10-23T06:30") — shown as a 12h clock; any other raw text passes through.
 class _MovieShowtimes extends StatelessWidget {
   final String raw;
-  const _MovieShowtimes({required this.raw});
+  /// specs['theatre links'] = [{"theatre","time","url"}] - each show's own seat map
+  /// (sid/cid/mid/fid built server-side, owner 28 Oct).
+  final String linksRaw;
+  /// specs['cheapest show'] = {"theatre","time","seatClass","price","url","platform"}
+  final String cheapestRaw;
+  /// specs['book platform'] - who owns the seat link ('TicketNew' / 'District').
+  final String bookPlatform;
+  final void Function(String url)? onOpenSeats;
+  const _MovieShowtimes({
+    required this.raw,
+    this.linksRaw = '',
+    this.cheapestRaw = '',
+    this.bookPlatform = '',
+    this.onOpenSeats,
+  });
+
+  Map<String, dynamic>? get _cheapest {
+    try {
+      final v = jsonDecode(cheapestRaw.isEmpty ? 'null' : cheapestRaw);
+      return v is Map ? Map<String, dynamic>.from(v) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List _links() {
+    try {
+      final v = jsonDecode(linksRaw.isEmpty ? '[]' : linksRaw);
+      return v is List ? v : const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  String _linkFor(dynamic sh, Map<String, dynamic>? cheapest) {
+    if (sh is! Map) return '';
+    for (final l in _links()) {
+      if (l is Map &&
+          '${l['theatre'] ?? ''}' == '${sh['theatre'] ?? ''}' &&
+          '${l['time'] ?? ''}' == '${sh['time'] ?? ''}') {
+        final u = '${l['url'] ?? ''}';
+        if (u.isNotEmpty) return u;
+      }
+    }
+    if (cheapest != null &&
+        '${cheapest['theatre'] ?? ''}' == '${sh['theatre'] ?? ''}' &&
+        '${cheapest['time'] ?? ''}' == '${sh['time'] ?? ''}') {
+      return '${cheapest['url'] ?? ''}';
+    }
+    return '';
+  }
 
   String _fmt(Object? t) {
     final s = '$t';
@@ -1672,16 +1743,64 @@ class _MovieShowtimes extends StatelessWidget {
     // shipped BEFORE the grouped-by-theatre experiment — flat per-show rows:
     // [red time pill] theatre text [tier price boxes]. Both aliases
     // ('movie'/'movies') accepted; chips stay red-filled.
+    final cheapest = _cheapest;
+    final cheapUrl = '${cheapest?['url'] ?? ''}';
     return Padding(
       padding: const EdgeInsets.only(top: 7),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Owner 28 Oct: name the cheapest hall up front and open ITS seat map, so the
+          // price on the card is the price the user lands on (the cinema list hid it).
+          if (cheapest != null && '${cheapest['price'] ?? ''}'.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: GestureDetector(
+                onTap: cheapUrl.isNotEmpty && onOpenSeats != null ? () => onOpenSeats!(cheapUrl) : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: T1SColors.greenBg,
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: T1SColors.greenBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      Text('CHEAPEST', style: tx(context, 7.5, w: FontWeight.w900, color: T1SColors.green)),
+                      const SizedBox(width: 5),
+                      Text('₹${cheapest['price']}', style: tx(context, 10, w: FontWeight.w900)),
+                      if ('${cheapest['seatClass'] ?? ''}'.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Text('${cheapest['seatClass']}', style: tx(context, 8.5, color: muted(context))),
+                      ],
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          '${cheapest['theatre'] ?? ''} · ${_fmt(cheapest['time'])}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tx(context, 8.5, color: muted(context)),
+                        ),
+                      ),
+                      if (cheapUrl.isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Text('Seats ›', style: tx(context, 8.5, w: FontWeight.w900, color: T1SColors.green)),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
           for (final sh in shows.take(3))
             if (sh is Map)
               Padding(
                 padding: const EdgeInsets.only(bottom: 3),
-                child: Row(
+                child: GestureDetector(
+                  onTap: () {
+                    final u = _linkFor(sh, cheapest);
+                    if (u.isNotEmpty && onOpenSeats != null) onOpenSeats!(u);
+                  },
+                  child: Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
@@ -1717,7 +1836,8 @@ class _MovieShowtimes extends StatelessWidget {
                             ),
                           ),
                         ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
         ],

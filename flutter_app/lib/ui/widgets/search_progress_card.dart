@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../core/search_progress_copy.dart';
-import '../core/theme.dart';
+import '../../core/search_progress_copy.dart';
+import '../../core/theme.dart';
 import 'kit.dart';
 
 /// The ONE loading experience for the app — same panel as the web feed.
