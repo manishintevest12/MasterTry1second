@@ -30430,7 +30430,7 @@ async function findCatalogueOffers(vertical, opts = {}) {
       where += " AND (location_pincode = ? OR location_pincode IS NULL)";
       params.push(opts.pincode);
     } else if (opts.city) {
-      where += opts.strictCity ? " AND location_city = ?" : " AND (location_city = ? OR location_city IS NULL)";
+      where += " AND (location_city = ? OR location_city IS NULL)";
       params.push(opts.city);
     }
     params.push(opts.limit ?? 50);
@@ -30825,6 +30825,7 @@ var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
   busSelfHealTtl: () => busSelfHealTtl,
   filterRowsByAge: () => filterRowsByAge,
+  namesOtherCity: () => namesOtherCity,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
   runSearchFast: () => runSearchFast,
@@ -30992,20 +30993,25 @@ function declaredRouteSides(text) {
   const last = seps[seps.length - 1];
   return { originSide: text.slice(0, first.idx), destSide: text.slice(last.idx + last.len) };
 }
+function namesOtherCity(text, city) {
+  if (!city) return false;
+  const hay = String(text || "").toLowerCase();
+  const want = String(city || "").toLowerCase().trim();
+  if (!hay || !want) return false;
+  if (hay.includes(want)) return false;
+  return MAJOR_CITIES2.some((c) => c !== want && new RegExp(`\\b${c}\\b`).test(hay));
+}
 function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID");
 }
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, fallbackMaxAgeSec) {
-  const CITY_VERTICALS = /* @__PURE__ */ new Set(["hotels", "grocery", "food", "cab", "movies", "movie"]);
-  const rows = await findCatalogueOffers(vertical, {
-    pincode: input.pincode,
-    city: input.city,
-    limit: 40,
-    strictCity: CITY_VERTICALS.has(vertical) && Boolean(input.city)
-  });
+  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  const strict = filterRowsByAge(rows, maxAgeSec, now);
-  const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(rows, fallbackMaxAgeSec, now);
+  const cityGate = (r) => !namesOtherCity(`${r.title || ""} ${r.subtitle || ""} ${typeof r.attributes === "string" ? r.attributes : JSON.stringify(r.attributes || {})}`, input.city);
+  const cityRows = rows.filter(cityGate);
+  const usable = cityRows.length >= 4 ? cityRows : rows;
+  const strict = filterRowsByAge(usable, maxAgeSec, now);
+  const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(usable, fallbackMaxAgeSec, now);
   let offers = window.map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
@@ -31451,7 +31457,7 @@ async function recordSearchMetrics(input, parsed, response) {
   } catch {
   }
 }
-var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, inflightPartials, RELEVANCE_GATED_CATALOGUE;
+var BUS_PRIMARY_LIVE_SELLERS, inflightPipelines, inflightPartials, RELEVANCE_GATED_CATALOGUE, MAJOR_CITIES2;
 var init_searchOrchestrator = __esm({
   "server/search/searchOrchestrator.ts"() {
     init_lastPrice();
@@ -31479,6 +31485,91 @@ var init_searchOrchestrator = __esm({
     inflightPipelines = /* @__PURE__ */ new Map();
     inflightPartials = /* @__PURE__ */ new Map();
     RELEVANCE_GATED_CATALOGUE = /* @__PURE__ */ new Set(["ecommerce", "grocery", "food", "movies", "movie"]);
+    MAJOR_CITIES2 = [
+      "goa",
+      "mumbai",
+      "delhi",
+      "new delhi",
+      "bengaluru",
+      "bangalore",
+      "hyderabad",
+      "chennai",
+      "kolkata",
+      "pune",
+      "jaipur",
+      "udaipur",
+      "jodhpur",
+      "agra",
+      "varanasi",
+      "lucknow",
+      "kanpur",
+      "nagpur",
+      "nashik",
+      "ahmedabad",
+      "surat",
+      "vadodara",
+      "rajkot",
+      "indore",
+      "bhopal",
+      "gwalior",
+      "jabalpur",
+      "raipur",
+      "chandigarh",
+      "amritsar",
+      "ludhiana",
+      "dehradun",
+      "shimla",
+      "manali",
+      "rishikesh",
+      "haridwar",
+      "kochi",
+      "cochin",
+      "trivandrum",
+      "thiruvananthapuram",
+      "coimbatore",
+      "madurai",
+      "mysore",
+      "mysuru",
+      "mangalore",
+      "vizag",
+      "visakhapatnam",
+      "vijayawada",
+      "bhubaneswar",
+      "patna",
+      "ranchi",
+      "guwahati",
+      "srinagar",
+      "jammu",
+      "ajmer",
+      "pushkar",
+      "mount abu",
+      "lonavala",
+      "mahabaleshwar",
+      "nainital",
+      "mussoorie",
+      "darjeeling",
+      "gangtok",
+      "shillong",
+      "pondicherry",
+      "puducherry",
+      "varkala",
+      "alleppey",
+      "alappuzha",
+      "munnar",
+      "wayanad",
+      "kodaikanal",
+      "ooty",
+      "gurgaon",
+      "gurugram",
+      "noida",
+      "faridabad",
+      "ghaziabad",
+      "thane",
+      "navi mumbai",
+      "secunderabad",
+      "vapi",
+      "siliguri"
+    ];
   }
 });
 

@@ -105,10 +105,7 @@ export async function findCatalogueOffers(
       where += ' AND (location_pincode = ? OR location_pincode IS NULL)';
       params.push(opts.pincode);
     } else if (opts.city) {
-      // Owner 28 Oct ('Indore dhoondha, Goa ke hotels aaye'): the NULL branch let rows with
-      // no city prove nothing yet be borrowed for ANY city. A city-driven floor must be
-      // explicit: strictCity requires the row's own city, so wrong-city rows can never paint.
-      where += opts.strictCity ? ' AND location_city = ?' : ' AND (location_city = ? OR location_city IS NULL)';
+      where += ' AND (location_city = ? OR location_city IS NULL)';
       params.push(opts.city);
     }
     params.push(opts.limit ?? 50);

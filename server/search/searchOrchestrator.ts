@@ -346,6 +346,35 @@ function declaredRouteSides(text: string): { originSide: string; destSide: strin
   return { originSide: text.slice(0, first.idx), destSide: text.slice(last.idx + last.len) };
 }
 
+/**
+ * CITY GATE (owner 28 Oct, second attempt). First attempt required `location_city = city` in SQL
+ * and that REGRESSED the feed: the photo-rich rows from most sources carry no location_city at
+ * all, so hotels/Indore dropped from 262 rows/8 sellers/247 photos to 40 photoless rows.
+ * The rule is now the narrower, honest one: keep a row whose city matches or is unknown, but drop
+ * a row that NAMES a different major city (that is how Goa hotels appeared under 'Indore').
+ */
+const MAJOR_CITIES = [
+  'goa', 'mumbai', 'delhi', 'new delhi', 'bengaluru', 'bangalore', 'hyderabad', 'chennai', 'kolkata',
+  'pune', 'jaipur', 'udaipur', 'jodhpur', 'agra', 'varanasi', 'lucknow', 'kanpur', 'nagpur', 'nashik',
+  'ahmedabad', 'surat', 'vadodara', 'rajkot', 'indore', 'bhopal', 'gwalior', 'jabalpur', 'raipur',
+  'chandigarh', 'amritsar', 'ludhiana', 'dehradun', 'shimla', 'manali', 'rishikesh', 'haridwar',
+  'kochi', 'cochin', 'trivandrum', 'thiruvananthapuram', 'coimbatore', 'madurai', 'mysore', 'mysuru',
+  'mangalore', 'vizag', 'visakhapatnam', 'vijayawada', 'bhubaneswar', 'patna', 'ranchi', 'guwahati',
+  'srinagar', 'jammu', 'ajmer', 'pushkar', 'mount abu', 'lonavala', 'mahabaleshwar', 'nainital',
+  'mussoorie', 'darjeeling', 'gangtok', 'shillong', 'pondicherry', 'puducherry', 'varkala',
+  'alleppey', 'alappuzha', 'munnar', 'wayanad', 'kodaikanal', 'ooty', 'gurgaon', 'gurugram',
+  'noida', 'faridabad', 'ghaziabad', 'thane', 'navi mumbai', 'secunderabad', 'vapi', 'siliguri',
+];
+
+export function namesOtherCity(text: string, city?: string): boolean {
+  if (!city) return false;
+  const hay = String(text || '').toLowerCase();
+  const want = String(city || '').toLowerCase().trim();
+  if (!hay || !want) return false;
+  if (hay.includes(want)) return false; // it names the city we asked for
+  return MAJOR_CITIES.some((c) => c !== want && new RegExp(`\\b${c}\\b`).test(hay));
+}
+
 /** Age window filter shared by the strict floor and its fallback (exported for tests). */
 export function filterRowsByAge(rows: any[], maxAgeSec: number, now = Date.now()): any[] {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < maxAgeSec && r.validation_status !== 'INVALID');
@@ -368,20 +397,18 @@ async function freshCatalogueOffers(
   maxAgeSec = 3600,
   fallbackMaxAgeSec?: number,
 ): Promise<any[]> {
-  // City-driven verticals (hotels/grocery/food/cab/movies) must prove the city they are
-  // borrowed for; route verticals keep their own stricter route gate below.
-  const CITY_VERTICALS = new Set(['hotels', 'grocery', 'food', 'cab', 'movies', 'movie']);
-  const rows = await findCatalogueOffers(vertical, {
-    pincode: input.pincode,
-    city: input.city,
-    limit: 40,
-    strictCity: CITY_VERTICALS.has(vertical) && Boolean(input.city),
-  });
+  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  const strict = filterRowsByAge(rows, maxAgeSec, now);
+  // Drop rows that name a different major city (Goa properties under an Indore search).
+  // Rows whose city is simply unknown stay: they are the ones that carry real photos.
+  const cityGate = (r: any) =>
+    !namesOtherCity(`${r.title || ''} ${r.subtitle || ''} ${typeof r.attributes === 'string' ? r.attributes : JSON.stringify(r.attributes || {})}`, input.city);
+  const cityRows = rows.filter(cityGate);
+  const usable = cityRows.length >= 4 ? cityRows : rows;
+  const strict = filterRowsByAge(usable, maxAgeSec, now);
   // Only reach for older rows when the strict window is thin; the caller needs >=4 rows
   // to paint a floor at all, and a stale-but-real fare beats an empty page.
-  const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(rows, fallbackMaxAgeSec, now);
+  const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(usable, fallbackMaxAgeSec, now);
   let offers = window.map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
