@@ -7,6 +7,7 @@ import { PriceAdviceSidebar } from './PriceAdviceSidebar';
 import { SortAndSummaryTabs } from './SortAndSummaryTabs';
 import { ComparisonCard } from './ComparisonCard';
 import { TravelDealRow } from './TravelDealRow';
+import { liftGroupSchedule, scheduleCompleteFirst } from '../utils/flightSchedule';
 import { HotelDealCard } from './HotelDealCard';
 import { groupHotels, compareHotelGroupsDefault } from '../utils/hotelGroups';
 import { groupOffers } from '../utils/offerGroups';
@@ -220,8 +221,17 @@ export const ComparisonFeed: React.FC = () => {
     if (sortOption === 'cheapest') gs.sort((a, b) => priceOf(a) - priceOf(b));
     else if (sortOption === 'highest_rated') gs.sort((a, b) => (b.lead.rating || 0) - (a.lead.rating || 0));
     else gs.sort((a, b) => (b.rows.length - a.rows.length) || (priceOf(a) - priceOf(b)));
+    // Owner 28 Oct: a flight row missing flight number / dep-arr times / duration
+    // ("first type" card) must never take a top slot. Complete cards lead in the
+    // chosen sort order, incomplete ones sit at the very end of the feed.
+    if (vertical === 'flights') {
+      // Same flight, several sellers: lift real timings from any row that has them
+      // onto the lead row, so the card renders in full instead of bare.
+      gs.forEach((g) => liftGroupSchedule(g as any));
+      return scheduleCompleteFirst(gs, (g) => g.best.item);
+    }
     return gs;
-  }, [isHotels, sorted, sortOption]);
+  }, [isHotels, sorted, sortOption, vertical]);
   const totalCount = isHotels ? hotelGroups.length : offerGroups.length;
   const visibleGroups = offerGroups.slice(0, visibleCount);
   const visibleItems = visibleGroups;

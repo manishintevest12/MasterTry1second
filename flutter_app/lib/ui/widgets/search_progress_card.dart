@@ -11,9 +11,29 @@ import 'kit.dart';
 /// OWNER 27 Oct: no countdown. Real progress: the source being queried right now,
 /// how many sources have answered, an advancing bar and result-shaped skeletons.
 /// OWNER 28 Oct (reference screenshot): the green dot, the live "Checking …" text
-/// and the purple fill now share ONE full-width capsule, with the hard count
+/// and the progress fill now share ONE full-width capsule, with the hard count
 /// right-aligned underneath — and the SAME panel is used on the product page, so
 /// a product search never falls back to a bare grey shimmer.
+///
+/// OWNER 28 Oct (second screenshot, word for word): "app mai muje ye blue colour
+/// ki jagah red mai chaiye". The APP keeps the identical layout and copy as the
+/// web panel but paints it in brand red — rose accent #E11D48 on a soft rose
+/// wash, with the live green dot unchanged (red = the app's accent, not an error).
+class T1SProgressPalette {
+  const T1SProgressPalette._();
+
+  /// Solid rail + fill (web uses indigo #4F46E5; the app uses brand red).
+  static const Color accent = Color(0xFFE11D48);
+  /// Soft wash inside the capsule.
+  static const Color fill = Color(0x1AE11D48);
+  static const Color pillBgLight = Color(0xFFFEF2F4);
+  static const Color pillBorderLight = Color(0xFFFBD5DC);
+  static const Color pillBgDark = Color(0xFF2A1218);
+  static const Color trackLight = Color(0xFFFBEAEE);
+  /// "Checking Air India…" text.
+  static const Color labelLight = Color(0xFF9F1239);
+  static const Color labelDark = Color(0xFFFDA4AF);
+}
 class SearchProgressCard extends StatefulWidget {
   const SearchProgressCard({super.key, this.verticalId, this.title});
 
@@ -124,8 +144,11 @@ class _SearchProgressCardState extends State<SearchProgressCard> with SingleTick
     final total = copy.sources.length;
     final answered = ((_progress * total).round()).clamp(1, total);
     final currentSite = copy.sources[_siteIdx % total];
-    final pct = (_progress * 100).round();
-    final track = dark ? T1SColors.slate800 : const Color(0xFFE8E8F8);
+    final track = dark ? T1SColors.slate800 : T1SProgressPalette.trackLight;
+    final pillBg = dark ? T1SProgressPalette.pillBgDark : T1SProgressPalette.pillBgLight;
+    final pillBorder = dark ? T1SColors.slate800 : T1SProgressPalette.pillBorderLight;
+    final pillFill = dark ? const Color(0x33FFFFFF) : T1SProgressPalette.fill;
+    final labelColor = dark ? T1SProgressPalette.labelDark : T1SProgressPalette.labelLight;
 
     return Box(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
@@ -143,8 +166,8 @@ class _SearchProgressCardState extends State<SearchProgressCard> with SingleTick
           borderRadius: BorderRadius.circular(999),
           child: Container(
             decoration: BoxDecoration(
-              color: dark ? const Color(0xFF1B1B33) : const Color(0xFFEEF0FE),
-              border: Border.all(color: dark ? T1SColors.slate800 : const Color(0xFFDCDBFF)),
+              color: pillBg,
+              border: Border.all(color: pillBorder),
               borderRadius: BorderRadius.circular(999),
             ),
             child: Column(children: [
@@ -153,7 +176,7 @@ class _SearchProgressCardState extends State<SearchProgressCard> with SingleTick
                   child: FractionallySizedBox(
                     alignment: Alignment.centerLeft,
                     widthFactor: _progress.clamp(0.0, 1.0),
-                    child: Container(color: dark ? const Color(0x33FFFFFF) : const Color(0x1A4F46E5)),
+                    child: Container(color: pillFill),
                   ),
                 ),
                 Padding(
@@ -172,7 +195,7 @@ class _SearchProgressCardState extends State<SearchProgressCard> with SingleTick
                           key: ValueKey<String>(currentSite),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: tx(context, 11.5, w: FontWeight.w800, color: const Color(0xFF4A4A9C)),
+                          style: tx(context, 11.5, w: FontWeight.w800, color: labelColor),
                         ),
                       ),
                     ),
@@ -184,7 +207,7 @@ class _SearchProgressCardState extends State<SearchProgressCard> with SingleTick
                 value: _progress,
                 minHeight: 3,
                 backgroundColor: track,
-                valueColor: const AlwaysStoppedAnimation(Color(0xFF4F46E5)),
+                valueColor: const AlwaysStoppedAnimation(T1SProgressPalette.accent),
               ),
             ]),
           ),
@@ -192,8 +215,8 @@ class _SearchProgressCardState extends State<SearchProgressCard> with SingleTick
         const SizedBox(height: 6),
         Align(
           alignment: Alignment.centerRight,
-          child: Text('$answered of $total ${copy.unit} · $pct%',
-              style: tx(context, 10.5, w: FontWeight.w600, color: muted(context))),
+          child: Text('$answered of $total ${copy.unit}',
+              style: tx(context, 11, w: FontWeight.w600, color: muted(context))),
         ),
         const SizedBox(height: 8),
         Text(

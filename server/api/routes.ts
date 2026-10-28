@@ -10,6 +10,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
+import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
 import { bestUnitPricesPerStore, computeStoreTotals, unitPriceOf, type BasketItemIn, type ItemCompare, type StoreOfferIn } from '../smartcart/basket';
@@ -682,6 +683,8 @@ apiRouter.post('/search', async (req, res) => {
     if (fallback) {
       return res.json({
         ...fallback,
+        // Owner 28 Oct (server-level, no app rebuild): bare flight rows trail.
+        results: orderFlightRowsLast((fallback as any).results || [], String(input.vertical)),
         pendingRefresh: true,
         honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
         latencyMs: Date.now() - searchStart,
@@ -713,7 +716,11 @@ apiRouter.post('/search', async (req, res) => {
     for (const o of response.results as any[]) vc[String((o as any).vendor || (o as any).seller || '?')] = (vc[String((o as any).vendor || (o as any).seller || '?')] || 0) + 1;
     console.error(JSON.stringify({ dbg: 'runSearch raw', n: response.results.length, vendors: vc, vertical: String(input.vertical || '') }));
   }
-  res.json({ success: response.results.length > 0 || response.state.servedFrom !== 'unavailable', ...response });
+  // Owner 28 Oct, standing rule enforced at the API boundary: a flight row missing
+  // flight number / dep-arr / duration goes to the BOTTOM of the feed. The installed
+  // Play Store app cannot be patched remotely, so this ordering ships server-side.
+  const orderedResults = orderFlightRowsLast(response.results as any[], String(input.vertical));
+  res.json({ success: response.results.length > 0 || response.state.servedFrom !== 'unavailable', ...response, results: orderedResults });
 });
 
 

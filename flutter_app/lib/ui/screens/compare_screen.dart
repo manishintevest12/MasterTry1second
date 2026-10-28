@@ -2184,6 +2184,9 @@ class _FeedBody {
       if (filterOpts.sortOrder == SortOrder.priceHighToLow) {
         groups.sort((a, b) => b.best.price.compareTo(a.best.price));
       }
+      // Owner 28 Oct: bare flight rows (no flight number / timings / duration)
+      // sit at the very end of the list instead of taking the top slots.
+      groups = cmp.scheduleCompleteFirst(groups, meta.id);
 
       // Owner 22 Oct: cab prices must be segmented by ride type — Auto, Bike and
       // Cab each get their own section so every class's fare is visible separately

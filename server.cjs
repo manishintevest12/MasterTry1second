@@ -10189,14 +10189,14 @@ function parseStarAirAvailability(html, depIso) {
   const parts = b.split(/<div class="js-journey"/);
   for (const part of parts.slice(1)) {
     const chunk = part;
-    const attr = (name) => {
+    const attr2 = (name) => {
       const m = chunk.match(new RegExp(`data-${name}="(\\d+)"`));
       return m ? m[1] : "";
     };
-    const stops = Number(attr("stop-count") ?? 0);
-    const durationSec = Number(attr("journey-duration") ?? 0);
-    const depEpoch = Number(attr("dep-date") ?? 0);
-    const arrEpoch = Number(attr("arr-date") ?? 0);
+    const stops = Number(attr2("stop-count") ?? 0);
+    const durationSec = Number(attr2("journey-duration") ?? 0);
+    const depEpoch = Number(attr2("dep-date") ?? 0);
+    const arrEpoch = Number(attr2("arr-date") ?? 0);
     const flightNo2 = ((chunk.match(/class="flight-no">([^<]+)</) || [])[1] || "").replace(/\s+/g, "");
     if (!flightNo2) continue;
     const times = [...chunk.matchAll(/<span class="time">\s*(\d{1,2}:\d{2})\s*</g)].map((m) => m[1]);
@@ -21952,12 +21952,12 @@ var init_cab = __esm({
           run: async (ctx) => {
             const rt = cabRoute(ctx);
             if (!rt) return [];
-            const lookup3 = async (x) => {
+            const lookup4 = async (x) => {
               const byCity = await indriveCityLookup(cityFromRouteText(x));
               if (byCity) return byCity;
               return cityFromRouteText(x) !== x ? indriveCityLookup(x) : null;
             };
-            const [from, to] = await Promise.all([lookup3(rt.from), lookup3(rt.to)]);
+            const [from, to] = await Promise.all([lookup4(rt.from), lookup4(rt.to)]);
             if (!from || !to) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity registry has no match for ${!from ? rt.from : rt.to} (India registry only)`);
             if (from.id === to.id) throw new AcquisitionError("EMPTY_RESPONSE", `InDrive intercity: "${rt.from}" and "${rt.to}" resolved to the same city (${from.name})`);
             const rows = await indrivePrices(from.id, to.id);
@@ -24385,7 +24385,7 @@ var init_movies = __esm({
             const gwBundle = gwCity ? await cachedGwAggregates(gwCity) : null;
             const aggs = gwBundle?.aggs || null;
             const host = gwBundle?.host || "district";
-            const keyOf = (o) => `${normCity(region.regionName)}|${String(o.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
+            const keyOf2 = (o) => `${normCity(region.regionName)}|${String(o.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
             for (const o of cards.slice(0, 14)) {
               try {
                 const agg = matchAgg(aggs, String(o.title || ""));
@@ -24416,9 +24416,9 @@ var init_movies = __esm({
                   applySeatCta(o);
                   o.attributes["data_note"] = `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${host === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Book opens that cheapest show's seat map on ${bmsCheapest?.platform || (host === "district" ? "District" : "TicketNew")}.`;
                   o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
-                  bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes["price_band"], note: o.attributes["data_note"] });
+                  bmsLastPrice.set(keyOf2(o), { at: Date.now(), price: agg.minPrice, band: o.attributes["price_band"], note: o.attributes["data_note"] });
                 } else {
-                  const last = bmsLastPrice.get(keyOf(o));
+                  const last = bmsLastPrice.get(keyOf2(o));
                   if (last && Date.now() - last.at < 24 * 36e5) {
                     o.price = last.price;
                     o.attributes = o.attributes || {};
@@ -27765,11 +27765,11 @@ var init_validation = __esm({
 });
 
 // server/pipeline/freshness.ts
-function computeFreshness(offer, clock, policy, isLiveAcquisition, validated) {
+function computeFreshness(offer, clock2, policy, isLiveAcquisition, validated) {
   const now = Date.now();
-  const fetched = new Date(clock.fetchedAt).getTime();
-  const sourceUpdated = clock.sourceUpdatedAt ? new Date(clock.sourceUpdatedAt).getTime() : null;
-  if (clock.expiresAt && new Date(clock.expiresAt).getTime() < now) return "EXPIRED";
+  const fetched = new Date(clock2.fetchedAt).getTime();
+  const sourceUpdated = clock2.sourceUpdatedAt ? new Date(clock2.sourceUpdatedAt).getTime() : null;
+  if (clock2.expiresAt && new Date(clock2.expiresAt).getTime() < now) return "EXPIRED";
   if (sourceUpdated && sourceUpdated > fetched) return "UNVERIFIED";
   if (validated && isLiveAcquisition && (now - fetched) / 1e3 <= policy.liveVerifiedTtlSec) return "LIVE_VERIFIED";
   if ((now - fetched) / 1e3 <= policy.freshTtlSec) return validated ? "FRESH" : "UNVERIFIED";
@@ -31057,6 +31057,206 @@ var init_catalogueService = __esm({
   }
 });
 
+// server/common/flightSchedule.ts
+function normalizeFlightNo(value) {
+  const raw = String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!raw || raw.length < 4 || raw.length > 8) return null;
+  const m = /^([0-9]?[A-Z]{1,2})(\d{2,5})$/.exec(raw);
+  if (!m) return null;
+  return `${m[1]}${m[2]}`;
+}
+function normalizeClockTime(value) {
+  const s = String(value ?? "").trim();
+  if (!s) return null;
+  const iso2 = /T(\d{2}):(\d{2})/.exec(s);
+  if (iso2) return `${iso2[1]}:${iso2[2]}`;
+  const h12 = /^(\d{1,2}):(\d{2})\s*([AP])\.?M\.?/i.exec(s);
+  if (h12) {
+    let h = Number(h12[1]) % 12;
+    if (/P/i.test(h12[3])) h += 12;
+    return `${String(h).padStart(2, "0")}:${h12[2]}`;
+  }
+  const h24 = /^(\d{1,2}):(\d{2})/.exec(s);
+  if (h24) {
+    const h = Number(h24[1]);
+    if (h > 23) return null;
+    return `${String(h).padStart(2, "0")}:${h24[2]}`;
+  }
+  return null;
+}
+function remember(entry) {
+  const key = keyOf(entry.flightNo, entry.route);
+  const prev = memory.get(key);
+  if (prev && prev.observedAt > entry.observedAt) return;
+  memory.set(key, entry);
+  if (memory.size > MAX_ENTRIES) {
+    const oldest = memory.keys().next().value;
+    if (oldest) memory.delete(oldest);
+  }
+  void persist3(entry);
+}
+async function ensureTable2() {
+  if (tableReady) return true;
+  try {
+    await getStore().execute(
+      `CREATE TABLE IF NOT EXISTS flight_schedules (
+         flight_no VARCHAR(12) NOT NULL,
+         route VARCHAR(16) NOT NULL DEFAULT '*',
+         departure VARCHAR(8) NOT NULL,
+         arrival VARCHAR(8) NOT NULL,
+         duration_minutes INT NULL,
+         stops INT NULL,
+         airline VARCHAR(64) NULL,
+         observed_at VARCHAR(32) NOT NULL,
+         PRIMARY KEY (flight_no, route)
+       )`
+    );
+    tableReady = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function persist3(entry) {
+  if (!persistEnabled()) return;
+  const key = keyOf(entry.flightNo, entry.route);
+  if (pendingWrites.has(key)) return;
+  pendingWrites.add(key);
+  try {
+    if (!await ensureTable2()) return;
+    await getStore().execute(
+      `INSERT INTO flight_schedules (flight_no, route, departure, arrival, duration_minutes, stops, airline, observed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE departure = VALUES(departure), arrival = VALUES(arrival),
+         duration_minutes = VALUES(duration_minutes), stops = VALUES(stops),
+         airline = VALUES(airline), observed_at = VALUES(observed_at)`,
+      [entry.flightNo, entry.route || "*", entry.departure, entry.arrival, entry.durationMinutes, entry.stops, entry.airline, entry.observedAt]
+    );
+  } catch {
+  } finally {
+    pendingWrites.delete(key);
+  }
+}
+function learnFlightSchedules(offers) {
+  let learned = 0;
+  for (const offer of offers || []) {
+    if (String(offer?.vertical || "") !== "flights") continue;
+    const flightNo2 = flightNoOf(offer);
+    if (!flightNo2) continue;
+    const departure = normalizeClockTime(attr(offer, "departure_time", "departure time", "departure"));
+    const arrival = normalizeClockTime(attr(offer, "arrival_time", "arrival time", "arrival"));
+    if (!departure || !arrival) continue;
+    const durationRaw = Number(attr(offer, "duration_minutes", "duration minutes"));
+    const stopsRaw = attr(offer, "stops");
+    remember({
+      flightNo: flightNo2,
+      route: routeOf(offer),
+      departure,
+      arrival,
+      durationMinutes: Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null,
+      stops: stopsRaw !== void 0 && stopsRaw !== "" && Number.isFinite(Number(stopsRaw)) ? Number(stopsRaw) : null,
+      airline: attr(offer, "airline") || offer?.brand || null,
+      observedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    learned += 1;
+  }
+  return learned;
+}
+function lookup2(flightNo2, route2) {
+  if (route2) {
+    const exact = memory.get(keyOf(flightNo2, route2));
+    if (exact) return exact;
+  }
+  const global = memory.get(keyOf(flightNo2, null));
+  if (global) return global;
+  let found = null;
+  for (const entry of memory.values()) {
+    if (entry.flightNo !== flightNo2) continue;
+    if (found) return null;
+    found = entry;
+  }
+  return found;
+}
+function enrichFlightSchedules(offers) {
+  learnFlightSchedules(offers);
+  const out = [];
+  for (const offer of offers || []) {
+    if (String(offer?.vertical || "") !== "flights") {
+      out.push(offer);
+      continue;
+    }
+    const departure = normalizeClockTime(attr(offer, "departure_time", "departure time", "departure"));
+    const arrival = normalizeClockTime(attr(offer, "arrival_time", "arrival time", "arrival"));
+    if (departure && arrival) {
+      out.push(offer);
+      continue;
+    }
+    const flightNo2 = flightNoOf(offer);
+    if (!flightNo2) {
+      out.push(offer);
+      continue;
+    }
+    const schedule = lookup2(flightNo2, routeOf(offer));
+    if (!schedule) {
+      out.push(offer);
+      continue;
+    }
+    const attributes = { ...offer.attributes || {} };
+    attributes.departure = attributes.departure || schedule.departure;
+    attributes.arrival = attributes.arrival || schedule.arrival;
+    if (schedule.durationMinutes && !attributes.duration_minutes) attributes.duration_minutes = schedule.durationMinutes;
+    if (schedule.stops !== null && attributes.stops === void 0) attributes.stops = schedule.stops;
+    if (schedule.airline && !attributes.airline) attributes.airline = schedule.airline;
+    if (!attributes.flight_number) attributes.flight_number = flightNo2;
+    if (!attributes.route && schedule.route) attributes.route = schedule.route.replace("-", " \u2192 ");
+    attributes.schedule_source = "observed_live_row";
+    attributes.schedule_observed_at = schedule.observedAt;
+    out.push({ ...offer, attributes });
+  }
+  return out;
+}
+var MAX_ENTRIES, persistEnabled, memory, tableReady, pendingWrites, keyOf, attr, routeOf, flightNoOf;
+var init_flightSchedule = __esm({
+  "server/common/flightSchedule.ts"() {
+    init_db();
+    MAX_ENTRIES = 4e3;
+    persistEnabled = () => process.env.NODE_ENV !== "test" && process.env.T1S_SCHEDULE_DB !== "off";
+    memory = /* @__PURE__ */ new Map();
+    tableReady = false;
+    pendingWrites = /* @__PURE__ */ new Set();
+    keyOf = (flightNo2, route2) => `${flightNo2}|${route2 || "*"}`;
+    attr = (offer, ...keys) => {
+      const src2 = offer?.attributes || offer?.specs || {};
+      for (const k of keys) {
+        const direct = src2[k];
+        if (direct !== void 0 && direct !== null && String(direct).trim() !== "" && String(direct) !== "undefined") return String(direct);
+        const spaced = k.replace(/_/g, " ");
+        const v = src2[spaced];
+        if (v !== void 0 && v !== null && String(v).trim() !== "" && String(v) !== "undefined") return String(v);
+      }
+      return void 0;
+    };
+    routeOf = (offer) => {
+      const raw = attr(offer, "route", "Route") || offer?.travel?.route || "";
+      const codes = String(raw).match(/\b[A-Z]{3}\b/g);
+      if (codes && codes.length >= 2) return `${codes[0]}-${codes[1]}`;
+      const arrow = String(raw).split(/\s*(?:→|->| to )\s*/i);
+      if (arrow.length === 2 && arrow[0].trim() && arrow[1].trim()) {
+        const short = (t) => t.trim().slice(0, 3).toUpperCase();
+        return `${short(arrow[0])}-${short(arrow[1])}`;
+      }
+      return null;
+    };
+    flightNoOf = (offer) => {
+      const explicit = normalizeFlightNo(attr(offer, "flight_number", "flight number", "flightNo"));
+      if (explicit) return explicit;
+      const title = String(offer?.title || "");
+      const m = title.match(/\b([0-9]?[A-Z]{1,2})\s?(\d{3,4})\b/);
+      return m ? normalizeFlightNo(`${m[1]}${m[2]}`) : null;
+    };
+  }
+});
+
 // server/affiliate/affiliateNetwork.ts
 async function attachAffiliateDeepLinks(offers) {
   return offers.map((o) => {
@@ -31811,21 +32011,21 @@ async function buildLiveCtx(parsedIn, input) {
     const ageSec = (now - new Date(r.fetched_at).getTime()) / 1e3;
     return ageSec < 3600 && r.validation_status !== "INVALID";
   });
-  const catalogueOffers = eligible.map((r) => rowToOffer(r, false));
+  const catalogueOffers = String(vertical) === "flights" ? enrichFlightSchedules(eligible.map((r) => rowToOffer(r, false))) : eligible.map((r) => rowToOffer(r, false));
   const hasEligibleFresh = catalogueOffers.length > 0;
   const enabledSources = selectSources(parsed);
   state.reusedCatalogue = hasEligibleFresh;
   state.triggeredRefresh = !hasEligibleFresh || eligible.length < 5;
   return { state, vertical, enabledSources, catalogueOffers, eligibleCount: eligible.length, hasEligibleFresh };
 }
-async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = true) {
+async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = true) {
   const { state, vertical, enabledSources, catalogueOffers, hasEligibleFresh } = ctx;
   let liveOffers = [];
   if (enabledSources.length > 0) {
     state.sourcesAttempted = outcome.attempted;
     state.sourcesSucceeded = outcome.succeeded;
     state.sourcesFailed = outcome.failed.map((f) => ({ sourceId: f.sourceId, failureClass: f.failureClass, error: f.error }));
-    liveOffers = await processAdapterResults(outcome.results, parsed, persist4);
+    liveOffers = await processAdapterResults(outcome.results, parsed, persist5);
     recordSourcePrices(String(vertical), String(input.query || ""), liveOffers);
     state.sourcesFailed = enrichFailedWithLastPrice(String(vertical), state.sourcesFailed);
   } else {
@@ -31835,6 +32035,9 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist4 = 
   const liveKeys = new Set(liveOffers.map(liveIdentity));
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+  if (String(vertical) === "flights") {
+    combined = enrichFlightSchedules(combined);
+  }
   if (String(vertical) === "flights") {
     const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId).filter((id) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
     combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
@@ -31921,7 +32124,7 @@ async function runLivePipeline(input, parsedIn, hooks) {
   }
   return finalizeLive(totalStart, input, parsed, ctx, outcome);
 }
-async function processAdapterResults(results, parsed, persist4 = true) {
+async function processAdapterResults(results, parsed, persist5 = true) {
   const { getSource: getSource2 } = await Promise.resolve().then(() => (init_registry(), registry_exports));
   const out = [];
   let processed = 0;
@@ -31964,7 +32167,7 @@ async function processAdapterResults(results, parsed, persist4 = true) {
         );
         offer.provenance.validatedAt = (/* @__PURE__ */ new Date()).toISOString();
         if (!isServable(offer.freshnessStatus)) continue;
-        if (persist4 && source.permittedForRetention) {
+        if (persist5 && source.permittedForRetention) {
           const rowId = await persistOffer(offer, raw, source);
           await recordPriceSnapshot(offer, rowId);
         }
@@ -32019,6 +32222,7 @@ var init_searchOrchestrator = __esm({
     init_sellerPresence();
     init_verticalEngine();
     init_catalogueService();
+    init_flightSchedule();
     init_verticalEngine();
     init_affiliateNetwork();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
@@ -32110,6 +32314,46 @@ var init_searchOrchestrator = __esm({
       "vapi",
       "siliguri"
     ];
+  }
+});
+
+// server/search/feedOrder.ts
+function flightRowComplete(item) {
+  if (!item || String(item.vertical) !== "flights") return false;
+  const dep = clock(specOf(item, "departure time", "departure"));
+  const arr = clock(specOf(item, "arrival time", "arrival"));
+  if (!dep || !arr) return false;
+  const flightNo2 = specOf(item, "flight number", "flight_number", "flight no");
+  return /[A-Za-z]/.test(flightNo2) && /\d/.test(flightNo2);
+}
+function orderFlightRowsLast(items, vertical) {
+  if (String(vertical || items?.[0]?.vertical || "") !== "flights" || !items?.length) return items;
+  const complete = [];
+  const incomplete = [];
+  for (const item of items) (flightRowComplete(item) ? complete : incomplete).push(item);
+  if (!incomplete.length || !complete.length) return items;
+  return [...complete, ...incomplete];
+}
+var clock, specOf;
+var init_feedOrder = __esm({
+  "server/search/feedOrder.ts"() {
+    clock = (value) => {
+      const s = String(value ?? "").trim();
+      if (!s) return null;
+      const iso2 = /T(\d{2}):(\d{2})/.exec(s);
+      if (iso2) return `${iso2[1]}:${iso2[2]}`;
+      const h24 = /^(\d{1,2}):(\d{2})/.exec(s);
+      if (h24) return Number(h24[1]) > 23 ? null : `${h24[1].padStart(2, "0")}:${h24[2]}`;
+      return null;
+    };
+    specOf = (item, ...keys) => {
+      const specs = item?.specs || {};
+      for (const k of keys) {
+        const v = specs[k] ?? specs[k.toLowerCase()] ?? specs[k.replace(/_/g, " ")];
+        if (v !== void 0 && v !== null && String(v).trim() !== "" && String(v) !== "undefined") return String(v);
+      }
+      return "";
+    };
   }
 });
 
@@ -33830,7 +34074,7 @@ function load8() {
   }
   return cache8;
 }
-function persist3() {
+function persist4() {
   if (saveTimer3) return;
   saveTimer3 = setTimeout(() => {
     saveTimer3 = null;
@@ -33856,7 +34100,7 @@ async function getJson2(url) {
     clearTimeout(t);
   }
 }
-async function lookup2(nameRaw) {
+async function lookup3(nameRaw) {
   const name = MERCHANT_ALIAS[nameRaw.toLowerCase()] || nameRaw;
   const s = await getJson2(`https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&limit=20&search=${encodeURIComponent(name)}`);
   const results = (s?.search || []).filter((x) => x.id);
@@ -33888,9 +34132,9 @@ function resolveMerchantCrispLogo(rawName) {
   if (hit && (hit.url || Date.now() - hit.at < MISS_TTL_MS2)) return Promise.resolve(hit.url);
   const running2 = inflight3.get(key);
   if (running2) return running2;
-  const p = lookup2(name).catch(() => null).then((url) => {
+  const p = lookup3(name).catch(() => null).then((url) => {
     c[key] = { url, at: Date.now() };
-    persist3();
+    persist4();
     return url;
   }).finally(() => inflight3.delete(key));
   inflight3.set(key, p);
@@ -34229,11 +34473,11 @@ function techCategoryOf(title) {
   for (const [rx, c] of TECH_CATS) if (rx.test(s)) return c;
   return "gadget";
 }
-function roundRobinSpread(items, keyOf, maxPerKey, target) {
+function roundRobinSpread(items, keyOf2, maxPerKey, target) {
   const byKey = /* @__PURE__ */ new Map();
   const order = [];
   for (const it of items) {
-    const k = keyOf(it);
+    const k = keyOf2(it);
     if (!byKey.has(k)) {
       byKey.set(k, []);
       order.push(k);
@@ -37940,6 +38184,7 @@ var init_routes = __esm({
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
+    init_feedOrder();
     init_latencyBudget();
     init_queryRelevance();
     init_basket();
@@ -38333,6 +38578,8 @@ var init_routes = __esm({
         if (fallback) {
           return res.json({
             ...fallback,
+            // Owner 28 Oct (server-level, no app rebuild): bare flight rows trail.
+            results: orderFlightRowsLast(fallback.results || [], String(input.vertical)),
             pendingRefresh: true,
             honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
             latencyMs: Date.now() - searchStart
@@ -38362,7 +38609,8 @@ var init_routes = __esm({
         for (const o of response.results) vc[String(o.vendor || o.seller || "?")] = (vc[String(o.vendor || o.seller || "?")] || 0) + 1;
         console.error(JSON.stringify({ dbg: "runSearch raw", n: response.results.length, vendors: vc, vertical: String(input.vertical || "") }));
       }
-      res.json({ success: response.results.length > 0 || response.state.servedFrom !== "unavailable", ...response });
+      const orderedResults = orderFlightRowsLast(response.results, String(input.vertical));
+      res.json({ success: response.results.length > 0 || response.state.servedFrom !== "unavailable", ...response, results: orderedResults });
     });
     HOTEL_SOURCE_LABEL = {
       w_hotels_ixigo: "Ixigo",
@@ -40280,7 +40528,7 @@ function parsePsiResponse(json, strategy) {
     return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url: "", scanned_at, error: e2?.message || "Could not parse PageSpeed response" };
   }
 }
-async function ensureTable2() {
+async function ensureTable3() {
   if (ensured6) return;
   const store2 = await getStore();
   await store2.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
@@ -40338,7 +40586,7 @@ async function lastGood(strategy) {
   return rows?.[0] || null;
 }
 async function latestScores() {
-  await ensureTable2();
+  await ensureTable3();
   const store2 = await getStore();
   const out = [];
   for (const strategy of STRATEGIES) {
@@ -40386,14 +40634,14 @@ function rowToScore(r) {
   };
 }
 async function scoreHistory(strategy, limit = 20) {
-  await ensureTable2();
+  await ensureTable3();
   const store2 = await getStore();
   const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const rows = await store2.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
   return rows.map(rowToScore);
 }
 async function persistScore(s) {
-  await ensureTable2();
+  await ensureTable3();
   const store2 = await getStore();
   await store2.execute(
     "INSERT INTO speed_scores (strategy, score, lcp_ms, tbt_ms, cls, url, error, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -40402,7 +40650,7 @@ async function persistScore(s) {
   await pruneScoreHistory(s.strategy);
 }
 async function pruneScoreHistory(strategy) {
-  await ensureTable2();
+  await ensureTable3();
   const store2 = await getStore();
   const rows = await store2.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
   const drop = rows.slice(MAX_ROWS_PER_STRATEGY).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
@@ -40420,7 +40668,7 @@ async function fetchWithTimeout2(url) {
 }
 async function runSpeedTest(siteUrl, opts = {}) {
   const url = String(siteUrl || "https://www.try1second.com").trim().slice(0, 300);
-  await ensureTable2();
+  await ensureTable3();
   const store2 = await getStore();
   const now = Date.now();
   const gaps = await Promise.all(STRATEGIES.map(async (strategy) => {

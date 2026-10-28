@@ -34,6 +34,7 @@ import { passesQueryRelevance } from './queryRelevance';
 import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerPresence';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
+import { enrichFlightSchedules } from '../common/flightSchedule';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
 import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
 
@@ -803,7 +804,11 @@ async function buildLiveCtx(parsedIn: ParsedQuery, input: SearchInput): Promise<
     const ageSec = (now - new Date(r.fetched_at).getTime()) / 1000;
     return ageSec < 3600 && r.validation_status !== 'INVALID';
   });
-  const catalogueOffers = eligible.map((r) => rowToOffer(r, false));
+  const catalogueOffers = (String(vertical) === 'flights'
+    // Cold-start paint (owner 28 Oct): enrich the catalogue floor as well, so the
+    // very first cards already show timings we learned earlier for that flight.
+    ? enrichFlightSchedules(eligible.map((r) => rowToOffer(r, false)) as any)
+    : eligible.map((r) => rowToOffer(r, false))) as NormalizedOffer[];
 
   // 4. INCREMENTAL TARGETED REFRESH — only if the catalogue is thin or aging (Section 7)
   const hasEligibleFresh = catalogueOffers.length > 0;
@@ -853,6 +858,16 @@ async function finalizeLive(
   // query. Only rows sharing stemmed title tokens with the typed query replay.
   const supplementary = catalogueOffers.filter((o) => !liveKeys.has(liveIdentity(o)) && passesQueryRelevance(o, parsed));
   let combined = dedupeOffers([...liveOffers, ...supplementary]);
+
+  // 7.1 FLIGHT SCHEDULE COMPLETION (owner 28 Oct: "flight mai bahut aisa section
+  // hai jo 1st card show kar raha hai, pr hume second card chahiye"): a live row
+  // teaches the SAME flight number's timings to catalogue/presence rows, so cards
+  // render with flight no + dep/arr + duration + non-stop. Only OBSERVED timings
+  // are copied (server/common/flightSchedule.ts) — a flight with no known schedule
+  // keeps its bare row and the feed orders it last instead of inventing times.
+  if (String(vertical) === 'flights') {
+    combined = enrichFlightSchedules(combined as any) as any;
+  }
 
   // 7.5 SELLER PRESENCE (owner 22 Oct): mandatory flight sellers that are
   // IP-gated / circuit-backed-off still appear at app level with their own

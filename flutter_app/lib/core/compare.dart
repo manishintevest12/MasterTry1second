@@ -588,6 +588,72 @@ List<HotelGroup> groupHotels(List<CompareItem> items) {
 
 enum SortMode { best, cheapest, highestRated }
 
+/// OWNER 28 Oct ("flight mai bahut aisa section hai jo 1st card show kar raha
+/// hai, pr hume second card chahiye"): two card shapes reach the feed. The
+/// "second type" carries flight number + real dep -> arr + duration + non-stop;
+/// the "first type" is a bare airline/route/price row. A row is only promoted to
+/// the second type when the timings are REAL (the server copies them from an
+/// observed row of the same flight number) — otherwise it drops to the end of
+/// the feed instead of holding a top slot.
+final RegExp _clockRe = RegExp(r'(\d{1,2}):(\d{2})');
+
+String? _clockOf(String? raw) {
+  if (raw == null) return null;
+  final s = raw.trim();
+  if (s.isEmpty) return null;
+  final iso = RegExp(r'T(\d{2}):(\d{2})').firstMatch(s);
+  if (iso != null) return '${iso.group(1)}:${iso.group(2)}';
+  final m = _clockRe.firstMatch(s);
+  if (m == null) return null;
+  final h = int.tryParse(m.group(1)!) ?? 99;
+  if (h > 23) return null;
+  return '${m.group(1)!.padLeft(2, '0')}:${m.group(2)}';
+}
+
+bool flightScheduleComplete(CompareItem item) {
+  if (item.vertical != 'flights') return false;
+  final dep = _clockOf(item.specs['departure time'] ?? item.specs['departure']);
+  final arr = _clockOf(item.specs['arrival time'] ?? item.specs['arrival']);
+  return dep != null && arr != null;
+}
+
+/// One comparison group = the SAME flight sold by several sites. When the
+/// cheapest row carries no timings but another seller's row for that flight does,
+/// lift only the schedule specs onto the lead row (never the price/seller) so the
+/// card still renders in full.
+const _scheduleSpecKeys = ['departure time', 'arrival time', 'duration minutes', 'stops', 'flight number', 'airline', 'departure date'];
+
+void liftGroupSchedule(OfferGroup g) {
+  if (flightScheduleComplete(g.lead)) return;
+  CompareItem? donor;
+  for (final r in g.rows) {
+    if (flightScheduleComplete(r.item)) {
+      donor = r.item;
+      break;
+    }
+  }
+  if (donor == null) return;
+  for (final k in _scheduleSpecKeys) {
+    final v = donor.specs[k];
+    if (v != null && v.trim().isNotEmpty && (g.lead.specs[k] ?? '').isEmpty) {
+      g.lead.specs[k] = v;
+    }
+  }
+}
+
+/// Stable partition: complete "second type" cards keep the chosen sort order and
+/// lead; the rest follow in the same order. Never re-sorts.
+List<OfferGroup> scheduleCompleteFirst(List<OfferGroup> gs, String vertical) {
+  if (vertical != 'flights') return gs;
+  final complete = <OfferGroup>[];
+  final incomplete = <OfferGroup>[];
+  for (final g in gs) {
+    (flightScheduleComplete(g.lead) ? complete : incomplete).add(g);
+  }
+  if (incomplete.isEmpty) return gs;
+  return [...complete, ...incomplete];
+}
+
 List<OfferGroup> sortGroups(List<OfferGroup> gs, SortMode mode) {
   double priceOf(OfferGroup g) => g.best.priceAvailable ? g.best.price : double.infinity;
   final out = [...gs];
