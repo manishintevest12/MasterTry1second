@@ -346,12 +346,35 @@ function declaredRouteSides(text: string): { originSide: string; destSide: strin
   return { originSide: text.slice(0, first.idx), destSide: text.slice(last.idx + last.len) };
 }
 
-async function freshCatalogueOffers(vertical: string, input: SearchInput, parsed: ParsedQuery, maxAgeSec = 3600): Promise<any[]> {
+/** Age window filter shared by the strict floor and its fallback (exported for tests). */
+export function filterRowsByAge(rows: any[], maxAgeSec: number, now = Date.now()): any[] {
+  return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < maxAgeSec && r.validation_status !== 'INVALID');
+}
+
+/**
+ * OWNER 28 Oct ('bus, food, movies ni de raha'): the cold-start floor only accepted rows
+ * younger than ONE HOUR for travel verticals (bus/flights/cab/hotels). A bus route whose
+ * sources are gated for a few hours therefore had NO floor at all — the first paint was
+ * literally empty while a perfectly good last-verified fare sat in MySQL. The floor now
+ * retries the same query — same route gate, same relevance gate — with a wider window
+ * (24h for travel, 72h elsewhere) when the strict window cannot fill it. The rows are the
+ * same rows the app already shows as "last verified"; nothing is invented, and the live
+ * pipeline still replaces them seconds later.
+ */
+async function freshCatalogueOffers(
+  vertical: string,
+  input: SearchInput,
+  parsed: ParsedQuery,
+  maxAgeSec = 3600,
+  fallbackMaxAgeSec?: number,
+): Promise<any[]> {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  let offers = rows
-    .filter((r) => (now - new Date(r.fetched_at).getTime()) / 1000 < maxAgeSec && r.validation_status !== 'INVALID')
-    .map((r) => rowToOffer(r, false));
+  const strict = filterRowsByAge(rows, maxAgeSec, now);
+  // Only reach for older rows when the strict window is thin; the caller needs >=4 rows
+  // to paint a floor at all, and a stale-but-real fare beats an empty page.
+  const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(rows, fallbackMaxAgeSec, now);
+  let offers = window.map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
@@ -548,8 +571,11 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
   // Speed (27 Oct): the honest catalogue floor is looked up ONCE, in parallel with the
   // race below, so the cold answer never pays an extra DB round-trip after the timer.
   const travelish = vertical === 'flights' || vertical === 'hotels' || vertical === 'bus' || vertical === 'cab';
-  const floorPromise = freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600)
-    .catch(() => [] as NormalizedOffer[]);
+  const floorPromise = freshCatalogueOffers(
+    vertical, input, parsed,
+    travelish ? 3600 : 24 * 3600,
+    travelish ? 24 * 3600 : 72 * 3600,
+  ).catch(() => [] as NormalizedOffer[]);
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
   {
     const offers = await floorPromise;

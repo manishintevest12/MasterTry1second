@@ -30817,6 +30817,7 @@ var init_financeOffers = __esm({
 var searchOrchestrator_exports = {};
 __export(searchOrchestrator_exports, {
   busSelfHealTtl: () => busSelfHealTtl,
+  filterRowsByAge: () => filterRowsByAge,
   routeFloorMatches: () => routeFloorMatches,
   runSearch: () => runSearch,
   runSearchFast: () => runSearchFast,
@@ -30984,10 +30985,15 @@ function declaredRouteSides(text) {
   const last = seps[seps.length - 1];
   return { originSide: text.slice(0, first.idx), destSide: text.slice(last.idx + last.len) };
 }
-async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600) {
+function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
+  return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID");
+}
+async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, fallbackMaxAgeSec) {
   const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
-  let offers = rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID").map((r) => rowToOffer(r, false));
+  const strict = filterRowsByAge(rows, maxAgeSec, now);
+  const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(rows, fallbackMaxAgeSec, now);
+  let offers = window.map((r) => rowToOffer(r, false));
   if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
@@ -31118,7 +31124,13 @@ async function runSearch(input) {
     return await stillAcquiringResponse(parsed, totalStart);
   }
   const travelish = vertical === "flights" || vertical === "hotels" || vertical === "bus" || vertical === "cab";
-  const floorPromise = freshCatalogueOffers(vertical, input, parsed, travelish ? 3600 : 24 * 3600).catch(() => []);
+  const floorPromise = freshCatalogueOffers(
+    vertical,
+    input,
+    parsed,
+    travelish ? 3600 : 24 * 3600,
+    travelish ? 24 * 3600 : 72 * 3600
+  ).catch(() => []);
   {
     const offers = await floorPromise;
     if (offers.length >= 4) {
