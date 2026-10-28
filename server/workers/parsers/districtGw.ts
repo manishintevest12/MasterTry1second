@@ -98,6 +98,15 @@ export interface GwShowtime {
   theatre: string;
   /** seat-class prices for THIS show (areas are seat classes: Classic/Prime/Recliner...) */
   areas: GwAreaPrice[];
+  /**
+   * Session identifiers (owner 28 Oct: the movie CTA must open THAT show's seat map, not the
+   * cinema list). All four are published by this same endpoint and are exactly what the
+   * platforms' own seat-layout link is built from — see server/affiliate/movieSeatLink.ts.
+   */
+  sid?: string;
+  mid?: string;
+  fid?: string;
+  contentId?: number | null;
 }
 
 export interface GwMovieAgg {
@@ -199,7 +208,18 @@ export async function gwCityMovieAggregates(
       // per-show time + seat-class prices (cap 8 shows, earliest first per source order)
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || '').trim();
-        if (t) agg.shows.push({ time: t, theatre: cinema.name, cinemaId: cinema.id, areas: areas.slice(0, 4) });
+        if (t) {
+          agg.shows.push({
+            time: t,
+            theatre: cinema.name,
+            cinemaId: cinema.id,
+            areas: areas.slice(0, 4),
+            sid: ss?.sid != null ? String(ss.sid) : undefined,
+            mid: mid ? String(mid) : undefined,
+            fid: ss?.fid ? String(ss.fid).toLowerCase() : undefined,
+            contentId: contentByTitle.get(key) ?? null,
+          });
+        }
       }
       const contentId = contentByTitle.get(key);
       if (contentId && !agg.contentId) agg.contentId = contentId;

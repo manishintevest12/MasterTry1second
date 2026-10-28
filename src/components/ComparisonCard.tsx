@@ -91,10 +91,19 @@ interface ComparisonCardProps {
 /** Movies (owner 22 Oct): show TIME + SEAT-CLASS-wise real prices on the card.
  *  specs.showtimes = [{time, theatre, areas:[{label, price}]}] from District/TicketNew live sessions.
  *  District publishes ISO times ("2026-10-23T06:30") — displayed as 12h clock; raw text passes through unchanged. */
-function MovieShowtimes({ raw }: { raw: unknown }) {
+function MovieShowtimes({ raw, linksRaw, cheapestRaw }: { raw: unknown; linksRaw?: unknown; cheapestRaw?: unknown }) {
   let shows: any[] = [];
   try { const v = JSON.parse(String(raw || '[]')); if (Array.isArray(v)) shows = v; } catch { return null; }
   if (!shows.length) return null;
+  // Owner 28 Oct: each show links to ITS OWN seat map (sid/cid/mid/fid built server-side), so
+  // the user books the cinema whose price they just read instead of hunting through a list.
+  let links: Array<{ theatre?: string; time?: string; url?: string }> = [];
+  try { const v = JSON.parse(String(linksRaw || '[]')); if (Array.isArray(v)) links = v; } catch { links = []; }
+  let cheapest: { theatre?: string; time?: string; seatClass?: string; price?: number; url?: string; platform?: string } | null = null;
+  try { const v = JSON.parse(String(cheapestRaw || 'null')); if (v && typeof v === 'object') cheapest = v; } catch { cheapest = null; }
+  const linkFor = (sh: any) =>
+    (links.find((l) => String(l.theatre || '') === String(sh.theatre || '') && String(l.time || '') === String(sh.time || ''))?.url || '')
+    || (cheapest && String(cheapest.theatre) === String(sh.theatre) && String(cheapest.time) === String(sh.time) ? String(cheapest.url || '') : '');
   const fmt = (t: string) => {
     const m = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(String(t || ''));
     if (!m) return String(t || '');
@@ -103,8 +112,30 @@ function MovieShowtimes({ raw }: { raw: unknown }) {
   };
   return (
     <div className="mt-1.5 space-y-1">
-      {shows.slice(0, 3).map((sh: any, i: number) => (
-        <div key={i} className="flex flex-wrap items-center gap-1.5 text-[10.5px] min-w-0">
+      {cheapest && (
+        <a
+          href={cheapest.url || undefined}
+          target="_blank"
+          rel="noreferrer nofollow"
+          title={cheapest.url ? `Open the seat map for ${cheapest.theatre} ${cheapest.time}` : undefined}
+          className={`flex flex-wrap items-baseline gap-1.5 rounded-lg border px-2 py-1.5 ${cheapest.url ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100' : 'border-slate-200 bg-slate-50'} transition-colors`}
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Cheapest</span>
+          <span className="text-[11px] font-black text-slate-900">₹{Number(cheapest.price || 0).toLocaleString('en-IN')}</span>
+          {cheapest.seatClass && <span className="text-[10px] font-semibold text-slate-600">{cheapest.seatClass}</span>}
+          <span className="text-[10.5px] text-slate-600 truncate min-w-0">{cheapest.theatre} · {fmt(cheapest.time || '')}</span>
+          {cheapest.url && <span className="ml-auto text-[10px] font-bold text-emerald-700 whitespace-nowrap shrink-0">Seats →</span>}
+        </a>
+      )}
+      {shows.slice(0, 3).map((sh: any, i: number) => {
+        const href = linkFor(sh);
+        const Row: any = href ? 'a' : 'div';
+        return (
+        <Row
+          key={i}
+          {...(href ? { href, target: '_blank', rel: 'noreferrer nofollow', title: `Book ${String(sh.theatre || '')} ${fmt(sh.time)} seats` } : {})}
+          className={`flex flex-wrap items-center gap-1.5 text-[10.5px] min-w-0 ${href ? 'hover:bg-slate-50 rounded px-0.5' : ''}`}
+        >
           <span className="px-1.5 py-0.5 rounded bg-red-600 text-white font-bold whitespace-nowrap shrink-0">{fmt(sh.time)}</span>
           <span className="text-slate-500 truncate min-w-0">{String(sh.theatre || '')}</span>
           {Array.isArray(sh.areas) && sh.areas.length > 0 && (
@@ -116,8 +147,9 @@ function MovieShowtimes({ raw }: { raw: unknown }) {
               ))}
             </span>
           )}
-        </div>
-      ))}
+        </Row>
+        );
+      })}
     </div>
   );
 }
@@ -422,7 +454,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   </p>
                 )}
                 {['movies','movie'].includes((item as any).vertical) && (item.specs as any)?.showtimes && (
-                  <MovieShowtimes raw={(item.specs as any).showtimes} />
+                  <MovieShowtimes
+                    raw={(item.specs as any).showtimes}
+                    linksRaw={(item.specs as any)['theatre links'] || (item.specs as any).theatre_links}
+                    cheapestRaw={(item.specs as any)['cheapest show'] || (item.specs as any).cheapest_show}
+                  />
                 )}
 
                 {/* Hyper-local Pincode & GPS Delivery Badge */}
@@ -560,7 +596,11 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   </p>
                 )}
                 {['movies','movie'].includes((item as any).vertical) && (item.specs as any)?.showtimes && (
-                  <MovieShowtimes raw={(item.specs as any).showtimes} />
+                  <MovieShowtimes
+                    raw={(item.specs as any).showtimes}
+                    linksRaw={(item.specs as any)['theatre links'] || (item.specs as any).theatre_links}
+                    cheapestRaw={(item.specs as any)['cheapest show'] || (item.specs as any).cheapest_show}
+                  />
                 )}
 
                 {/* Hyper-local Pincode & GPS Delivery Badge for Cab */}
@@ -651,10 +691,16 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({ item: itemProp, 
                   ? 'Instant Policy Match'
                   : ['food', 'grocery', 'ecommerce'].includes(item.vertical)
                   ? 'Order Now'
+                  : ['movies', 'movie'].includes(item.vertical)
+                  ? 'Book Cheapest Seats'
                   : 'Select Deal'}
               </span>
               <span className="text-[10px] bg-white/20 font-bold px-1.5 py-0.2 rounded-full">
-                {item.vertical === 'loans' || item.vertical === 'insurance' ? 'Pre-Approved' : 'Best Price'}
+                {item.vertical === 'loans' || item.vertical === 'insurance'
+                  ? 'Pre-Approved'
+                  : ['movies', 'movie'].includes(item.vertical) && (item.specs as any)?.['book platform']
+                  ? `${(item.specs as any)['book platform']} · Seats`
+                  : 'Best Price'}
               </span>
             </button>
 

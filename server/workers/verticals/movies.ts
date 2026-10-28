@@ -8,7 +8,7 @@ import { registerVerticalWorker, type VerticalWorker } from '../verticalWorker';
 import { AcquisitionError } from '../../common/httpClient';
 import { getOverride, dynamicScannerEngine } from '../../acquisition/selfHeal';
 import { cffiFetch } from '../../common/curlCffiFetch';
-import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery, effectiveMovieQuery } from '../parsers/bookmyshow';
+import {cityFromMovieQuery,  resolveBmsRegion, bmsDiscoverUrl, bmsDiscoverHeaders, parseMovieCards, normCity, extractMovieQuery, matchesQuery, effectiveMovieQuery , istTodayISO } from '../parsers/bookmyshow';
 import { ticketnewCityKeys, parseTicketNewMoviesPage, parseTicketNewMovies, TICKETNEW_BASE } from '../parsers/ticketnew';
 import {
   parseCinepolisPage, parseCinepolisMovies, CINEPOLIS_MOVIE_LIST_URL, CINEPOLIS_API_BASE, CINEPOLIS_API_HEADERS,
@@ -16,6 +16,7 @@ import {
 } from '../parsers/cinepolis';
 import { parseDistrictMovies, parseDistrictOffers, districtPriceBands, DISTRICT_MOVIES_URL } from '../parsers/district';
 import { movieTheatreLink } from '../../affiliate/merchantLinks';
+import { cheapestShow, movieSeatLink } from '../../affiliate/movieSeatLink';
 import { gwCitySlug, gwCityMovieAggregates, gwCritique, gwMatch, extractTrailerUrl, type GwMovieAgg } from '../parsers/districtGw';
 import { imdbRatingFor } from '../parsers/imdbRatings';
 import { createHash } from 'node:crypto';
@@ -117,6 +118,24 @@ async function cachedGwAggregates(city: string, waitMs = GW_COLD_WAIT_MS): Promi
   return await Promise.race([load, new Promise<null>((r) => setTimeout(() => r(null), waitMs))]);
 }
 
+/**
+ * Point the row's CTA at the SEAT MAP of the show whose price we print (owner 28 Oct).
+ *
+ * A BookMyShow row's own page can only list cinemas (its session API is edge-gated), so the
+ * price shown on our card was never visible after the click and the cheapest hall was
+ * impossible to pick. The fare we display is the mesh's real seat price, so the CTA goes to
+ * that very show's seat map, and the card prints which platform owns the link ("opens on
+ * TicketNew"). The source's own page stays on the row as `listing_url` - nothing is hidden.
+ */
+function applySeatCta(o: any): void {
+  const attrs = o.attributes || {};
+  const seatUrl = String(attrs['seat_url'] || '');
+  if (!seatUrl) return;
+  const own = String(o.sellerUrl || '');
+  if (own && own !== seatUrl && !attrs['listing_url']) attrs['listing_url'] = own;
+  o.sellerUrl = seatUrl;
+}
+
 /** Attach gw real seat prices / theatres / shows + IMDb rating to an offer. Best-effort, honest skip. */
 async function enrichWithGw(
   o: any,
@@ -134,14 +153,51 @@ async function enrichWithGw(
     o.attributes['shows_today'] = agg.showCount;
     o.attributes['showtimes'] = JSON.stringify(agg.shows.slice(0, 5)); // [{time,theatre,areas:[{label,price}]}]
     // Owner 27 Oct: every theatre row needs its OWN working booking link, so the
-    // user lands on that cinema instead of searching it again. TicketNew exposes
-    // a verified venue URL; other sources fall back to their city page honestly.
+    // user lands on that cinema instead of searching it again. Owner 28 Oct: it must go one
+    // step further — straight to the SEAT MAP of the show whose price we print, because the
+    // cinema list hides which hall is actually cheapest. Session ids (sid/mid/fid/cid) come
+    // from the same gateway payload, so the link is built, never guessed.
+    const cityName = String((o.location as any)?.city || '');
+    const showDate = istTodayISO();
     {
-      const cityName = String((o.location as any)?.city || '');
       const links = agg.shows.slice(0, 8)
-        .map((sh) => ({ theatre: sh.theatre, time: sh.time, url: movieTheatreLink(gwHost === 'district' ? 'District' : 'TicketNew', { city: cityName, cinemaId: sh.cinemaId, theatre: sh.theatre }) }))
+        .map((sh) => ({
+          theatre: sh.theatre,
+          time: sh.time,
+          url: movieSeatLink({
+            host: gwHost,
+            city: cityName,
+            cinemaId: sh.cinemaId,
+            cinemaName: sh.theatre,
+            sid: sh.sid,
+            mid: sh.mid,
+            cid: sh.cinemaId,
+            fid: sh.fid,
+            contentId: sh.contentId ?? agg.contentId ?? undefined,
+            dateISO: showDate,
+          }),
+        }))
         .filter((x) => x.url);
       if (links.length) o.attributes['theatre_links'] = JSON.stringify(links);
+    }
+    // The single cheapest show in the city, with a seat-map link: this is what the card's
+    // CTA uses so the price the user clicked is the price they land on.
+    const cheapest = cheapestShow(agg.shows, {
+      host: gwHost,
+      city: cityName,
+      dateISO: showDate,
+      contentId: agg.contentId,
+    });
+    if (cheapest) {
+      o.attributes['cheapest_show'] = JSON.stringify(cheapest);
+      (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'cheapest_show'];
+      if (cheapest.url) {
+        // Applied to the row's CTA after enrichment (applySeatCta): the trailer/imdb steps below
+        // still need the source's own movie page, so the swap happens last.
+        o.attributes['seat_url'] = cheapest.url;
+        o.attributes['book_platform'] = cheapest.platform;
+        o.attributes['book_note'] = `Seat map for the cheapest show: ${cheapest.theatre} ${cheapest.time} · ${cheapest.seatClass} ₹${cheapest.price} (opens on ${cheapest.platform})`;
+      }
     }
     o.attributes['data_note'] = forSite
       ? `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${gwHost === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on ${forSite} is shown at seat selection.`
@@ -239,7 +295,27 @@ export const moviesWorker: VerticalWorker = {
               o.attributes['theatre_count'] = String(agg.theatres.length);
               o.attributes['shows_today'] = String(agg.showCount);
               o.attributes['showtimes'] = JSON.stringify(agg.shows.slice(0, 5));
-              o.attributes['data_note'] = `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${host === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Exact fare on BookMyShow is shown at seat selection.`;
+              // Owner 28 Oct: BookMyShow rows get the same treatment as the mesh rows - the CTA
+              // opens the seat map of the cheapest show whose fare we print, instead of BMS'
+              // cinema-list page where that price cannot be found.
+              const bmsCity = String((o.location as any)?.city || region.regionName || '');
+              const bmsCheapest = cheapestShow(agg.shows, {
+                host,
+                city: bmsCity,
+                dateISO: istTodayISO(),
+                contentId: agg.contentId,
+              });
+              if (bmsCheapest) {
+                o.attributes['cheapest_show'] = JSON.stringify(bmsCheapest);
+                if (bmsCheapest.url) {
+                  o.attributes['seat_url'] = bmsCheapest.url;
+                  o.attributes['book_platform'] = bmsCheapest.platform;
+                  o.attributes['book_note'] = `Seat map for the cheapest show: ${bmsCheapest.theatre} ${bmsCheapest.time} · ${bmsCheapest.seatClass} ₹${bmsCheapest.price} (opens on ${bmsCheapest.platform})`;
+                }
+                (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'cheapest_show'];
+              }
+              applySeatCta(o);
+              o.attributes['data_note'] = `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${host === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Book opens that cheapest show's seat map on ${bmsCheapest?.platform || (host === 'district' ? 'District' : 'TicketNew')}.`;
               (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_min', 'price_max', 'theatres', 'shows_today'];
               bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes['price_band'], note: o.attributes['data_note'] });
             } else {
@@ -385,6 +461,7 @@ export const moviesWorker: VerticalWorker = {
         const aggs = gwCity ? await gwCityMovieAggregates('district', gwCity, 10).catch(() => null) : null;
         for (const o of offers.slice(0, 5)) {
           await enrichWithGw(o, aggs, 'district');
+          // CTA swap happens AFTER the trailer/imdb steps, which need the source's own page.
           // Trailer: the movie's own web page embeds the YouTube trailer (SSR).
           const url = String(o.sellerUrl || '');
           if (!/^https:\/\/www\.district\.in\/movies\//.test(url)) continue;
@@ -411,6 +488,9 @@ export const moviesWorker: VerticalWorker = {
             }
           } catch { /* trailer/page deep-dive is best-effort; the offer stays honest without it */ }
         }
+        // Only now move each CTA onto the cheapest show's seat map (trailer/imdb above needed
+        // the source's own movie page).
+        offers.forEach(applySeatCta);
         return offers;
       },
     },
