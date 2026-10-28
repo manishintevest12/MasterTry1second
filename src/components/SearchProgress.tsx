@@ -117,6 +117,7 @@ export function searchCopyFor(vertical?: string | null): VerticalSearchCopy {
 }
 
 const ACCENT = '#4f46e5';
+const PILL_FILL = 'rgba(79,70,229,0.10)'; // soft indigo wash inside the capsule
 const TRACK = '#e8e8f8';
 const PILL_BORDER = '#dcdbff';
 const PILL_BG = '#eef0fe';
@@ -228,12 +229,29 @@ export const SearchProgressPanel: React.FC<SearchProgressProps> = ({
       </h3>
       <p className="mt-1 text-[12.5px] leading-relaxed text-slate-500 sm:text-sm">{message || copy.sub}</p>
 
-      {/* Live pill + hard count readout */}
-      <div className="mt-3.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      {/* Live pill (owner design, 28 Oct): ONE full-width capsule holding the green dot, the
+          site being queried right now, and a purple fill that advances inside it left to right.
+          The hard count sits under it, right-aligned, exactly like the reference screenshot. */}
+      <div
+        className="relative mt-3.5 w-full overflow-hidden rounded-full border"
+        style={{ background: PILL_BG, borderColor: PILL_BORDER }}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progress)}
+        aria-valuetext={`${answered} of ${totalSites} ${copy.unit}`}
+      >
+        {/* filling track: soft tint across the capsule… */}
         <div
-          className="inline-flex w-fit max-w-full items-center gap-2 rounded-full border px-3 py-1.5"
-          style={{ background: PILL_BG, borderColor: PILL_BORDER }}
-        >
+          className="pointer-events-none absolute inset-y-0 left-0 transition-all duration-500 ease-out"
+          style={{ width: `${Math.round(progress)}%`, background: PILL_FILL }}
+        />
+        {/* …and a solid purple rail along the bottom, so the fill reads at a glance */}
+        <div
+          className="pointer-events-none absolute bottom-0 left-0 h-[3px] transition-all duration-500 ease-out"
+          style={{ width: `${Math.round(progress)}%`, background: ACCENT }}
+        />
+        <div className="relative flex items-center gap-2 px-3.5 py-2">
           <span className="relative flex h-2 w-2 shrink-0">
             <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 t1s-dot" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -242,18 +260,10 @@ export const SearchProgressPanel: React.FC<SearchProgressProps> = ({
             Checking {currentSite}…
           </span>
         </div>
-        <p className="text-[11.5px] font-semibold text-slate-500 tabular-nums sm:text-right sm:text-xs">
-          {answered} of {totalSites} {copy.unit}
-        </p>
       </div>
-
-      {/* Progress bar: track #e8e8f8, fill #4f46e5 */}
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full" style={{ background: TRACK }}>
-        <div
-          className="h-full rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${Math.round(progress)}%`, background: ACCENT }}
-        />
-      </div>
+      <p className="mt-1.5 text-right text-[11.5px] font-semibold text-slate-500 tabular-nums sm:text-xs">
+        {answered} of {totalSites} {copy.unit}
+      </p>
       <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
         Please wait, we are getting the best deal for you. Prices appear here automatically the
         moment each site answers, so there is nothing for you to redo.

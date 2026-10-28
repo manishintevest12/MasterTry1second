@@ -297,6 +297,9 @@ interface AppContextType {
 
   // Real-Time Native Web Scraper State
   isScrapingLive: boolean;
+  /** A NEW search (city/query/date/vertical change) is in flight: show the progress panel
+   *  even if rows of the previous search are still in state (owner 28 Oct). */
+  isNewSearchPending: boolean;
   lastScrapeInfo: {
     timestamp: string;
     location: string;
@@ -873,6 +876,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // mount effect fires a search immediately, so starting 'true' is honest - and it removes the
   // one-frame flash of the empty/searching-text state that showed up when the site opened.
   const [isScrapingLive, setIsScrapingLive] = useState<boolean>(true);
+  // OWNER 28 Oct ('city change karta hoon to wahi loading UI nahi aata, sirf shuru me aata hai'):
+  // the progress panel was gated on `sorted.length === 0`, so a NEW search only showed it when the
+  // feed happened to be empty. Changing the city kept the previous city's rows on screen and the
+  // search ran invisibly. This key marks the search that is currently being acquired; while it is
+  // set, the feed shows the progress panel instead of stale rows of the old search.
+  const [pendingSearchKey, setPendingSearchKey] = useState<string | null>(null);
   // How many extra pendingRefresh polls one search may make (2s each). The chain is
   // bounded so a source that never finishes can't hold the loader forever: after
   // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.
@@ -943,6 +952,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const dateSensitive = ['hotels', 'flights', 'bus', 'cab', 'movies'].includes(vertical);
     const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
     const travel = overrideTravel?.depart ? overrideTravel : { depart: todayIso };
+    // Any new search (city, query, dates, vertical) raises the progress panel immediately.
+    setPendingSearchKey(`${vertical}|${targetQuery}|${targetLoc.city || ''}|${targetLoc.pincode || ''}|${travel.depart || ''}`);
 
     // A route with the same origin and destination (e.g. Delhi -> Delhi) is not a real trip:
     // never ask any source and never keep rows of an earlier, different route on screen.
@@ -957,6 +968,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setSourcesReport((prev) => ({ ...prev, [vertical]: { query: targetQuery, at: Date.now(), attempted: [], succeeded: [], failed: [], resultsCount: 0, servedFrom: 'validation' } }));
           addToast('alert', 'Origin and destination are the same', 'Please choose two different places to search.');
           setIsScrapingLive(false);
+          setPendingSearchKey(null);
           return;
         }
       }
@@ -1026,8 +1038,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           // (pendingRefresh) an empty answer must not wipe the rows already on screen —
           // that is what turned a normal poll gap into an endless loading page with no data.
           setItems((prev) => prev.filter((it) => it.vertical !== vertical));
+          setPendingSearchKey(null);
         }
         if (data.results && data.results.length > 0) {
+          setPendingSearchKey(null);
           setItems((prev) => {
             // A search shows ONLY what was searched. Items of this vertical from earlier
             // searches or the catalogue are replaced by the fresh, relevance-ranked results
@@ -1058,7 +1072,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (userInitiated) scrollToResults();
       // A scheduled pendingRefresh poll keeps the loader up (no false empty state
       // in between); only the final poll releases it.
-      if (!repollingRef.current) setIsScrapingLive(false);
+      if (!repollingRef.current) { setIsScrapingLive(false); setPendingSearchKey(null); }
     }
 
     // No fabricated fallback: when the backend returns no verified offers, the feed
@@ -1067,7 +1081,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     triggerLiveLocationScrape();
-  }, [vertical, userLocation.pincode]);
+    // OWNER 28 Oct: a city pick that keeps the same pincode never re-ran the search.
+  }, [vertical, userLocation.city, userLocation.pincode]);
 
   // Background prefetch: as soon as the site opens (and whenever the city changes) quietly search
   // EVERY vertical with its default query so tab badges are filled and no tab opens empty.
@@ -2303,6 +2318,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteSpinReward,
         toggleSpinRewardActive,
         isScrapingLive,
+        isNewSearchPending: pendingSearchKey !== null,
         lastScrapeInfo,
         sourcesReport,
         triggerLiveLocationScrape,

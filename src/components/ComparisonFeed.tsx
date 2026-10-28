@@ -16,6 +16,7 @@ import { CreditCardsCompareModal } from './CreditCardsCompareModal';
 import { VERTICAL_META } from '../data/mockData';
 import { SearchX, Sparkles, Loader2, ChevronDown, CheckCircle2, RotateCw, Search, X, ShoppingCart } from 'lucide-react';
 import { WarpBanner, WarpResultsLoader } from './WarpLoader';
+import { feedProgressGate } from '../lib/feedProgressGate';
 
 export const ComparisonFeed: React.FC = () => {
   const {
@@ -30,6 +31,7 @@ export const ComparisonFeed: React.FC = () => {
     setSearchQuery,
     triggerLiveLocationScrape,
     isScrapingLive,
+    isNewSearchPending,
     userLocation,
     sourcesReport,
     smartCart,
@@ -231,6 +233,14 @@ export const ComparisonFeed: React.FC = () => {
     }, 600);
   };
 
+  // OWNER 28 Oct ('city change karte waqt wahi loading UI nahi aata, sirf shuru me'):
+  // one flag now decides whether the progress panel owns the feed. A brand-new search
+  // (city / query / dates / vertical) raises it even while the previous search's rows are
+  // still in state, so every new search opens on the engaging panel instead of silently
+  // swapping in rows of the old city with no feedback at all.
+  const liveProgress = Boolean(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh);
+  const feedView = feedProgressGate({ rows: sorted.length, liveProgress, isNewSearchPending: Boolean(isNewSearchPending) });
+
   return (
     <div id="t1s-results-top" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 scroll-mt-16">
       {/* Active AI Filter Indicator if present */}
@@ -293,7 +303,7 @@ export const ComparisonFeed: React.FC = () => {
           sourcesReport, so the banner only flashed during the instant catalogue hop
           and vanished before the eye could see it. Gate on the vertical key instead:
           it stays visible for the whole background live-price acquisition. */}
-      {(isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) && (
+      {liveProgress && (
         <WarpBanner vertical={vertical as string} query={searchQuery || undefined} />
       )}
 
@@ -306,8 +316,8 @@ export const ComparisonFeed: React.FC = () => {
         <main className="flex-1 w-full min-w-0">
           <SortAndSummaryTabs />
 
-          {sorted.length === 0 ? (
-            (isScrapingLive || sourcesReport?.[vertical as string]?.pendingRefresh) ? (
+          {feedView !== 'rows' ? (
+            feedView === 'progress' ? (
               // First open: default-city results are being fetched live. Never show a
               // dead "no options" page while the search is still running: the chain of
               // pendingRefresh polls keeps isScrapingLive true, so the ONE please-wait
