@@ -30504,17 +30504,21 @@ async function purgePhotolessHotelOffers() {
   const store2 = getStore();
   try {
     await store2.execute(
+      // Owner 28 Oct ('image ni aaya, sirf agoda'): the age clause kept freshly-written
+      // photoless rows alive, so a Goa search still painted Agoda favicon tiles. A hotel row
+      // without a property photo is not a usable card at any age - drop it and let the warm
+      // rotation re-fetch with art.
       `DELETE FROM offers WHERE vertical = 'hotels'
         AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%'
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL)
-        AND fetched_at < (NOW() - INTERVAL 1 DAY)`
+             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL
+             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
+             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%')`
     );
   } catch (e2) {
     try {
       await store2.execute(
         `DELETE FROM offers WHERE vertical = 'hotels'
-          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')
-          AND fetched_at < (NOW() - INTERVAL 1 DAY)`
+          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')`
       );
     } catch (e22) {
       log.debug("Catalogue", "Photoless hotel purge failed", { error: String(e22).slice(0, 100) });
