@@ -193,30 +193,33 @@ export async function priceHistoryForEntity(canonicalEntityId: number, limit = 6
  * day without one is a stale-shape write — boot clears it once; the healthy
  * warm rotation repopulates with real art within one cycle.
  */
+/**
+ * Hotel art hygiene - REGRESSION FIX (owner 28 Oct, second report of it).
+ *
+ * My earlier change deleted any hotel row whose `$.image_url` was NULL, at any age. That was
+ * destructive: rows from sources that store art under another key (image / photo / images /
+ * thumbnail) or that store a gallery instead of one url were treated as photoless and wiped -
+ * hotels/Indore lost its 247 photo-bearing rows and fell back to 40 photoless Agoda rows.
+ *
+ * The delete is now provably-bad only: rows whose stored 'photo' is a favicon or a bundled
+ * brand logo (a booking-site logo posing as a property photo). A row with no photo, or a photo
+ * under a different key, is NEVER deleted - the read path already prefers photo-bearing rows and
+ * renders an honest placeholder for the rest, and normal row-cap aging removes old data.
+ */
+export const PURGE_BAD_HOTEL_ART_SQL =
+  `DELETE FROM offers WHERE vertical = 'hotels' AND (
+     JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
+     OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%'
+   )`;
+
 export async function purgePhotolessHotelOffers(): Promise<void> {
   const store = getStore();
   try {
-    await store.execute(
-      // Owner 28 Oct ('image ni aaya, sirf agoda'): the age clause kept freshly-written
-      // photoless rows alive, so a Goa search still painted Agoda favicon tiles. A hotel row
-      // without a property photo is not a usable card at any age - drop it and let the warm
-      // rotation re-fetch with art.
-      `DELETE FROM offers WHERE vertical = 'hotels'
-        AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%'
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%')`,
-    );
+    await store.execute(PURGE_BAD_HOTEL_ART_SQL);
   } catch (e: any) {
-    // FileStore fallback lacks JSON_EXTRACT — plain LIKE keeps it working there.
-    try {
-      await store.execute(
-        `DELETE FROM offers WHERE vertical = 'hotels'
-          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')`,
-      );
-    } catch (e2: any) {
-      log.debug('Catalogue', 'Photoless hotel purge failed', { error: String(e2).slice(0, 100) });
-    }
+    // FileStore / older MySQL without JSON_EXTRACT: skip rather than risk a LIKE-only delete
+    // that cannot tell a real photo from a logo. Nothing is lost by skipping.
+    log.debug('Catalogue', 'Hotel art hygiene skipped', { error: String(e).slice(0, 100) });
   }
 }
 

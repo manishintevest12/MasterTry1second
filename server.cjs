@@ -30326,6 +30326,7 @@ var init_verticalEngine = __esm({
 // server/catalogue/catalogueService.ts
 var catalogueService_exports = {};
 __export(catalogueService_exports, {
+  PURGE_BAD_HOTEL_ART_SQL: () => PURGE_BAD_HOTEL_ART_SQL,
   findCatalogueOffers: () => findCatalogueOffers,
   persistOffer: () => persistOffer,
   priceHistoryForEntity: () => priceHistoryForEntity,
@@ -30503,26 +30504,9 @@ async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
 async function purgePhotolessHotelOffers() {
   const store2 = getStore();
   try {
-    await store2.execute(
-      // Owner 28 Oct ('image ni aaya, sirf agoda'): the age clause kept freshly-written
-      // photoless rows alive, so a Goa search still painted Agoda favicon tiles. A hotel row
-      // without a property photo is not a usable card at any age - drop it and let the warm
-      // rotation re-fetch with art.
-      `DELETE FROM offers WHERE vertical = 'hotels'
-        AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%'
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) IS NULL
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
-             OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%')`
-    );
+    await store2.execute(PURGE_BAD_HOTEL_ART_SQL);
   } catch (e2) {
-    try {
-      await store2.execute(
-        `DELETE FROM offers WHERE vertical = 'hotels'
-          AND (attributes IS NULL OR attributes NOT LIKE '%"image_url"%')`
-      );
-    } catch (e22) {
-      log.debug("Catalogue", "Photoless hotel purge failed", { error: String(e22).slice(0, 100) });
-    }
+    log.debug("Catalogue", "Hotel art hygiene skipped", { error: String(e2).slice(0, 100) });
   }
 }
 async function purgeStaleBankingOffers() {
@@ -30535,12 +30519,17 @@ async function purgeStaleBankingOffers() {
     log.debug("Catalogue", "Stale banking purge failed", { error: String(e2).slice(0, 100) });
   }
 }
+var PURGE_BAD_HOTEL_ART_SQL;
 var init_catalogueService = __esm({
   "server/catalogue/catalogueService.ts"() {
     init_prune();
     init_db();
     init_logger();
     init_freshness();
+    PURGE_BAD_HOTEL_ART_SQL = `DELETE FROM offers WHERE vertical = 'hotels' AND (
+     JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%s2/favicons%'
+     OR JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.image_url')) LIKE '%brand-logos%'
+   )`;
   }
 });
 
