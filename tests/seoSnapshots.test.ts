@@ -47,3 +47,21 @@ t('slug never ends with a dash', productSlug('Boat Airdopes 141 - ') === 'boat-a
 t('sitemap carries product pages', sitemapXml(['/product/apple-iphone-15-128gb']).includes('/product/apple-iphone-15-128gb'));
 if (failed) { console.error(`seo extras: ${failed} failed`); process.exit(1); }
 console.log(`seo extras ok: ${passed} total`);
+
+// 6. Product pages from the sitemap must actually render prices (owner 28 Oct: they did not,
+//    because a slug is cut at 80 chars and the old "all tokens must appear" rule never matched).
+const longTitle = 'Samsung Galaxy S26 FE 5G 256 GB 8 GB RAM with Galaxy AI 50 MP Camera with Provisual Engine';
+const longSlug = productSlug(longTitle);
+const longPicked = selectSnapshotRows(
+  [{ title: longTitle, seller: 'Croma', price: 54999 }, { title: 'Apple iPhone 15 (128GB, Black)', seller: 'Flipkart', price: 59900 }],
+  `/product/${longSlug}`, 6, true,
+);
+t('truncated slug still finds its product', longPicked.length === 1 && longPicked[0].seller === 'Croma');
+t('unrelated product is not pulled in', longPicked.every((r) => /samsung/i.test(r.title)));
+const sibling = selectSnapshotRows(
+  [{ title: 'Samsung Galaxy S26 FE 5G 256 GB 8 GB RAM with Galaxy AI 50 MP Camera (Mint)', seller: 'Reliance Digital', price: 53999 }],
+  `/product/${longSlug}`, 6, true,
+);
+t('same product from another seller joins the page', sibling.length === 1);
+if (failed) { console.error(`product slug matching: ${failed} failed`); process.exit(1); }
+console.log(`product slug matching ok: ${passed} total`);

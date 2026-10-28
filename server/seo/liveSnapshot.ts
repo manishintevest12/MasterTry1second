@@ -53,11 +53,44 @@ function placementTokens(path: string): string[] {
   return hint.replace(/[^a-z0-9]+/g, ' ').split(' ').filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
 
+const slugOf = (t: string) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/g, '');
+
+/**
+ * Product pages are matched by SLUG, not by requiring every word: a title is cut at 80
+ * characters when the slug is made, so "…with-provis" never equals the word "providing"
+ * and an all-tokens rule silently emptied every long product page (owner 28 Oct: product
+ * pages in the sitemap rendered no prices). Same product across sellers also differs by a
+ * word or two, so a high token overlap still counts.
+ */
+function productMatches(slug: string, title: string): boolean {
+  if (slugOf(title) === slug) return true;
+  const want = slug.split('-').filter((t) => t.length > 1);
+  if (!want.length) return false;
+  const have = new Set(slugOf(title).split('-').filter((t) => t.length > 1));
+  const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
+  return hit / want.length >= 0.8;
+}
+
 /**
  * Pick the rows worth showing for this page: cheapest first, one per seller, and —
  * for route/city pages — only rows that actually mention the route or city.
+ * Pass `bySlug` for /product/<slug> pages, where the slug itself is the identity.
  */
-export function selectSnapshotRows(candidates: SnapshotRow[], path: string, max = MAX_ROWS): SnapshotRow[] {
+export function selectSnapshotRows(candidates: SnapshotRow[], path: string, max = MAX_ROWS, bySlug = false): SnapshotRow[] {
+  if (bySlug) {
+    const slug = /^\/product\/([a-z0-9-]{3,80})$/.exec(path.replace(/\/+$/, ''))?.[1] || '';
+    const pool = candidates.filter((r) => productMatches(slug, r.title));
+    const seen0 = new Set<string>();
+    const out0: SnapshotRow[] = [];
+    for (const r of pool.sort((a, b) => a.price - b.price)) {
+      const k = r.seller.toLowerCase().trim() || r.title.toLowerCase().trim();
+      if (seen0.has(k)) continue;
+      seen0.add(k);
+      out0.push(r);
+      if (out0.length >= max) break;
+    }
+    return out0;
+  }
   const tokens = placementTokens(path);
   const relevant = tokens.length
     ? candidates.filter((r) => {
@@ -152,7 +185,7 @@ export async function snapshotForPath(path: string): Promise<PageSnapshot | null
           url: r.seller_url || null,
         }))
         .filter((r) => r.price > 0 && r.title && r.seller);
-      const picked = selectSnapshotRows(candidates, key);
+      const picked = selectSnapshotRows(candidates, key, MAX_ROWS, Boolean(prod));
       if (picked.length) snap = { rows: picked, updatedAt: new Date().toISOString() };
     }
   } catch {

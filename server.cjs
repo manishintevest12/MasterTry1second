@@ -44623,7 +44623,29 @@ function placementTokens(path14) {
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
-function selectSnapshotRows(candidates, path14, max = MAX_ROWS) {
+function productMatches(slug3, title) {
+  if (slugOf2(title) === slug3) return true;
+  const want = slug3.split("-").filter((t) => t.length > 1);
+  if (!want.length) return false;
+  const have = new Set(slugOf2(title).split("-").filter((t) => t.length > 1));
+  const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
+  return hit / want.length >= 0.8;
+}
+function selectSnapshotRows(candidates, path14, max = MAX_ROWS, bySlug = false) {
+  if (bySlug) {
+    const slug3 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path14.replace(/\/+$/, ""))?.[1] || "";
+    const pool3 = candidates.filter((r) => productMatches(slug3, r.title));
+    const seen0 = /* @__PURE__ */ new Set();
+    const out0 = [];
+    for (const r of pool3.sort((a, b) => a.price - b.price)) {
+      const k = r.seller.toLowerCase().trim() || r.title.toLowerCase().trim();
+      if (seen0.has(k)) continue;
+      seen0.add(k);
+      out0.push(r);
+      if (out0.length >= max) break;
+    }
+    return out0;
+  }
   const tokens2 = placementTokens(path14);
   const relevant = tokens2.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
@@ -44701,7 +44723,7 @@ async function snapshotForPath(path14) {
         price: Number(r.effective_price ?? r.mandatory_total ?? 0) || 0,
         url: r.seller_url || null
       })).filter((r) => r.price > 0 && r.title && r.seller);
-      const picked = selectSnapshotRows(candidates, key);
+      const picked = selectSnapshotRows(candidates, key, MAX_ROWS, Boolean(prod));
       if (picked.length) snap = { rows: picked, updatedAt: (/* @__PURE__ */ new Date()).toISOString() };
     }
   } catch {
@@ -44713,7 +44735,7 @@ async function snapshotForPath(path14) {
 function clearSnapshotCache() {
   cache10.clear();
 }
-var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc4, inr;
+var SNAPSHOT_TTL_MS, MAX_ROWS, cache10, esc4, inr, slugOf2;
 var init_liveSnapshot = __esm({
   "server/seo/liveSnapshot.ts"() {
     init_data();
@@ -44722,6 +44744,7 @@ var init_liveSnapshot = __esm({
     cache10 = /* @__PURE__ */ new Map();
     esc4 = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     inr = (n) => `\u20B9${Math.round(n).toLocaleString("en-IN")}`;
+    slugOf2 = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80).replace(/-+$/g, "");
   }
 });
 
