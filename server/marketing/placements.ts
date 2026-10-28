@@ -73,7 +73,9 @@ export async function upsertTopPick(input: TopPickInput): Promise<{ ok: boolean;
   if (!partner_name) return { ok: false, error: 'Partner name is required' };
   if (!headline) return { ok: false, error: 'Headline is required' };
   if (!destination) return { ok: false, error: 'Destination URL is required' };
-  const check = validateDestination(destination);
+  // Sponsored placements are authored in the admin dashboard (trusted provenance), and
+  // partner click links legitimately bridge with `url=<merchant>`.
+  const check = validateDestination(destination, { allowEmbeddedRedirect: true });
   if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
   const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
   const store = getStore();

@@ -67,10 +67,37 @@ function safeDomain(url: string): string {
 const BLOCKED_SCHEMES = /^(?!https?:$).+:$/i; // anything not http/https
 
 /** Trusted affiliate-network tracking hosts (owner 22 Oct bug: "Refused: embedded
- * redirect to another host"). Cuelinks linksredirect.com ALWAYS carries
- * `url=<merchant>` — that is the network's own routing, not an open redirect.
- * These hosts are exempt from the embedded-redirect-param check. */
-const TRUSTED_TRACKING_HOSTS = /^([a-z0-9-]+\.)*(linksredirect\.com|cuelinks\.com)$/i;
+ * redirect to another host"; expanded 28 Oct after the same page appeared on the exit
+ * interstitial for CJ/Myntra hops: "redirection ke baad jaha v aisa aa raha hai, usko
+ * fix kro"). Every host below is a TRACKING link we generate ourselves in
+ * buildSecureDeeplink, and `url=<merchant>` (or `next=`) IS the network's routing —
+ * not an open redirect. Anything not on this list still gets the strict check.
+ *   - Cuelinks / Optimise:  linksredirect.com, cuelinks.com
+ *   - CJ Affiliate (LinkInR's click hop): tkqlhce.com, anrdoezrs.net, dpbolvw.net,
+ *     jdoqocy.com, kqzyfj.com, emjcd.com, ftjcfx.com, qksrv.net
+ *   - LinkInR: linkinr.com
+ *   - EarnKaro / Ekaro: fktr.in, myntr.it, earnkaro.com, ekaro.in
+ *   - Impact/others seen in the registry: sjv.io, inr.deals */
+const TRUSTED_TRACKING_HOSTS = new RegExp(
+  '^([a-z0-9-]+\\.)*(' +
+    [
+      'linksredirect\\.com', 'cuelinks\\.com',
+      'tkqlhce\\.com', 'anrdoezrs\\.net', 'dpbolvw\\.net', 'jdoqocy\\.com',
+      'kqzyfj\\.com', 'emjcd\\.com', 'ftjcfx\\.com', 'qksrv\\.net',
+      'linkinr\\.com', 'fktr\\.in', 'myntr\\.it', 'earnkaro\\.com', 'ekaro\\.in',
+      'sjv\\.io', 'inr\\.deals',
+    ].join('|') +
+  ')$',
+  'i',
+);
+
+/** A signed pointer/interstitial token is our own data: its destination was validated
+ * when the token was minted, so the "no embedded redirect param" heuristic (which
+ * exists to stop untrusted destinations) must not be re-applied to it — that double
+ * gate is what showed "This link couldn't be verified" after redirects. */
+export function isSignedPointerDestination(host: string): boolean {
+  return TRUSTED_TRACKING_HOSTS.test(host || '');
+}
 
 /** Validate a destination before redirecting: scheme, host sanity, no open redirect.
  * `allowEmbeddedRedirect` is set for destinations whose pointer was stamped trusted

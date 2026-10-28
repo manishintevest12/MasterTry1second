@@ -443,7 +443,9 @@ adminRouter.delete('/app-links/:key', async (req, res) => {
 });
 
 adminRouter.post('/validate-destination', (req, res) => {
-  const check = validateDestination(String(req.body.url || ''));
+  // Admin-entered destination: the owner is the author, and the pointer minted from it is
+  // HMAC-stamped trusted. Network click links legitimately carry `url=<merchant>`.
+  const check = validateDestination(String(req.body.url || ''), { allowEmbeddedRedirect: true });
   res.json({ success: true, ...check });
 });
 

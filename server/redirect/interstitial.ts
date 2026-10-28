@@ -347,7 +347,13 @@ export async function redirectRouteHandler(req: Request, res: Response): Promise
       'Redirect links live for a few minutes for your safety. Run the search again and tap your deal for a fresh one.'));
     return;
   }
-  const check = validateDestination(meta.url);
+  // The token above was signature-verified by resolveInterstitialMeta, and its URL was
+  // already vetted (and, for registry destinations, built) by /api/out. Applying the
+  // "untrusted destination" heuristic a second time here refused our OWN affiliate hops
+  // (CJ/Myntra `?url=` links, LinkInR, EarnKaro) and greeted the user with
+  // "This link couldn't be verified" instead of the merchant (owner 28 Oct).
+  // Schemes and host sanity are still enforced; only the embedded-param rule is waived.
+  const check = validateDestination(meta.url, { allowEmbeddedRedirect: true });
   if (!check.valid) {
     log.warn('Redirect', 'Interstitial destination refused', { reason: check.reason });
     res.status(400).send(errorPage('This link couldn\u2019t be verified',
