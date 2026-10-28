@@ -71,6 +71,47 @@ function jsonLd(path: string): string[] {
   return blocks;
 }
 
+/**
+ * OWNER 28 Oct: 'website open hota hai to loader nahi aata, screen par text aata hai'.
+ *
+ * Cause: the prerendered #root for an SEO path was a TEXT page (h1 + paragraphs + FAQ). React
+ * replaced it a moment later, but on first paint - and for the whole time the bundle is still
+ * loading - the visitor saw a wall of plain text where the app shows its search-progress panel.
+ *
+ * The prerender now paints the SAME loader the app paints (vertical heading, live-source pill,
+ * 'n of N sites' count, indigo progress bar on lavender track, two result skeletons), so the
+ * first screen is a loader instead of text. The SEO copy stays in the document underneath for
+ * crawlers (and for anyone who never runs JS), just visually secondary.
+ */
+function prerenderLoader(page: NonNullable<ReturnType<typeof resolveSeoPage>>): string {
+  const skelet = Array.from({ length: 2 }, () => `
+      <div style="border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:12px;display:flex;gap:12px;align-items:center">
+        <div style="width:64px;height:64px;border-radius:10px;background:#eef0f6;flex:none"></div>
+        <div style="flex:1">
+          <div style="height:11px;width:72%;border-radius:6px;background:#eef0f6;margin-bottom:8px"></div>
+          <div style="height:10px;width:44%;border-radius:6px;background:#f3f4f8"></div>
+        </div>
+        <div style="height:26px;width:74px;border-radius:8px;background:#eef0f6;flex:none"></div>
+      </div>`).join('');
+  return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
+    <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
+      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc(page.h1)}</h1>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
+        <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
+        <span>Checking live prices&hellip;</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#6b7280;margin:0 2px 6px">
+        <span>Starting your search</span><span>0 of 9 sites</span>
+      </div>
+      <div style="height:8px;border-radius:999px;background:#e8e8f8;overflow:hidden">
+        <div style="height:100%;width:38%;border-radius:999px;background:#4f46e5"></div>
+      </div>
+      <p style="font-size:12.5px;color:#6b7280;margin:10px 0 14px">Please wait, we are getting the best deal for you. Prices appear here automatically the moment each site answers, so there is nothing for you to redo.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">${skelet}</div>
+    </div>
+  </div>`;
+}
+
 function prerenderBody(path: string): string {
   const page = resolveSeoPage(path);
   if (!page) return '';
@@ -79,6 +120,7 @@ function prerenderBody(path: string): string {
   const links = page.links.slice(0, 10).map((l) =>
     `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join('');
   return [
+    prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
     page.breadcrumbs.map((b, i) => (i ? ' &rsaquo; ' : '') + (i === page.breadcrumbs.length - 1

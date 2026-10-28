@@ -869,7 +869,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Real-Time Native Web Scraper State
-  const [isScrapingLive, setIsScrapingLive] = useState<boolean>(false);
+  // OWNER 28 Oct: the very first frame after hydration must be the loader, not text. The
+  // mount effect fires a search immediately, so starting 'true' is honest - and it removes the
+  // one-frame flash of the empty/searching-text state that showed up when the site opened.
+  const [isScrapingLive, setIsScrapingLive] = useState<boolean>(true);
   // How many extra pendingRefresh polls one search may make (2s each). The chain is
   // bounded so a source that never finishes can't hold the loader forever: after
   // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.

@@ -40,7 +40,10 @@ const run = async () => {
     assert.ok(html.includes(`<title>${page.title.replace(/&/g, '&amp;')}`), `title injected at ${p}`);
     assert.ok(html.includes(`rel="canonical" href="https://www.try1second.com${p}"`), `canonical at ${p}`);
     assert.ok(html.includes('application/ld+json'), `json-ld at ${p}`);
-    assert.ok(html.includes('<div id="root"><section'), `prerender block at ${p}`);
+    // 28 Oct: #root now opens with the search-progress loader (not a text page), so the
+    // first paint on open is a loader; the SEO section still follows it for crawlers.
+    assert.ok(html.includes('<div id="root"><div data-t1s-prerender="loader"'), `prerender loader at ${p}`);
+    assert.ok(html.includes('<section'), `prerender content at ${p}`);
     assert.ok(!html.includes('noindex'), `indexable at ${p}`);
   }
 
@@ -60,7 +63,7 @@ const run = async () => {
   for (const priv of ['/admininsta', '/merchantinstab2b', '/api/anything']) {
     const html = shell(priv);
     assert.ok(html.includes('noindex, nofollow'), `noindex at ${priv}`);
-    assert.ok(!html.includes('<div id="root"><section'), `no prerender at ${priv}`);
+    assert.ok(!html.includes('data-t1s-prerender="loader"'), `no prerender at ${priv}`);
   }
 
   // 6. App deep-link resolution drives real searches

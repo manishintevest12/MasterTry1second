@@ -44664,6 +44664,34 @@ function jsonLd(path14) {
   }
   return blocks;
 }
+function prerenderLoader(page) {
+  const skelet = Array.from({ length: 2 }, () => `
+      <div style="border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:12px;display:flex;gap:12px;align-items:center">
+        <div style="width:64px;height:64px;border-radius:10px;background:#eef0f6;flex:none"></div>
+        <div style="flex:1">
+          <div style="height:11px;width:72%;border-radius:6px;background:#eef0f6;margin-bottom:8px"></div>
+          <div style="height:10px;width:44%;border-radius:6px;background:#f3f4f8"></div>
+        </div>
+        <div style="height:26px;width:74px;border-radius:8px;background:#eef0f6;flex:none"></div>
+      </div>`).join("");
+  return `<div data-t1s-prerender="loader" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#f9f9fb;min-height:100vh">
+    <div style="max-width:720px;margin:0 auto;padding:28px 16px 8px">
+      <h1 style="font-size:19px;line-height:1.3;margin:0 0 12px;color:#0f172a">${esc3(page.h1)}</h1>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:6px 12px;font-size:12.5px;color:#374151;margin-bottom:10px">
+        <span style="width:8px;height:8px;border-radius:999px;background:#10b981;display:inline-block"></span>
+        <span>Checking live prices&hellip;</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#6b7280;margin:0 2px 6px">
+        <span>Starting your search</span><span>0 of 9 sites</span>
+      </div>
+      <div style="height:8px;border-radius:999px;background:#e8e8f8;overflow:hidden">
+        <div style="height:100%;width:38%;border-radius:999px;background:#4f46e5"></div>
+      </div>
+      <p style="font-size:12.5px;color:#6b7280;margin:10px 0 14px">Please wait, we are getting the best deal for you. Prices appear here automatically the moment each site answers, so there is nothing for you to redo.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">${skelet}</div>
+    </div>
+  </div>`;
+}
 function prerenderBody(path14) {
   const page = resolveSeoPage(path14);
   if (!page) return "";
@@ -44671,6 +44699,7 @@ function prerenderBody(path14) {
     <dt>${esc3(f.q)}</dt><dd>${esc3(f.a)}</dd>`).join("");
   const links = page.links.slice(0, 10).map((l) => `<a href="${esc3(l.href)}">${esc3(l.label)}</a>`).join("");
   return [
+    prerenderLoader(page),
     `<section style="font-family:system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px 40px">`,
     `<nav aria-label="Breadcrumb" style="font-size:12px;color:#6b7280;margin-bottom:8px">`,
     page.breadcrumbs.map((b, i) => (i ? " &rsaquo; " : "") + (i === page.breadcrumbs.length - 1 ? esc3(b.name) : `<a href="${esc3(b.path)}" style="color:#6b7280">${esc3(b.name)}</a>`)).join(""),
