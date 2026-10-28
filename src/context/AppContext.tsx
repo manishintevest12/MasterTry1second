@@ -1563,6 +1563,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
 
+      // PRODUCT PAGE AS A REAL URL (owner 28 Oct): /product/<slug> is what the SEO pages,
+      // sitemap and shared links use, so the app must open that exact product instead of
+      // dropping the visitor on Home. The slug is the product name with dashes.
+      const prodPath = /^\/product\/([a-z0-9-]{3,80})\/?$/.exec(path);
+      if (prodPath) {
+        const words = prodPath[1].split('-').filter(Boolean);
+        const title = words
+          .map((w) => (/^[0-9]/.test(w) ? w : w[0].toUpperCase() + w.slice(1)))
+          .join(' ');
+        if (title) {
+          setProductPageRequest({ query: title, nonce: Date.now() });
+          setActiveNavTab('product');
+          window.scrollTo({ top: 0 });
+          setCurrentSecretRoute('/');
+        }
+      }
+
       // PROGRAMMATIC SEO PATH ROUTES (owner 25 Oct): landing pages like
       // /flights/delhi-to-mumbai-flights, /hotels/indore, /loans/personal-loan
       // open the matching vertical with the search pre-filled, so every

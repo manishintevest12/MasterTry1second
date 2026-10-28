@@ -415,7 +415,42 @@ export function resolveAppRoute(path: string): { vertical?: string; query?: stri
 // ============ Page content ============
 
 export function resolveSeoPage(path: string): SeoPage | null {
-  const clean = path.split('?')[0].replace(/\/+$/, '') || '/';
+  let clean = path.split('?')[0].replace(/\/+$/, '') || '/';
+  // Vertical aliases (owner 28 Oct): /movie, /cab and /account are what the app's own
+  // ids, sitemap links and users type. They must answer with the same page as the
+  // marketing spelling instead of falling back to the generic shell.
+  const ALIAS: Record<string, string> = {
+    movie: 'movies', cab: 'cabs', creditcards: 'credit-cards', account: 'bank-accounts',
+    ecom: 'ecommerce', grocery10: 'grocery',
+  };
+  const aliasSeg = clean.split('/').filter(Boolean);
+  if (aliasSeg.length && ALIAS[aliasSeg[0]]) clean = '/' + [ALIAS[aliasSeg[0]], ...aliasSeg.slice(1)].join('/');
+
+  // Product pages: /product/<slug> is a real, indexable page for one product.
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(clean);
+  if (prod) {
+    const words = prod[1].split('-').filter((w) => w.length > 1);
+    const label = words.map((w) => (/^[0-9]+$/.test(w) ? w : w[0].toUpperCase() + w.slice(1))).join(' ');
+    return {
+      path: clean,
+      title: `${label} — Live Prices From Every Store | Try1Second`,
+      description: `Compare live prices for ${label} across Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, JioMart and quick-commerce stores. Lowest verified price first, updated continuously.`,
+      h1: `${label} — compare live prices`,
+      intro: [
+        `Try1Second scans every store that sells ${label} and ranks the offers by the price you actually pay, including delivery fees where the seller publishes them.`,
+        `Prices on this page come from our own verified catalogue, so the list below is a real snapshot rather than an estimate. Open the live page to watch it update while the scan runs.`,
+      ],
+      breadcrumbs: [{ name: 'Home', path: '/' }, { name: 'Shopping', path: '/ecommerce' }, { name: label, path: clean }],
+      faqs: [
+        { q: `Where is ${label} cheapest?`, a: `Try1Second compares Amazon, Flipkart, Croma, Reliance Digital, Tata CLiQ, JioMart and the 10-minute stores, then shows the lowest verified price first. It changes by the hour, so the page is refreshed continuously.` },
+        { q: `Are these prices live?`, a: `The snapshot on this page is our last verified read and is stamped with the time it was captured. The live comparison page re-checks every source each time it opens.` },
+      ],
+      links: [
+        { label: 'All shopping deals', href: '/ecommerce' },
+        { label: 'Quick-commerce (10 minute) prices', href: '/grocery' },
+      ],
+    };
+  }
   if (clean === '/about' || clean === '/privacy') {
     const isAbout = clean === '/about';
     return {

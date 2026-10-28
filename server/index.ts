@@ -122,14 +122,26 @@ export async function createApp(): Promise<express.Express> {
     // PROGRAMMATIC SEO (owner 25 Oct): per-URL shell rewrite — unique
     // title/description/canonical/JSON-LD + prerendered content in #root.
     const { enhanceHtml } = await import('./seo/render');
+    const { snapshotForPath, renderSnapshotHtml, snapshotJsonLd } = await import('./seo/liveSnapshot');
     const baseHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
-    app.get('*', (req: Request, res: Response) => {
+    app.get('*', async (req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'no-store, must-revalidate');
       const acc = String(req.headers.accept || '');
       const isAsset = /\.[a-z0-9]{2,5}$/i.test(req.path.replace(/\/$/, ''));
       const wantsShell = acc === '' || acc.includes('text/html') || acc.includes('*/*');
       if (isAsset || !wantsShell) { res.sendFile(path.join(dist, 'index.html')); return; }
-      res.send(enhanceHtml(baseHtml, req.path));
+      let html = enhanceHtml(baseHtml, req.path);
+      // INDEXABLE RESULTS (owner 28 Oct): real cached prices in the first HTML byte, so the
+      // page paints prices before React mounts and crawlers get a crawlable price list.
+      // Omitted entirely when no verified row exists for this page.
+      try {
+        const snap = await snapshotForPath(req.path);
+        const block = renderSnapshotHtml(snap);
+        if (block) html = html.replace('</body>', `${block}</body>`);
+        const ld = snapshotJsonLd(snap, req.path);
+        if (ld) html = html.replace('</head>', `<script type="application/ld+json">${ld}</script>\n</head>`);
+      } catch { /* snapshot is an optimisation; the shell still serves */ }
+      res.send(html);
     });
   } else if (settings.isProduction) {
     log.warn('Bootstrap', 'dist/ not found — build the frontend with `npm run build` before serving');
