@@ -21,6 +21,28 @@ import sys
 
 import os
 
+# SELF-HEALING DNS (owner rule 21 Oct: a source that breaks repairs itself). Live evidence
+# 28 Oct: three mandatory bus sources died with "Resolving timed out after 12000 ms" while
+# the sites themselves were fine — the HOST resolver was at fault. A name-resolution failure
+# is now retried once over DNS-over-HTTPS (libcurl resolves through an HTTPS endpoint instead
+# of getaddrinfo), so a flaky local resolver can never silently delete a source again.
+DOH_URL = os.environ.get("T1S_DOH_URL", "https://cloudflare-dns.com/dns-query").strip()
+
+
+def dns_failure(message: str) -> bool:
+    """True when the failure is name resolution rather than the target site."""
+    text = (message or "").lower()
+    return any(
+        marker in text
+        for marker in (
+            "resolving timed out",
+            "could not resolve",
+            "couldn't resolve host",
+            "name or service not known",
+            "temporary failure in name resolution",
+        )
+    )
+
 
 def _vendor_paths():
     """Shared-hosting friendly: no pip/root. Prebuilt manylinux wheels are vendored in
@@ -92,7 +114,7 @@ def main() -> None:
         except Exception:
             return ""
 
-    try:
+    def _fetch(use_doh: bool):
         with cffi_requests.Session(impersonate=impersonate) as s:
             if isinstance(seed_cookies, dict) and seed_cookies:
                 dom = _seed_domain(url)
@@ -110,6 +132,8 @@ def main() -> None:
                     kw["http_version"] = CurlHttpVersion.V1_1
                 except Exception:
                     pass
+            if use_doh:
+                kw["doh_url"] = DOH_URL
             if method == "POST":
                 r = s.post(url, headers=headers, data=body, timeout=timeout, **kw)
             else:
@@ -127,6 +151,21 @@ def main() -> None:
                     out["headers"] = {str(k): str(v) for k, v in r.headers.items()}
                 except Exception:
                     out["headers"] = {}
+        return out
+
+    try:
+        try:
+            out = _fetch(False)
+        except Exception as exc:
+            first = f"{type(exc).__name__}: {exc}"
+            if not dns_failure(first):
+                raise
+            # Same request, resolved over HTTPS DNS instead of the broken local resolver.
+            try:
+                out = _fetch(True)
+                out["dnsRecovered"] = True
+            except Exception as exc2:
+                raise RuntimeError(f"{first} | doh-retry failed: {type(exc2).__name__}: {exc2}")
         print(json.dumps(out))
     except Exception as exc:
         print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))

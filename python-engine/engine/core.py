@@ -39,6 +39,10 @@ COMPANY_DOMAINS: Dict[str, str] = {
     "blinkit": "blinkit.com", "zepto": "www.zeptonow.com", "swiggy-instamart": "www.swiggy.com",
     "bigbasket": "www.bigbasket.com", "flipkart-minutes": "www.flipkart.com",
     "redbus": "www.redbus.in", "abhibus": "www.abhibus.com",
+    # Owner 17 Oct hotel expansion + the bus source that actually answers Indore routes:
+    # registered here so logos, deeplinks and the affiliate hop resolve for them too.
+    "oyorooms": "www.oyorooms.com", "oyo": "www.oyorooms.com",
+    "saffronstays": "www.saffronstays.com", "zingbus": "www.zingbus.com",
     "olacabs": "www.olacabs.com", "uber": "www.uber.com", "indrive": "indrive.com",
     "meru": "www.merucabs.com", "rapido": "www.rapido.bike",
     "snap-e": "www.snape.io",
