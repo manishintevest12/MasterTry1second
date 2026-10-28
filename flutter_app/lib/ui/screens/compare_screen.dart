@@ -16,6 +16,7 @@ import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
 import '../widgets/location_hint_field.dart';
 import '../widgets/filter_panel.dart';
+import '../widgets/search_progress_card.dart';
 import '../widgets/kit.dart';
 import '../widgets/typeahead_field.dart';
 import 'hotel_picker_screen.dart';
@@ -2019,150 +2020,14 @@ class _SortBar extends StatelessWidget {
 /// for you", "comparing prices across the web at warp speed ... your ultimate
 /// steal") sits under the bar. Stays up for the whole acquisition and is
 /// replaced the moment real rows land.
-class _WarpLoader extends StatefulWidget {
+class _WarpLoader extends StatelessWidget {
   const _WarpLoader({super.key, this.verticalId});
   final String? verticalId;
+  // OWNER 28 Oct: one shared panel now serves the feed AND the product page
+  // (web does the same), so the app can never drift from the site again.
   @override
-  State<_WarpLoader> createState() => _WarpLoaderState();
+  Widget build(BuildContext context) => SearchProgressCard(verticalId: verticalId);
 }
-
-class _WarpLoaderState extends State<_WarpLoader> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat(reverse: true);
-  Timer? _siteTimer;
-  Timer? _progressTimer;
-  int _siteIdx = 0;
-  double _progress = 0.06;
-  final DateTime _startedAt = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    final copy = searchCopyFor(widget.verticalId);
-    // Rotate through the REAL sources we query, so the pill always names one.
-    _siteTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
-      if (!mounted) return;
-      setState(() => _siteIdx = (_siteIdx + 1) % copy.sources.length);
-    });
-    // Ease toward 92% and hold: only real results finish the bar.
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 450), (_) {
-      if (!mounted) return;
-      final elapsed = DateTime.now().difference(_startedAt).inMilliseconds / 1000.0;
-      final target = (0.08 + elapsed * 0.09).clamp(0.08, 0.92).toDouble();
-      setState(() => _progress = _progress + ((target - _progress) * 0.35).clamp(0.0035, 0.08));
-      if (_progress >= 0.92) _progress = 0.92;
-    });
-  }
-
-  @override
-  void dispose() {
-    _siteTimer?.cancel();
-    _progressTimer?.cancel();
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  Widget _skeletonCard(bool dark, int i) => Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: dark ? T1SColors.slate900 : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: dark ? T1SColors.slate800 : const Color(0xFFF0F0F0)),
-        ),
-        child: Row(children: [
-          // logo square
-          FadeTransition(
-            opacity: Tween<double>(begin: 0.45, end: 1.0).animate(CurvedAnimation(
-              parent: _pulse,
-              curve: Interval(i * 0.12, ((i * 0.12) + 0.88).clamp(0.0, 1.0), curve: Curves.easeInOut),
-            )),
-            child: Container(width: 44, height: 44, decoration: BoxDecoration(color: dark ? T1SColors.slate800 : const Color(0xFFEEF2F5), borderRadius: BorderRadius.circular(10))),
-          ),
-          const SizedBox(width: 12),
-          // two text lines
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              FractionallySizedBox(
-                widthFactor: i == 0 ? 0.74 : 0.62,
-                child: Container(height: 10, decoration: BoxDecoration(color: dark ? T1SColors.slate800 : const Color(0xFFEEF2F5), borderRadius: BorderRadius.circular(6))),
-              ),
-              const SizedBox(height: 8),
-              FractionallySizedBox(
-                widthFactor: i == 0 ? 0.46 : 0.40,
-                child: Container(height: 10, decoration: BoxDecoration(color: dark ? T1SColors.slate800 : const Color(0xFFEEF2F5), borderRadius: BorderRadius.circular(6))),
-              ),
-            ]),
-          ),
-          const SizedBox(width: 10),
-          // price placeholder
-          Container(width: 46, height: 12, decoration: BoxDecoration(color: dark ? T1SColors.slate800 : const Color(0xFFEEF2F5), borderRadius: BorderRadius.circular(6))),
-        ]),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = isDark(context);
-    final copy = searchCopyFor(widget.verticalId);
-    final total = copy.sources.length;
-    final answered = ((_progress * total).round()).clamp(1, total);
-    final currentSite = copy.sources[_siteIdx % total];
-    return Box(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-      radius: 16,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(copy.heading, style: tx(context, 15, w: FontWeight.w900, color: ink(context))),
-        const SizedBox(height: 4),
-        Text(copy.sub, style: tx(context, 11.5, w: FontWeight.w500, color: muted(context))),
-        const SizedBox(height: 12),
-        // Live pill + hard count readout (stacks on narrow screens)
-        LayoutBuilder(builder: (c, box) {
-          final pill = Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-            decoration: BoxDecoration(color: const Color(0xFFEEF0FE), borderRadius: BorderRadius.circular(999), border: Border.all(color: const Color(0xFFDCDBFF))),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              ScaleTransition(
-                scale: Tween<double>(begin: 0.8, end: 1.15).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
-                child: Container(width: 7, height: 7, decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle)),
-              ),
-              const SizedBox(width: 7),
-              Flexible(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Text('Checking $currentSite…', key: ValueKey<String>(currentSite),
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(context, 11.5, w: FontWeight.w800, color: const Color(0xFF4A4A9C))),
-                ),
-              ),
-            ]),
-          );
-          final count = Text('$answered of $total ${copy.unit}', style: tx(context, 10.5, w: FontWeight.w600, color: muted(context)));
-          if (box.maxWidth < 380) {
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [pill, const SizedBox(height: 6), count]);
-          }
-          return Row(children: [Flexible(child: pill), const SizedBox(width: 10), count]);
-        }),
-        const SizedBox(height: 10),
-        // Progress bar: track #E8E8F8, fill #4F46E5
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(
-            value: _progress,
-            minHeight: 6,
-            backgroundColor: dark ? T1SColors.slate800 : const Color(0xFFE8E8F8),
-            valueColor: const AlwaysStoppedAnimation(Color(0xFF4F46E5)),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text('Please wait, we are getting the best deal for you. Prices appear here automatically the moment each site answers, so there is nothing for you to redo.',
-            style: tx(context, 10.5, w: FontWeight.w500, color: muted(context))),
-        const SizedBox(height: 14),
-        // Result-shaped skeletons — the page never looks dead while loading
-        _skeletonCard(dark, 0),
-        _skeletonCard(dark, 1),
-      ]),
-    );
-  }
-}
-
 /// OWNER 27 Oct: the honest "still working on it" card. Shown instead of
 /// "No matching options found" while the engine is still acquiring deals, so the
 /// user waits calmly and never reads a false "nothing found".

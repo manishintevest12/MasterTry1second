@@ -9,6 +9,7 @@ import '../../core/auth.dart';
 import '../../core/app_state.dart';
 import '../../core/compare.dart';
 import '../../core/theme.dart';
+import '../widgets/search_progress_card.dart';
 import '../widgets/history_chart.dart';
 import '../widgets/kit.dart';
 import '../widgets/redirect_sheet.dart';
@@ -95,7 +96,13 @@ class _ProductScreenState extends State<ProductScreen> {
             future: _future,
             builder: (c, snap) {
               if (snap.connectionState != ConnectionState.done) {
-                return const _ProductSkeleton();
+                // OWNER 28 Oct: the product page shows the SAME progress panel as the
+                // feed (web parity) — live source name, real count, purple fill and
+                // result-shaped skeletons — never a bare grey shimmer.
+                return SearchProgressCard(
+                  verticalId: 'ecommerce',
+                  title: _ctrl.text.trim().isEmpty ? null : _ctrl.text.trim(),
+                );
               }
               if (snap.hasError) {
                 return Box(
@@ -127,63 +134,6 @@ class _ProductScreenState extends State<ProductScreen> {
   }
 }
 
-class _ProductSkeleton extends StatelessWidget {
-  const _ProductSkeleton();
-  @override
-  Widget build(BuildContext context) {
-    return const Column(children: [
-      _Shimmer(),
-    ]);
-  }
-}
-
-class _Shimmer extends StatefulWidget {
-  const _Shimmer();
-  @override
-  State<_Shimmer> createState() => _ShimmerState();
-}
-
-class _ShimmerState extends State<_Shimmer> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
-  @override
-  void dispose() { _c.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (c, _) {
-        final base = isDark(c) ? T1SColors.slate800 : T1SColors.slate100;
-        final hi = isDark(c) ? T1SColors.slate700 : Colors.white;
-        return Column(children: [
-          Container(height: 190, decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(14))),
-          const SizedBox(height: 12),
-          ...List.generate(4, (i) => Container(
-                height: 58,
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [base, hi.withValues(alpha: .55), base], stops: [0, _c.value, 1]),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              )),
-        ]);
-      },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Owner 23 Oct (web parity, reference layout): the product comparison page now
-// mirrors the site's three-column design stacked for mobile —
-//   1. gallery card: main photo + thumbnail rail (selected = red border)
-//   2. info card: seller badge, rating pill + ratings, big price, % OFF,
-//      share/copy, full-width 'Buy on {seller}'
-//   3. compare card: 'Compare N Available Prices' — favicon, seller, variant,
-//      price, 'Lowest price' / '% costlier' rows
-//   4. Deal Scanner card: Deal Scanner | Price Drop tabs — verdict pill,
-//      semicircular score gauge, low/avg/high stats, score breakup;
-//      Price Drop tab: bell, target price input, 'Login & Set Alert'.
-// Everything stays real: offers/history/score come from POST /api/product-page.
-// ---------------------------------------------------------------------------
 class _Page extends StatefulWidget {
   const _Page({required this.page, required this.onSearch});
   final ProductPage page;
