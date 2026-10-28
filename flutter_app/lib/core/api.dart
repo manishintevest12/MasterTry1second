@@ -392,6 +392,74 @@ class AssistIntent {
 }
 
 
+/// One priced row the assistant answered with (POST /api/assist/answer).
+class AssistRow {
+  final String vertical;
+  final String title;
+  final String provider;
+  final double price;
+  final bool priceAvailable;
+  final String? imageUrl;
+  final Map<String, String> specs;
+  const AssistRow({
+    required this.vertical,
+    required this.title,
+    required this.provider,
+    required this.price,
+    required this.priceAvailable,
+    this.imageUrl,
+    this.specs = const {},
+  });
+  factory AssistRow.fromJson(Map<String, dynamic> j) => AssistRow(
+        vertical: '${j['vertical'] ?? ''}',
+        title: '${j['title'] ?? ''}',
+        provider: '${j['provider'] ?? ''}',
+        price: Offer._num(j['price']),
+        priceAvailable: j['priceAvailable'] == true,
+        imageUrl: j['imageUrl'] == null ? null : '${j['imageUrl']}',
+        specs: ((j['specs'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', '$v')),
+      );
+}
+
+/// OWNER 28 Oct: the assistant ANSWERS in every vertical instead of only routing —
+/// the reply names the cheapest real row and carries the comparable rows with it.
+class AssistAnswer {
+  final bool understood;
+  final String? vertical;
+  final String? engineVertical;
+  final String query;
+  final String? date;
+  final String reply;
+  final int count;
+  final bool pendingRefresh;
+  final List<AssistRow> results;
+  const AssistAnswer({
+    required this.understood,
+    this.vertical,
+    this.engineVertical,
+    required this.query,
+    this.date,
+    required this.reply,
+    required this.count,
+    required this.pendingRefresh,
+    required this.results,
+  });
+  factory AssistAnswer.fromJson(Map<String, dynamic> j) => AssistAnswer(
+        understood: j['understood'] == true,
+        vertical: j['vertical'] == null ? null : '${j['vertical']}',
+        engineVertical: j['engineVertical'] == null ? null : '${j['engineVertical']}',
+        query: '${j['query'] ?? ''}',
+        date: j['date'] == null ? null : '${j['date']}',
+        reply: '${j['reply'] ?? ''}',
+        count: (j['count'] is num) ? (j['count'] as num).toInt() : 0,
+        pendingRefresh: j['pendingRefresh'] == true,
+        results: ((j['results'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(AssistRow.fromJson)
+            .toList(),
+      );
+}
+
 /// A live scrape/live response: website-parity ComparisonItems + honest source report.
 class LiveResponse {
   final List<CompareItem> items;
@@ -1027,6 +1095,16 @@ class Try1SecondApi {
   /// Home AI assistant: a typed or spoken question -> which vertical + query (+ date).
   Future<AssistIntent> assistIntent(String text) async =>
       AssistIntent.fromJson(await _post('/api/assist/intent', {'text': text.trim()}));
+
+  /// Home AI assistant, full answer: routes the question AND returns the real priced
+  /// rows for that vertical (all 12 verticals, every product).
+  Future<AssistAnswer> assistAnswer(String text, {String? city, String? pincode, String? date}) async =>
+      AssistAnswer.fromJson(await _post('/api/assist/answer', {
+        'text': text.trim(),
+        if (city != null && city.isNotEmpty) 'city': city,
+        if (pincode != null && pincode.isNotEmpty) 'pincode': pincode,
+        if (date != null && date.isNotEmpty) 'travelDates': {'depart': date},
+      }));
 
   // -- auth + rewards --------------------------------------------------------
 

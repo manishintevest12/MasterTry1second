@@ -111,6 +111,13 @@ export const PriceLensAndAssistant: React.FC = () => {
   const [ask, setAsk] = useState('');
   const [askBusy, setAskBusy] = useState(false);
   const [chat, setChat] = useState<{ from: 'me' | 'ai'; text: string }[]>([]);
+  // OWNER 28 Oct: the assistant ANSWERS with real rows for every vertical, not just
+  // a "Opening Flights…" hop. These are the actual priced rows it found.
+  const [answer, setAnswer] = useState<{
+    vertical: string | null; engineVertical?: string; query: string; date?: string;
+    count: number; reply: string; pending?: boolean;
+    results: Array<{ title: string; provider: string; price: number; priceAvailable: boolean; imageUrl?: string; specs?: Record<string, string> }>;
+  } | null>(null);
 
   const runAsk = async (text?: string) => {
     const q = (text ?? ask).trim();
@@ -119,16 +126,21 @@ export const PriceLensAndAssistant: React.FC = () => {
     setChat((c) => [...c.slice(-3), { from: 'me', text: q }]);
     setAskBusy(true);
     try {
-      const res = await fetch('/api/assist/intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: q }) });
+      // ONE call answers in every vertical: the server routes the question, runs the
+      // SAME acquisition pipeline as the feed and returns the priced rows.
+      const res = await fetch('/api/assist/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: q }) });
       const data = await res.json();
       setChat((c) => [...c.slice(-3), { from: 'ai', text: data.reply || 'Sorry, I could not understand that.' }]);
-      if (data.understood && data.vertical) {
-        // Clear the old vertical's rows first, then hand the question to that vertical's own search form.
-        setPendingAssistantSearch({ vertical: data.vertical, query: data.query, date: data.date });
-        setVertical(data.vertical as VerticalId);
-        setActiveNavTab('compare');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
+      setAnswer(data.understood ? {
+        vertical: data.vertical ?? null,
+        engineVertical: data.engineVertical,
+        query: data.query ?? q,
+        date: data.date,
+        count: Number(data.count) || 0,
+        reply: data.reply || '',
+        pending: Boolean(data.pendingRefresh),
+        results: Array.isArray(data.results) ? data.results : [],
+      } : null);
     } catch {
       setChat((c) => [...c.slice(-3), { from: 'ai', text: 'I could not reach the server. Please try again.' }]);
       addToast('alert', 'Assistant unavailable', 'Check your connection and try again.');
@@ -157,6 +169,50 @@ export const PriceLensAndAssistant: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {answer && answer.results.length > 0 && (
+          <div className="mb-3 px-1">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                {answer.count} live {answer.vertical ? answer.vertical.replace('ecommerce', 'shopping').replace('creditcards', 'credit card') : 'result'}{answer.count === 1 ? '' : 's'} · cheapest first
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!answer.vertical) return;
+                  setPendingAssistantSearch({ vertical: answer.vertical, query: answer.query, date: answer.date });
+                  setVertical(answer.vertical as VerticalId);
+                  setActiveNavTab('compare');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="text-[10px] font-bold text-red-600 hover:text-red-700 cursor-pointer"
+              >
+                Open all in {!answer.vertical || answer.vertical === 'ecommerce' ? 'Shopping' : answer.vertical.charAt(0).toUpperCase() + answer.vertical.slice(1)} →
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {answer.results.slice(0, 6).map((r, i) => (
+                <div key={`${r.title}-${i}`} className="bg-slate-50 border border-slate-200 rounded-xl p-2 min-w-0">
+                  <p className="text-[11px] font-bold text-slate-900 leading-tight line-clamp-2">{r.title}</p>
+                  {r.specs && Object.keys(r.specs).length > 0 && (
+                    <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                      {Object.values(r.specs).slice(0, 2).join(' · ')}
+                    </p>
+                  )}
+                  <div className="flex items-baseline justify-between gap-1 mt-1">
+                    <span className="text-xs font-black text-slate-900">
+                      {r.priceAvailable ? `₹${Math.round(r.price).toLocaleString('en-IN')}` : 'Price on site'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 truncate max-w-[60%] text-right">{r.provider}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {answer.pending && (
+              <p className="text-[10px] text-slate-500 mt-1.5">Still scanning more sites — prices update here automatically.</p>
+            )}
           </div>
         )}
 

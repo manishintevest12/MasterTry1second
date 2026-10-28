@@ -35369,6 +35369,8 @@ function interpretAssistantQuestion(raw, now = istToday()) {
   const route2 = extractRoute(text);
   if (!vertical && route2) vertical = "flights";
   if (vertical === "movies" || vertical === "movie") vertical = "movies";
+  if (vertical === "banking") vertical = "account";
+  if (vertical === "coupons" || vertical === "giftcards") vertical = "ecommerce";
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
   }
@@ -35407,10 +35409,163 @@ var init_assistantIntent = __esm({
       movies: "Movies",
       loans: "Loans",
       insurance: "Insurance",
-      cab: "Cab"
+      cab: "Cab",
+      creditcards: "Credit Cards",
+      account: "Bank Accounts"
     };
     FILLER = /\b(batao|bata\s*do|bataiye|dikhao|dikha\s*do|dikhaiye|dhundo|dhoondo|chahiye|chahie|kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|ka\s*rate|rate|rates|price|prices|fare|fares|kimat|keemat|please|pls|show|tell|me|find|search|check|what|is|are|the|of|for|a|an|i|want|need|looking|cheapest|sasta|sabse|best|flight|flights|airfare|ticket|tickets|bus|buses|hotel|hotels|cab|taxi)\b/gi;
     MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  }
+});
+
+// server/lens/assistantAnswer.ts
+function cleanAssistantQuery(raw) {
+  return String(raw || "").replace(NOISE3, " ").replace(/[?!.,;:]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function searchable(text) {
+  const t = cleanAssistantQuery(text);
+  if (t.length < 3 || !/[a-z0-9]/i.test(t)) return false;
+  return !/^(ok|okay|kk|haan|han|yes|yeah|no|nahi|hi|hello|hey|thanks|thank you|thx|bye|good|nice|test)\b/i.test(t);
+}
+function buildAssistantSearch(raw, ctx = {}) {
+  const text = String(raw || "").trim().slice(0, 300);
+  const intent = interpretAssistantQuestion(text);
+  const withContext = (input) => ({
+    ...input,
+    ...ctx.city ? { city: ctx.city } : {},
+    ...ctx.pincode ? { pincode: ctx.pincode } : {},
+    ...ctx.locality ? { locality: ctx.locality } : {},
+    ...Number.isFinite(ctx.lat) ? { lat: ctx.lat } : {},
+    ...Number.isFinite(ctx.lng) ? { lng: ctx.lng } : {},
+    ...ctx.travelDates?.depart || intent.date ? { travelDates: { depart: intent.date || ctx.travelDates?.depart, return: ctx.travelDates?.return } } : {}
+  });
+  if (intent.understood && intent.vertical) {
+    return {
+      meta: { understood: true, assumedVertical: false, vertical: intent.vertical, query: intent.query, ...intent.date ? { date: intent.date } : {}, reply: intent.reply },
+      input: withContext({ query: intent.query, vertical: intent.vertical })
+    };
+  }
+  if (!searchable(text)) {
+    return {
+      meta: {
+        understood: false,
+        assumedVertical: false,
+        vertical: null,
+        query: cleanAssistantQuery(text) || text,
+        reply: 'What should I compare? Say a product ("iphone 15"), a route ("Delhi to Mumbai") or a place ("hotels in Goa") and I will price it across every site.'
+      },
+      input: null
+    };
+  }
+  const query = cleanAssistantQuery(text) || text;
+  const vertical = ACCOUNT_HINT.test(text) ? "account" : GROCERY_HINT.test(text) ? "grocery" : "ecommerce";
+  const where = vertical === "grocery" ? "the 10-minute grocery sites" : vertical === "account" ? "every bank and comparison site" : "every shopping site";
+  return {
+    meta: {
+      understood: true,
+      assumedVertical: true,
+      vertical,
+      query,
+      reply: `I could not pin a single category, so I am comparing "${query}" across ${where}. Results below.`
+    },
+    input: withContext({ query, vertical })
+  };
+}
+function verticalLabel(vertical) {
+  return LABEL2[String(vertical || "")] || "results";
+}
+function money2(n, currency) {
+  const sym = (currency || "INR").toUpperCase() === "INR" ? "\u20B9" : "";
+  return `${sym}${Math.round(n).toLocaleString("en-IN")}`;
+}
+function rowPrice(o) {
+  const p = o?.prices || {};
+  const n = Number(p.finalPayablePrice ?? p.effectivePrice ?? p.mandatoryTotal ?? p.listPrice ?? 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function toAssistantRows(results, limit = 6) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const o of Array.isArray(results) ? results : []) {
+    if (!o) continue;
+    const title = String(o.title || "").trim();
+    if (!title) continue;
+    const key = title.toLowerCase().replace(/[^a-z0-9]/g, "") + "|" + rowPrice(o);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const price = rowPrice(o);
+    const specs = {};
+    for (const [k, v] of Object.entries(o.attributes || {})) {
+      if (v !== void 0 && v !== null && String(v).trim() && Object.keys(specs).length < 5) specs[k] = String(v);
+    }
+    for (const k of ["departure time", "arrival time", "flight number", "duration", "stops"]) {
+      const v = o?.[k] ?? o?.specs?.[k];
+      if (v && !specs[k]) specs[k] = String(v);
+    }
+    out.push({
+      vertical: String(o.vertical || ""),
+      title,
+      provider: String(o.vendor || o.seller || o.provider || ""),
+      price,
+      priceAvailable: price > 0,
+      currency: String(o?.prices?.currency || "INR"),
+      ...o.imageUrl || o.image ? { imageUrl: String(o.imageUrl || o.image) } : {},
+      ...o.sellerUrl ? { url: String(o.sellerUrl) } : {},
+      ...Object.keys(specs).length ? { specs } : {},
+      ...Array.isArray(o.sellerQuotes) && o.sellerQuotes.length > 1 ? { sellerCount: o.sellerQuotes.length } : {}
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
+  const label = verticalLabel(vertical);
+  const priced = rows.filter((r) => r.priceAvailable).sort((a, b) => a.price - b.price);
+  const best = priced[0];
+  const sellers = new Set(rows.map((r) => r.provider).filter(Boolean));
+  const sourceCount = Math.max(sellers.size, opts.sourcesSucceeded?.length || 0);
+  if (!rows.length) {
+    const base = `No live ${label} result for "${query}" came back in this pass.`;
+    const tail = opts.pending ? " The engine is still scanning and the prices drop in here automatically within a few seconds." : opts.honestNotice || " Try a shorter wording, or open the category to see the last verified prices.";
+    return { reply: base + tail, results: [], count: 0 };
+  }
+  if (!best) {
+    return {
+      reply: `${rows.length} ${label} listings for "${query}" from ${sourceCount || rows.length} sites \u2014 the seller page holds the price (app-only fares), so open the card to see it.`,
+      results: rows,
+      count: rows.length
+    };
+  }
+  const spread = priced.length > 1 ? priced[priced.length - 1].price - best.price : 0;
+  const spreadTxt = spread > 0 ? ` Spread across sites: ${money2(spread, best.currency)}.` : "";
+  return {
+    reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
+    results: rows,
+    count: rows.length
+  };
+}
+var NOISE3, ACCOUNT_HINT, GROCERY_HINT, LABEL2;
+var init_assistantAnswer = __esm({
+  "server/lens/assistantAnswer.ts"() {
+    init_assistantIntent();
+    NOISE3 = /\b(kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|rate|rates|price|prices|batao|bata|do|dikhao|dikha|chahiye|chahie|please|pls|show|tell|me|find|search|compare|check|what|is|are|the|of|for|a|an|i|want|need|looking|best|sabse|sasta|cheapest|cheap|deal|deals|offer|offers|buy|kharidna|kitne\s*ka)\b/gi;
+    ACCOUNT_HINT = /\b(bank account|savings account|saving account|current account|salary account|zero balance|fixed deposit|recurring deposit|\bfd\b|\brd\b|nre account|nro account)\b/i;
+    GROCERY_HINT = /\b(milk|doodh|butter|makhan|paneer|curd|dahi|atta|flour|rice|chawal|dal|daal|oil|tel|sugar|cheeni|salt|namak|tea|chai|coffee|maggi|noodles|bread|eggs|anda|chicken|mutton|fish|sabzi|vegetables|onion|pyaz|potato|aloo|tomato|tamatar|fruit|banana|apple|amul|nestle|britannia|parle|tata salt|fortune|aashirvaad|500g|1kg|1\s*kg|\d+\s*g)\b/i;
+    LABEL2 = {
+      flights: "flights",
+      hotels: "hotels",
+      bus: "bus",
+      cab: "cabs",
+      ecommerce: "shopping",
+      grocery: "grocery",
+      food: "food",
+      movies: "movie tickets",
+      loans: "loans",
+      insurance: "insurance",
+      creditcards: "credit cards",
+      account: "bank accounts",
+      banking: "bank accounts"
+    };
   }
 });
 
@@ -38214,6 +38369,7 @@ var init_routes = __esm({
     init_registry();
     init_productLink();
     init_assistantIntent();
+    init_assistantAnswer();
     init_sameProduct();
     init_pricePlausibility();
     init_spellFix();
@@ -39361,6 +39517,80 @@ var init_routes = __esm({
     apiRouter.post("/assist/intent", (req, res) => {
       const text = String(req.body?.text || "").slice(0, 300);
       res.json({ success: true, ...interpretAssistantQuestion(text) });
+    });
+    apiRouter.post("/assist/answer", async (req, res) => {
+      const started3 = Date.now();
+      const text = String(req.body?.text || "").slice(0, 300);
+      const { meta, input } = buildAssistantSearch(text, {
+        city: req.body?.city ? String(req.body.city).slice(0, 60) : void 0,
+        pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : void 0,
+        locality: req.body?.locality ? String(req.body.locality).slice(0, 120) : void 0,
+        lat: Number.isFinite(Number(req.body?.lat)) ? Number(req.body.lat) : void 0,
+        lng: Number.isFinite(Number(req.body?.lng)) ? Number(req.body.lng) : void 0,
+        travelDates: req.body?.travelDates && typeof req.body.travelDates === "object" ? {
+          depart: String(req.body.travelDates.depart || "").slice(0, 10) || void 0,
+          return: String(req.body.travelDates.return || "").slice(0, 10) || void 0
+        } : void 0
+      });
+      if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started3 });
+      const searchInput = {
+        query: input.query,
+        // Engine ids: the UI calls these 'movie' and 'account'.
+        vertical: normalizeVerticalId(input.vertical),
+        city: input.city,
+        pincode: input.pincode,
+        locality: input.locality,
+        lat: input.lat,
+        lng: input.lng,
+        travelDates: input.travelDates
+      };
+      if (String(searchInput.vertical) === "cab" && searchInput.query) searchInput.query = resolveCabQuery(searchInput.query, searchInput.city);
+      try {
+        const searched = runSearch(searchInput);
+        searched.catch(() => void 0);
+        const budgetMs = Math.min(resultDeadlineMs(), 2e3);
+        const raced = await Promise.race([
+          searched,
+          new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
+        ]);
+        let rows = [];
+        let pending = false;
+        let sourcesSucceeded = [];
+        let honestNotice;
+        if (raced) {
+          rows = raced.results || [];
+          sourcesSucceeded = raced.state?.sourcesSucceeded || [];
+          honestNotice = raced.state?.honestNotice;
+          pending = Boolean(raced.state?.pendingRefresh);
+        } else {
+          const fallback = await lastChanceRows(searchInput, 600);
+          if (fallback) {
+            rows = fallback.results || [];
+            sourcesSucceeded = fallback.sourcesSucceeded || [];
+            honestNotice = fallback.honestNotice;
+          }
+          pending = rows.length === 0;
+        }
+        const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
+        const shaped = toAssistantRows(ordered, 6);
+        const answer = shapeAssistantAnswer(meta.vertical, meta.query, shaped, { pending, sourcesSucceeded, honestNotice });
+        res.json({
+          success: true,
+          ...meta,
+          reply: shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, " ").trim(),
+          vertical: meta.vertical,
+          engineVertical: String(searchInput.vertical),
+          query: meta.query,
+          results: answer.results,
+          count: answer.count,
+          pendingRefresh: pending,
+          sourcesSucceeded,
+          latencyMs: Date.now() - started3
+        });
+      } catch (e2) {
+        log.warn("Assistant", `assist/answer failed: ${e2?.message || e2}`);
+        res.status(200).json({ success: false, ...meta, results: [], count: 0, error: e2?.message || "Could not answer", latencyMs: Date.now() - started3 });
+      }
     });
     apiRouter.get("/catalogue", authMiddleware, requireAdmin, async (_req, res) => {
       try {

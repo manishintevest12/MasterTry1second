@@ -29,6 +29,9 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
   bool _listening = false;
   final _speech = SpeechToText();
   final List<({bool me, String text})> _chat = [];
+  /// OWNER 28 Oct: the assistant must show REAL priced rows for every vertical —
+  /// not just jump the user to a category. This holds the last answer.
+  AssistAnswer? _answer;
 
   @override
   void dispose() {
@@ -42,14 +45,14 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
     _askCtrl.clear();
     setState(() { _chat.add((me: true, text: text)); _askBusy = true; });
     try {
-      final intent = await widget.api.assistIntent(text);
-      setState(() => _chat.add((me: false, text: intent.reply)));
-      if (intent.understood && intent.vertical != null) {
-        widget.onVerticalPicked?.call(intent.vertical!);
-        if (mounted) {
-          AppState.instance.openVertical(intent.vertical!, search: PendingSearch(intent.vertical!, intent.query, date: intent.date));
-        }
-      }
+      // One call answers in EVERY vertical: the server routes the question, runs the
+      // same acquisition pipeline as the feed and returns the priced rows here.
+      final answer = await widget.api.assistAnswer(text, city: AppState.instance.city);
+      if (!mounted) return;
+      setState(() {
+        _chat.add((me: false, text: answer.reply));
+        _answer = answer.understood ? answer : null;
+      });
     } catch (e) {
       setState(() => _chat.add((me: false, text: 'Could not reach the server. Please try again.')));
     } finally {
@@ -83,6 +86,37 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
       );
     } catch (_) {
       setState(() => _chat.add((me: false, text: 'Voice is not available on this device. Please type your question.')));
+    }
+  }
+
+  String _answerVerticalLabel(String? v) {
+    switch (v) {
+      case 'flights':
+        return 'flights';
+      case 'hotels':
+        return 'hotels';
+      case 'bus':
+        return 'bus';
+      case 'cab':
+        return 'cabs';
+      case 'ecommerce':
+        return 'shopping results';
+      case 'grocery':
+        return 'grocery items';
+      case 'food':
+        return 'food items';
+      case 'movies':
+        return 'movie tickets';
+      case 'loans':
+        return 'loans';
+      case 'insurance':
+        return 'insurance plans';
+      case 'creditcards':
+        return 'credit cards';
+      case 'account':
+        return 'bank accounts';
+      default:
+        return 'results';
     }
   }
 
@@ -133,6 +167,96 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
                         style: T1SText.body(context)
                             .copyWith(fontSize: 11.5, color: m.me ? Colors.white : T1SColors.slate800),
                       ),
+                    ),
+                  ),
+              ],
+              if (_answer != null && _answer!.results.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_answer!.count} live ${_answerVerticalLabel(_answer!.vertical)} · cheapest first',
+                        style: T1SText.label(context).copyWith(fontSize: 9.5, color: T1SColors.slate500),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        final v = _answer!.vertical;
+                        if (v == null) return;
+                        widget.onVerticalPicked?.call(v);
+                        AppState.instance.openVertical(v,
+                            search: PendingSearch(v, _answer!.query, date: _answer!.date));
+                      },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        'Open all →',
+                        style: T1SText.label(context).copyWith(fontSize: 10, color: T1SColors.red),
+                      ),
+                    ),
+                  ],
+                ),
+                for (final r in _answer!.results.take(4))
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: dark ? const Color(0xFF1E293B) : T1SColors.slate50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: dark ? const Color(0xFF334155) : T1SColors.slate200),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                r.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: T1SText.body(context).copyWith(fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                              if (r.specs.isNotEmpty)
+                                Text(
+                                  r.specs.values.take(2).join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: T1SText.body(context).copyWith(fontSize: 9.5, color: T1SColors.slate500),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              r.priceAvailable ? '₹${r.price.round()}' : 'On site',
+                              style: T1SText.body(context).copyWith(fontSize: 12, fontWeight: FontWeight.w900),
+                            ),
+                            if (r.provider.isNotEmpty)
+                              Text(
+                                r.provider,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: T1SText.body(context).copyWith(fontSize: 9, color: T1SColors.slate500),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_answer!.pendingRefresh)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'Still scanning more sites — prices update here automatically.',
+                      style: T1SText.body(context).copyWith(fontSize: 9.5, color: T1SColors.slate500),
                     ),
                   ),
               ],

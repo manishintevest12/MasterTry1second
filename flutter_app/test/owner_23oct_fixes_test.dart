@@ -70,26 +70,25 @@ void main() {
     expect(box.size.height, lessThan(34), reason: 'Order Now must be the small pill (owner 23 Oct)');
   });
 
-  testWidgets('2) WarpLoader hides after the 3s countdown even while polls continue', (tester) async {
+  // OWNER RULE CHANGE (27-28 Oct): the 3-2-1 countdown is retired. The live
+  // progress panel (green source dot + real source name + red fill, key
+  // 'search-progress') stays mounted for the WHOLE acquisition and is replaced the
+  // moment real rows land. This test used to pin the countdown's 3s auto-hide; it
+  // now pins the rule that replaced it.
+  testWidgets('2) live progress panel holds while the search runs, then hands over to rows', (tester) async {
     final state = AppState.instance;
     state.api = _SlowApi(delay: const Duration(seconds: 5));
     state.vertical = 'food';
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: CompareScreen())));
     await tester.pump(const Duration(milliseconds: 300));
-    // Loading, no rows yet -> the full-screen WarpLoader is visible (once).
-    expect(find.byKey(const ValueKey('warp-loader')), findsOneWidget);
-    // Countdown finishes -> loader gone even though _loading is still true
-    // (the 5s search is still in flight at t=3.3s).
+    expect(find.byKey(const ValueKey('search-progress')), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
-    expect(find.byKey(const ValueKey('warp-loader')), findsNothing,
-        reason: 'loader must vanish after one 3-2-1 countdown (owner: no repeat)');
-    // Still loading, still no rows: the thin status strip stays (that is
-    // fine) but the countdown loader must NOT come back.
-    await tester.pump(const Duration(seconds: 2));
-    expect(find.byKey(const ValueKey('warp-loader')), findsNothing);
-    // Let the in-flight 5s search land so no timer is pending at teardown.
+    expect(find.byKey(const ValueKey('search-progress')), findsOneWidget,
+        reason: 'no countdown: the panel holds until real rows land');
     await tester.pump(const Duration(seconds: 3));
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const ValueKey('search-progress')), findsNothing,
+        reason: 'real rows replace the panel');
     expect(find.text('Margherita Pizza large'), findsOneWidget);
   });
 

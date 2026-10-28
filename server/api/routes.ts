@@ -44,6 +44,7 @@ import { assertProductionReadiness, settings } from '../common/settings';
 import { loadSourcesFromDb } from '../sources/registry';
 import { resolveProductFromLink, extractUrl, isSafePublicUrl, searchableTitle, normalizeTypedProductQuery } from '../lens/productLink';
 import { interpretAssistantQuestion } from '../lens/assistantIntent';
+import { buildAssistantSearch, shapeAssistantAnswer, toAssistantRows } from '../lens/assistantAnswer';
 import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { dropImplausiblePrices } from '../lens/pricePlausibility';
 import { fixSpelling } from '../lens/spellFix';
@@ -1907,6 +1908,94 @@ apiRouter.post('/notifications/read', authMiddleware, requireAuth, async (req, r
 apiRouter.post('/assist/intent', (req, res) => {
   const text = String(req.body?.text || '').slice(0, 300);
   res.json({ success: true, ...interpretAssistantQuestion(text) });
+});
+
+// ============ Home AI assistant: question -> REAL results in every vertical ============
+// OWNER 28 Oct: "ask try1second ai se muje har vertical ka har product ka result
+// chahiye". The assistant used to only route the user to a vertical; now it runs
+// the SAME acquisition pipeline as the feed for whichever of the 12 verticals the
+// question belongs to and answers with the cheapest real row plus comparable rows.
+// Not a second pricing path: it calls runSearch/lastChanceRows exactly like
+// /api/search, so a price can never disagree between the assistant and the feed.
+apiRouter.post('/assist/answer', async (req, res) => {
+  const started = Date.now();
+  const text = String(req.body?.text || '').slice(0, 300);
+  const { meta, input } = buildAssistantSearch(text, {
+    city: req.body?.city ? String(req.body.city).slice(0, 60) : undefined,
+    pincode: req.body?.pincode ? String(req.body.pincode).slice(0, 10) : undefined,
+    locality: req.body?.locality ? String(req.body.locality).slice(0, 120) : undefined,
+    lat: Number.isFinite(Number(req.body?.lat)) ? Number(req.body.lat) : undefined,
+    lng: Number.isFinite(Number(req.body?.lng)) ? Number(req.body.lng) : undefined,
+    travelDates: req.body?.travelDates && typeof req.body.travelDates === 'object' ? {
+      depart: String(req.body.travelDates.depart || '').slice(0, 10) || undefined,
+      return: String(req.body.travelDates.return || '').slice(0, 10) || undefined,
+    } : undefined,
+  });
+
+  if (!input) return res.json({ success: true, ...meta, results: [], count: 0, latencyMs: Date.now() - started });
+
+  const searchInput: SearchInput = {
+    query: input.query,
+    // Engine ids: the UI calls these 'movie' and 'account'.
+    vertical: normalizeVerticalId(input.vertical) as SearchInput['vertical'],
+    city: input.city,
+    pincode: input.pincode,
+    locality: input.locality,
+    lat: input.lat,
+    lng: input.lng,
+    travelDates: input.travelDates,
+  };
+  if (String(searchInput.vertical) === 'cab' && searchInput.query) searchInput.query = resolveCabQuery(searchInput.query, searchInput.city);
+
+  try {
+    const searched = runSearch(searchInput);
+    searched.catch(() => undefined); // the abandoned race leg must never crash the process
+    const budgetMs = Math.min(resultDeadlineMs(), 2000);
+    const raced = (await Promise.race([
+      searched,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+    ])) as Awaited<ReturnType<typeof runSearch>> | null;
+
+    let rows: any[] = [];
+    let pending = false;
+    let sourcesSucceeded: string[] = [];
+    let honestNotice: string | undefined;
+    if (raced) {
+      rows = (raced.results || []) as any[];
+      sourcesSucceeded = raced.state?.sourcesSucceeded || [];
+      honestNotice = raced.state?.honestNotice;
+      pending = Boolean(raced.state?.pendingRefresh);
+    } else {
+      const fallback = await lastChanceRows(searchInput, 600);
+      if (fallback) {
+        rows = ((fallback as any).results || []) as any[];
+        sourcesSucceeded = (fallback as any).sourcesSucceeded || [];
+        honestNotice = (fallback as any).honestNotice;
+      }
+      pending = rows.length === 0;
+    }
+
+    // Same API-boundary rule as the feed: bare flight rows trail.
+    const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
+    const shaped = toAssistantRows(ordered, 6);
+    const answer = shapeAssistantAnswer(meta.vertical, meta.query, shaped, { pending, sourcesSucceeded, honestNotice });
+    res.json({
+      success: true,
+      ...meta,
+      reply: shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, ' ').trim(),
+      vertical: meta.vertical,
+      engineVertical: String(searchInput.vertical),
+      query: meta.query,
+      results: answer.results,
+      count: answer.count,
+      pendingRefresh: pending,
+      sourcesSucceeded,
+      latencyMs: Date.now() - started,
+    });
+  } catch (e: any) {
+    log.warn('Assistant', `assist/answer failed: ${e?.message || e}`);
+    res.status(200).json({ success: false, ...meta, results: [], count: 0, error: e?.message || 'Could not answer', latencyMs: Date.now() - started });
+  }
 });
 
 // ============ Catalogue & provenance ============

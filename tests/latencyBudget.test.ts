@@ -49,8 +49,13 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // the 3s promise. The contract is asserted on those three numbers, not on a literal line.
   // /api/search races through its capped `budgetMs`, /api/scrape/live races the capped
   // expression inline — both forms count, as long as there are exactly two race sites.
+  // 28 Oct: /api/assist/answer is the third route that serves real rows (the Ask
+  // Try1Second AI answers in every vertical now), so it must honour the SAME capped
+  // budget as the two feed routes instead of running an unbounded search.
   const capped = (routes.match(/setTimeout\(\(\) => resolve\(null\), (?:Math\.min\(resultDeadlineMs\(\), 2000\)|budgetMs)\)/g) || []).length;
-  assert.equal(capped, 2, `both search routes must race a capped budget (found ${capped})`);
+  assert.equal(capped, 3, `search, scrape/live and assist/answer must all race a capped budget (found ${capped})`);
+  assert.ok(routes.includes("apiRouter.post('/assist/answer'"), 'the assistant must answer from the real pipeline');
+  assert.ok(routes.includes('lastChanceRows(searchInput, 600)'), 'the assistant answer must also use the bounded last-chance floor');
   assert.ok(routes.includes('const budgetMs = Math.min(resultDeadlineMs(), 2000)'), '/api/search must cap the acquisition budget');
   assert.ok(routes.includes('lastChanceRows(input, 600)'), 'the last-chance floor must be bounded');
   const total = 2000 + 600;

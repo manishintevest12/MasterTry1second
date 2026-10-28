@@ -5,7 +5,10 @@
  */
 import { understandQuery } from '../query/queryUnderstanding';
 
-export type AssistantVertical = 'flights' | 'hotels' | 'bus' | 'ecommerce' | 'grocery' | 'food' | 'movies' | 'loans' | 'insurance' | 'cab';
+// OWNER 28 Oct: the assistant must cover EVERY vertical the app ships, not just
+// the travel/shopping ones. 'creditcards' and 'account' were missing, so a credit
+// card or bank-account question came back as "I could not tell which category".
+export type AssistantVertical = 'flights' | 'hotels' | 'bus' | 'ecommerce' | 'grocery' | 'food' | 'movies' | 'loans' | 'insurance' | 'cab' | 'creditcards' | 'account';
 
 export interface AssistantIntent {
   understood: boolean;
@@ -18,6 +21,7 @@ export interface AssistantIntent {
 const LABEL: Record<AssistantVertical, string> = {
   flights: 'Flights', hotels: 'Hotels', bus: 'Bus', ecommerce: 'E-Commerce', grocery: 'Grocery',
   food: 'Food', movies: 'Movies', loans: 'Loans', insurance: 'Insurance', cab: 'Cab',
+  creditcards: 'Credit Cards', account: 'Bank Accounts',
 };
 
 // Hinglish / filler words that never belong in a search box.
@@ -78,6 +82,9 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
   const route = extractRoute(text);
   if (!vertical && route) vertical = 'flights';
   if (vertical === 'movies' || (vertical as string) === 'movie') vertical = 'movies';
+  // Engine aliases: 'banking' is the same vertical the UI calls 'account'.
+  if ((vertical as string) === 'banking') vertical = 'account';
+  if ((vertical as string) === 'coupons' || (vertical as string) === 'giftcards') vertical = 'ecommerce';
 
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
