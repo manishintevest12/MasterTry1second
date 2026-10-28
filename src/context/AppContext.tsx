@@ -874,7 +874,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // MAX_PENDING_POLLS the honest "no matches" state is allowed to show.
   const pollCountRef = useRef(0);
   const repollingRef = useRef(false);
-  const MAX_PENDING_POLLS = 8; // ~16s of background acquisition before we stop promising results
+  // Owner 28 Oct (every vertical like hotels): slow verticals (bus/food/movies) finish their
+  // pipeline at 3-4s, so a 2s gap burned a whole cycle on an empty first answer. A 1.2s
+  // cadence reaches the warmed cache sooner without extra load (the pipeline is shared).
+  const MAX_PENDING_POLLS = 10; // ~12s of background acquisition before we stop promising results
   const [sourcesReport, setSourcesReport] = useState<Record<string, SourcesReport>>({});
   const [lastScrapeInfo, setLastScrapeInfo] = useState<{
     timestamp: string;
@@ -1001,7 +1004,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setTimeout(() => {
             repollingRef.current = false;
             void triggerLiveLocationScrape();
-          }, 2000);
+          }, 1200);
         }
         if ((!data.results || data.results.length === 0) && !data.pendingRefresh) {
           // A search shows ONLY what was searched: drop stale rows of an earlier query.

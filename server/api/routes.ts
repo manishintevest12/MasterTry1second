@@ -662,7 +662,11 @@ apiRouter.post('/search', async (req, res) => {
   // (pendingRefresh) and let the pipeline finish into the cache the next poll reads.
   const searchStart = Date.now();
   input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
-  const budgetMs = resultDeadlineMs();
+  // Owner 28 Oct, 'har vertical hotels jaisa': measured cold verticals answered at 3.3-4.5s
+  // because the race timer fired at 2.4s and the fallback then ran on top. Acquisition now
+  // gets 2.0s and the last-chance floor 0.6s, so the FINAL byte lands under the 3s promise
+  // for every vertical instead of only the fast ones.
+  const budgetMs = Math.min(resultDeadlineMs(), 2000);
   const searched = runSearch(input);
   searched.catch(() => undefined); // the abandoned race leg must never crash the process
   const response = (await Promise.race([
@@ -670,7 +674,7 @@ apiRouter.post('/search', async (req, res) => {
     new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
   if (!response) {
-    const fallback = await lastChanceRows(input);
+    const fallback = await lastChanceRows(input, 600);
     if (fallback) {
       return res.json({
         ...fallback,
@@ -1007,11 +1011,11 @@ apiRouter.post('/scrape/live', async (req, res) => {
   searchedLive.catch(() => undefined);
   const response = (await Promise.race([
     searchedLive,
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), resultDeadlineMs())),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.min(resultDeadlineMs(), 2000))),
   ])) as Awaited<ReturnType<typeof runSearch>> | null;
   if (!response) {
     // Never answer a live search with nothing while we hold verified rows for it.
-    const fallback = await lastChanceRows(input);
+    const fallback = await lastChanceRows(input, 600);
     if (fallback) {
       return res.json({
         ...fallback,

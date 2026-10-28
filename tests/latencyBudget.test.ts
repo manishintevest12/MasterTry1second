@@ -43,8 +43,18 @@ test('both search routes claim the budget and a hard race, not just the pipeline
   // with the honest pendingRefresh marker instead of making the app wait.
   const claims = routes.match(/input\.coldDeadlineMs = .*resultDeadlineMs\(\)/g) || [];
   assert.ok(claims.length >= 2, `both /api/search and /api/scrape/live must claim the budget (found ${claims.length})`);
-  assert.ok(routes.includes('const budgetMs = resultDeadlineMs()'), '/api/search must race the budget');
-  assert.ok(routes.includes('setTimeout(() => resolve(null), resultDeadlineMs())'), '/api/scrape/live must race the budget');
+  // Owner 28 Oct ('har vertical hotels jaisa'): cold verticals measured 3.3-4.5s because the
+  // race fired at the full 2.4s budget and the last-chance floor ran on top of it. The routes
+  // now cap acquisition at 2.0s and give the floor 0.6s, so the FINAL byte still lands under
+  // the 3s promise. The contract is asserted on those three numbers, not on a literal line.
+  // /api/search races through its capped `budgetMs`, /api/scrape/live races the capped
+  // expression inline — both forms count, as long as there are exactly two race sites.
+  const capped = (routes.match(/setTimeout\(\(\) => resolve\(null\), (?:Math\.min\(resultDeadlineMs\(\), 2000\)|budgetMs)\)/g) || []).length;
+  assert.equal(capped, 2, `both search routes must race a capped budget (found ${capped})`);
+  assert.ok(routes.includes('const budgetMs = Math.min(resultDeadlineMs(), 2000)'), '/api/search must cap the acquisition budget');
+  assert.ok(routes.includes('lastChanceRows(input, 600)'), 'the last-chance floor must be bounded');
+  const total = 2000 + 600;
+  assert.ok(total < 3000, `acquisition (2000) + floor (600) must stay inside the 3s promise, got ${total}`);
 });
 
 test('the pipeline default deadline is the shared budget, not a loose literal', () => {

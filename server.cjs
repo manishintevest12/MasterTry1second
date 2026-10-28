@@ -37655,7 +37655,7 @@ var init_routes = __esm({
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
       const searchStart = Date.now();
       input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
-      const budgetMs = resultDeadlineMs();
+      const budgetMs = Math.min(resultDeadlineMs(), 2e3);
       const searched = runSearch(input);
       searched.catch(() => void 0);
       const response = await Promise.race([
@@ -37663,7 +37663,7 @@ var init_routes = __esm({
         new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
       ]);
       if (!response) {
-        const fallback = await lastChanceRows(input);
+        const fallback = await lastChanceRows(input, 600);
         if (fallback) {
           return res.json({
             ...fallback,
@@ -37762,10 +37762,10 @@ var init_routes = __esm({
       searchedLive.catch(() => void 0);
       const response = await Promise.race([
         searchedLive,
-        new Promise((resolve) => setTimeout(() => resolve(null), resultDeadlineMs()))
+        new Promise((resolve) => setTimeout(() => resolve(null), Math.min(resultDeadlineMs(), 2e3)))
       ]);
       if (!response) {
-        const fallback = await lastChanceRows(input);
+        const fallback = await lastChanceRows(input, 600);
         if (fallback) {
           return res.json({
             ...fallback,
