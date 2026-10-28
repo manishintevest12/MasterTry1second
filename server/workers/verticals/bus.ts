@@ -13,6 +13,14 @@ import { parseRedBusSearch, resolveRedBusCity, type RedBusRoute } from '../parse
 import { cffiFetch } from '../../common/curlCffiFetch';
 import { parseZingbusRoute, zingbusSlug } from '../parsers/zingbus';
 import { ixigoRoutePath, parseIxigoBusPage } from '../parsers/ixigoBuses';
+import {
+  MMT_AUTOSUGGEST_URL,
+  MMT_GRAPHQL_URL,
+  mmtBusDeeplink,
+  mmtBusRequest,
+  parseMmtBusListing,
+  parseMmtCitySuggestion,
+} from '../parsers/makemytripBus';
 
 function routeFromQuery(raw: string): { from: string; to: string } | null {
   const cleaned = raw
@@ -193,12 +201,50 @@ export const busWorker: VerticalWorker = {
     },
     {
       // ---- Owner-mandated bus sources: attempted live on every bus search, honestly reported ----
+      // MakeMyTrip LIVE per-service fares (owner 28 Oct: "inko add kro aur price le kr bhi aao inke").
+      // The old probe said MMT serves an empty shell to browserless HTTP — wrong. Recon found the
+      // public Apollo endpoint the SPA itself calls: POST bus.makemytrip.com/graphql (BusListing),
+      // with city ids from ground-auto-suggest.makemytrip.com. Verified live: 251 services for
+      // Indore->Bhopal with real fares, timings and seat counts. No session, no API key.
       sourceId: 'w_bus_makemytrip',
-      name: 'Bus worker: MakeMyTrip bus (probe)',
-      priority: 15,
-      run: async (ctx: any) => {
-        await cffiFetch('https://bus.makemytrip.com/', { impersonate: 'chrome', timeoutMs: 12_000 });
-        throw new AcquisitionError('EMPTY_RESPONSE', 'MakeMyTrip bus search serves an empty JS shell to browserless HTTP; live service lists require a sessioned app API (Akamai-gated elsewhere on makemytrip.com).');
+      name: 'Bus worker: MakeMyTrip live services (real fares, timings, seats)',
+      priority: 2,
+      maxPerMinute: 20,
+      timeoutMs: 40_000,
+      run: async (ctx) => {
+        const rt = routeFromQuery(String(ctx.query.rawQuery || ''));
+        if (!rt) return [];
+        const depart = String(ctx.query.travelDates?.depart || '');
+        if (!depart) return [];
+        const suggest = async (city: string) => {
+          const r = await cffiFetch(`${MMT_AUTOSUGGEST_URL}?query=${encodeURIComponent(city)}`, {
+            impersonate: 'chrome',
+            timeoutMs: 12_000,
+            headers: { accept: 'application/json', origin: 'https://www.makemytrip.com' },
+          });
+          if (r.status !== 200) throw new AcquisitionError(r.status === 403 || r.status === 429 ? 'ACCESS_CHALLENGE' : 'SERVER_ERROR', `MakeMyTrip autosuggest HTTP ${r.status} for "${city}"`, r.status);
+          let json: any = null;
+          try { json = JSON.parse(r.body); } catch { /* handled below */ }
+          const hit = parseMmtCitySuggestion(json, city);
+          if (!hit) throw new AcquisitionError('NOT_FOUND', `MakeMyTrip has no bus city for "${city}"`);
+          return hit;
+        };
+        const [from, to] = await Promise.all([suggest(rt.from), suggest(rt.to)]);
+        const pageUrl = mmtBusDeeplink(from.name, to.name, depart);
+        const r = await cffiFetch(MMT_GRAPHQL_URL, {
+          method: 'POST',
+          impersonate: 'chrome',
+          timeoutMs: 22_000,
+          headers: { 'content-type': 'application/json', accept: 'application/json', origin: 'https://www.makemytrip.com', referer: 'https://www.makemytrip.com/' },
+          body: JSON.stringify(mmtBusRequest(from.code, to.code, depart)),
+        });
+        if (r.status === 403 || r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `MakeMyTrip bus GraphQL edge HTTP ${r.status}`, r.status);
+        if (r.status !== 200) throw new AcquisitionError(r.status >= 500 ? 'SERVER_ERROR' : 'MALFORMED_RESPONSE', `MakeMyTrip bus GraphQL HTTP ${r.status}`, r.status);
+        let json: any = null;
+        try { json = JSON.parse(r.body); } catch { throw new AcquisitionError('MALFORMED_RESPONSE', 'MakeMyTrip bus GraphQL returned non-JSON'); }
+        const parsed = parseMmtBusListing(json, ctx.source, pageUrl, from.name, to.name, depart);
+        if (parsed.items.length) return parsed.items;
+        throw new AcquisitionError('EMPTY_RESPONSE', `MakeMyTrip: ${parsed.reason || 'no bus services for this route/date'}`);
       },
     },
     {
