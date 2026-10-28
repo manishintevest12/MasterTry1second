@@ -10,7 +10,86 @@ const ACCESSORY_WORDS = [
   'charger', 'adapter', 'adaptor', 'cable', 'strap', 'band', 'stand', 'holder', 'mount', 'stylus', 'sticker', 'cleaner',
   'refill', 'replacement', 'spare', 'lens guard', 'camera protector', 'magsafe', 'mag-safe', 'pop socket', 'popsocket', 'bumper',
   'ring light', 'tripod', 'dock', 'wallet',
+  // Owner 27 Oct ("iphone search -> adapter dikha, ₹199 vs ₹59,900 compare hua"): a power bank
+  // titled "... Fast Powerbank | Type-C | iPhone - Android Mobiles" carries the brand word ONLY
+  // as a compatibility mention, and it was accepted as the iPhone itself.
+  'power bank', 'powerbank', 'power-bank', 'battery pack', 'backup battery', 'car charger',
+  'charging brick', 'wall charger', 'data cable', 'charging cable', 'otg',
+  // "Compatible with iPhone 15 – Original-Quality OLED Screen" is a spare part, not the phone.
+  'compatible', 'compatibility', 'fits', 'replacement part',
 ];
+
+/**
+ * Device TYPES a listing can declare. A candidate that declares a type the query never
+ * asked for is a DIFFERENT product — a power bank can never be "the iPhone", whatever
+ * compatibility words its title carries.
+ */
+const TYPE_WORDS: Array<[string, string[]]> = [
+  ['powerbank', ['power bank', 'powerbank', 'power-bank', 'portable charger', 'battery pack']],
+  ['charger', ['charger', 'adapter', 'adaptor', 'charging brick', 'wall charger']],
+  ['cable', ['cable', 'cord', 'data cable', 'otg']],
+  ['case', ['case', 'cover', 'back cover', 'flip cover', 'bumper', 'sleeve', 'skin']],
+  ['protector', ['screen guard', 'protector', 'tempered glass', 'screen protector']],
+  ['earbuds', ['earbuds', 'earbud', 'earphone', 'earphones', 'headphone', 'headphones', 'tws', 'airpods', 'neckband', 'headset']],
+  ['watch', ['smartwatch', 'smart watch', 'fitness band']],
+  ['speaker', ['speaker', 'soundbar', 'party box']],
+  ['tv', ['tv', 'smart tv', 'television', 'led tv', 'oled tv']],
+  ['laptop', ['laptop', 'notebook', 'chromebook', 'macbook']],
+  ['tablet', ['tablet', 'ipad']],
+  ['camera', ['dslr', 'mirrorless', 'action camera', 'gopro']],
+  ['monitor', ['monitor']],
+  ['printer', ['printer']],
+  ['router', ['router', 'modem']],
+  ['keyboard', ['keyboard']],
+  ['mouse', ['mouse']],
+];
+
+/**
+ * The part of a listing title that names the product ITSELF. Indian listings append bundles
+ * and compatibility after delimiters ("Samsung Galaxy M35 5G ... with Earbuds", "Ambrane
+ * Powerbank | Type-C | iPhone"), so type detection reads only the leading segment.
+ */
+export function primarySegment(title: string): string {
+  return String(title || '')
+    .split(/[|;]|\s-\s|\s+with\s+|\s+\+\s+|,|\s+free\s+/i)[0]
+    .trim() || String(title || '');
+}
+
+/** Device types a title declares, matched on whole words so "smartwatch" is not a "watch" miss. */
+export function declaredTypes(title: string): Set<string> {
+  const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  const out = new Set<string>();
+  for (const [type, words] of TYPE_WORDS) {
+    if (words.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))) out.add(type);
+  }
+  return out;
+}
+
+/**
+ * Segments that merely say "works with X" are compatibility, not identity. Sellers write
+ * "Ambrane 20000mAh Fast Powerbank | Type-C | iPhone - Android Mobiles | Black": the word
+ * iPhone there describes COMPATIBILITY. Such segments are removed before identity tokens
+ * are read, so a compatible accessory can never be mistaken for the phone itself.
+ */
+const COMPAT_ONLY = new Set([
+  'iphone', 'ipad', 'ipod', 'android', 'ios', 'mobile', 'mobiles', 'phone', 'phones', 'smartphone', 'smartphones',
+  'device', 'devices', 'tablet', 'tablets', 'laptop', 'laptops', 'compatible', 'compatibility', 'with', 'for', 'and',
+  'or', 'all', 'universal', 'usb', 'type', 'type-c', 'typec', 'c', 'port', 'ports', 'support', 'supports', 'works',
+  'suitable', 'series', 'model', 'models', 'samsung', 'oneplus', 'redmi', 'xiaomi', 'oppo', 'vivo', 'realme',
+  'motorola', 'nothing', 'pixel', 'google',
+]);
+
+export function stripCompatibility(title: string): string {
+  const parts = String(title || '').split(/[|/]|\s-\s|,(?=\s)/).map((x) => x.trim()).filter(Boolean);
+  const kept = parts.filter((seg) => {
+    const toks = seg.toLowerCase().replace(/[^a-z0-9+]+/g, ' ').split(' ').filter(Boolean);
+    if (!toks.length) return false;
+    // Pure compatibility talk ("iPhone", "Android Mobiles", "Type-C") carries no identity.
+    // A segment with a model number ("iPhone 12") is real identity and is kept.
+    return !toks.every((t) => COMPAT_ONLY.has(t));
+  });
+  return kept.length ? kept.join(' | ') : String(title || '');
+}
 
 const STOP = new Set(['the', 'and', 'with', 'for', 'new', 'latest', 'combo', 'pack', 'of', 'in', 'by', 'free', 'a', 'an', 'online', 'buy', 'best', 'price']);
 
@@ -55,6 +134,10 @@ export function normalizeBrandSpelling(t: string): string {
  */
 function canonicalQuantity(t: string): string {
   return String(t || '')
+    // A charger is sold as "adapter" by Apple and as "charger" by everyone else.
+    .replace(/\badapt(?:er|or)s?\b/gi, 'charger')
+    // "Powerbank" and "power bank" are one product.
+    .replace(/\bpower\s*bank\b/gi, 'power bank')
     .replace(/\bpack\s+of\s+(\d+)\b/gi, '$1 pack')
     .replace(/\b(ltrs?|litres?|liters?)\b/gi, 'l')
     .replace(/\b(gms?|grams?)\b/gi, 'g')
@@ -67,7 +150,10 @@ function words(t: string): string[] {
 }
 
 export function isAccessory(title: string): boolean {
-  const t = ` ${title.toLowerCase()} `;
+  // Normalise punctuation first: "Fine Woven Wallet-A3323" and "5W-Charger" carry the
+  // accessory word glued to a model code, and a naive " wallet " test missed them
+  // (owner 27 Oct: a MagSafe wallet priced Rs.2,851 was shown as "the iPhone").
+  const t = ` ${String(title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
   const hits = ACCESSORY_WORDS.filter((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
   if (hits.length === 0) return false;
   // Grocery packs are sold in a "pouch"/"packet": that is packaging, not an accessory, and
@@ -104,13 +190,25 @@ export function capacitiesOf(title: string): Set<string> {
  */
 export function isSameProduct(pastedTitle: string, candidateTitle: string, mode: 'strict' | 'typed' = 'strict'): boolean {
   const wantsAccessory = isAccessory(pastedTitle);
-  if (!wantsAccessory && isAccessory(candidateTitle)) return false;
+  // Only the product part of the title decides "is this an accessory": Indian listings append
+  // bundles ("... 128GB Storage) with Charger"), and a bundled charger must not disqualify
+  // the phone itself.
+  if (!wantsAccessory && isAccessory(primarySegment(candidateTitle))) return false;
+  // TYPE GATE (owner 27 Oct, "iphone search ne adapter dikhaya"): a listing that declares a
+  // device type the user never asked for is a different product — a power bank, charger,
+  // cable, case, earbuds or TV is never "the iPhone". Types stated BY the query are allowed.
+  const wantTypes = declaredTypes(pastedTitle);
+  const haveTypes = declaredTypes(candidateTitle);
+  for (const t of haveTypes) if (!wantTypes.has(t)) return false;
+  // Compatibility mentions ("... | iPhone - Android Mobiles | ...") are not identity: read
+  // the candidate's tokens from its own product words only.
+  const candidateIdentity = stripCompatibility(candidateTitle);
   // Capacity is part of the product's identity (the 14 Oct bug: a 512 GB link
   // compared 256 GB listings as "cheapest"). If EITHER side declares a storage
   // capacity, both must declare and they must match exactly — a candidate whose
   // variant cannot be verified is NOT this product (it stays in `related`).
   const wantCaps = capacitiesOf(pastedTitle);
-  const haveCaps = capacitiesOf(candidateTitle);
+  const haveCaps = capacitiesOf(candidateIdentity);
   // A TYPED name usually carries no capacity ("i phone 18"). Treating that as a
   // mismatch rejected every real listing and produced "Price unavailable"
   // (26 Oct bug). The rule now binds only when the QUERY states a capacity: then
@@ -123,7 +221,10 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
   }
   const need = identityTokens(pastedTitle);
   if (need.length === 0) return false;
-  const have = new Set(words(candidateTitle));
+  const have = new Set(words(candidateIdentity));
+  // A type word the QUERY states is satisfied by the candidate declaring the same type
+  // ("laptop" vs "MacBook", "tv" vs "Smart LED TV") — synonyms must not read as mismatch.
+  for (const t of wantTypes) if (haveTypes.has(t)) have.add(t);
   // Numeric/model tokens (iphone "17", "256gb", "s24") must ALL match, so iPhone 16 is never an iPhone 17.
   // Pack sizes are the exception (owner 27 Oct, grocery comparison): shops title the same pack
   // as "Tata Salt 1 kg", "Tata Salt 1000 g" or just "Tata Salt Crystal", so a stated weight or
@@ -137,7 +238,7 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
   // Tier words must match exactly both ways: no '17 Pro' when the user pasted '17', no 'Air' for 'Pro'.
   const tiersOf = (ws: string[]) => new Set(ws.filter((w) => TIERS.has(w)));
   const wantTiers = tiersOf(need);
-  const haveTiers = tiersOf(words(candidateTitle));
+  const haveTiers = tiersOf(words(candidateIdentity));
   // Tier rule binds only when the user STATED a tier in TYPED mode. A typed name
   // like "i phone 18" says nothing about Pro/Max, and demanding an exact tier
   // match there rejected every listing (26 Oct "Price unavailable"). Pasted links
@@ -165,10 +266,14 @@ export function isSameProduct(pastedTitle: string, candidateTitle: string, mode:
  * these rows as closest variants.
  */
 export function sharesIdentity(queryTitle: string, candidateTitle: string): boolean {
-  if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
+  if (isAccessory(primarySegment(candidateTitle)) && !isAccessory(queryTitle)) return false;
+  // Same type gate as isSameProduct: the closest-variant fallback must never surface a
+  // different KIND of product (owner 27 Oct: adapter shown for an iPhone search).
+  const wantTypes = declaredTypes(queryTitle);
+  for (const t of declaredTypes(candidateTitle)) if (!wantTypes.has(t)) return false;
   const need = identityTokens(queryTitle);
   if (!need.length) return false;
-  const have = new Set(words(candidateTitle));
+  const have = new Set(words(stripCompatibility(candidateTitle)));
   const hard = need.filter((w) => /\d/.test(w));
   if (hard.length && hard.some((w) => !have.has(w))) return false;
   const soft = need.filter((w) => !/\d/.test(w));

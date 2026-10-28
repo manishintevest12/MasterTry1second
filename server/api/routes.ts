@@ -1534,6 +1534,46 @@ apiRouter.post('/product-page', async (req, res) => {
       offers.push(...remembered.offers);
     }
   }
+  // CATALOGUE FLOOR (owner 27 Oct, "iphone search: bahut der baad unavailable"): when the
+  // live sources have not answered yet, this product's OWN catalogue rows are still real,
+  // previously-verified prices. Serving those (clearly marked as last verified) beats an
+  // empty "Price unavailable" page, and the poll keeps running so they upgrade in place.
+  let floorOnly = false;
+  if (!offers.length) {
+    const { findCatalogueOffers } = await import('../catalogue/catalogueService');
+    const floor: any[] = [];
+    const floorSellers = new Set<string>();
+    for (const v of ['ecommerce', 'grocery']) {
+      const rows = await findCatalogueOffers(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+      for (const r of rows) {
+        const title = String(r.title || '');
+        const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
+        if (!title || price <= 0) continue;
+        // SAME identity rules as live rows: a catalogue accessory can never stand in for the phone.
+        if (!isSameProduct(lensQuery, title, matchMode)) continue;
+        const seller = String(r.seller || r.vendor || '').trim();
+        const k = seller.toLowerCase();
+        if (k && floorSellers.has(k)) continue;
+        if (k) floorSellers.add(k);
+        floor.push(toRow({
+          o: {
+            id: `catalogue-${r.id}`, title, seller,
+            sellerUrl: r.seller_url ? createMaskingPointer(String(r.seller_url), { offerId: String(r.id) }) : '',
+            prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
+            attributes: {}, availability: r.availability || 'unknown',
+            canonicalEntityId: r.canonical_entity_id ?? null,
+          },
+          price,
+        }));
+      }
+      if (floor.length >= 6) break;
+    }
+    if (floor.length) {
+      floor.sort((a: any, b: any) => a.price - b.price);
+      offers.push(...floor.slice(0, 12));
+      floorOnly = true;
+    }
+  }
   // Owner 27 Oct: never leave the page empty when the sources DO carry this
   // product family. If no listing is the exact product, promote the closest
   // real variants (same brand + model number) so the user sees live prices.
@@ -1636,10 +1676,12 @@ apiRouter.post('/product-page', async (req, res) => {
     // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
     // A capped-out answer IS pending by definition: the page must keep polling, otherwise it
     // would stop on an empty shell and never pick up the rows that land a moment later.
-    pendingRefresh: cappedOut || responses.some((r: any) => r.state?.pendingRefresh === true),
+    pendingRefresh: cappedOut || floorOnly || responses.some((r: any) => r.state?.pendingRefresh === true),
     closestOnly,
     message: offers.length
-      ? (closestOnly ? 'No exact match right now. Showing the closest live variants of this product.' : undefined)
+      ? (floorOnly
+        ? 'Live shops are still answering. Showing our last verified prices for this product.'
+        : (closestOnly ? 'No exact match right now. Showing the closest live variants of this product.' : undefined))
       : 'No verified listing of this product was found on our sources right now.',
   });
 });

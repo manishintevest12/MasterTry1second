@@ -131,8 +131,23 @@ export async function gwCityMovieAggregates(
   const byTitle = new Map<string, GwMovieAgg>();
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const cinemas = await gwCityCinemas(host, citySlug, timeoutMs);
-  for (const cinema of cinemas.slice(0, maxCinemas)) {
-    const d = await gwJson(host, `/gw/consumer/movies/v3/cinema?meta=1&reqData=1&cinemaId=${cinema.id}`, timeoutMs);
+  // Cinemas are independent, so they are walked CONCURRENTLY (bounded). A cold city used to
+  // cost one round-trip per cinema, which could never fit a 3s answer; now the whole city
+  // lands in about one round-trip.
+  const walkOne = async (cinema: { id: string | number; name: string }) => ({
+    cinema,
+    d: await gwJson(host, `/gw/consumer/movies/v3/cinema?meta=1&reqData=1&cinemaId=${cinema.id}`, timeoutMs).catch(() => null),
+  });
+  const walked: Array<{ cinema: any; d: any }> = [];
+  const queue = cinemas.slice(0, maxCinemas);
+  const CONCURRENCY = 6;
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+    while (queue.length) {
+      const next = queue.shift()!;
+      walked.push(await walkOne(next as any));
+    }
+  }));
+  for (const { cinema, d } of walked) {
     if (!d) continue;
     const meta = d?.meta || {};
     const moviesMeta: any[] = meta.movies || [];

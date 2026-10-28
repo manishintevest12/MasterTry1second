@@ -32,18 +32,89 @@ async function fetchJsonNode(url: string): Promise<any> {
 }
 
 
-/** Match an offer title against gw aggregates (all tokens present). Returns the best hit. */
-function matchAgg(aggs: Map<string, GwMovieAgg> | null, title: string): GwMovieAgg | null {
+/** Match an offer title against gw aggregates. Tokens must line up in EITHER direction so
+ * "Namit Malhotra's Ramayana" still matches the gateway's plain "Ramayana" card, while a
+ * generic one-word hit can never steal another film's price band. */
+export function matchAgg(aggs: Map<string, GwMovieAgg> | null, title: string): GwMovieAgg | null {
   if (!aggs || aggs.size === 0) return null;
-  const toks = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
+  // Digits stay as tokens even when single-character, so "Drishyam 2" is never confused
+  // with "Drishyam". Word tokens still need 2+ characters.
+  const toks = (t: string) => t.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1 || /^\d+$/.test(x));
+  const nums = (t: string[]) => t.filter((x) => /^\d+$/.test(x)).join(',');
+  const want = toks(title);
+  if (!want.length) return null;
   let best: GwMovieAgg | null = null;
   let bestScore = 0;
   for (const agg of aggs.values()) {
-    const hay = agg.title.toLowerCase();
-    const score = toks.filter((x) => hay.includes(x)).length;
-    if (score === toks.length && score > bestScore) { best = agg; bestScore = score; }
+    const have = toks(agg.title);
+    if (!have.length) continue;
+    // Sequels are different films: the numbering must agree exactly ("Drishyam" never
+    // borrows "Drishyam 2"'s price band, and vice versa).
+    if (nums(want) !== nums(have)) continue;
+    const wantInHave = want.filter((x) => have.includes(x)).length;
+    const haveInWant = have.filter((x) => want.includes(x)).length;
+    // Full containment one way or the other === the same film ("Namit Malhotra's
+    // Ramayana" -> gateway's plain "Ramayana"). A partial overlap is never enough.
+    const score = Math.max(wantInHave === want.length ? want.length + 1 : 0, haveInWant === have.length ? have.length + 1 : 0);
+    if (score > bestScore) { best = agg; bestScore = score; }
   }
   return best;
+}
+
+/** City seat-price aggregates are movie-independent, so ONE gateway walk serves every
+ * search for that city for 10 minutes. A stale entry is served instantly while the walk
+ * refreshes in the background; a cold city waits only briefly because the walk keeps
+ * running after the response, so the next search (or the 8-poll follow-up) has prices. */
+const GW_TTL_MS = 10 * 60_000;
+const GW_COLD_WAIT_MS = 1_500;
+const gwAggCache = new Map<string, { at: number; host: 'district' | 'ticketnew'; aggs: Map<string, GwMovieAgg> }>();
+const gwAggInflight = new Map<string, Promise<{ host: 'district' | 'ticketnew'; aggs: Map<string, GwMovieAgg> } | null>>();
+
+type GwBundle = { host: 'district' | 'ticketnew'; aggs: Map<string, GwMovieAgg> };
+
+function walkGwCity(city: string, maxCinemas = 6): Promise<GwBundle | null> {
+  const key = `gw|${city}`;
+  const running = gwAggInflight.get(key);
+  if (running) return running;
+  const p = (async (): Promise<GwBundle | null> => {
+    let host: 'district' | 'ticketnew' = 'district';
+    let aggs = await gwCityMovieAggregates('district', city, maxCinemas).catch(() => null);
+    if (!aggs || aggs.size === 0) {
+      host = 'ticketnew';
+      aggs = await gwCityMovieAggregates('ticketnew', city, Math.min(4, maxCinemas)).catch(() => null);
+    }
+    if (!aggs || aggs.size === 0) return null;
+    gwAggCache.set(key, { at: Date.now(), host, aggs });
+    return { host, aggs };
+  })();
+  gwAggInflight.set(key, p);
+  p.catch(() => {}).finally(() => { gwAggInflight.delete(key); });
+  return p;
+}
+
+/** Widens an already-cached city to the full cinema list without ever blocking a search. */
+async function walkGwCityDeep(city: string): Promise<void> {
+  const key = `gw|${city}`;
+  const hit = gwAggCache.get(key);
+  if (!hit || Date.now() - hit.at < 60_000) return; // just walked — nothing to add
+  const aggs = await gwCityMovieAggregates(hit.host, city, 12).catch(() => null);
+  if (aggs && aggs.size >= hit.aggs.size) gwAggCache.set(key, { at: Date.now(), host: hit.host, aggs });
+}
+
+async function cachedGwAggregates(city: string, waitMs = GW_COLD_WAIT_MS): Promise<GwBundle | null> {
+  const hit = gwAggCache.get(`gw|${city}`);
+  const fresh = hit && Date.now() - hit.at < GW_TTL_MS;
+  if (fresh) return { host: hit!.host, aggs: hit!.aggs };
+  // First pass covers the biggest 6 cinemas in one parallel round-trip (fast enough for the
+  // 3s answer); the remaining cinemas are folded in by a background second pass that only
+  // widens coverage, never delays a response.
+  const load = walkGwCity(city, 6);
+  if (!hit) {
+    void load.then((b) => { if (b) void walkGwCityDeep(city); }).catch(() => {});
+  }
+  if (hit) return { host: hit.host, aggs: hit.aggs }; // stale-while-revalidate: never block a warm city
+  if (waitMs <= 0) return null;
+  return await Promise.race([load, new Promise<null>((r) => setTimeout(() => r(null), waitMs))]);
 }
 
 /** Attach gw real seat prices / theatres / shows + IMDb rating to an offer. Best-effort, honest skip. */
@@ -133,25 +204,29 @@ export const moviesWorker: VerticalWorker = {
         const stripTokens = (normCity(region.regionName) + ' ' + normCity(String(ctx.query.location?.city || ''))).split(' ').filter(Boolean);
         const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, stripTokens)) : '';
         const fingerprint = createHash('sha256').update(res.body).digest('hex').slice(0, 16);
-        const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+        let cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+        // Owner 27 Oct: a real title that is not in this city's now-showing list used to end
+        // in a blank "not found" page. Say it plainly and show the films that ARE playing
+        // here (real rows, real prices) instead of nothing.
+        if (cards.length === 0 && queryTerm) {
+          const playing = parseMovieCards(payload, ctx.source, region, '', fingerprint);
+          cards = playing.slice(0, 12).map((o) => {
+            o.attributes = o.attributes || {};
+            o.attributes['match_note'] = `"${queryTerm}" is not showing in ${region.regionName} right now. Here is what is playing in ${region.regionName}.`;
+            o.attributes['not_showing_query'] = queryTerm;
+            return o;
+          });
+        }
         // BMS' own quickbook/session API is edge-blocked, so its cards had NO price. The same
         // movie in the same city is sold in the same theatres on District/TicketNew, whose public
         // sessions gateway exposes live seat prices. Attach that observed band to BMS cards
-        // (labelled with its true origin). The gateway walk is time-boxed to 25s so the cards
-        // themselves are never lost, and a 24h last-known price covers a gateway blip.
+        // (labelled with its true origin). One cached city walk serves every search, so the
+        // 3s budget is never spent on it, and a 24h last-known price covers a cold cache.
         // Honest skip when neither exists.
         const gwCity = gwCitySlug(typedCity || region.regionName || '');
-        const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
-          Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
-        let aggs: Map<string, GwMovieAgg> | null = null;
-        let host: 'district' | 'ticketnew' = 'district';
-        if (gwCity) {
-          aggs = await withTimeout(gwCityMovieAggregates('district', gwCity, 8).catch(() => null), 25_000);
-          if (!aggs || aggs.size === 0) {
-            host = 'ticketnew';
-            aggs = await withTimeout(gwCityMovieAggregates('ticketnew', gwCity, 6).catch(() => null), 15_000);
-          }
-        }
+        const gwBundle = gwCity ? await cachedGwAggregates(gwCity) : null;
+        const aggs: Map<string, GwMovieAgg> | null = gwBundle?.aggs || null;
+        const host: 'district' | 'ticketnew' = gwBundle?.host || 'district';
         const keyOf = (o: any) => `${normCity(region.regionName)}|${String(o.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`;
         for (const o of cards.slice(0, 14)) {
           try {
@@ -342,3 +417,13 @@ export const moviesWorker: VerticalWorker = {
   ],
 };
 registerVerticalWorker(moviesWorker);
+
+/** Warm the seat-price cache for India's biggest cities at boot (staggered, never blocking).
+ * Owner rule: a first-ever movie search must not be the request that discovers prices. */
+const MOVIE_WARM_CITIES = ['indore', 'mumbai', 'delhi', 'bengaluru', 'pune', 'hyderabad', 'chennai', 'kolkata', 'ahmedabad', 'jaipur', 'lucknow', 'surat'];
+if (!process.env.VITEST && process.env.NODE_ENV !== 'test') {
+  MOVIE_WARM_CITIES.forEach((city, i) => {
+    const t = setTimeout(() => { void cachedGwAggregates(city, 0).catch(() => {}); }, 4_000 + i * 1_500);
+    (t as any).unref?.();
+  });
+}

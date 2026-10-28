@@ -24062,8 +24062,20 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
   const byTitle = /* @__PURE__ */ new Map();
   const norm3 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
-  for (const cinema of cinemas.slice(0, maxCinemas)) {
-    const d = await gwJson(host, `/gw/consumer/movies/v3/cinema?meta=1&reqData=1&cinemaId=${cinema.id}`, timeoutMs);
+  const walkOne = async (cinema) => ({
+    cinema,
+    d: await gwJson(host, `/gw/consumer/movies/v3/cinema?meta=1&reqData=1&cinemaId=${cinema.id}`, timeoutMs).catch(() => null)
+  });
+  const walked = [];
+  const queue = cinemas.slice(0, maxCinemas);
+  const CONCURRENCY = 6;
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+    while (queue.length) {
+      const next = queue.shift();
+      walked.push(await walkOne(next));
+    }
+  }));
+  for (const { cinema, d } of walked) {
     if (!d) continue;
     const meta = d?.meta || {};
     const moviesMeta = meta.movies || [];
@@ -24332,18 +24344,69 @@ async function fetchJsonNode(url) {
 }
 function matchAgg(aggs, title) {
   if (!aggs || aggs.size === 0) return null;
-  const toks2 = title.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1);
+  const toks2 = (t) => t.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 1 || /^\d+$/.test(x));
+  const nums = (t) => t.filter((x) => /^\d+$/.test(x)).join(",");
+  const want = toks2(title);
+  if (!want.length) return null;
   let best = null;
   let bestScore = 0;
   for (const agg of aggs.values()) {
-    const hay = agg.title.toLowerCase();
-    const score = toks2.filter((x) => hay.includes(x)).length;
-    if (score === toks2.length && score > bestScore) {
+    const have = toks2(agg.title);
+    if (!have.length) continue;
+    if (nums(want) !== nums(have)) continue;
+    const wantInHave = want.filter((x) => have.includes(x)).length;
+    const haveInWant = have.filter((x) => want.includes(x)).length;
+    const score = Math.max(wantInHave === want.length ? want.length + 1 : 0, haveInWant === have.length ? have.length + 1 : 0);
+    if (score > bestScore) {
       best = agg;
       bestScore = score;
     }
   }
   return best;
+}
+function walkGwCity(city, maxCinemas = 6) {
+  const key = `gw|${city}`;
+  const running2 = gwAggInflight.get(key);
+  if (running2) return running2;
+  const p = (async () => {
+    let host = "district";
+    let aggs = await gwCityMovieAggregates("district", city, maxCinemas).catch(() => null);
+    if (!aggs || aggs.size === 0) {
+      host = "ticketnew";
+      aggs = await gwCityMovieAggregates("ticketnew", city, Math.min(4, maxCinemas)).catch(() => null);
+    }
+    if (!aggs || aggs.size === 0) return null;
+    gwAggCache.set(key, { at: Date.now(), host, aggs });
+    return { host, aggs };
+  })();
+  gwAggInflight.set(key, p);
+  p.catch(() => {
+  }).finally(() => {
+    gwAggInflight.delete(key);
+  });
+  return p;
+}
+async function walkGwCityDeep(city) {
+  const key = `gw|${city}`;
+  const hit = gwAggCache.get(key);
+  if (!hit || Date.now() - hit.at < 6e4) return;
+  const aggs = await gwCityMovieAggregates(hit.host, city, 12).catch(() => null);
+  if (aggs && aggs.size >= hit.aggs.size) gwAggCache.set(key, { at: Date.now(), host: hit.host, aggs });
+}
+async function cachedGwAggregates(city, waitMs = GW_COLD_WAIT_MS) {
+  const hit = gwAggCache.get(`gw|${city}`);
+  const fresh = hit && Date.now() - hit.at < GW_TTL_MS;
+  if (fresh) return { host: hit.host, aggs: hit.aggs };
+  const load10 = walkGwCity(city, 6);
+  if (!hit) {
+    void load10.then((b) => {
+      if (b) void walkGwCityDeep(city);
+    }).catch(() => {
+    });
+  }
+  if (hit) return { host: hit.host, aggs: hit.aggs };
+  if (waitMs <= 0) return null;
+  return await Promise.race([load10, new Promise((r) => setTimeout(() => r(null), waitMs))]);
 }
 async function enrichWithGw(o, aggs, gwHost, forSite) {
   const agg = matchAgg(aggs, String(o.title || ""));
@@ -24383,7 +24446,7 @@ async function enrichWithGw(o, aggs, gwHost, forSite) {
     o.evidence.extractedFields = [...o.evidence.extractedFields || [], "imdb_rating"];
   }
 }
-var import_node_crypto4, bmsLastPrice, moviesWorker;
+var import_node_crypto4, GW_TTL_MS, GW_COLD_WAIT_MS, gwAggCache, gwAggInflight, bmsLastPrice, moviesWorker, MOVIE_WARM_CITIES;
 var init_movies = __esm({
   "server/workers/verticals/movies.ts"() {
     init_verticalWorker();
@@ -24398,6 +24461,10 @@ var init_movies = __esm({
     init_districtGw();
     init_imdbRatings();
     import_node_crypto4 = require("node:crypto");
+    GW_TTL_MS = 10 * 6e4;
+    GW_COLD_WAIT_MS = 1500;
+    gwAggCache = /* @__PURE__ */ new Map();
+    gwAggInflight = /* @__PURE__ */ new Map();
     bmsLastPrice = /* @__PURE__ */ new Map();
     moviesWorker = {
       vertical: "movies",
@@ -24434,18 +24501,20 @@ var init_movies = __esm({
             const stripTokens = (normCity(region.regionName) + " " + normCity(String(ctx.query.location?.city || ""))).split(" ").filter(Boolean);
             const queryTerm = entity ? effectiveMovieQuery(extractMovieQuery(entity, stripTokens)) : "";
             const fingerprint = (0, import_node_crypto4.createHash)("sha256").update(res.body).digest("hex").slice(0, 16);
-            const cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
-            const gwCity = gwCitySlug(typedCity || region.regionName || "");
-            const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
-            let aggs = null;
-            let host = "district";
-            if (gwCity) {
-              aggs = await withTimeout(gwCityMovieAggregates("district", gwCity, 8).catch(() => null), 25e3);
-              if (!aggs || aggs.size === 0) {
-                host = "ticketnew";
-                aggs = await withTimeout(gwCityMovieAggregates("ticketnew", gwCity, 6).catch(() => null), 15e3);
-              }
+            let cards = parseMovieCards(payload, ctx.source, region, queryTerm, fingerprint);
+            if (cards.length === 0 && queryTerm) {
+              const playing = parseMovieCards(payload, ctx.source, region, "", fingerprint);
+              cards = playing.slice(0, 12).map((o) => {
+                o.attributes = o.attributes || {};
+                o.attributes["match_note"] = `"${queryTerm}" is not showing in ${region.regionName} right now. Here is what is playing in ${region.regionName}.`;
+                o.attributes["not_showing_query"] = queryTerm;
+                return o;
+              });
             }
+            const gwCity = gwCitySlug(typedCity || region.regionName || "");
+            const gwBundle = gwCity ? await cachedGwAggregates(gwCity) : null;
+            const aggs = gwBundle?.aggs || null;
+            const host = gwBundle?.host || "district";
             const keyOf = (o) => `${normCity(region.regionName)}|${String(o.title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
             for (const o of cards.slice(0, 14)) {
               try {
@@ -24630,6 +24699,16 @@ var init_movies = __esm({
       ]
     };
     registerVerticalWorker(moviesWorker);
+    MOVIE_WARM_CITIES = ["indore", "mumbai", "delhi", "bengaluru", "pune", "hyderabad", "chennai", "kolkata", "ahmedabad", "jaipur", "lucknow", "surat"];
+    if (!process.env.VITEST && process.env.NODE_ENV !== "test") {
+      MOVIE_WARM_CITIES.forEach((city, i) => {
+        const t = setTimeout(() => {
+          void cachedGwAggregates(city, 0).catch(() => {
+          });
+        }, 4e3 + i * 1500);
+        t.unref?.();
+      });
+    }
   }
 });
 
@@ -33817,25 +33896,48 @@ var init_showcase = __esm({
 var sameProduct_exports = {};
 __export(sameProduct_exports, {
   capacitiesOf: () => capacitiesOf,
+  declaredTypes: () => declaredTypes,
   identityTokens: () => identityTokens,
   isAccessory: () => isAccessory,
   isSameProduct: () => isSameProduct,
   normalizeBrandSpelling: () => normalizeBrandSpelling,
-  sharesIdentity: () => sharesIdentity
+  primarySegment: () => primarySegment,
+  sharesIdentity: () => sharesIdentity,
+  stripCompatibility: () => stripCompatibility
 });
+function primarySegment(title) {
+  return String(title || "").split(/[|;]|\s-\s|\s+with\s+|\s+\+\s+|,|\s+free\s+/i)[0].trim() || String(title || "");
+}
+function declaredTypes(title) {
+  const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  const out = /* @__PURE__ */ new Set();
+  for (const [type, words2] of TYPE_WORDS) {
+    if (words2.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))) out.add(type);
+  }
+  return out;
+}
+function stripCompatibility(title) {
+  const parts = String(title || "").split(/[|/]|\s-\s|,(?=\s)/).map((x) => x.trim()).filter(Boolean);
+  const kept = parts.filter((seg) => {
+    const toks2 = seg.toLowerCase().replace(/[^a-z0-9+]+/g, " ").split(" ").filter(Boolean);
+    if (!toks2.length) return false;
+    return !toks2.every((t) => COMPAT_ONLY.has(t));
+  });
+  return kept.length ? kept.join(" | ") : String(title || "");
+}
 function normalizeBrandSpelling(t) {
   let out = String(t || "");
   for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
   return out;
 }
 function canonicalQuantity(t) {
-  return String(t || "").replace(/\bpack\s+of\s+(\d+)\b/gi, "$1 pack").replace(/\b(ltrs?|litres?|liters?)\b/gi, "l").replace(/\b(gms?|grams?)\b/gi, "g").replace(/\b(kgs?|kilos?|kilograms?)\b/gi, "kg").replace(/\b(packs?|packets?|pk)\b/gi, "pack");
+  return String(t || "").replace(/\badapt(?:er|or)s?\b/gi, "charger").replace(/\bpower\s*bank\b/gi, "power bank").replace(/\bpack\s+of\s+(\d+)\b/gi, "$1 pack").replace(/\b(ltrs?|litres?|liters?)\b/gi, "l").replace(/\b(gms?|grams?)\b/gi, "g").replace(/\b(kgs?|kilos?|kilograms?)\b/gi, "kg").replace(/\b(packs?|packets?|pk)\b/gi, "pack");
 }
 function words(t) {
   return canonicalQuantity(normalizeBrandSpelling(t)).toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l|pack)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
 }
 function isAccessory(title) {
-  const t = ` ${title.toLowerCase()} `;
+  const t = ` ${String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
   const hits = ACCESSORY_WORDS.filter((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
   if (hits.length === 0) return false;
   const packagingOnly = hits.every((w) => w === "pouch");
@@ -33856,9 +33958,13 @@ function capacitiesOf(title) {
 }
 function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   const wantsAccessory = isAccessory(pastedTitle);
-  if (!wantsAccessory && isAccessory(candidateTitle)) return false;
+  if (!wantsAccessory && isAccessory(primarySegment(candidateTitle))) return false;
+  const wantTypes = declaredTypes(pastedTitle);
+  const haveTypes = declaredTypes(candidateTitle);
+  for (const t of haveTypes) if (!wantTypes.has(t)) return false;
+  const candidateIdentity = stripCompatibility(candidateTitle);
   const wantCaps = capacitiesOf(pastedTitle);
-  const haveCaps = capacitiesOf(candidateTitle);
+  const haveCaps = capacitiesOf(candidateIdentity);
   if (mode === "typed" && !wantCaps.size) {
   } else if (wantCaps.size || haveCaps.size) {
     if (!wantCaps.size || !haveCaps.size) return false;
@@ -33866,7 +33972,8 @@ function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   }
   const need = identityTokens(pastedTitle);
   if (need.length === 0) return false;
-  const have = new Set(words(candidateTitle));
+  const have = new Set(words(candidateIdentity));
+  for (const t of wantTypes) if (haveTypes.has(t)) have.add(t);
   const isPackSize = (w) => /^\d+(?:\.\d+)?(?:g|kg|ml|l|pack)$/.test(w);
   const hard = need.filter((w) => /\d/.test(w) && !isPackSize(w));
   if (hard.some((w) => !have.has(w))) return false;
@@ -33874,7 +33981,7 @@ function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   if (soft.length === 0) return hard.length > 0;
   const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
   const wantTiers = tiersOf(need);
-  const haveTiers = tiersOf(words(candidateTitle));
+  const haveTiers = tiersOf(words(candidateIdentity));
   if (mode === "typed" && !wantTiers.size) {
   } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
   const hit = soft.filter((w) => have.has(w)).length;
@@ -33884,17 +33991,19 @@ function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
   return true;
 }
 function sharesIdentity(queryTitle, candidateTitle) {
-  if (isAccessory(candidateTitle) && !isAccessory(queryTitle)) return false;
+  if (isAccessory(primarySegment(candidateTitle)) && !isAccessory(queryTitle)) return false;
+  const wantTypes = declaredTypes(queryTitle);
+  for (const t of declaredTypes(candidateTitle)) if (!wantTypes.has(t)) return false;
   const need = identityTokens(queryTitle);
   if (!need.length) return false;
-  const have = new Set(words(candidateTitle));
+  const have = new Set(words(stripCompatibility(candidateTitle)));
   const hard = need.filter((w) => /\d/.test(w));
   if (hard.length && hard.some((w) => !have.has(w))) return false;
   const soft = need.filter((w) => !/\d/.test(w));
   if (!soft.length) return hard.length > 0;
   return soft.some((w) => have.has(w));
 }
-var ACCESSORY_WORDS, STOP4, TIERS, COLORS, BRAND_JOINS;
+var ACCESSORY_WORDS, TYPE_WORDS, COMPAT_ONLY, STOP4, TIERS, COLORS, BRAND_JOINS;
 var init_sameProduct = __esm({
   "server/lens/sameProduct.ts"() {
     ACCESSORY_WORDS = [
@@ -33933,8 +34042,98 @@ var init_sameProduct = __esm({
       "ring light",
       "tripod",
       "dock",
-      "wallet"
+      "wallet",
+      // Owner 27 Oct ("iphone search -> adapter dikha, ₹199 vs ₹59,900 compare hua"): a power bank
+      // titled "... Fast Powerbank | Type-C | iPhone - Android Mobiles" carries the brand word ONLY
+      // as a compatibility mention, and it was accepted as the iPhone itself.
+      "power bank",
+      "powerbank",
+      "power-bank",
+      "battery pack",
+      "backup battery",
+      "car charger",
+      "charging brick",
+      "wall charger",
+      "data cable",
+      "charging cable",
+      "otg",
+      // "Compatible with iPhone 15 – Original-Quality OLED Screen" is a spare part, not the phone.
+      "compatible",
+      "compatibility",
+      "fits",
+      "replacement part"
     ];
+    TYPE_WORDS = [
+      ["powerbank", ["power bank", "powerbank", "power-bank", "portable charger", "battery pack"]],
+      ["charger", ["charger", "adapter", "adaptor", "charging brick", "wall charger"]],
+      ["cable", ["cable", "cord", "data cable", "otg"]],
+      ["case", ["case", "cover", "back cover", "flip cover", "bumper", "sleeve", "skin"]],
+      ["protector", ["screen guard", "protector", "tempered glass", "screen protector"]],
+      ["earbuds", ["earbuds", "earbud", "earphone", "earphones", "headphone", "headphones", "tws", "airpods", "neckband", "headset"]],
+      ["watch", ["smartwatch", "smart watch", "fitness band"]],
+      ["speaker", ["speaker", "soundbar", "party box"]],
+      ["tv", ["tv", "smart tv", "television", "led tv", "oled tv"]],
+      ["laptop", ["laptop", "notebook", "chromebook", "macbook"]],
+      ["tablet", ["tablet", "ipad"]],
+      ["camera", ["dslr", "mirrorless", "action camera", "gopro"]],
+      ["monitor", ["monitor"]],
+      ["printer", ["printer"]],
+      ["router", ["router", "modem"]],
+      ["keyboard", ["keyboard"]],
+      ["mouse", ["mouse"]]
+    ];
+    COMPAT_ONLY = /* @__PURE__ */ new Set([
+      "iphone",
+      "ipad",
+      "ipod",
+      "android",
+      "ios",
+      "mobile",
+      "mobiles",
+      "phone",
+      "phones",
+      "smartphone",
+      "smartphones",
+      "device",
+      "devices",
+      "tablet",
+      "tablets",
+      "laptop",
+      "laptops",
+      "compatible",
+      "compatibility",
+      "with",
+      "for",
+      "and",
+      "or",
+      "all",
+      "universal",
+      "usb",
+      "type",
+      "type-c",
+      "typec",
+      "c",
+      "port",
+      "ports",
+      "support",
+      "supports",
+      "works",
+      "suitable",
+      "series",
+      "model",
+      "models",
+      "samsung",
+      "oneplus",
+      "redmi",
+      "xiaomi",
+      "oppo",
+      "vivo",
+      "realme",
+      "motorola",
+      "nothing",
+      "pixel",
+      "google"
+    ]);
     STOP4 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
     TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
     COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
@@ -37913,6 +38112,44 @@ var init_routes = __esm({
           offers.push(...remembered.offers);
         }
       }
+      let floorOnly = false;
+      if (!offers.length) {
+        const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        const floor = [];
+        const floorSellers = /* @__PURE__ */ new Set();
+        for (const v of ["ecommerce", "grocery"]) {
+          const rows = await findCatalogueOffers2(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+          for (const r of rows) {
+            const title = String(r.title || "");
+            const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
+            if (!title || price <= 0) continue;
+            if (!isSameProduct(lensQuery, title, matchMode)) continue;
+            const seller = String(r.seller || r.vendor || "").trim();
+            const k = seller.toLowerCase();
+            if (k && floorSellers.has(k)) continue;
+            if (k) floorSellers.add(k);
+            floor.push(toRow({
+              o: {
+                id: `catalogue-${r.id}`,
+                title,
+                seller,
+                sellerUrl: r.seller_url ? createMaskingPointer(String(r.seller_url), { offerId: String(r.id) }) : "",
+                prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
+                attributes: {},
+                availability: r.availability || "unknown",
+                canonicalEntityId: r.canonical_entity_id ?? null
+              },
+              price
+            }));
+          }
+          if (floor.length >= 6) break;
+        }
+        if (floor.length) {
+          floor.sort((a, b) => a.price - b.price);
+          offers.push(...floor.slice(0, 12));
+          floorOnly = true;
+        }
+      }
       let closestOnly = false;
       if (!offers.length) {
         const alt = all.filter((x) => sharesIdentity(lensQuery, String(x.o.title || ""))).map((x) => ({ ...toRow(x), variantCount: 0 })).slice(0, 6);
@@ -37998,9 +38235,9 @@ var init_routes = __esm({
         // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
         // A capped-out answer IS pending by definition: the page must keep polling, otherwise it
         // would stop on an empty shell and never pick up the rows that land a moment later.
-        pendingRefresh: cappedOut || responses.some((r) => r.state?.pendingRefresh === true),
+        pendingRefresh: cappedOut || floorOnly || responses.some((r) => r.state?.pendingRefresh === true),
         closestOnly,
-        message: offers.length ? closestOnly ? "No exact match right now. Showing the closest live variants of this product." : void 0 : "No verified listing of this product was found on our sources right now."
+        message: offers.length ? floorOnly ? "Live shops are still answering. Showing our last verified prices for this product." : closestOnly ? "No exact match right now. Showing the closest live variants of this product." : void 0 : "No verified listing of this product was found on our sources right now."
       });
     });
     apiRouter.get("/alerts", authMiddleware, requireAuth, async (req, res) => {
