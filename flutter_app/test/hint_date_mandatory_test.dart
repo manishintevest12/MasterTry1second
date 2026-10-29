@@ -174,8 +174,16 @@ void main() {
       // visible grid (the picker renders only the viewed month), so the tap
       // landed on nothing and checkout came back wrong. Step to the next
       // month and pick early-day pairs there: always future, always unique.
-      if (din.month != dout.month) {
-        final firstOfNext = DateTime(din.year, din.month + 1, 1);
+      // ALSO step when the target month is not the month the picker OPENS on
+      // (flake caught 28 Oct): late in a month, today+5 already falls in the next
+      // month, so the two day numbers were not on the visible grid and the tap
+      // hit a disabled past date instead.
+      final opensOn = DateTime(today.year, today.month);
+      final inOpenMonth = din.year == opensOn.year && din.month == opensOn.month;
+      if (!inOpenMonth || din.month != dout.month) {
+        // One chevron tap moves the grid to the month AFTER the one it opened on,
+        // so the expected dates must be days 2 and 5 of THAT month.
+        final firstOfNext = DateTime(opensOn.year, opensOn.month + 1, 1);
         din = firstOfNext.add(const Duration(days: 1)); // day 2 of next month
         dout = firstOfNext.add(const Duration(days: 4)); // day 5 of next month
         await tester.tap(find.byIcon(Icons.chevron_right_rounded));

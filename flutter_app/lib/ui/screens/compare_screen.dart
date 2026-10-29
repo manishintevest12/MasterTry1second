@@ -10,7 +10,6 @@ import '../../core/autocomplete_data.dart';
 import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
-import '../../core/search_progress_copy.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -57,24 +56,8 @@ class _CompareScreenState extends State<CompareScreen> {
   String _hotelGuests = '2 Adults · 1 Room';
 
   bool _loading = false;
-  // Owner 23 Oct ('loader lgao pr jaise hi 3 2 1 countdown khtm ho jaye usko
-  // hata do... abhi v repeat ho raha hai'): the WarpLoader is ONE-SHOT per
-  // fresh search — it plays the 3-2-1 countdown once and never reappears,
-  // even while quiet auto-polls keep topping up rows in the background.
-  bool _loaderDone = false;
-  Timer? _loaderTimer;
-
-  /// ONE-SHOT WarpLoader window (owner 23 Oct): arm the 3-2-1 countdown when
-  /// the screen mounts (fresh intent) and on every fresh user search — then
-  /// the loader is gone for the rest of that search; quiet auto-polls never
-  /// revive it, so the countdown can never loop.
-  void _armLoader() {
-    _loaderDone = false;
-    _loaderTimer?.cancel();
-    _loaderTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _loaderDone = true);
-    });
-  }
+  // The old 3-2-1 one-shot loader window (WarpLoader + _loaderDone/_loaderTimer)
+  // is fully retired: the SearchProgress panel now owns the whole acquisition.
   Timer? _bgPoll;
   int _bgPollCount = 0;
   LiveResponse? _res;
@@ -94,7 +77,6 @@ class _CompareScreenState extends State<CompareScreen> {
     _meta = verticalById(_state.vertical);
     _state.addListener(_onState);
     _seedForm();
-    _armLoader(); // vertical open = fresh intent: one 3-2-1 countdown, once.
     _start();
   }
 
@@ -134,7 +116,6 @@ class _CompareScreenState extends State<CompareScreen> {
   @override
   void dispose() {
     _bgPoll?.cancel();
-    _loaderTimer?.cancel();
     _state.removeListener(_onState);
     _q.dispose();
     _from.dispose();
@@ -267,7 +248,6 @@ class _CompareScreenState extends State<CompareScreen> {
       _res = null;
       _shownCacheKey = null;
       _filterOpts = const FilterOptions();
-      _armLoader();
     }
     setState(() {
       _loading = true;
@@ -1876,33 +1856,13 @@ class _StatusStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (loading && res == null) {
-      return Box(
-        padding: const EdgeInsets.all(14),
-        radius: 16,
-        child: Row(children: [
-          const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2.2, color: T1SColors.red)),
-          const SizedBox(width: 12),
-          Expanded(child: Text('Finding your best deal… Checking every site right now, please wait we are getting the best deal for you.', style: tx(context, 11.5, w: FontWeight.w600, color: muted(context)))),
-        ]),
-      );
-    }
-    // Progressive cold-start OR any live load/price refresh (owner 21 Oct): real
-    // rows are on screen while live prices are still being acquired in the
-    // background — tell the user, never leave them guessing.
-    if ((loading && res != null) || (res != null && res!.pendingRefresh)) {
-      return Box(
-        padding: const EdgeInsets.all(11),
-        radius: 16,
-        borderColor: T1SColors.amber400.withValues(alpha: 0.45),
-        color: isDark(context) ? T1SColors.slate900 : const Color(0xFFFEF7E6),
-        child: Row(children: [
-          const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2, color: T1SColors.amber400)),
-          const SizedBox(width: 11),
-          Expanded(child: Text('Please wait, we are getting the best deal for you. Comparing live prices across the web...', style: tx(context, 11, w: FontWeight.w600, color: muted(context)))),
-        ]),
-      );
-    }
+    // OWNER 28 Oct: the cream/amber "Please wait … Comparing live prices across
+    // the web…" strip (and the duplicate initial-load strip above it) are REMOVED
+    // from every vertical. The red SearchProgress panel is the one and only loading
+    // indicator now, so no second banner repeats the same sentence above the feed.
+    // Nothing is lost: errors still get their retry strip and, once prices are on
+    // screen, the live-verified summary strip below still renders.
+    if (loading || (res?.pendingRefresh ?? false)) return const SizedBox.shrink();
     if (error != null) {
       return Box(
         padding: const EdgeInsets.all(12),
@@ -2027,28 +1987,6 @@ class _WarpLoader extends StatelessWidget {
   // (web does the same), so the app can never drift from the site again.
   @override
   Widget build(BuildContext context) => SearchProgressCard(verticalId: verticalId);
-}
-/// OWNER 27 Oct: the honest "still working on it" card. Shown instead of
-/// "No matching options found" while the engine is still acquiring deals, so the
-/// user waits calmly and never reads a false "nothing found".
-class _BestDealWait extends StatelessWidget {
-  const _BestDealWait();
-  @override
-  Widget build(BuildContext context) {
-    return Box(
-      padding: const EdgeInsets.all(22),
-      radius: 16,
-      child: Column(children: [
-        const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4, color: T1SColors.red)),
-        const SizedBox(height: 14),
-        Text('Please wait, we are getting the best deal for you',
-            textAlign: TextAlign.center, style: tx(context, 14, w: FontWeight.w900)),
-        const SizedBox(height: 6),
-        Text('Live prices from every seller are still landing. They appear here automatically, nothing to redo.',
-            textAlign: TextAlign.center, style: tx(context, 11.5, color: muted(context), h: 1.4)),
-      ]),
-    );
-  }
 }
 
 class _EmptyState extends StatelessWidget {
