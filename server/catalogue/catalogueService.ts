@@ -94,7 +94,7 @@ export interface CatalogueRow {
 /** L3 catalogue lookup: eligible fresh offers for a vertical/location. */
 export async function findCatalogueOffers(
   vertical: string,
-  opts: { pincode?: string; city?: string; limit?: number; strictCity?: boolean } = {},
+  opts: { pincode?: string; city?: string; limit?: number; strictCity?: boolean; queryTerms?: string[] } = {},
 ): Promise<CatalogueRow[]> {
   const store = getStore();
   try {
@@ -107,6 +107,17 @@ export async function findCatalogueOffers(
     } else if (opts.city) {
       where += ' AND (location_city = ? OR location_city IS NULL)';
       params.push(opts.city);
+    }
+    // QUERY-AWARE LOOKUP (owner 29 Oct: "results hr vertical mai phle poll mai aana chaiye").
+    // The lookup used to be vertical+city only, newest-first with a small limit, so the 40
+    // newest rows could ALL belong to other queries and the floor answered 'still acquiring'
+    // (0 rows) while a verified fare for THIS query sat in MySQL. A route/product term in the
+    // WHERE clause puts the right rows in the candidate set; every existing gate (route,
+    // relevance, department) still runs afterwards.
+    const terms = (opts.queryTerms || []).map((t) => String(t || '').trim().toLowerCase()).filter((t) => t.length >= 3).slice(0, 3);
+    for (const t of terms) {
+      where += ' AND title LIKE ?';
+      params.push(`%${t}%`);
     }
     params.push(opts.limit ?? 50);
     return await store.query<CatalogueRow>(

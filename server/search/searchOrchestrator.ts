@@ -407,7 +407,21 @@ async function freshCatalogueOffers(
   maxAgeSec = 3600,
   fallbackMaxAgeSec?: number,
 ): Promise<any[]> {
-  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  // Route/product terms so the floor's candidate set is ABOUT this query (see the
+  // query-aware lookup in catalogueService); the vertical's own route/relevance gates below
+  // still decide what is finally painted.
+  const STOPWORDS = new Set(['to', 'from', 'in', 'at', 'for', 'the', 'and', 'near', 'me', 'on', 'of', 'a', 'an', 'best', 'cheap', 'cheapest', 'price', 'under', 'hotels', 'hotel', 'bus', 'buses', 'flights', 'movies', 'tickets']);
+  const queryTerms = String(parsed.rawQuery || input.query || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+  // Preference, never a filter: a query term narrows the candidate set to rows ABOUT this
+  // search, and when the catalogue words the row differently ("DEL → BOM" for "delhi to
+  // mumbai", "HP 15s" for "Laptops") the plain lookup still runs, so the floor can never be
+  // emptier than it was before.
+  let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40, queryTerms });
+  if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
   // Drop rows that name a different major city (Goa properties under an Indore search).
   // Rows whose city is simply unknown stay: they are the ones that carry real photos.
@@ -725,7 +739,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     // hotel rows were sitting in MySQL. Same windows as the real floor now.
     const w = floorWindows(vertical);
     const offers = await freshCatalogueOffers(vertical, input, parsed, w.strict, w.fallback);
-    if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    if (offers.length >= 1) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     // Owner 23 Oct: 'this caller waits' hung polls 30-40s on ecom cold searches —
     // the app's poll timer then died on its HTTP timeout and results never painted.
     // Serve the honest still-acquiring marker (pendingRefresh keeps the app polling;
@@ -741,7 +755,7 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
   // Cold but catalogue has fresh rows: return them instantly, acquire live in background.
   {
     const offers = await floorPromise;
-    if (offers.length >= 4) {
+    if (offers.length >= 1) {
       const pipeline = runLivePipeline(input, parsed)
         .then((response) => {
           const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);

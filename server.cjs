@@ -31718,6 +31718,11 @@ async function findCatalogueOffers(vertical, opts = {}) {
       where += " AND (location_city = ? OR location_city IS NULL)";
       params.push(opts.city);
     }
+    const terms = (opts.queryTerms || []).map((t) => String(t || "").trim().toLowerCase()).filter((t) => t.length >= 3).slice(0, 3);
+    for (const t of terms) {
+      where += " AND title LIKE ?";
+      params.push(`%${t}%`);
+    }
     params.push(opts.limit ?? 50);
     return await store3.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
@@ -32504,7 +32509,10 @@ function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID");
 }
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, fallbackMaxAgeSec) {
-  const rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
+  const STOPWORDS2 = /* @__PURE__ */ new Set(["to", "from", "in", "at", "for", "the", "and", "near", "me", "on", "of", "a", "an", "best", "cheap", "cheapest", "price", "under", "hotels", "hotel", "bus", "buses", "flights", "movies", "tickets"]);
+  const queryTerms = String(parsed.rawQuery || input.query || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS2.has(w));
+  let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40, queryTerms });
+  if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
   const cityGate = (r) => !namesOtherCity(`${r.title || ""} ${r.subtitle || ""} ${typeof r.attributes === "string" ? r.attributes : JSON.stringify(r.attributes || {})}`, input.city);
   const cityRows = rows.filter(cityGate);
@@ -32717,7 +32725,7 @@ async function runSearchPipeline(input) {
     }
     const w = floorWindows(vertical);
     const offers = await freshCatalogueOffers(vertical, input, parsed, w.strict, w.fallback);
-    if (offers.length >= 4) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
+    if (offers.length >= 1) return await progressiveCatalogueResponse(vertical, parsed, offers, totalStart, true);
     return await stillAcquiringResponse(parsed, totalStart);
   }
   const windows = floorWindows(vertical);
@@ -32730,7 +32738,7 @@ async function runSearchPipeline(input) {
   ).catch(() => []);
   {
     const offers = await floorPromise;
-    if (offers.length >= 4) {
+    if (offers.length >= 1) {
       const pipeline2 = runLivePipeline(input, parsed).then((response) => {
         const { ttlSec: t, staleSec: st } = searchCacheTtl(vertical);
         if (response.results.length === 0) cachePut(cacheKey, response, 12, 12);
