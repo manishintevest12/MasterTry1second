@@ -146,3 +146,58 @@ export function collapseSellerVariants<T extends { title?: string; seller?: stri
     return { ...(g.best as any), attributes: attrs } as T;
   });
 }
+
+/**
+ * Image backfill (owner 29 Oct: "sirf reliance ka bina image wala aa jata hai").
+ *
+ * A merchant that publishes a listing without a photo (Reliance Digital does this on a
+ * whole class of search pages) used to take the lead slot of its group and the card
+ * rendered the grey "PRODUCT" placeholder even though the SAME product, listed by a
+ * sibling shop, carried a real photo minutes earlier. A photo of the same product is a
+ * fact about that product, not an invention: share it across the group when the group
+ * itself is identified by a catalogue entity id or by an identical model title.
+ * Rows are never re-priced, re-titled or given another product's picture.
+ */
+const LOGO_OR_FAVICON = /(favicon|s2\/favicons|brand-logos\/|logo[-_]?\d|\/logos?\/|placeholder|no[-_]?image|default\.(png|jpe?g|webp))/i;
+
+function imageOf(row: any): string {
+  const direct = String(row?.imageUrl || '');
+  if (direct && !LOGO_OR_FAVICON.test(direct)) return direct;
+  const list = Array.isArray(row?.images) ? row.images : [];
+  for (const u of list) {
+    const s = String(u || '');
+    if (s && !LOGO_OR_FAVICON.test(s)) return s;
+  }
+  return '';
+}
+
+function mediaKey(row: any): string {
+  const entity = row?.canonicalEntityId ?? row?.canonical_entity_id;
+  if (entity !== null && entity !== undefined && String(entity).trim() !== '') {
+    return `e:${String(entity)}`;
+  }
+  const sig = variantSignature(String(row?.title || ''));
+  return sig ? `t:${sig}` : '';
+}
+
+export function backfillRowImages<T extends Record<string, any>>(rows: T[]): T[] {
+  if (!Array.isArray(rows) || rows.length < 2) return rows;
+  const donor = new Map<string, string>();
+  for (const row of rows) {
+    const key = mediaKey(row);
+    const img = imageOf(row);
+    if (!key || !img) continue;
+    const seen = donor.get(key);
+    // Prefer the biggest gallery? No: first real photo wins, it is the same product.
+    if (!seen) donor.set(key, img);
+  }
+  if (!donor.size) return rows;
+  return rows.map((row) => {
+    if (imageOf(row)) return row;
+    const key = mediaKey(row);
+    const img = key ? donor.get(key) : '';
+    if (!img) return row;
+    const images = Array.isArray(row.images) && row.images.length ? row.images : [img];
+    return { ...row, imageUrl: img, images } as T;
+  });
+}

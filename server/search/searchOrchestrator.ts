@@ -31,7 +31,8 @@ import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { passesQueryRelevance } from './queryRelevance';
-import { gateFeedProductRows, collapseSellerVariants } from './productMatchGate';
+import { filterRowsForDepartment, getEcomDepartment, resolveEcomDepartment, rowHasCategoryEvidence, rowMatchesDepartment } from '../lens/ecomDepartments';
+import { backfillRowImages, collapseSellerVariants, gateFeedProductRows } from './productMatchGate';
 import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerPresence';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
@@ -419,7 +420,23 @@ async function freshCatalogueOffers(
   // to paint a floor at all, and a stale-but-real fare beats an empty page.
   const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(usable, fallbackMaxAgeSec, now);
   let offers = window.map((r) => rowToOffer(r, false));
-  if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
+  // Department browse (owner 29 Oct): the catalogue is vertical-wide and holds every
+  // category at once, so a tab tap must be judged by ITS category - the phone-family
+  // token gate is both too strict (it dropped tablets/TVs promised by the tab) and too
+  // loose (a "Smartphone Compatible" SSD passed it).
+  const browseDept = getEcomDepartment((input as any).browseDepartmentId);
+  if (browseDept) {
+    // Catalogue replay is a vertical-wide dump, so a department needs POSITIVE category
+    // evidence here ("HP 15s-fq5329TU" is a laptop by brand/model, "SanDisk SSD" is not a
+    // phone). Live rows below are judged on the weaker blocklist instead, because they
+    // were fetched by the department's own acquisition term.
+    offers = (offers as any[]).filter((o) => {
+      const title = String(o?.title || '');
+      if (!rowMatchesDepartment(title, browseDept)) return false;
+      const brand = String(o?.brand || o?.attributes?.brand || '');
+      return rowHasCategoryEvidence(title, brand, browseDept);
+    });
+  } else if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
   // Route-aware floor (owner 23 Oct): bus/flights borrowed rows must name the
@@ -523,8 +540,24 @@ function gateEcommerceResponse(
   const query = String(input.query || '').trim();
   if (vertical !== 'ecommerce' || query.length < 2) return response;
   const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+  // Department browse (owner 29 Oct): a tapped tab is a category, so the answer is judged
+  // by category, never by the product-identity gate that turned "Gaming & PS5" into "must
+  // contain the number 5" and left one lonely Reliance card.
+  const dept = getEcomDepartment((input as any).browseDepartmentId) || resolveEcomDepartment(query);
+  if (dept) {
+    const kept = filterRowsForDepartment(response.results as any[], dept);
+    if (kept.length !== response.results.length) {
+      log.info('Search', 'Department browse filter (final)', {
+        department: dept.label, before: response.results.length, kept: kept.length,
+      });
+    }
+    response.results = backfillRowImages(kept as any[]) as any;
+    response.results = collapseSellerVariants(response.results as any[], priceOf) as any;
+    return response;
+  }
   const gated = gateFeedProductRows(response.results as any[], query, priceOf);
   if (!gated.dropped.length) {
+    response.results = backfillRowImages(response.results as any[]) as any;
     response.results = collapseSellerVariants(response.results as any[], priceOf) as any;
     return response;
   }
@@ -536,7 +569,8 @@ function gateEcommerceResponse(
     kept: gated.kept.length,
     path: String(response.state?.servedFrom || ''),
   });
-  response.results = collapseSellerVariants(gated.kept as any[], priceOf) as any;
+  response.results = backfillRowImages(gated.kept as any[]) as any;
+  response.results = collapseSellerVariants(response.results as any[], priceOf) as any;
   return response;
 }
 
@@ -582,6 +616,23 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
   }
   const vertical = parsed.vertical || 'ecommerce'; // default browse vertical
   parsed.vertical = vertical;
+
+  // DEPARTMENT BROWSE (owner 29 Oct: "tab pr click kr ke smart watch ya kuch v karo, pehle
+  // to results nahi aata, phir jab aata hai tab sirf reliance ka bina image wala aa jata
+  // hai. results har seller ka aana chahiye."). A tapped department label is a CATEGORY,
+  // not a product: "Gaming & PS5" was read as a model number ("5"), "Audio & ANC" was
+  // read as an accessory query, and a browse label never matches one product family, so
+  // whichever single source answered fastest became the whole page. Resolve the label,
+  // ask the marketplaces the term they actually answer ("mobile phone", not "Smartphones"),
+  // and let the department filter - not the product-identity gate - judge the rows.
+  const browseDept = vertical === 'ecommerce' ? resolveEcomDepartment(String(input.query || '')) : null;
+  if (browseDept) {
+    input = { ...input, query: browseDept.acquisition } as SearchInput;
+    (input as any).browseDepartmentId = browseDept.id;
+    parsed = understandQuery(input.query, { pincode: input.pincode, city: input.city, lat: input.lat, lng: input.lng });
+    if (input.vertical) parsed.vertical = input.vertical as any;
+    parsed.vertical = vertical;
+  }
 
   const state: SearchStateFlags = {
     servedFrom: 'unavailable',
@@ -991,8 +1042,17 @@ async function finalizeLive(
   // accessories above the real Rs.1,64,900 phone. Live AND catalogue rows now pass
   // the same identity gate, so the same query always resolves to the same product
   // family instead of whatever the fastest source happened to return.
-  if (String(vertical) === 'ecommerce' && String(input.query || '').trim().length >= 2) {
+  if (String(vertical) === 'ecommerce' && (String(input.query || '').trim().length >= 2)) {
     const priceOfRow = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+    const dept = getEcomDepartment((input as any).browseDepartmentId);
+    if (dept) {
+      const before = combined.length;
+      combined = filterRowsForDepartment(combined as any[], dept) as any;
+      log.info('Search', 'Department browse filter', {
+        department: dept.label, asked: input.query, before, kept: combined.length,
+      });
+      combined = collapseSellerVariants(combined as any[], priceOfRow) as any;
+    } else {
     const gated = gateFeedProductRows(combined as any[], String(input.query), priceOfRow);
     if (gated.dropped.length) {
       log.info('Search', 'Withheld off-product e-commerce rows', {
@@ -1007,6 +1067,7 @@ async function finalizeLive(
     // Same query, same shop, different colour -> one card (owner 28 Oct: "iphone 18"
     // answered with 130 cards, mostly the same listing in Burgundy/Black/Silver).
     combined = collapseSellerVariants(combined as any[], priceOfRow) as any;
+    }
   }
 
   // 9. AFFILIATE DEEP LINKS (Section 15)

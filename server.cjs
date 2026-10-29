@@ -1987,10 +1987,10 @@ var init_devFixtures = __esm({
 
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
-  const head = body.slice(0, 6e3);
+  const head2 = body.slice(0, 6e3);
   const shell2 = body.length < 12e4;
   const markers = /captcha|robot check|are you a human|unusual traffic|access denied|enable javascript and cookies|verify you human|bm-verify|api-services-support@amazon\.com|enter the characters you see below|to discuss automated access|datadome|cf-chl|px-captcha|blocked|not available in your region/i;
-  return markers.test(head) && !/application\/ld\+json/i.test(head) || shell2 && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
+  return markers.test(head2) && !/application\/ld\+json/i.test(head2) || shell2 && markers.test(body) && !/"asin"|productTitle|plp-card/i.test(body);
 }
 async function runTask(worker, task, source, query) {
   const started3 = Date.now();
@@ -17790,26 +17790,26 @@ var init_bharatTaxi = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm3 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm4 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm3(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm4(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm3(cells[0] || "").toLowerCase();
-    const rt = norm3(cells[1] || "").toLowerCase();
-    const f = norm3(from || "").toLowerCase();
-    const t = norm3(to || "").toLowerCase();
+    const rf = norm4(cells[0] || "").toLowerCase();
+    const rt = norm4(cells[1] || "").toLowerCase();
+    const f = norm4(from || "").toLowerCase();
+    const t = norm4(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm3(cells[0] || "")} to ${norm3(cells[1] || "")} cab (one-way)`,
+        title: `${norm4(cells[0] || "")} to ${norm4(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -17819,7 +17819,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm3(cells[0] || "")} to ${norm3(cells[1] || "")}`,
+          route: `${norm4(cells[0] || "")} to ${norm4(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -17860,10 +17860,10 @@ async function indriveCityLookup(term) {
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
-  const norm3 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const norm4 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
   const esc5 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rx = new RegExp(`^${esc5}\\b`);
-  return cities.find((c) => norm3(c.name) === t) || cities.find((c) => rx.test(norm3(c.name))) || cities.find((c) => norm3(c.name).includes(t)) || null;
+  return cities.find((c) => norm4(c.name) === t) || cities.find((c) => rx.test(norm4(c.name))) || cities.find((c) => norm4(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -23880,7 +23880,7 @@ async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
 }
 async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
   const byTitle = /* @__PURE__ */ new Map();
-  const norm3 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm4 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
   const walkOne = async (cinema) => ({
     cinema,
@@ -23904,7 +23904,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
     for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
     const contentByTitle = /* @__PURE__ */ new Map();
     for (const g of grouped) {
-      const lbl = norm3(String(g?.label || ""));
+      const lbl = norm4(String(g?.label || ""));
       if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
     }
     const posterByMid = /* @__PURE__ */ new Map();
@@ -23914,7 +23914,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       const mid = String(ss?.mid || "");
       const title = titleByMid.get(mid) || "";
       if (!title) continue;
-      const key = norm3(title);
+      const key = norm4(title);
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
@@ -29762,9 +29762,9 @@ async function verifyImage(url) {
   try {
     const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 8e3, headers: { Range: "bytes=0-63" } });
     if (r.status !== 200 && r.status !== 206) return false;
-    const head = String(r.body || "").slice(0, 64);
-    if (/^\x89PNG|\xff\xd8\xff/.test(head)) return true;
-    if (/^(RIFF)/.test(head) && head.slice(8, 12) === "WEBP") return true;
+    const head2 = String(r.body || "").slice(0, 64);
+    if (/^\x89PNG|\xff\xd8\xff/.test(head2)) return true;
+    if (/^(RIFF)/.test(head2) && head2.slice(8, 12) === "WEBP") return true;
     return false;
   } catch {
     return false;
@@ -30320,6 +30320,212 @@ var init_queryRelevance = __esm({
   }
 });
 
+// server/lens/ecomDepartments.ts
+function resolveEcomDepartment(query) {
+  const key = norm3(query);
+  if (!key) return null;
+  return ALIAS_INDEX.get(key) ?? null;
+}
+function getEcomDepartment(id) {
+  if (!id) return null;
+  return DEPARTMENTS.find((d) => d.id === id) ?? null;
+}
+function departmentSeedQueries() {
+  return [...new Set(DEPARTMENTS.map((d) => d.acquisition))];
+}
+function otherCategoryRe(dept) {
+  const cached2 = OTHER.get(dept.id);
+  if (cached2) return cached2;
+  const alts = [];
+  for (const d of DEPARTMENTS) {
+    if (d.id === dept.id || !d.product) continue;
+    const src2 = d.product.source.replace(/^\^?/, "").replace(/\$$/, "");
+    alts.push(`(?:${src2})`);
+  }
+  const re = new RegExp(alts.join("|"), "i");
+  OTHER.set(dept.id, re);
+  return re;
+}
+function rowMatchesDepartment(title, dept) {
+  const t = String(title || "").toLowerCase();
+  if (!t.trim()) return false;
+  const headText = head(t);
+  const ownInHead = dept.product.test(headText);
+  if (!ownInHead && otherCategoryRe(dept).test(headText)) return false;
+  const accWordIsProduct = (word) => {
+    try {
+      return new RegExp(`\\b${word}\\b`, "i").test(dept.product.source) || dept.product.test(word);
+    } catch {
+      return false;
+    }
+  };
+  const acc = dept.accessoryHead ? dept.accessoryHead.exec(headText) : null;
+  if (acc && !accWordIsProduct(String(acc[0] || ""))) return false;
+  const gacc = GLOBAL_ACCESSORY.exec(headText);
+  if (gacc && !accWordIsProduct(String(gacc[0] || ""))) return false;
+  return true;
+}
+function rowHasCategoryEvidence(title, brand, dept) {
+  const t = String(title || "").toLowerCase();
+  if (!t.trim()) return false;
+  if (dept.product.test(t)) return true;
+  const hasModelCode = /\d/.test(t);
+  const brandHit = Boolean(dept.brands && dept.brands.test(t.replace(/-/g, " ")));
+  const rowBrand = String(brand || "").toLowerCase().replace(/-/g, " ");
+  const rowBrandHit = Boolean(rowBrand && dept.brands && dept.brands.test(rowBrand));
+  if (!(brandHit || rowBrandHit)) return false;
+  if (!hasModelCode) return false;
+  return true;
+}
+function filterRowsForDepartment(rows, dept) {
+  return rows.filter((r) => rowMatchesDepartment(String(r?.title || ""), dept));
+}
+var HEAD_WORDS, head, norm3, DEPARTMENTS, ALIAS_INDEX, OTHER, GLOBAL_ACCESSORY;
+var init_ecomDepartments = __esm({
+  "server/lens/ecomDepartments.ts"() {
+    HEAD_WORDS = 7;
+    head = (title) => String(title || "").toLowerCase().replace(/[|/,+]/g, " ").split(/\s+/).filter(Boolean).slice(0, HEAD_WORDS).join(" ");
+    norm3 = (s) => String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    DEPARTMENTS = [
+      {
+        id: "ecom-smartphones",
+        label: "Smartphones",
+        acquisition: "mobile phone",
+        aliases: ["smartphones", "smartphone", "mobile phones", "mobile phone", "mobiles", "mobile", "phones", "phone", "ecom smartphones"],
+        product: /\b(smart ?phones?|mobile ?phones?|mobiles?|phones?|iphone|galaxy [a-z]\d|galaxy m\d|redmi|realme|oppo|vivo|iqoo|oneplus|pixel \d|poco|motorola|moto g|nokia|infinix|tecno|lava|itel|honor|nothing phone|micromax|zenfone|gionee)\b/,
+        accessoryHead: /\b(case|cases|cover|tempered|protector|guard|sleeve|skin|sticker|stand|holder|mount|pouch|bag|backpack|charger|cable|adapter|ssd|hdd|drive|card|pen|laptop|notebook|workstation|tablet|tab|watch|tv|television|earbud|earbuds|headphone|headphones|speaker|soundbar|camera|printer|router|monitor|keyboard|mouse|dock|strap|band)\b/,
+        brands: /\b(apple|samsung|redmi|xiaomi|realme|oppo|vivo|iqoo|oneplus|motorola|moto|nokia|infinix|tecno|lava|itel|honor|poco|nothing|google|micromax|gionee)\b/
+      },
+      {
+        id: "ecom-laptops",
+        label: "Laptops",
+        acquisition: "laptop",
+        aliases: ["laptops", "laptop", "notebooks", "macbooks", "macbook", "ecom laptops"],
+        product: /\b(laptops?|notebooks?|macbooks?|chromebooks?|ultrabooks?|thinkpad|ideapad|pavilion|vivobook|zenbook|aspire|nitro|legion|inspiron|latitude|elitebook|surface laptop|galaxy ?book[0-9]*|rog strix|tuf gaming|loq)\b/,
+        accessoryHead: /\b(bag|bags|backpack|sleeve|case|cover|skin|stand|holder|cooling|pad|ram|memory|ssd|hdd|charger|adapter|dock|keyboard|mouse|protector|sticker|table|desk)\b/,
+        brands: /\b(hp|lenovo|dell|asus|acer|msi|apple|macbook|infinix|avita|vaio|lg|gram|samsung|galaxy book|microsoft|surface|primebook|thomson|realme)\b/
+      },
+      {
+        id: "ecom-audio",
+        label: "Audio & ANC",
+        acquisition: "bluetooth headphones",
+        aliases: ["audio and anc", "audio anc", "audio", "headphones", "headphone", "earphones", "earbuds", "tws", "anc earbuds", "ecom audio"],
+        product: /\b(headphones?|headsets?|earphones?|earbuds?|tws|buds|neckbands?|airpods|speakers?|soundbars?|anc|boat|jbl|bose|sennheiser|soundcore)\b/,
+        accessoryHead: /\b(case|cases|cover|earpads?|cushion|foam|tips|sleeve|stand|holder|cable|adapter|splitter|transmitter|receiver|dock|mount|pouch)\b/,
+        brands: /\b(boat|jbl|sony|bose|sennheiser|airpods|apple|noise|boult|oneplus|realme|oppo|samsung|soundcore|marshall|beats|nothing|xiaomi|redmi|mi|tcl|philips|zebronics|mivi|pibox)\b/
+      },
+      {
+        id: "ecom-tvs",
+        label: "Smart TVs",
+        acquisition: "smart tv",
+        aliases: ["smart tvs", "smart tv", "televisions", "television", "tv", "tvs", "ecom tvs"],
+        product: /\b(tvs?|televisions?|smart tv|qled|oled|led tv|4k tv|uhd tv|soundbars?|mi tv|oneplus tv|realme tv|tcl|hisense|coocaa|acerpure|thomson|kodak tv|iffalcon)\b/,
+        accessoryHead: /\b(stand|mount|bracket|remote|cover|case|splitter|cable|antenna|stabilizer|inverter|box|chromecast|stick)\b/,
+        brands: /\b(samsung|lg|sony|mi|oneplus|realme|tcl|hisense|panasonic|haier|coocaa|thomson|kodak|acer|vise|iffalcon|vu|daiwa|marq|intex)\b/
+      },
+      {
+        id: "ecom-tablets",
+        label: "Tablets",
+        acquisition: "tablet",
+        aliases: ["tablets", "tablet", "ipads", "ipad", "ecom tablets"],
+        product: /\b(tablets?|ipads?|tab|galaxy tab|lenovo tab|redmi pad|realme pad|honor pad|oneplus pad|xiaomi pad|ipad air|ipad pro|ipad mini)\b/,
+        accessoryHead: /\b(case|cases|cover|folio|stand|sleeve|protector|guard|keyboard|stylus|pen|holder|mount|skin|pouch|bag)\b/,
+        brands: /\b(samsung|lenovo|apple|ipad|xiaomi|redmi|realme|oppo|oneplus|honor|motorola|infinix|nokia|lava|micromax|iball|tab)\b/
+      },
+      {
+        id: "ecom-wearables",
+        label: "Smartwatches",
+        acquisition: "smartwatch",
+        aliases: ["smartwatches", "smartwatch", "smart watches", "smart watch", "fitness bands", "fitness band", "wearables", "ecom wearables"],
+        product: /\b(smart ?watch(es)?|fitness bands?|smart bands?|apple watch|galaxy watch|watch|watches|amazfit|garmin|fitbit|fastrack)\b/,
+        accessoryHead: /\b(case|cases|cover|protector|guard|screen guard|charger|cable|dock|sleeve|bag)\b/,
+        brands: /\b(noise|boat|fire ?boltt|fastrack|titan|amazfit|garmin|fitbit|apple|samsung|oneplus|realme|oppo|xiaomi|redmi|honor|huawei|fossil|timex|suunto|pebble)\b/
+      },
+      {
+        id: "ecom-gaming",
+        label: "Gaming & PS5",
+        acquisition: "gaming console",
+        aliases: ["gaming and ps5", "gaming ps5", "gaming", "ps5", "playstation", "consoles", "gaming consoles", "ecom gaming"],
+        product: /\b(ps5|ps4|playstation|xbox|nintendo|switch|consoles?|controllers?|gamepads?|gaming (headset|keyboard|mouse|chair|monitor)|steam deck|rog ally|dual ?sense)\b/,
+        accessoryHead: /\b(stand|stands|holder|case|cover|skin|grip|thumbs?|analog|joystick|cap|caps|charger|cable|dock|mount|faceplate)\b/,
+        brands: /\b(sony|playstation|ps5|ps4|xbox|microsoft|nintendo|asus|rog|lenovo|legion|hp|omen|acer|nitro|predator|msi|razer|steam|valve|logitech|redragon|cosmic byte|ant esports|nacon|8bitdo)\b/
+      },
+      {
+        id: "ecom-cameras",
+        label: "Cameras",
+        acquisition: "digital camera",
+        aliases: ["cameras", "camera", "dslr", "mirrorless", "ecom cameras"],
+        product: /\b(cameras?|dslrs?|mirrorless|gopro|action cam\w*|instant cam\w*|canon|nikon|sony alpha|fujifilm|lumix|webcam)\b/,
+        accessoryHead: /\b(bag|case|cover|tripod|stand|monopod|strap|protector|card|battery|charger|lens cap|filter|holder|mount)\b/,
+        brands: /\b(canon|nikon|sony|fujifilm|panasonic|lumix|olympus|leica|gopro|dji|insta360|kodak|polaroid|sigma|tamron)\b/
+      },
+      {
+        id: "ecom-home-appliances",
+        label: "Home Tech",
+        acquisition: "refrigerator",
+        aliases: ["home tech", "home appliances", "appliances", "ecom home appliances"],
+        product: /\b(refrigerators?|fridge|washing machines?|microwaves?|air conditioners?|acs?|split ac|window ac|mixers?|grinders?|vacuum cleaners?|irons?|fans?|purifiers?|dishwashers?|ovens?|kettles?|induction|water heaters?|geysers?|chimney|air fryers?|espresso)\b/,
+        accessoryHead: /\b(cover|case|stand|mount|cable|pipe|filter|spare|remote|board|stabilizer)\b/,
+        brands: /\b(samsung|lg|whirlpool|haier|godrej|bosch|siemens|ifb|panasonic|voltas|daikin|hitachi|carrier|blue ?star|midea|symphony|bajaj|havells|philips|preethi|butterfly|prestige|hawkins|pigeon|dyson|eureka|forbes|kent|aquaguard|livpure|usha|orient|atomberg|crompton|v-guard|morphy|agaro)\b/
+      },
+      {
+        id: "ecom-smarthome",
+        label: "Smart Home",
+        acquisition: "smart home device",
+        aliases: ["smart home", "home security", "ecom smart home"],
+        product: /\b(smart (bulbs?|plugs?|cameras?|locks?|lights?|doorbells?|switch|switches|sensors?|bands?)|cctv|security cameras?|alexa|echo dot|google nest|fire tv stick|video doorbells?|sensors?|smart home)\b/,
+        accessoryHead: /\b(case|cover|stand|mount|cable|adapter|holder)\b/,
+        brands: /\b(mi|xiaomi|redmi|realme|tp-?link|wipro|philips|samsung|lg|google|nest|amazon|alexa|echo|ring|arlo|yale|godrej|havells|bosch|hikvision|cpplus|imou|tapo|ezviz|aqara|sonoff)\b/
+      },
+      {
+        id: "ecom-storage",
+        label: "Storage & SSDs",
+        acquisition: "external ssd",
+        aliases: ["storage and ssds", "storage ssds", "storage", "ssds", "ssd", "hard drives", "hard drive", "ecom storage"],
+        product: /\b(ssds?|hdd|hard (drives?|disks?)|pen ?drives?|flash drives?|memory cards?|micro ?sd|external drives?|portable ssd|nas)\b/,
+        accessoryHead: /\b(enclosure|case|cover|adapter|cable|dock|stand|pouch|bag)\b/,
+        brands: /\b(sandisk|samsung|seagate|western digital|wd|toshiba|crucial|kingston|lexar|hp|lenovo|transcend|adata|pny|verbatim|sony|hikvision)\b/
+      },
+      {
+        id: "ecom-cables-chargers",
+        label: "Power & Cables",
+        acquisition: "power bank",
+        aliases: ["power and cables", "power cables", "power bank", "power banks", "chargers", "cables", "ecom cables chargers"],
+        product: /\b(power ?banks?|chargers?|cables?|adapters?|fast chargers?|type ?c|usb ?c|lightning cable|wireless chargers?|car chargers?|charging bricks?)\b/,
+        accessoryHead: /\b(case|cover|stand|holder|pouch|bag)\b/,
+        brands: /\b(anker|portronics|boat|mi|xiaomi|samsung|realme|oppo|vivo|oneplus|ambrane|syska|havells|belkin|spigen|cmf|nothing|apple|baseus|ugreen|zebronics|mivi|toreto)\b/
+      },
+      {
+        id: "ecom-monitors",
+        label: "Monitors",
+        acquisition: "monitor",
+        aliases: ["monitors", "monitor", "displays", "ecom monitors"],
+        product: /\b(monitors?|led monitor|gaming monitor|curved monitor|display screen)\b/,
+        accessoryHead: /\b(stand|arm|mount|bracket|cover|case|cleaner|cable|adapter|dock)\b/,
+        brands: /\b(samsung|lg|dell|hp|acer|asus|benq|msi|aoc|viewsonic|lenovo|philips|gigabyte|zebronics|intex|acerpure|boat|mi|xiaomi|realme|frontech)\b/
+      },
+      {
+        id: "ecom-fashion",
+        label: "Fashion & Tech",
+        acquisition: "smart glasses",
+        aliases: ["fashion and tech", "fashion tech", "fashion", "smart glasses", "eyewear", "ecom fashion"],
+        product: /\b(smart glasses|eyewear|sunglasses|ray ?ban meta|watch straps?|watch bands?|apple watch band|goggles)\b/,
+        accessoryHead: /\b(case|cover|cleaner)\b/,
+        brands: /\b(ray ?-?ban|meta|oakley|fastrack|titan|noise|boat|apple|samsung|garmin|fossil|guess|mi|xiaomi|realme)\b/
+      }
+    ];
+    ALIAS_INDEX = /* @__PURE__ */ new Map();
+    for (const d of DEPARTMENTS) {
+      for (const a of [d.id, d.label, ...d.aliases]) {
+        const k = norm3(a);
+        if (k && !ALIAS_INDEX.has(k)) ALIAS_INDEX.set(k, d);
+      }
+    }
+    OTHER = /* @__PURE__ */ new Map();
+    GLOBAL_ACCESSORY = /\b(tempered|screen guard|protectors?|cases?|covers?|sleeves?|skins?|stickers?|stands?|holders?|mounts?|pouch(es)?|bags?|backpacks?|enclosures?|docks?)\b/;
+  }
+});
+
 // server/lens/sameProduct.ts
 var sameProduct_exports = {};
 __export(sameProduct_exports, {
@@ -30693,7 +30899,45 @@ function collapseSellerVariants(rows, priceOf2) {
     return { ...g.best, attributes: attrs };
   });
 }
-var COLOUR_WORDS;
+function imageOf(row) {
+  const direct = String(row?.imageUrl || "");
+  if (direct && !LOGO_OR_FAVICON.test(direct)) return direct;
+  const list = Array.isArray(row?.images) ? row.images : [];
+  for (const u of list) {
+    const s = String(u || "");
+    if (s && !LOGO_OR_FAVICON.test(s)) return s;
+  }
+  return "";
+}
+function mediaKey(row) {
+  const entity = row?.canonicalEntityId ?? row?.canonical_entity_id;
+  if (entity !== null && entity !== void 0 && String(entity).trim() !== "") {
+    return `e:${String(entity)}`;
+  }
+  const sig = variantSignature(String(row?.title || ""));
+  return sig ? `t:${sig}` : "";
+}
+function backfillRowImages(rows) {
+  if (!Array.isArray(rows) || rows.length < 2) return rows;
+  const donor = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const key = mediaKey(row);
+    const img = imageOf(row);
+    if (!key || !img) continue;
+    const seen = donor.get(key);
+    if (!seen) donor.set(key, img);
+  }
+  if (!donor.size) return rows;
+  return rows.map((row) => {
+    if (imageOf(row)) return row;
+    const key = mediaKey(row);
+    const img = key ? donor.get(key) : "";
+    if (!img) return row;
+    const images = Array.isArray(row.images) && row.images.length ? row.images : [img];
+    return { ...row, imageUrl: img, images };
+  });
+}
+var COLOUR_WORDS, LOGO_OR_FAVICON;
 var init_productMatchGate = __esm({
   "server/search/productMatchGate.ts"() {
     init_queryRelevance();
@@ -30738,6 +30982,7 @@ var init_productMatchGate = __esm({
       "mint",
       "navy"
     ]);
+    LOGO_OR_FAVICON = /(favicon|s2\/favicons|brand-logos\/|logo[-_]?\d|\/logos?\/|placeholder|no[-_]?image|default\.(png|jpe?g|webp))/i;
   }
 });
 
@@ -30985,8 +31230,8 @@ function routeFilter(offers, query) {
   });
 }
 function destinationFilter(offers, query) {
-  const head = String(query.rawQuery || "").split(",")[0];
-  const q3 = normPlace2(head);
+  const head2 = String(query.rawQuery || "").split(",")[0];
+  const q3 = normPlace2(head2);
   const city = (query.location?.city || "").toLowerCase();
   const target = q3.city || city;
   if (!target) return offers;
@@ -32173,7 +32418,15 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, f
   const strict = filterRowsByAge(usable, maxAgeSec, now);
   const window = strict.length >= 4 || !fallbackMaxAgeSec ? strict : filterRowsByAge(usable, fallbackMaxAgeSec, now);
   let offers = window.map((r) => rowToOffer(r, false));
-  if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
+  const browseDept = getEcomDepartment(input.browseDepartmentId);
+  if (browseDept) {
+    offers = offers.filter((o) => {
+      const title = String(o?.title || "");
+      if (!rowMatchesDepartment(title, browseDept)) return false;
+      const brand = String(o?.brand || o?.attributes?.brand || "");
+      return rowHasCategoryEvidence(title, brand, browseDept);
+    });
+  } else if (RELEVANCE_GATED_CATALOGUE.has(vertical)) {
     offers = offers.filter((o) => passesQueryRelevance(o, parsed));
   }
   if (vertical === "bus" || vertical === "flights" || vertical === "cab") {
@@ -32219,8 +32472,23 @@ function gateEcommerceResponse(input, response, parsedVertical) {
   const query = String(input.query || "").trim();
   if (vertical !== "ecommerce" || query.length < 2) return response;
   const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+  const dept = getEcomDepartment(input.browseDepartmentId) || resolveEcomDepartment(query);
+  if (dept) {
+    const kept = filterRowsForDepartment(response.results, dept);
+    if (kept.length !== response.results.length) {
+      log.info("Search", "Department browse filter (final)", {
+        department: dept.label,
+        before: response.results.length,
+        kept: kept.length
+      });
+    }
+    response.results = backfillRowImages(kept);
+    response.results = collapseSellerVariants(response.results, priceOf2);
+    return response;
+  }
   const gated = gateFeedProductRows(response.results, query, priceOf2);
   if (!gated.dropped.length) {
+    response.results = backfillRowImages(response.results);
     response.results = collapseSellerVariants(response.results, priceOf2);
     return response;
   }
@@ -32235,7 +32503,8 @@ function gateEcommerceResponse(input, response, parsedVertical) {
     kept: gated.kept.length,
     path: String(response.state?.servedFrom || "")
   });
-  response.results = collapseSellerVariants(gated.kept, priceOf2);
+  response.results = backfillRowImages(gated.kept);
+  response.results = collapseSellerVariants(response.results, priceOf2);
   return response;
 }
 async function runSearch(input) {
@@ -32280,6 +32549,14 @@ async function runSearchPipeline(input) {
   }
   const vertical = parsed.vertical || "ecommerce";
   parsed.vertical = vertical;
+  const browseDept = vertical === "ecommerce" ? resolveEcomDepartment(String(input.query || "")) : null;
+  if (browseDept) {
+    input = { ...input, query: browseDept.acquisition };
+    input.browseDepartmentId = browseDept.id;
+    parsed = understandQuery(input.query, { pincode: input.pincode, city: input.city, lat: input.lat, lng: input.lng });
+    if (input.vertical) parsed.vertical = input.vertical;
+    parsed.vertical = vertical;
+  }
   const state = {
     servedFrom: "unavailable",
     sourcesAttempted: [],
@@ -32538,21 +32815,34 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
   combined = await engine.execute(combined, parsed);
   if (String(vertical) === "ecommerce" && String(input.query || "").trim().length >= 2) {
     const priceOfRow = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
-    const gated = gateFeedProductRows(combined, String(input.query), priceOfRow);
-    if (gated.dropped.length) {
-      log.info("Search", "Withheld off-product e-commerce rows", {
-        query: String(input.query).slice(0, 60),
-        dropped: gated.dropped.length,
-        reasons: gated.dropped.reduce((acc, d) => {
-          acc[d.reason] = (acc[d.reason] || 0) + 1;
-          return acc;
-        }, {}),
-        sample: gated.dropped.slice(0, 3).map((d) => String(d.row?.title || "").slice(0, 50)),
-        kept: gated.kept.length
+    const dept = getEcomDepartment(input.browseDepartmentId);
+    if (dept) {
+      const before = combined.length;
+      combined = filterRowsForDepartment(combined, dept);
+      log.info("Search", "Department browse filter", {
+        department: dept.label,
+        asked: input.query,
+        before,
+        kept: combined.length
       });
+      combined = collapseSellerVariants(combined, priceOfRow);
+    } else {
+      const gated = gateFeedProductRows(combined, String(input.query), priceOfRow);
+      if (gated.dropped.length) {
+        log.info("Search", "Withheld off-product e-commerce rows", {
+          query: String(input.query).slice(0, 60),
+          dropped: gated.dropped.length,
+          reasons: gated.dropped.reduce((acc, d) => {
+            acc[d.reason] = (acc[d.reason] || 0) + 1;
+            return acc;
+          }, {}),
+          sample: gated.dropped.slice(0, 3).map((d) => String(d.row?.title || "").slice(0, 50)),
+          kept: gated.kept.length
+        });
+      }
+      combined = gated.kept;
+      combined = collapseSellerVariants(combined, priceOfRow);
     }
-    combined = gated.kept;
-    combined = collapseSellerVariants(combined, priceOfRow);
   }
   combined = await attachAffiliateDeepLinks(combined);
   const branded = withCardArt(stripCardLogoStandIns(stripMerchantLogoFallbacks(withBrandImages(combined))));
@@ -32695,6 +32985,7 @@ var init_searchOrchestrator = __esm({
     init_entityMatching();
     init_ranking();
     init_queryRelevance();
+    init_ecomDepartments();
     init_productMatchGate();
     init_sellerPresence();
     init_verticalEngine();
@@ -33050,9 +33341,9 @@ function groupSameProduct(items, extra = () => ({})) {
       q3.isLowest = i === 0 && q3.price > 0;
     });
     const priced = members.filter((m) => m.primaryPrice > 0).sort((a, b) => a.primaryPrice - b.primaryPrice);
-    const head = members[0].vertical === "creditcards" ? [...members].sort((a, b) => Object.keys(a.specs || {}).length - Object.keys(b.specs || {}).length).pop() : priced[0] || members[0];
+    const head2 = members[0].vertical === "creditcards" ? [...members].sort((a, b) => Object.keys(a.specs || {}).length - Object.keys(b.specs || {}).length).pop() : priced[0] || members[0];
     const withImg = members.find((m) => m.imageUrl);
-    const mergedSpecs = { ...head.specs || {} };
+    const mergedSpecs = { ...head2.specs || {} };
     const FEATURE_KEYS = [
       "theatres",
       "theatre count",
@@ -33078,7 +33369,7 @@ function groupSameProduct(items, extra = () => ({})) {
     const normKey2 = (k) => k.replace(/_/g, " ").toLowerCase();
     const have = new Set(Object.keys(mergedSpecs).map(normKey2));
     for (const m of members) {
-      if (m === head) continue;
+      if (m === head2) continue;
       for (const [k, v] of Object.entries(m.specs || {})) {
         const nk = normKey2(k);
         const wanted = FEATURE_KEYS.includes(nk) || /theatre|imdb|critic|trailer|price band|shows|rating/.test(nk) || members[0].vertical === "creditcards";
@@ -33089,7 +33380,7 @@ function groupSameProduct(items, extra = () => ({})) {
         }
       }
     }
-    out.push({ ...head, specs: mergedSpecs, imageUrl: head.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
+    out.push({ ...head2, specs: mergedSpecs, imageUrl: head2.imageUrl || withImg?.imageUrl, sellerQuotes: quotes });
   }
   return out;
 }
@@ -35047,11 +35338,11 @@ function finalizeSection(items, maxPerMerchant = 3, target = 12, minItems = 6, s
 }
 async function verifyLiveArt(items, maxProbes = 30) {
   if (!items.length) return items;
-  const head = items.slice(0, maxProbes);
-  const urls = [...new Set(head.map((i) => i.image).filter(Boolean))];
+  const head2 = items.slice(0, maxProbes);
+  const urls = [...new Set(head2.map((i) => i.image).filter(Boolean))];
   const results = await Promise.all(urls.map((u) => logoAnswers(u)));
   const live = new Set(urls.filter((u, i) => results[i]));
-  const verified = head.filter((it) => live.has(it.image || ""));
+  const verified = head2.filter((it) => live.has(it.image || ""));
   if (verified.length === 0) return items;
   return verified;
 }
@@ -35349,22 +35640,22 @@ function normalizeTypedProductQuery(t) {
 function searchableTitle(t) {
   const paren = t.match(/\(([^)]{2,40})\)/);
   const noParen = t.replace(/\([^)]*\)/g, " ");
-  let head = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
-  const words2 = head.split(" ");
-  if (words2.length > 8) head = words2.slice(0, 8).join(" ");
+  let head2 = noParen.split(/\s*[,|]\s*|\s+-\s+|\s+with\s+/i)[0].replace(/\/(\d+)\b/g, "").replace(/\s+/g, " ").trim();
+  const words2 = head2.split(" ");
+  if (words2.length > 8) head2 = words2.slice(0, 8).join(" ");
   const cap = paren && /\d+\s?(gb|tb|ml|l|kg|g)\b/i.test(paren[1]) ? ` ${paren[1].match(/\d+\s?(gb|tb|ml|l|kg|g)\b/i)[0].replace(/\s+/, "")}` : "";
-  return (head + cap).trim() || t.slice(0, 80);
+  return (head2 + cap).trim() || t.slice(0, 80);
 }
 function recoverCapacityFromDescription(title, desc) {
   const CAP = /\b\d+(?:\.\d+)?\s?(gb|tb)\b/i;
   if (!title || !desc || CAP.test(title)) return null;
   if (!CAP.test(desc)) return null;
-  const head = String(desc).split(/\s*[:|]\s*|\s+with\s+/i)[0].replace(/\s+/g, " ").trim();
-  if (!CAP.test(head) || head.length > 90) return null;
+  const head2 = String(desc).split(/\s*[:|]\s*|\s+with\s+/i)[0].replace(/\s+/g, " ").trim();
+  if (!CAP.test(head2) || head2.length > 90) return null;
   const titleWords = title.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const headWords = head.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const headWords = head2.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!titleWords || !headWords.includes(titleWords)) return null;
-  return head;
+  return head2;
 }
 function isMerchantNameTitle(title, domain, merchant) {
   if (!title) return false;
@@ -37589,6 +37880,7 @@ var init_warm = __esm({
     init_searchOrchestrator();
     init_logger();
     init_catalogueService();
+    init_ecomDepartments();
     SEED_QUERIES = [
       { query: "mobile phone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "milk", vertical: "grocery", city: "Indore", pincode: "452001" },
@@ -37614,6 +37906,12 @@ var init_warm = __esm({
       { query: "smart tv", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "refrigerator", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "washing machine", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      // Owner 29 Oct ("tab pr click kr ke smart watch ya kuch v karo, pehle to results nahi
+      // aata"): every e-commerce DEPARTMENT is a browse query in its own right, and a tapped
+      // tab must open on warm rows like the defaults do - not on a cold, empty page that only
+      // fills after the first live scan. Warmed from the department table so the list can
+      // never drift from the tabs again.
+      ...departmentSeedQueries().map((q3) => ({ query: q3, vertical: "ecommerce", city: "Indore", pincode: "452001" })),
       // Owner 27 Oct ("result fast aane hi chaiye"): the product page compares retail AND
       // 10-minute grocery, so the everyday grocery basket is warmed too — these are the
       // queries that were landing cold and taking the full deadline.
@@ -38323,9 +38621,9 @@ __export(routes_exports, {
 });
 function deployedCommit() {
   try {
-    const head = require("fs").readFileSync(require("path").join(process.cwd(), ".git", "HEAD"), "utf8").trim();
-    if (!head.startsWith("ref:")) return head.slice(0, 7);
-    const ref = require("path").join(process.cwd(), ".git", head.replace("ref:", "").trim());
+    const head2 = require("fs").readFileSync(require("path").join(process.cwd(), ".git", "HEAD"), "utf8").trim();
+    if (!head2.startsWith("ref:")) return head2.slice(0, 7);
+    const ref = require("path").join(process.cwd(), ".git", head2.replace("ref:", "").trim());
     return require("fs").readFileSync(ref, "utf8").trim().slice(0, 7);
   } catch {
     return process.env.BUILD_COMMIT || "unknown";
@@ -38877,6 +39175,7 @@ var init_routes = __esm({
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
+    init_ecomDepartments();
     init_feedOrder();
     init_latencyBudget();
     init_queryRelevance();
@@ -39462,7 +39761,10 @@ var init_routes = __esm({
       });
       const verticalsNeedingTitleMatch = /* @__PURE__ */ new Set(["food", "grocery", "ecommerce"]);
       let kept = scored;
-      if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
+      const browseDept = String(input.vertical) === "ecommerce" ? resolveEcomDepartment(String(input.query || "")) : null;
+      if (browseDept) {
+        kept = scored;
+      } else if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
         const full = scored.filter((x) => x.hit === 1);
         const majority = scored.filter((x) => x.hit >= 0.5 && x.hit < 1);
         kept = full.length ? full : majority;
@@ -42554,9 +42856,9 @@ function splitCsvLine(line) {
 }
 function headerIndex(headers, key) {
   const wanted = HEADER_ALIASES[key] || [];
-  const norm3 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  const norm4 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
   for (const w of wanted) {
-    const i = norm3.findIndex((h) => h === w || h.startsWith(`${w} `));
+    const i = norm4.findIndex((h) => h === w || h.startsWith(`${w} `));
     if (i >= 0) return i;
   }
   return -1;
@@ -45192,7 +45494,7 @@ function listSeoPaths() {
 function resolveAppRoute(path14) {
   const seg = path14.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
-  const head = seg[0];
+  const head2 = seg[0];
   const tail = seg[1];
   const vmap = {
     flights: "flights",
@@ -45209,15 +45511,15 @@ function resolveAppRoute(path14) {
     "bank-accounts": "account",
     banking: "banking"
   };
-  const vid = vmap[head];
+  const vid = vmap[head2];
   if (!vid) return null;
   if (!tail) return { vertical: vid };
-  if (head === "flights" || head === "bus") {
+  if (head2 === "flights" || head2 === "bus") {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-(flights|bus)$/.exec(tail);
     if (m) {
       const A = m[1].replace(/-/g, " "), B = m[2].replace(/-/g, " ");
       const pretty = (x) => titleCase(x);
-      if (head === "flights") {
+      if (head2 === "flights") {
         const aI = IATA3[m[1]] ? ` (${IATA3[m[1]]})` : "";
         const bI = IATA3[m[2]] ? ` (${IATA3[m[2]]})` : "";
         return { vertical: "flights", query: `${pretty(A)}${aI} to ${pretty(B)}${bI}` };
@@ -45226,7 +45528,7 @@ function resolveAppRoute(path14) {
     }
     return { vertical: vid };
   }
-  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head)) {
+  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head2)) {
     return { vertical: vid, query: cityName(tail) };
   }
   const table = {
@@ -45236,8 +45538,8 @@ function resolveAppRoute(path14) {
     "credit-cards": CARD_TYPES,
     banking: BANKING_TYPES
   };
-  if (table[head]) {
-    const t = table[head].find((x) => x.slug === tail);
+  if (table[head2]) {
+    const t = table[head2].find((x) => x.slug === tail);
     if (t) return { vertical: vid, query: t.query };
     return { vertical: vid };
   }
@@ -45323,9 +45625,9 @@ function resolveSeoPage(path14) {
     };
   }
   const seg = clean3.split("/").filter(Boolean);
-  const head = seg[0];
+  const head2 = seg[0];
   const tail = seg[1];
-  const meta = verticalBySlug(head);
+  const meta = verticalBySlug(head2);
   if (!meta) return null;
   if (!tail) {
     return {
@@ -45339,7 +45641,7 @@ function resolveSeoPage(path14) {
       links: seoLinksFor(clean3)
     };
   }
-  if (head === "flights" && /-to-.*-flights$/.test(tail)) {
+  if (head2 === "flights" && /-to-.*-flights$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-flights$/.exec(tail);
     const A = cityName(m[1]), B = cityName(m[2]);
     const aI = IATA3[m[1]], bI = IATA3[m[2]];
@@ -45369,7 +45671,7 @@ function resolveSeoPage(path14) {
       ]
     };
   }
-  if (head === "bus" && /-to-.*-bus$/.test(tail)) {
+  if (head2 === "bus" && /-to-.*-bus$/.test(tail)) {
     const m = /^([a-z]+(?:-[a-z]+)*?)-to-([a-z]+(?:-[a-z]+)*?)-bus$/.exec(tail);
     const A = cityName(m[1]), B = cityName(m[2]);
     return {
@@ -45394,7 +45696,7 @@ function resolveSeoPage(path14) {
       ]
     };
   }
-  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head)) {
+  if (["hotels", "cabs", "grocery", "food", "movies"].includes(head2)) {
     const c = cityName(tail);
     const vmeta = meta;
     const nounMap = {
@@ -45404,7 +45706,7 @@ function resolveSeoPage(path14) {
       food: "food delivery prices",
       movies: "movie ticket prices"
     };
-    const noun = nounMap[head] || vmeta.label.toLowerCase();
+    const noun = nounMap[head2] || vmeta.label.toLowerCase();
     const others = CITIES.filter((x) => x.slug !== tail).slice(0, 6);
     return {
       path: clean3,
@@ -45420,11 +45722,11 @@ function resolveSeoPage(path14) {
         { q: `How do you get ${c} prices?`, a: `Live queries to every provider that serves ${c} at search time \u2014 no stale listings, no manual uploads.` },
         { q: `Is comparing in ${c} free?`, a: `Yes, completely. We never charge for a comparison and never sell your data.` }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head}` }, { name: c, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: vmeta.label, path: `/${head2}` }, { name: c, path: clean3 }],
       links: [
-        { label: `${vmeta.label} home`, href: `/${head}` },
-        ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head}/${x.slug}` })),
-        ...head === "hotels" ? [{ label: `${c} flights search`, href: "/flights" }] : []
+        { label: `${vmeta.label} home`, href: `/${head2}` },
+        ...others.map((x) => ({ label: `${vmeta.label} in ${x.name}`, href: `/${head2}/${x.slug}` })),
+        ...head2 === "hotels" ? [{ label: `${c} flights search`, href: "/flights" }] : []
       ]
     };
   }
@@ -45435,11 +45737,11 @@ function resolveSeoPage(path14) {
     "credit-cards": CARD_TYPES,
     banking: BANKING_TYPES
   };
-  if (table[head]) {
-    const t = table[head].find((x) => x.slug === tail);
+  if (table[head2]) {
+    const t = table[head2].find((x) => x.slug === tail);
     if (!t) return null;
     const label = t.label;
-    const isEcom = head === "ecommerce";
+    const isEcom = head2 === "ecommerce";
     return {
       path: clean3,
       title: isEcom ? `Compare ${label} Prices Across Amazon, Flipkart & More | Try1Second` : `Compare ${label} \u2014 Live Rates & Offers Across India | Try1Second`,
@@ -45456,24 +45758,24 @@ function resolveSeoPage(path14) {
         { q: `How fresh are the ${label.toLowerCase()} results?`, a: "Every number is scanned live from provider sources at search time \u2014 the page never shows stale manual listings." },
         { q: "Is this comparison free?", a: "Yes. Comparison is always free; we may earn a commission when you complete a purchase or application on the provider\u2019s site." }
       ],
-      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head}` }, { name: label, path: clean3 }],
+      breadcrumbs: [{ name: "Home", path: "/" }, { name: meta.label, path: `/${head2}` }, { name: label, path: clean3 }],
       links: [
-        { label: `${meta.label} home`, href: `/${head}` },
-        ...table[head].filter((x) => x.slug !== tail).slice(0, 6).map((x) => ({ label: x.label, href: `/${head}/${x.slug}` }))
+        { label: `${meta.label} home`, href: `/${head2}` },
+        ...table[head2].filter((x) => x.slug !== tail).slice(0, 6).map((x) => ({ label: x.label, href: `/${head2}/${x.slug}` }))
       ]
     };
   }
   return null;
 }
 function seoLinksFor(verticalPath) {
-  const head = verticalPath.split("/").filter(Boolean)[0];
+  const head2 = verticalPath.split("/").filter(Boolean)[0];
   const links = [];
-  if (head === "flights") {
+  if (head2 === "flights") {
     for (const [a, b] of FLIGHT_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} flights`, href: `/flights/${routeSlug(a, b, "flights")}` });
-  } else if (head === "bus") {
+  } else if (head2 === "bus") {
     for (const [a, b] of BUS_ROUTES.slice(0, 8)) links.push({ label: `${cityName(a)} to ${cityName(b)} buses`, href: `/bus/${routeSlug(a, b, "bus")}` });
-  } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head)) {
-    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head}/${c.slug}` });
+  } else if (["hotels", "cabs", "grocery", "food", "movies"].includes(head2)) {
+    for (const c of CITIES.slice(0, 8)) links.push({ label: `${cityName(c.slug)}`, href: `/${head2}/${c.slug}` });
   }
   return links;
 }
@@ -46436,7 +46738,7 @@ function enhanceHtml(html, path14) {
     /<meta property="og:description" content="[^"]*" \/>/,
     `<meta property="og:description" content="${esc3(desc)}" />`
   );
-  const head = [
+  const head2 = [
     `<link rel="canonical" href="${esc3(canonical)}" />`,
     `<meta property="og:url" content="${esc3(canonical)}" />`,
     `<meta name="twitter:title" content="${esc3(title)}" />`,
@@ -46455,8 +46757,8 @@ function enhanceHtml(html, path14) {
     `<link rel="alternate" hreflang="en-in" href="${esc3(canonical)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${esc3(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd(path14)) head.push(`<script type="application/ld+json">${b}</script>`);
-  out = out.replace("</head>", `${head.join("\n")}
+  if (!isNoindex) for (const b of jsonLd(path14)) head2.push(`<script type="application/ld+json">${b}</script>`);
+  out = out.replace("</head>", `${head2.join("\n")}
 </head>`);
   if (!isNoindex) {
     const body = prerenderBody(path14);

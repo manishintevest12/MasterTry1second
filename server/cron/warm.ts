@@ -28,6 +28,8 @@ import { purgeStaleBankingOffers, purgePhotolessHotelOffers } from '../catalogue
 // cache and went live every time (3-5s+). Seeds now warm the exact client
 // shape: city 'Indore', pincode '452001' — matching defaultQueryFor() and the
 // web's targetLoc default.
+import { departmentSeedQueries } from '../lens/ecomDepartments';
+
 export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
   { query: 'mobile phone', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'milk', vertical: 'grocery', city: 'Indore', pincode: '452001' },
@@ -53,6 +55,12 @@ export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: strin
   { query: 'smart tv', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'refrigerator', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'washing machine', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  // Owner 29 Oct ("tab pr click kr ke smart watch ya kuch v karo, pehle to results nahi
+  // aata"): every e-commerce DEPARTMENT is a browse query in its own right, and a tapped
+  // tab must open on warm rows like the defaults do - not on a cold, empty page that only
+  // fills after the first live scan. Warmed from the department table so the list can
+  // never drift from the tabs again.
+  ...departmentSeedQueries().map((q) => ({ query: q, vertical: 'ecommerce', city: 'Indore', pincode: '452001' })),
   // Owner 27 Oct ("result fast aane hi chaiye"): the product page compares retail AND
   // 10-minute grocery, so the everyday grocery basket is warmed too — these are the
   // queries that were landing cold and taking the full deadline.

@@ -10,6 +10,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
+import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
@@ -1131,7 +1132,19 @@ apiRouter.post('/scrape/live', async (req, res) => {
   });
   const verticalsNeedingTitleMatch = new Set(['food', 'grocery', 'ecommerce']);
   let kept = scored;
-  if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
+  // OWNER 29 Oct ("tab pr click kr ke smart watch ya kuch v karo, pehle to results nahi
+  // aata, phir sirf reliance ka bina image wala aa jata hai"): a tapped DEPARTMENT is a
+  // browse, not a product name. The strict whole-word rule below ("every query word must
+  // appear in the title") is right for "amul milk", but for the label "Smartphones" it
+  // demands the literal word — a "Motorola g37 5G" card does not contain it, so a
+  // pipeline that had already found 93 category-correct rows was cut back to 9 here, and
+  // "Laptops" (titles are model codes: "HP 15s-fq5329TU") was cut to nothing. The
+  // department gate in the pipeline has already judged category membership (and withheld
+  // accessories), so this endpoint must not re-apply a product-name filter on top of it.
+  const browseDept = String(input.vertical) === 'ecommerce' ? resolveEcomDepartment(String(input.query || '')) : null;
+  if (browseDept) {
+    kept = scored;
+  } else if (verticalsNeedingTitleMatch.has(String(input.vertical)) && stems.length) {
     // STRICT QUERY-TO-ITEM TOKEN SANITISATION (owner rule): every query word must
     // appear as a whole word in the title. 'amul milk' must contain BOTH 'amul'
     // and 'milk'. Items missing any word are DISCARDED — no random substitutes,
