@@ -16,6 +16,7 @@
  * cannot accumulate. Every send records last_ok_at / last_fail_at for the admin panel.
  */
 import crypto from 'crypto';
+import fs from 'node:fs';
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
 
@@ -89,6 +90,110 @@ const httpsImage = (raw?: string | null): string | null => {
   const s = String(raw || '').trim();
   return /^https:\/\//i.test(s) ? s.slice(0, 1000) : null;
 };
+
+/**
+ * Android (FCM HTTP v1) credentials. Nothing is hardcoded: the owner pastes the Firebase
+ * service-account JSON into FCM_SERVICE_ACCOUNT_JSON (or points FCM_SERVICE_ACCOUNT_FILE at
+ * it) and app pushes start flowing — no code change, no redeploy. Until then fcm rows are
+ * reported as skipped, never as delivered.
+ */
+interface FcmServiceAccount { client_email: string; private_key: string; project_id: string }
+let fcmTokenCache: { key: string; token: string; exp: number } | null = null;
+
+/** Cache key includes the key fingerprint: rotated credentials must never reuse a token. */
+function fcmCacheKey(sa: FcmServiceAccount): string {
+  return `${sa.project_id}:${sa.client_email}:${crypto.createHash('sha256').update(sa.private_key).digest('hex').slice(0, 16)}`;
+}
+
+function fcmServiceAccount(): FcmServiceAccount | null {
+  const raw = (process.env.FCM_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '').trim();
+  const file = (process.env.FCM_SERVICE_ACCOUNT_FILE || '').trim();
+  let text = raw;
+  if (!text && file) {
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch (e: any) {
+      log.warn('Push', `FCM service account file unreadable: ${clip(e?.message || e, 80)}`);
+      return null;
+    }
+  }
+  if (!text) return null;
+  try {
+    const j = JSON.parse(text);
+    if (!j?.client_email || !j?.private_key || !j?.project_id) return null;
+    return { client_email: String(j.client_email), private_key: String(j.private_key), project_id: String(j.project_id) };
+  } catch {
+    log.warn('Push', 'FCM service account JSON is not valid JSON');
+    return null;
+  }
+}
+
+/** OAuth2 access token via the JWT-bearer grant, cached until a minute before expiry. */
+async function fcmAccessToken(sa: FcmServiceAccount): Promise<string> {
+  const cacheKey = fcmCacheKey(sa);
+  if (fcmTokenCache && fcmTokenCache.key === cacheKey && fcmTokenCache.exp > Date.now() + 60_000) {
+    return fcmTokenCache.token;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const unsigned = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  })}`;
+  const assertion = `${unsigned}.${crypto.createSign('RSA-SHA256').update(unsigned).sign(sa.private_key).toString('base64url')}`;
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
+  });
+  const data: any = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.access_token) {
+    throw Object.assign(new Error(`FCM auth failed: ${clip(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
+  }
+  fcmTokenCache = { key: cacheKey, token: String(data.access_token), exp: Date.now() + Number(data.expires_in || 3600) * 1000 };
+  return fcmTokenCache.token;
+}
+
+/**
+ * One Android push via FCM HTTP v1. The image travels in the `notification` block, so the
+ * phone renders the big picture with no app code involved; the tap target rides in `data`.
+ */
+async function sendFcm(row: SubRow, payload: PushPayload): Promise<'ok' | 'gone' | 'failed' | 'skip'> {
+  const sa = fcmServiceAccount();
+  if (!sa) return 'skip';
+  const image = httpsImage(payload.image);
+  const icon = httpsImage(payload.icon);
+  const target = payload.url || payload.ctaUrl || '/';
+  try {
+    const token = await fcmAccessToken(sa);
+    const message: Record<string, unknown> = {
+      token: row.endpoint,
+      notification: { title: clip(payload.title, 140), body: clip(payload.body, 400), ...(image ? { image } : {}) },
+      data: { url: String(target).slice(0, 500), kind: clip(payload.kind || 'admin', 30), tag: clip(payload.tag || 'try1second', 60) },
+      android: {
+        priority: 'HIGH',
+        notification: { ...(image ? { image } : {}), ...(icon ? { icon } : {}), click_action: 'FLUTTER_NOTIFICATION_CLICK' },
+      },
+    };
+    const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    const data: any = await res.json().catch(() => ({}));
+    if (res.ok) return 'ok';
+    const status = String(data?.error?.status || '');
+    if (res.status === 404 || status === 'UNREGISTERED' || /not.?registered|invalid.?registration/i.test(JSON.stringify(data))) return 'gone';
+    log.warn('Push', `FCM rejected a device: ${clip(data?.error?.message || res.status, 140)}`);
+    return 'failed';
+  } catch (e: any) {
+    log.warn('Push', `FCM send failed: ${clip(e?.message || e, 120)}`);
+    return 'failed';
+  }
+}
 
 /** VAPID keypair: env first, else DB-cached, else generated once and persisted. */
 async function vapidKeys(): Promise<{ publicKey: string; privateKey: string }> {
@@ -264,10 +369,18 @@ async function sendOne(row: SubRow, payload: PushPayload): Promise<'ok' | 'gone'
   const store = getStore();
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
   if (row.kind === 'fcm') {
-    // FCM sending needs the Firebase service-account credentials; without them we
-    // report honestly instead of pretending the device was reached.
-    log.debug('Push', `fcm transport not configured yet (subscription ${row.id}) — skipped`);
-    return 'skip';
+    // Android app device token: FCM HTTP v1 with the owner's service-account credentials.
+    const r = await sendFcm(row, payload);
+    if (r === 'ok') {
+      await store.execute('UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?', [now, Number(row.id)]);
+    } else if (r === 'gone') {
+      await store.execute('UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?', [now, Number(row.id)]);
+    } else if (r === 'failed') {
+      const fails = Number(row.fail_count || 0) + 1;
+      await store.execute('UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?',
+        [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]);
+    }
+    return r;
   }
   const body = buildPushBody(payload);
   try {
@@ -376,6 +489,7 @@ export async function pushStats(): Promise<{
   inactive: number;
   sent24h: number;
   vapidReady: boolean;
+  fcmReady: boolean;
 }> {
   const store = getStore();
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
@@ -396,5 +510,5 @@ export async function pushStats(): Promise<{
   } catch {
     vapidReady = false;
   }
-  return { web, android, inactive, sent24h, vapidReady };
+  return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }

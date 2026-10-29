@@ -34,7 +34,7 @@ export const NotificationsTab: React.FC = () => {
 
   // Device push (owner 29 Oct): real counters from push_subscriptions + a live test send,
   // so "did it actually reach a phone?" is answered by the owner's own device.
-  const [pushStats, setPushStats] = useState<{ web: number; android: number; inactive: number; sent24h: number; vapidReady: boolean } | null>(null);
+  const [pushStats, setPushStats] = useState<{ web: number; android: number; inactive: number; sent24h: number; vapidReady: boolean; fcmReady: boolean } | null>(null);
   const [testForm, setTestForm] = useState({ title: 'Try1second test push', body: 'Device push is working. This is the big picture below.', image: '' });
   const [testBusy, setTestBusy] = useState(false);
 
@@ -58,7 +58,7 @@ export const NotificationsTab: React.FC = () => {
     try {
       const res = await fetch('/api/admin/push/stats', { headers });
       const data = await res.json();
-      if (data?.success) setPushStats({ web: data.web || 0, android: data.android || 0, inactive: data.inactive || 0, sent24h: data.sent24h || 0, vapidReady: Boolean(data.vapidReady) });
+      if (data?.success) setPushStats({ web: data.web || 0, android: data.android || 0, inactive: data.inactive || 0, sent24h: data.sent24h || 0, vapidReady: Boolean(data.vapidReady), fcmReady: Boolean(data.fcmReady) });
     } catch {
       setPushStats(null);
     }
@@ -192,6 +192,12 @@ export const NotificationsTab: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {pushStats && pushStats.android > 0 && !pushStats.fcmReady && (
+          <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
+            {pushStats.android} android device{pushStats.android === 1 ? '' : 's'} registered, but the server has no Firebase service account yet — add FCM_SERVICE_ACCOUNT_JSON to start delivering to them.
+          </p>
+        )}
 
         {pushStats && !pushStats.vapidReady && (
           <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">

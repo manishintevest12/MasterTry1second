@@ -37502,6 +37502,91 @@ async function deliver(sub, body) {
   if (!lib) throw Object.assign(new Error("push library missing"), { statusCode: 503 });
   return lib.sendNotification(sub, body, { TTL: 3600, urgency: "high" });
 }
+function fcmCacheKey(sa) {
+  return `${sa.project_id}:${sa.client_email}:${import_crypto30.default.createHash("sha256").update(sa.private_key).digest("hex").slice(0, 16)}`;
+}
+function fcmServiceAccount() {
+  const raw = (process.env.FCM_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON || "").trim();
+  const file = (process.env.FCM_SERVICE_ACCOUNT_FILE || "").trim();
+  let text = raw;
+  if (!text && file) {
+    try {
+      text = import_node_fs6.default.readFileSync(file, "utf8");
+    } catch (e2) {
+      log.warn("Push", `FCM service account file unreadable: ${clip(e2?.message || e2, 80)}`);
+      return null;
+    }
+  }
+  if (!text) return null;
+  try {
+    const j = JSON.parse(text);
+    if (!j?.client_email || !j?.private_key || !j?.project_id) return null;
+    return { client_email: String(j.client_email), private_key: String(j.private_key), project_id: String(j.project_id) };
+  } catch {
+    log.warn("Push", "FCM service account JSON is not valid JSON");
+    return null;
+  }
+}
+async function fcmAccessToken(sa) {
+  const cacheKey = fcmCacheKey(sa);
+  if (fcmTokenCache && fcmTokenCache.key === cacheKey && fcmTokenCache.exp > Date.now() + 6e4) {
+    return fcmTokenCache.token;
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const unsigned = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600
+  })}`;
+  const assertion = `${unsigned}.${import_crypto30.default.createSign("RSA-SHA256").update(unsigned).sign(sa.private_key).toString("base64url")}`;
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }).toString()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.access_token) {
+    throw Object.assign(new Error(`FCM auth failed: ${clip(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
+  }
+  fcmTokenCache = { key: cacheKey, token: String(data.access_token), exp: Date.now() + Number(data.expires_in || 3600) * 1e3 };
+  return fcmTokenCache.token;
+}
+async function sendFcm(row, payload) {
+  const sa = fcmServiceAccount();
+  if (!sa) return "skip";
+  const image = httpsImage(payload.image);
+  const icon = httpsImage(payload.icon);
+  const target = payload.url || payload.ctaUrl || "/";
+  try {
+    const token = await fcmAccessToken(sa);
+    const message = {
+      token: row.endpoint,
+      notification: { title: clip(payload.title, 140), body: clip(payload.body, 400), ...image ? { image } : {} },
+      data: { url: String(target).slice(0, 500), kind: clip(payload.kind || "admin", 30), tag: clip(payload.tag || "try1second", 60) },
+      android: {
+        priority: "HIGH",
+        notification: { ...image ? { image } : {}, ...icon ? { icon } : {}, click_action: "FLUTTER_NOTIFICATION_CLICK" }
+      }
+    };
+    const res = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ message })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return "ok";
+    const status = String(data?.error?.status || "");
+    if (res.status === 404 || status === "UNREGISTERED" || /not.?registered|invalid.?registration/i.test(JSON.stringify(data))) return "gone";
+    log.warn("Push", `FCM rejected a device: ${clip(data?.error?.message || res.status, 140)}`);
+    return "failed";
+  } catch (e2) {
+    log.warn("Push", `FCM send failed: ${clip(e2?.message || e2, 120)}`);
+    return "failed";
+  }
+}
 async function vapidKeys() {
   if (cached2) return cached2;
   const envPub = (process.env.VAPID_PUBLIC_KEY || "").trim();
@@ -37630,8 +37715,19 @@ async function sendOne(row, payload) {
   const store3 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (row.kind === "fcm") {
-    log.debug("Push", `fcm transport not configured yet (subscription ${row.id}) \u2014 skipped`);
-    return "skip";
+    const r = await sendFcm(row, payload);
+    if (r === "ok") {
+      await store3.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+    } else if (r === "gone") {
+      await store3.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+    } else if (r === "failed") {
+      const fails = Number(row.fail_count || 0) + 1;
+      await store3.execute(
+        "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
+        [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
+      );
+    }
+    return r;
   }
   const body = buildPushBody(payload);
   try {
@@ -37737,12 +37833,13 @@ async function pushStats() {
   } catch {
     vapidReady = false;
   }
-  return { web, android, inactive, sent24h, vapidReady };
+  return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip, httpsImage;
+var import_crypto30, import_node_fs6, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
     import_crypto30 = __toESM(require("crypto"), 1);
+    import_node_fs6 = __toESM(require("node:fs"), 1);
     init_db();
     init_logger();
     webpushLib = null;
@@ -37759,6 +37856,7 @@ var init_push = __esm({
       const s = String(raw || "").trim();
       return /^https:\/\//i.test(s) ? s.slice(0, 1e3) : null;
     };
+    fcmTokenCache = null;
   }
 });
 
@@ -47958,18 +48056,18 @@ async function productSitemapPaths(limit = 200) {
 }
 function readWarmFile() {
   try {
-    const fs13 = require("node:fs");
-    if (fs13.existsSync(WARM_FILE)) return fs13.readFileSync(WARM_FILE, "utf8");
+    const fs14 = require("node:fs");
+    if (fs14.existsSync(WARM_FILE)) return fs14.readFileSync(WARM_FILE, "utf8");
   } catch {
   }
   return null;
 }
 function writeWarmFile(xml) {
   try {
-    const fs13 = require("node:fs");
+    const fs14 = require("node:fs");
     const path14 = require("node:path");
-    fs13.mkdirSync(path14.dirname(WARM_FILE), { recursive: true });
-    fs13.writeFileSync(WARM_FILE, xml);
+    fs14.mkdirSync(path14.dirname(WARM_FILE), { recursive: true });
+    fs14.writeFileSync(WARM_FILE, xml);
   } catch {
   }
 }
@@ -48107,16 +48205,16 @@ async function mysqlLock(name) {
 function fileLock(name) {
   const file = import_node_path7.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs6.default.statSync(file);
+    const st = import_node_fs7.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs6.default.unlinkSync(file);
+    import_node_fs7.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs6.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs6.default.openSync(file, "wx");
-    import_node_fs6.default.writeSync(fd, String(process.pid));
-    import_node_fs6.default.closeSync(fd);
+    import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs7.default.openSync(file, "wx");
+    import_node_fs7.default.writeSync(fd, String(process.pid));
+    import_node_fs7.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -48145,10 +48243,10 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs6, import_node_path7, import_promise3, STALE_MS;
+var import_node_fs7, import_node_path7, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_fs7 = __toESM(require("node:fs"), 1);
     import_node_path7 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
