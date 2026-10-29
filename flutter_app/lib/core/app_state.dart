@@ -185,6 +185,15 @@ class AppState extends ChangeNotifier {
   /// the user's own last search instead of the registry seed default.
   final Map<String, String> lastQuery = {};
 
+  /// OWNER 28 Oct ("ek baar results aa jaye to dusre tab me jaa kr wapas aao to
+  /// phir se automatic search ni chahiye; search sirf tab jab user khud search
+  /// button dabaye"): a vertical's FIRST open runs the automatic search once per
+  /// app session. After that its results are FIXED - remounting the compare tab
+  /// re-paints exactly what was found and never re-runs the search in the
+  /// background. Only an explicit change of location (new city/pincode) or the
+  /// user's own Search button starts a new one.
+  final Set<String> searched = {};
+
   String lastQueryFor(String vertical) {
     final key = vertical == 'movies' ? 'movie' : vertical;
     return lastQuery[key] ?? '';
@@ -201,6 +210,9 @@ class AppState extends ChangeNotifier {
     cache.clear();
     cacheQuery.clear();
     cacheAt.clear();
+    // A new city/pincode is a new intent, not a tab return: every vertical runs
+    // its automatic search again for the new location.
+    searched.clear();
     // Old-location prices are invalid for the new pincode.
     unawaited(store.liveDiskCacheClear());
     notifyListeners();

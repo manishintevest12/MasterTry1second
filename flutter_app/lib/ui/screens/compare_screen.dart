@@ -10,6 +10,7 @@ import '../../core/autocomplete_data.dart';
 import '../../core/compare.dart' as cmp;
 import '../../core/theme.dart';
 import '../../core/verticals.dart';
+import '../../core/search_poll.dart';
 import '../widgets/compare_cards.dart';
 import '../widgets/hint_field.dart';
 import '../widgets/journey_date_picker_modal.dart';
@@ -60,6 +61,13 @@ class _CompareScreenState extends State<CompareScreen> {
   // is fully retired: the SearchProgress panel now owns the whole acquisition.
   Timer? _bgPoll;
   int _bgPollCount = 0;
+  /// Panel gate (owner 28 Oct): mirrors the website's per-vertical
+  /// `pendingRefresh` handling so a finished/exhausted chain can never leave
+  /// "Checking Yatra… 8 of 9" on screen with no rows below it.
+  bool _pendingFlag = false;
+  /// One settle read per search: after the chain gives up empty, a single
+  /// non-forced fetch picks up the answer the server has since warmed.
+  bool _settleDone = false;
   LiveResponse? _res;
   int _visibleCount = 4; // Load More (owner 22 Oct): 4 groups first, +4 per tap
   /// The cache key of the response currently on screen; lets a background
@@ -102,6 +110,23 @@ class _CompareScreenState extends State<CompareScreen> {
         final sticky = _state.lastQueryFor(_meta.id);
         if (sticky.isNotEmpty) _syncFormFromQuery(sticky);
       }
+      // OWNER 28 Oct: the automatic search belongs to the FIRST open of this
+      // vertical. Once it has run, the result is fixed - leaving the compare tab
+      // and coming back (this screen is rebuilt, it is not kept alive in an
+      // IndexedStack) must repaint what was already found instead of quietly
+      // searching again. A new search now only comes from the user's own Search
+      // button, a pending tap (pill / hero / product link) or a location change
+      // (AppState.setLocation clears `searched`).
+      if (_state.searched.contains(_meta.id)) {
+        _res = _state.cache[_meta.id];
+        _shownCacheKey = _state.cacheQuery[_meta.id];
+        _pendingFlag = false;
+        _loading = false;
+        _error = null;
+        if (mounted) setState(() {});
+        return;
+      }
+      _state.searched.add(_meta.id);
       _runSearch(auto: true);
       return;
     }
@@ -110,6 +135,7 @@ class _CompareScreenState extends State<CompareScreen> {
       return;
     }
     _syncFormFromQuery(p.query); // route verticals need from/to, not the raw _q
+    _state.searched.add(_meta.id);
     _runSearch(query: p.query);
   }
 
@@ -239,7 +265,8 @@ class _CompareScreenState extends State<CompareScreen> {
     final q = q0.isEmpty ? (sticky.isNotEmpty ? sticky : defaultQueryFor(_meta.id, _state.city)) : q0;
     if (q.isEmpty) return;
     if (!auto) {
-      _bgPollCount = 0; // fresh user search: full 30-poll budget again
+      _bgPollCount = 0; // fresh user search: full poll budget again
+      _settleDone = false; // ...and a fresh settle read if the chain ends empty
       // Owner 23 Oct (image-1 request): a NEW search is a new intent — drop
       // the previous search's rows so the engaging full-screen WarpLoader
       // (pulsing 3-2-1 core, progress bar, skeleton cards) holds the user,
@@ -281,7 +308,24 @@ class _CompareScreenState extends State<CompareScreen> {
       // now 2s apart so live top-ups land progressively instead of one long wait).
       // Owner 22 Oct: poll budget 12 -> 30 (~60s coverage, 2s apart) so slow
       // cold searches keep topping up like the web instead of stopping early.
-      if (mounted && _res?.pendingRefresh == true && _bgPollCount < 30) {
+      // OWNER 28 Oct ("ye last me ruk jata hai aur results ni deta; tab switch
+      // kar ke wapas aao to deta hai"): the chain used to stop as soon as the
+      // poll budget ran out while the LAST response still said pendingRefresh,
+      // so the panel stayed mounted forever and the finished answer was only
+      // picked up when the tab remounted. The panel gate now follows the web's
+      // pollDecision rule (search_poll.dart): it survives only while a chain is
+      // genuinely still polling, and an exhausted-empty chain does one final
+      // non-forced read (the server's warmed cache) before releasing to the
+      // honest empty state with Retry.
+      final decision = pollDecision(
+        pendingRefresh: _res?.pendingRefresh == true,
+        pollCount: _bgPollCount,
+        maxPolls: kSearchMaxPolls,
+        rows: _res?.items.length ?? 0,
+        settled: _settleDone,
+      );
+      _pendingFlag = decision.keepPendingFlag;
+      if (mounted && decision.keepPolling) {
         _bgPoll = Timer(const Duration(milliseconds: 2000), () {
           if (!mounted) return;
           _bgPollCount += 1;
@@ -290,11 +334,22 @@ class _CompareScreenState extends State<CompareScreen> {
           // quote-less rows forever and every Book button would stay dead.
           _runSearch(query: q, auto: true, force: true);
         });
+      } else if (mounted && decision.settle) {
+        _settleDone = true;
+        _bgPoll = Timer(const Duration(milliseconds: 1500), () {
+          if (!mounted) return;
+          _bgPollCount += 1;
+          // No force: this deliberately reads the cache the pipeline has been
+          // filling, which is exactly what a tab switch used to do by hand.
+          _runSearch(query: q, auto: true);
+        });
       } else {
         _bgPollCount = 0;
       }
     } catch (e) {
       final is403 = '$e'.contains('403');
+      // An error ends this chain: never leave the panel promising progress.
+      _pendingFlag = false;
       _error = is403
           ? 'Site security is temporarily blocking the app (HTTP 403). '
               'Please wait a few minutes and search again.'
@@ -307,7 +362,7 @@ class _CompareScreenState extends State<CompareScreen> {
       // user retry on their own schedule instead.
       if (is403) {
         _bgPollCount = 0;
-      } else if (auto && _bgPollCount < 30) {
+      } else if (auto && _bgPollCount < kSearchMaxPolls) {
         // Chain resilience (owner 23 Oct 'bus sirf zingbus deta hai'): a single
         // failed poll (30s client timeout on a cold route, one flaky hop on
         // mobile data) used to strand the progressive chain forever — the user
@@ -609,11 +664,10 @@ class _CompareScreenState extends State<CompareScreen> {
               // for ~2s between attempts, which used to flip this screen to the honest
               // "No matching options found" card. While the engine is still acquiring,
               // that card is FALSE information — show the please-wait panel instead.
-              ] else if (!_loading && !(_res?.pendingRefresh ?? false) && _error == null) ...[
+              ] else if (!_loading && !_pendingFlag && _error == null) ...[
                 const SizedBox(height: 26),
                 _EmptyState(onSearch: () => _runSearch(force: true)),
-              ] else if ((_res == null || _res!.items.isEmpty) &&
-                  (_loading || (_res?.pendingRefresh ?? false))) ...[
+              ] else if ((_res == null || _res!.items.isEmpty) && (_loading || _pendingFlag)) ...[
                 // Owner 27 Oct: no countdown any more. The progress panel (live site
                 // name, "n of N sites", advancing bar, skeleton cards) stays up for the
                 // whole acquisition and is replaced the moment real rows land.
