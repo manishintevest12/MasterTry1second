@@ -1,0 +1,350 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "try one second",
+      "intents": [
+        {
+          "name": "SearchIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "QUERY",
+              "samples": [
+                "{query}"
+              ]
+            },
+            {
+              "name": "city",
+              "type": "CITY",
+              "samples": []
+            }
+          ],
+          "samples": [
+            "{query}",
+            "search for {query}",
+            "search {query}",
+            "compare {query}",
+            "compare prices for {query}",
+            "price of {query}",
+            "price for {query}",
+            "what is the price of {query}",
+            "what is the cheapest price of {query}",
+            "cheapest {query}",
+            "check the price of {query}",
+            "check price of {query} in {city}",
+            "search for {query} in {city}",
+            "search {query} in {city}",
+            "compare {query} in {city}",
+            "price of {query} in {city}",
+            "find {query}",
+            "find deals for {query}",
+            "show me prices for {query}",
+            "how much is {query}"
+          ]
+        },
+        {
+          "name": "MovieTicketIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "QUERY",
+              "samples": []
+            },
+            {
+              "name": "city",
+              "type": "CITY",
+              "samples": []
+            }
+          ],
+          "samples": [
+            "movie tickets in {city}",
+            "movie tickets for {query} in {city}",
+            "what movies are running in {city}",
+            "cinema tickets in {city}",
+            "cinema tickets for {query}"
+          ]
+        },
+        {
+          "name": "TravelIntent",
+          "slots": [
+            {
+              "name": "vertical",
+              "type": "VERTICAL",
+              "samples": [
+                "bus",
+                "flight",
+                "hotel",
+                "cab"
+              ]
+            },
+            {
+              "name": "from",
+              "type": "CITY",
+              "samples": []
+            },
+            {
+              "name": "to",
+              "type": "CITY",
+              "samples": []
+            }
+          ],
+          "samples": [
+            "{vertical} from {from} to {to}",
+            "{vertical} ticket from {from} to {to}",
+            "{vertical} tickets from {from} to {to}",
+            "book {vertical} from {from} to {to}",
+            "{vertical} between {from} and {to}",
+            "cheapest {vertical} from {from} to {to}"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "slots": [],
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "slots": [],
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "slots": [],
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "slots": [],
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "CITY",
+          "values": [
+            {
+              "name": {
+                "value": "Indore"
+              }
+            },
+            {
+              "name": {
+                "value": "Bhopal"
+              }
+            },
+            {
+              "name": {
+                "value": "Mumbai"
+              }
+            },
+            {
+              "name": {
+                "value": "Delhi"
+              }
+            },
+            {
+              "name": {
+                "value": "Bengaluru"
+              }
+            },
+            {
+              "name": {
+                "value": "Hyderabad"
+              }
+            },
+            {
+              "name": {
+                "value": "Pune"
+              }
+            },
+            {
+              "name": {
+                "value": "Jaipur"
+              }
+            },
+            {
+              "name": {
+                "value": "Ahmedabad"
+              }
+            },
+            {
+              "name": {
+                "value": "Lucknow"
+              }
+            },
+            {
+              "name": {
+                "value": "Chennai"
+              }
+            },
+            {
+              "name": {
+                "value": "Kolkata"
+              }
+            },
+            {
+              "name": {
+                "value": "Surat"
+              }
+            },
+            {
+              "name": {
+                "value": "Nagpur"
+              }
+            },
+            {
+              "name": {
+                "value": "Vadodara"
+              }
+            },
+            {
+              "name": {
+                "value": "Coimbatore"
+              }
+            },
+            {
+              "name": {
+                "value": "Chandigarh"
+              }
+            },
+            {
+              "name": {
+                "value": "Noida"
+              }
+            },
+            {
+              "name": {
+                "value": "Gurugram"
+              }
+            },
+            {
+              "name": {
+                "value": "Patna"
+              }
+            }
+          ]
+        },
+        {
+          "name": "VERTICAL",
+          "values": [
+            {
+              "name": {
+                "value": "bus"
+              }
+            },
+            {
+              "name": {
+                "value": "flight"
+              }
+            },
+            {
+              "name": {
+                "value": "hotel"
+              }
+            },
+            {
+              "name": {
+                "value": "cab"
+              }
+            },
+            {
+              "name": {
+                "value": "train"
+              }
+            }
+          ]
+        },
+        {
+          "name": "QUERY",
+          "values": [
+            {
+              "name": {
+                "value": "iphone 16"
+              }
+            },
+            {
+              "name": {
+                "value": "iphone 16 price"
+              }
+            },
+            {
+              "name": {
+                "value": "samsung s24"
+              }
+            },
+            {
+              "name": {
+                "value": "one plus 13"
+              }
+            },
+            {
+              "name": {
+                "value": "sony headphones"
+              }
+            },
+            {
+              "name": {
+                "value": "laptop"
+              }
+            },
+            {
+              "name": {
+                "value": "smart tv"
+              }
+            },
+            {
+              "name": {
+                "value": "washing machine"
+              }
+            },
+            {
+              "name": {
+                "value": "air conditioner"
+              }
+            },
+            {
+              "name": {
+                "value": "refrigerator"
+              }
+            },
+            {
+              "name": {
+                "value": "atta"
+              }
+            },
+            {
+              "name": {
+                "value": "milk"
+              }
+            },
+            {
+              "name": {
+                "value": "protein powder"
+              }
+            },
+            {
+              "name": {
+                "value": "credit card"
+              }
+            },
+            {
+              "name": {
+                "value": "home loan"
+              }
+            },
+            {
+              "name": {
+                "value": "term insurance"
+              }
+            },
+            {
+              "name": {
+                "value": "rajinikanth jailer 2"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

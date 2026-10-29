@@ -4624,9 +4624,9 @@ function parseCleartripHotels(nextData) {
   const seen = /* @__PURE__ */ new Set();
   const slots = nextData?.props?.pageProps?.initialState?.results?.data?.slotsData;
   if (!Array.isArray(slots)) return out;
-  for (const slot of slots) {
-    if (slot?.slotData?.type !== "HOTEL_CARD_LIST") continue;
-    const cards = slot?.slotData?.data?.hotelCardList;
+  for (const slot2 of slots) {
+    if (slot2?.slotData?.type !== "HOTEL_CARD_LIST") continue;
+    const cards = slot2?.slotData?.data?.hotelCardList;
     if (!Array.isArray(cards)) continue;
     for (const card of cards) {
       const d = card?.data;
@@ -33800,6 +33800,243 @@ var init_liveSeatSession = __esm({
   }
 });
 
+// server/alexa/handler.ts
+function ssmlEscape(text) {
+  return String(text == null ? "" : text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function speak(text, opts = {}) {
+  return {
+    version: "1.0",
+    ...opts.attributes ? { sessionAttributes: opts.attributes } : {},
+    response: {
+      outputSpeech: { type: "SSML", ssml: `<speak>${ssmlEscape(text)}</speak>` },
+      ...opts.card ? { card: { type: "Simple", title: opts.card.title, content: opts.card.content } } : {},
+      ...opts.reprompt ? { reprompt: { outputSpeech: { type: "SSML", ssml: `<speak>${ssmlEscape(opts.reprompt)}</speak>` } } } : {},
+      shouldEndSession: !opts.reprompt
+    }
+  };
+}
+function isFreshRequest(timestamp, now = /* @__PURE__ */ new Date(), toleranceMs = MAX_REQUEST_AGE_MS) {
+  const t = Date.parse(String(timestamp || ""));
+  if (!Number.isFinite(t)) return false;
+  return Math.abs(now.getTime() - t) <= toleranceMs;
+}
+function isOurSkill(envelope, expectedSkillId) {
+  const got = envelope?.context?.System?.application?.applicationId;
+  if (!expectedSkillId) return { ok: true, reason: "skill-id-not-configured" };
+  if (!got) return { ok: false, reason: "missing-application-id" };
+  if (got !== expectedSkillId) return { ok: false, reason: "foreign-application-id" };
+  return { ok: true };
+}
+function inferVertical(query, slotVertical) {
+  const explicit = String(slotVertical || "").trim().toLowerCase();
+  if (explicit) return VERTICAL_FROM_SLOT[explicit] || explicit;
+  const q3 = String(query || "");
+  for (const h of VERTICAL_HINTS) if (h.re.test(q3)) return h.vertical;
+  return "ecommerce";
+}
+function speakPrice(amount) {
+  const rounded = Math.round(amount);
+  return `${rounded.toLocaleString("en-IN")} rupees`;
+}
+function pickVoiceHits(response, limit = 3) {
+  const results = Array.isArray(response?.results) ? response.results : [];
+  const hits = [];
+  for (const r of results) {
+    const price = Number(
+      r?.prices?.effectivePrice ?? r?.prices?.finalPayablePrice ?? r?.prices?.mandatoryTotal ?? r?.prices?.listPrice ?? r?.primaryPrice
+    );
+    if (!Number.isFinite(price) || price <= 0) continue;
+    const title = String(r?.title || "").trim();
+    if (!title) continue;
+    const seller = String(r?.seller || r?.vendor || "").trim();
+    hits.push({ title, seller, price, url: String(r?.sellerUrl || "") });
+  }
+  hits.sort((a, b) => a.price - b.price);
+  const seen = /* @__PURE__ */ new Set();
+  const unique = hits.filter((h) => {
+    const key = (h.seller || h.title).toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return unique.slice(0, Math.max(1, limit));
+}
+function buildSpokenAnswer(query, hits, totalSellers) {
+  const q3 = String(query || "").trim();
+  if (!hits.length) {
+    return `I could not verify a live price for ${q3} just now. Prices change fast, so open Try1Second dot com to see the comparison, or ask me again in a moment.`;
+  }
+  const first = hits[0];
+  const pricePart = `the lowest verified price for ${q3} is ${speakPrice(first.price)}${first.seller ? ` at ${first.seller}` : ""}`;
+  const rest = hits.slice(1);
+  const others = rest.length ? ` I also found ${rest.map((h) => `${h.seller || "another seller"} at ${speakPrice(h.price)}`).join(", and ")}.` : "";
+  const sellers = totalSellers > 1 ? `${totalSellers} sellers compared.` : "";
+  return `On Try1Second, ${pricePart}.${others} ${sellers} Prices update live.`.replace(/\s+/g, " ").trim();
+}
+function slot(envelope, ...names) {
+  const slots = envelope?.request?.intent?.slots || {};
+  for (const n of names) {
+    const v = slots[n]?.value;
+    if (v && String(v).trim()) return String(v).trim();
+  }
+  return "";
+}
+function clip(text, max = 480) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const stop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf(", "));
+  return (stop > 120 ? cut.slice(0, stop + 1) : cut).trim();
+}
+async function handleAlexaRequest(envelope, deps) {
+  const now = deps.now ? deps.now() : /* @__PURE__ */ new Date();
+  const log3 = deps.log || (() => void 0);
+  const type = String(envelope?.request?.type || "");
+  const skill = isOurSkill(envelope, deps.skillId);
+  if (!skill.ok) {
+    log3("warn", `alexa: rejected request (${skill.reason})`);
+    return speak("This skill is not available to this device.");
+  }
+  if (skill.reason === "skill-id-not-configured") {
+    log3("info", "alexa: ALEXA_SKILL_ID is not set - accepting requests without skill pinning");
+  }
+  if (envelope?.request?.timestamp && !isFreshRequest(envelope.request.timestamp, now)) {
+    log3("warn", "alexa: stale request rejected");
+    return speak("Sorry, that request took too long to reach us. Please say it again.");
+  }
+  const intentName = String(envelope?.request?.intent?.name || "");
+  if (type === "LaunchRequest") {
+    return speak(
+      "Try1Second here. Ask me for any price and I will compare it live. For example: iPhone sixteen price, or bus from Indore to Bhopal.",
+      { reprompt: "What should I compare?", card: { title: "Try1Second", content: `Voice compare is live. Full comparison on ${SITE_URL}` } }
+    );
+  }
+  if (type === "SessionEndedRequest") {
+    return speak("Goodbye.", {});
+  }
+  if (intentName === "AMAZON.StopIntent" || intentName === "AMAZON.CancelIntent") {
+    return speak("Goodbye.", {});
+  }
+  if (intentName === "AMAZON.HelpIntent") {
+    return speak(
+      "Say what you want to compare, for example: cheapest price of iPhone sixteen, Indore to Bhopal bus, or movie tickets in Indore. I read out the lowest verified price and the sellers I compared.",
+      { reprompt: "What should I compare?" }
+    );
+  }
+  if (intentName === "AMAZON.FallbackIntent") {
+    return speak("I did not catch that. You can say: compare iPhone sixteen.", { reprompt: "What should I compare?" });
+  }
+  const city = slot(envelope, "city");
+  const route2 = [slot(envelope, "from"), slot(envelope, "to")].filter(Boolean).join(" to ");
+  let query = slot(envelope, "query", "product", "searchQuery") || route2;
+  let vertical = inferVertical(query, slot(envelope, "vertical"));
+  if (intentName === "MovieTicketIntent") {
+    vertical = "movies";
+    query = query || `movies in ${city || "Indore"}`;
+  }
+  if (intentName === "TravelIntent") {
+    query = route2 || query;
+    vertical = inferVertical(query, slot(envelope, "vertical"));
+  }
+  if (!query) {
+    return speak("Tell me what to compare, for example: cheapest price of iPhone sixteen.", { reprompt: "What should I compare?" });
+  }
+  const input = {
+    query,
+    vertical,
+    ...city ? { city } : {},
+    // Voice gets the same engine; the budget only decides when we stop waiting, never what we say.
+    coldDeadlineMs: Math.min(VOICE_BUDGET_MS, deps.timeoutMs ?? VOICE_BUDGET_MS)
+  };
+  let response = null;
+  const budget = deps.timeoutMs ?? VOICE_BUDGET_MS;
+  const startedAt = Date.now();
+  try {
+    response = await Promise.race([
+      deps.search(input),
+      new Promise((resolve) => setTimeout(() => resolve(null), budget))
+    ]);
+  } catch (e2) {
+    log3("warn", `alexa: search failed (${String(e2?.message || e2).slice(0, 120)})`);
+    response = null;
+  }
+  let hits = pickVoiceHits(response, 3);
+  const remaining = budget - (Date.now() - startedAt);
+  if (!hits.length && deps.searchMore && remaining > 1200) {
+    try {
+      const filled = await Promise.race([
+        deps.searchMore(input, Math.max(900, remaining - 250)),
+        new Promise((resolve) => setTimeout(() => resolve(null), Math.max(900, remaining - 200)))
+      ]);
+      if (filled) {
+        response = filled;
+        hits = pickVoiceHits(filled, 3);
+      }
+    } catch (e2) {
+      log3("warn", `alexa: patient search failed (${String(e2?.message || e2).slice(0, 120)})`);
+    }
+  }
+  const totalSellers = new Set((response?.results || []).map((r) => String(r?.seller || r?.vendor || ""))).size;
+  const answer = clip(buildSpokenAnswer(query, hits, totalSellers));
+  if (!hits.length) {
+    return speak(answer, {
+      reprompt: "Do you want me to try again?",
+      card: { title: `Try1Second: ${query}`, content: `We could not verify a live price for "${query}" just now. Open ${SITE_URL} for the full comparison.` }
+    });
+  }
+  return speak(answer, {
+    card: {
+      title: `Try1Second: ${query}`,
+      content: [
+        `Lowest verified price: ${speakPrice(hits[0].price)}${hits[0].seller ? ` at ${hits[0].seller}` : ""}`,
+        ...hits.slice(1).map((h) => `${h.seller || "Seller"}: ${speakPrice(h.price)}`),
+        `Full comparison: ${SITE_URL}`
+      ].join("\n")
+    }
+  });
+}
+var VOICE_BUDGET_MS, MAX_REQUEST_AGE_MS, SITE_URL, VERTICAL_HINTS, VERTICAL_FROM_SLOT;
+var init_handler = __esm({
+  "server/alexa/handler.ts"() {
+    VOICE_BUDGET_MS = 6500;
+    MAX_REQUEST_AGE_MS = 15e4;
+    SITE_URL = "https://www.try1second.com";
+    VERTICAL_HINTS = [
+      { vertical: "bus", re: /\b(bus|buses|buss? ticket)\b/i },
+      { vertical: "flights", re: /\b(flight|flights|air ticket|airfare|plane)\b/i },
+      { vertical: "hotels", re: /\b(hotel|hotels|stay|room booking)\b/i },
+      { vertical: "movies", re: /\b(movie|movies|cinema|ticket for the film|show timing)\b/i },
+      { vertical: "cab", re: /\b(cab|taxi|ola|uber|outstation)\b/i },
+      { vertical: "food", re: /\b(food|restaurant|pizza|biryani|dinner|order food)\b/i },
+      { vertical: "grocery", re: /\b(grocery|groceries|milk|atta|vegetables)\b/i },
+      { vertical: "creditcards", re: /\b(credit card|debit card|card offer)\b/i },
+      { vertical: "loans", re: /\b(loan|emi|home loan|personal loan)\b/i },
+      { vertical: "insurance", re: /\b(insurance|policy|premium)\b/i },
+      { vertical: "ecommerce", re: /\b(price of|cheapest|compare|buy)\b/i }
+    ];
+    VERTICAL_FROM_SLOT = {
+      flight: "flights",
+      flights: "flights",
+      hotel: "hotels",
+      hotels: "hotels",
+      movie: "movies",
+      movies: "movies",
+      bus: "bus",
+      buses: "bus",
+      cab: "cab",
+      taxi: "cab",
+      train: "bus",
+      // there is no train vertical; the ground-travel comparison is the honest answer
+      food: "food",
+      grocery: "grocery",
+      ecommerce: "ecommerce",
+      creditcard: "creditcards",
+      loan: "loans",
+      insurance: "insurance"
+    };
+  }
+});
+
 // server/search/feedOrder.ts
 function flightRowComplete(item) {
   if (!item || String(item.vertical) !== "flights") return false;
@@ -35059,20 +35296,20 @@ async function upsertAdSlot(input) {
   if (!/^[a-z0-9_-]{2,60}$/.test(slot_key)) return { ok: false, error: "Slot key must be 2-60 chars (a-z, 0-9, -, _)" };
   if (input.provider === "adsense") {
     const client = str(input.adsense_client, 60);
-    const slot = str(input.adsense_slot, 60);
+    const slot2 = str(input.adsense_slot, 60);
     if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
-    if (!/^[0-9]{6,20}$/.test(slot || "")) return { ok: false, error: "AdSense slot id must be numeric" };
+    if (!/^[0-9]{6,20}$/.test(slot2 || "")) return { ok: false, error: "AdSense slot id must be numeric" };
     const store4 = getStore();
     const existing2 = await store4.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
     if (existing2.length) {
       await store4.execute(
         "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
-        ["adsense", client, slot, input.is_active === false ? 0 : 1, slot_key]
+        ["adsense", client, slot2, input.is_active === false ? 0 : 1, slot_key]
       );
     } else {
       await store4.execute(
         "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
-        [slot_key, "adsense", client, slot, input.is_active === false ? 0 : 1]
+        [slot_key, "adsense", client, slot2, input.is_active === false ? 0 : 1]
       );
     }
     return { ok: true };
@@ -35166,26 +35403,26 @@ function errorPage(title, message) {
 async function adBlockHtml(slotKey) {
   const esc5 = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   let client = "";
-  let slot = "";
+  let slot2 = "";
   let customHtml = "";
   try {
     const cfg = await getAdSlot(slotKey);
     if (cfg) {
       client = String(cfg.adsense_client || "");
-      slot = String(cfg.adsense_slot || "");
+      slot2 = String(cfg.adsense_slot || "");
       customHtml = String(cfg.custom_html || "");
     }
   } catch {
   }
-  if (!client || !slot) {
+  if (!client || !slot2) {
     client = client || String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "");
-    slot = slot || String(
+    slot2 = slot2 || String(
       process.env[`${slotKey.toUpperCase()}_AD_SLOT`] || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || ""
     );
   }
   if (customHtml.trim()) return customHtml;
-  if (!client || !slot) return "";
-  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc5(client)}" data-ad-slot="${esc5(slot)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
+  if (!client || !slot2) return "";
+  return `<ins class="adsbygoogle" style="display:block" data-ad-client="${esc5(client)}" data-ad-slot="${esc5(slot2)}" data-ad-format="auto" data-full-width-responsive="true"></ins><script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}" crossorigin="anonymous"></script><script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>`;
 }
 function renderInterstitialPage(opts) {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -35380,8 +35617,8 @@ async function redirectRouteHandler(req, res) {
   }
   if (!adSlot) {
     const client = String(process.env.ADSENSE_CLIENT || process.env.ADSENSE_CLIENT_ID || "");
-    const slot = String(process.env.REDIRECT_INTERSTITIAL_AD_SLOT || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "");
-    if (client && slot) adSlot = { provider: "adsense", adsense_client: client, adsense_slot: slot };
+    const slot2 = String(process.env.REDIRECT_INTERSTITIAL_AD_SLOT || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "");
+    if (client && slot2) adSlot = { provider: "adsense", adsense_client: client, adsense_slot: slot2 };
   }
   res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }
@@ -37524,7 +37761,7 @@ async function webpush() {
       webpushLib = mod?.default || mod;
     } catch (e2) {
       webpushLib = null;
-      log.warn("Push", `web-push is not installed in this deployment (${clip(e2?.message || e2, 80)}) \u2014 run npm install`);
+      log.warn("Push", `web-push is not installed in this deployment (${clip2(e2?.message || e2, 80)}) \u2014 run npm install`);
     }
   }
   return webpushLib;
@@ -37546,7 +37783,7 @@ function fcmServiceAccount() {
     try {
       text = import_node_fs6.default.readFileSync(file, "utf8");
     } catch (e2) {
-      log.warn("Push", `FCM service account file unreadable: ${clip(e2?.message || e2, 80)}`);
+      log.warn("Push", `FCM service account file unreadable: ${clip2(e2?.message || e2, 80)}`);
       return null;
     }
   }
@@ -37582,7 +37819,7 @@ async function fcmAccessToken(sa) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.access_token) {
-    throw Object.assign(new Error(`FCM auth failed: ${clip(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
+    throw Object.assign(new Error(`FCM auth failed: ${clip2(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
   }
   fcmTokenCache = { key: cacheKey, token: String(data.access_token), exp: Date.now() + Number(data.expires_in || 3600) * 1e3 };
   return fcmTokenCache.token;
@@ -37597,8 +37834,8 @@ async function sendFcm(row, payload) {
     const token = await fcmAccessToken(sa);
     const message = {
       token: row.endpoint,
-      notification: { title: clip(payload.title, 140), body: clip(payload.body, 400), ...image ? { image } : {} },
-      data: { url: String(target).slice(0, 500), kind: clip(payload.kind || "admin", 30), tag: clip(payload.tag || "try1second", 60) },
+      notification: { title: clip2(payload.title, 140), body: clip2(payload.body, 400), ...image ? { image } : {} },
+      data: { url: String(target).slice(0, 500), kind: clip2(payload.kind || "admin", 30), tag: clip2(payload.tag || "try1second", 60) },
       android: {
         priority: "HIGH",
         notification: { ...image ? { image } : {}, ...icon ? { icon } : {}, click_action: "FLUTTER_NOTIFICATION_CLICK" }
@@ -37613,10 +37850,10 @@ async function sendFcm(row, payload) {
     if (res.ok) return "ok";
     const status = String(data?.error?.status || "");
     if (res.status === 404 || status === "UNREGISTERED" || /not.?registered|invalid.?registration/i.test(JSON.stringify(data))) return "gone";
-    log.warn("Push", `FCM rejected a device: ${clip(data?.error?.message || res.status, 140)}`);
+    log.warn("Push", `FCM rejected a device: ${clip2(data?.error?.message || res.status, 140)}`);
     return "failed";
   } catch (e2) {
-    log.warn("Push", `FCM send failed: ${clip(e2?.message || e2, 120)}`);
+    log.warn("Push", `FCM send failed: ${clip2(e2?.message || e2, 120)}`);
     return "failed";
   }
 }
@@ -37638,7 +37875,7 @@ async function vapidKeys() {
       }
     }
   } catch (e2) {
-    log.debug("Push", `VAPID read skipped: ${clip(e2?.message || e2, 80)}`);
+    log.debug("Push", `VAPID read skipped: ${clip2(e2?.message || e2, 80)}`);
   }
   const lib = await webpush();
   if (!lib) throw new Error("Push library is not installed on the server (run npm install)");
@@ -37651,7 +37888,7 @@ async function vapidKeys() {
     );
     log.info("Push", "Generated and stored a fresh VAPID keypair (web push ready)");
   } catch (e2) {
-    log.warn("Push", `Could not persist VAPID keys: ${clip(e2?.message || e2, 80)}`);
+    log.warn("Push", `Could not persist VAPID keys: ${clip2(e2?.message || e2, 80)}`);
   }
   return cached2;
 }
@@ -37688,9 +37925,9 @@ async function upsertSubscription(input) {
   return Number(r?.insertId || 0);
 }
 async function saveWebSubscription(input) {
-  const endpoint = clip(input.subscription?.endpoint, 2e3);
-  const p256dh = clip(input.subscription?.keys?.p256dh, 255);
-  const auth = clip(input.subscription?.keys?.auth, 255);
+  const endpoint = clip2(input.subscription?.endpoint, 2e3);
+  const p256dh = clip2(input.subscription?.keys?.p256dh, 255);
+  const auth = clip2(input.subscription?.keys?.auth, 255);
   if (!/^https:\/\//i.test(endpoint)) return { ok: false, error: "Invalid push endpoint" };
   if (!p256dh || !auth) return { ok: false, error: "Push subscription is missing its keys" };
   const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;
@@ -37700,26 +37937,26 @@ async function saveWebSubscription(input) {
     hash: sha256(endpoint),
     p256dh,
     auth,
-    ua: clip(input.ua, 255) || null,
+    ua: clip2(input.ua, 255) || null,
     userId
   });
   return { ok: true, id };
 }
 async function saveFcmToken(input) {
-  const token = clip(input.token, 1e3);
+  const token = clip2(input.token, 1e3);
   if (token.length < 20) return { ok: false, error: "Invalid device token" };
   const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;
   await upsertSubscription({
     kind: "fcm",
     endpoint: token,
     hash: sha256(`fcm:${token}`),
-    ua: clip(input.ua, 255) || null,
+    ua: clip2(input.ua, 255) || null,
     userId
   });
   return { ok: true };
 }
 async function removeSubscription(rawEndpoint) {
-  const endpoint = clip(rawEndpoint, 2e3);
+  const endpoint = clip2(rawEndpoint, 2e3);
   if (!endpoint) return 0;
   const hashes = [sha256(endpoint), sha256(`fcm:${endpoint}`)];
   const store3 = getStore();
@@ -37731,14 +37968,14 @@ async function removeSubscription(rawEndpoint) {
 }
 function buildPushBody(payload) {
   const body = JSON.stringify({
-    title: clip(payload.title, 140),
-    body: clip(payload.body, 400),
+    title: clip2(payload.title, 140),
+    body: clip2(payload.body, 400),
     image: httpsImage(payload.image),
     icon: httpsImage(payload.icon) || "https://try1second.com/favicon-192.png",
     badge: httpsImage(payload.badge) || "https://try1second.com/favicon-96.png",
     ctaUrl: payload.ctaUrl ? String(payload.ctaUrl).slice(0, 500) : "/",
-    tag: clip(payload.tag || "try1second", 60),
-    kind: clip(payload.kind || "admin", 30),
+    tag: clip2(payload.tag || "try1second", 60),
+    kind: clip2(payload.kind || "admin", 30),
     url: payload.url ? String(payload.url).slice(0, 500) : null
   });
   if (body.length <= 3600) return body;
@@ -37781,7 +38018,7 @@ async function sendOne(row, payload) {
       "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
       [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
     );
-    log.warn("Push", `send failed (${code || "network"}): ${clip(e2?.message || e2, 120)}`);
+    log.warn("Push", `send failed (${code || "network"}): ${clip2(e2?.message || e2, 120)}`);
     return "failed";
   }
 }
@@ -37809,7 +38046,7 @@ async function pushToUser(userId, payload) {
     if (!rows.length) return { sent: 0, gone: 0, failed: 0, skipped: 0 };
     return await sendTo(rows, payload);
   } catch (e2) {
-    log.warn("Push", `pushToUser skipped: ${clip(e2?.message || e2, 100)}`);
+    log.warn("Push", `pushToUser skipped: ${clip2(e2?.message || e2, 100)}`);
     return { sent: 0, gone: 0, failed: 0, skipped: 0 };
   }
 }
@@ -37822,7 +38059,7 @@ async function pushToAll(payload) {
     if (!rows.length) return { sent: 0, gone: 0, failed: 0, skipped: 0 };
     return await sendTo(rows, payload);
   } catch (e2) {
-    log.warn("Push", `pushToAll skipped: ${clip(e2?.message || e2, 100)}`);
+    log.warn("Push", `pushToAll skipped: ${clip2(e2?.message || e2, 100)}`);
     return { sent: 0, gone: 0, failed: 0, skipped: 0 };
   }
 }
@@ -37868,7 +38105,7 @@ async function pushStats() {
   }
   return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, import_node_fs6, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip, httpsImage, fcmTokenCache;
+var import_crypto30, import_node_fs6, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip2, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
     import_crypto30 = __toESM(require("crypto"), 1);
@@ -37884,7 +38121,7 @@ var init_push = __esm({
     configured = false;
     transport = null;
     sha256 = (s) => import_crypto30.default.createHash("sha256").update(s).digest("hex");
-    clip = (s, n) => String(s ?? "").trim().slice(0, n);
+    clip2 = (s, n) => String(s ?? "").trim().slice(0, n);
     httpsImage = (raw) => {
       const s = String(raw || "").trim();
       return /^https:\/\//i.test(s) ? s.slice(0, 1e3) : null;
@@ -40561,6 +40798,7 @@ var init_routes = __esm({
     init_lastKnownGood();
     init_freshMovieLink();
     init_liveSeatSession();
+    init_handler();
     init_feedOrder();
     init_latencyBudget();
     init_queryRelevance();
@@ -41854,6 +42092,30 @@ var init_routes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not save the subscription" });
       }
     });
+    apiRouter.post("/alexa", async (req, res) => {
+      try {
+        const envelope = req.body || {};
+        const reply = await handleAlexaRequest(envelope, {
+          search: runSearch,
+          searchMore: runSearchPolled,
+          skillId: process.env.ALEXA_SKILL_ID || void 0,
+          log: (level, message) => level === "warn" ? log.warn("Alexa", message) : log.info("Alexa", message)
+        });
+        res.status(200).json(reply);
+      } catch (e2) {
+        log.warn("Alexa", `handler error (${String(e2?.message || e2).slice(0, 160)})`);
+        res.status(200).json({
+          version: "1.0",
+          response: {
+            outputSpeech: { type: "SSML", ssml: "<speak>Sorry, something went wrong on our side. Please try again in a moment.</speak>" },
+            shouldEndSession: true
+          }
+        });
+      }
+    });
+    apiRouter.get("/alexa", (_req, res) => {
+      res.json({ ok: true, skill: "try1second", voice: true });
+    });
     apiRouter.post("/push/device", authMiddleware, async (req, res) => {
       try {
         const user = req.user;
@@ -42054,8 +42316,8 @@ var init_routes = __esm({
     apiRouter.get("/ads", async (req, res) => {
       try {
         const { getAdSlot: getAdSlot2 } = await Promise.resolve().then(() => (init_placements(), placements_exports));
-        const slot = await getAdSlot2(String(req.query.slot || ""));
-        res.json({ success: true, active: Boolean(slot), slot });
+        const slot2 = await getAdSlot2(String(req.query.slot || ""));
+        res.json({ success: true, active: Boolean(slot2), slot: slot2 });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not load ad slot" });
       }
@@ -42619,8 +42881,8 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       try {
         const section = String(req.query?.section || "home");
         const { bannerSlotFor: bannerSlotFor2 } = await Promise.resolve().then(() => (init_bannerSlots(), bannerSlots_exports));
-        const slot = await bannerSlotFor2(section).catch(() => null);
-        const meta = { everyN: slot?.everyN ?? 0, enabled: slot?.enabled !== false, fallbackToHome: slot?.fallbackToHome !== false };
+        const slot2 = await bannerSlotFor2(section).catch(() => null);
+        const meta = { everyN: slot2?.everyN ?? 0, enabled: slot2?.enabled !== false, fallbackToHome: slot2?.fallbackToHome !== false };
         if (section !== "home") {
           const banners2 = await cachedSection(`section-banners:${section}`, () => buildSectionBannersOnly(section));
           res.json({ success: true, banners: banners2, slot: meta });
@@ -42819,7 +43081,7 @@ function extractMyxDeals(root, limit = 24) {
       merchant_key: "myntra",
       merchant_name: "Myntra",
       kind: "sale",
-      title: clip2(brand ? `${brand} ${name}` : name, 120),
+      title: clip3(brand ? `${brand} ${name}` : name, 120),
       description: `Live on Myntra's offers page at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.mrp) ?? price}).`,
       code: null,
       discount_text: disc,
@@ -42885,7 +43147,7 @@ function extractTatacliqDeals(body, cap = 32) {
         merchant_key: "tatacliq",
         merchant_name: "Tata CLiQ",
         kind: "sale",
-        title: clip2(brand ? `${brand} ${title}` : title, 120),
+        title: clip3(brand ? `${brand} ${title}` : title, 120),
         description: `In stock on Tata CLiQ at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.price?.mrpPrice?.doubleValue) ?? price}).`,
         code: null,
         discount_text: `${disc}% OFF`,
@@ -42935,7 +43197,7 @@ function extractAmazonCardDeals(html) {
       merchant_key: "amazon",
       merchant_name: "Amazon",
       kind: "coupon",
-      title: clip2(title, 120),
+      title: clip3(title, 120),
       description: amount ? `Amazon lists a \u20B9${amount} clip-on coupon on this product${Number.isFinite(whole) ? ` (current price \u20B9${whole.toLocaleString("en-IN")})` : ""}.` : `Amazon lists a ${pct}% clip-on coupon on this product.`,
       code: null,
       // Amazon coupons clip at the product page, they have no public code
@@ -42960,15 +43222,15 @@ function extractAmazonBankOffers(dpHtml, asin, title) {
     const raw = strip(m[0].replace(/\s*•\s*/g, " ")).slice(0, 220);
     if (!raw || raw.length < 20) continue;
     if (!/[₹]|Rs\.?|\d\s*%/.test(raw)) continue;
-    const t = clip2(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
+    const t = clip3(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({
       merchant_key: "amazon",
       merchant_name: "Amazon",
       kind: "bank_offer",
-      title: clip2(t, 120),
-      description: `Listed on this Amazon product page${title ? ` (${clip2(title, 60)})` : ""}.`,
+      title: clip3(t, 120),
+      description: `Listed on this Amazon product page${title ? ` (${clip3(title, 60)})` : ""}.`,
       code: null,
       discount_text: null,
       min_order: null,
@@ -43069,12 +43331,12 @@ function cleanDeal(d) {
     merchant_name: d.merchant_name,
     kind: d.kind,
     vertical: d.vertical || MERCHANT_VERTICAL[d.merchant_key] || null,
-    title: clip2(strip(d.title), 200),
-    description: clip2(strip(d.description || ""), 600) || null,
-    code: clip2(strip(d.code || ""), 60) || null,
-    discount_text: clip2(strip(d.discount_text || ""), 80) || null,
+    title: clip3(strip(d.title), 200),
+    description: clip3(strip(d.description || ""), 600) || null,
+    code: clip3(strip(d.code || ""), 60) || null,
+    discount_text: clip3(strip(d.discount_text || ""), 80) || null,
     min_order: null,
-    terms: clip2(strip(d.terms || ""), 600) || null,
+    terms: clip3(strip(d.terms || ""), 600) || null,
     dest_url: String(d.dest_url).slice(0, 1e3),
     valid_till: d.valid_till || null,
     sort_weight: d.sort_weight ?? 0,
@@ -43121,8 +43383,8 @@ async function syncAutoDeals() {
       }
       outcomes.push({ provider: p.provider, ok: true, deals: saved });
     } catch (e2) {
-      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip2(String(e2?.message || e2), 160) });
-      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip2(String(e2?.message || e2), 120) });
+      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip3(String(e2?.message || e2), 160) });
+      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip3(String(e2?.message || e2), 120) });
     }
   }
   try {
@@ -43139,7 +43401,7 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto32, strip, clip2, COUPON_TXT;
+var import_crypto32, strip, clip3, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
     import_crypto32 = require("crypto");
@@ -43148,7 +43410,7 @@ var init_acquisition = __esm({
     init_db();
     init_deals();
     strip = (s) => String(s || "").replace(/\s+/g, " ").trim();
-    clip2 = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
+    clip3 = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
     COUPON_TXT = /(?:₹|Rs\.?\s?)\s?(\d{2,5})\s?coupon|Save (?:up to )?(?:₹|Rs\.?\s?)(\d{2,5}) with (?:coupon| promo)|(\d{1,2})% (?:with )?coupon/i;
   }
 });

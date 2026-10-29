@@ -14,6 +14,7 @@ import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, rememberGood } from '../search/lastKnownGood';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
+import { handleAlexaRequest, type AlexaRequestEnvelope } from '../alexa/handler';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
@@ -2093,6 +2094,40 @@ apiRouter.post('/push/subscribe', authMiddleware, async (req, res) => {
 });
 
 // Android app: register the Firebase device token (used once FCM credentials exist).
+/**
+ * Alexa custom-skill webhook (owner 29 Oct: reach/search growth via voice, WITHOUT touching the
+ * site or app design). Amazon POSTs here; the reply is speech + a card that links to the site.
+ * Public by necessity (Amazon signs, it does not log in); the skill id pins it to our skill as
+ * soon as ALEXA_SKILL_ID is set in the environment.
+ */
+apiRouter.post('/alexa', async (req, res) => {
+  try {
+    const envelope = (req.body || {}) as AlexaRequestEnvelope;
+    const reply = await handleAlexaRequest(envelope, {
+      search: runSearch,
+      searchMore: runSearchPolled,
+      skillId: process.env.ALEXA_SKILL_ID || undefined,
+      log: (level, message) => (level === 'warn' ? log.warn('Alexa', message) : log.info('Alexa', message)),
+    });
+    res.status(200).json(reply);
+  } catch (e: any) {
+    // Alexa must always get a well-formed reply, or the user hears the device error chime.
+    log.warn('Alexa', `handler error (${String(e?.message || e).slice(0, 160)})`);
+    res.status(200).json({
+      version: '1.0',
+      response: {
+        outputSpeech: { type: 'SSML', ssml: '<speak>Sorry, something went wrong on our side. Please try again in a moment.</speak>' },
+        shouldEndSession: true,
+      },
+    });
+  }
+});
+
+/** Tiny liveness probe for the skill's endpoint field (no internals, no data). */
+apiRouter.get('/alexa', (_req, res) => {
+  res.json({ ok: true, skill: 'try1second', voice: true });
+});
+
 apiRouter.post('/push/device', authMiddleware, async (req, res) => {
   try {
     const user = (req as any).user;

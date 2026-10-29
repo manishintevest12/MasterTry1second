@@ -1,0 +1,61 @@
+{
+  "manifestVersion": "1.0",
+  "publishingInformation": {
+    "locales": {
+      "en-IN": {
+        "name": "Try1Second",
+        "summary": "Compare live prices across Indian sellers with your voice.",
+        "description": "Ask Try1Second for any price and it reads out the lowest verified price and the sellers it compared: products, grocery, credit cards, loans, insurance, bus, flights, hotels, cabs and movie tickets. Prices come from a live scan of the sellers' own pages, and the full comparison opens on try1second.com.",
+        "examplePhrases": [
+          "Alexa, ask try one second to compare iPhone 16",
+          "Alexa, ask try one second for bus from Indore to Bhopal",
+          "Alexa, open try one second"
+        ],
+        "keywords": [
+          "price comparison",
+          "india",
+          "shopping",
+          "bus",
+          "flights",
+          "movies"
+        ],
+        "smallIconUri": "https://www.try1second.com/icons/alexa-108.png",
+        "largeIconUri": "https://www.try1second.com/icons/alexa-512.png"
+      }
+    },
+    "isAvailableWorldwide": false,
+    "distributionCountries": [
+      "IN"
+    ],
+    "category": "SHOPPING",
+    "testingInstructions": "Say: open try one second, then 'compare iPhone 16 price'. The skill answers with the lowest verified price found live, and the Alexa app card links to try1second.com."
+  },
+  "apis": {
+    "custom": {
+      "endpoint": {
+        "uri": "https://www.try1second.com/api/alexa"
+      },
+      "interfaces": []
+    }
+  },
+  "privacyAndCompliance": {
+    "locales": {
+      "en-IN": {
+        "privacyPolicyUrl": "https://www.try1second.com/privacy",
+        "termsOfUseUrl": "https://www.try1second.com/terms"
+      }
+    },
+    "isExportCompliant": true,
+    "containsAds": false,
+    "allowsPurchases": false,
+    "usesPersonalInfo": false,
+    "isChildDirected": false
+  },
+  "events": {
+    "endpoint": {
+      "uri": "https://www.try1second.com/api/alexa"
+    },
+    "publications": [],
+    "subscriptions": []
+  }
+}
