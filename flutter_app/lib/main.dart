@@ -58,12 +58,32 @@ class _Try1SecondAppState extends State<Try1SecondApp> {
       darkTheme: t1sDarkTheme(),
       themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
       navigatorKey: AppState.instance.navigator,
+      navigatorObservers: [_DismissKeyboardOnNavigation()],
       routes: {
         'product': (_) => _ProductRoute(),
       },
       home: SplashGate(ready: _ready, child: const MainShell()),
     );
   }
+}
+
+/// OWNER 29 Oct: an autocomplete hint list lives in the ROOT overlay, so pushing a page on top of
+/// the field left the hint floating over the new screen, hiding everything behind it. Any route
+/// change now drops focus first, which closes every hint/overlay the field had opened.
+class _DismissKeyboardOnNavigation extends NavigatorObserver {
+  void _clear() {
+    final f = FocusManager.instance.primaryFocus;
+    if (f != null && f.hasFocus) f.unfocus();
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _clear();
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _clear();
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) => _clear();
 }
 
 class _ProductRoute extends StatelessWidget {

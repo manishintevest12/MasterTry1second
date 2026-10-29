@@ -55,6 +55,13 @@ class TypeaheadField extends StatefulWidget {
 class _TypeaheadFieldState extends State<TypeaheadField> {
   FocusNode? _own;
 
+  /// OWNER 29 Oct ("search bar mai kuch type karta hoon aur phir kahin aur jana chahta hoon, ye
+  /// hint fix ho jata hai jiske karan peeche sab hide ho raha hai"): RawAutocomplete paints its
+  /// options in the root Overlay, so the hint list outlived the field — it sat over whatever the
+  /// user opened next. Field + options now share one tap group, so touching anything else closes
+  /// the hint, while touching the hint still selects (the group makes them the same region).
+  final Object _tapGroup = Object();
+
   @override
   void dispose() {
     _own?.dispose();
@@ -64,53 +71,85 @@ class _TypeaheadFieldState extends State<TypeaheadField> {
   @override
   Widget build(BuildContext context) {
     final focus = widget.focusNode ?? (_own ??= FocusNode());
-    return RawAutocomplete<String>(
-      textEditingController: widget.controller,
-      focusNode: focus,
-      optionsBuilder: (v) => widget._options(v.text),
-      displayStringForOption: (s) => s,
-      fieldViewBuilder: (c, ctrl, focus, onSub) => TextField(
-        controller: ctrl,
+    return TapRegion(
+      groupId: _tapGroup,
+      // A tap anywhere outside the field or its hint list means the user moved on: unfocus, which
+      // makes RawAutocomplete drop the options overlay.
+      onTapOutside: (_) {
+        if (focus.hasFocus) focus.unfocus();
+      },
+      child: RawAutocomplete<String>(
+        textEditingController: widget.controller,
         focusNode: focus,
-        onSubmitted: (v) { onSub(); widget.onSubmitted?.call(v); },
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: widget.hint,
-          isDense: true,
-          prefixIcon: widget.icon == null ? null : Icon(widget.icon, size: 16),
-          suffixIcon: widget.trailing,
+        optionsBuilder: (v) => widget._options(v.text),
+        displayStringForOption: (s) => s,
+        fieldViewBuilder: (c, ctrl, focus, onSub) => TextField(
+          controller: ctrl,
+          focusNode: focus,
+          onSubmitted: (v) {
+            onSub();
+            widget.onSubmitted?.call(v);
+          },
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            isDense: true,
+            prefixIcon: widget.icon == null ? null : Icon(widget.icon, size: 16),
+            suffixIcon: widget.trailing,
+          ),
+          style: tx(context, 13),
         ),
-        style: tx(context, 13),
-      ),
-      optionsViewBuilder: (c, onSelected, options) => Align(
-        alignment: Alignment.topLeft,
-        child: Material(
-          elevation: 6,
-          borderRadius: BorderRadius.circular(12),
-          color: surface(c),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 264, maxWidth: 320),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              shrinkWrap: true,
-              children: [
-                if (widget.cities)
-                  for (final o in options)
-                    _CityOption(option: o, onSelected: () { widget.controller.text = o; onSelected(o); }),
-                if (!widget.cities)
-                  for (final o in options)
-                    InkWell(
-                      onTap: () { widget.controller.text = o; onSelected(o); },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                        child: Row(children: [
-                          Icon(Icons.search_rounded, size: 14, color: muted(c)),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(o, maxLines: 1, overflow: TextOverflow.ellipsis, style: tx(c, 12.5, w: FontWeight.w700))),
-                        ]),
-                      ),
-                    ),
-              ],
+        // Same tap group as the field: tapping a hint still selects it, tapping anything else
+        // closes the hint (owner 29 Oct).
+        optionsViewBuilder: (c, onSelected, options) => TapRegion(
+          groupId: _tapGroup,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(12),
+              color: surface(c),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 264, maxWidth: 320),
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  shrinkWrap: true,
+                  children: [
+                    if (widget.cities)
+                      for (final o in options)
+                        _CityOption(
+                          option: o,
+                          onSelected: () {
+                            widget.controller.text = o;
+                            onSelected(o);
+                          },
+                        ),
+                    if (!widget.cities)
+                      for (final o in options)
+                        InkWell(
+                          onTap: () {
+                            widget.controller.text = o;
+                            onSelected(o);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                            child: Row(children: [
+                              Icon(Icons.search_rounded, size: 14, color: muted(c)),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  o,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: tx(c, 12.5, w: FontWeight.w700),
+                                ),
+                              ),
+                            ]),
+                          ),
+                        ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
