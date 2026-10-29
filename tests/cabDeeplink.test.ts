@@ -162,6 +162,8 @@ test('/api/cab/book: json=1 app-first branch serves appUrl + tracked webUrl (own
   // 29 Oct: /api/out now resolves the (movie-date-refreshed) destination first, so the
   // scheme is built from that — resolved.destination when the URL is not a movie link.
   assert.ok(src.includes('cabWebUrlToAppScheme(freshDestination'), 'interstitial gets the app scheme');
-  assert.ok(src.includes('const freshDestination = refreshMovieDestination(resolved.destination);'),
+  // 29 Oct (later): movie exits are resolved to a LIVE seat session first, and that resolver
+  // itself falls back to the date correction — so /api/out refreshes via refreshSeatDestination.
+  assert.ok(src.includes('const freshDestination = await refreshSeatDestination(resolved.destination)'),
       'the destination is refreshed before the exit is built');
 });

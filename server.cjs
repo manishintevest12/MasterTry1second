@@ -23839,6 +23839,39 @@ var init_movieSeatLink = __esm({
   }
 });
 
+// server/movies/seatCityIndex.ts
+function trim() {
+  for (const map of [byFid, byCinema]) {
+    while (map.size > MAX) {
+      const first = map.keys().next().value;
+      if (first === void 0) break;
+      map.delete(first);
+    }
+  }
+}
+function rememberSeatCity(citySlug2, fid, cinemaId) {
+  const city = String(citySlug2 || "").trim().toLowerCase();
+  if (!city) return;
+  if (fid) byFid.set(String(fid).trim().toLowerCase(), city);
+  if (cinemaId != null && String(cinemaId).trim()) byCinema.set(String(cinemaId).trim(), city);
+  trim();
+}
+function lookupSeatCity(fid, cinemaId) {
+  const f = String(fid || "").trim().toLowerCase();
+  if (f && byFid.has(f)) return byFid.get(f);
+  const c = String(cinemaId || "").trim();
+  if (c && byCinema.has(c)) return byCinema.get(c);
+  return "";
+}
+var byFid, byCinema, MAX;
+var init_seatCityIndex = __esm({
+  "server/movies/seatCityIndex.ts"() {
+    byFid = /* @__PURE__ */ new Map();
+    byCinema = /* @__PURE__ */ new Map();
+    MAX = 5e3;
+  }
+});
+
 // server/workers/parsers/districtGw.ts
 function gwCitySlug(city) {
   return (city || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -23947,6 +23980,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || "").trim();
         if (t) {
+          rememberSeatCity(citySlug2, ss?.fid ? String(ss.fid) : null, cinema.id);
           agg.shows.push({
             time: t,
             theatre: cinema.name,
@@ -24016,6 +24050,7 @@ var GW_HOSTS;
 var init_districtGw = __esm({
   "server/workers/parsers/districtGw.ts"() {
     init_curlCffiFetch();
+    init_seatCityIndex();
     GW_HOSTS = {
       district: "https://www.district.in",
       ticketnew: "https://www.ticketnew.com"
@@ -33348,6 +33383,152 @@ var init_freshMovieLink = __esm({
   }
 });
 
+// server/movies/liveSeatSession.ts
+function parseSeatDestination(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = u.hostname.toLowerCase();
+  const isTn = host.endsWith("ticketnew.com");
+  const isDistrict = host.endsWith("district.in");
+  if (!isTn && !isDistrict) return null;
+  const enc2 = u.searchParams.get("encsessionid") || "";
+  const [cid = "", sid = "", mid = ""] = enc2.split("-");
+  let city = "";
+  let cinemaId = cid;
+  let fid = "";
+  if (isTn) {
+    const seg = u.pathname.split("/").filter(Boolean);
+    city = seg[0] === "movies" ? seg[1] || "" : seg[0] || "";
+    const cIdx = seg.findIndex((x) => /-c$/.test(x));
+    if (cIdx >= 0) cinemaId = seg[cIdx + 1] || cid;
+  } else {
+    const seg = u.pathname.split("/").filter(Boolean);
+    fid = seg[seg.length - 1] || "";
+  }
+  if (!sid || !cid) return null;
+  return {
+    host: isTn ? "ticketnew" : "district",
+    city,
+    cinemaId: String(cinemaId),
+    contentId: String(u.searchParams.get("contentid") || ""),
+    sid: String(sid),
+    mid: String(mid),
+    fid,
+    dateISO: String(u.searchParams.get("fromdate") || "")
+  };
+}
+function timeToMinutes(t) {
+  const iso2 = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(String(t || "").trim());
+  if (iso2) return Number(iso2[1]) * 60 + Number(iso2[2]);
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec(String(t || "").trim());
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2]);
+  const ap = (m[3] || "").toUpperCase();
+  if (ap === "PM" && h < 12) h += 12;
+  if (ap === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+function istMinutesNow(now) {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS2);
+  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+}
+async function cityAggregates(host, citySlug2) {
+  const key = `${host}|${citySlug2}`;
+  const hit = aggCache.get(key);
+  if (hit && Date.now() - hit.at < AGG_TTL_MS) return hit.value;
+  const value = await gwCityMovieAggregates(host, citySlug2, 8).catch(() => null);
+  if (!value) return null;
+  aggCache.set(key, { at: Date.now(), value });
+  return value;
+}
+async function refreshSeatDestination(destination, now = /* @__PURE__ */ new Date()) {
+  const fallback = refreshMovieDestination(destination, now);
+  const parsed = parseSeatDestination(destination);
+  if (!parsed) return fallback;
+  const target = movieShowDate(now).iso;
+  if (!parsed.city) parsed.city = lookupSeatCity(parsed.fid, parsed.cinemaId);
+  if (parsed.dateISO === target) {
+    const aggs = await cityAggregates(parsed.host, gwCitySlug(parsed.city)).catch(() => null);
+    const show = aggs ? findShow(aggs, parsed, target, now) : null;
+    if (!show && parsed.dateISO === target) return fallback;
+    if (show && show.sid === parsed.sid) return fallback;
+    if (show) return buildSeatLink(parsed, show, target, fallback);
+    return fallback;
+  }
+  const citySlug2 = gwCitySlug(parsed.city);
+  for (const host of [parsed.host, parsed.host === "district" ? "ticketnew" : "district"]) {
+    const aggs = await cityAggregates(host, citySlug2).catch(() => null);
+    if (!aggs) continue;
+    const show = findShow(aggs, parsed, target, now);
+    if (!show) continue;
+    const link = buildSeatLink({ ...parsed, host }, show, target, "");
+    if (link) return link;
+  }
+  return fallback;
+}
+function findShow(aggs, parsed, target, now) {
+  const today2 = movieShowDate(now).iso;
+  const nowMin = istMinutesNow(now);
+  const candidates = [];
+  for (const agg of aggs.values()) {
+    for (const s of agg.shows || []) {
+      if (!s.sid) continue;
+      const cinemaId = String(s.cinemaId ?? "");
+      const sameCinema = parsed.cinemaId ? cinemaId === parsed.cinemaId : true;
+      const sameMid = parsed.mid ? String(s.mid || "").toLowerCase() === parsed.mid.toLowerCase() : true;
+      if (!sameCinema && !sameMid) continue;
+      if (target === today2) {
+        const mins = timeToMinutes(s.time);
+        if (mins === null || mins <= nowMin) continue;
+      }
+      candidates.push({
+        sid: String(s.sid),
+        mid: String(s.mid || parsed.mid || ""),
+        fid: String(s.fid || parsed.fid || ""),
+        contentId: String(s.contentId ?? agg.contentId ?? parsed.contentId ?? ""),
+        cinemaId,
+        cinemaName: String(s.theatre || ""),
+        time: String(s.time || "")
+      });
+    }
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => (timeToMinutes(a.time) ?? 9999) - (timeToMinutes(b.time) ?? 9999));
+  return candidates[0];
+}
+function buildSeatLink(parsed, show, dateISO, fallback) {
+  const link = movieSeatLink({
+    host: parsed.host,
+    city: parsed.city,
+    cinemaId: show.cinemaId || parsed.cinemaId,
+    cid: show.cinemaId || parsed.cinemaId,
+    cinemaName: show.cinemaName,
+    sid: show.sid,
+    mid: show.mid,
+    fid: show.fid,
+    contentId: show.contentId,
+    dateISO
+  });
+  return link || fallback;
+}
+var IST_OFFSET_MS2, AGG_TTL_MS, aggCache;
+var init_liveSeatSession = __esm({
+  "server/movies/liveSeatSession.ts"() {
+    init_districtGw();
+    init_movieSeatLink();
+    init_freshMovieLink();
+    init_seatCityIndex();
+    IST_OFFSET_MS2 = (5 * 60 + 30) * 6e4;
+    AGG_TTL_MS = 5 * 6e4;
+    aggCache = /* @__PURE__ */ new Map();
+  }
+});
+
 // server/search/feedOrder.ts
 function flightRowComplete(item) {
   if (!item || String(item.vertical) !== "flights") return false;
@@ -39525,6 +39706,7 @@ var init_routes = __esm({
     init_ecomDepartments();
     init_lastKnownGood();
     init_freshMovieLink();
+    init_liveSeatSession();
     init_feedOrder();
     init_latencyBudget();
     init_queryRelevance();
@@ -41262,7 +41444,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));
       if (!resolved) return res.status(410).send("This link has expired. Please search again for a fresh link.");
-      const freshDestination = refreshMovieDestination(resolved.destination);
+      const freshDestination = await refreshSeatDestination(resolved.destination).catch(() => resolved.destination);
       const check = validateDestination(freshDestination, { allowEmbeddedRedirect: resolved.trusted === true });
       if (!check.valid) {
         log.warn("Api", "Out pointer refused", { reason: check.reason });

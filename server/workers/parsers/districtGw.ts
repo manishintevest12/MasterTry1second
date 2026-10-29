@@ -22,6 +22,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { cffiFetch } from '../../common/curlCffiFetch';
+import { rememberSeatCity } from '../../movies/seatCityIndex';
 
 export type GwHost = 'district' | 'ticketnew';
 
@@ -209,6 +210,9 @@ export async function gwCityMovieAggregates(
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || '').trim();
         if (t) {
+          // Stamp fid/cinema -> city so a CLICK can re-resolve this show's seat session for
+          // today without being told the city (District's seat URL does not carry it).
+          rememberSeatCity(citySlug, ss?.fid ? String(ss.fid) : null, cinema.id);
           agg.shows.push({
             time: t,
             theatre: cinema.name,

@@ -13,6 +13,7 @@ import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, rememberGood } from '../search/lastKnownGood';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
+import { refreshSeatDestination } from '../movies/liveSeatSession';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
@@ -2715,7 +2716,7 @@ apiRouter.get('/out', async (req, res) => {
   // for (today IST, or tomorrow once today's counters close) and drop a session bound to an
   // older day, so the platform's own live showtime list - and from there its seat screen - is
   // what opens.
-  const freshDestination = refreshMovieDestination(resolved.destination);
+  const freshDestination = await refreshSeatDestination(resolved.destination).catch(() => resolved.destination);
   const check = validateDestination(freshDestination, { allowEmbeddedRedirect: resolved.trusted === true });
   if (!check.valid) {
     log.warn('Api', 'Out pointer refused', { reason: check.reason });
