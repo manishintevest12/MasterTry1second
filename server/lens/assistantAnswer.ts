@@ -23,6 +23,7 @@
  * fully unit-testable without network.
  */
 import { interpretAssistantQuestion, type AssistantIntent, type AssistantVertical } from './assistantIntent';
+import { cleanCategoryQuery, detectCategoryVertical } from './verticalLexicon';
 
 export interface AssistantAskContext {
   city?: string;
@@ -76,7 +77,8 @@ export function cleanAssistantQuery(raw: string): string {
 /** Bank-account / deposit questions, which the intent parser does not carry yet. */
 const ACCOUNT_HINT = /\b(bank account|savings account|saving account|current account|salary account|zero balance|fixed deposit|recurring deposit|\bfd\b|\brd\b|nre account|nro account)\b/i;
 
-const GROCERY_HINT = /\b(milk|doodh|butter|makhan|paneer|curd|dahi|atta|flour|rice|chawal|dal|daal|oil|tel|sugar|cheeni|salt|namak|tea|chai|coffee|maggi|noodles|bread|eggs|anda|chicken|mutton|fish|sabzi|vegetables|onion|pyaz|potato|aloo|tomato|tamatar|fruit|banana|apple|amul|nestle|britannia|parle|tata salt|fortune|aashirvaad|500g|1kg|1\s*kg|\d+\s*g)\b/i;
+// Grocery staples, pack sizes and FOOD dishes come from the shared lexicon
+// (server/lens/verticalLexicon.ts) so the router and this fallback agree.
 
 /** True when the text still looks like something a source could be searched for. */
 function searchable(text: string): boolean {
@@ -127,9 +129,12 @@ export function buildAssistantSearch(raw: string, ctx: AssistantAskContext = {})
     };
   }
 
-  const query = cleanAssistantQuery(text) || text;
-  const vertical: AssistantVertical = ACCOUNT_HINT.test(text) ? 'account' : GROCERY_HINT.test(text) ? 'grocery' : 'ecommerce';
-  const where = vertical === 'grocery' ? 'the 10-minute grocery sites' : vertical === 'account' ? 'every bank and comparison site' : 'every shopping site';
+  const category = detectCategoryVertical(text);
+  const vertical: AssistantVertical = ACCOUNT_HINT.test(text) ? 'account' : (category || 'ecommerce');
+  const query = (category ? cleanCategoryQuery(text) : cleanAssistantQuery(text)) || text;
+  const where = vertical === 'grocery' ? 'the 10-minute grocery apps (Blinkit, Zepto, Instamart, BigBasket)'
+    : vertical === 'food' ? 'the restaurant delivery apps (Zomato, Swiggy, EatSure, Domino\'s)'
+    : vertical === 'account' ? 'every bank and comparison site' : 'every shopping site';
   return {
     meta: {
       understood: true,
@@ -242,7 +247,10 @@ export function shapeAssistantAnswer(vertical: string | null, query: string, row
     };
   }
 
-  const spread = priced.length > 1 ? priced[priced.length - 1].price - best.price : 0;
+  // Honest spread: only between DIFFERENT sellers, and never between pack sizes of
+  // one product (1kg atta vs 5kg atta is not a gap "across sites").
+  const distinctSellers = new Set(priced.map((r) => (r.provider || '').toLowerCase()).filter(Boolean));
+  const spread = priced.length > 1 && distinctSellers.size > 1 ? priced[priced.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money(spread, best.currency)}.` : '';
   return {
     reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ''} at ${money(best.price, best.currency)}.${spreadTxt} ${rows.length} live option${rows.length === 1 ? '' : 's'} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? '' : 's'} below.`,

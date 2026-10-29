@@ -1950,7 +1950,11 @@ apiRouter.post('/assist/answer', async (req, res) => {
   try {
     const searched = runSearch(searchInput);
     searched.catch(() => undefined); // the abandoned race leg must never crash the process
-    const budgetMs = Math.min(resultDeadlineMs(), 2000);
+    // Grocery and food are the slowest first-hit verticals (the 10-minute apps and
+    // Swiggy/Zomato warm their catalogue on demand), so the assistant gives them
+    // the unified 2.6s window instead of 2s.
+    const categoryVertical = ['grocery', 'food'].includes(String(searchInput.vertical));
+    const budgetMs = Math.min(resultDeadlineMs(), categoryVertical ? 2600 : 2000);
     const raced = (await Promise.race([
       searched,
       new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
@@ -1975,16 +1979,82 @@ apiRouter.post('/assist/answer', async (req, res) => {
       pending = rows.length === 0;
     }
 
+    // OWNER 28 Oct ('aata'/'biryani' questions): a correctly routed grocery/food
+    // question must never dead-end. Those two verticals are the narrowest ones
+    // (10-minute apps / restaurant apps), so when they honestly return nothing
+    // the assistant does ONE secondary shopping pass with the same product words
+    // and says plainly where the rows came from — still real prices, no invented
+    // answer, and the user is never left with a misrouted "every shopping site"
+    // search as the only outcome.
+    // OWNER 28 Oct: the assistant is a SINGLE call from the app and the website, so
+    // it may not answer "still scanning, the prices drop in here automatically"
+    // and then never come back - that is exactly what the owner screenshotted for
+    // "aata sbse sasta kaha hai". When the first pass is still warming, wait for
+    // the pipeline's own cache a couple more times inside the same request and
+    // answer with the real rows.
+    if (rows.length === 0 && pending) {
+      for (let attempt = 0; attempt < 2 && rows.length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        try {
+          const retry = await runSearch(searchInput);
+          const retryRows = (retry.results || []) as any[];
+          if (retryRows.length) {
+            rows = retryRows;
+            sourcesSucceeded = retry.state?.sourcesSucceeded || [];
+            honestNotice = retry.state?.honestNotice;
+            pending = Boolean(retry.state?.pendingRefresh);
+          }
+        } catch { /* keep the honest answer we already have */ }
+      }
+    }
+
+    let fallbackVertical: string | undefined;
+    if (rows.length === 0 && ['grocery', 'food'].includes(String(searchInput.vertical))) {
+      const secondary: SearchInput = { ...searchInput, vertical: 'ecommerce' as SearchInput['vertical'] };
+      try {
+        const second = runSearch(secondary);
+        second.catch(() => undefined);
+        const racedSecond = (await Promise.race([
+          second,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+        ])) as Awaited<ReturnType<typeof runSearch>> | null;
+        let secondRows = ((racedSecond?.results || []) as any[]);
+        if (!secondRows.length) {
+          const secondFallback = await lastChanceRows(secondary, 500);
+          secondRows = ((secondFallback as any)?.results || []) as any[];
+        }
+        if (secondRows.length) {
+          rows = secondRows;
+          pending = false;
+          fallbackVertical = 'ecommerce';
+          sourcesSucceeded = (racedSecond?.state?.sourcesSucceeded || []) as string[];
+        }
+      } catch { /* the grocery/food answer stands; the secondary pass is best-effort */ }
+    }
+
     // Same API-boundary rule as the feed: bare flight rows trail.
     const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
     const shaped = toAssistantRows(ordered, 6);
-    const answer = shapeAssistantAnswer(meta.vertical, meta.query, shaped, { pending, sourcesSucceeded, honestNotice });
+    const answer = shapeAssistantAnswer(
+      fallbackVertical ? fallbackVertical : meta.vertical,
+      meta.query,
+      shaped,
+      {
+        pending,
+        sourcesSucceeded,
+        honestNotice,
+        ...(fallbackVertical
+          ? { honestNotice: `The ${meta.vertical === 'grocery' ? '10-minute grocery apps' : 'restaurant apps'} did not answer this time, so these are live prices from the shopping sites.` }
+          : {}),
+      },
+    );
     res.json({
       success: true,
       ...meta,
       reply: shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, ' ').trim(),
       vertical: meta.vertical,
       engineVertical: String(searchInput.vertical),
+      ...(fallbackVertical ? { answeredBy: fallbackVertical } : {}),
       query: meta.query,
       results: answer.results,
       count: answer.count,

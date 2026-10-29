@@ -4,6 +4,7 @@
  * Rule-based and deterministic (Hinglish-friendly); works with zero external services.
  */
 import { understandQuery } from '../query/queryUnderstanding';
+import { cleanCategoryQuery, detectCategoryVertical } from './verticalLexicon';
 
 // OWNER 28 Oct: the assistant must cover EVERY vertical the app ships, not just
 // the travel/shopping ones. 'creditcards' and 'account' were missing, so a credit
@@ -86,6 +87,17 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
   if ((vertical as string) === 'banking') vertical = 'account';
   if ((vertical as string) === 'coupons' || (vertical as string) === 'giftcards') vertical = 'ecommerce';
 
+  // OWNER 28 Oct ('aata sbse sasta kaha hai' -> ecommerce, 'biryani kaha sasta
+  // milega' -> no category at all): the generic parser has no notion of a
+  // grocery staple or a restaurant dish, so a question about atta/milk/biryani
+  // fell through to shopping (or to the honest "could not pin a category"
+  // bubble) and the search box received the whole sentence. The lexicon now owns
+  // that decision: a dish -> Food, a staple/pack size -> 10-minute Grocery.
+  // An explicit vertical the user named (flight, hotel, movie, loan...) is never
+  // overridden, and a bare brand/product with no category stays shopping.
+  const category = detectCategoryVertical(text);
+  if (category && (!vertical || vertical === 'ecommerce')) vertical = category;
+
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
   }
@@ -99,17 +111,26 @@ export function interpretAssistantQuestion(raw: string, now = istToday()): Assis
     const city = parsed.location?.city || (lower.match(/\b(?:in|at|near)\s+([a-z ]{3,30})/)?.[1] ?? '').trim();
     query = (city || text.replace(FILLER, ' ')).replace(/\s+/g, ' ').trim();
     query = query.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  } else if (vertical === 'grocery' || vertical === 'food') {
+    // "aata sbse sasta kaha hai" -> "atta", "biryani kaha sasta milega" -> "biryani".
+    query = cleanCategoryQuery(text) || text.replace(FILLER, ' ').replace(/\s+/g, ' ').trim();
   } else {
     query = text.replace(FILLER, ' ').replace(/\s+/g, ' ').trim() || text;
   }
   if (!query) query = text;
 
   const when = date ? ` for ${date}` : '';
+  const categoryReply =
+    vertical === 'grocery'
+      ? `"${query}" is a grocery staple, so I am checking the 10-minute delivery apps (Blinkit, Zepto, Instamart, BigBasket, Flipkart Minutes) for the lowest price.`
+      : vertical === 'food'
+        ? `"${query}" is a food order, so I am checking the restaurant delivery apps (Zomato, Swiggy, Domino's, EatSure…) for the lowest price.`
+        : `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`;
   return {
     understood: true,
     vertical,
     query,
     ...(date ? { date } : {}),
-    reply: `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`,
+    reply: categoryReply,
   };
 }
