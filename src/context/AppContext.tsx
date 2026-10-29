@@ -1,4 +1,5 @@
 import { scrollToResults } from '../utils/scrollToResults';
+import { HOME_PATH, verticalPathFor, homePathFrom } from '../utils/verticalRoutes';
 import { pollDecision } from '../lib/searchPolling';
 import { canonicalizeRows, sameVertical, canonicalVertical } from '../lib/verticalAlias';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
@@ -405,6 +406,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const setActiveNavTab = (tab: MainNavTab) => {
     setActiveNavTabState(tab);
+    // OWNER 29 Oct ("ecommerce vertical se home pr aata hoon tho link change ni hota"):
+    // the vertical switch wrote /ecommerce into the address bar, but Home had no path of
+    // its own, so the tab said Home while the URL (and therefore any share, bookmark or
+    // Back) still pointed at the vertical. Leaving a vertical or product page for Home now
+    // writes the root path. Private admin/merchant screens keep their own URL untouched.
+    if (tab === 'home') {
+      try {
+        const homePath = homePathFrom(window.location.pathname || HOME_PATH);
+        if (homePath) window.history.pushState({ nav: 'home' }, '', homePath);
+      } catch { /* history is optional */ }
+    }
     try {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     } catch {}
@@ -855,13 +867,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // (below) already restores the vertical when the user goes Back.
   const handleSetVertical = (newVertical: VerticalId) => {
     setVertical(newVertical);
-    const paths: Record<string, string> = {
-      flights: '/flights', hotels: '/hotels', bus: '/bus', ecommerce: '/ecommerce',
-      grocery: '/grocery', food: '/food', movie: '/movies', loans: '/loans',
-      insurance: '/insurance', creditcards: '/credit-cards', account: '/bank-accounts',
-      cab: '/cabs', banking: '/banking',
-    };
-    const target = paths[String(newVertical)];
+    // Paths live in src/utils/verticalRoutes.ts so the writer below and the popstate
+    // reader can never disagree about what a vertical's URL is.
+    const target = verticalPathFor(String(newVertical));
     const current = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
     if (target && current !== target && !/admin|merchant/.test(current)) {
       try { window.history.pushState({ vertical: newVertical }, '', target); } catch { /* history is optional */ }
@@ -1756,6 +1764,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ) {
         setActiveNavTab('admin');
         setCurrentSecretRoute('/admininsta');
+      }
+
+      // HOME IS A REAL URL (owner 29 Oct): once the vertical writer began pushing
+      // /ecommerce and friends, Back to '/' restored the address bar but left the Home
+      // tab unselected — URL and screen disagreed. The root path now means Home, and it
+      // is evaluated LAST so it can never override a #product= / #vertical= deep link or
+      // the private admin/merchant routes handled above.
+      const rootPath = path.replace(/\/+$/, '') || HOME_PATH;
+      const deepLinkHash = /#(product|vertical)=/.test(hash);
+      if (
+        rootPath === HOME_PATH &&
+        !deepLinkHash &&
+        !/merchantinstab2b|admininsta/.test(path + hash + search)
+      ) {
+        setActiveNavTabState('home');
+        setCurrentSecretRoute('/');
       }
     };
 
