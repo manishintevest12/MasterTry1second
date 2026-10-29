@@ -158,13 +158,17 @@ export async function createApp(): Promise<express.Express> {
       const wantsShell = acc === '' || acc.includes('text/html') || acc.includes('*/*');
       if (isAsset || !wantsShell) { res.sendFile(path.join(dist, 'index.html')); return; }
       let html = enhanceHtml(baseHtml, req.path);
-      // INDEXABLE RESULTS (owner 28 Oct): real cached prices in the first HTML byte, so the
-      // page paints prices before React mounts and crawlers get a crawlable price list.
-      // Omitted entirely when no verified row exists for this page.
+      // INDEXABLE RESULTS (owner 28 Oct): real cached prices in the first HTML byte, so
+      // crawlers get a price list. OWNER 29 Oct: that block was ALSO visible to users,
+      // appended after the React root, and the fixed bottom nav sat on top of its last row
+      // ("footer end ho jata hai, iss image mai jo text hai uske upar hi ... ye text hata
+      // do, ye sab humne kabhi manga hi nahi"). It is now inside <noscript>: a crawler /
+      // no-JS client still reads the verified prices, a real visitor never sees a stray
+      // list under the app, and the JSON-LD offers below carry the same prices either way.
       try {
         const snap = await snapshotForPath(req.path);
         const block = renderSnapshotHtml(snap);
-        if (block) html = html.replace('</body>', `${block}</body>`);
+        if (block) html = html.replace('</body>', `<noscript>${block}</noscript></body>`);
         const ld = snapshotJsonLd(snap, req.path);
         if (ld) html = html.replace('</head>', `<script type="application/ld+json">${ld}</script>\n</head>`);
       } catch { /* snapshot is an optimisation; the shell still serves */ }

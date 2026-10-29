@@ -47038,7 +47038,7 @@ async function createApp() {
       try {
         const snap = await snapshotForPath2(req.path);
         const block = renderSnapshotHtml2(snap);
-        if (block) html = html.replace("</body>", `${block}</body>`);
+        if (block) html = html.replace("</body>", `<noscript>${block}</noscript></body>`);
         const ld = snapshotJsonLd2(snap, req.path);
         if (ld) html = html.replace("</head>", `<script type="application/ld+json">${ld}</script>
 </head>`);
