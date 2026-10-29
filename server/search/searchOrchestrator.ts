@@ -649,7 +649,9 @@ async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
     // pipeline's filters entirely. Bumping this retires snapshots built by older logic
     // (v2 = the e-commerce product gate + colour-variant collapse of 28 Oct, which would
     // otherwise keep serving phone covers out of the cache until each TTL expired).
-    rev: 2,
+    // rev 3 (29 Oct): bus schedule repair — a cached answer built before it still holds
+    // rows with an empty timing gap, and a cached SearchResponse is replayed verbatim.
+    rev: 3,
     vertical,
     q: input.query,
     pin: input.pincode,

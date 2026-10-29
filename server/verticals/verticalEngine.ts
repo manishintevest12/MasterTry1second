@@ -201,6 +201,8 @@ function routeSideHit(rawSide: string, side: { code?: string; city: string }): b
   if (!t) return false;
   return s === t || t.includes(s) || s.includes(t);
 }
+import { repairBusSchedule } from './busSchedule';
+
 export function routeFilter(offers: NormalizedOffer[], query: ParsedQuery): NormalizedOffer[] {
   const rt = parseRouteQuery(query.rawQuery || '');
   if (!rt) return offers;
@@ -340,7 +342,18 @@ class MovieEventEngine extends VerticalEngine {
   constructor() { super({ vertical: 'movies', displayName: 'Movies & Events' }); }
 }
 class BusEngine extends VerticalEngine {
-  constructor() { super({ vertical: 'bus', displayName: 'Bus Travel', postProcess: (offers, query) => routeFilter(offers, query) }); }
+  constructor() {
+    super({
+      vertical: 'bus',
+      displayName: 'Bus Travel',
+      // OWNER 29 Oct ("indore se sirali ... results aaya tho bina time se"): a bus card
+      // with an empty gap where the departure time belongs. Repair the schedule from the
+      // SAME operator's own row when the seller listed the bus more than once, label the
+      // still-unknown ones honestly where the time goes, and never let a blank card lead
+      // the feed. Server-side, so the web page and the Flutter app both get it.
+      postProcess: (offers, query) => repairBusSchedule(routeFilter(offers, query)),
+    });
+  }
 }
 class FoodDeliveryEngine extends VerticalEngine {
   constructor() { super({ vertical: 'food', displayName: 'Food Delivery' }); }

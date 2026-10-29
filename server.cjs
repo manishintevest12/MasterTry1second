@@ -17790,26 +17790,26 @@ var init_bharatTaxi = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm4 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm5 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm4(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm5(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm4(cells[0] || "").toLowerCase();
-    const rt = norm4(cells[1] || "").toLowerCase();
-    const f = norm4(from || "").toLowerCase();
-    const t = norm4(to || "").toLowerCase();
+    const rf = norm5(cells[0] || "").toLowerCase();
+    const rt = norm5(cells[1] || "").toLowerCase();
+    const f = norm5(from || "").toLowerCase();
+    const t = norm5(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm4(cells[0] || "")} to ${norm4(cells[1] || "")} cab (one-way)`,
+        title: `${norm5(cells[0] || "")} to ${norm5(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -17819,7 +17819,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm4(cells[0] || "")} to ${norm4(cells[1] || "")}`,
+          route: `${norm5(cells[0] || "")} to ${norm5(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -17860,10 +17860,10 @@ async function indriveCityLookup(term) {
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
-  const norm4 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const norm5 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
   const esc5 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rx = new RegExp(`^${esc5}\\b`);
-  return cities.find((c) => norm4(c.name) === t) || cities.find((c) => rx.test(norm4(c.name))) || cities.find((c) => norm4(c.name).includes(t)) || null;
+  return cities.find((c) => norm5(c.name) === t) || cities.find((c) => rx.test(norm5(c.name))) || cities.find((c) => norm5(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -23880,7 +23880,7 @@ async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
 }
 async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
   const byTitle = /* @__PURE__ */ new Map();
-  const norm4 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm5 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
   const walkOne = async (cinema) => ({
     cinema,
@@ -23904,7 +23904,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
     for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
     const contentByTitle = /* @__PURE__ */ new Map();
     for (const g of grouped) {
-      const lbl = norm4(String(g?.label || ""));
+      const lbl = norm5(String(g?.label || ""));
       if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
     }
     const posterByMid = /* @__PURE__ */ new Map();
@@ -23914,7 +23914,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       const mid = String(ss?.mid || "");
       const title = titleByMid.get(mid) || "";
       if (!title) continue;
-      const key = norm4(title);
+      const key = norm5(title);
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
@@ -27765,11 +27765,11 @@ var init_validation = __esm({
 });
 
 // server/pipeline/freshness.ts
-function computeFreshness(offer, clock2, policy, isLiveAcquisition, validated) {
+function computeFreshness(offer, clock3, policy, isLiveAcquisition, validated) {
   const now = Date.now();
-  const fetched = new Date(clock2.fetchedAt).getTime();
-  const sourceUpdated = clock2.sourceUpdatedAt ? new Date(clock2.sourceUpdatedAt).getTime() : null;
-  if (clock2.expiresAt && new Date(clock2.expiresAt).getTime() < now) return "EXPIRED";
+  const fetched = new Date(clock3.fetchedAt).getTime();
+  const sourceUpdated = clock3.sourceUpdatedAt ? new Date(clock3.sourceUpdatedAt).getTime() : null;
+  if (clock3.expiresAt && new Date(clock3.expiresAt).getTime() < now) return "EXPIRED";
   if (sourceUpdated && sourceUpdated > fetched) return "UNVERIFIED";
   if (validated && isLiveAcquisition && (now - fetched) / 1e3 <= policy.liveVerifiedTtlSec) return "LIVE_VERIFIED";
   if ((now - fetched) / 1e3 <= policy.freshTtlSec) return validated ? "FRESH" : "UNVERIFIED";
@@ -30824,7 +30824,7 @@ function numericTokens(text) {
 function containsNumber(title, token) {
   return new RegExp(`(^|[^0-9])${token}([^0-9]|$)`).test(String(title || "").toLowerCase());
 }
-function gateFeedProductRows(rows, rawQuery, priceOf2) {
+function gateFeedProductRows(rows, rawQuery, priceOf3) {
   const query = String(rawQuery || "").trim();
   if (!rows.length || query.length < 2) return { kept: rows, dropped: [] };
   const dropped = [];
@@ -30856,7 +30856,7 @@ function gateFeedProductRows(rows, rawQuery, priceOf2) {
   }
   let kept = afterModel;
   if (wanted.length && afterModel.length > 1) {
-    const priced = afterModel.map((row) => ({ row, price: priceOf2(row) }));
+    const priced = afterModel.map((row) => ({ row, price: priceOf3(row) }));
     const band = dropImplausiblePrices(priced);
     kept = band.kept.map((x) => x.row);
     for (const d of band.dropped) dropped.push({ row: d.row, reason: "implausible" });
@@ -30866,7 +30866,7 @@ function gateFeedProductRows(rows, rawQuery, priceOf2) {
 function variantSignature(title) {
   return String(title || "").toLowerCase().replace(/[^a-z0-9\s./-]/g, " ").split(/\s+/).filter((w) => w && !COLOUR_WORDS.has(w)).join(" ").trim();
 }
-function collapseSellerVariants(rows, priceOf2) {
+function collapseSellerVariants(rows, priceOf3) {
   const groups = /* @__PURE__ */ new Map();
   const order = [];
   rows.forEach((row, index) => {
@@ -30874,12 +30874,12 @@ function collapseSellerVariants(rows, priceOf2) {
     const sig = variantSignature(String(row.title || ""));
     if (!seller || !sig) {
       order.push(`solo:${index}`);
-      groups.set(`solo:${index}`, { best: row, bestPrice: priceOf2(row), count: 1, firstIndex: index });
+      groups.set(`solo:${index}`, { best: row, bestPrice: priceOf3(row), count: 1, firstIndex: index });
       return;
     }
     const key = `${seller}|${sig}`;
     const existing = groups.get(key);
-    const price = priceOf2(row);
+    const price = priceOf3(row);
     if (!existing) {
       groups.set(key, { best: row, bestPrice: price, count: 1, firstIndex: index });
       order.push(key);
@@ -31150,6 +31150,90 @@ var init_sellerPresence = __esm({
   }
 });
 
+// server/verticals/busSchedule.ts
+function busOperatorKey(row) {
+  const a = row.attributes || {};
+  const raw = String(a["operator"] || a["bus operator"] || a["travels"] || row.title || "");
+  return norm4(raw.split(/[·|(-]/)[0] || raw);
+}
+function clock(value) {
+  const m = /(\d{1,2})[:.](\d{2})\s*([ap]\.?m\.?)?/i.exec(String(value || ""));
+  if (!m) return "";
+  let h = Number(m[1]);
+  const min = m[2];
+  const mer = (m[3] || "").toLowerCase().replace(/\./g, "");
+  if (mer === "pm" && h < 12) h += 12;
+  if (mer === "am" && h === 12) h = 0;
+  if (h > 23) return "";
+  return `${String(h).padStart(2, "0")}:${min}`;
+}
+function backfillBusSchedule(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+  const donors = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    if (!hasTime(row)) continue;
+    const key = busOperatorKey(row);
+    if (!key || donors.has(key)) continue;
+    const a = row.attributes || {};
+    donors.set(key, {
+      dep: String(a["departure time"] || ""),
+      arr: String(a["arrival time"] || ""),
+      duration: String(a["duration"] || ""),
+      minutes: String(a["duration minutes"] || "")
+    });
+  }
+  return rows.map((row) => {
+    const attrs = { ...row.attributes || {} };
+    if (hasTime(row)) return row;
+    const key = busOperatorKey(row);
+    const donor = key ? donors.get(key) : void 0;
+    const label = String(attrs["departure"] || "").trim();
+    const labelTime = clock(label);
+    if (donor) {
+      attrs["departure time"] = donor.dep;
+      if (donor.arr) attrs["arrival time"] = donor.arr;
+      if (donor.duration) attrs["duration"] = donor.duration;
+      if (donor.minutes) attrs["duration minutes"] = donor.minutes;
+      attrs["schedule source"] = "same operator, same search";
+      if (!label || !labelTime) attrs["departure"] = donor.arr ? `${donor.dep} \u2192 ${donor.arr}` : donor.dep;
+      return { ...row, attributes: attrs };
+    }
+    if (labelTime) {
+      attrs["departure time"] = labelTime;
+      return { ...row, attributes: attrs };
+    }
+    const seller = String(row.provider || row.seller || "").trim();
+    const note = seller ? `Timing on ${seller}` : "Timing on site";
+    attrs["departure"] = note;
+    attrs["departure time"] = note;
+    attrs["timing unavailable"] = "1";
+    return { ...row, attributes: attrs };
+  });
+}
+function orderTimedFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const ta = hasTime(a) ? 0 : 1;
+    const tb = hasTime(b) ? 0 : 1;
+    if (ta !== tb) return ta - tb;
+    return priceOf(a) - priceOf(b);
+  });
+}
+function repairBusSchedule(rows) {
+  return orderTimedFirst(backfillBusSchedule(rows));
+}
+var norm4, hasTime, priceOf;
+var init_busSchedule = __esm({
+  "server/verticals/busSchedule.ts"() {
+    norm4 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\b(travels|travel|services|service|bus|buses|express|roadlines|roadways|transport|transportation|motors|tour|tours|and|the)\b/g, " ").replace(/\s+/g, " ").trim();
+    hasTime = (row) => {
+      const a = row.attributes || {};
+      if (String(a["timing unavailable"] || "") === "1") return false;
+      return Boolean(String(a["departure time"] || "").trim());
+    };
+    priceOf = (row) => Number(row.prices?.effectivePrice ?? row.prices?.mandatoryTotal ?? row.primaryPrice ?? row.price ?? 0) || 0;
+  }
+});
+
 // server/verticals/verticalEngine.ts
 function filterByNamedProviders(offers, entityName) {
   if (!entityName) return offers;
@@ -31267,6 +31351,7 @@ function verticalStatusReport() {
 var NON_COMPARISON_VERTICALS, CATEGORICAL_ATTR_KEYS, PROVIDER_QUERY_PATTERNS, PLACE_ALIASES, PLACE_NOISE, IATA_CODES, CAB_DEFAULT_DEST, VerticalEngine, EcommerceEngine, FlightEngine, HotelEngine, CabEngine, LoanEngine, InsuranceEngine, CreditCardEngine, MovieEventEngine, BusEngine, FoodDeliveryEngine, QuickGroceryEngine, CouponEngine, GiftCardEngine, BankingOfferEngine, ENGINES, UnknownVerticalEngine;
 var init_verticalEngine = __esm({
   "server/verticals/verticalEngine.ts"() {
+    init_busSchedule();
     NON_COMPARISON_VERTICALS = [
       "coupons",
       "giftcards",
@@ -31454,7 +31539,16 @@ var init_verticalEngine = __esm({
     };
     BusEngine = class extends VerticalEngine {
       constructor() {
-        super({ vertical: "bus", displayName: "Bus Travel", postProcess: (offers, query) => routeFilter(offers, query) });
+        super({
+          vertical: "bus",
+          displayName: "Bus Travel",
+          // OWNER 29 Oct ("indore se sirali ... results aaya tho bina time se"): a bus card
+          // with an empty gap where the departure time belongs. Repair the schedule from the
+          // SAME operator's own row when the seller listed the bus more than once, label the
+          // still-unknown ones honestly where the time goes, and never let a blank card lead
+          // the feed. Server-side, so the web page and the Flutter app both get it.
+          postProcess: (offers, query) => repairBusSchedule(routeFilter(offers, query))
+        });
       }
     };
     FoodDeliveryEngine = class extends VerticalEngine {
@@ -32471,7 +32565,7 @@ function gateEcommerceResponse(input, response, parsedVertical) {
   const vertical = String(parsedVertical || response.query?.vertical || input.vertical || "");
   const query = String(input.query || "").trim();
   if (vertical !== "ecommerce" || query.length < 2) return response;
-  const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+  const priceOf3 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
   const dept = getEcomDepartment(input.browseDepartmentId) || resolveEcomDepartment(query);
   if (dept) {
     const kept = filterRowsForDepartment(response.results, dept);
@@ -32483,13 +32577,13 @@ function gateEcommerceResponse(input, response, parsedVertical) {
       });
     }
     response.results = backfillRowImages(kept);
-    response.results = collapseSellerVariants(response.results, priceOf2);
+    response.results = collapseSellerVariants(response.results, priceOf3);
     return response;
   }
-  const gated = gateFeedProductRows(response.results, query, priceOf2);
+  const gated = gateFeedProductRows(response.results, query, priceOf3);
   if (!gated.dropped.length) {
     response.results = backfillRowImages(response.results);
-    response.results = collapseSellerVariants(response.results, priceOf2);
+    response.results = collapseSellerVariants(response.results, priceOf3);
     return response;
   }
   log.info("Search", "Withheld off-product e-commerce rows", {
@@ -32504,7 +32598,7 @@ function gateEcommerceResponse(input, response, parsedVertical) {
     path: String(response.state?.servedFrom || "")
   });
   response.results = backfillRowImages(gated.kept);
-  response.results = collapseSellerVariants(response.results, priceOf2);
+  response.results = collapseSellerVariants(response.results, priceOf3);
   return response;
 }
 async function runSearch(input) {
@@ -32570,7 +32664,9 @@ async function runSearchPipeline(input) {
     // pipeline's filters entirely. Bumping this retires snapshots built by older logic
     // (v2 = the e-commerce product gate + colour-variant collapse of 28 Oct, which would
     // otherwise keep serving phone covers out of the cache until each TTL expired).
-    rev: 2,
+    // rev 3 (29 Oct): bus schedule repair — a cached answer built before it still holds
+    // rows with an empty timing gap, and a cached SearchResponse is replayed verbatim.
+    rev: 3,
     vertical,
     q: input.query,
     pin: input.pincode,
@@ -33088,8 +33184,8 @@ var init_searchOrchestrator = __esm({
 // server/search/feedOrder.ts
 function flightRowComplete(item) {
   if (!item || String(item.vertical) !== "flights") return false;
-  const dep = clock(specOf(item, "departure time", "departure"));
-  const arr = clock(specOf(item, "arrival time", "arrival"));
+  const dep = clock2(specOf(item, "departure time", "departure"));
+  const arr = clock2(specOf(item, "arrival time", "arrival"));
   if (!dep || !arr) return false;
   const flightNo2 = specOf(item, "flight number", "flight_number", "flight no");
   return /[A-Za-z]/.test(flightNo2) && /\d/.test(flightNo2);
@@ -33102,10 +33198,10 @@ function orderFlightRowsLast(items, vertical) {
   if (!incomplete.length || !complete.length) return items;
   return [...complete, ...incomplete];
 }
-var clock, specOf;
+var clock2, specOf;
 var init_feedOrder = __esm({
   "server/search/feedOrder.ts"() {
-    clock = (value) => {
+    clock2 = (value) => {
       const s = String(value ?? "").trim();
       if (!s) return null;
       const iso2 = /T(\d{2}):(\d{2})/.exec(s);
@@ -34962,7 +35058,7 @@ __export(showcase_exports, {
   nameDomainOf: () => nameDomainOf,
   pctOf: () => pctOf,
   pickTopOfferRow: () => pickTopOfferRow,
-  priceOf: () => priceOf,
+  priceOf: () => priceOf2,
   ratingFromAttributes: () => ratingFromAttributes,
   realMerchantDomain: () => realMerchantDomain,
   roundRobinSpread: () => roundRobinSpread,
@@ -35030,7 +35126,7 @@ function ratingFromAttributes(raw) {
 }
 function itemFromOffer(row) {
   const url = row.seller_url || null;
-  const price = priceOf(row);
+  const price = priceOf2(row);
   const mrp = mrpOf(row);
   if (!url || !price) return null;
   const pct = mrp > price ? Math.round((mrp - price) / mrp * 100) : (() => {
@@ -35368,7 +35464,7 @@ function destinationItem(d, flights, hotels, liveUrls) {
     const c = String(r.location_city || "").toLowerCase();
     return d.keys.some((k) => t.includes(k) || c.includes(k)) || (iataRx ? iataRx.test(t) : false);
   };
-  const cheapest = (rows) => [...rows].sort((a, b) => priceOf(a) - priceOf(b))[0];
+  const cheapest = (rows) => [...rows].sort((a, b) => priceOf2(a) - priceOf2(b))[0];
   const fare = cheapest(flights.filter((r) => servableRow(r, 14) && matches(r))) ?? cheapest(flights.filter((r) => servableRow(r, 45) && matches(r))) ?? null;
   if (!fare) return null;
   const hotel = hotels.find((r) => ageDays(r) <= 60 && matches(r) && imageFromAttributes(r.attributes) && (!liveUrls || liveUrls.has(imageFromAttributes(r.attributes))));
@@ -35379,7 +35475,7 @@ function destinationItem(d, flights, hotels, liveUrls) {
     merchant: String(fare.seller || fare.vendor || "Flights").slice(0, 40),
     merchantLogo: null,
     image: imageFromAttributes(hotel.attributes),
-    price: priceOf(fare) || null,
+    price: priceOf2(fare) || null,
     mrp: null,
     discountPct: null,
     rating: null,
@@ -35423,7 +35519,7 @@ async function buildShowcase() {
   const goBigC = mergeGoBig(megaC, massiveC, 24);
   const techFilter = (r) => serv(r) && (TECH_RX.test(String(r.title || "")) || TECH_BRAND_RX.test(String(r.brand || "")));
   const techC = sectionItems(ecom, techFilter, newest);
-  const stealsC = sectionItems(ecom, (r) => serv(r) && priceOf(r) <= 999 && pctOf(r) >= 0.2, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
+  const stealsC = sectionItems(ecom, (r) => serv(r) && priceOf2(r) <= 999 && pctOf(r) >= 0.2, (a, b) => pctOf(b) - pctOf(a) || newest(a, b));
   const placesC = sectionItems(hotels, (r) => serv(r), newest);
   const cardsC = sectionItems(cardsPool, (r) => servableRow(r, 45), newest);
   const [picked, goBig, tech, steals, places, cards] = await Promise.all([
@@ -35477,7 +35573,7 @@ async function buildShowcase() {
   cached = { at: Date.now(), sections };
   return sections;
 }
-var num11, tsOf, ageDays, priceOf, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
+var num11, tsOf, ageDays, priceOf2, mrpOf, pctOf, saveOf, servableRow, AFFILIATE_HOST, logoCache, LOGO_TTL_MS, poolCache, cityPoolCache, POOL_TTL_MS, TECH_CATS, FAMOUS, cached, SHOWCASE_TTL_MS, TECH_RX, TECH_BRAND_RX, ART_TRUST_MS, artTrust;
 var init_showcase = __esm({
   "server/home/showcase.ts"() {
     init_db();
@@ -35496,21 +35592,21 @@ var init_showcase = __esm({
       return Number.isFinite(t) ? t : 0;
     };
     ageDays = (r) => (Date.now() - tsOf(r.fetched_at)) / 864e5;
-    priceOf = (r) => num11(r.effective_price) ?? num11(r.mandatory_total) ?? 0;
+    priceOf2 = (r) => num11(r.effective_price) ?? num11(r.mandatory_total) ?? 0;
     mrpOf = (r) => num11(r.list_price) ?? 0;
     pctOf = (r) => {
-      const p = priceOf(r), m = mrpOf(r);
+      const p = priceOf2(r), m = mrpOf(r);
       if (m && m > p) return (m - p) / m;
       const stated = statedDiscountPct(r.attributes);
       return stated > 0 ? stated / 100 : 0;
     };
     saveOf = (r) => {
-      const p = priceOf(r), m = mrpOf(r);
+      const p = priceOf2(r), m = mrpOf(r);
       if (m && m > p) return m - p;
       const stated = statedDiscountPct(r.attributes);
       return stated > 0 ? Math.round(p * stated / 100) : 0;
     };
-    servableRow = (r, maxAgeDays = 14) => (r.validation_status || "") !== "INVALID" && !!r.seller_url && priceOf(r) > 0 && ageDays(r) <= maxAgeDays;
+    servableRow = (r, maxAgeDays = 14) => (r.validation_status || "") !== "INVALID" && !!r.seller_url && priceOf2(r) > 0 && ageDays(r) <= maxAgeDays;
     AFFILIATE_HOST = /linksredirect|cuelinks|ekaro|inrdeals|admitad|vcommission|linkinr|earnkaro|zaggle|optimisemedia|awin|adtraction|partnerize|webgains|dgm|impact|clk|redirect|try1second/i;
     logoCache = /* @__PURE__ */ new Map();
     LOGO_TTL_MS = 6 * 60 * 60 * 1e3;
@@ -37640,7 +37736,7 @@ async function ecomSlide() {
   const c = rows.filter((r2) => servableRow(r2, 14) && imageFromAttributes(r2.attributes) && pctOf(r2) >= 0.4).sort((a, b) => pctOf(b) - pctOf(a));
   const r = c[0];
   if (!r) return null;
-  const price = priceOf(r);
+  const price = priceOf2(r);
   const pct = Math.round(pctOf(r) * 100);
   return {
     id: `ecom-${r.id}`,
@@ -37733,7 +37829,7 @@ async function buildSectionBanners() {
       imageUrl: imageFromAttributes(r.attributes),
       link: "ecommerce",
       title: r.title,
-      subtitle: `${Math.round(pctOf(r) * 100)}% OFF \xB7 now \u20B9${priceOf(r).toLocaleString("en-IN")}`
+      subtitle: `${Math.round(pctOf(r) * 100)}% OFF \xB7 now \u20B9${priceOf2(r).toLocaleString("en-IN")}`
     });
   }
   if (out.length) sectionCache = { at: Date.now(), banners: out };
@@ -40040,8 +40136,8 @@ var init_routes = __esm({
       });
       const responses = gathered;
       const seenIds = /* @__PURE__ */ new Set();
-      const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
-      let all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf2(o) })).filter((x) => x.price > 0);
+      const priceOf3 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
+      let all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf3(o) })).filter((x) => x.price > 0);
       {
         const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
         const haveKey = new Set(all.map((x) => `${String(x.o.seller || "").toLowerCase()}|${String(x.o.title || "").toLowerCase()}`));
@@ -42856,9 +42952,9 @@ function splitCsvLine(line) {
 }
 function headerIndex(headers, key) {
   const wanted = HEADER_ALIASES[key] || [];
-  const norm4 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  const norm5 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
   for (const w of wanted) {
-    const i = norm4.findIndex((h) => h === w || h.startsWith(`${w} `));
+    const i = norm5.findIndex((h) => h === w || h.startsWith(`${w} `));
     if (i >= 0) return i;
   }
   return -1;
