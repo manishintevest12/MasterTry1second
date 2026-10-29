@@ -12,6 +12,7 @@
  */
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
+import { pushNotificationRow } from '../push/push';
 
 export type NotificationKind = 'price_drop' | 'admin';
 
@@ -68,6 +69,16 @@ export async function createNotification(i: NotificationInput): Promise<{ ok: bo
   const rows = await store.query<any>('SELECT id FROM notifications');
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info('Notifications', `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : ' (broadcast)'}`);
+  // Owner 29 Oct: real device push alongside the in-app row (image included).
+  // Fire-and-forget — the drawer stays the guaranteed channel.
+  pushNotificationRow({
+    userId: i.userId ?? null,
+    kind: String(i.kind),
+    title: String(i.title),
+    body: String(i.body),
+    image: i.image ?? null,
+    ctaUrl: i.ctaUrl ?? null,
+  });
   return { ok: true, id };
 }
 

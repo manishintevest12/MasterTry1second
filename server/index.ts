@@ -143,6 +143,8 @@ export async function createApp(): Promise<express.Express> {
       index: false, // '/' falls through to the SEO-enhanced catch-all below
       setHeaders: (res, filePath) => {
         if (filePath.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store, must-revalidate');
+        // The push worker must be re-fetched so a fix reaches devices immediately.
+        else if (filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-store, must-revalidate');
         else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       },
     }));

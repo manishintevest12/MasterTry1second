@@ -2261,6 +2261,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => { void refreshNotifications(); }, [refreshNotifications]);
   useEffect(() => { if (isNotificationsOpen) void refreshNotifications(); }, [isNotificationsOpen, refreshNotifications]);
   useEffect(() => { void refreshNotifications(); }, [authUser, refreshNotifications]);
+  // A device push that arrives while a tab is open refreshes the bell immediately,
+  // so the drawer never shows a stale unread count next to the system notification.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e?.data?.type === 't1s-push') void refreshNotifications();
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [refreshNotifications]);
   // Anonymous unread from localStorage (admin broadcasts)
   useEffect(() => {
     if (!authUser) {

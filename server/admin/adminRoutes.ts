@@ -24,6 +24,7 @@ import { listProfiles, saveProfile, deleteProfile, AFFILIATE_NETWORKS } from '..
 import { syncAutoDeals } from '../deals/acquisition';
 import { latestScores, runSpeedTest, scoreHistory } from './speedtest';
 import { listAllNotifications, createNotification, deactivateNotification, validateNotification } from '../notifications/notifications';
+import { pushStats, pushToAll } from '../push/push';
 import { log } from '../common/logger';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig } from '../common/cabDeeplink';
 import { runAcceptanceTests, persistAcceptance, acceptanceTotals } from '../registry/acceptanceRunner';
@@ -289,6 +290,30 @@ adminRouter.post('/notifications', async (req, res) => {
     res.json({ success: true, id: r.id });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not push notification' });
+  }
+});
+
+// ---- Device push: honest counters + a real test send (29 Oct) -------------------
+adminRouter.get('/push/stats', async (_req, res) => {
+  try {
+    res.json({ success: true, ...(await pushStats()) });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not read push stats' });
+  }
+});
+
+// Sends a REAL push to every active subscription so the admin can verify on device.
+adminRouter.post('/push/test', async (req, res) => {
+  try {
+    const b = req.body || {};
+    const title = String(b.title || 'Try1second test push').slice(0, 140);
+    const body = String(b.body || 'If you can see this with the picture below, device push is working.').slice(0, 400);
+    const image = b.image ? String(b.image) : null;
+    const r = await pushToAll({ title, body, image, ctaUrl: b.ctaUrl ? String(b.ctaUrl) : '/', kind: 'admin', tag: 't1s-test' });
+    audit(req, 'push.test', 'all', { ...r, title });
+    res.json({ success: true, ...r });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not send the test push' });
   }
 });
 

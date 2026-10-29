@@ -55,6 +55,7 @@ import { fixSpelling } from '../lens/spellFix';
 import { analyseDeal } from '../lens/dealScore';
 import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
 import { userNotifications, broadcastNotifications, markRead, markAllRead } from '../notifications/notifications';
+import { pushPublicKey, saveWebSubscription, saveFcmToken, removeSubscription } from '../push/push';
 import { getCatalogueState, recordProvenance, saveItemToCatalogue } from '../../src/server/catalogueStore';
 import { log } from '../common/logger';
 import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
@@ -2059,6 +2060,60 @@ apiRouter.get('/notifications', authMiddleware, async (req, res) => {
     res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e?.message || 'Could not load notifications' });
+  }
+});
+
+// ---- Device push (29 Oct, owner request: real push with image) ----------------
+// The VAPID public key the browser needs for pushManager.subscribe(). Public by
+// design (it is a public key), stable across restarts because it is generated once.
+apiRouter.get('/push/key', async (_req, res) => {
+  try {
+    const publicKey = await pushPublicKey();
+    res.json({ success: true, publicKey });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Push is not available' });
+  }
+});
+
+// Store a browser/PWA subscription. Signed-in users also get their own price-drop
+// pushes; anonymous visitors still receive admin broadcasts on that device.
+apiRouter.post('/push/subscribe', authMiddleware, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const r = await saveWebSubscription({
+      userId: user?.id ?? null,
+      subscription: req.body?.subscription || req.body || {},
+      ua: req.headers['user-agent'] || null,
+    });
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    res.json({ success: true, id: r.id ?? null });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save the subscription' });
+  }
+});
+
+// Android app: register the Firebase device token (used once FCM credentials exist).
+apiRouter.post('/push/device', authMiddleware, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const r = await saveFcmToken({
+      userId: user?.id ?? null,
+      token: String(req.body?.token || ''),
+      ua: req.headers['user-agent'] || null,
+    });
+    if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not save the device token' });
+  }
+});
+
+apiRouter.post('/push/unsubscribe', authMiddleware, async (req, res) => {
+  try {
+    const removed = await removeSubscription(String(req.body?.endpoint || req.body?.token || ''));
+    res.json({ success: true, removed });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Could not unsubscribe' });
   }
 });
 

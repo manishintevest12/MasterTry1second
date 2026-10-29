@@ -1,6 +1,7 @@
-import React from 'react';
-import { Bell, X, TrendingDown, Megaphone, CheckCheck, ExternalLink, RefreshCw, ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell, X, TrendingDown, Megaphone, CheckCheck, ExternalLink, RefreshCw, ArrowRight, BellRing, BellOff, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { enablePush, disablePush, pushStatus, type PushSupport } from '../utils/webPush';
 
 /**
  * Notifications drawer — one hub, two producers:
@@ -29,6 +30,38 @@ export const NotificationsDrawer: React.FC = () => {
   if (!isNotificationsOpen) return null;
 
   const trackedItems = items.filter((it) => trackedItemIds.includes(it.id));
+
+  // Device push (owner 29 Oct): the bell is where alerts live, so the "turn on device
+  // alerts" control sits right under the header — one tap, browser permission, done.
+  const [pushState, setPushState] = useState<PushSupport>('default');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void pushStatus().then(setPushState).catch(() => setPushState('unsupported'));
+  }, [isNotificationsOpen]);
+
+  const handleEnablePush = async () => {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const r = await enablePush();
+      setPushState(r.status);
+      if (!r.ok) setPushError(r.error || 'Could not turn on device alerts');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setPushBusy(true);
+    try {
+      await disablePush();
+      setPushState(await pushStatus().catch(() => 'default'));
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const timeAgo = (iso: string | null) => {
     if (!iso) return 'just now';
@@ -102,6 +135,54 @@ export const NotificationsDrawer: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Device alerts — the bell is the alerts home, so the switch lives here */}
+        {pushState !== 'unsupported' && pushState !== 'insecure' && (
+          <div className="mt-4">
+            {pushState === 'subscribed' ? (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-emerald-100 bg-emerald-50/60">
+                <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800">
+                  <BellRing className="w-3.5 h-3.5" />
+                  Device alerts on
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleDisablePush()}
+                  disabled={pushBusy}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 underline underline-offset-2 cursor-pointer disabled:opacity-60"
+                >
+                  {pushBusy ? 'Turning off…' : 'Turn off'}
+                </button>
+              </div>
+            ) : pushState === 'denied' ? (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50">
+                <BellOff className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Device alerts are blocked for this site. Allow notifications in your browser settings, then reopen this bell.
+                </p>
+              </div>
+            ) : (
+              <div className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-slate-900 leading-tight">Get alerts on this device</p>
+                    <p className="text-[10px] text-slate-500 leading-snug mt-0.5">Price drops land even when the site is closed.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleEnablePush()}
+                    disabled={pushBusy}
+                    className="shrink-0 inline-flex items-center justify-center gap-1 px-3 min-h-[34px] rounded-lg bg-red-600 text-white text-[11px] font-bold hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-70"
+                  >
+                    {pushBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <BellRing className="w-3 h-3" />}
+                    {pushBusy ? 'On…' : 'Enable'}
+                  </button>
+                </div>
+                {pushError && <p className="mt-1.5 text-[10px] text-red-600 leading-snug">{pushError}</p>}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Notification feed */}
         <div className="mt-4 space-y-2.5">

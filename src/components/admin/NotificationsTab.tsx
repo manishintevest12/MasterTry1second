@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Bell, Trash2, Send, RefreshCw, Megaphone } from 'lucide-react';
+import { Bell, Trash2, Send, RefreshCw, Megaphone, Smartphone, BellRing } from 'lucide-react';
 
 /**
  * Admin → Notifications: push announcements straight into every visitor's
@@ -32,6 +32,12 @@ export const NotificationsTab: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ title: '', body: '', image: '', ctaUrl: '', userId: '' });
 
+  // Device push (owner 29 Oct): real counters from push_subscriptions + a live test send,
+  // so "did it actually reach a phone?" is answered by the owner's own device.
+  const [pushStats, setPushStats] = useState<{ web: number; android: number; inactive: number; sent24h: number; vapidReady: boolean } | null>(null);
+  const [testForm, setTestForm] = useState({ title: 'Try1second test push', body: 'Device push is working. This is the big picture below.', image: '' });
+  const [testBusy, setTestBusy] = useState(false);
+
   const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
   const load = useCallback(async () => {
@@ -48,7 +54,42 @@ export const NotificationsTab: React.FC = () => {
     }
   }, [token]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadPushStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/push/stats', { headers });
+      const data = await res.json();
+      if (data?.success) setPushStats({ web: data.web || 0, android: data.android || 0, inactive: data.inactive || 0, sent24h: data.sent24h || 0, vapidReady: Boolean(data.vapidReady) });
+    } catch {
+      setPushStats(null);
+    }
+  }, [token]);
+
+  useEffect(() => { void load(); void loadPushStats(); }, [load, loadPushStats]);
+
+  const sendTestPush = async () => {
+    setTestBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch('/api/admin/push/test', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ title: testForm.title.trim(), body: testForm.body.trim(), image: testForm.image.trim() || null }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Could not send the test push');
+      setMsg({
+        ok: data.sent > 0,
+        text: data.sent > 0
+          ? `Sent to ${data.sent} device${data.sent === 1 ? '' : 's'}${data.skipped ? ` · ${data.skipped} android device${data.skipped === 1 ? '' : 's'} waiting for Firebase setup` : ''}.`
+          : `No device is subscribed yet${data.skipped ? ` (${data.skipped} android token waiting for Firebase setup)` : ''} — open the bell on a phone and tap Enable.`,
+      });
+      await loadPushStats();
+    } catch (e: any) {
+      setMsg({ ok: false, text: e?.message || 'Could not send the test push' });
+    } finally {
+      setTestBusy(false);
+    }
+  };
 
   const push = async () => {
     if (!form.title.trim() || !form.body.trim()) {
@@ -118,6 +159,67 @@ export const NotificationsTab: React.FC = () => {
         </div>
         <button onClick={() => void load()} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 cursor-pointer" title="Reload">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      {/* Device push: honest counters + a real test send */}
+      <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+              <Smartphone className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">Device push</h4>
+              <p className="text-[11px] text-slate-500">Alerts that reach the phone even when the site is closed.</p>
+            </div>
+          </div>
+          <button onClick={() => void loadPushStats()} className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 cursor-pointer" title="Refresh device counts">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { k: 'Browser / PWA', v: pushStats?.web ?? 0 },
+            { k: 'Android app', v: pushStats?.android ?? 0 },
+            { k: 'Delivered 24h', v: pushStats?.sent24h ?? 0 },
+            { k: 'Retired', v: pushStats?.inactive ?? 0 },
+          ].map((c) => (
+            <div key={c.k} className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-100">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{c.k}</p>
+              <p className="text-sm font-bold text-slate-900 font-mono">{c.v}</p>
+            </div>
+          ))}
+        </div>
+
+        {pushStats && !pushStats.vapidReady && (
+          <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 leading-snug">
+            Web push keys are not ready on the server — run npm install there, then reload this page.
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Test title</label>
+            <input className={inputCls} value={testForm.title} maxLength={140} onChange={(e) => setTestForm((f) => ({ ...f, title: e.target.value }))} />
+          </div>
+          <div>
+            <label className={labelCls}>Image URL (optional, https)</label>
+            <input className={inputCls} value={testForm.image} placeholder="https://…/banner.jpg" onChange={(e) => setTestForm((f) => ({ ...f, image: e.target.value }))} />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Test message</label>
+          <input className={inputCls} value={testForm.body} maxLength={400} onChange={(e) => setTestForm((f) => ({ ...f, body: e.target.value }))} />
+        </div>
+        <button
+          onClick={() => void sendTestPush()}
+          disabled={testBusy}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-60"
+        >
+          {testBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <BellRing className="w-3.5 h-3.5" />}
+          {testBusy ? 'Sending…' : 'Send test push'}
         </button>
       </div>
 

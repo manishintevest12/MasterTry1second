@@ -15664,9 +15664,9 @@ var init_flights = __esm({
             const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
             const ref = spiceJetSearchUrl(fromA.code, toA.code, dep);
             let token = "";
-            const cached2 = sjTokenCache.get("token");
-            if (cached2 && cached2.expires > Date.now()) {
-              token = cached2.value;
+            const cached3 = sjTokenCache.get("token");
+            if (cached3 && cached3.expires > Date.now()) {
+              token = cached3.value;
             } else {
               let tBody = "";
               let tStatus = 0;
@@ -22519,8 +22519,8 @@ ${v}\r
   };
   async function mintAwsWafToken(url, opts = {}) {
     const host = new URL(url).hostname;
-    const cached2 = tokenCache.get(host);
-    if (cached2 && Date.now() - cached2.mintedAt < CACHE_TTL_MS) return cached2.token;
+    const cached3 = tokenCache.get(host);
+    if (cached3 && Date.now() - cached3.mintedAt < CACHE_TTL_MS) return cached3.token;
     const t0 = Date.now();
     const r = await cffiFetch2(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { "User-Agent": UA2, "Accept-Language": "en-IN,en;q=0.9" } });
     const html = r.body || "";
@@ -28268,9 +28268,9 @@ function cjDeepUrl(base, deepUrl) {
   return `${base}${sep}url=${encodeURIComponent(deepUrl)}`;
 }
 async function resolveHop(linkinrUrl, campaignId) {
-  const cached2 = hops.get(campaignId);
+  const cached3 = hops.get(campaignId);
   const now = Date.now();
-  if (cached2 && now - cached2.at < (cached2.ok ? HOP_TTL_MS : FAIL_TTL_MS)) return cached2;
+  if (cached3 && now - cached3.at < (cached3.ok ? HOP_TTL_MS : FAIL_TTL_MS)) return cached3;
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 6e3);
@@ -30607,8 +30607,8 @@ function departmentSeedQueries() {
   return [...new Set(DEPARTMENTS.map((d) => d.acquisition))];
 }
 function otherCategoryRe(dept) {
-  const cached2 = OTHER.get(dept.id);
-  if (cached2) return cached2;
+  const cached3 = OTHER.get(dept.id);
+  if (cached3) return cached3;
   const alts = [];
   for (const d of DEPARTMENTS) {
     if (d.id === dept.id || !d.product) continue;
@@ -32797,8 +32797,8 @@ function filterRowsByAge(rows, maxAgeSec, now = Date.now()) {
   return rows.filter((r) => (now - new Date(r.fetched_at).getTime()) / 1e3 < maxAgeSec && r.validation_status !== "INVALID");
 }
 async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, fallbackMaxAgeSec) {
-  const STOPWORDS2 = /* @__PURE__ */ new Set(["to", "from", "in", "at", "for", "the", "and", "near", "me", "on", "of", "a", "an", "best", "cheap", "cheapest", "price", "under", "hotels", "hotel", "bus", "buses", "flights", "movies", "tickets"]);
-  const queryTerms = String(parsed.rawQuery || input.query || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS2.has(w));
+  const STOPWORDS3 = /* @__PURE__ */ new Set(["to", "from", "in", "at", "for", "the", "and", "near", "me", "on", "of", "a", "an", "best", "cheap", "cheapest", "price", "under", "hotels", "hotel", "bus", "buses", "flights", "movies", "tickets"]);
+  const queryTerms = String(parsed.rawQuery || input.query || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !STOPWORDS3.has(w));
   let rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40, queryTerms });
   if (!rows.length) rows = await findCatalogueOffers(vertical, { pincode: input.pincode, city: input.city, limit: 40 });
   const now = Date.now();
@@ -37098,8 +37098,8 @@ function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
       count: rows.length
     };
   }
-  const distinctSellers = new Set(priced.map((r) => (r.provider || "").toLowerCase()).filter(Boolean));
-  const spread = priced.length > 1 && distinctSellers.size > 1 ? priced[priced.length - 1].price - best.price : 0;
+  const distinctSellers2 = new Set(priced.map((r) => (r.provider || "").toLowerCase()).filter(Boolean));
+  const spread = priced.length > 1 && distinctSellers2.size > 1 ? priced[priced.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money2(spread, best.currency)}.` : "";
   return {
     reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
@@ -37482,6 +37482,286 @@ var init_dealScore = __esm({
   }
 });
 
+// server/push/push.ts
+async function webpush() {
+  if (!libTried) {
+    libTried = true;
+    try {
+      const mod = await import("web-push");
+      webpushLib = mod?.default || mod;
+    } catch (e2) {
+      webpushLib = null;
+      log.warn("Push", `web-push is not installed in this deployment (${clip(e2?.message || e2, 80)}) \u2014 run npm install`);
+    }
+  }
+  return webpushLib;
+}
+async function deliver(sub, body) {
+  if (transport) return transport(sub, body, { TTL: 3600, urgency: "high" });
+  const lib = await webpush();
+  if (!lib) throw Object.assign(new Error("push library missing"), { statusCode: 503 });
+  return lib.sendNotification(sub, body, { TTL: 3600, urgency: "high" });
+}
+async function vapidKeys() {
+  if (cached2) return cached2;
+  const envPub = (process.env.VAPID_PUBLIC_KEY || "").trim();
+  const envPriv = (process.env.VAPID_PRIVATE_KEY || "").trim();
+  if (envPub && envPriv) {
+    cached2 = { publicKey: envPub, privateKey: envPriv };
+    return cached2;
+  }
+  try {
+    const rows = await getStore().query("SELECT v FROM app_settings WHERE k = ?", [VAPID_KEY]);
+    if (rows.length && rows[0].v) {
+      const parsed = JSON.parse(rows[0].v);
+      if (parsed?.publicKey && parsed?.privateKey) {
+        cached2 = { publicKey: String(parsed.publicKey), privateKey: String(parsed.privateKey) };
+        return cached2;
+      }
+    }
+  } catch (e2) {
+    log.debug("Push", `VAPID read skipped: ${clip(e2?.message || e2, 80)}`);
+  }
+  const lib = await webpush();
+  if (!lib) throw new Error("Push library is not installed on the server (run npm install)");
+  const fresh = lib.generateVAPIDKeys();
+  cached2 = { publicKey: fresh.publicKey, privateKey: fresh.privateKey };
+  try {
+    await getStore().execute(
+      "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+      [VAPID_KEY, JSON.stringify(cached2)]
+    );
+    log.info("Push", "Generated and stored a fresh VAPID keypair (web push ready)");
+  } catch (e2) {
+    log.warn("Push", `Could not persist VAPID keys: ${clip(e2?.message || e2, 80)}`);
+  }
+  return cached2;
+}
+async function ensureVapid() {
+  const { publicKey, privateKey } = await vapidKeys();
+  if (!configured) {
+    const lib = await webpush();
+    if (!lib) throw new Error("Push library is not installed on the server (run npm install)");
+    lib.setVapidDetails(VAPID_SUBJECT, publicKey, privateKey);
+    configured = true;
+  }
+  return publicKey;
+}
+async function pushPublicKey() {
+  return ensureVapid();
+}
+async function upsertSubscription(input) {
+  const store3 = getStore();
+  const existing = await store3.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
+  if (existing.length) {
+    const id = Number(existing[0].id);
+    await store3.execute(
+      `UPDATE push_subscriptions SET user_id = COALESCE(?, user_id), p256dh = COALESCE(?, p256dh),
+         auth = COALESCE(?, auth), ua = COALESCE(?, ua), is_active = 1, fail_count = 0 WHERE id = ?`,
+      [input.userId ?? null, input.p256dh ?? null, input.auth ?? null, input.ua ?? null, id]
+    );
+    return id;
+  }
+  const r = await store3.execute(
+    `INSERT INTO push_subscriptions (user_id, kind, endpoint, endpoint_hash, p256dh, auth, ua, is_active, fail_count)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)`,
+    [input.userId ?? null, input.kind, input.endpoint, input.hash, input.p256dh ?? null, input.auth ?? null, input.ua ?? null]
+  );
+  return Number(r?.insertId || 0);
+}
+async function saveWebSubscription(input) {
+  const endpoint = clip(input.subscription?.endpoint, 2e3);
+  const p256dh = clip(input.subscription?.keys?.p256dh, 255);
+  const auth = clip(input.subscription?.keys?.auth, 255);
+  if (!/^https:\/\//i.test(endpoint)) return { ok: false, error: "Invalid push endpoint" };
+  if (!p256dh || !auth) return { ok: false, error: "Push subscription is missing its keys" };
+  const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;
+  const id = await upsertSubscription({
+    kind: "webpush",
+    endpoint,
+    hash: sha256(endpoint),
+    p256dh,
+    auth,
+    ua: clip(input.ua, 255) || null,
+    userId
+  });
+  return { ok: true, id };
+}
+async function saveFcmToken(input) {
+  const token = clip(input.token, 1e3);
+  if (token.length < 20) return { ok: false, error: "Invalid device token" };
+  const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;
+  await upsertSubscription({
+    kind: "fcm",
+    endpoint: token,
+    hash: sha256(`fcm:${token}`),
+    ua: clip(input.ua, 255) || null,
+    userId
+  });
+  return { ok: true };
+}
+async function removeSubscription(rawEndpoint) {
+  const endpoint = clip(rawEndpoint, 2e3);
+  if (!endpoint) return 0;
+  const hashes = [sha256(endpoint), sha256(`fcm:${endpoint}`)];
+  const store3 = getStore();
+  const r = await store3.execute(
+    `UPDATE push_subscriptions SET is_active = 0 WHERE endpoint_hash IN (?, ?) AND is_active = 1`,
+    hashes
+  );
+  return Number(r?.affectedRows || 0);
+}
+function buildPushBody(payload) {
+  const body = JSON.stringify({
+    title: clip(payload.title, 140),
+    body: clip(payload.body, 400),
+    image: httpsImage(payload.image),
+    icon: httpsImage(payload.icon) || "https://try1second.com/favicon-192.png",
+    badge: httpsImage(payload.badge) || "https://try1second.com/favicon-96.png",
+    ctaUrl: payload.ctaUrl ? String(payload.ctaUrl).slice(0, 500) : "/",
+    tag: clip(payload.tag || "try1second", 60),
+    kind: clip(payload.kind || "admin", 30),
+    url: payload.url ? String(payload.url).slice(0, 500) : null
+  });
+  if (body.length <= 3600) return body;
+  return JSON.stringify({ ...JSON.parse(body), image: null });
+}
+async function sendOne(row, payload) {
+  const store3 = getStore();
+  const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
+  if (row.kind === "fcm") {
+    log.debug("Push", `fcm transport not configured yet (subscription ${row.id}) \u2014 skipped`);
+    return "skip";
+  }
+  const body = buildPushBody(payload);
+  try {
+    await deliver(
+      { endpoint: row.endpoint, keys: { p256dh: String(row.p256dh || ""), auth: String(row.auth || "") } },
+      body
+    );
+    await store3.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+    return "ok";
+  } catch (e2) {
+    const code = Number(e2?.statusCode || 0);
+    if (code === 404 || code === 410) {
+      await store3.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      return "gone";
+    }
+    const fails = Number(row.fail_count || 0) + 1;
+    await store3.execute(
+      "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
+      [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
+    );
+    log.warn("Push", `send failed (${code || "network"}): ${clip(e2?.message || e2, 120)}`);
+    return "failed";
+  }
+}
+async function sendTo(rows, payload) {
+  const out = { sent: 0, gone: 0, failed: 0, skipped: 0 };
+  await ensureVapid().catch(() => null);
+  for (let i = 0; i < rows.length; i += 20) {
+    const batch = rows.slice(i, i + 20);
+    const res = await Promise.all(batch.map((r) => sendOne(r, payload)));
+    for (const r of res) {
+      if (r === "ok") out.sent++;
+      else if (r === "gone") out.gone++;
+      else if (r === "skip") out.skipped++;
+      else out.failed++;
+    }
+  }
+  return out;
+}
+async function pushToUser(userId, payload) {
+  try {
+    const rows = await getStore().query(
+      "SELECT id, user_id, kind, endpoint, p256dh, auth, fail_count FROM push_subscriptions WHERE is_active = 1 AND user_id = ?",
+      [Number(userId)]
+    );
+    if (!rows.length) return { sent: 0, gone: 0, failed: 0, skipped: 0 };
+    return await sendTo(rows, payload);
+  } catch (e2) {
+    log.warn("Push", `pushToUser skipped: ${clip(e2?.message || e2, 100)}`);
+    return { sent: 0, gone: 0, failed: 0, skipped: 0 };
+  }
+}
+async function pushToAll(payload) {
+  try {
+    const rows = await getStore().query(
+      "SELECT id, user_id, kind, endpoint, p256dh, auth, fail_count FROM push_subscriptions WHERE is_active = 1 ORDER BY id ASC LIMIT 5000",
+      []
+    );
+    if (!rows.length) return { sent: 0, gone: 0, failed: 0, skipped: 0 };
+    return await sendTo(rows, payload);
+  } catch (e2) {
+    log.warn("Push", `pushToAll skipped: ${clip(e2?.message || e2, 100)}`);
+    return { sent: 0, gone: 0, failed: 0, skipped: 0 };
+  }
+}
+function pushNotificationRow(n) {
+  const payload = {
+    title: n.title,
+    body: n.body,
+    image: n.image || null,
+    ctaUrl: n.ctaUrl || "/",
+    tag: `t1s-${n.kind || "admin"}`,
+    kind: n.kind || "admin"
+  };
+  const target = n.userId == null ? null : Number(n.userId);
+  void (target ? pushToUser(target, payload) : pushToAll(payload)).then((r) => {
+    if (r.sent || r.gone || r.failed) {
+      log.info("Push", `delivered=${r.sent} gone=${r.gone} failed=${r.failed} skipped=${r.skipped} (${n.kind || "admin"})`);
+    }
+  }).catch(() => null);
+}
+async function pushStats() {
+  const store3 = getStore();
+  const dayAgo = new Date(Date.now() - 24 * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
+  const rows = await store3.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
+  let web = 0;
+  let android = 0;
+  let inactive = 0;
+  let sent24h = 0;
+  for (const r of rows) {
+    const active = Number(r.is_active) === 1;
+    if (!active) {
+      inactive++;
+      continue;
+    }
+    if (String(r.kind) === "fcm") android++;
+    else web++;
+    if (r.last_ok_at && String(r.last_ok_at).slice(0, 19).replace("T", " ") >= dayAgo) sent24h++;
+  }
+  let vapidReady = false;
+  try {
+    vapidReady = Boolean(await pushPublicKey());
+  } catch {
+    vapidReady = false;
+  }
+  return { web, android, inactive, sent24h, vapidReady };
+}
+var import_crypto30, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip, httpsImage;
+var init_push = __esm({
+  "server/push/push.ts"() {
+    import_crypto30 = __toESM(require("crypto"), 1);
+    init_db();
+    init_logger();
+    webpushLib = null;
+    libTried = false;
+    VAPID_KEY = "vapid_keys";
+    VAPID_SUBJECT = process.env.VAPID_SUBJECT || "mailto:alerts@try1second.com";
+    MAX_FAILS = 5;
+    cached2 = null;
+    configured = false;
+    transport = null;
+    sha256 = (s) => import_crypto30.default.createHash("sha256").update(s).digest("hex");
+    clip = (s, n) => String(s ?? "").trim().slice(0, n);
+    httpsImage = (raw) => {
+      const s = String(raw || "").trim();
+      return /^https:\/\//i.test(s) ? s.slice(0, 1e3) : null;
+    };
+  }
+});
+
 // server/notifications/notifications.ts
 function validateNotification(i) {
   const title = String(i.title || "").trim();
@@ -37520,6 +37800,14 @@ async function createNotification(i) {
   const rows = await store3.query("SELECT id FROM notifications");
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info("Notifications", `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : " (broadcast)"}`);
+  pushNotificationRow({
+    userId: i.userId ?? null,
+    kind: String(i.kind),
+    title: String(i.title),
+    body: String(i.body),
+    image: i.image ?? null,
+    ctaUrl: i.ctaUrl ?? null
+  });
   return { ok: true, id };
 }
 function priceDropCopy(a, price, seller) {
@@ -37628,6 +37916,7 @@ var init_notifications = __esm({
   "server/notifications/notifications.ts"() {
     init_db();
     init_logger();
+    init_push();
     httpsOnly = (raw) => {
       const s = String(raw || "").trim();
       if (!s) return null;
@@ -38806,6 +39095,78 @@ var init_warm = __esm({
   }
 });
 
+// server/catalogue/productCatalogue.ts
+var productCatalogue_exports = {};
+__export(productCatalogue_exports, {
+  findProductCatalogueRows: () => findProductCatalogueRows,
+  productCatalogueTerms: () => productCatalogueTerms
+});
+function productCatalogueTerms(query, max = 3) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const raw of String(query || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)) {
+    const w = raw.trim();
+    if (w.length < 3) continue;
+    if (STOPWORDS2.has(w)) continue;
+    if (seen.has(w)) continue;
+    seen.add(w);
+    out.push(w);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+async function findProductCatalogueRows(vertical, opts, lookup4 = findCatalogueOffers) {
+  const limit = opts.limit ?? 80;
+  const base = { pincode: opts.pincode, city: opts.city, limit };
+  const terms = productCatalogueTerms(opts.query);
+  let targeted = [];
+  if (terms.length) {
+    targeted = await Promise.resolve(lookup4(vertical, { ...base, queryTerms: terms })).catch(() => []);
+  }
+  if (targeted.length >= 2 && distinctSellers(targeted) >= 2) return targeted;
+  const plain = await Promise.resolve(lookup4(vertical, base)).catch(() => []);
+  if (!targeted.length) return plain;
+  const seen = new Set(targeted.map((r) => String(r.id)));
+  return [...targeted, ...plain.filter((r) => !seen.has(String(r.id)))];
+}
+var STOPWORDS2, distinctSellers;
+var init_productCatalogue = __esm({
+  "server/catalogue/productCatalogue.ts"() {
+    init_catalogueService();
+    STOPWORDS2 = /* @__PURE__ */ new Set([
+      "the",
+      "and",
+      "for",
+      "with",
+      "from",
+      "new",
+      "buy",
+      "online",
+      "best",
+      "price",
+      "prices",
+      "cheap",
+      "cheapest",
+      "deal",
+      "deals",
+      "offer",
+      "offers",
+      "india",
+      "indian",
+      "mobile",
+      "smartphone",
+      "smartphones",
+      "phone",
+      "phones",
+      "com",
+      "www",
+      "http",
+      "https"
+    ]);
+    distinctSellers = (rows) => new Set(rows.map((r) => String(r.seller || r.vendor || "").toLowerCase().trim()).filter(Boolean)).size;
+  }
+});
+
 // server/marketing/partners.ts
 var partners_exports = {};
 __export(partners_exports, {
@@ -39298,6 +39659,103 @@ var init_promoOffers = __esm({
     init_db();
     PROMO_KINDS = ["coupon", "offer", "cashback"];
     ensured5 = false;
+  }
+});
+
+// server/home/bannerSlots.ts
+var bannerSlots_exports = {};
+__export(bannerSlots_exports, {
+  BANNER_SECTIONS: () => BANNER_SECTIONS,
+  DEFAULT_BANNER_SLOTS: () => DEFAULT_BANNER_SLOTS,
+  bannerSlotFor: () => bannerSlotFor,
+  getBannerSlots: () => getBannerSlots,
+  mergeBannerSlots: () => mergeBannerSlots,
+  saveBannerSlots: () => saveBannerSlots
+});
+function mergeBannerSlots(stored) {
+  const out = {};
+  let raw = stored;
+  if (typeof stored === "string") {
+    try {
+      raw = JSON.parse(stored);
+    } catch {
+      raw = null;
+    }
+  }
+  for (const section of BANNER_SECTIONS) {
+    const base = DEFAULT_BANNER_SLOTS[section];
+    const patch = raw && typeof raw === "object" ? raw[section] : null;
+    out[section] = {
+      ...base,
+      everyN: patch && patch.everyN !== void 0 ? clampEveryN(patch.everyN) : base.everyN,
+      enabled: patch && patch.enabled !== void 0 ? Boolean(patch.enabled) : base.enabled,
+      fallbackToHome: patch && patch.fallbackToHome !== void 0 ? Boolean(patch.fallbackToHome) : base.fallbackToHome
+    };
+  }
+  return out;
+}
+async function getBannerSlots() {
+  try {
+    const rows = await getStore().query("SELECT v FROM app_settings WHERE k = ?", [SETTINGS_KEY]);
+    return mergeBannerSlots(rows[0]?.v ?? null);
+  } catch (e2) {
+    log.debug("BannerSlots", `settings read skipped: ${String(e2?.message || e2).slice(0, 60)}`);
+    return mergeBannerSlots(null);
+  }
+}
+async function saveBannerSlots(patch) {
+  const current = await getBannerSlots();
+  const next = mergeBannerSlots({ ...current, ...patch && typeof patch === "object" ? patch : {} });
+  await getStore().execute(
+    "INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)",
+    [SETTINGS_KEY, JSON.stringify(next)]
+  );
+  return next;
+}
+async function bannerSlotFor(section) {
+  const all = await getBannerSlots();
+  return all[BANNER_SECTIONS.includes(section) ? section : "home"];
+}
+var BANNER_SECTIONS, DEFAULT_BANNER_SLOTS, SETTINGS_KEY, MIN_EVERY_N, MAX_EVERY_N, clampEveryN;
+var init_bannerSlots = __esm({
+  "server/home/bannerSlots.ts"() {
+    init_db();
+    init_logger();
+    BANNER_SECTIONS = ["home", "quickapps", "rewards"];
+    DEFAULT_BANNER_SLOTS = {
+      home: {
+        section: "home",
+        label: "Home",
+        where: "Wide strip between home sections",
+        everyN: 0,
+        fallbackToHome: false,
+        enabled: true
+      },
+      quickapps: {
+        section: "quickapps",
+        label: "Quick Apps",
+        where: "Inside the Quick Apps results grid, after every N apps",
+        everyN: 12,
+        fallbackToHome: true,
+        enabled: true
+      },
+      rewards: {
+        section: "rewards",
+        label: "Rewards",
+        where: "Inside Rewards lists (top picks, coupons, offers), after every N results",
+        everyN: 12,
+        fallbackToHome: true,
+        enabled: true
+      }
+    };
+    SETTINGS_KEY = "banner_slots";
+    MIN_EVERY_N = 3;
+    MAX_EVERY_N = 60;
+    clampEveryN = (n) => {
+      const v = Math.round(Number(n) || 0);
+      if (!Number.isFinite(v) || v <= 0) return 0;
+      return Math.min(MAX_EVERY_N, Math.max(MIN_EVERY_N, v));
+    };
   }
 });
 
@@ -39885,7 +40343,7 @@ async function signInGoogleUser(claims) {
     rows = await store3.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
-  const token = import_crypto30.default.randomBytes(32).toString("hex");
+  const token = import_crypto31.default.randomBytes(32).toString("hex");
   await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -39960,7 +40418,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path6, import_express, import_crypto30, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path6, import_express, import_crypto31, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -39985,7 +40443,7 @@ var init_routes = __esm({
     init_productImage();
     init_otpService();
     init_firebaseAuth();
-    import_crypto30 = __toESM(require("crypto"), 1);
+    import_crypto31 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
@@ -40009,6 +40467,7 @@ var init_routes = __esm({
     init_dealScore();
     init_priceAlerts();
     init_notifications();
+    init_push();
     init_catalogueStore();
     init_logger();
     init_curlCffiFetch();
@@ -40942,11 +41401,11 @@ var init_routes = __esm({
       const priceOf3 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0;
       let all = responses.flatMap((r) => r.results || []).filter((o) => !seenIds.has(String(o.id)) && seenIds.add(String(o.id))).map((o) => ({ o, price: priceOf3(o) })).filter((x) => x.price > 0);
       {
-        const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        const { findProductCatalogueRows: findProductCatalogueRows2 } = await Promise.resolve().then(() => (init_productCatalogue(), productCatalogue_exports));
         const haveKey = new Set(all.map((x) => `${String(x.o.seller || "").toLowerCase()}|${String(x.o.title || "").toLowerCase()}`));
         const now = Date.now();
         for (const v of ["ecommerce", "grocery"]) {
-          const rows = await findCatalogueOffers2(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+          const rows = await findProductCatalogueRows2(v, { query: lensQuery, pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
           for (const r of rows) {
             const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
             const title = String(r.title || "");
@@ -41052,11 +41511,11 @@ var init_routes = __esm({
       }
       let floorOnly = false;
       if (!offers.length) {
-        const { findCatalogueOffers: findCatalogueOffers2 } = await Promise.resolve().then(() => (init_catalogueService(), catalogueService_exports));
+        const { findProductCatalogueRows: findProductCatalogueRows2 } = await Promise.resolve().then(() => (init_productCatalogue(), productCatalogue_exports));
         const floor = [];
         const floorSellers = /* @__PURE__ */ new Set();
         for (const v of ["ecommerce", "grocery"]) {
-          const rows = await findCatalogueOffers2(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+          const rows = await findProductCatalogueRows2(v, { query: lensQuery, pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
           for (const r of rows) {
             const title = String(r.title || "");
             const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
@@ -41240,6 +41699,50 @@ var init_routes = __esm({
         res.json({ success: true, signedIn: false, items: await broadcastNotifications(), unread: 0 });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not load notifications" });
+      }
+    });
+    apiRouter.get("/push/key", async (_req, res) => {
+      try {
+        const publicKey = await pushPublicKey();
+        res.json({ success: true, publicKey });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Push is not available" });
+      }
+    });
+    apiRouter.post("/push/subscribe", authMiddleware, async (req, res) => {
+      try {
+        const user = req.user;
+        const r = await saveWebSubscription({
+          userId: user?.id ?? null,
+          subscription: req.body?.subscription || req.body || {},
+          ua: req.headers["user-agent"] || null
+        });
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        res.json({ success: true, id: r.id ?? null });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save the subscription" });
+      }
+    });
+    apiRouter.post("/push/device", authMiddleware, async (req, res) => {
+      try {
+        const user = req.user;
+        const r = await saveFcmToken({
+          userId: user?.id ?? null,
+          token: String(req.body?.token || ""),
+          ua: req.headers["user-agent"] || null
+        });
+        if (!r.ok) return res.status(400).json({ success: false, error: r.error });
+        res.json({ success: true });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save the device token" });
+      }
+    });
+    apiRouter.post("/push/unsubscribe", authMiddleware, async (req, res) => {
+      try {
+        const removed = await removeSubscription(String(req.body?.endpoint || req.body?.token || ""));
+        res.json({ success: true, removed });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not unsubscribe" });
       }
     });
     apiRouter.post("/notifications/read", authMiddleware, requireAuth, async (req, res) => {
@@ -41916,7 +42419,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store3.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto30.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -41924,7 +42427,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto30.default.randomBytes(32).toString("hex");
+      const token = import_crypto31.default.randomBytes(32).toString("hex");
       await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -41984,13 +42487,16 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
     apiRouter.get("/home-banners", async (req, res) => {
       try {
         const section = String(req.query?.section || "home");
+        const { bannerSlotFor: bannerSlotFor2 } = await Promise.resolve().then(() => (init_bannerSlots(), bannerSlots_exports));
+        const slot = await bannerSlotFor2(section).catch(() => null);
+        const meta = { everyN: slot?.everyN ?? 0, enabled: slot?.enabled !== false, fallbackToHome: slot?.fallbackToHome !== false };
         if (section !== "home") {
           const banners2 = await cachedSection(`section-banners:${section}`, () => buildSectionBannersOnly(section));
-          res.json({ success: true, banners: banners2 });
+          res.json({ success: true, banners: banners2, slot: meta });
           return;
         }
         const banners = await cachedSection("home:section-banners", buildHomeBannersList);
-        res.json({ success: true, banners });
+        res.json({ success: true, banners, slot: meta });
       } catch {
         res.json({ success: true, banners: [] });
       }
@@ -42182,7 +42688,7 @@ function extractMyxDeals(root, limit = 24) {
       merchant_key: "myntra",
       merchant_name: "Myntra",
       kind: "sale",
-      title: clip(brand ? `${brand} ${name}` : name, 120),
+      title: clip2(brand ? `${brand} ${name}` : name, 120),
       description: `Live on Myntra's offers page at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.mrp) ?? price}).`,
       code: null,
       discount_text: disc,
@@ -42208,7 +42714,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto31.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto32.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -42248,7 +42754,7 @@ function extractTatacliqDeals(body, cap = 32) {
         merchant_key: "tatacliq",
         merchant_name: "Tata CLiQ",
         kind: "sale",
-        title: clip(brand ? `${brand} ${title}` : title, 120),
+        title: clip2(brand ? `${brand} ${title}` : title, 120),
         description: `In stock on Tata CLiQ at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.price?.mrpPrice?.doubleValue) ?? price}).`,
         code: null,
         discount_text: `${disc}% OFF`,
@@ -42298,7 +42804,7 @@ function extractAmazonCardDeals(html) {
       merchant_key: "amazon",
       merchant_name: "Amazon",
       kind: "coupon",
-      title: clip(title, 120),
+      title: clip2(title, 120),
       description: amount ? `Amazon lists a \u20B9${amount} clip-on coupon on this product${Number.isFinite(whole) ? ` (current price \u20B9${whole.toLocaleString("en-IN")})` : ""}.` : `Amazon lists a ${pct}% clip-on coupon on this product.`,
       code: null,
       // Amazon coupons clip at the product page, they have no public code
@@ -42323,15 +42829,15 @@ function extractAmazonBankOffers(dpHtml, asin, title) {
     const raw = strip(m[0].replace(/\s*•\s*/g, " ")).slice(0, 220);
     if (!raw || raw.length < 20) continue;
     if (!/[₹]|Rs\.?|\d\s*%/.test(raw)) continue;
-    const t = clip(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
+    const t = clip2(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({
       merchant_key: "amazon",
       merchant_name: "Amazon",
       kind: "bank_offer",
-      title: clip(t, 120),
-      description: `Listed on this Amazon product page${title ? ` (${clip(title, 60)})` : ""}.`,
+      title: clip2(t, 120),
+      description: `Listed on this Amazon product page${title ? ` (${clip2(title, 60)})` : ""}.`,
       code: null,
       discount_text: null,
       min_order: null,
@@ -42432,12 +42938,12 @@ function cleanDeal(d) {
     merchant_name: d.merchant_name,
     kind: d.kind,
     vertical: d.vertical || MERCHANT_VERTICAL[d.merchant_key] || null,
-    title: clip(strip(d.title), 200),
-    description: clip(strip(d.description || ""), 600) || null,
-    code: clip(strip(d.code || ""), 60) || null,
-    discount_text: clip(strip(d.discount_text || ""), 80) || null,
+    title: clip2(strip(d.title), 200),
+    description: clip2(strip(d.description || ""), 600) || null,
+    code: clip2(strip(d.code || ""), 60) || null,
+    discount_text: clip2(strip(d.discount_text || ""), 80) || null,
     min_order: null,
-    terms: clip(strip(d.terms || ""), 600) || null,
+    terms: clip2(strip(d.terms || ""), 600) || null,
     dest_url: String(d.dest_url).slice(0, 1e3),
     valid_till: d.valid_till || null,
     sort_weight: d.sort_weight ?? 0,
@@ -42484,8 +42990,8 @@ async function syncAutoDeals() {
       }
       outcomes.push({ provider: p.provider, ok: true, deals: saved });
     } catch (e2) {
-      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip(String(e2?.message || e2), 160) });
-      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip(String(e2?.message || e2), 120) });
+      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip2(String(e2?.message || e2), 160) });
+      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip2(String(e2?.message || e2), 120) });
     }
   }
   try {
@@ -42502,16 +43008,16 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto31, strip, clip, COUPON_TXT;
+var import_crypto32, strip, clip2, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto31 = require("crypto");
+    import_crypto32 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();
     init_deals();
     strip = (s) => String(s || "").replace(/\s+/g, " ").trim();
-    clip = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
+    clip2 = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
     COUPON_TXT = /(?:₹|Rs\.?\s?)\s?(\d{2,5})\s?coupon|Save (?:up to )?(?:₹|Rs\.?\s?)(\d{2,5}) with (?:coupon| promo)|(\d{1,2})% (?:with )?coupon/i;
   }
 });
@@ -43619,7 +44125,7 @@ async function buildCoverageReport(windowHours = 24) {
   const latencies = searches.map((s) => Number(s.latency_ms)).filter((n) => Number.isFinite(n) && n >= 0);
   const nonInvalid = offerRows.filter((o) => o.validation_status !== "INVALID");
   const fresh = nonInvalid.filter((o) => ["LIVE_VERIFIED", "FRESH"].includes(o.freshness_status));
-  const cached2 = nonInvalid.filter((o) => o.freshness_status === "CACHED_VERIFIED");
+  const cached3 = nonInvalid.filter((o) => o.freshness_status === "CACHED_VERIFIED");
   const stale = nonInvalid.filter((o) => ["AGING", "STALE", "EXPIRED"].includes(o.freshness_status));
   const avail = nonInvalid.filter((o) => ["in_stock", "available", "confirmed"].includes(o.availability));
   return {
@@ -43634,7 +44140,7 @@ async function buildCoverageReport(windowHours = 24) {
     catalogue: {
       offersTotal: offerRows.length,
       freshVerified: ratio(fresh.length, nonInvalid.length),
-      cachedVerified: ratio(cached2.length, nonInvalid.length),
+      cachedVerified: ratio(cached3.length, nonInvalid.length),
       staleOrExpired: ratio(stale.length, nonInvalid.length),
       withVerifiedAvailability: ratio(avail.length, nonInvalid.length)
     },
@@ -43932,9 +44438,9 @@ function adsenseApiConfig() {
   const clientSecret = String(process.env.ADSENSE_OAUTH_CLIENT_SECRET || "").trim();
   const refreshToken = String(process.env.ADSENSE_REFRESH_TOKEN || "").trim();
   const currency = String(process.env.ADSENSE_CURRENCY || "INR").trim().toUpperCase();
-  const configured = Boolean(accountId && clientId && clientSecret && refreshToken);
-  const credentialHash = import_crypto32.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
-  return { accountId, clientId, clientSecret, refreshToken, currency, configured, credentialHash };
+  const configured2 = Boolean(accountId && clientId && clientSecret && refreshToken);
+  const credentialHash = import_crypto33.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
+  return { accountId, clientId, clientSecret, refreshToken, currency, configured: configured2, credentialHash };
 }
 function adsenseApiCircuit() {
   const cfg = adsenseApiConfig();
@@ -44055,10 +44561,10 @@ async function lastSyncs(limit = 5) {
   await ensureTables();
   return getStore().query("SELECT kind, ok, rows_seen, message, created_at FROM adsense_sync_log ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
 }
-var import_crypto32, HEADER_ALIASES, ensured7, circuit;
+var import_crypto33, HEADER_ALIASES, ensured7, circuit;
 var init_adsenseRevenue = __esm({
   "server/marketing/adsenseRevenue.ts"() {
-    import_crypto32 = __toESM(require("crypto"), 1);
+    import_crypto33 = __toESM(require("crypto"), 1);
     init_db();
     HEADER_ALIASES = {
       day: ["date", "day", "din"],
@@ -44210,7 +44716,7 @@ async function ensureBannerSectionColumn() {
   } catch {
   }
 }
-var import_express2, adminRouter, audit, BANNER_SECTIONS, sqlDate;
+var import_express2, adminRouter, audit, BANNER_SECTIONS2, sqlDate;
 var init_adminRoutes = __esm({
   "server/admin/adminRoutes.ts"() {
     import_express2 = require("express");
@@ -44233,6 +44739,7 @@ var init_adminRoutes = __esm({
     init_acquisition();
     init_speedtest();
     init_notifications();
+    init_push();
     init_logger();
     init_cabDeeplink();
     init_acceptanceRunner();
@@ -44472,6 +44979,26 @@ var init_adminRoutes = __esm({
         res.json({ success: true, id: r.id });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not push notification" });
+      }
+    });
+    adminRouter.get("/push/stats", async (_req, res) => {
+      try {
+        res.json({ success: true, ...await pushStats() });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not read push stats" });
+      }
+    });
+    adminRouter.post("/push/test", async (req, res) => {
+      try {
+        const b = req.body || {};
+        const title = String(b.title || "Try1second test push").slice(0, 140);
+        const body = String(b.body || "If you can see this with the picture below, device push is working.").slice(0, 400);
+        const image = b.image ? String(b.image) : null;
+        const r = await pushToAll({ title, body, image, ctaUrl: b.ctaUrl ? String(b.ctaUrl) : "/", kind: "admin", tag: "t1s-test" });
+        audit(req, "push.test", "all", { ...r, title });
+        res.json({ success: true, ...r });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not send the test push" });
       }
     });
     adminRouter.delete("/notifications/:id", async (req, res) => {
@@ -45070,7 +45597,7 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Could not delete the offer" });
       }
     });
-    BANNER_SECTIONS = ["home", "rewards", "quickapps"];
+    BANNER_SECTIONS2 = ["home", "rewards", "quickapps"];
     adminRouter.get("/home-banners", async (_req, res) => {
       try {
         await ensureBannerSectionColumn();
@@ -45081,7 +45608,7 @@ var init_adminRoutes = __esm({
           link: String(r.link_url || "movies"),
           title: r.title ? String(r.title) : null,
           subtitle: r.subtitle ? String(r.subtitle) : null,
-          section: BANNER_SECTIONS.includes(String(r.section || "home")) ? String(r.section) : "home",
+          section: BANNER_SECTIONS2.includes(String(r.section || "home")) ? String(r.section) : "home",
           isActive: Number(r.is_active ?? 1) === 1,
           position: Number(r.position ?? 0),
           gradientStart: r.gradient_start ? String(r.gradient_start) : null,
@@ -45103,7 +45630,7 @@ var init_adminRoutes = __esm({
         const isActive3 = req.body?.isActive === false ? 0 : 1;
         const position = Number(req.body?.position ?? 0) || 0;
         const id = Number(req.body?.id || 0);
-        const section = BANNER_SECTIONS.includes(String(req.body?.section || "")) ? String(req.body.section) : "home";
+        const section = BANNER_SECTIONS2.includes(String(req.body?.section || "")) ? String(req.body.section) : "home";
         const gStart = /^#[0-9a-fA-F]{6}$/.test(String(req.body?.gradientStart || "")) ? String(req.body.gradientStart) : null;
         const gEnd = /^#[0-9a-fA-F]{6}$/.test(String(req.body?.gradientEnd || "")) ? String(req.body.gradientEnd) : null;
         await ensureBannerSectionColumn();
@@ -45138,6 +45665,82 @@ var init_adminRoutes = __esm({
         res.json({ success: true });
       } catch (e2) {
         res.status(500).json({ success: false, error: e2?.message || "Could not delete banner" });
+      }
+    });
+    adminRouter.get("/home-banners/slots", async (_req, res) => {
+      try {
+        const { getBannerSlots: getBannerSlots2, BANNER_SECTIONS: BANNER_SECTIONS3 } = await Promise.resolve().then(() => (init_bannerSlots(), bannerSlots_exports));
+        const slots = await getBannerSlots2();
+        let rows = [];
+        try {
+          rows = await getStore().query("SELECT * FROM home_banners");
+        } catch {
+          rows = [];
+        }
+        const inventory = BANNER_SECTIONS3.map((section) => {
+          const mine = rows.filter((r) => String(r.section || "home") === section);
+          return {
+            section,
+            total: mine.length,
+            active: mine.filter((r) => Number(r.is_active ?? 1) === 1).length
+          };
+        });
+        res.json({ success: true, slots, inventory, sections: BANNER_SECTIONS3 });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not load banner slots" });
+      }
+    });
+    adminRouter.post("/home-banners/slots", async (req, res) => {
+      try {
+        const { saveBannerSlots: saveBannerSlots2 } = await Promise.resolve().then(() => (init_bannerSlots(), bannerSlots_exports));
+        const patch = req.body?.slots ?? req.body?.patch ?? req.body ?? {};
+        const slots = await saveBannerSlots2(patch);
+        audit(req, "home_banner_slots_update", JSON.stringify(patch).slice(0, 180));
+        purgeSectionCache();
+        res.json({ success: true, slots });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not save banner slots" });
+      }
+    });
+    adminRouter.post("/home-banners/:id/duplicate", async (req, res) => {
+      try {
+        const id = Number(req.params.id);
+        const rows = await getStore().query("SELECT * FROM home_banners WHERE id = ?", [id]);
+        const r = rows[0];
+        if (!r) return res.status(404).json({ success: false, error: "Banner not found" });
+        const section = BANNER_SECTIONS2.includes(String(req.body?.section || "")) ? String(req.body.section) : String(r.section || "home");
+        await ensureBannerSectionColumn();
+        await getStore().execute(
+          "INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position, gradient_start, gradient_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [r.image_url, r.link_url, r.title ?? null, r.subtitle ?? null, section, Number(r.is_active ?? 1), Number(r.position ?? 0) + 1, r.gradient_start ?? null, r.gradient_end ?? null]
+        );
+        audit(req, "home_banner_duplicate", String(id));
+        purgeSectionCache();
+        res.json({ success: true });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not duplicate banner" });
+      }
+    });
+    adminRouter.get("/home-banners/health", async (_req, res) => {
+      try {
+        const rows = await getStore().query("SELECT * FROM home_banners");
+        const check = async (r) => {
+          const url = String(r.image_url || "");
+          if (!/^https?:\/\//.test(url)) return { id: Number(r.id), ok: false, reason: "not an absolute image URL" };
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 6e3);
+            const head2 = await fetch(url, { method: "HEAD", signal: ctrl.signal, redirect: "follow" }).finally(() => clearTimeout(timer));
+            const type = String(head2.headers.get("content-type") || "");
+            return head2.ok && (!type || type.startsWith("image/")) ? { id: Number(r.id), ok: true } : { id: Number(r.id), ok: false, reason: `HTTP ${head2.status}${type ? ` ${type}` : ""}` };
+          } catch (e2) {
+            return { id: Number(r.id), ok: false, reason: String(e2?.name === "AbortError" ? "timed out" : e2?.message || e2).slice(0, 120) };
+          }
+        };
+        const results = await Promise.all(rows.map(check));
+        res.json({ success: true, results, broken: results.filter((r) => !r.ok).length });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Could not check banners" });
       }
     });
     adminRouter.get("/quick-apps", async (_req, res) => {
@@ -47969,6 +48572,7 @@ async function createApp() {
       // '/' falls through to the SEO-enhanced catch-all below
       setHeaders: (res, filePath) => {
         if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", "no-store, must-revalidate");
+        else if (filePath.endsWith("sw.js")) res.setHeader("Cache-Control", "no-store, must-revalidate");
         else if (/[\\/]assets[\\/]/.test(filePath)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       }
     }));
