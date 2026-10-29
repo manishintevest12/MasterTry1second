@@ -31,6 +31,7 @@ import { withProductImages } from '../pipeline/productImages';
 import { resolveCanonicalEntity } from '../pipeline/entityMatching';
 import { rankOffers } from '../pipeline/ranking';
 import { passesQueryRelevance } from './queryRelevance';
+import { gateFeedProductRows, collapseSellerVariants } from './productMatchGate';
 import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerPresence';
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
@@ -475,6 +476,11 @@ async function freshCatalogueOffers(
  * next request is served from cache.
  */
 export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): Promise<SearchResponse> {
+  const fast = await runSearchFastInner(input, coldBudgetMs);
+  return gateEcommerceResponse(input, fast);
+}
+
+async function runSearchFastInner(input: SearchInput, coldBudgetMs = 1_500): Promise<SearchResponse> {
   const started = Date.now();
   // One shared 3s wait no matter how many callers join: poll the SAME pipeline until real
   // rows exist. Returning an empty "still acquiring" marker here is what made the product
@@ -497,6 +503,47 @@ export async function runSearchFast(input: SearchInput, coldBudgetMs = 1_500): P
   return best;
 }
 
+/**
+ * Final product gate for an e-commerce ANSWER (owner 28 Oct). runSearch has several
+ * return paths — the warm cache replay, the progressive catalogue answer, the
+ * still-acquiring marker and the full pipeline — and only the last one runs the
+ * assembler. Gating inside the assembler therefore missed the FAST path that most
+ * users actually get ("iphone 18" answered with 148 catalogue rows including a
+ * Rs.6,999 "CG MOBILE iPhone 18 Pro" knock-off and no colour collapse). This wrapper
+ * applies the same identity gate to whatever the pipeline decided to return, so every
+ * path answers with the same product family.
+ */
+function gateEcommerceResponse(
+  input: SearchInput,
+  response: SearchResponse,
+  parsedVertical?: string,
+): SearchResponse {
+  if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
+  const vertical = String(parsedVertical || response.query?.vertical || input.vertical || '');
+  const query = String(input.query || '').trim();
+  if (vertical !== 'ecommerce' || query.length < 2) return response;
+  const priceOf = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+  const gated = gateFeedProductRows(response.results as any[], query, priceOf);
+  if (!gated.dropped.length) {
+    response.results = collapseSellerVariants(response.results as any[], priceOf) as any;
+    return response;
+  }
+  log.info('Search', 'Withheld off-product e-commerce rows', {
+    query: query.slice(0, 60),
+    dropped: gated.dropped.length,
+    reasons: gated.dropped.reduce((acc: Record<string, number>, d) => { acc[d.reason] = (acc[d.reason] || 0) + 1; return acc; }, {}),
+    sample: gated.dropped.slice(0, 3).map((d: any) => String((d.row as any)?.title || '').slice(0, 50)),
+    kept: gated.kept.length,
+    path: String(response.state?.servedFrom || ''),
+  });
+  response.results = collapseSellerVariants(gated.kept as any[], priceOf) as any;
+  return response;
+}
+
+export async function runSearch(input: SearchInput): Promise<SearchResponse> {
+  return gateEcommerceResponse(input, await runSearchPipeline(input));
+}
+
 export async function runSearchPolled(input: SearchInput, deadlineMs = 15_000): Promise<SearchResponse> {
   const deadline = Date.now() + deadlineMs;
   let best = await runSearch(input);
@@ -513,7 +560,7 @@ export async function runSearchPolled(input: SearchInput, deadlineMs = 15_000): 
   return best;
 }
 
-export async function runSearch(input: SearchInput): Promise<SearchResponse> {
+async function runSearchPipeline(input: SearchInput): Promise<SearchResponse> {
   const totalStart = Date.now();
 
   // 1. QUERY UNDERSTANDING (deterministic core + optional AI assist)
@@ -547,6 +594,11 @@ export async function runSearch(input: SearchInput): Promise<SearchResponse> {
 
   // 2. CACHE L1/L2 — full search-response cache keyed by all offer-affecting dimensions (Section 8)
   const cacheKey = buildCacheKey({
+    // CACHE REVISION: a cached SearchResponse is replayed verbatim, so it bypasses the
+    // pipeline's filters entirely. Bumping this retires snapshots built by older logic
+    // (v2 = the e-commerce product gate + colour-variant collapse of 28 Oct, which would
+    // otherwise keep serving phone covers out of the cache until each TTL expired).
+    rev: 2,
     vertical,
     q: input.query,
     pin: input.pincode,
@@ -931,6 +983,31 @@ async function finalizeLive(
   // 8. VERTICAL ENGINE — entity/query filtering + vertical-specific rules
   const engine = getVerticalEngine(vertical as any);
   combined = await engine.execute(combined, parsed);
+
+  // 8.5 PRODUCT GATE (owner 28 Oct: "iphone 18 search krta hoon tho kabhi iphone 18
+  // pro aata hai kabhi kuch aur, consistent result nahi aata"). E-commerce used to
+  // trust every live row as "fetched by this query", but marketplaces answer a phone
+  // query with its back covers and knock-offs, and price-sorting put those Rs.599
+  // accessories above the real Rs.1,64,900 phone. Live AND catalogue rows now pass
+  // the same identity gate, so the same query always resolves to the same product
+  // family instead of whatever the fastest source happened to return.
+  if (String(vertical) === 'ecommerce' && String(input.query || '').trim().length >= 2) {
+    const priceOfRow = (o: any) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+    const gated = gateFeedProductRows(combined as any[], String(input.query), priceOfRow);
+    if (gated.dropped.length) {
+      log.info('Search', 'Withheld off-product e-commerce rows', {
+        query: String(input.query).slice(0, 60),
+        dropped: gated.dropped.length,
+        reasons: gated.dropped.reduce((acc: Record<string, number>, d) => { acc[d.reason] = (acc[d.reason] || 0) + 1; return acc; }, {}),
+        sample: gated.dropped.slice(0, 3).map((d: any) => String((d.row as any)?.title || '').slice(0, 50)),
+        kept: gated.kept.length,
+      });
+    }
+    combined = gated.kept as any;
+    // Same query, same shop, different colour -> one card (owner 28 Oct: "iphone 18"
+    // answered with 130 cards, mostly the same listing in Burgundy/Black/Silver).
+    combined = collapseSellerVariants(combined as any[], priceOfRow) as any;
+  }
 
   // 9. AFFILIATE DEEP LINKS (Section 15)
   combined = await attachAffiliateDeepLinks(combined);

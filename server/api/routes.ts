@@ -1759,7 +1759,17 @@ apiRouter.post('/product-page', async (req, res) => {
   // warm rows instead of another empty shell. One deep run per query per minute.
   // Concurrency is bounded to TWO background runs and never on a poll: unbounded 9s
   // refreshes starved the event loop and made the very next request miss its 600ms cap.
-  if (!paint2 && (offers.length === 0 || cappedOut) && deepRefreshInFlight.size < 2) {
+  // OWNER 28 Oct ("itne saare website hai ... pr results ek website ka dikhta hai,
+  // kabhi 4-5 ka bhi dikhta hai"): a COLD product used to stop at one seller. The
+  // fast marketplace (Flipkart) answered inside the 600ms first paint, Amazon/Croma/
+  // Reliance/JioMart (1.5-4s) did not, cappedOut stayed false because the fast source
+  // had "settled" - so no background refresh was started and no pendingRefresh was
+  // reported. The page then polled nothing and the compare list stayed at one shop
+  // forever, while a warm product showed five. Thin coverage now counts as pending:
+  // the deep refresh runs and the client keeps polling until the other sellers land.
+  const sellerCoverage = new Set(offers.map((o: any) => String(o.seller || '').toLowerCase()).filter(Boolean)).size;
+  const thinCoverage = offers.length > 0 && sellerCoverage < 3;
+  if (!paint2 && (offers.length === 0 || cappedOut || thinCoverage) && deepRefreshInFlight.size < 2) {
     const key = `${lensQuery}|${pid || ''}`;
     if (!deepRefreshInFlight.has(key) && Date.now() - (deepRefreshLast.get(key) || 0) > 60_000) {
       deepRefreshInFlight.add(key);
@@ -1808,7 +1818,7 @@ apiRouter.post('/product-page', async (req, res) => {
     // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
     // A capped-out answer IS pending by definition: the page must keep polling, otherwise it
     // would stop on an empty shell and never pick up the rows that land a moment later.
-    pendingRefresh: cappedOut || floorOnly || responses.some((r: any) => r.state?.pendingRefresh === true),
+    pendingRefresh: cappedOut || floorOnly || thinCoverage || responses.some((r: any) => r.state?.pendingRefresh === true),
     closestOnly,
     message: offers.length
       ? (floorOnly
