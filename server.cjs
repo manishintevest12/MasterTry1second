@@ -40052,7 +40052,27 @@ var init_routes = __esm({
         const ids = o.identifiers || {};
         brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || void 0 });
       }
-      const grouped = groupSameProduct(mappedItems, (it) => brandById.get(it.id) || {});
+      let grouped = groupSameProduct(mappedItems, (it) => brandById.get(it.id) || {});
+      if (grouped.length > 0 && grouped.length < 3 && response.state.pendingRefresh) {
+        const softDeadline = searchStart + 2400;
+        let best = grouped;
+        while (best.length < 3 && Date.now() < softDeadline) {
+          await new Promise((r) => setTimeout(r, 450));
+          let next;
+          try {
+            next = await runSearch(input);
+          } catch {
+            break;
+          }
+          const merged = [...best];
+          for (const row of next.results || []) {
+            if (!merged.some((m) => String(m?.id) === String(row?.id))) merged.push(row);
+          }
+          if (merged.length > best.length) best = merged;
+          if (!next.state?.pendingRefresh) break;
+        }
+        grouped = best;
+      }
       if (grouped.length) rememberGood(input, grouped, response.state.servedFrom);
       if (!grouped.length) {
         const lkg = recallGood(input);

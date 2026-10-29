@@ -1248,7 +1248,31 @@ apiRouter.post('/scrape/live', async (req, res) => {
     const ids = o.identifiers || {};
     brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || undefined });
   }
-  const grouped = groupSameProduct(mappedItems as any[], (it: any) => brandById.get(it.id) || {});
+  let grouped = groupSameProduct(mappedItems as any[], (it: any) => brandById.get(it.id) || {});
+  // OLD-BUILD RESILIENCE (owner 29 Oct: "ye issue purane app pr aa raha hai isko v fix kro",
+  // screenshot = HTTP 403 toast). Installed builds treat a snapshot with fewer than three rows
+  // as 'not fresh' and keep polling (up to ~30 polls per search). That request storm is what
+  // trips the hosting WAF into 403ing the phone - and a phone running an already-published APK
+  // cannot be fixed client-side. The server CAN stop feeding the storm: when an answer is thin
+  // while sources are still landing, wait briefly for the pipeline's next snapshot and merge it,
+  // so one call returns a settled answer instead of ten. Only thin answers pay the wait, and it
+  // stays inside the 3-second first-paint ceiling.
+  if (grouped.length > 0 && grouped.length < 3 && response.state.pendingRefresh) {
+    const softDeadline = searchStart + 2_400;
+    let best = grouped as any[];
+    while (best.length < 3 && Date.now() < softDeadline) {
+      await new Promise((r) => setTimeout(r, 450));
+      let next: Awaited<ReturnType<typeof runSearch>>;
+      try { next = await runSearch(input); } catch { break; }
+      const merged = [...best];
+      for (const row of (next.results || []) as any[]) {
+        if (!merged.some((m: any) => String(m?.id) === String(row?.id))) merged.push(row);
+      }
+      if (merged.length > best.length) best = merged;
+      if (!next.state?.pendingRefresh) break;
+    }
+    grouped = best as typeof grouped;
+  }
   // Consistency layer: keep the answer that carried verified rows, and never answer a
   // search with nothing while we hold its last verified rows (403 / rate-limit / slow poll).
   if (grouped.length) rememberGood(input, grouped, response.state.servedFrom);
