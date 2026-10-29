@@ -360,11 +360,19 @@ test('query: natural-language month-name dates parse to ISO (24 Oct fix)', async
   // "delhi to mumbai flights on 28 oct 2026" previously fell back to the +7-day
   // default because extractDates only knew ISO/numeric/tomorrow. Month-name
   // dates must now parse; without a year the NEXT matching date wins.
+  // Evergreen form: a bare month-name date means "the NEXT one", so the expectation has
+  // to be computed, not hardcoded - 28 Oct is 2026 only until that day passes.
+  const nextOn = (month: number, day: number): string => {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const iso = (yy: number) => new Date(Date.UTC(yy, month - 1, day)).toISOString().slice(0, 10);
+    return iso(y) >= now.toISOString().slice(0, 10) ? iso(y) : iso(y + 1);
+  };
   const cases: Array<[string, string]> = [
-    ['delhi to mumbai flights on 28 oct 2026', '2026-10-28'],
-    ['delhi to mumbai flights on 28 oct', '2026-10-28'],      // next 28 Oct from 24 Oct 2026
-    ['delhi to mumbai 5 nov', '2026-11-05'],
-    ['dec 20 flights indore to pune', '2026-12-20'],
+    ['delhi to mumbai flights on 28 oct 2026', '2026-10-28'],   // explicit year is always honoured
+    ['delhi to mumbai flights on 28 oct', nextOn(10, 28)],      // no year -> next 28 Oct
+    ['delhi to mumbai 5 nov', nextOn(11, 5)],
+    ['dec 20 flights indore to pune', nextOn(12, 20)],
     ['flights delhi to mumbai 3rd december 2026', '2026-12-03'],
   ];
   for (const [q, expected] of cases) {

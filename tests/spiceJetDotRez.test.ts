@@ -12,6 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { dayOffset, daysSince, shiftDates } from './lib/fixtureDates.ts';
 import {
   parseSpiceJetLowFare,
   parseSpiceJetAvailability,
@@ -25,18 +26,24 @@ import {
 const src: any = { id: 't_flights_spicejet', name: 'SpiceJet', method: 'http', verticals: ['flights'], enabled: true, priority: 14, config: {}, rateLimit: { maxRequestsPerMinute: 4, maxConcurrency: 1 }, freshnessPolicy: {} };
 
 const FIX = JSON.parse(readFileSync(new URL('./fixtures/spicejet_lowfare_del_bom.json', import.meta.url), 'utf8'));
-const LIVE = JSON.stringify(FIX.response);
 const FIXA = JSON.parse(readFileSync(new URL('./fixtures/spicejet_availability_del_bom.json', import.meta.url), 'utf8'));
-const LIVEA = JSON.stringify(FIXA.response);
+// Recorded 24 Oct 2026 with a calendar starting 28 Oct; the parsers refuse past dates, so
+// both captures are replayed as if taken today. Prices, flight numbers and shapes are the
+// recorded ones - only the calendar dates move, which keeps these assertions honest forever.
+// Fixture was captured for departure 2026-10-28: shift so that day lands on today.
+const SHIFT = daysSince('2026-10-28');
+const LIVE = shiftDates(JSON.stringify(FIX.response), SHIFT);
+const LIVEA = shiftDates(JSON.stringify(FIXA.response), SHIFT);
+const D0 = dayOffset(0), D3 = dayOffset(3);
 
 const SYN = JSON.stringify({
   data: {
     lowFareDateMarkets: [
-      { lowestFareAmount: { fareAmount: 5050, farePointAmount: 0, taxesAndFeesAmount: 1737 }, departureDate: '2026-10-28T00:00:00' },
-      { lowestFareAmount: { fareAmount: 4584, farePointAmount: 0, taxesAndFeesAmount: 1715 }, departureDate: '2026-10-29T00:00:00' },
-      { lowestFareAmount: { fareAmount: 4084, farePointAmount: 0, taxesAndFeesAmount: 1689 }, departureDate: '2026-10-31T00:00:00' },
+      { lowestFareAmount: { fareAmount: 5050, farePointAmount: 0, taxesAndFeesAmount: 1737 }, departureDate: `${D0}T00:00:00` },
+      { lowestFareAmount: { fareAmount: 4584, farePointAmount: 0, taxesAndFeesAmount: 1715 }, departureDate: `${dayOffset(1)}T00:00:00` },
+      { lowestFareAmount: { fareAmount: 4084, farePointAmount: 0, taxesAndFeesAmount: 1689 }, departureDate: `${D3}T00:00:00` },
       { lowestFareAmount: { fareAmount: 100 }, departureDate: 'garbage' },                       // bad date -> dropped
-      { lowestFareAmount: { fareAmount: 0, taxesAndFeesAmount: 500 }, departureDate: '2026-11-01T00:00:00' }, // zero fare -> dropped
+      { lowestFareAmount: { fareAmount: 0, taxesAndFeesAmount: 500 }, departureDate: `${dayOffset(4)}T00:00:00` }, // zero fare -> dropped
     ],
   },
 });
@@ -45,8 +52,8 @@ test('parseSpiceJetLowFare decodes the live DEL-BOM calendar (totals incl. taxes
   const fares = parseSpiceJetLowFare(LIVE);
   assert.equal(fares.length, 7, `expected 7 calendar days, got ${fares.length}`);
   const byDt = Object.fromEntries(fares.map((f) => [f.dt, f]));
-  const f28 = byDt['2026-10-28'];
-  assert.ok(f28, '28 Oct entry present');
+  const f28 = byDt[D0];
+  assert.ok(f28, 'base-day entry present');
   assert.equal(f28.pr, 6787);
   assert.equal(f28.fare, 5050);
   assert.equal(f28.taxes, 1737);
@@ -55,7 +62,7 @@ test('parseSpiceJetLowFare decodes the live DEL-BOM calendar (totals incl. taxes
 test('parseSpiceJetLowFare drops bad dates and zero fares', () => {
   const fares = parseSpiceJetLowFare(SYN);
   assert.equal(fares.length, 3);
-  assert.equal(fares[0].dt, '2026-10-28');
+  assert.equal(fares[0].dt, D0);
   assert.equal(fares[0].pr, 6787);
 });
 
@@ -64,8 +71,8 @@ test('parseSpiceJetAvailability decodes the live journey (SG 612 metadata)', () 
   assert.ok(js.length >= 1, `expected journeys, got ${js.length}`);
   const j = js[0];
   assert.equal(j.carrier, 'SG 612');
-  assert.equal(j.departure, '2026-10-28T19:20:00');
-  assert.equal(j.arrival, '2026-10-28T21:40:00');
+  assert.equal(j.departure, `${D0}T19:20:00`);
+  assert.equal(j.arrival, `${D0}T21:40:00`);
   assert.equal(j.duration, '2h 20m');
   assert.equal(j.seatsAvailable, 16);
 });
@@ -73,37 +80,37 @@ test('parseSpiceJetAvailability decodes the live journey (SG 612 metadata)', () 
 test('spiceJetDayFareItems: exact date wins and merges flight metadata', () => {
   const fares = parseSpiceJetLowFare(LIVE);
   const journeys = parseSpiceJetAvailability(LIVEA);
-  const items = spiceJetDayFareItems(fares, journeys, src, 'Delhi', 'Mumbai', 'DEL', 'BOM', '2026-10-28');
+  const items = spiceJetDayFareItems(fares, journeys, src, 'Delhi', 'Mumbai', 'DEL', 'BOM', D0);
   assert.equal(items.length, 1);
   const it: any = items[0];
   assert.equal(it.price, 6787);
   assert.equal(it.currency, 'INR');
   assert.equal(it.seller, 'SpiceJet');
-  assert.match(it.title, /SpiceJet Delhi → Mumbai on 2026-10-28/);
+  assert.ok(it.title.includes(`SpiceJet Delhi → Mumbai on ${D0}`), it.title);
   assert.equal(it.attributes.airline, 'SpiceJet');
   assert.equal(it.attributes.flight_number, 'SG 612');
   assert.equal(it.attributes.departure_time, '19:20');
   assert.equal(it.attributes.arrival_time, '21:40');
-  assert.equal(it.attributes.departure_date, '2026-10-28');
-  assert.equal(it.travel.date, '2026-10-28');
-  assert.equal(it.sellerUrl, spiceJetSearchUrl('DEL', 'BOM', '2026-10-28'));
+  assert.equal(it.attributes.departure_date, D0);
+  assert.equal(it.travel.date, D0);
+  assert.equal(it.sellerUrl, spiceJetSearchUrl('DEL', 'BOM', D0));
   assert.match(String(it.attributes.data_note), /SG 612/);
 });
 
 test('spiceJetDayFareItems: cheapest upcoming fallback is labelled', () => {
   const fares = parseSpiceJetLowFare(SYN);
-  const items = spiceJetDayFareItems(fares, [], src, 'Delhi', 'Mumbai', 'DEL', 'BOM', '2026-12-24');
+  const items = spiceJetDayFareItems(fares, [], src, 'Delhi', 'Mumbai', 'DEL', 'BOM', dayOffset(30));
   assert.equal(items.length, 1);
   const it: any = items[0];
-  // cheapest of {6787 (28 Oct), 6299 (29 Oct), 5773 (31 Oct)} is 31 Oct
+  // cheapest of {6787 today, 6299 tomorrow, 5773 +3d} is the +3d fare
   assert.equal(it.price, 5773);
-  assert.equal(it.attributes.departure_date, '2026-10-31');
+  assert.equal(it.attributes.departure_date, D3);
   assert.match(it.title, /cheapest upcoming/);
   assert.equal(it.attributes.flight_number, undefined); // no metadata merged
 });
 
 test('spiceJetDayFareItems: empty calendar emits nothing (honest empty)', () => {
-  assert.equal(spiceJetDayFareItems([], [], src, 'Delhi', 'Mumbai', 'DEL', 'BOM', '2026-10-28').length, 0);
+  assert.equal(spiceJetDayFareItems([], [], src, 'Delhi', 'Mumbai', 'DEL', 'BOM', D0).length, 0);
 });
 
 test('spiceJetSearchUrl is the SRP deeplink pattern from the SPA bundle', () => {
