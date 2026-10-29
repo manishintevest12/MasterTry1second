@@ -12,6 +12,7 @@ import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, rememberGood } from '../search/lastKnownGood';
+import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
@@ -2596,8 +2597,9 @@ apiRouter.get('/cab/book', async (req, res) => {
       try {
         const resolved = resolveMaskingPointer(rawTok);
         if (resolved) {
-          const dl = await buildSecureDeeplink(resolved.destination);
-          await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+          const fresh = refreshMovieDestination(resolved.destination);
+          const dl = await buildSecureDeeplink(fresh);
+          await recordPointerClick(fresh, resolved.offerId, dl.network);
         }
       } catch { /* best-effort tracking */ }
       return res.json({ success: true, provider, appUrl: null, webUrl: `${req.protocol}://${req.get('host')}${rp}` });
@@ -2707,7 +2709,14 @@ apiRouter.get('/out', async (req, res) => {
   if (!resolved) return res.status(410).send('This link has expired. Please search again for a fresh link.');
   // Registry-fed / admin-partner destinations carry trusted provenance (pointer
   // stamped at creation) — their merchant bridge pages may embed a url= param.
-  const check = validateDestination(resolved.destination, { allowEmbeddedRedirect: resolved.trusted === true });
+  // Movie exits (owner 29 Oct): a movie row stores the seat/showtime URL captured at scrape
+  // time - date and per-show session included - so clicking it later opened BookMyShow's
+  // "Sorry! Booking is now closed". Rewrite the buy-date to the date the user can still buy
+  // for (today IST, or tomorrow once today's counters close) and drop a session bound to an
+  // older day, so the platform's own live showtime list - and from there its seat screen - is
+  // what opens.
+  const freshDestination = refreshMovieDestination(resolved.destination);
+  const check = validateDestination(freshDestination, { allowEmbeddedRedirect: resolved.trusted === true });
   if (!check.valid) {
     log.warn('Api', 'Out pointer refused', { reason: check.reason });
     return res.status(400).send(
@@ -2717,8 +2726,8 @@ apiRouter.get('/out', async (req, res) => {
       `<p style="color:#475569">For your safety we didn't open it (${check.reason}).</p>` +
       `<p><a href="/" style="color:#e11d48;font-weight:700">Search again on Try1Second</a></p></body></html>`);
   }
-  const dl = await buildSecureDeeplink(resolved.destination);
-  await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+  const dl = await buildSecureDeeplink(freshDestination);
+  await recordPointerClick(freshDestination, resolved.offerId, dl.network);
   // Monetizable exit (owner 23 Oct): real browsers land on the /redirect
   // interstitial (4s countdown + AdSense above the fold), then hop to the
   // merchant. In-app webviews (our Flutter app) skip it — AdSense for Content
@@ -2731,12 +2740,12 @@ apiRouter.get('/out', async (req, res) => {
   // picked (e.g. "agoda.com") — never the affiliate converter domain that
   // buildSecureDeeplink may have hopped to (linkinr.com, fktr.in, ...).
   let partnerHost = '';
-  try { partnerHost = new URL(resolved.destination).hostname.replace(/^www\./, ''); } catch { /* pointer already validated */ }
+  try { partnerHost = new URL(freshDestination).hostname.replace(/^www\./, ''); } catch { /* pointer already validated */ }
   // Owner 23 Oct ("app pr jana tha"): cab exits get the provider's native app
   // scheme (uber:// / olacabs://) into the interstitial so a browser user can
   // hop straight into the installed app; non-cab destinations unchanged.
   let cabScheme: string | null = null;
-  try { cabScheme = cabWebUrlToAppScheme(resolved.destination, await getCabDeeplinkConfig()); } catch { /* web-only nicety */ }
+  try { cabScheme = cabWebUrlToAppScheme(freshDestination, await getCabDeeplinkConfig()); } catch { /* web-only nicety */ }
   res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
 });
 

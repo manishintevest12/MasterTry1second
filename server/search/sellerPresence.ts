@@ -46,6 +46,8 @@ export function etraveliResultsUrl(brand: EtraveliBrandConfig, rt: { fromCode: s
   return `https://${brand.host}/air/${rt.fromCode}${rt.toCode}${day}${mon}/1/-/-/c:Y`;
 }
 
+import { bookingFlightsSrpUrl } from '../workers/parsers/bookingFlights';
+
 const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { from: string; to: string; fromCode: string; toCode: string; }, dIso: string) => string; note: string; showOnEmpty?: boolean }> = [
   {
     seller: 'Yatra',
@@ -104,7 +106,10 @@ const PRESENCE_SELLERS: Array<{ seller: string; sourceId: string; srp: (rt: { fr
   {
     seller: 'Booking.com',
     sourceId: 'w_flights_bookingcom',
-    srp: () => 'https://flights.booking.com/',
+    // Owner 29 Oct vertical sweep ("hr platform ka redirection seedha kaam ka page khule"):
+    // this presence row used to open Booking.com's flight HOME page, so the user had to retype
+    // the route. It now uses the same route+date results URL the live worker already builds.
+    srp: (rt, dIso) => bookingFlightsSrpUrl(rt.fromCode || rt.from, rt.toCode || rt.to, dIso),
     note: "Booking.com flights answers a bot challenge to datacenter IPs; this opens Booking.com's own flight search to check fares for the route.",
     showOnEmpty: true,
   },

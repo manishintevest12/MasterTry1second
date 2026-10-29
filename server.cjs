@@ -30996,6 +30996,16 @@ var init_agodaFlights = __esm({
   }
 });
 
+// server/workers/parsers/bookingFlights.ts
+function bookingFlightsSrpUrl(from, to, dep) {
+  return `https://flights.booking.com/airplane-flights/${from}.${to}/${dep}?type=ONEWAY&adults=1&cabinClass=ECONOMY`;
+}
+var init_bookingFlights = __esm({
+  "server/workers/parsers/bookingFlights.ts"() {
+    init_contract();
+  }
+});
+
 // server/search/sellerPresence.ts
 function etraveliResultsUrl(brand, rt, dIso) {
   const m = [/^\d{4}-(\d{2})-(\d{2})$/.exec(dIso || "")];
@@ -31075,6 +31085,7 @@ var init_sellerPresence = __esm({
     init_akasaFlights();
     init_agodaFlights();
     init_etraveliFlights();
+    init_bookingFlights();
     PRESENCE_SHOW_ON_EMPTY_IDS = /* @__PURE__ */ new Set(
       ["w_flights_budgetair", "w_flights_gotogate", "w_flights_flightnetwork", "w_flights_flightsmojo", "w_flights_bookingcom", "w_flights_agodaflights"]
     );
@@ -31135,7 +31146,10 @@ var init_sellerPresence = __esm({
       {
         seller: "Booking.com",
         sourceId: "w_flights_bookingcom",
-        srp: () => "https://flights.booking.com/",
+        // Owner 29 Oct vertical sweep ("hr platform ka redirection seedha kaam ka page khule"):
+        // this presence row used to open Booking.com's flight HOME page, so the user had to retype
+        // the route. It now uses the same route+date results URL the live worker already builds.
+        srp: (rt, dIso) => bookingFlightsSrpUrl(rt.fromCode || rt.from, rt.toCode || rt.to, dIso),
         note: "Booking.com flights answers a bot challenge to datacenter IPs; this opens Booking.com's own flight search to check fares for the route.",
         showOnEmpty: true
       },
@@ -33222,6 +33236,115 @@ var init_lastKnownGood = __esm({
     MAX_ENTRIES2 = 400;
     store2 = /* @__PURE__ */ new Map();
     norm5 = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+});
+
+// server/movies/freshMovieLink.ts
+function movieShowDate(now = /* @__PURE__ */ new Date()) {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const late = ist.getUTCHours() >= 22;
+  if (late) ist.setUTCDate(ist.getUTCDate() + 1);
+  const iso2 = ist.toISOString().slice(0, 10);
+  return { iso: iso2, compact: iso2.replace(/-/g, "") };
+}
+function isMovieDestination(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (!MOVIE_HOSTS.includes(host)) return false;
+    if (host === "paytm.com" && !/^\/movies?\//.test(new URL(url).pathname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) {
+  if (!destination || !isMovieDestination(destination)) return destination;
+  const { iso: iso2, compact } = movieShowDate(now);
+  let url;
+  try {
+    url = new URL(destination);
+  } catch {
+    return destination;
+  }
+  const host = url.hostname.toLowerCase();
+  let changed = false;
+  if (host.endsWith("bookmyshow.com")) {
+    const buy = /^(.*\/buytickets\/[^/]+)\/(\d{8})\/?$/.exec(url.pathname);
+    if (buy) {
+      url.pathname = `${buy[1]}/${compact}`;
+      changed = true;
+    }
+    if (/^\/booking\//.test(url.pathname)) {
+      const code = url.searchParams.get("code") || url.searchParams.get("etCode") || "";
+      const region = url.searchParams.get("region") || "";
+      const slug3 = url.searchParams.get("slug") || "";
+      if (code && region && slug3) {
+        url.pathname = `/movies/${region}/${slug3}/buytickets/${code}/${compact}`;
+        url.search = "";
+      } else {
+        return destination;
+      }
+      changed = true;
+    }
+  }
+  if (host.endsWith("district.in")) {
+    const from = url.searchParams.get("fromdate");
+    if (from && from !== iso2) {
+      url.searchParams.set("fromdate", iso2);
+      url.searchParams.delete("encsessionid");
+      url.searchParams.delete("fromsessions");
+      changed = true;
+    } else if (!from) {
+      url.searchParams.set("fromdate", iso2);
+      changed = true;
+    }
+  }
+  if (host.endsWith("ticketnew.com")) {
+    const next = url.pathname.replace(/(\/)(\d{8})(?=\/|$)/, `$1${compact}`);
+    if (next !== url.pathname) {
+      url.pathname = next;
+      changed = true;
+    }
+    for (const key of ["date", "showdate", "fromdate"]) {
+      const v = url.searchParams.get(key);
+      if (!v) continue;
+      const normalized = /^\d{8}$/.test(v) ? compact : iso2;
+      if (v !== normalized) {
+        url.searchParams.set(key, normalized);
+        changed = true;
+      }
+    }
+  }
+  if (host.endsWith("cinepolisindia.com") || host.endsWith("pvrcinemas.com") || host === "paytm.com") {
+    for (const key of ["date", "showdate", "fromdate", "bookingdate"]) {
+      const v = url.searchParams.get(key);
+      if (!v) continue;
+      const normalized = /^\d{8}$/.test(v) ? compact : iso2;
+      if (v !== normalized) {
+        url.searchParams.set(key, normalized);
+        changed = true;
+      }
+    }
+  }
+  return changed ? url.toString() : destination;
+}
+var MOVIE_HOSTS, IST_OFFSET_MS;
+var init_freshMovieLink = __esm({
+  "server/movies/freshMovieLink.ts"() {
+    MOVIE_HOSTS = [
+      "in.bookmyshow.com",
+      "bookmyshow.com",
+      "www.district.in",
+      "district.in",
+      "www.ticketnew.com",
+      "ticketnew.com",
+      "www.cinepolisindia.com",
+      "cinepolisindia.com",
+      "www.pvrcinemas.com",
+      "pvrcinemas.com",
+      "paytm.com"
+    ];
+    IST_OFFSET_MS = (5 * 60 + 30) * 6e4;
   }
 });
 
@@ -39401,6 +39524,7 @@ var init_routes = __esm({
     init_searchOrchestrator();
     init_ecomDepartments();
     init_lastKnownGood();
+    init_freshMovieLink();
     init_feedOrder();
     init_latencyBudget();
     init_queryRelevance();
@@ -41049,8 +41173,9 @@ var init_routes = __esm({
           try {
             const resolved = resolveMaskingPointer(rawTok);
             if (resolved) {
-              const dl = await buildSecureDeeplink(resolved.destination);
-              await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+              const fresh = refreshMovieDestination(resolved.destination);
+              const dl = await buildSecureDeeplink(fresh);
+              await recordPointerClick(fresh, resolved.offerId, dl.network);
             }
           } catch {
           }
@@ -41137,27 +41262,28 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
     apiRouter.get("/out", async (req, res) => {
       const resolved = resolveMaskingPointer(String(req.query.t || ""));
       if (!resolved) return res.status(410).send("This link has expired. Please search again for a fresh link.");
-      const check = validateDestination(resolved.destination, { allowEmbeddedRedirect: resolved.trusted === true });
+      const freshDestination = refreshMovieDestination(resolved.destination);
+      const check = validateDestination(freshDestination, { allowEmbeddedRedirect: resolved.trusted === true });
       if (!check.valid) {
         log.warn("Api", "Out pointer refused", { reason: check.reason });
         return res.status(400).send(
           `<!doctype html><html><head><meta charset="utf-8"><title>Link not verified</title></head><body style="font-family:system-ui,sans-serif;text-align:center;padding-top:15vh;color:#0f172a"><h2 style="font-weight:700">This link couldn't be verified</h2><p style="color:#475569">For your safety we didn't open it (${check.reason}).</p><p><a href="/" style="color:#e11d48;font-weight:700">Search again on Try1Second</a></p></body></html>`
         );
       }
-      const dl = await buildSecureDeeplink(resolved.destination);
-      await recordPointerClick(resolved.destination, resolved.offerId, dl.network);
+      const dl = await buildSecureDeeplink(freshDestination);
+      await recordPointerClick(freshDestination, resolved.offerId, dl.network);
       if (isInAppWebView(req.headers["user-agent"])) {
         res.redirect(302, dl.trackingUrl);
         return;
       }
       let partnerHost = "";
       try {
-        partnerHost = new URL(resolved.destination).hostname.replace(/^www\./, "");
+        partnerHost = new URL(freshDestination).hostname.replace(/^www\./, "");
       } catch {
       }
       let cabScheme = null;
       try {
-        cabScheme = cabWebUrlToAppScheme(resolved.destination, await getCabDeeplinkConfig());
+        cabScheme = cabWebUrlToAppScheme(freshDestination, await getCabDeeplinkConfig());
       } catch {
       }
       res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);

@@ -159,5 +159,9 @@ test('/api/cab/book: json=1 app-first branch serves appUrl + tracked webUrl (own
   assert.ok(rapidoBranch[0].includes('json'), 'rapido honours json mode');
   assert.ok(rapidoBranch[0].includes('appUrl: null'), 'rapido scheme honestly null');
   // /api/out forwards the scheme to the interstitial for browser users.
-  assert.ok(src.includes('cabWebUrlToAppScheme(resolved.destination'), 'interstitial gets the app scheme');
+  // 29 Oct: /api/out now resolves the (movie-date-refreshed) destination first, so the
+  // scheme is built from that — resolved.destination when the URL is not a movie link.
+  assert.ok(src.includes('cabWebUrlToAppScheme(freshDestination'), 'interstitial gets the app scheme');
+  assert.ok(src.includes('const freshDestination = refreshMovieDestination(resolved.destination);'),
+      'the destination is refreshed before the exit is built');
 });
