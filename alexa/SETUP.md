@@ -11,6 +11,7 @@ the normal `runSearch` pipeline, and the answer is spoken from the rows our own 
 | Voice webhook | `POST https://www.try1second.com/api/alexa` |
 | Liveness probe (no data) | `GET https://www.try1second.com/api/alexa` |
 | Intent handling, SSML, honesty rules | `server/alexa/handler.ts` |
+| Voice's search call (same answer the web feed gets) | `server/alexa/searchClient.ts` |
 | Skill model to paste into Amazon | `alexa/interaction-model.json` |
 | Skill manifest to paste into Amazon | `alexa/skill-manifest.json` |
 | Skill icons | `public/icons/alexa-108.png`, `public/icons/alexa-512.png` |
@@ -22,8 +23,11 @@ Rules the handler enforces, so voice can never overstate what we know:
 - SSML is escaped, so an `&` or quotes in a product name cannot break the sentence.
 - Requests older than 150 seconds are refused (Amazon's replay rule).
 - Once `ALEXA_SKILL_ID` is set, requests for any other skill are refused.
-- If the engine is slow, it spends the leftover 6.5s budget on the polling path before giving up,
-  so a product query does not answer "no price" while prices are still landing.
+- Voice does not run its own copy of the pipeline: it reads `POST /api/scrape/live` over loopback,
+  so it gets exactly the rows the website shows (last-chance pass, last-verified rows, relevance
+  ranking included). Anything that heals the web feed heals voice.
+- Budget is 7s with one retry on the leftover time, inside Alexa's ~8s window.
+- A route-level row with no shop name (bus/flights) is spoken as a price only; no shop is invented.
 
 ## Owner steps in the Amazon Developer Console (one-time, ~10 minutes)
 
@@ -58,8 +62,8 @@ reject the skill, so check those two URLs exist before submitting.
 
 > "Alexa, ask try one second for bus from Indore to Bhopal"
 >
-> "On Try1Second, the lowest verified price for bus from Indore to Bhopal is 373 rupees at redBus.
-> I also found redBus at 405 rupees. Prices update live."
+> "On Try1Second, the lowest verified price for bus from Indore to Bhopal is 357 rupees. I also found
+> 373 rupees elsewhere. Prices update live."
 
 Both lines above are real output from the live engine (verified 29 Oct), not examples written by hand.
 
