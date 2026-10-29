@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link2, Search, Sparkles, Send, Loader2, TrendingDown, ExternalLink, AlertCircle, Bot, ArrowRight, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { VoiceSearchButton } from './VoiceSearchButton';
@@ -111,6 +111,26 @@ export const PriceLensAndAssistant: React.FC = () => {
   const [ask, setAsk] = useState('');
   const [askBusy, setAskBusy] = useState(false);
   const [chat, setChat] = useState<{ from: 'me' | 'ai'; text: string }[]>([]);
+  // OWNER 28 Oct ("Ask Try1Second AI ka text history mai save ho raha hai, space jaa raha
+  // hai"): the transcript is a scratch pad, not a record — it is never written to storage,
+  // it starts empty on every page load, and one minute after a search finishes it wipes
+  // itself so the card never grows into a wall of old questions. Only the chat text goes;
+  // the priced result cards, the input, the voice button and every other block stay.
+  const chatClearTimer = useRef<number | null>(null);
+  const armChatClear = useCallback(() => {
+    if (chatClearTimer.current) window.clearTimeout(chatClearTimer.current);
+    chatClearTimer.current = window.setTimeout(() => {
+      setChat([]);
+      chatClearTimer.current = null;
+    }, 60_000);
+  }, []);
+  useEffect(() => {
+    // No stale transcript survives a reload or a remount of this panel.
+    setChat([]);
+    return () => {
+      if (chatClearTimer.current) window.clearTimeout(chatClearTimer.current);
+    };
+  }, []);
   // OWNER 28 Oct: the assistant ANSWERS with real rows for every vertical, not just
   // a "Opening Flights…" hop. These are the actual priced rows it found.
   const [answer, setAnswer] = useState<{
@@ -146,6 +166,8 @@ export const PriceLensAndAssistant: React.FC = () => {
       addToast('alert', 'Assistant unavailable', 'Check your connection and try again.');
     } finally {
       setAskBusy(false);
+      // Search finished: the answer keeps its minute on screen, then the text clears.
+      armChatClear();
     }
   };
 

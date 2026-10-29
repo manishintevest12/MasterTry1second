@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -29,12 +31,37 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
   bool _listening = false;
   final _speech = SpeechToText();
   final List<({bool me, String text})> _chat = [];
+  /// OWNER 28 Oct ("Ask Try1Second AI ka text history mai save ho raha hai, space jaa
+  /// raha hai"): the transcript is a scratch pad, not a record. It lives in memory only
+  /// (never written to disk) and wipes itself one minute after a search finishes, so the
+  /// panel is empty again on the next load and never grows into a wall of old questions.
+  /// Only the bubbles go; the live result cards, voice button and input are untouched.
+  Timer? _chatClearTimer;
+  static const _chatTtl = Duration(minutes: 1);
+
+  void _armChatClear() {
+    _chatClearTimer?.cancel();
+    _chatClearTimer = Timer(_chatTtl, () {
+      if (!mounted) return;
+      // Text only: the priced result cards are results, not chat history.
+      setState(() => _chat.clear());
+    });
+  }
   /// OWNER 28 Oct: the assistant must show REAL priced rows for every vertical —
   /// not just jump the user to a category. This holds the last answer.
   AssistAnswer? _answer;
 
   @override
+  void initState() {
+    super.initState();
+    // Never restore an older transcript: every mount starts clean.
+    _chat.clear();
+    _answer = null;
+  }
+
+  @override
   void dispose() {
+    _chatClearTimer?.cancel();
     _askCtrl.dispose();
     super.dispose();
   }
@@ -56,7 +83,9 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
     } catch (e) {
       setState(() => _chat.add((me: false, text: 'Could not reach the server. Please try again.')));
     } finally {
-      setState(() => _askBusy = false);
+      if (mounted) setState(() => _askBusy = false);
+      // Search finished: give the answer one minute on screen, then wipe the text.
+      _armChatClear();
     }
   }
 
