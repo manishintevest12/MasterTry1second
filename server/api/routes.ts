@@ -1558,8 +1558,14 @@ apiRouter.post('/product-page', async (req, res) => {
   // heavy retail sources (Amazon's cookie handshake, Tata CLiQ, JioMart) need 5-20s, far past
   // a 2-3s page. Their earlier acquisitions are already persisted in MySQL with real prices,
   // so a recent catalogue row for THIS exact product joins the comparison instead of the page
-  // pretending that seller does not exist. Freshness is capped at 6h and every row still has
-  // to pass the same identity rules (no accessory can sneak in this way either).
+  // pretending that seller does not exist. Every row still has to pass the same identity rules
+  // (no accessory can sneak in this way either). OWNER 28 Oct ("itne saare website hai ...
+  // pr results ek website ka dikhta hai, kabhi 4-5 ka v dikhta hai"): the freshness cap was
+  // 6h, so a product whose Amazon/Croma/Reliance rows were last verified 7h ago showed ONE
+  // shop - the only one the fast live source managed to answer - until the deep refresh
+  // landed ~18s later, long after the page had stopped polling. The same 72h window the
+  // search floor already uses for non-travel verticals keeps every shop visible on the first
+  // paint; each row keeps its own fetched_at, so the page's "last verified" honesty is intact.
   {
     const { findCatalogueOffers } = await import('../catalogue/catalogueService');
     const haveKey = new Set(all.map((x: any) => `${String(x.o.seller || '').toLowerCase()}|${String(x.o.title || '').toLowerCase()}`));
@@ -1571,7 +1577,8 @@ apiRouter.post('/product-page', async (req, res) => {
         const title = String(r.title || '');
         const seller = String(r.seller || r.vendor || '');
         if (price <= 0 || !title) continue;
-        if ((now - new Date(r.fetched_at).getTime()) / 1000 > 6 * 3600) continue;
+        const rowAgeSec = (now - new Date(r.fetched_at).getTime()) / 1000;
+        if (rowAgeSec > 72 * 3600) continue;
         const k = `${seller.toLowerCase()}|${title.toLowerCase()}`;
         if (haveKey.has(k)) continue;
         haveKey.add(k);
@@ -1580,7 +1587,9 @@ apiRouter.post('/product-page', async (req, res) => {
             id: `catalogue-${r.id}`, title, seller,
             sellerUrl: r.seller_url || '',
             prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
-            attributes: {}, availability: r.availability || 'unknown',
+            // Age travels with the row so the card can say how old a catalogue quote is.
+            attributes: { price_age_hours: String(Math.round(rowAgeSec / 360) / 10) },
+            availability: r.availability || 'unknown',
             canonicalEntityId: r.canonical_entity_id ?? null,
           },
           price,

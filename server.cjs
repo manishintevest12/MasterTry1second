@@ -30320,6 +30320,427 @@ var init_queryRelevance = __esm({
   }
 });
 
+// server/lens/sameProduct.ts
+var sameProduct_exports = {};
+__export(sameProduct_exports, {
+  accessoryScope: () => accessoryScope,
+  capacitiesOf: () => capacitiesOf,
+  declaredTypes: () => declaredTypes,
+  identityTokens: () => identityTokens,
+  isAccessory: () => isAccessory,
+  isSameProduct: () => isSameProduct,
+  normalizeBrandSpelling: () => normalizeBrandSpelling,
+  primarySegment: () => primarySegment,
+  sharesIdentity: () => sharesIdentity,
+  stripCompatibility: () => stripCompatibility
+});
+function primarySegment(title) {
+  return String(title || "").split(/[|;]|\s-\s|\s+with\s+|\s+\+\s+|,|\s+free\s+/i)[0].trim() || String(title || "");
+}
+function accessoryScope(title) {
+  return String(title || "").split(/\s+with\s+|\s+\+\s+|\s+free\s+|\s+freebie\s+|\s+comes\s+with\s+/i)[0].trim() || String(title || "");
+}
+function declaredTypes(title) {
+  const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  const out = /* @__PURE__ */ new Set();
+  for (const [type, words2] of TYPE_WORDS) {
+    if (words2.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))) out.add(type);
+  }
+  return out;
+}
+function stripCompatibility(title) {
+  const parts = String(title || "").split(/[|/]|\s-\s|,(?=\s)/).map((x) => x.trim()).filter(Boolean);
+  const kept = parts.filter((seg) => {
+    const toks2 = seg.toLowerCase().replace(/[^a-z0-9+]+/g, " ").split(" ").filter(Boolean);
+    if (!toks2.length) return false;
+    return !toks2.every((t) => COMPAT_ONLY.has(t));
+  });
+  return kept.length ? kept.join(" | ") : String(title || "");
+}
+function normalizeBrandSpelling(t) {
+  let out = String(t || "");
+  for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
+  return out;
+}
+function canonicalQuantity(t) {
+  return String(t || "").replace(/\badapt(?:er|or)s?\b/gi, "charger").replace(/\bpower\s*bank\b/gi, "power bank").replace(/\bpack\s+of\s+(\d+)\b/gi, "$1 pack").replace(/\b(ltrs?|litres?|liters?)\b/gi, "l").replace(/\b(gms?|grams?)\b/gi, "g").replace(/\b(kgs?|kilos?|kilograms?)\b/gi, "kg").replace(/\b(packs?|packets?|pk)\b/gi, "pack");
+}
+function words(t) {
+  return canonicalQuantity(normalizeBrandSpelling(t)).toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l|pack)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
+}
+function isAccessory(title) {
+  const t = ` ${String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  const hits = ACCESSORY_WORDS.filter((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
+  if (hits.length === 0) return false;
+  const packagingOnly = hits.every((w) => w === "pouch");
+  const quantified = /\d+(?:\.\d+)?\s?(?:g|kg|ml|l|pack|ltr|litre)\b/i.test(title);
+  if (packagingOnly && quantified) return false;
+  return true;
+}
+function identityTokens(title) {
+  return Array.from(new Set(words(title).filter((w) => !STOP3.has(w) && !COLORS.has(w) && w.length > 1)));
+}
+function capacitiesOf(title) {
+  const caps = /* @__PURE__ */ new Set();
+  for (const m of String(title || "").matchAll(/\b(\d+(?:\.\d+)?)\s?(gb|tb)\b/gi)) {
+    const n = parseFloat(m[1]) * (/^tb$/i.test(m[2]) ? 1024 : 1);
+    if (n > 0) caps.add(String(n));
+  }
+  return caps;
+}
+function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
+  const wantsAccessory = isAccessory(pastedTitle);
+  if (!wantsAccessory && isAccessory(accessoryScope(candidateTitle))) return false;
+  const wantTypes = declaredTypes(pastedTitle);
+  const haveTypes = declaredTypes(candidateTitle);
+  for (const t of haveTypes) if (!wantTypes.has(t)) return false;
+  const candidateIdentity = stripCompatibility(candidateTitle);
+  const wantCaps = capacitiesOf(pastedTitle);
+  const haveCaps = capacitiesOf(candidateIdentity);
+  if (mode === "typed" && !wantCaps.size) {
+  } else if (wantCaps.size || haveCaps.size) {
+    if (!wantCaps.size || !haveCaps.size) return false;
+    for (const c of wantCaps) if (!haveCaps.has(c)) return false;
+  }
+  const need = identityTokens(pastedTitle);
+  if (need.length === 0) return false;
+  const have = new Set(words(candidateIdentity));
+  for (const t of wantTypes) if (haveTypes.has(t)) have.add(t);
+  const isPackSize = (w) => /^\d+(?:\.\d+)?(?:g|kg|ml|l|pack)$/.test(w);
+  const hard = need.filter((w) => /\d/.test(w) && !isPackSize(w));
+  if (hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w) || isPackSize(w));
+  if (soft.length === 0) return hard.length > 0;
+  const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
+  const wantTiers = tiersOf(need);
+  const haveTiers = tiersOf(words(candidateIdentity));
+  if (mode === "typed" && !wantTiers.size) {
+  } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
+  const hit = soft.filter((w) => have.has(w)).length;
+  if (hit / soft.length < 0.6) return false;
+  const lead = need.find((w) => !isPackSize(w) && !/\d/.test(w));
+  if (mode === "typed" && lead && !have.has(lead)) return false;
+  return true;
+}
+function sharesIdentity(queryTitle, candidateTitle) {
+  if (isAccessory(accessoryScope(candidateTitle)) && !isAccessory(queryTitle)) return false;
+  const wantTypes = declaredTypes(queryTitle);
+  for (const t of declaredTypes(candidateTitle)) if (!wantTypes.has(t)) return false;
+  const need = identityTokens(queryTitle);
+  if (!need.length) return false;
+  const have = new Set(words(stripCompatibility(candidateTitle)));
+  const hard = need.filter((w) => /\d/.test(w));
+  if (hard.length && hard.some((w) => !have.has(w))) return false;
+  const soft = need.filter((w) => !/\d/.test(w));
+  if (!soft.length) return hard.length > 0;
+  return soft.some((w) => have.has(w));
+}
+var ACCESSORY_WORDS, TYPE_WORDS, COMPAT_ONLY, STOP3, TIERS, COLORS, BRAND_JOINS;
+var init_sameProduct = __esm({
+  "server/lens/sameProduct.ts"() {
+    ACCESSORY_WORDS = [
+      "case",
+      "cover",
+      "back cover",
+      "pouch",
+      "sleeve",
+      "skin",
+      "screen guard",
+      "screen protector",
+      "tempered",
+      "protector",
+      "charger",
+      "adapter",
+      "adaptor",
+      "cable",
+      "strap",
+      "band",
+      "stand",
+      "holder",
+      "mount",
+      "stylus",
+      "sticker",
+      "cleaner",
+      "refill",
+      "replacement",
+      "spare",
+      "lens guard",
+      "camera protector",
+      "magsafe",
+      "mag-safe",
+      "pop socket",
+      "popsocket",
+      "bumper",
+      "ring light",
+      "tripod",
+      "dock",
+      "wallet",
+      // Owner 27 Oct ("iphone search -> adapter dikha, ₹199 vs ₹59,900 compare hua"): a power bank
+      // titled "... Fast Powerbank | Type-C | iPhone - Android Mobiles" carries the brand word ONLY
+      // as a compatibility mention, and it was accepted as the iPhone itself.
+      "power bank",
+      "powerbank",
+      "power-bank",
+      "battery pack",
+      "backup battery",
+      "car charger",
+      "charging brick",
+      "wall charger",
+      "data cable",
+      "charging cable",
+      "otg",
+      // "Compatible with iPhone 15 – Original-Quality OLED Screen" is a spare part, not the phone.
+      "compatible",
+      "compatibility",
+      "fits",
+      "replacement part"
+    ];
+    TYPE_WORDS = [
+      ["powerbank", ["power bank", "powerbank", "power-bank", "portable charger", "battery pack"]],
+      ["charger", ["charger", "adapter", "adaptor", "charging brick", "wall charger"]],
+      ["cable", ["cable", "cord", "data cable", "otg"]],
+      ["case", ["case", "cover", "back cover", "flip cover", "bumper", "sleeve", "skin"]],
+      ["protector", ["screen guard", "protector", "tempered glass", "screen protector"]],
+      ["earbuds", ["earbuds", "earbud", "earphone", "earphones", "headphone", "headphones", "tws", "airpods", "neckband", "headset"]],
+      ["watch", ["smartwatch", "smart watch", "fitness band"]],
+      ["speaker", ["speaker", "soundbar", "party box"]],
+      ["tv", ["tv", "smart tv", "television", "led tv", "oled tv"]],
+      ["laptop", ["laptop", "notebook", "chromebook", "macbook"]],
+      ["tablet", ["tablet", "ipad"]],
+      ["camera", ["dslr", "mirrorless", "action camera", "gopro"]],
+      ["monitor", ["monitor"]],
+      ["printer", ["printer"]],
+      ["router", ["router", "modem"]],
+      ["keyboard", ["keyboard"]],
+      ["mouse", ["mouse"]]
+    ];
+    COMPAT_ONLY = /* @__PURE__ */ new Set([
+      "iphone",
+      "ipad",
+      "ipod",
+      "android",
+      "ios",
+      "mobile",
+      "mobiles",
+      "phone",
+      "phones",
+      "smartphone",
+      "smartphones",
+      "device",
+      "devices",
+      "tablet",
+      "tablets",
+      "laptop",
+      "laptops",
+      "compatible",
+      "compatibility",
+      "with",
+      "for",
+      "and",
+      "or",
+      "all",
+      "universal",
+      "usb",
+      "type",
+      "type-c",
+      "typec",
+      "c",
+      "port",
+      "ports",
+      "support",
+      "supports",
+      "works",
+      "suitable",
+      "series",
+      "model",
+      "models",
+      "samsung",
+      "oneplus",
+      "redmi",
+      "xiaomi",
+      "oppo",
+      "vivo",
+      "realme",
+      "motorola",
+      "nothing",
+      "pixel",
+      "google"
+    ]);
+    STOP3 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
+    TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
+    COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
+    BRAND_JOINS = [
+      [/\bi\s*phone\b/gi, "iphone"],
+      [/\bapple\s+mobile\b/gi, "apple"],
+      [/\bone\s*plus\b/gi, "oneplus"],
+      [/\bred\s*mi\b/gi, "redmi"],
+      [/\breal\s*me\b/gi, "realme"],
+      [/\bsam\s*sung\b/gi, "samsung"],
+      [/\bnothing\s*phone\b/gi, "nothing phone"],
+      [/\bmoto\s*rola\b/gi, "motorola"],
+      [/\bgalaxy\s*m\b/gi, "galaxy m"],
+      [/\bmac\s*book\b/gi, "macbook"],
+      [/\bmagic\s*book\b/gi, "magicbook"],
+      [/\bb\s*t\s*w\b/gi, "btw"]
+    ];
+  }
+});
+
+// server/lens/pricePlausibility.ts
+function dropImplausiblePrices(rows) {
+  const priced = rows.filter((r) => Number.isFinite(r.price) && r.price > 0);
+  if (priced.length < 2) return { kept: rows, dropped: [] };
+  const prices = priced.map((r) => r.price).sort((a, b) => a - b);
+  const min = prices[0];
+  const max = prices[prices.length - 1];
+  if (max <= 0 || min / max >= 0.25) return { kept: rows, dropped: [] };
+  const median = prices[Math.floor(prices.length / 2)];
+  const cutoff = prices.length >= 3 ? median * 0.35 : max * 0.2;
+  const kept = [];
+  const dropped = [];
+  for (const r of rows) {
+    const isPriced = Number.isFinite(r.price) && r.price > 0;
+    if (isPriced && r.price < cutoff) dropped.push(r);
+    else kept.push(r);
+  }
+  if (!kept.some((r) => r.price > 0)) return { kept: rows, dropped: [] };
+  return { kept, dropped };
+}
+var init_pricePlausibility = __esm({
+  "server/lens/pricePlausibility.ts"() {
+  }
+});
+
+// server/search/productMatchGate.ts
+function numericTokens(text) {
+  return String(text || "").toLowerCase().match(/\d+/g) || [];
+}
+function containsNumber(title, token) {
+  return new RegExp(`(^|[^0-9])${token}([^0-9]|$)`).test(String(title || "").toLowerCase());
+}
+function gateFeedProductRows(rows, rawQuery, priceOf2) {
+  const query = String(rawQuery || "").trim();
+  if (!rows.length || query.length < 2) return { kept: rows, dropped: [] };
+  const dropped = [];
+  const afterAccessory = [];
+  for (const row of rows) {
+    const title = String(row.title || "");
+    if (!title) {
+      afterAccessory.push(row);
+      continue;
+    }
+    if (isAccessoryOfQuery(title, query)) {
+      dropped.push({ row, reason: "accessory" });
+      continue;
+    }
+    afterAccessory.push(row);
+  }
+  const wanted = numericTokens(query);
+  let afterModel = afterAccessory;
+  if (wanted.length) {
+    afterModel = [];
+    for (const row of afterAccessory) {
+      const title = String(row.title || "");
+      if (!title || sharesIdentity(query, title) && wanted.every((n) => containsNumber(title, n))) {
+        afterModel.push(row);
+      } else {
+        dropped.push({ row, reason: "model" });
+      }
+    }
+  }
+  let kept = afterModel;
+  if (wanted.length && afterModel.length > 1) {
+    const priced = afterModel.map((row) => ({ row, price: priceOf2(row) }));
+    const band = dropImplausiblePrices(priced);
+    kept = band.kept.map((x) => x.row);
+    for (const d of band.dropped) dropped.push({ row: d.row, reason: "implausible" });
+  }
+  return { kept, dropped };
+}
+function variantSignature(title) {
+  return String(title || "").toLowerCase().replace(/[^a-z0-9\s./-]/g, " ").split(/\s+/).filter((w) => w && !COLOUR_WORDS.has(w)).join(" ").trim();
+}
+function collapseSellerVariants(rows, priceOf2) {
+  const groups = /* @__PURE__ */ new Map();
+  const order = [];
+  rows.forEach((row, index) => {
+    const seller = String(row.seller || "").toLowerCase().trim();
+    const sig = variantSignature(String(row.title || ""));
+    if (!seller || !sig) {
+      order.push(`solo:${index}`);
+      groups.set(`solo:${index}`, { best: row, bestPrice: priceOf2(row), count: 1, firstIndex: index });
+      return;
+    }
+    const key = `${seller}|${sig}`;
+    const existing = groups.get(key);
+    const price = priceOf2(row);
+    if (!existing) {
+      groups.set(key, { best: row, bestPrice: price, count: 1, firstIndex: index });
+      order.push(key);
+      return;
+    }
+    existing.count += 1;
+    const better = price > 0 && (existing.bestPrice <= 0 || price < existing.bestPrice);
+    if (better) {
+      existing.best = row;
+      existing.bestPrice = price;
+    }
+  });
+  return order.map((key) => {
+    const g = groups.get(key);
+    if (g.count <= 1) return g.best;
+    const attrs = { ...g.best.attributes || {}, variantCount: g.count };
+    return { ...g.best, attributes: attrs };
+  });
+}
+var COLOUR_WORDS;
+var init_productMatchGate = __esm({
+  "server/search/productMatchGate.ts"() {
+    init_queryRelevance();
+    init_sameProduct();
+    init_pricePlausibility();
+    COLOUR_WORDS = /* @__PURE__ */ new Set([
+      "burgundy",
+      "black",
+      "silver",
+      "glacier",
+      "white",
+      "blue",
+      "green",
+      "pink",
+      "gold",
+      "grey",
+      "gray",
+      "purple",
+      "red",
+      "orange",
+      "yellow",
+      "teal",
+      "titanium",
+      "natural",
+      "desert",
+      "space",
+      "graphite",
+      "midnight",
+      "starlight",
+      "lavender",
+      "violet",
+      "beige",
+      "bronze",
+      "copper",
+      "cosmic",
+      "nebula",
+      "charcoal",
+      "cream",
+      "marble",
+      "sage",
+      "coral",
+      "mint",
+      "navy"
+    ]);
+  }
+});
+
 // server/workers/parsers/agodaFlights.ts
 function agodaFlightsSrpUrl(fromCode, toCode, dateIso) {
   return `https://www.agoda.com/flights/search?origin=${fromCode}&destination=${toCode}&departDate=${dateIso}&adults=1&cabinType=Economy`;
@@ -31768,6 +32189,10 @@ async function freshCatalogueOffers(vertical, input, parsed, maxAgeSec = 3600, f
   return withBrandImages(filterByNamedProviders(offers, parsed?.entityName));
 }
 async function runSearchFast(input, coldBudgetMs = 1500) {
+  const fast = await runSearchFastInner(input, coldBudgetMs);
+  return gateEcommerceResponse(input, fast);
+}
+async function runSearchFastInner(input, coldBudgetMs = 1500) {
   const started3 = Date.now();
   let best = await runSearch(input);
   const rows = (r) => (r.results || []).length;
@@ -31787,6 +32212,34 @@ async function runSearchFast(input, coldBudgetMs = 1500) {
     if (rows(next) > 0) return next;
   }
   return best;
+}
+function gateEcommerceResponse(input, response, parsedVertical) {
+  if (!response || !Array.isArray(response.results) || response.results.length === 0) return response;
+  const vertical = String(parsedVertical || response.query?.vertical || input.vertical || "");
+  const query = String(input.query || "").trim();
+  if (vertical !== "ecommerce" || query.length < 2) return response;
+  const priceOf2 = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+  const gated = gateFeedProductRows(response.results, query, priceOf2);
+  if (!gated.dropped.length) {
+    response.results = collapseSellerVariants(response.results, priceOf2);
+    return response;
+  }
+  log.info("Search", "Withheld off-product e-commerce rows", {
+    query: query.slice(0, 60),
+    dropped: gated.dropped.length,
+    reasons: gated.dropped.reduce((acc, d) => {
+      acc[d.reason] = (acc[d.reason] || 0) + 1;
+      return acc;
+    }, {}),
+    sample: gated.dropped.slice(0, 3).map((d) => String(d.row?.title || "").slice(0, 50)),
+    kept: gated.kept.length,
+    path: String(response.state?.servedFrom || "")
+  });
+  response.results = collapseSellerVariants(gated.kept, priceOf2);
+  return response;
+}
+async function runSearch(input) {
+  return gateEcommerceResponse(input, await runSearchPipeline(input));
 }
 async function runSearchPolled(input, deadlineMs = 15e3) {
   const deadline = Date.now() + deadlineMs;
@@ -31809,7 +32262,7 @@ async function runSearchPolled(input, deadlineMs = 15e3) {
   }
   return best;
 }
-async function runSearch(input) {
+async function runSearchPipeline(input) {
   const totalStart = Date.now();
   let parsed = understandQuery(input.query, {
     pincode: input.pincode,
@@ -31836,6 +32289,11 @@ async function runSearch(input) {
     triggeredRefresh: false
   };
   const cacheKey = buildCacheKey({
+    // CACHE REVISION: a cached SearchResponse is replayed verbatim, so it bypasses the
+    // pipeline's filters entirely. Bumping this retires snapshots built by older logic
+    // (v2 = the e-commerce product gate + colour-variant collapse of 28 Oct, which would
+    // otherwise keep serving phone covers out of the cache until each TTL expired).
+    rev: 2,
     vertical,
     q: input.query,
     pin: input.pincode,
@@ -32078,6 +32536,24 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
   }
   const engine = getVerticalEngine(vertical);
   combined = await engine.execute(combined, parsed);
+  if (String(vertical) === "ecommerce" && String(input.query || "").trim().length >= 2) {
+    const priceOfRow = (o) => Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? o.prices?.listPrice ?? 0) || 0;
+    const gated = gateFeedProductRows(combined, String(input.query), priceOfRow);
+    if (gated.dropped.length) {
+      log.info("Search", "Withheld off-product e-commerce rows", {
+        query: String(input.query).slice(0, 60),
+        dropped: gated.dropped.length,
+        reasons: gated.dropped.reduce((acc, d) => {
+          acc[d.reason] = (acc[d.reason] || 0) + 1;
+          return acc;
+        }, {}),
+        sample: gated.dropped.slice(0, 3).map((d) => String(d.row?.title || "").slice(0, 50)),
+        kept: gated.kept.length
+      });
+    }
+    combined = gated.kept;
+    combined = collapseSellerVariants(combined, priceOfRow);
+  }
   combined = await attachAffiliateDeepLinks(combined);
   const branded = withCardArt(stripCardLogoStandIns(stripMerchantLogoFallbacks(withBrandImages(combined))));
   const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(branded))), { userPincode: input.pincode, userCity: input.city });
@@ -32219,6 +32695,7 @@ var init_searchOrchestrator = __esm({
     init_entityMatching();
     init_ranking();
     init_queryRelevance();
+    init_productMatchGate();
     init_sellerPresence();
     init_verticalEngine();
     init_catalogueService();
@@ -32763,7 +33240,7 @@ var init_authService = __esm({
 
 // server/lens/productImage.ts
 function imageTokens(query) {
-  return String(query || "").toLowerCase().replace(/[^a-z0-9.\- ]+/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !STOP3.has(t) && !/^\d+(\.\d+)?$/.test(t)).slice(0, 3);
+  return String(query || "").toLowerCase().replace(/[^a-z0-9.\- ]+/g, " ").split(/\s+/).filter((t) => t.length >= 3 && !STOP4.has(t) && !/^\d+(\.\d+)?$/.test(t)).slice(0, 3);
 }
 function firstHttps(doc) {
   if (!doc) return null;
@@ -32804,11 +33281,11 @@ async function resolveCatalogueImage(query, vertical, opts = {}) {
   }
   return null;
 }
-var STOP3;
+var STOP4;
 var init_productImage = __esm({
   "server/lens/productImage.ts"() {
     init_db();
-    STOP3 = /* @__PURE__ */ new Set([
+    STOP4 = /* @__PURE__ */ new Set([
       "with",
       "from",
       "pack",
@@ -34799,272 +35276,6 @@ var init_showcase = __esm({
   }
 });
 
-// server/lens/sameProduct.ts
-var sameProduct_exports = {};
-__export(sameProduct_exports, {
-  accessoryScope: () => accessoryScope,
-  capacitiesOf: () => capacitiesOf,
-  declaredTypes: () => declaredTypes,
-  identityTokens: () => identityTokens,
-  isAccessory: () => isAccessory,
-  isSameProduct: () => isSameProduct,
-  normalizeBrandSpelling: () => normalizeBrandSpelling,
-  primarySegment: () => primarySegment,
-  sharesIdentity: () => sharesIdentity,
-  stripCompatibility: () => stripCompatibility
-});
-function primarySegment(title) {
-  return String(title || "").split(/[|;]|\s-\s|\s+with\s+|\s+\+\s+|,|\s+free\s+/i)[0].trim() || String(title || "");
-}
-function accessoryScope(title) {
-  return String(title || "").split(/\s+with\s+|\s+\+\s+|\s+free\s+|\s+freebie\s+|\s+comes\s+with\s+/i)[0].trim() || String(title || "");
-}
-function declaredTypes(title) {
-  const t = ` ${primarySegment(title).toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
-  const out = /* @__PURE__ */ new Set();
-  for (const [type, words2] of TYPE_WORDS) {
-    if (words2.some((w) => t.includes(` ${w} `) || t.includes(` ${w}s `))) out.add(type);
-  }
-  return out;
-}
-function stripCompatibility(title) {
-  const parts = String(title || "").split(/[|/]|\s-\s|,(?=\s)/).map((x) => x.trim()).filter(Boolean);
-  const kept = parts.filter((seg) => {
-    const toks2 = seg.toLowerCase().replace(/[^a-z0-9+]+/g, " ").split(" ").filter(Boolean);
-    if (!toks2.length) return false;
-    return !toks2.every((t) => COMPAT_ONLY.has(t));
-  });
-  return kept.length ? kept.join(" | ") : String(title || "");
-}
-function normalizeBrandSpelling(t) {
-  let out = String(t || "");
-  for (const [re, rep] of BRAND_JOINS) out = out.replace(re, rep);
-  return out;
-}
-function canonicalQuantity(t) {
-  return String(t || "").replace(/\badapt(?:er|or)s?\b/gi, "charger").replace(/\bpower\s*bank\b/gi, "power bank").replace(/\bpack\s+of\s+(\d+)\b/gi, "$1 pack").replace(/\b(ltrs?|litres?|liters?)\b/gi, "l").replace(/\b(gms?|grams?)\b/gi, "g").replace(/\b(kgs?|kilos?|kilograms?)\b/gi, "kg").replace(/\b(packs?|packets?|pk)\b/gi, "pack");
-}
-function words(t) {
-  return canonicalQuantity(normalizeBrandSpelling(t)).toLowerCase().replace(/[()\[\],:;|]/g, " ").replace(/(\d)\s*(gb|tb|mb|mah|inch|hz|w|mp|ml|g|kg|l|pack)\b/g, "$1$2").split(/[^a-z0-9.+]+/).filter(Boolean);
-}
-function isAccessory(title) {
-  const t = ` ${String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
-  const hits = ACCESSORY_WORDS.filter((w) => t.includes(` ${w} `) || t.includes(` ${w}s `));
-  if (hits.length === 0) return false;
-  const packagingOnly = hits.every((w) => w === "pouch");
-  const quantified = /\d+(?:\.\d+)?\s?(?:g|kg|ml|l|pack|ltr|litre)\b/i.test(title);
-  if (packagingOnly && quantified) return false;
-  return true;
-}
-function identityTokens(title) {
-  return Array.from(new Set(words(title).filter((w) => !STOP4.has(w) && !COLORS.has(w) && w.length > 1)));
-}
-function capacitiesOf(title) {
-  const caps = /* @__PURE__ */ new Set();
-  for (const m of String(title || "").matchAll(/\b(\d+(?:\.\d+)?)\s?(gb|tb)\b/gi)) {
-    const n = parseFloat(m[1]) * (/^tb$/i.test(m[2]) ? 1024 : 1);
-    if (n > 0) caps.add(String(n));
-  }
-  return caps;
-}
-function isSameProduct(pastedTitle, candidateTitle, mode = "strict") {
-  const wantsAccessory = isAccessory(pastedTitle);
-  if (!wantsAccessory && isAccessory(accessoryScope(candidateTitle))) return false;
-  const wantTypes = declaredTypes(pastedTitle);
-  const haveTypes = declaredTypes(candidateTitle);
-  for (const t of haveTypes) if (!wantTypes.has(t)) return false;
-  const candidateIdentity = stripCompatibility(candidateTitle);
-  const wantCaps = capacitiesOf(pastedTitle);
-  const haveCaps = capacitiesOf(candidateIdentity);
-  if (mode === "typed" && !wantCaps.size) {
-  } else if (wantCaps.size || haveCaps.size) {
-    if (!wantCaps.size || !haveCaps.size) return false;
-    for (const c of wantCaps) if (!haveCaps.has(c)) return false;
-  }
-  const need = identityTokens(pastedTitle);
-  if (need.length === 0) return false;
-  const have = new Set(words(candidateIdentity));
-  for (const t of wantTypes) if (haveTypes.has(t)) have.add(t);
-  const isPackSize = (w) => /^\d+(?:\.\d+)?(?:g|kg|ml|l|pack)$/.test(w);
-  const hard = need.filter((w) => /\d/.test(w) && !isPackSize(w));
-  if (hard.some((w) => !have.has(w))) return false;
-  const soft = need.filter((w) => !/\d/.test(w) || isPackSize(w));
-  if (soft.length === 0) return hard.length > 0;
-  const tiersOf = (ws) => new Set(ws.filter((w) => TIERS.has(w)));
-  const wantTiers = tiersOf(need);
-  const haveTiers = tiersOf(words(candidateIdentity));
-  if (mode === "typed" && !wantTiers.size) {
-  } else if (wantTiers.size !== haveTiers.size || [...wantTiers].some((t) => !haveTiers.has(t))) return false;
-  const hit = soft.filter((w) => have.has(w)).length;
-  if (hit / soft.length < 0.6) return false;
-  const lead = need.find((w) => !isPackSize(w) && !/\d/.test(w));
-  if (mode === "typed" && lead && !have.has(lead)) return false;
-  return true;
-}
-function sharesIdentity(queryTitle, candidateTitle) {
-  if (isAccessory(accessoryScope(candidateTitle)) && !isAccessory(queryTitle)) return false;
-  const wantTypes = declaredTypes(queryTitle);
-  for (const t of declaredTypes(candidateTitle)) if (!wantTypes.has(t)) return false;
-  const need = identityTokens(queryTitle);
-  if (!need.length) return false;
-  const have = new Set(words(stripCompatibility(candidateTitle)));
-  const hard = need.filter((w) => /\d/.test(w));
-  if (hard.length && hard.some((w) => !have.has(w))) return false;
-  const soft = need.filter((w) => !/\d/.test(w));
-  if (!soft.length) return hard.length > 0;
-  return soft.some((w) => have.has(w));
-}
-var ACCESSORY_WORDS, TYPE_WORDS, COMPAT_ONLY, STOP4, TIERS, COLORS, BRAND_JOINS;
-var init_sameProduct = __esm({
-  "server/lens/sameProduct.ts"() {
-    ACCESSORY_WORDS = [
-      "case",
-      "cover",
-      "back cover",
-      "pouch",
-      "sleeve",
-      "skin",
-      "screen guard",
-      "screen protector",
-      "tempered",
-      "protector",
-      "charger",
-      "adapter",
-      "adaptor",
-      "cable",
-      "strap",
-      "band",
-      "stand",
-      "holder",
-      "mount",
-      "stylus",
-      "sticker",
-      "cleaner",
-      "refill",
-      "replacement",
-      "spare",
-      "lens guard",
-      "camera protector",
-      "magsafe",
-      "mag-safe",
-      "pop socket",
-      "popsocket",
-      "bumper",
-      "ring light",
-      "tripod",
-      "dock",
-      "wallet",
-      // Owner 27 Oct ("iphone search -> adapter dikha, ₹199 vs ₹59,900 compare hua"): a power bank
-      // titled "... Fast Powerbank | Type-C | iPhone - Android Mobiles" carries the brand word ONLY
-      // as a compatibility mention, and it was accepted as the iPhone itself.
-      "power bank",
-      "powerbank",
-      "power-bank",
-      "battery pack",
-      "backup battery",
-      "car charger",
-      "charging brick",
-      "wall charger",
-      "data cable",
-      "charging cable",
-      "otg",
-      // "Compatible with iPhone 15 – Original-Quality OLED Screen" is a spare part, not the phone.
-      "compatible",
-      "compatibility",
-      "fits",
-      "replacement part"
-    ];
-    TYPE_WORDS = [
-      ["powerbank", ["power bank", "powerbank", "power-bank", "portable charger", "battery pack"]],
-      ["charger", ["charger", "adapter", "adaptor", "charging brick", "wall charger"]],
-      ["cable", ["cable", "cord", "data cable", "otg"]],
-      ["case", ["case", "cover", "back cover", "flip cover", "bumper", "sleeve", "skin"]],
-      ["protector", ["screen guard", "protector", "tempered glass", "screen protector"]],
-      ["earbuds", ["earbuds", "earbud", "earphone", "earphones", "headphone", "headphones", "tws", "airpods", "neckband", "headset"]],
-      ["watch", ["smartwatch", "smart watch", "fitness band"]],
-      ["speaker", ["speaker", "soundbar", "party box"]],
-      ["tv", ["tv", "smart tv", "television", "led tv", "oled tv"]],
-      ["laptop", ["laptop", "notebook", "chromebook", "macbook"]],
-      ["tablet", ["tablet", "ipad"]],
-      ["camera", ["dslr", "mirrorless", "action camera", "gopro"]],
-      ["monitor", ["monitor"]],
-      ["printer", ["printer"]],
-      ["router", ["router", "modem"]],
-      ["keyboard", ["keyboard"]],
-      ["mouse", ["mouse"]]
-    ];
-    COMPAT_ONLY = /* @__PURE__ */ new Set([
-      "iphone",
-      "ipad",
-      "ipod",
-      "android",
-      "ios",
-      "mobile",
-      "mobiles",
-      "phone",
-      "phones",
-      "smartphone",
-      "smartphones",
-      "device",
-      "devices",
-      "tablet",
-      "tablets",
-      "laptop",
-      "laptops",
-      "compatible",
-      "compatibility",
-      "with",
-      "for",
-      "and",
-      "or",
-      "all",
-      "universal",
-      "usb",
-      "type",
-      "type-c",
-      "typec",
-      "c",
-      "port",
-      "ports",
-      "support",
-      "supports",
-      "works",
-      "suitable",
-      "series",
-      "model",
-      "models",
-      "samsung",
-      "oneplus",
-      "redmi",
-      "xiaomi",
-      "oppo",
-      "vivo",
-      "realme",
-      "motorola",
-      "nothing",
-      "pixel",
-      "google"
-    ]);
-    STOP4 = /* @__PURE__ */ new Set(["the", "and", "with", "for", "new", "latest", "combo", "pack", "of", "in", "by", "free", "a", "an", "online", "buy", "best", "price"]);
-    TIERS = /* @__PURE__ */ new Set(["pro", "max", "plus", "mini", "ultra", "lite", "prime", "air"]);
-    COLORS = /* @__PURE__ */ new Set(["black", "white", "blue", "red", "green", "silver", "gold", "grey", "gray", "pink", "purple", "titanium", "natural", "midnight", "starlight", "yellow", "orange", "teal", "ultramarine", "lavender"]);
-    BRAND_JOINS = [
-      [/\bi\s*phone\b/gi, "iphone"],
-      [/\bapple\s+mobile\b/gi, "apple"],
-      [/\bone\s*plus\b/gi, "oneplus"],
-      [/\bred\s*mi\b/gi, "redmi"],
-      [/\breal\s*me\b/gi, "realme"],
-      [/\bsam\s*sung\b/gi, "samsung"],
-      [/\bnothing\s*phone\b/gi, "nothing phone"],
-      [/\bmoto\s*rola\b/gi, "motorola"],
-      [/\bgalaxy\s*m\b/gi, "galaxy m"],
-      [/\bmac\s*book\b/gi, "macbook"],
-      [/\bmagic\s*book\b/gi, "magicbook"],
-      [/\bb\s*t\s*w\b/gi, "btw"]
-    ];
-  }
-});
-
 // server/lens/productLink.ts
 function isSafePublicUrl(raw) {
   let u;
@@ -35320,6 +35531,350 @@ var init_productLink = __esm({
   }
 });
 
+// server/lens/verticalLexicon.ts
+function toTermRegex(terms) {
+  const sorted = [...terms].sort((a, b) => b.length - a.length);
+  const escaped = sorted.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"));
+  return new RegExp(`(?:^|[^a-z])((?:${escaped.join("|")}))(?![a-z])`, "i");
+}
+function detectCategoryVertical(text) {
+  const t = String(text || "").toLowerCase();
+  if (!t.trim()) return null;
+  const food = FOOD_RE.test(t);
+  const grocery = GROCERY_RE.test(t);
+  if (food && !grocery) return "food";
+  if (food && grocery) {
+    if (QUANTITY_RE.test(t) && !/\b(restaurant|cafe|dhaba|zomato|swiggy|menu|order)\b/i.test(t)) {
+      return "grocery";
+    }
+    return "food";
+  }
+  if (grocery) return "grocery";
+  return null;
+}
+function cleanCategoryQuery(raw) {
+  const cleaned = String(raw || "").replace(QUESTION_NOISE, " ").replace(PLATFORM, " ").replace(/[?!.,;:"']+/g, " ").replace(/\s+/g, " ").trim();
+  const words2 = cleaned.split(" ").filter(Boolean).map((w) => SPELLING[w.toLowerCase()] || w);
+  return words2.join(" ").trim();
+}
+var GROCERY_TERMS, FOOD_TERMS, QUESTION_NOISE, PLATFORM, SPELLING, GROCERY_RE, FOOD_RE, QUANTITY_RE;
+var init_verticalLexicon = __esm({
+  "server/lens/verticalLexicon.ts"() {
+    GROCERY_TERMS = [
+      // staples / grains / pulses
+      "aata",
+      "atta",
+      "aattha",
+      "flour",
+      "maida",
+      "sooji",
+      "rava",
+      "besan",
+      "chawal",
+      "rice",
+      "basmati",
+      "dal",
+      "daal",
+      "toor",
+      "arhar",
+      "moong",
+      "urad",
+      "chana",
+      "rajma",
+      "chole",
+      "poha",
+      "suji",
+      "daliya",
+      "oats",
+      "cornflakes",
+      // oils / dairy / eggs
+      "tel",
+      "oil",
+      "sarson",
+      "mustard oil",
+      "refined oil",
+      "ghee",
+      "butter",
+      "makhan",
+      "milk",
+      "doodh",
+      "curd",
+      "dahi",
+      "yogurt",
+      "paneer",
+      "cheese",
+      "cream",
+      "malai",
+      "egg",
+      "eggs",
+      "anda",
+      "ande",
+      "chicken",
+      "mutton",
+      "fish",
+      "soya",
+      // masala / condiments / sweeteners
+      "masala",
+      "haldi",
+      "mirch",
+      "mirchi",
+      "jeera",
+      "dhania",
+      "garam masala",
+      "namak",
+      "salt",
+      "cheeni",
+      "sugar",
+      "shakkar",
+      "gud",
+      "jaggery",
+      "honey",
+      "sauce",
+      "ketchup",
+      "mayonnaise",
+      "vinegar",
+      "baking powder",
+      // bakery / breakfast / snacks
+      "bread",
+      "bun",
+      "pav",
+      "rusk",
+      "biscuit",
+      "cookies",
+      "namkeen",
+      "chips",
+      "maggi",
+      "noodles",
+      "pasta",
+      "vermicelli",
+      "sevai",
+      "cereal",
+      "jam",
+      "peanut butter",
+      // beverages
+      "tea",
+      "chai",
+      "coffee",
+      "juice",
+      "cold drink",
+      "soft drink",
+      "water bottle",
+      // household / personal care
+      "soap",
+      "sabun",
+      "detergent",
+      "surf",
+      "shampoo",
+      "conditioner",
+      "toothpaste",
+      "toothbrush",
+      "tissue",
+      "toilet cleaner",
+      "phenyl",
+      "harpic",
+      "lizol",
+      "handwash",
+      "sanitizer",
+      "diaper",
+      "pads",
+      "razor",
+      "blade",
+      "bulb",
+      "battery",
+      "candle",
+      "matchbox",
+      "mosquito",
+      "repellent",
+      "agarbatti",
+      "garbage bag",
+      "dishwash",
+      "vim",
+      // produce
+      "sabzi",
+      "sabji",
+      "vegetables",
+      "onion",
+      "pyaz",
+      "potato",
+      "aloo",
+      "tomato",
+      "tamatar",
+      "ginger",
+      "adrak",
+      "garlic",
+      "lehsun",
+      "palak",
+      "spinach",
+      "gobhi",
+      "cabbage",
+      "carrot",
+      "gajar",
+      "cucumber",
+      "kheera",
+      "capsicum",
+      "shimla mirch",
+      "fruit",
+      "fruits",
+      "banana",
+      "kela",
+      "apple",
+      "seb",
+      "orange",
+      "santra",
+      "mango",
+      "aam",
+      "grapes",
+      "angur",
+      "pomegranate",
+      "anar",
+      "papaya",
+      "watermelon",
+      "coconut",
+      "nariyal",
+      "lemon",
+      "nimbu",
+      // brands people actually name
+      "amul",
+      "nestle",
+      "britannia",
+      "parle",
+      "haldiram",
+      "tata salt",
+      "fortune",
+      "aashirvaad",
+      "patanjali",
+      "dabur",
+      "colgate",
+      "dove",
+      "lifebuoy",
+      "colin",
+      "saffola",
+      "mdh",
+      "everest"
+    ];
+    FOOD_TERMS = [
+      // dishes
+      "biryani",
+      "briyani",
+      "biriyani",
+      "pulao",
+      "pizza",
+      "burger",
+      "momos",
+      "momo",
+      "dosa",
+      "idli",
+      "vada",
+      "uttapam",
+      "samosa",
+      "kachori",
+      "chowmein",
+      "chow mein",
+      "hakka noodles",
+      "manchurian",
+      "thali",
+      "curry",
+      "kebab",
+      "tikka",
+      "tandoori",
+      "roll",
+      "wrap",
+      "sandwich",
+      "paratha",
+      "naan",
+      "roti",
+      "chaat",
+      "panipuri",
+      "golgappa",
+      "pav bhaji",
+      "vada pav",
+      "butter chicken",
+      "dal makhani",
+      "paneer butter masala",
+      "fried rice",
+      "mutton curry",
+      "cake",
+      "pastry",
+      "ice cream",
+      "dessert",
+      "sweets",
+      "mithai",
+      "gulab jamun",
+      "rasgulla",
+      "cold coffee",
+      "milkshake",
+      "shake",
+      "smoothie",
+      "lassi",
+      "falooda",
+      // how people ask for restaurant food
+      "restaurant",
+      "dhaba",
+      "cafe",
+      "menu",
+      "order food",
+      "food delivery",
+      "near me khana",
+      "khana",
+      "lunch",
+      "dinner",
+      "breakfast",
+      "nashta",
+      "tiffin",
+      // cuisines
+      "chinese",
+      "south indian",
+      "north indian",
+      "mughlai",
+      "punjabi food",
+      "fast food",
+      "street food",
+      "continental",
+      "italian food",
+      "mughlai food",
+      // brands / apps
+      "zomato",
+      "swiggy",
+      "dominos",
+      "domino",
+      "pizza hut",
+      "pizzahut",
+      "kfc",
+      "burger king",
+      "mcdonald",
+      "subway",
+      "starbucks",
+      "barbeque nation",
+      "bikanervala",
+      "eatsure",
+      "oven story",
+      "faasos",
+      "behrouz",
+      "third wave coffee"
+    ];
+    QUESTION_NOISE = /\b(kaha|kahan|kahaan|kidhar|kaunse|kaunsi|konsa|konsi|kaunsa|which|where|milega|milegi|milta|milte|mile|milege|milegaa|available|aas\s*paas|near\s*me|nearby|sbse|sabse|sabsay|sasta|sasti|sastta|saste|cheapest|cheap|best|accha|behtar|bhav|bhaav|daam|dam|price|prices|rate|rates|kitne|kitna|kitni|kya|kaun|please|pls|plz|karna|karu|kare|karo|kar\s*do|kar|batao|bata\s*do|bata|bataye|dikhao|dikha\s*do|chahiye|chahie|hai|hain|hoga|hogi|ka|ki|ke|ko|me|mein|mai|se|tak|par|pe|is|are|the|of|for|a|an|i|want|need|looking|find|search|compare|check|what|how|much|does|cost|kaunse|par\s+mil|online|order|buy|kharidna|kharido|khareed|dukan|dukaan|store|stores|shop|shops)\b/gi;
+    PLATFORM = /\b(zomato|swiggy|blinkit|zepto|instamart|bigbasket|bb\s*now|flipkart\s*minutes|dunzo|jiomart|amazon|flipkart|meesho|myntra|ajio|tatacliq|tata\s*cliq)\b/gi;
+    SPELLING = {
+      aata: "atta",
+      aattha: "atta",
+      ata: "atta",
+      chawal: "rice",
+      doodh: "milk",
+      sabun: "soap",
+      cheeni: "sugar",
+      namak: "salt",
+      tel: "oil",
+      dahi: "curd",
+      briyani: "biryani",
+      biriyani: "biryani",
+      momo: "momos"
+    };
+    GROCERY_RE = toTermRegex(GROCERY_TERMS);
+    FOOD_RE = toTermRegex(FOOD_TERMS);
+    QUANTITY_RE = /\b\d+\s*(?:g|gm|gms|gram|grams|kg|kgs|ml|l|ltr|litre|liter|pack|packet|pcs|piece|dozen)\b/i;
+  }
+});
+
 // server/lens/assistantIntent.ts
 function isoDate2(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -35371,6 +35926,8 @@ function interpretAssistantQuestion(raw, now = istToday()) {
   if (vertical === "movies" || vertical === "movie") vertical = "movies";
   if (vertical === "banking") vertical = "account";
   if (vertical === "coupons" || vertical === "giftcards") vertical = "ecommerce";
+  const category = detectCategoryVertical(text);
+  if (category && (!vertical || vertical === "ecommerce")) vertical = category;
   if (!vertical || !(vertical in LABEL)) {
     return { understood: false, vertical: null, query: text, reply: 'I could not tell which category that is. Try "Delhi to Mumbai flight", "hotels in Goa" or a product name.' };
   }
@@ -35382,23 +35939,27 @@ function interpretAssistantQuestion(raw, now = istToday()) {
     const city = parsed.location?.city || (lower.match(/\b(?:in|at|near)\s+([a-z ]{3,30})/)?.[1] ?? "").trim();
     query = (city || text.replace(FILLER, " ")).replace(/\s+/g, " ").trim();
     query = query.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  } else if (vertical === "grocery" || vertical === "food") {
+    query = cleanCategoryQuery(text) || text.replace(FILLER, " ").replace(/\s+/g, " ").trim();
   } else {
     query = text.replace(FILLER, " ").replace(/\s+/g, " ").trim() || text;
   }
   if (!query) query = text;
   const when = date ? ` for ${date}` : "";
+  const categoryReply = vertical === "grocery" ? `"${query}" is a grocery staple, so I am checking the 10-minute delivery apps (Blinkit, Zepto, Instamart, BigBasket, Flipkart Minutes) for the lowest price.` : vertical === "food" ? `"${query}" is a food order, so I am checking the restaurant delivery apps (Zomato, Swiggy, Domino's, EatSure\u2026) for the lowest price.` : `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`;
   return {
     understood: true,
     vertical,
     query,
     ...date ? { date } : {},
-    reply: `Opening ${LABEL[vertical]} and searching "${query}"${when}. Live prices from every site are loading.`
+    reply: categoryReply
   };
 }
 var LABEL, FILLER, MONTHS;
 var init_assistantIntent = __esm({
   "server/lens/assistantIntent.ts"() {
     init_queryUnderstanding();
+    init_verticalLexicon();
     LABEL = {
       flights: "Flights",
       hotels: "Hotels",
@@ -35457,9 +36018,10 @@ function buildAssistantSearch(raw, ctx = {}) {
       input: null
     };
   }
-  const query = cleanAssistantQuery(text) || text;
-  const vertical = ACCOUNT_HINT.test(text) ? "account" : GROCERY_HINT.test(text) ? "grocery" : "ecommerce";
-  const where = vertical === "grocery" ? "the 10-minute grocery sites" : vertical === "account" ? "every bank and comparison site" : "every shopping site";
+  const category = detectCategoryVertical(text);
+  const vertical = ACCOUNT_HINT.test(text) ? "account" : category || "ecommerce";
+  const query = (category ? cleanCategoryQuery(text) : cleanAssistantQuery(text)) || text;
+  const where = vertical === "grocery" ? "the 10-minute grocery apps (Blinkit, Zepto, Instamart, BigBasket)" : vertical === "food" ? "the restaurant delivery apps (Zomato, Swiggy, EatSure, Domino's)" : vertical === "account" ? "every bank and comparison site" : "every shopping site";
   return {
     meta: {
       understood: true,
@@ -35536,7 +36098,8 @@ function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
       count: rows.length
     };
   }
-  const spread = priced.length > 1 ? priced[priced.length - 1].price - best.price : 0;
+  const distinctSellers = new Set(priced.map((r) => (r.provider || "").toLowerCase()).filter(Boolean));
+  const spread = priced.length > 1 && distinctSellers.size > 1 ? priced[priced.length - 1].price - best.price : 0;
   const spreadTxt = spread > 0 ? ` Spread across sites: ${money2(spread, best.currency)}.` : "";
   return {
     reply: `Cheapest ${label} result for "${query}": ${best.title}${best.provider ? ` on ${best.provider}` : ""} at ${money2(best.price, best.currency)}.${spreadTxt} ${rows.length} live option${rows.length === 1 ? "" : "s"} from ${sourceCount || rows.length} site${(sourceCount || rows.length) === 1 ? "" : "s"} below.`,
@@ -35544,13 +36107,13 @@ function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
     count: rows.length
   };
 }
-var NOISE3, ACCOUNT_HINT, GROCERY_HINT, LABEL2;
+var NOISE3, ACCOUNT_HINT, LABEL2;
 var init_assistantAnswer = __esm({
   "server/lens/assistantAnswer.ts"() {
     init_assistantIntent();
+    init_verticalLexicon();
     NOISE3 = /\b(kitna|kitne|kya|hai|hain|ka|ki|ke|ko|me|mein|mai|se|tak|rate|rates|price|prices|batao|bata|do|dikhao|dikha|chahiye|chahie|please|pls|show|tell|me|find|search|compare|check|what|is|are|the|of|for|a|an|i|want|need|looking|best|sabse|sasta|cheapest|cheap|deal|deals|offer|offers|buy|kharidna|kitne\s*ka)\b/gi;
     ACCOUNT_HINT = /\b(bank account|savings account|saving account|current account|salary account|zero balance|fixed deposit|recurring deposit|\bfd\b|\brd\b|nre account|nro account)\b/i;
-    GROCERY_HINT = /\b(milk|doodh|butter|makhan|paneer|curd|dahi|atta|flour|rice|chawal|dal|daal|oil|tel|sugar|cheeni|salt|namak|tea|chai|coffee|maggi|noodles|bread|eggs|anda|chicken|mutton|fish|sabzi|vegetables|onion|pyaz|potato|aloo|tomato|tamatar|fruit|banana|apple|amul|nestle|britannia|parle|tata salt|fortune|aashirvaad|500g|1kg|1\s*kg|\d+\s*g)\b/i;
     LABEL2 = {
       flights: "flights",
       hotels: "hotels",
@@ -35566,31 +36129,6 @@ var init_assistantAnswer = __esm({
       account: "bank accounts",
       banking: "bank accounts"
     };
-  }
-});
-
-// server/lens/pricePlausibility.ts
-function dropImplausiblePrices(rows) {
-  const priced = rows.filter((r) => Number.isFinite(r.price) && r.price > 0);
-  if (priced.length < 2) return { kept: rows, dropped: [] };
-  const prices = priced.map((r) => r.price).sort((a, b) => a - b);
-  const min = prices[0];
-  const max = prices[prices.length - 1];
-  if (max <= 0 || min / max >= 0.25) return { kept: rows, dropped: [] };
-  const median = prices[Math.floor(prices.length / 2)];
-  const cutoff = prices.length >= 3 ? median * 0.35 : max * 0.2;
-  const kept = [];
-  const dropped = [];
-  for (const r of rows) {
-    const isPriced = Number.isFinite(r.price) && r.price > 0;
-    if (isPriced && r.price < cutoff) dropped.push(r);
-    else kept.push(r);
-  }
-  if (!kept.some((r) => r.price > 0)) return { kept: rows, dropped: [] };
-  return { kept, dropped };
-}
-var init_pricePlausibility = __esm({
-  "server/lens/pricePlausibility.ts"() {
   }
 });
 
@@ -39213,7 +39751,8 @@ var init_routes = __esm({
             const title = String(r.title || "");
             const seller = String(r.seller || r.vendor || "");
             if (price <= 0 || !title) continue;
-            if ((now - new Date(r.fetched_at).getTime()) / 1e3 > 6 * 3600) continue;
+            const rowAgeSec = (now - new Date(r.fetched_at).getTime()) / 1e3;
+            if (rowAgeSec > 72 * 3600) continue;
             const k = `${seller.toLowerCase()}|${title.toLowerCase()}`;
             if (haveKey.has(k)) continue;
             haveKey.add(k);
@@ -39224,7 +39763,8 @@ var init_routes = __esm({
                 seller,
                 sellerUrl: r.seller_url || "",
                 prices: { effectivePrice: price, mandatoryTotal: price, listPrice: 0 },
-                attributes: {},
+                // Age travels with the row so the card can say how old a catalogue quote is.
+                attributes: { price_age_hours: String(Math.round(rowAgeSec / 360) / 10) },
                 availability: r.availability || "unknown",
                 canonicalEntityId: r.canonical_entity_id ?? null
               },
@@ -39380,7 +39920,9 @@ var init_routes = __esm({
         historyEntity = got.historyEntity;
       } catch {
       }
-      if (!paint2 && (offers.length === 0 || cappedOut) && deepRefreshInFlight.size < 2) {
+      const sellerCoverage = new Set(offers.map((o) => String(o.seller || "").toLowerCase()).filter(Boolean)).size;
+      const thinCoverage = offers.length > 0 && sellerCoverage < 3;
+      if (!paint2 && (offers.length === 0 || cappedOut || thinCoverage) && deepRefreshInFlight.size < 2) {
         const key = `${lensQuery}|${pid || ""}`;
         if (!deepRefreshInFlight.has(key) && Date.now() - (deepRefreshLast.get(key) || 0) > 6e4) {
           deepRefreshInFlight.add(key);
@@ -39432,7 +39974,7 @@ var init_routes = __esm({
         // Honest signal for clients: a refresh is still running, so a re-poll can return rows.
         // A capped-out answer IS pending by definition: the page must keep polling, otherwise it
         // would stop on an empty shell and never pick up the rows that land a moment later.
-        pendingRefresh: cappedOut || floorOnly || responses.some((r) => r.state?.pendingRefresh === true),
+        pendingRefresh: cappedOut || floorOnly || thinCoverage || responses.some((r) => r.state?.pendingRefresh === true),
         closestOnly,
         message: offers.length ? floorOnly ? "Live shops are still answering. Showing our last verified prices for this product." : closestOnly ? "No exact match right now. Showing the closest live variants of this product." : void 0 : "No verified listing of this product was found on our sources right now."
       });
@@ -39548,7 +40090,8 @@ var init_routes = __esm({
       try {
         const searched = runSearch(searchInput);
         searched.catch(() => void 0);
-        const budgetMs = Math.min(resultDeadlineMs(), 2e3);
+        const categoryVertical = ["grocery", "food"].includes(String(searchInput.vertical));
+        const budgetMs = Math.min(resultDeadlineMs(), categoryVertical ? 2600 : 2e3);
         const raced = await Promise.race([
           searched,
           new Promise((resolve) => setTimeout(() => resolve(null), budgetMs))
@@ -39571,15 +40114,66 @@ var init_routes = __esm({
           }
           pending = rows.length === 0;
         }
+        if (rows.length === 0 && pending) {
+          for (let attempt = 0; attempt < 2 && rows.length === 0; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1100));
+            try {
+              const retry = await runSearch(searchInput);
+              const retryRows = retry.results || [];
+              if (retryRows.length) {
+                rows = retryRows;
+                sourcesSucceeded = retry.state?.sourcesSucceeded || [];
+                honestNotice = retry.state?.honestNotice;
+                pending = Boolean(retry.state?.pendingRefresh);
+              }
+            } catch {
+            }
+          }
+        }
+        let fallbackVertical;
+        if (rows.length === 0 && ["grocery", "food"].includes(String(searchInput.vertical))) {
+          const secondary = { ...searchInput, vertical: "ecommerce" };
+          try {
+            const second = runSearch(secondary);
+            second.catch(() => void 0);
+            const racedSecond = await Promise.race([
+              second,
+              new Promise((resolve) => setTimeout(() => resolve(null), 1500))
+            ]);
+            let secondRows = racedSecond?.results || [];
+            if (!secondRows.length) {
+              const secondFallback = await lastChanceRows(secondary, 500);
+              secondRows = secondFallback?.results || [];
+            }
+            if (secondRows.length) {
+              rows = secondRows;
+              pending = false;
+              fallbackVertical = "ecommerce";
+              sourcesSucceeded = racedSecond?.state?.sourcesSucceeded || [];
+            }
+          } catch {
+          }
+        }
         const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
         const shaped = toAssistantRows(ordered, 6);
-        const answer = shapeAssistantAnswer(meta.vertical, meta.query, shaped, { pending, sourcesSucceeded, honestNotice });
+        const answer = shapeAssistantAnswer(
+          fallbackVertical ? fallbackVertical : meta.vertical,
+          meta.query,
+          shaped,
+          {
+            pending,
+            sourcesSucceeded,
+            honestNotice,
+            ...fallbackVertical ? { honestNotice: `The ${meta.vertical === "grocery" ? "10-minute grocery apps" : "restaurant apps"} did not answer this time, so these are live prices from the shopping sites.` } : {}
+          }
+        );
         res.json({
           success: true,
           ...meta,
           reply: shaped.length ? answer.reply : `${meta.reply} ${answer.reply}`.replace(/\s+/g, " ").trim(),
           vertical: meta.vertical,
           engineVertical: String(searchInput.vertical),
+          ...fallbackVertical ? { answeredBy: fallbackVertical } : {},
           query: meta.query,
           results: answer.results,
           count: answer.count,
