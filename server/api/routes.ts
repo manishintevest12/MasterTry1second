@@ -227,7 +227,7 @@ apiRouter.get('/bus/locations', async (req, res) => {
         parentName: String(d.parentLocationName || ''),
         // Popular boarding points for this city (redBus's own BpList) — shown in the
         // From dropdown exactly like the reference UI ("Board at" rows).
-        boardingPoints: (Array.isArray(d.BpList) ? d.BpList : []).slice(0, 6).map((bp: any) => ({
+        boardingPoints: (Array.isArray(d.BpList) ? d.BpList : []).slice(0, 20).map((bp: any) => ({
           id: Number(bp?.ID), name: String(bp?.Name || ''), parentName: String(bp?.parentLocationName || ''),
         })),
       }));
@@ -239,6 +239,59 @@ apiRouter.get('/bus/locations', async (req, res) => {
     return res.json({ locations });
   } catch (e: any) {
     return res.json({ locations: [], error: String(e?.message || e).slice(0, 120) });
+  }
+});
+
+// City boarding / dropping points picker data (owner 29 Oct, reference screenshots: after
+// typing a city the app must list THAT city's points — "All boarding points" for the origin,
+// "All dropping points" for the destination — with the city header, the point rows and the
+// popular-destinations footer).
+//
+// Source: redBus's own Solr citySuggestion registry, whose BpList is exactly the list the redBus
+// app shows under "Popular Boarding Points". Verified 29 Oct for Indore: 20 points, the first
+// seven are Vijay Nagar, Teen Imli Square, AICTSL Campus, Sarwate Bus Stand, Navlakha, Rajendra
+// Nagar, Chhotigwaltoli — the same order as the owner's screenshot. Same registry serves the
+// dropping side (redBus keeps one point list per city), so kind only changes the label.
+const busStopsCache = new Map<string, { at: number; payload: any }>();
+apiRouter.get('/bus/stops', async (req, res) => {
+  const city = String(req.query.city || '').trim().slice(0, 60);
+  const kind = String(req.query.kind || 'boarding').toLowerCase() === 'dropping' ? 'dropping' : 'boarding';
+  if (city.length < 2) return res.json({ city: '', kind, points: [] });
+  const key = `${city.toLowerCase()}|${kind}`;
+  const hit = busStopsCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600 * 1000) return res.json(hit.payload);
+  try {
+    const r = await cffiFetch(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(city)}&limit=25`, {
+      impersonate: 'chrome', timeoutMs: 15_000, headers: { Accept: 'application/json' },
+    });
+    if (r.status !== 200) return res.json({ city, kind, points: [], error: `redBus citySuggestion HTTP ${r.status}` });
+    const docs: any[] = (JSON.parse(r.body || '{}').response?.docs) || [];
+    const flat: any[] = [];
+    for (const g of docs) flat.push(...(g?.doclist?.docs || [g]));
+    const cities = flat.filter((d: any) => String(d?.locationType || '').toUpperCase() === 'CITY' && Number(d?.ID) > 0)
+      .filter((d: any) => !d?.cc || String(d.cc).toUpperCase() === 'IND');
+    const lower = city.toLowerCase();
+    const chosen = cities.find((d: any) => String(d?.Name || '').toLowerCase() === lower) || cities[0];
+    if (!chosen) return res.json({ city, kind, points: [] });
+    const cityName = String(chosen.Name || city);
+    const points = (Array.isArray(chosen.BpList) ? chosen.BpList : [])
+      .filter((bp: any) => bp && String(bp.Name || '').trim())
+      .slice(0, 20)
+      .map((bp: any) => ({
+        id: Number(bp.ID) || null,
+        name: String(bp.Name || '').split(',').slice(0, -1).join(',') || String(bp.Name || ''),
+        fullName: String(bp.Name || ''),
+        city: cityName,
+      }));
+    const payload = { city: cityName, cityId: Number(chosen.ID) || null, kind, points };
+    busStopsCache.set(key, { at: Date.now(), payload });
+    if (busStopsCache.size > 400) {
+      const oldest = [...busStopsCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) busStopsCache.delete(oldest[0]);
+    }
+    return res.json(payload);
+  } catch (e: any) {
+    return res.json({ city, kind, points: [], error: String(e?.message || e).slice(0, 120) });
   }
 });
 

@@ -979,6 +979,60 @@ adminRouter.get('/affiliate/clicks', async (req, res) => {
   }
 });
 
+// ---- Revenue gaps per merchant (owner 29 Oct: "every link from our site or app should pay
+// us something"). Every exit already routes through /api/out -> buildSecureDeeplink, and this
+// endpoint answers the only question that matters afterwards: WHICH merchants are still being
+// served for free. A click whose network_id is 'direct' earned nothing (no affiliate profile,
+// no Cuelinks/LinkInR/Ekaro coverage) - the owner can then add that merchant's id and it starts
+// paying with no code change. Paying = any network, including the AdSense interstitial leg.
+adminRouter.get('/monetization/gaps', async (req, res) => {
+  try {
+    const store = getStore() as any;
+    const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+    const since = sqlDate(days);
+    const rows = await store.query(
+      `SELECT vendor_domain,
+              COUNT(*) AS clicks,
+              SUM(CASE WHEN network_id IS NULL OR network_id = 'direct' THEN 1 ELSE 0 END) AS direct_clicks,
+              SUM(CASE WHEN network_id IS NOT NULL AND network_id <> 'direct' THEN 1 ELSE 0 END) AS paid_clicks,
+              GROUP_CONCAT(DISTINCT network_id ORDER BY network_id) AS networks
+       FROM affiliate_clicks
+       WHERE created_at >= ?
+       GROUP BY vendor_domain
+       ORDER BY clicks DESC
+       LIMIT 200`, [since]);
+    const merchants = (rows as any[]).map((r: any) => {
+      const clicks = Number(r.clicks || 0);
+      const paid = Number(r.paid_clicks || 0);
+      return {
+        domain: String(r.vendor_domain || ''),
+        clicks,
+        paidClicks: paid,
+        unmonetizedClicks: Number(r.direct_clicks || 0),
+        networks: String(r.networks || '').split(',').filter(Boolean),
+        // A merchant that never earned on any click is the actionable list.
+        paying: paid > 0,
+        paidShare: clicks ? Math.round((paid / clicks) * 100) : 0,
+      };
+    });
+    const totalClicks = merchants.reduce((s: number, m: any) => s + m.clicks, 0);
+    const paidClicks = merchants.reduce((s: number, m: any) => s + m.paidClicks, 0);
+    res.json({
+      success: true,
+      windowDays: days,
+      totalClicks,
+      paidClicks,
+      unmonetizedClicks: totalClicks - paidClicks,
+      paidShare: totalClicks ? Math.round((paidClicks / totalClicks) * 100) : 0,
+      payingMerchants: merchants.filter((m: any) => m.paying).length,
+      unmonetizedMerchants: merchants.filter((m: any) => !m.paying && m.clicks > 0).map((m: any) => m.domain).slice(0, 50),
+      merchants,
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e?.message || 'Monetization gaps unavailable' });
+  }
+});
+
 adminRouter.get('/affiliate/conversions', async (_req, res) => {
   try {
     const store = getStore() as any;

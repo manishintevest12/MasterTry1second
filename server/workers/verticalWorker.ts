@@ -90,7 +90,26 @@ export async function runTask(worker: VerticalWorker, task: WorkerTask, source: 
     if (!rawItems.length) {
       return failedResult(source, 'EMPTY_RESPONSE', `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started);
     }
-    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started, fetchedAt };
+    // Bus only (owner 29 Oct): rebuild each row's link as that bus's own seat page when the
+    // platform's template has been verified, otherwise the row keeps the route page it had.
+    // Never allowed to affect the result: any failure returns the untouched rows.
+    let items = rawItems;
+    if (worker.vertical === 'bus') {
+      try {
+        const { enrichBusRows } = await import('../bus/seatLink');
+        const route = String((query as any)?.travel?.route || query?.rawQuery || '');
+        const m = route.match(/(.{2,40}?)\s+(?:to|from|-)?\s*(.{2,40})$/i);
+        const isoDate = String((query as any)?.travel?.date || '').slice(0, 10);
+        if (isoDate) {
+          items = await enrichBusRows(rawItems as any, {
+            from: String(m?.[1] || '').trim(),
+            to: String(m?.[2] || '').trim(),
+            isoDate,
+          }) as any;
+        }
+      } catch { items = rawItems; }
+    }
+    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: items, latencyMs: Date.now() - started, fetchedAt };
   } catch (e: any) {
     const fc = e instanceof AcquisitionError ? e.failureClass : 'UNKNOWN';
     log.debug('VerticalWorker', `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e?.message || e).slice(0, 140) });

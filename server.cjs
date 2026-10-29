@@ -1985,6 +1985,219 @@ var init_devFixtures = __esm({
   }
 });
 
+// server/bus/seatLink.ts
+var seatLink_exports = {};
+__export(seatLink_exports, {
+  buildBusSeatUrl: () => buildBusSeatUrl,
+  enrichBusRows: () => enrichBusRows,
+  resetSeatProbes: () => resetSeatProbes,
+  resolveBusSeatUrl: () => resolveBusSeatUrl,
+  seatTargetFingerprint: () => seatTargetFingerprint,
+  seatTemplateTrusted: () => seatTemplateTrusted
+});
+function redbusDate(iso2) {
+  const d = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso2;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${String(d.getUTCDate()).padStart(2, "0")}-${months[d.getUTCMonth()]}-${d.getUTCFullYear()}`;
+}
+function ddmmyyyy(iso2) {
+  const d = /* @__PURE__ */ new Date(`${iso2}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso2;
+  return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
+}
+function buildBusSeatUrl(t) {
+  const from = slug(t.from);
+  const to = slug(t.to);
+  if (!from || !to || !t.isoDate) return "";
+  switch (t.platform) {
+    case "redbus": {
+      const id = t.routeId || t.serviceId;
+      if (!id) return "";
+      return `https://www.redbus.in/bus-tickets/${from}-to-${to}?busId=${encodeURIComponent(id)}&doj=${encodeURIComponent(redbusDate(t.isoDate))}`;
+    }
+    case "abhibus": {
+      const id = t.serviceId;
+      if (!id || !t.fromCityId || !t.toCityId) return "";
+      return `https://www.abhibus.com/bus_search/${encodeURIComponent(t.from)}/${encodeURIComponent(t.fromCityId)}/${encodeURIComponent(t.to)}/${encodeURIComponent(t.toCityId)}/${encodeURIComponent(ddmmyyyy(t.isoDate))}/${encodeURIComponent(id)}/seats`;
+    }
+    case "makemytrip": {
+      const id = t.tripKey || t.serviceId;
+      if (!id) return "";
+      return `https://www.makemytrip.com/bus/search/${encodeURIComponent(t.from)}/${encodeURIComponent(t.to)}/${encodeURIComponent(ddmmyyyy(t.isoDate))}?busId=${encodeURIComponent(id)}`;
+    }
+    case "ixigo": {
+      const id = t.serviceId;
+      if (!id) return "";
+      return `https://www.ixigo.com/buses/${from}-to-${to}?busId=${encodeURIComponent(id)}`;
+    }
+    case "zingbus": {
+      const id = t.serviceId || t.tripKey;
+      if (!id) return "";
+      return `https://www.zingbus.com/seat-layout/${encodeURIComponent(id)}`;
+    }
+    default:
+      return "";
+  }
+}
+function hasSeatSignals(body) {
+  const b = String(body || "").toLowerCase();
+  if (b.length < 2e3) return false;
+  return SEAT_SIGNALS.some((s) => b.includes(s));
+}
+async function fetchBody(url) {
+  const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "text/html" } });
+  return { status: r.status, body: String(r.body || "") };
+}
+function bogusIdFor(id) {
+  return String(id).replace(/\d/g, "9") === String(id) ? "0000001" : "0000001";
+}
+function controlUrlFor(url) {
+  try {
+    const u = new URL(url);
+    for (const key of ["busId", "busid", "tripKey", "serviceId"]) {
+      if (u.searchParams.has(key)) {
+        u.searchParams.set(key, bogusIdFor(u.searchParams.get(key) || ""));
+        return u.toString();
+      }
+    }
+    const parts = u.pathname.split("/");
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (/^[A-Za-z0-9_-]{4,}$/.test(parts[i]) && /\d/.test(parts[i])) {
+        const copy = [...parts];
+        copy[i] = bogusIdFor(parts[i]);
+        u.pathname = copy.join("/");
+        return u.toString();
+      }
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+function loadProbeState() {
+  try {
+    const raw = JSON.parse((0, import_fs2.readFileSync)(PATTERN_FILE, "utf8"));
+    for (const [k, v] of Object.entries(raw || {})) {
+      if (v && typeof v.at === "number") probeCache.set(k, v);
+    }
+  } catch {
+  }
+}
+function saveProbeState() {
+  try {
+    (0, import_fs2.mkdirSync)("data", { recursive: true });
+    const out = {};
+    for (const [k, v] of probeCache) out[k] = v;
+    (0, import_fs2.writeFileSync)(PATTERN_FILE, JSON.stringify(out, null, 2));
+  } catch {
+  }
+}
+async function probeOnce(platform, url) {
+  const control = controlUrlFor(url);
+  if (!control) {
+    probeCache.set(platform, { at: Date.now(), ok: false, status: 0, note: "no id parameter to control" });
+    saveProbeState();
+    return false;
+  }
+  try {
+    const [real, bogus] = await Promise.all([fetchBody(url), fetchBody(control)]);
+    const realLooksSeat = real.status === 200 && hasSeatSignals(real.body);
+    const differs = realLooksSeat && (real.body.length !== bogus.body.length || (0, import_crypto2.createHash)("sha256").update(real.body).digest("hex") !== (0, import_crypto2.createHash)("sha256").update(bogus.body).digest("hex"));
+    probeCache.set(platform, {
+      at: Date.now(),
+      ok: differs,
+      status: real.status,
+      note: differs ? "id changes the page" : "bogus id renders the same page"
+    });
+    saveProbeState();
+    log.info("Bus", "Seat template probe", { platform, ok: differs, status: real.status });
+    return differs;
+  } catch (e2) {
+    probeCache.set(platform, { at: Date.now(), ok: false, status: 0, note: String(e2?.message || e2).slice(0, 120) });
+    saveProbeState();
+    return false;
+  }
+}
+async function seatTemplateTrusted(platform, sampleUrl) {
+  const hit = probeCache.get(platform);
+  if (hit && Date.now() - hit.at < PROBE_TTL_MS) return hit.ok;
+  const running2 = probing.get(platform);
+  if (running2) return running2;
+  const p = probeOnce(platform, sampleUrl).finally(() => probing.delete(platform));
+  probing.set(platform, p);
+  return p;
+}
+async function resolveBusSeatUrl(t, routeUrl) {
+  const candidate = buildBusSeatUrl(t);
+  if (!candidate) return routeUrl;
+  try {
+    const trusted = await seatTemplateTrusted(t.platform, candidate);
+    return trusted ? candidate : routeUrl;
+  } catch {
+    return routeUrl;
+  }
+}
+function resetSeatProbes() {
+  probeCache.clear();
+  probing.clear();
+}
+function seatTargetFingerprint(t) {
+  return (0, import_crypto2.createHash)("sha256").update(`${t.platform}|${t.from}|${t.to}|${t.isoDate}`).digest("hex").slice(0, 12);
+}
+async function enrichBusRows(items, ctx) {
+  if (!items.length || !ctx.isoDate) return items;
+  return Promise.all(items.map(async (row) => {
+    try {
+      const platform = PLATFORM_OF_SELLER[String(row.seller || "").toLowerCase()];
+      if (!platform) return row;
+      const a = row.attributes || {};
+      const target = {
+        platform,
+        from: ctx.from,
+        to: ctx.to,
+        isoDate: ctx.isoDate,
+        routeId: a.route_id || a.bus_id,
+        serviceId: a.service_id || a.bus_id,
+        tripKey: a.trip_key,
+        fromCityId: a.from_city_id,
+        toCityId: a.to_city_id
+      };
+      const seat = await resolveBusSeatUrl(target, String(row.sellerUrl || ""));
+      if (seat && seat !== row.sellerUrl) return { ...row, sellerUrl: seat };
+      return row;
+    } catch {
+      return row;
+    }
+  }));
+}
+var import_crypto2, import_fs2, PROBE_TTL_MS, SEAT_SIGNALS, probeCache, probing, slug, PATTERN_FILE, PLATFORM_OF_SELLER;
+var init_seatLink = __esm({
+  "server/bus/seatLink.ts"() {
+    import_crypto2 = require("crypto");
+    import_fs2 = require("fs");
+    init_curlCffiFetch();
+    init_logger();
+    PROBE_TTL_MS = 24 * 3600 * 1e3;
+    SEAT_SIGNALS = ["seat", "lower deck", "upper deck", "boarding point", "dropping point", "select seats"];
+    probeCache = /* @__PURE__ */ new Map();
+    loadProbeState();
+    probing = /* @__PURE__ */ new Map();
+    slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-").replace(/-+/g, "-");
+    PATTERN_FILE = "data/bus-seat-patterns.json";
+    PLATFORM_OF_SELLER = {
+      redbus: "redbus",
+      "red bus": "redbus",
+      abhibus: "abhibus",
+      "abhi bus": "abhibus",
+      makemytrip: "makemytrip",
+      "make my trip": "makemytrip",
+      ixigo: "ixigo",
+      zingbus: "zingbus"
+    };
+  }
+});
+
 // server/workers/verticalWorker.ts
 function looksLikeChallenge(body) {
   const head2 = body.slice(0, 6e3);
@@ -2022,7 +2235,25 @@ async function runTask(worker, task, source, query) {
     if (!rawItems.length) {
       return failedResult(source, "EMPTY_RESPONSE", `${worker.vertical} worker: source returned no parseable offers`, Date.now() - started3);
     }
-    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems, latencyMs: Date.now() - started3, fetchedAt };
+    let items = rawItems;
+    if (worker.vertical === "bus") {
+      try {
+        const { enrichBusRows: enrichBusRows2 } = await Promise.resolve().then(() => (init_seatLink(), seatLink_exports));
+        const route2 = String(query?.travel?.route || query?.rawQuery || "");
+        const m = route2.match(/(.{2,40}?)\s+(?:to|from|-)?\s*(.{2,40})$/i);
+        const isoDate4 = String(query?.travel?.date || "").slice(0, 10);
+        if (isoDate4) {
+          items = await enrichBusRows2(rawItems, {
+            from: String(m?.[1] || "").trim(),
+            to: String(m?.[2] || "").trim(),
+            isoDate: isoDate4
+          });
+        }
+      } catch {
+        items = rawItems;
+      }
+    }
+    return { success: true, sourceId: source.id, sourceMethod: source.method, rawItems: items, latencyMs: Date.now() - started3, fetchedAt };
   } catch (e2) {
     const fc = e2 instanceof AcquisitionError ? e2.failureClass : "UNKNOWN";
     log.debug("VerticalWorker", `${worker.vertical}/${task.sourceId} failed`, { fc, error: String(e2?.message || e2).slice(0, 140) });
@@ -2096,7 +2327,7 @@ function parseInr(text) {
 }
 function parseAmazonIn(html, source, searchUrl) {
   const $ = cheerio.load(html);
-  const fingerprint = (0, import_crypto2.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto3.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   $('div[data-component-type="s-search-result"]').each((_, el) => {
     const card = $(el);
@@ -2150,11 +2381,11 @@ function extractAmazonGallery(pdpHtml) {
   }
   return urls.slice(0, 6);
 }
-var cheerio, import_crypto2;
+var cheerio, import_crypto3;
 var init_amazonIn = __esm({
   "server/workers/parsers/amazonIn.ts"() {
     cheerio = __toESM(require("cheerio"), 1);
-    import_crypto2 = require("crypto");
+    import_crypto3 = require("crypto");
     init_contract();
   }
 });
@@ -2212,7 +2443,7 @@ function parseFlipkart(html, source, searchUrl) {
   if (!state) return [];
   const units = [];
   collectUnits(state, units);
-  const fingerprint = (0, import_crypto3.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto4.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const u of units) {
@@ -2250,10 +2481,10 @@ function parseFlipkart(html, source, searchUrl) {
   }
   return out.slice(0, 20);
 }
-var import_crypto3;
+var import_crypto4;
 var init_flipkart = __esm({
   "server/workers/parsers/flipkart.ts"() {
-    import_crypto3 = require("crypto");
+    import_crypto4 = require("crypto");
     init_contract();
   }
 });
@@ -2749,9 +2980,9 @@ function lenovoHeaders(term) {
 function lenovoTitle(p) {
   const summary = String(p.summary || "").trim();
   if (summary && summary.length >= 3) return summary.slice(0, 200);
-  const slug3 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
-  if (slug3.includes("-")) {
-    return slug3.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
+  const slug4 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
+  if (slug4.includes("-")) {
+    return slug4.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
   }
   const alt = String(p?.media?.gallery?.[0]?.imageAlt || "").trim();
   if (alt && !/^(front|side|back|top|bottom|left|right|angle)/i.test(alt)) {
@@ -3131,8 +3362,8 @@ function parseJiomart(body, source, pageUrl) {
     const price = Number.isFinite(eff) && eff > 0 ? eff : marked;
     if (!Number.isFinite(price) || price <= 0) continue;
     const brand = String(it.brand?.name || "").trim();
-    const slug3 = String(it.slug || "").trim();
-    const pdp = slug3 ? `https://www.jiomart.com/p/${slug3}` : "https://www.jiomart.com";
+    const slug4 = String(it.slug || "").trim();
+    const pdp = slug4 ? `https://www.jiomart.com/p/${slug4}` : "https://www.jiomart.com";
     const imgs = [...new Set(
       (it.medias || []).filter((m) => m?.type === "image" && typeof m.url === "string").map((m) => String(m.url).replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u))
     )].slice(0, 6);
@@ -3216,9 +3447,9 @@ function parseRelianceDigital(html, source, pageUrl) {
     const price = Number(it?.price?.effective?.min);
     if (!name || !Number.isFinite(price) || price <= 0) continue;
     if (it?.sellable === false) continue;
-    const slug3 = String(it?.slug || "").trim();
-    if (!slug3 || seen.has(slug3)) continue;
-    seen.add(slug3);
+    const slug4 = String(it?.slug || "").trim();
+    if (!slug4 || seen.has(slug4)) continue;
+    seen.add(slug4);
     const marked = Number(it?.price?.marked?.min);
     const mrp = Number.isFinite(marked) && marked > price ? marked : void 0;
     const brand = it?.brand?.name ? String(it.brand.name) : void 0;
@@ -3226,7 +3457,7 @@ function parseRelianceDigital(html, source, pageUrl) {
     const ean = Array.isArray(it?.attributes?.identifier?.ean) ? String(it.attributes.identifier.ean[0] || "") : "";
     const sku = Array.isArray(it?.attributes?.identifier?.sku_code) ? String(it.attributes.identifier.sku_code[0] || "") : "";
     const rating = Number(it?.rating);
-    const url = `${RELIANCE_WEB}/product/${slug3}`;
+    const url = `${RELIANCE_WEB}/product/${slug4}`;
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand,
@@ -3414,8 +3645,8 @@ var init_ecommerce = __esm({
           run: async (ctx) => {
             const term = q(ctx);
             if (!term) return [];
-            const slug3 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
-            const url = `https://www.myntra.com/${encodeURIComponent(slug3)}`;
+            const slug4 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+            const url = `https://www.myntra.com/${encodeURIComponent(slug4)}`;
             const r = await ctx.fetch(url);
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Myntra HTTP ${r.status}`, r.status);
             const items = parseMyntra(r.body, ctx.source, url);
@@ -3831,7 +4062,7 @@ function parseRateRange(text) {
 }
 function parseBankBazaarLoans(html, source, pageUrl, loanType) {
   const $ = cheerio2.load(html);
-  const fingerprint = (0, import_crypto4.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto5.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -3879,10 +4110,10 @@ function parseBankBazaarLoans(html, source, pageUrl, loanType) {
   });
   return out.slice(0, 40);
 }
-var import_crypto4, cheerio2;
+var import_crypto5, cheerio2;
 var init_bankbazaarLoans = __esm({
   "server/workers/parsers/bankbazaarLoans.ts"() {
-    import_crypto4 = require("crypto");
+    import_crypto5 = require("crypto");
     cheerio2 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -4169,7 +4400,7 @@ function parseInr2(text) {
 }
 function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
   const $ = cheerio3.load(html);
-  const fingerprint = (0, import_crypto5.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto6.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $('[data-testid="property-card"]').each((_, el) => {
@@ -4212,10 +4443,10 @@ function parseBookingHotels(html, source, searchUrl, checkin, checkout) {
   });
   return out.slice(0, 25);
 }
-var import_crypto5, cheerio3;
+var import_crypto6, cheerio3;
 var init_booking = __esm({
   "server/workers/parsers/booking.ts"() {
-    import_crypto5 = require("crypto");
+    import_crypto6 = require("crypto");
     cheerio3 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -4893,8 +5124,8 @@ function parseGoibiboHotelsSsr(body) {
     let image = String(pickFirst(h.obj, IMG_KEYS) || "");
     if (image && image.startsWith("//")) image = "https:" + image;
     const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
-    const slug3 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
-    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug3 || void 0 });
+    const slug4 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
+    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug4 || void 0 });
     if (out.length >= 60) break;
   }
   return out;
@@ -5333,13 +5564,13 @@ function parseYatraHotels(body) {
   return out;
 }
 function yatraPageSearchUrl(city, checkin, checkout, page = 1) {
-  const ci = ddmmyyyy(checkin);
-  const co = ddmmyyyy(checkout);
+  const ci = ddmmyyyy2(checkin);
+  const co = ddmmyyyy2(checkout);
   return `${YATRA_HOTELS_API}?checkOutDate=${co}&checkInDate=${ci}&city=${encodeURIComponent(city)}&source=BOOKING_ENGINE&tenant=B2C&page=${page}&offset=${page * 10}&rooms%5B0%5D.id=1&rooms%5B0%5D.noOfAdults=2&rooms%5B0%5D.noOfChildren=0&type=all&otherRateplans=all&allImages=true&showBOR=true&loggedIn=false&offset=10`;
 }
 function yatraSrpUrl(city, checkin, checkout) {
-  const ci = encodeURIComponent(ddmmyyyy(checkin));
-  const co = encodeURIComponent(ddmmyyyy(checkout));
+  const ci = encodeURIComponent(ddmmyyyy2(checkin));
+  const co = encodeURIComponent(ddmmyyyy2(checkout));
   const c = encodeURIComponent(city);
   return `${YATRA_SRP}?checkoutDate=${co}&checkinDate=${ci}&source=BOOKING_ENGINE&pg=1&tenant=B2C&city.name=${c}&city.code=${c}&state.name=${c}&state.code=${c}&country.name=IND&country.code=IND&roomRequests%5B0%5D.id=1&roomRequests%5B0%5D.noOfAdults=2&roomRequests%5B0%5D.noOfChildren=0`;
 }
@@ -5381,7 +5612,7 @@ function parseYatraOffers(hotels, source, city, meta) {
   }
   return out;
 }
-function ddmmyyyy(iso2) {
+function ddmmyyyy2(iso2) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
@@ -5627,8 +5858,8 @@ var init_saffronStays = __esm({
 function agodaCitySlugs(city) {
   const out = [];
   for (const v of cityVariants(city)) {
-    const slug3 = `${slugOf(v)}-in`;
-    if (!out.includes(slug3)) out.push(slug3);
+    const slug4 = `${slugOf(v)}-in`;
+    if (!out.includes(slug4)) out.push(slug4);
   }
   return out.slice(0, 6);
 }
@@ -5999,7 +6230,7 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL returned no priced LodgingCards for "${city}"`);
   return items;
 }
-var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy2, agodaCityIdCache, hotelsWorker;
+var cleartripArtDeadUntil, OYO_WEB_URL, ddmmyyyy3, agodaCityIdCache, hotelsWorker;
 var init_hotels = __esm({
   "server/workers/verticals/hotels.ts"() {
     init_verticalWorker();
@@ -6027,7 +6258,7 @@ var init_hotels = __esm({
     init_agodaHotels();
     cleartripArtDeadUntil = 0;
     OYO_WEB_URL = "https://www.oyorooms.com";
-    ddmmyyyy2 = (iso2) => {
+    ddmmyyyy3 = (iso2) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso2 || "");
       return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
     };
@@ -6046,7 +6277,7 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
-            const slug3 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const slug4 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
             const mmtChromeHeaders = {
               "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
               "sec-ch-ua-mobile": "?0",
@@ -6062,8 +6293,8 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             for (const url of [
-              `https://www.makemytrip.com/hotels-in-${slug3}/`,
-              `https://www.makemytrip.com/hotels/hotels-in-${slug3}/`
+              `https://www.makemytrip.com/hotels-in-${slug4}/`,
+              `https://www.makemytrip.com/hotels/hotels-in-${slug4}/`
             ]) {
               let bigBody = null;
               let r;
@@ -6176,8 +6407,8 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-            for (const slug3 of attempts) {
-              const url = `https://www.goibibo.com/hotels/${slug3}/`;
+            for (const slug4 of attempts) {
+              const url = `https://www.goibibo.com/hotels/${slug4}/`;
               let bigBody = null;
               for (let attempt = 1; attempt <= 4; attempt++) {
                 let r;
@@ -6528,8 +6759,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let cityId = agodaCityIdCache.get(city.toLowerCase());
             if (!cityId) {
-              for (const slug3 of agodaCitySlugs(city)) {
-                const r = await cffiFetch(`https://www.agoda.com/city/${slug3}.html`, {
+              for (const slug4 of agodaCitySlugs(city)) {
+                const r = await cffiFetch(`https://www.agoda.com/city/${slug4}.html`, {
                   impersonate: "chrome",
                   timeoutMs: 2e4,
                   headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
@@ -6660,7 +6891,7 @@ var init_hotels = __esm({
             let lastStatus = 0;
             let lastBody = "";
             for (const path14 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path14}/?checkin=${ddmmyyyy2(checkin)}&checkout=${ddmmyyyy2(checkout)}&guests=2&rooms=1`, {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path14}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -6767,13 +6998,13 @@ var init_hotels = __esm({
 // server/workers/parsers/ixigoFlights.ts
 function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
   const iataOf = (city, code) => code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null;
-  const slug3 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
-  const fromTok = iataOf(from, fromCode) || slug3(from);
-  const toTok = iataOf(to, toCode) || slug3(to);
+  const slug4 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
+  const fromTok = iataOf(from, fromCode) || slug4(from);
+  const toTok = iataOf(to, toCode) || slug4(to);
   const alts = [];
   const altIata = iataOf(from, fromCode);
   if (altIata && altIata !== fromTok) alts.push(altIata);
-  if (altIata) alts.push(slug3(from));
+  if (altIata) alts.push(slug4(from));
   if (fromTok.includes("_")) alts.push(fromTok.replace(/_/g, "-"));
   return { fromTok, toTok, alts };
 }
@@ -7031,7 +7262,7 @@ var init_emtFareCalendar = __esm({
 
 // server/workers/parsers/emtAirbus.ts
 function emtEncrypt(plain) {
-  const c = (0, import_crypto6.createCipheriv)("aes-128-cbc", Buffer.from(ENC_KEY, "utf8"), Buffer.from(ENC_KEY, "utf8"));
+  const c = (0, import_crypto7.createCipheriv)("aes-128-cbc", Buffer.from(ENC_KEY, "utf8"), Buffer.from(ENC_KEY, "utf8"));
   return Buffer.concat([c.update(Buffer.from(plain, "utf8")), c.final()]).toString("base64");
 }
 function parseEmtAirbus(jsonText) {
@@ -7134,10 +7365,10 @@ function emtAirbusItems(flights, source, route2, fromCode, toCode, dateIso, from
   }
   return items;
 }
-var import_crypto6, ENC_KEY, AIRBUS_URL, SEG_RE, LEG_NO_ROUTE_RE, hhmm;
+var import_crypto7, ENC_KEY, AIRBUS_URL, SEG_RE, LEG_NO_ROUTE_RE, hhmm;
 var init_emtAirbus = __esm({
   "server/workers/parsers/emtAirbus.ts"() {
-    import_crypto6 = require("crypto");
+    import_crypto7 = require("crypto");
     init_contract();
     init_emtFareCalendar();
     ENC_KEY = "hylW@zmEQdG@4Idr";
@@ -8862,11 +9093,11 @@ var init_yatraFlights = __esm({
 
 // server/workers/parsers/goibiboFlights.ts
 function goibiboRouteUrl(fromCity, toCity) {
-  const slug3 = (c) => {
+  const slug4 = (c) => {
     const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").trim();
     return (SLUG_ALIASES[k] || k).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   };
-  return `https://www.goibibo.com/flights/${slug3(fromCity)}-to-${slug3(toCity)}-flights/`;
+  return `https://www.goibibo.com/flights/${slug4(fromCity)}-to-${slug4(toCity)}-flights/`;
 }
 function stripTags(s) {
   return String(s).replace(/<[^>]*>/g, "").trim();
@@ -9610,7 +9841,7 @@ function airIndiaSchedSignature(jwt, qs) {
   }
   const token = String(payload?.token || "");
   const iv = String(payload?.iv || "");
-  return (0, import_crypto7.createHash)("sha256").update(qs + token + iv, "utf8").digest("hex");
+  return (0, import_crypto8.createHash)("sha256").update(qs + token + iv, "utf8").digest("hex");
 }
 function localHm2(iso2) {
   const m = /T(\d{2}:\d{2})/.exec(String(iso2 || ""));
@@ -9701,12 +9932,12 @@ function airIndiaScheduledFareItems(flights, dayFare, source, fromCity, toCity, 
     }
   }));
 }
-var import_crypto7, AI_SCHED_TOKEN_URL, AI_SCHED_URL;
+var import_crypto8, AI_SCHED_TOKEN_URL, AI_SCHED_URL;
 var init_airIndiaSchedule = __esm({
   "server/workers/parsers/airIndiaSchedule.ts"() {
     init_contract();
     init_airIndiaFares();
-    import_crypto7 = require("crypto");
+    import_crypto8 = require("crypto");
     AI_SCHED_TOKEN_URL = "https://api.airindia.com/flight-information/v1/auth/token";
     AI_SCHED_URL = "https://api.airindia.com/flight-information/v1/schedules";
   }
@@ -16681,7 +16912,7 @@ var init_flights = __esm({
 
 // server/workers/parsers/zomato.ts
 function parseZomatoRestaurants(html, source, searchUrl, platform) {
-  const fingerprint = (0, import_crypto8.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto9.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const re = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g;
@@ -16818,10 +17049,10 @@ function parseZomatoMenuPage(html) {
   }
   return { dishes: dishes.slice(0, 400), hints };
 }
-var import_crypto8;
+var import_crypto9;
 var init_zomato = __esm({
   "server/workers/parsers/zomato.ts"() {
-    import_crypto8 = require("crypto");
+    import_crypto9 = require("crypto");
     init_contract();
   }
 });
@@ -16834,7 +17065,7 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   } catch {
     return [];
   }
-  const fingerprint = (0, import_crypto9.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const cards = [];
   const stack = [d?.data];
   while (stack.length) {
@@ -16892,10 +17123,10 @@ function parseSwiggyDishes(json, source, searchUrl, city) {
   }
   return out.slice(0, 60);
 }
-var import_crypto9, IMG;
+var import_crypto10, IMG;
 var init_swiggy = __esm({
   "server/workers/parsers/swiggy.ts"() {
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     init_contract();
     IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
   }
@@ -17180,12 +17411,12 @@ function toingItem(source, sourceUrl, rest, di, city, fingerprint, priceBasis) {
   });
 }
 function toingFingerprint(json) {
-  return (0, import_crypto10.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  return (0, import_crypto11.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
 }
-var import_crypto10, TOING_IMG;
+var import_crypto11, TOING_IMG;
 var init_toing = __esm({
   "server/workers/parsers/toing.ts"() {
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     init_contract();
     TOING_IMG = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy,f_auto,q_auto,w_400,h_400,c_fit/";
   }
@@ -17208,12 +17439,12 @@ function citySlug(city, raw) {
 function zomatoNationalPresence(source, term, reason) {
   return zomatoPresence(source, "india", term, reason);
 }
-function zomatoPresence(source, slug3, term, reason) {
+function zomatoPresence(source, slug4, term, reason) {
   const q3 = encodeURIComponent(term || "restaurants");
-  const url = `https://www.zomato.com/${slug3}/restaurants?q=${q3}`;
+  const url = `https://www.zomato.com/${slug4}/restaurants?q=${q3}`;
   const label = term ? `\`${term}\`` : "restaurants";
   return [newRawItem(source, {
-    title: `Zomato: ${label} in ${slug3} \u2014 browse menus & order on Zomato`.slice(0, 200),
+    title: `Zomato: ${label} in ${slug4} \u2014 browse menus & order on Zomato`.slice(0, 200),
     seller: "Zomato",
     sellerUrl: url,
     currency: "INR",
@@ -17222,7 +17453,7 @@ function zomatoPresence(source, slug3, term, reason) {
       price_basis: "app_only_fares",
       data_note: `Zomato's edge blocked our listing crawl (${reason}); menus and live prices are on Zomato itself \u2014 this is a direct handoff, no prices invented.`
     },
-    identifiers: { sku: `zomato-search-${slug3}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
+    identifiers: { sku: `zomato-search-${slug4}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
     evidence: { sourceUrl: url, extractedFields: ["seller", "deeplink"], sourceReference: "Zomato search deeplink (availability handoff while the listing crawl is edge-gated)" }
   })];
 }
@@ -17402,17 +17633,17 @@ var init_food = __esm({
             const left = () => 24e3 - (Date.now() - t0);
             const raw = String(ctx.query.rawQuery || "");
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
-            const slug3 = citySlug(ctx.query.location?.city, raw);
-            if (!slug3) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
-            const url = `https://www.zomato.com/${slug3}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
+            const slug4 = citySlug(ctx.query.location?.city, raw);
+            if (!slug4) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
+            const url = `https://www.zomato.com/${slug4}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
             let r = await ctx.fetch(url, { timeoutMs: 4500 });
             for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429) && left() > 6e3; attempt++) {
               await new Promise((res) => setTimeout(res, 900));
               r = await ctx.fetch(url, { timeoutMs: 4500 });
             }
-            if (r.status !== 200) return zomatoPresence(ctx.source, slug3, term, `HTTP ${r.status}`);
+            if (r.status !== 200) return zomatoPresence(ctx.source, slug4, term, `HTTP ${r.status}`);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
-            if (!items.length) return zomatoPresence(ctx.source, slug3, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
+            if (!items.length) return zomatoPresence(ctx.source, slug4, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
             const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
             const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
@@ -17456,7 +17687,7 @@ var init_food = __esm({
             }
             if (dishItems.length) return dishItems;
             if (items.length) return items;
-            return zomatoPresence(ctx.source, slug3, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
+            return zomatoPresence(ctx.source, slug4, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
           }
         },
         {
@@ -18492,14 +18723,14 @@ async function initThiqa() {
   if (Date.now() < thiqaBrokenUntil) return null;
   try {
     const wasm = Buffer.from(RAPIDO_THIQA_WASM_B64, "base64");
-    const wsha = (0, import_crypto11.createHash)("sha256").update(wasm).digest("hex");
+    const wsha = (0, import_crypto12.createHash)("sha256").update(wasm).digest("hex");
     if (wsha !== RAPIDO_THIQA_WASM_B64_SHA256) throw new Error(`thiqa wasm sha256 mismatch (${wsha})`);
-    const gsha = (0, import_crypto11.createHash)("sha256").update(RAPIDO_THIQA_GLUE, "utf8").digest("hex");
+    const gsha = (0, import_crypto12.createHash)("sha256").update(RAPIDO_THIQA_GLUE, "utf8").digest("hex");
     if (gsha !== RAPIDO_THIQA_GLUE_SHA256) throw new Error(`thiqa glue sha256 mismatch (${gsha})`);
     const dir = import_path3.default.join(import_os.default.tmpdir(), "try1s-rapido-thiqa");
-    import_fs2.default.mkdirSync(dir, { recursive: true });
+    import_fs3.default.mkdirSync(dir, { recursive: true });
     const wasmPath = import_path3.default.join(dir, "platform-mobile-sdks-thiqa-kmp.wasm");
-    import_fs2.default.writeFileSync(wasmPath, wasm);
+    import_fs3.default.writeFileSync(wasmPath, wasm);
     const wasmFileUrl = `file://${wasmPath}`;
     const META = `{url:'file://${import_path3.default.join(dir, "harness.js")}',resolve:function(p){return '${wasmFileUrl}'}}`;
     let glue = RAPIDO_THIQA_GLUE.replace(/\bexport\s+/g, "").replace(/import\.meta/g, META).replace(/window\.location\.hostname/g, `'m.rapido.bike'`);
@@ -18521,7 +18752,7 @@ async function signBody(body, sKey, sequence) {
   const mod = await initThiqa();
   if (!mod) return null;
   try {
-    const sig = await mod.getThiqa(body, sKey, sequence, JSON.stringify({ id: (0, import_crypto11.randomUUID)() }));
+    const sig = await mod.getThiqa(body, sKey, sequence, JSON.stringify({ id: (0, import_crypto12.randomUUID)() }));
     if (!sig?.success || !sig.xKm || !sig.xM || !sig.xEkref || !sig.xPm) return null;
     return { "x-km": sig.xKm, "x-m": sig.xM, "x-ekref": sig.xEkref, "x-pm": sig.xPm };
   } catch {
@@ -18766,11 +18997,11 @@ function buildRapidoFareRows(inp) {
   void route2;
   return rows;
 }
-var import_crypto11, import_fs2, import_os, import_path3, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
+var import_crypto12, import_fs3, import_os, import_path3, M_RAPIDO, FARE_URL, SERVICES_URL, DEVICE_HEADERS, DEVICE_ID, sigCfg, thiqaMod, thiqaBrokenUntil, servicesCache;
 var init_rapidoFares = __esm({
   "server/workers/parsers/rapidoFares.ts"() {
-    import_crypto11 = require("crypto");
-    import_fs2 = __toESM(require("fs"), 1);
+    import_crypto12 = require("crypto");
+    import_fs3 = __toESM(require("fs"), 1);
     import_os = __toESM(require("os"), 1);
     import_path3 = __toESM(require("path"), 1);
     init_contract();
@@ -18792,7 +19023,7 @@ var init_rapidoFares = __esm({
       appversion: "214",
       internet: "online"
     };
-    DEVICE_ID = `try1s-${(0, import_crypto11.randomUUID)().slice(0, 12)}`;
+    DEVICE_ID = `try1s-${(0, import_crypto12.randomUUID)().slice(0, 12)}`;
     sigCfg = null;
     thiqaMod = null;
     thiqaBrokenUntil = 0;
@@ -21107,13 +21338,13 @@ var init_uberIndiaCities = __esm({
       "zamania-uttar-pradesh-in",
       "zira-punjab-in"
     ];
-    PARSED = SLUGS.map((slug3) => {
-      let rest = slug3.endsWith("-in") ? slug3.slice(0, -3).split("-") : slug3.split("-");
+    PARSED = SLUGS.map((slug4) => {
+      let rest = slug4.endsWith("-in") ? slug4.slice(0, -3).split("-") : slug4.split("-");
       const tail2 = rest.length > 2 ? `${rest[rest.length - 2]}-${rest[rest.length - 1]}` : "";
       const tail1 = rest[rest.length - 1];
       if (UBER_IN_STATE_SUFFIXES.has(tail2)) rest = rest.slice(0, -2);
       else if (UBER_IN_STATE_SUFFIXES.has(tail1)) rest = rest.slice(0, -1);
-      return { slug: slug3, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
+      return { slug: slug4, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
     });
     BY_CANON = /* @__PURE__ */ new Map();
     for (const e2 of PARSED) {
@@ -21277,8 +21508,8 @@ function uberDestMatchScore(routeEnd, destName) {
   for (const t of a) if (b.includes(t) || b.some((x) => x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x)))) hits++;
   return hits / a.length;
 }
-async function uberCityFares(slug3, city) {
-  const url = `https://www.uber.com/global/en/r/cities/${slug3}/`;
+async function uberCityFares(slug4, city) {
+  const url = `https://www.uber.com/global/en/r/cities/${slug4}/`;
   const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
   if (r.status !== 200 || !(r.body || "").includes("Average price with UberX")) throw new AcquisitionError("EMPTY_RESPONSE", `Uber city guide page unavailable (HTTP ${r.status}) for ${city}`);
   const out = [];
@@ -21290,7 +21521,7 @@ async function uberCityFares(slug3, city) {
     const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
     if (priceM && !/^\s*[₹]/.test(txts[i])) {
       const price = Number(priceM[1].replace(/,/g, ""));
-      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug3, fetchedUrl: url });
+      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug4, fetchedUrl: url });
     }
   }
   return out;
@@ -21975,7 +22206,7 @@ var init_cab = __esm({
 // server/workers/parsers/bankbazaarInsurance.ts
 function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   const $ = cheerio4.load(html);
-  const fingerprint = (0, import_crypto12.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto13.createHash)("sha256").update(html.slice(0, 5e4)).digest("hex");
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   $("table").each((_, table) => {
@@ -22022,10 +22253,10 @@ function parseBankBazaarInsurance(html, source, pageUrl, insType) {
   });
   return out.slice(0, 30);
 }
-var import_crypto12, cheerio4;
+var import_crypto13, cheerio4;
 var init_bankbazaarInsurance = __esm({
   "server/workers/parsers/bankbazaarInsurance.ts"() {
-    import_crypto12 = require("crypto");
+    import_crypto13 = require("crypto");
     cheerio4 = __toESM(require("cheerio"), 1);
     init_contract();
   }
@@ -23477,9 +23708,9 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     const title = String(mv.name || "").trim();
     if (!title) continue;
     if (queryTerm && !matchesQuery(title, queryTerm)) continue;
-    const slug3 = ticketnewSlug(title);
-    if (seen.has(slug3)) continue;
-    seen.add(slug3);
+    const slug4 = ticketnewSlug(title);
+    if (seen.has(slug4)) continue;
+    seen.add(slug4);
     const attrs = {
       image_url: mv.appImgPath ? String(mv.appImgPath) : null,
       language: mv.lang || null,
@@ -23492,7 +23723,7 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     out.push(newRawItem(source, {
       title,
       seller: "TicketNew",
-      sellerUrl: slug3 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug3}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
+      sellerUrl: slug4 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug4}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
       currency: "INR",
       attributes: attrs,
       evidence: {
@@ -23785,9 +24016,9 @@ function movieSeatLink(ctx) {
     const city = slugPath(ctx.city);
     const cid = String(ctx.cid ?? ctx.cinemaId ?? "").trim();
     if (!city || !cid) return "";
-    const slug3 = slugPath(ctx.cinemaName) || "cinema";
+    const slug4 = slugPath(ctx.cinemaName) || "cinema";
     if (contentId) q3.push(`contentid=${contentId}`);
-    return `https://ticketnew.com/movies/${city}/${slug3}-c/${cid}?${q3.join("&")}`;
+    return `https://ticketnew.com/movies/${city}/${slug4}-c/${cid}?${q3.join("&")}`;
   }
   const fid = String(ctx.fid || "").trim();
   if (!fid) {
@@ -24656,7 +24887,7 @@ function parseAbhiBusServices(json, source, route2) {
   }
   const services = Array.isArray(d?.services) ? d.services : [];
   if (!services.length) return [];
-  const fingerprint = (0, import_crypto13.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const fingerprint = (0, import_crypto14.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
   const searchUrl = `https://www.abhibus.com/bus_search/${encodeURIComponent(route2.fromName)}/${route2.fromId}/${encodeURIComponent(route2.toName)}/${route2.toId}/${route2.jdate}`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -24682,6 +24913,8 @@ function parseAbhiBusServices(json, source, route2) {
       travel: { route: `${route2.fromName} \u2192 ${route2.toName}`, date: route2.jdate, seatType: busType || "unknown" },
       attributes: {
         operator: operator || "AbhiBus",
+        // AbhiBus service key: the seat screen is addressed by it.
+        ...key ? { service_id: key } : {},
         ...t.startTime ? { departure: `${String(t.startTime)}${t.arriveTime ? ` \u2192 ${String(t.arriveTime)}` : ""}` } : {},
         ...t.travelTime ? { duration: `~${String(t.travelTime).slice(0, 8)} h` } : {},
         ...Number.isFinite(seats) ? { seats_available: String(seats) } : {},
@@ -24716,10 +24949,10 @@ function parseAbhiBusServices(json, source, route2) {
   }
   return out.slice(0, 40);
 }
-var import_crypto13;
+var import_crypto14;
 var init_abhibus = __esm({
   "server/workers/parsers/abhibus.ts"() {
-    import_crypto13 = require("crypto");
+    import_crypto14 = require("crypto");
     init_contract();
   }
 });
@@ -24810,9 +25043,9 @@ function parseRedBusSearch(json, source, route2) {
   }
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
-  const fingerprint = (0, import_crypto14.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
-  const slug3 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-  const searchUrl = `https://www.redbus.in/bus-tickets/${slug3(route2.fromName)}-to-${slug3(route2.toName)}.aspx`;
+  const fingerprint = (0, import_crypto15.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
+  const slug4 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+  const searchUrl = `https://www.redbus.in/bus-tickets/${slug4(route2.fromName)}-to-${slug4(route2.toName)}.aspx`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const inv of inventories) {
@@ -24840,6 +25073,9 @@ function parseRedBusSearch(json, source, route2) {
       travel: { route: `${route2.fromName} \u2192 ${route2.toName}`, date: route2.doj, seatType: busType || "unknown" },
       attributes: {
         operator,
+        // ids redBus published for this service: needed to rebuild its seat page at click time.
+        ...inv.serviceId ? { service_id: String(inv.serviceId) } : {},
+        ...inv.routeId ? { route_id: String(inv.routeId) } : {},
         ...inv.departureTime ? { departure: `${inv.departureTime.slice(11, 16)}${inv.arrivalTime ? ` \u2192 ${inv.arrivalTime.slice(11, 16)} (+1)` : ""}` } : {},
         ...inv.departureTime ? { departure_time: inv.departureTime.slice(11, 16) } : {},
         ...duration ? { duration } : {},
@@ -24873,10 +25109,10 @@ function parseRedBusSearch(json, source, route2) {
   }
   return out;
 }
-var import_crypto14;
+var import_crypto15;
 var init_redbusSearch = __esm({
   "server/workers/parsers/redbusSearch.ts"() {
-    import_crypto14 = require("crypto");
+    import_crypto15 = require("crypto");
     init_contract();
   }
 });
@@ -25218,6 +25454,8 @@ function parseMmtBusListing(json, source, deeplinkUrl, from, to, depart, maxRows
         travel: { route: route2, date: depart || void 0, seatType: mmtBusType(b) },
         attributes: {
           route: route2,
+          // MMT trip key: the id its own bus page addresses a service by.
+          ...key ? { trip_key: key } : {},
           operator,
           bus_type: mmtBusType(b),
           departure: departureLabel,
@@ -25318,8 +25556,8 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const slug3 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const pageUrl = `https://www.redbus.in/bus-tickets/${slug3(rt.from)}-to-${slug3(rt.to)}.aspx`;
+            const slug4 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const pageUrl = `https://www.redbus.in/bus-tickets/${slug4(rt.from)}-to-${slug4(rt.to)}.aspx`;
             const steps = [];
             const t0 = Date.now();
             let resolved = {};
@@ -25719,9 +25957,9 @@ function parseIssuerIndex(html, bankSlug) {
   const re = new RegExp(`https://cardinsider\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi");
   const out = /* @__PURE__ */ new Set();
   for (const m of html.matchAll(re)) {
-    const slug3 = m[1];
-    if (!/credit-card$/.test(slug3)) continue;
-    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug3)) continue;
+    const slug4 = m[1];
+    if (!/credit-card$/.test(slug4)) continue;
+    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug4)) continue;
     out.add(m[0]);
   }
   return [...out];
@@ -25780,15 +26018,15 @@ function cardToRawItem(c, source, bankSlug, fingerprintSeed) {
     evidence: {
       sourceUrl: c.cardUrl,
       sourceReference: `${bankSlug}:${c.name}`,
-      rawFingerprint: (0, import_crypto15.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
+      rawFingerprint: (0, import_crypto16.createHash)("sha256").update(fingerprintSeed.slice(0, 4e4)).digest("hex"),
       extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : [], ...c.rewardRate ? ["reward_rate"] : [], ...c.apr ? ["apr"] : []]
     }
   });
 }
-var import_crypto15, NA, clean, BANK_NAMES;
+var import_crypto16, NA, clean, BANK_NAMES;
 var init_cardInsider = __esm({
   "server/workers/parsers/cardInsider.ts"() {
-    import_crypto15 = require("crypto");
+    import_crypto16 = require("crypto");
     init_contract();
     NA = /^(n\/?a|not applicable|nil|none|-+)$/i;
     clean = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -25867,15 +26105,15 @@ function pbToRawItem(c, source, bankSlug, seed) {
     evidence: {
       sourceUrl: c.url,
       sourceReference: `${bankSlug}:${c.name}`,
-      rawFingerprint: (0, import_crypto16.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
+      rawFingerprint: (0, import_crypto17.createHash)("sha256").update(seed.slice(0, 4e4)).digest("hex"),
       extractedFields: ["name", "bank", ...c.joiningFee ? ["joining_fee"] : [], ...c.annualFee ? ["annual_fee"] : []]
     }
   });
 }
-var import_crypto16, clean2;
+var import_crypto17, clean2;
 var init_paisabazaarCards = __esm({
   "server/workers/parsers/paisabazaarCards.ts"() {
-    import_crypto16 = require("crypto");
+    import_crypto17 = require("crypto");
     init_contract();
     init_cardInsider();
     clean2 = (s) => s.replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
@@ -25907,11 +26145,11 @@ async function bankCardIndex(bankSlug) {
       let h = raw;
       if (h.startsWith(hub.base)) h = h.slice(hub.base.length);
       if (!h.startsWith("/") || !hub.pathRe.test(h)) continue;
-      const slug3 = h.split("/").pop().replace(/\.page$/, "");
-      if (NOISE.test(slug3)) continue;
-      seen.set(hub.base + h, slug3);
+      const slug4 = h.split("/").pop().replace(/\.page$/, "");
+      if (NOISE.test(slug4)) continue;
+      seen.set(hub.base + h, slug4);
     }
-    const links = [...seen].map(([url, slug3]) => ({ url, slug: slug3 }));
+    const links = [...seen].map(([url, slug4]) => ({ url, slug: slug4 }));
     CACHE.set(bankSlug, { at: Date.now(), links });
     return links;
   } catch {
@@ -26712,11 +26950,11 @@ function parseMetaOffer($) {
   const offer = { title, price, brand: brandMeta, availability };
   return offer;
 }
-var cheerio5, import_crypto17, HttpAcquisitionAdapter;
+var cheerio5, import_crypto18, HttpAcquisitionAdapter;
 var init_httpAcquisitionAdapter = __esm({
   "server/sources/adapters/httpAcquisitionAdapter.ts"() {
     cheerio5 = __toESM(require("cheerio"), 1);
-    import_crypto17 = require("crypto");
+    import_crypto18 = require("crypto");
     init_httpClient();
     init_contract();
     HttpAcquisitionAdapter = class {
@@ -26763,7 +27001,7 @@ var init_httpAcquisitionAdapter = __esm({
               availability: o.availability,
               evidence: {
                 sourceUrl: url,
-                rawFingerprint: (0, import_crypto17.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto18.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...o.price ? ["price"] : [], ...o.availability !== "unknown" ? ["availability"] : []]
               }
             })
@@ -26812,10 +27050,10 @@ function parseFeed(xml) {
   }
   return items;
 }
-var import_crypto18, StructuredDataAdapter;
+var import_crypto19, StructuredDataAdapter;
 var init_structuredDataAdapter = __esm({
   "server/sources/adapters/structuredDataAdapter.ts"() {
-    import_crypto18 = require("crypto");
+    import_crypto19 = require("crypto");
     init_httpClient();
     init_contract();
     StructuredDataAdapter = class {
@@ -26845,7 +27083,7 @@ var init_structuredDataAdapter = __esm({
             maxConcurrency: source.rateLimit.maxConcurrency
           });
           if (!res.ok) return failedResult(source, "SERVER_ERROR", `HTTP ${res.status}`, res.latencyMs, res.status);
-          const fingerprint = (0, import_crypto18.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
+          const fingerprint = (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex");
           if (source.config.schema === "openlibrary_search") {
             const docs = validateOpenLibrary(JSON.parse(res.body));
             const rawItems = docs.slice(0, 20).map(
@@ -26902,10 +27140,10 @@ var init_structuredDataAdapter = __esm({
 });
 
 // server/sources/adapters/feedAndApiAdapters.ts
-var import_crypto19, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
+var import_crypto20, AffiliateFeedAdapter, PartnerFeedAdapter, OfficialAPIAdapter, SearchProviderAdapter;
 var init_feedAndApiAdapters = __esm({
   "server/sources/adapters/feedAndApiAdapters.ts"() {
-    import_crypto19 = require("crypto");
+    import_crypto20 = require("crypto");
     init_httpClient();
     init_settings();
     init_logger();
@@ -26953,7 +27191,7 @@ var init_feedAndApiAdapters = __esm({
                 expiresAt: c.validity_end || c.expires_at,
                 evidence: {
                   sourceUrl: feedUrl.replace(`apiKey=${encodeURIComponent(apiKey2)}`, "apiKey=***"),
-                  rawFingerprint: (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                  rawFingerprint: (0, import_crypto20.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                   extractedFields: ["title", "seller", ...c.tracking_url || c.url ? ["tracking_url"] : []]
                 }
               })
@@ -26977,7 +27215,7 @@ var init_feedAndApiAdapters = __esm({
               expiresAt: o.expires_at || o.valid_to,
               evidence: {
                 sourceUrl: o.url || o.deeplink,
-                rawFingerprint: (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto20.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", "price", "seller", ...o.url ? ["url"] : []]
               }
             })
@@ -27144,7 +27382,7 @@ var init_feedAndApiAdapters = __esm({
               availability: "unknown",
               evidence: {
                 sourceUrl: p.link || p.url,
-                rawFingerprint: (0, import_crypto19.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
+                rawFingerprint: (0, import_crypto20.createHash)("sha256").update(res.body.slice(0, 5e4)).digest("hex"),
                 extractedFields: ["title", ...p.price !== void 0 ? ["price"] : []]
               }
             })
@@ -27826,13 +28064,13 @@ function buildEvidence(offer, raw) {
     sourceReference: raw.evidence?.sourceReference,
     fetchedAt: raw.fetchedAt,
     extractedFields: raw.evidence?.extractedFields || [],
-    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto20.createHash)("sha256").update(raw.title).digest("hex")
+    evidenceHash: raw.evidence?.rawFingerprint || (0, import_crypto21.createHash)("sha256").update(raw.title).digest("hex")
   };
 }
-var import_crypto20;
+var import_crypto21;
 var init_freshness = __esm({
   "server/pipeline/freshness.ts"() {
-    import_crypto20 = require("crypto");
+    import_crypto21 = require("crypto");
   }
 });
 
@@ -28146,14 +28384,14 @@ function loadRegistry() {
     candidates.push(import_path4.default.join(process.cwd(), "campaigns.csv"));
     const csvPath = candidates.find((c) => {
       try {
-        import_fs3.default.accessSync(c);
+        import_fs4.default.accessSync(c);
         return true;
       } catch {
         return false;
       }
     });
     if (!csvPath) throw new Error(`campaigns.csv not found (tried ${candidates.length} paths)`);
-    const text = import_fs3.default.readFileSync(csvPath, "utf8");
+    const text = import_fs4.default.readFileSync(csvPath, "utf8");
     const rows = parseCsv(text);
     if (!rows.length) return campaignByDomain = map;
     const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -28205,7 +28443,7 @@ function linkinrTrackingUrl(dest) {
 }
 function plainLinkInrUrl(c) {
   const sub = process.env.LINKINR_SUB_ID || "try1second";
-  const click = import_crypto21.default.randomBytes(4).toString("hex");
+  const click = import_crypto22.default.randomBytes(4).toString("hex");
   return `https://linkinr.com?campaign_id=${encodeURIComponent(c.id)}&inventory_id=${encodeURIComponent(c.inventoryId)}&sub_id1=${encodeURIComponent(`${sub}-${click}`)}`;
 }
 async function linkinrDeepTrackingUrl(dest) {
@@ -28229,12 +28467,12 @@ function linkinrStats() {
   const m = loadRegistry();
   return { campaigns: m.size, domains: m.size, enabled: linkinrEnabled() };
 }
-var import_fs3, import_path4, import_crypto21, import_url, import_meta2, campaignByDomain;
+var import_fs4, import_path4, import_crypto22, import_url, import_meta2, campaignByDomain;
 var init_linkinr = __esm({
   "server/affiliate/linkinr/index.ts"() {
-    import_fs3 = __toESM(require("fs"), 1);
+    import_fs4 = __toESM(require("fs"), 1);
     import_path4 = __toESM(require("path"), 1);
-    import_crypto21 = __toESM(require("crypto"), 1);
+    import_crypto22 = __toESM(require("crypto"), 1);
     import_url = require("url");
     import_meta2 = {};
     campaignByDomain = null;
@@ -28378,7 +28616,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("flipkart") && has("minute")) return `https://www.flipkart.com/search?q=${q3}&marketplace=GROCERY`;
   if (has("flipkart")) return `https://www.flipkart.com/search?q=${q3}`;
   if (has("meesho")) return `https://www.meesho.com/search?q=${q3}`;
-  if (has("myntra")) return `https://www.myntra.com/${slug(t)}`;
+  if (has("myntra")) return `https://www.myntra.com/${slug2(t)}`;
   if (has("ajio")) return `https://www.ajio.com/search/?text=${q3}`;
   if (has("tata") && has("cliq")) return `https://www.tatacliq.com/search/?searchCategory=all&text=${q3}`;
   if (has("nykaa")) return `https://www.nykaa.com/search/result/?q=${q3}`;
@@ -28396,7 +28634,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("domino")) return `https://www.dominos.co.in/menu`;
   if (has("ovenstory", "oven story")) return `https://www.ovenstory.in/menu`;
   if (has("eatsure", "eat sure")) return `https://www.eatsure.com/search?q=${q3}`;
-  if (has("bookmyshow", "book my show")) return city ? `https://in.bookmyshow.com/explore/movies-${slug(city)}` : "https://in.bookmyshow.com/explore/movies";
+  if (has("bookmyshow", "book my show")) return city ? `https://in.bookmyshow.com/explore/movies-${slug2(city)}` : "https://in.bookmyshow.com/explore/movies";
   if (has("district")) return "https://www.district.in/movies";
   if (has("paytm")) return "https://paytm.com/movies/";
   if (has("pvr")) return "https://www.pvrcinemas.com/";
@@ -28437,23 +28675,23 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   }
   if (vertical === "bus" || has("bus")) {
     if (has("redbus")) {
-      return r ? `https://www.redbus.in/bus-tickets/${slug(r.from)}-to-${slug(r.to)}${d ? `?onward=${e(d.dMonY)}` : ""}` : "https://www.redbus.in/bus-tickets";
+      return r ? `https://www.redbus.in/bus-tickets/${slug2(r.from)}-to-${slug2(r.to)}${d ? `?onward=${e(d.dMonY)}` : ""}` : "https://www.redbus.in/bus-tickets";
     }
     if (has("intrcity", "intr city")) return "https://www.intrcity.com/";
     if (has("zingbus")) {
-      return r ? `https://www.zingbus.com/bus-tickets/${slug(r.from)}-to-${slug(r.to)}-bus-route` : "https://www.zingbus.com/";
+      return r ? `https://www.zingbus.com/bus-tickets/${slug2(r.from)}-to-${slug2(r.to)}-bus-route` : "https://www.zingbus.com/";
     }
     if (has("abhibus")) {
-      return r ? `https://www.abhibus.com/bus_search/${slug(r.from)}/${slug(r.to)}/${d ? d.iso : ""}/1` : "https://www.abhibus.com/";
+      return r ? `https://www.abhibus.com/bus_search/${slug2(r.from)}/${slug2(r.to)}/${d ? d.iso : ""}/1` : "https://www.abhibus.com/";
     }
     if (has("ixigo")) {
-      return r ? `https://www.ixigo.com/buses/${slug(r.from)}-to-${slug(r.to)}${d ? `-${d.ymd}` : ""}` : "https://www.ixigo.com/buses";
+      return r ? `https://www.ixigo.com/buses/${slug2(r.from)}-to-${slug2(r.to)}${d ? `-${d.ymd}` : ""}` : "https://www.ixigo.com/buses";
     }
     if (has("yatra")) {
       return r ? `https://www.yatra.com/bus/search?from=${e(r.from)}&to=${e(r.to)}${d ? `&date=${e(d.dmy)}` : ""}` : "https://www.yatra.com/bus";
     }
     if (has("makemytrip")) {
-      return r && d ? `https://www.makemytrip.com/bus/search/${slug(r.from)}/${slug(r.to)}/${d.dd}-${d.mm}-${d.yyyy}` : "https://www.makemytrip.com/bus/";
+      return r && d ? `https://www.makemytrip.com/bus/search/${slug2(r.from)}/${slug2(r.to)}/${d.dd}-${d.mm}-${d.yyyy}` : "https://www.makemytrip.com/bus/";
     }
   }
   if (vertical === "hotels" || has("hotel", "stay", "rooms", "oyo")) {
@@ -28480,7 +28718,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
       return city ? `https://www.makemytrip.com/hotels/hotel-listing/?city=${e(city.toUpperCase())}${ci ? `&checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.makemytrip.com/hotels/";
     }
     if (has("goibibo")) {
-      return city ? `https://www.goibibo.com/hotels/find-hotels-in-${slug(city)}/${ci && co ? `?checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.goibibo.com/hotels/";
+      return city ? `https://www.goibibo.com/hotels/find-hotels-in-${slug2(city)}/${ci && co ? `?checkin=${d.ymd}&checkout=${co.replace(/-/g, "")}` : ""}` : "https://www.goibibo.com/hotels/";
     }
     if (has("booking")) {
       return city ? `https://www.booking.com/searchresults.html?ss=${cq}${ci ? `&checkin=${ci}&checkout=${co}` : ""}&group_adults=2&no_rooms=1&group_children=0` : "https://www.booking.com/searchresults.html";
@@ -28489,10 +28727,10 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
       return city ? `https://www.agoda.com/search?q=${cq}${ci ? `&checkIn=${ci}&los=1` : ""}` : "https://www.agoda.com/";
     }
     if (has("yatra")) {
-      return city ? `https://www.yatra.com/hotels/hotels-in-${slug(city)}` : "https://www.yatra.com/hotels";
+      return city ? `https://www.yatra.com/hotels/hotels-in-${slug2(city)}` : "https://www.yatra.com/hotels";
     }
     if (has("cleartrip")) {
-      return city ? `https://www.cleartrip.com/hotels/india/${slug(city)}-hotels` : "https://www.cleartrip.com/hotels";
+      return city ? `https://www.cleartrip.com/hotels/india/${slug2(city)}-hotels` : "https://www.cleartrip.com/hotels";
     }
     if (has("easemytrip", "ease my trip")) {
       return city ? `https://www.easemytrip.com/hotels/hotel-listing/?city=${cq}` : "https://www.easemytrip.com/hotels/";
@@ -28538,7 +28776,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
   if (has("makemytrip")) return "https://www.makemytrip.com/";
   return "";
 }
-var IATA2, cityCode, slug, e;
+var IATA2, cityCode, slug2, e;
 var init_merchantLinks = __esm({
   "server/affiliate/merchantLinks.ts"() {
     IATA2 = {
@@ -28581,7 +28819,7 @@ var init_merchantLinks = __esm({
       madurai: "IXM"
     };
     cityCode = (name) => IATA2[String(name || "").toLowerCase().trim()] || "";
-    slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
+    slug2 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-").slice(0, 60);
     e = encodeURIComponent;
   }
 });
@@ -28601,7 +28839,7 @@ __export(deeplink_exports, {
   safeDomain: () => safeDomain
 });
 function secret() {
-  return process.env.AFFILIATE_SECRET || import_crypto22.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto23.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -28619,15 +28857,15 @@ function createMaskingPointer(destination, opts = {}) {
     return "";
   }
   const payload = b64url(JSON.stringify({ d: dest.slice(0, 2e3), o: (opts.offerId || "").slice(0, 64), e: Date.now() + AFFILIATE_TTL_SEC * 1e3, ...opts.trusted ? { t: 1 } : {} }));
-  const sig = import_crypto22.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
   return `/api/out?t=${payload}.${sig}`;
 }
 function resolveMaskingPointer(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
   const [payload, sig] = [m[1], m[2]];
-  const expect = import_crypto22.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
-  if (sig.length !== expect.length || !import_crypto22.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  const expect = import_crypto23.default.createHmac("sha256", secret()).update(payload).digest("base64url").slice(0, 32);
+  if (sig.length !== expect.length || !import_crypto23.default.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url(payload));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -28685,7 +28923,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const domain = safeDomain(targetUrl);
   const store3 = getStore();
   try {
-    const slug3 = (opts.companySlug || "").toLowerCase().slice(0, 64);
+    const slug4 = (opts.companySlug || "").toLowerCase().slice(0, 64);
     const labels = domain.split(".").filter(Boolean);
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
@@ -28693,7 +28931,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
       `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
-      [slug3, domain, parent2, parent3]
+      [slug4, domain, parent2, parent3]
     );
     const r = rows?.[0];
     if (r && String(r.monetization || "").toLowerCase() === "adsense" && !r.template) {
@@ -28733,7 +28971,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   return { trackingUrl: targetUrl, network: null, matchedProfile: "direct" };
 }
 function renderTemplate(tpl, dest, extra, subidParam) {
-  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto22.default.randomBytes(6).toString("hex"));
+  const out = tpl.replace(/\{url2\}/g, encodeURIComponent(encodeURIComponent(dest))).replace(/\{url\}/g, encodeURIComponent(dest)).replace(new RegExp(`\\{${subidParam}\\}|\\{subid\\}`, "g"), encodeURIComponent(extra.subid || settings.cuelinks.subId || "try1second")).replace(/\{campaign\}/g, encodeURIComponent(extra.campaign || "")).replace(/\{click\}/g, import_crypto23.default.randomBytes(6).toString("hex"));
   return out.replace(/\{[a-z0-9_]+\}/gi, "");
 }
 function parseJsonObj(v) {
@@ -28746,7 +28984,7 @@ function parseJsonObj(v) {
   }
 }
 async function recordPointerClick(dest, offerId, network) {
-  const clickId = import_crypto22.default.randomUUID();
+  const clickId = import_crypto23.default.randomUUID();
   try {
     const store3 = getStore();
     await store3.execute(
@@ -28809,11 +29047,11 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   }
   return "";
 }
-var import_crypto22, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
+var import_crypto23, AFFILIATE_TTL_SEC, CUELINKS_MERCHANTS, AMAZON_DOMAINS, ALREADY_TRACKED_HOSTS;
 var init_deeplink = __esm({
   "server/affiliate/deeplink.ts"() {
     init_airportLookup();
-    import_crypto22 = __toESM(require("crypto"), 1);
+    import_crypto23 = __toESM(require("crypto"), 1);
     init_settings();
     init_linkinr();
     init_ekaro();
@@ -29765,7 +30003,7 @@ async function ensureTable() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   ensured2 = true;
 }
-function slug2(s) {
+function slug3(s) {
   return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 150);
 }
 function parseBingItems(html) {
@@ -29823,8 +30061,8 @@ async function lookupProductImage(seller, dish) {
     breakerUntil = Date.now() + BREAKER_MS;
     return null;
   }
-  const brandTok = slug2(brand).split("-")[0] || "pizza";
-  const tokens2 = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug2(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
+  const brandTok = slug3(brand).split("-")[0] || "pizza";
+  const tokens2 = Array.from(/* @__PURE__ */ new Set([brandTok, ...slug3(dish).split("-").filter((t) => t.length > 2 && !["pizza", "the", "and"].includes(t))]));
   const ranked = items.map((it) => ({ it, sc: scoreItem(it, tokens2, brandTok) })).filter((x) => x.sc > 2).sort((a, b) => b.sc - a.sc).slice(0, 3);
   for (const cand of ranked) {
     if (await verifyImage(cand.it.murl)) return String(cand.it.murl);
@@ -29852,7 +30090,7 @@ async function withProductImages(offers, budget = 5) {
     const dish = String(a.dish || o.title || "").replace(/\s*\([^)]*\)\s*/g, " ").trim();
     if (!dish) continue;
     const seller = String(o.seller || a.restaurant || "");
-    const key = slug2(`${seller}|${dish}`).slice(0, 160);
+    const key = slug3(`${seller}|${dish}`).slice(0, 160);
     tasks.push((async () => {
       try {
         let url = await cachedImage(key);
@@ -32122,7 +32360,7 @@ async function resolveRedirect(dest, opts = {}) {
     log.warn("Affiliate", "Redirect refused", { reason: check.reason });
     return { allowed: false, reason: check.reason, destination: null, clickId: null };
   }
-  const clickId = import_crypto23.default.randomUUID();
+  const clickId = import_crypto24.default.randomUUID();
   let network = null;
   let finalUrl = dest;
   for (const net of NETWORKS) {
@@ -32148,10 +32386,10 @@ function extractNumericId(offerId) {
   const m = offerId.match(/\d+/);
   return m ? Number(m[0]) : null;
 }
-var import_crypto23, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
+var import_crypto24, CuelinksAdapter, NETWORKS, BLOCKED_SCHEMES, TRUSTED_TRACKING_HOSTS;
 var init_affiliateNetwork = __esm({
   "server/affiliate/affiliateNetwork.ts"() {
-    import_crypto23 = __toESM(require("crypto"), 1);
+    import_crypto24 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     init_db();
@@ -33312,9 +33550,9 @@ function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) 
     if (/^\/booking\//.test(url.pathname)) {
       const code = url.searchParams.get("code") || url.searchParams.get("etCode") || "";
       const region = url.searchParams.get("region") || "";
-      const slug3 = url.searchParams.get("slug") || "";
-      if (code && region && slug3) {
-        url.pathname = `/movies/${region}/${slug3}/buytickets/${code}/${compact}`;
+      const slug4 = url.searchParams.get("slug") || "";
+      if (code && region && slug4) {
+        url.pathname = `/movies/${region}/${slug4}/buytickets/${code}/${compact}`;
         url.search = "";
       } else {
         return destination;
@@ -33891,16 +34129,16 @@ var init_productGrouping = __esm({
 
 // server/auth/authService.ts
 function hashPassword(password) {
-  const salt = import_crypto24.default.randomBytes(16).toString("hex");
-  const hash = import_crypto24.default.scryptSync(password, salt, 32).toString("hex");
+  const salt = import_crypto25.default.randomBytes(16).toString("hex");
+  const hash = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyPassword(password, stored) {
   try {
     const [scheme, salt, hash] = stored.split("$");
     if (scheme !== "scrypt") return false;
-    const candidate = import_crypto24.default.scryptSync(password, salt, 32).toString("hex");
-    return import_crypto24.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
+    const candidate = import_crypto25.default.scryptSync(password, salt, 32).toString("hex");
+    return import_crypto25.default.timingSafeEqual(Buffer.from(candidate), Buffer.from(hash));
   } catch {
     return false;
   }
@@ -33923,7 +34161,7 @@ async function loginUser(email, password) {
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
-  const token = import_crypto24.default.randomBytes(32).toString("hex");
+  const token = import_crypto25.default.randomBytes(32).toString("hex");
   await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -33963,10 +34201,10 @@ function requireAdmin(req, res, next) {
   if (!user || user.role !== "admin") return res.status(403).json({ success: false, error: "Admin authorization required" });
   next();
 }
-var import_crypto24, SESSION_TTL_SEC;
+var import_crypto25, SESSION_TTL_SEC;
 var init_authService = __esm({
   "server/auth/authService.ts"() {
-    import_crypto24 = __toESM(require("crypto"), 1);
+    import_crypto25 = __toESM(require("crypto"), 1);
     init_settings();
     init_db();
     SESSION_TTL_SEC = 30 * 24 * 3600;
@@ -34086,16 +34324,16 @@ var init_mailer = __esm({
 
 // server/auth/otpService.ts
 function hashOtp(code) {
-  const salt = import_crypto25.default.randomBytes(8).toString("hex");
-  const hash = import_crypto25.default.scryptSync(code, salt, 32).toString("hex");
+  const salt = import_crypto26.default.randomBytes(8).toString("hex");
+  const hash = import_crypto26.default.scryptSync(code, salt, 32).toString("hex");
   return `scrypt$${salt}$${hash}`;
 }
 function verifyOtpHash(code, stored) {
   const parts = String(stored || "").split("$");
   if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const check = import_crypto25.default.scryptSync(code, parts[1], 32).toString("hex");
+  const check = import_crypto26.default.scryptSync(code, parts[1], 32).toString("hex");
   try {
-    return import_crypto25.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
+    return import_crypto26.default.timingSafeEqual(Buffer.from(check, "hex"), Buffer.from(parts[2], "hex"));
   } catch {
     return false;
   }
@@ -34128,7 +34366,7 @@ async function requestAdminOtp(email) {
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
   await store3.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
-  const code = String(import_crypto25.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto26.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
   await store3.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -34185,10 +34423,10 @@ async function verifyAdminOtp(email, code) {
   log.info("Otp", `Admin OTP verified for ${clean3}`);
   return { ok: true, email: clean3 };
 }
-var import_crypto25, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
+var import_crypto26, OTP_TTL_MS, RESEND_COOLDOWN_MS, HOURLY_CAP, MAX_VERIFY_ATTEMPTS;
 var init_otpService = __esm({
   "server/auth/otpService.ts"() {
-    import_crypto25 = __toESM(require("crypto"), 1);
+    import_crypto26 = __toESM(require("crypto"), 1);
     init_db();
     init_settings();
     init_logger();
@@ -34237,8 +34475,8 @@ async function verifyFirebaseIdTokenDetailed(idToken, opts = {}) {
     }
     const certPem = certs[header.kid];
     if (!certPem) return { reason: "unknown_signing_key", detail: `kid=${header.kid}` };
-    const publicKey = new import_crypto26.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto26.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto27.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto27.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return { reason: "bad_signature" };
     return {
@@ -34290,8 +34528,8 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     const certs = certsOverride || await getGoogleCertificates();
     const certPem = certs[header.kid];
     if (!certPem) return null;
-    const publicKey = new import_crypto26.default.X509Certificate(certPem).publicKey;
-    const verifier = import_crypto26.default.createVerify("RSA-SHA256");
+    const publicKey = new import_crypto27.default.X509Certificate(certPem).publicKey;
+    const verifier = import_crypto27.default.createVerify("RSA-SHA256");
     verifier.update(`${parts[0]}.${parts[1]}`);
     if (!verifier.verify(publicKey, base64UrlDecode(parts[2]))) return null;
     return {
@@ -34306,10 +34544,10 @@ async function verifyGoogleIdToken(idToken, allowedAudiences = settings.googleOa
     return null;
   }
 }
-var import_crypto26, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache, PROJECT_AUDIENCE_PREFIX;
+var import_crypto27, CERT_URL, certCache, CERT_TTL_MS, GOOGLE_CERT_URL, googleCertCache, PROJECT_AUDIENCE_PREFIX;
 var init_firebaseAuth = __esm({
   "server/auth/firebaseAuth.ts"() {
-    import_crypto26 = __toESM(require("crypto"), 1);
+    import_crypto27 = __toESM(require("crypto"), 1);
     init_settings();
     init_logger();
     CERT_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
@@ -34400,7 +34638,7 @@ async function eligibleSpinCount(userId) {
 }
 async function executeSpin(userId, idempotencyKey) {
   const store3 = getStore();
-  const key = idempotencyKey || import_crypto27.default.randomUUID();
+  const key = idempotencyKey || import_crypto28.default.randomUUID();
   const prior = await store3.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
@@ -34522,7 +34760,7 @@ async function ensureReferralCode(userId) {
   if (existing) return existing;
   for (let attempt = 0; attempt < 6; attempt++) {
     let code = "T1S-";
-    const bytes = import_crypto27.default.randomBytes(6);
+    const bytes = import_crypto28.default.randomBytes(6);
     for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
     try {
       const res = await store3.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
@@ -34558,10 +34796,10 @@ async function referralStats(userId) {
   }
   return { referredCount: Number(referred[0]?.c || 0), referredByCode };
 }
-var import_crypto27, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
+var import_crypto28, POINTS_PER_VALID_REFERRAL, POINTS_PER_SPIN_ELIGIBILITY, userLocks, REF_CODE_ALPHABET;
 var init_rewardsEngine = __esm({
   "server/rewards/rewardsEngine.ts"() {
-    import_crypto27 = __toESM(require("crypto"), 1);
+    import_crypto28 = __toESM(require("crypto"), 1);
     init_db();
     init_logger();
     POINTS_PER_VALID_REFERRAL = 1;
@@ -34848,7 +35086,7 @@ __export(interstitial_exports, {
   resolveInterstitialMeta: () => resolveInterstitialMeta
 });
 function secret2() {
-  return process.env.AFFILIATE_SECRET || import_crypto28.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
+  return process.env.AFFILIATE_SECRET || import_crypto29.default.createHash("sha256").update(`${process.env.DATABASE_URL || process.env.MYSQL_URL || "try1second"}#affiliate-pointer`).digest("hex");
 }
 function b64url2(s) {
   return Buffer.from(s, "utf8").toString("base64url");
@@ -34863,14 +35101,14 @@ function createInterstitialPointer(url, partner, appScheme) {
     s: String(appScheme || "").slice(0, 500),
     e: Date.now() + INTERSTITIAL_TTL_MS
   }));
-  const sig = import_crypto28.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
+  const sig = import_crypto29.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
   return `${payload}.${sig}`;
 }
 function resolveInterstitialMeta(token) {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ""));
   if (!m) return null;
-  const expect = import_crypto28.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
-  if (m[2].length !== expect.length || !import_crypto28.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
+  const expect = import_crypto29.default.createHmac("sha256", secret2()).update(m[1]).digest("base64url").slice(0, 32);
+  if (m[2].length !== expect.length || !import_crypto29.default.timingSafeEqual(Buffer.from(m[2]), Buffer.from(expect))) return null;
   try {
     const j = JSON.parse(unb64url2(m[1]));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
@@ -35114,10 +35352,10 @@ async function redirectRouteHandler(req, res) {
   }
   res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
 }
-var import_crypto28, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
+var import_crypto29, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
 var init_interstitial = __esm({
   "server/redirect/interstitial.ts"() {
-    import_crypto28 = __toESM(require("crypto"), 1);
+    import_crypto29 = __toESM(require("crypto"), 1);
     init_placements();
     init_affiliateNetwork();
     init_logger();
@@ -37493,15 +37731,15 @@ var init_priceAlerts = __esm({
 // src/server/catalogueStore.ts
 function saveCatalogueStore(state) {
   try {
-    if (!import_fs4.default.existsSync(DATA_DIR)) {
-      import_fs4.default.mkdirSync(DATA_DIR, { recursive: true });
+    if (!import_fs5.default.existsSync(DATA_DIR)) {
+      import_fs5.default.mkdirSync(DATA_DIR, { recursive: true });
     }
     memoryState = {
       ...memoryState,
       ...state,
       lastSavedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    import_fs4.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
+    import_fs5.default.writeFileSync(CATALOGUE_FILE, JSON.stringify(memoryState, null, 2), "utf-8");
   } catch (err) {
     console.error("[CatalogueStore] Error saving persistent catalogue to disk:", err.message);
   }
@@ -37521,10 +37759,10 @@ function saveItemToCatalogue(item) {
   }
   saveCatalogueStore({ items: memoryState.items });
 }
-var import_fs4, import_path5, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
+var import_fs5, import_path5, import_promise2, DATA_DIR, CATALOGUE_FILE, memoryState;
 var init_catalogueStore = __esm({
   "src/server/catalogueStore.ts"() {
-    import_fs4 = __toESM(require("fs"), 1);
+    import_fs5 = __toESM(require("fs"), 1);
     import_path5 = __toESM(require("path"), 1);
     import_promise2 = __toESM(require("mysql2/promise"), 1);
     DATA_DIR = import_path5.default.resolve(process.cwd(), ".data");
@@ -39012,12 +39250,12 @@ async function deletePromoOffer(id) {
 }
 async function promosForMerchant(merchant, limit = 3) {
   await ensurePromoTable();
-  const slug3 = cleanSlug(merchant);
+  const slug4 = cleanSlug(merchant);
   const domain = cleanDomain(merchant);
-  if (!slug3 && !domain) return [];
+  if (!slug4 && !domain) return [];
   const rows = await getStore().query(
     "SELECT * FROM promo_offers WHERE (merchant_slug = ? OR merchant_domain = ?) ORDER BY priority ASC, id DESC LIMIT 40",
-    [slug3, domain]
+    [slug4, domain]
   ).catch(() => []);
   return rows.map(rowToPromo).filter((r) => isPromoLive(r)).slice(0, Math.max(1, Math.min(5, limit)));
 }
@@ -39100,17 +39338,17 @@ async function importFileStoreIntoMysql() {
   if (store3.kind !== "mysql") return;
   const src2 = import_path6.default.join(dataDir, "devstore.json");
   const lock = import_path6.default.join(dataDir, LOCK);
-  if (!import_fs5.default.existsSync(src2) && !import_fs5.default.existsSync(lock)) return;
+  if (!import_fs6.default.existsSync(src2) && !import_fs6.default.existsSync(lock)) return;
   let claimed = false;
   try {
-    if (import_fs5.default.existsSync(src2)) import_fs5.default.renameSync(src2, lock);
+    if (import_fs6.default.existsSync(src2)) import_fs6.default.renameSync(src2, lock);
     claimed = true;
-    const data = JSON.parse(import_fs5.default.readFileSync(lock, "utf8"));
+    const data = JSON.parse(import_fs6.default.readFileSync(lock, "utf8"));
     const tables = Object.keys(data).filter((t) => Array.isArray(data[t]) && data[t].length > 0).sort((a, b) => {
       const ai = TABLE_ORDER.indexOf(a), bi = TABLE_ORDER.indexOf(b);
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
-    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs5.default.existsSync(lock) && claimed})`);
+    log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs6.default.existsSync(lock) && claimed})`);
     for (const table of tables) {
       const cols = await tableColumns(store3, table);
       if (!cols) {
@@ -39121,16 +39359,16 @@ async function importFileStoreIntoMysql() {
       log.info("FileImport", `'${table}': imported ${ok2}, skipped ${skipped} of ${data[table].length}`);
     }
     const done = import_path6.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
-    import_fs5.default.renameSync(lock, done);
+    import_fs6.default.renameSync(lock, done);
     log.info("FileImport", `File-store history import complete \u2014 snapshot kept at ${import_path6.default.basename(done)}`);
   } catch (err) {
     log.error("FileImport", `Import failed (will resume next boot): ${err && err.message}`);
   }
 }
-var import_fs5, import_path6, LOCK, TABLE_ORDER;
+var import_fs6, import_path6, LOCK, TABLE_ORDER;
 var init_fileImport = __esm({
   "server/common/fileImport.ts"() {
-    import_fs5 = __toESM(require("fs"), 1);
+    import_fs6 = __toESM(require("fs"), 1);
     import_path6 = __toESM(require("path"), 1);
     init_db();
     init_settings();
@@ -39620,7 +39858,7 @@ async function signInGoogleUser(claims) {
     rows = await store3.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
-  const token = import_crypto29.default.randomBytes(32).toString("hex");
+  const token = import_crypto30.default.randomBytes(32).toString("hex");
   await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
@@ -39695,7 +39933,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path6, import_express, import_crypto29, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path6, import_express, import_crypto30, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -39720,7 +39958,7 @@ var init_routes = __esm({
     init_productImage();
     init_otpService();
     init_firebaseAuth();
-    import_crypto29 = __toESM(require("crypto"), 1);
+    import_crypto30 = __toESM(require("crypto"), 1);
     init_rewardsEngine();
     init_affiliateNetwork();
     init_spendLens();
@@ -39881,7 +40119,7 @@ var init_routes = __esm({
           parentName: String(d.parentLocationName || ""),
           // Popular boarding points for this city (redBus's own BpList) — shown in the
           // From dropdown exactly like the reference UI ("Board at" rows).
-          boardingPoints: (Array.isArray(d.BpList) ? d.BpList : []).slice(0, 6).map((bp) => ({
+          boardingPoints: (Array.isArray(d.BpList) ? d.BpList : []).slice(0, 20).map((bp) => ({
             id: Number(bp?.ID),
             name: String(bp?.Name || ""),
             parentName: String(bp?.parentLocationName || "")
@@ -39895,6 +40133,46 @@ var init_routes = __esm({
         return res.json({ locations });
       } catch (e2) {
         return res.json({ locations: [], error: String(e2?.message || e2).slice(0, 120) });
+      }
+    });
+    busStopsCache = /* @__PURE__ */ new Map();
+    apiRouter.get("/bus/stops", async (req, res) => {
+      const city = String(req.query.city || "").trim().slice(0, 60);
+      const kind = String(req.query.kind || "boarding").toLowerCase() === "dropping" ? "dropping" : "boarding";
+      if (city.length < 2) return res.json({ city: "", kind, points: [] });
+      const key = `${city.toLowerCase()}|${kind}`;
+      const hit = busStopsCache.get(key);
+      if (hit && Date.now() - hit.at < 24 * 3600 * 1e3) return res.json(hit.payload);
+      try {
+        const r = await cffiFetch(`https://www.redbus.in/rpw/api/citySuggestion?search=${encodeURIComponent(city)}&limit=25`, {
+          impersonate: "chrome",
+          timeoutMs: 15e3,
+          headers: { Accept: "application/json" }
+        });
+        if (r.status !== 200) return res.json({ city, kind, points: [], error: `redBus citySuggestion HTTP ${r.status}` });
+        const docs = JSON.parse(r.body || "{}").response?.docs || [];
+        const flat = [];
+        for (const g of docs) flat.push(...g?.doclist?.docs || [g]);
+        const cities = flat.filter((d) => String(d?.locationType || "").toUpperCase() === "CITY" && Number(d?.ID) > 0).filter((d) => !d?.cc || String(d.cc).toUpperCase() === "IND");
+        const lower = city.toLowerCase();
+        const chosen = cities.find((d) => String(d?.Name || "").toLowerCase() === lower) || cities[0];
+        if (!chosen) return res.json({ city, kind, points: [] });
+        const cityName2 = String(chosen.Name || city);
+        const points = (Array.isArray(chosen.BpList) ? chosen.BpList : []).filter((bp) => bp && String(bp.Name || "").trim()).slice(0, 20).map((bp) => ({
+          id: Number(bp.ID) || null,
+          name: String(bp.Name || "").split(",").slice(0, -1).join(",") || String(bp.Name || ""),
+          fullName: String(bp.Name || ""),
+          city: cityName2
+        }));
+        const payload = { city: cityName2, cityId: Number(chosen.ID) || null, kind, points };
+        busStopsCache.set(key, { at: Date.now(), payload });
+        if (busStopsCache.size > 400) {
+          const oldest = [...busStopsCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+          if (oldest) busStopsCache.delete(oldest[0]);
+        }
+        return res.json(payload);
+      } catch (e2) {
+        return res.json({ city, kind, points: [], error: String(e2?.message || e2).slice(0, 120) });
       }
     });
     upcomingCache2 = /* @__PURE__ */ new Map();
@@ -41611,7 +41889,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
         await store3.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
-          `otp-only$${import_crypto29.default.randomBytes(16).toString("hex")}`,
+          `otp-only$${import_crypto30.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
@@ -41619,7 +41897,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
-      const token = import_crypto29.default.randomBytes(32).toString("hex");
+      const token = import_crypto30.default.randomBytes(32).toString("hex");
       await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
@@ -41742,16 +42020,16 @@ __export(profiles_exports, {
   validateProfile: () => validateProfile
 });
 function validateProfile(i) {
-  const slug3 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
+  const slug4 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   const network = String(i.network || "").trim().toLowerCase();
   const template = String(i.template || "").trim();
-  if (!slug3) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
+  if (!slug4) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
   if (!template) {
     const clean3 = {
-      slug: slug3,
+      slug: slug4,
       company_domain: domain,
       network: AFFILIATE_NETWORKS.includes(network) ? network : "direct",
       template: null,
@@ -41777,7 +42055,7 @@ function validateProfile(i) {
   return {
     ok: true,
     clean: {
-      slug: slug3,
+      slug: slug4,
       company_domain: domain,
       network,
       template,
@@ -41816,8 +42094,8 @@ async function saveProfile(i) {
   }
   return { ok: true };
 }
-async function deleteProfile(slug3) {
-  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug3 || "").trim().toLowerCase()]);
+async function deleteProfile(slug4) {
+  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug4 || "").trim().toLowerCase()]);
 }
 var AFFILIATE_NETWORKS;
 var init_profiles = __esm({
@@ -41903,7 +42181,7 @@ async function acquireMyntraDeals() {
 async function acquireTatacliqDeals(queries = ["headphones", "sneakers", "watch", "kitchen appliance"], perQuery = 8) {
   const key = "Vwdu3LWvHSOhAusUG9xfFw==";
   const tokenOf = () => {
-    const cipher = (0, import_crypto30.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
+    const cipher = (0, import_crypto31.createCipheriv)("aes-192-cbc", Buffer.from(key, "utf8"), Buffer.alloc(16, 0));
     return cipher.update(String(Math.floor(Date.now() / 1e3)), "utf8", "base64") + cipher.final("base64");
   };
   const out = [];
@@ -42197,10 +42475,10 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto30, strip, clip, COUPON_TXT;
+var import_crypto31, strip, clip, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
-    import_crypto30 = require("crypto");
+    import_crypto31 = require("crypto");
     init_curlCffiFetch();
     init_logger();
     init_db();
@@ -43628,7 +43906,7 @@ function adsenseApiConfig() {
   const refreshToken = String(process.env.ADSENSE_REFRESH_TOKEN || "").trim();
   const currency = String(process.env.ADSENSE_CURRENCY || "INR").trim().toUpperCase();
   const configured = Boolean(accountId && clientId && clientSecret && refreshToken);
-  const credentialHash = import_crypto31.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
+  const credentialHash = import_crypto32.default.createHash("sha256").update(`${accountId}|${clientId}|${refreshToken}`).digest("hex").slice(0, 16);
   return { accountId, clientId, clientSecret, refreshToken, currency, configured, credentialHash };
 }
 function adsenseApiCircuit() {
@@ -43750,10 +44028,10 @@ async function lastSyncs(limit = 5) {
   await ensureTables();
   return getStore().query("SELECT kind, ok, rows_seen, message, created_at FROM adsense_sync_log ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
 }
-var import_crypto31, HEADER_ALIASES, ensured7, circuit;
+var import_crypto32, HEADER_ALIASES, ensured7, circuit;
 var init_adsenseRevenue = __esm({
   "server/marketing/adsenseRevenue.ts"() {
-    import_crypto31 = __toESM(require("crypto"), 1);
+    import_crypto32 = __toESM(require("crypto"), 1);
     init_db();
     HEADER_ALIASES = {
       day: ["date", "day", "din"],
@@ -44931,6 +45209,55 @@ var init_adminRoutes = __esm({
         res.status(500).json({ success: false, error: e2?.message || "Click log unavailable" });
       }
     });
+    adminRouter.get("/monetization/gaps", async (req, res) => {
+      try {
+        const store3 = getStore();
+        const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+        const since = sqlDate(days);
+        const rows = await store3.query(
+          `SELECT vendor_domain,
+              COUNT(*) AS clicks,
+              SUM(CASE WHEN network_id IS NULL OR network_id = 'direct' THEN 1 ELSE 0 END) AS direct_clicks,
+              SUM(CASE WHEN network_id IS NOT NULL AND network_id <> 'direct' THEN 1 ELSE 0 END) AS paid_clicks,
+              GROUP_CONCAT(DISTINCT network_id ORDER BY network_id) AS networks
+       FROM affiliate_clicks
+       WHERE created_at >= ?
+       GROUP BY vendor_domain
+       ORDER BY clicks DESC
+       LIMIT 200`,
+          [since]
+        );
+        const merchants = rows.map((r) => {
+          const clicks = Number(r.clicks || 0);
+          const paid = Number(r.paid_clicks || 0);
+          return {
+            domain: String(r.vendor_domain || ""),
+            clicks,
+            paidClicks: paid,
+            unmonetizedClicks: Number(r.direct_clicks || 0),
+            networks: String(r.networks || "").split(",").filter(Boolean),
+            // A merchant that never earned on any click is the actionable list.
+            paying: paid > 0,
+            paidShare: clicks ? Math.round(paid / clicks * 100) : 0
+          };
+        });
+        const totalClicks = merchants.reduce((s, m) => s + m.clicks, 0);
+        const paidClicks = merchants.reduce((s, m) => s + m.paidClicks, 0);
+        res.json({
+          success: true,
+          windowDays: days,
+          totalClicks,
+          paidClicks,
+          unmonetizedClicks: totalClicks - paidClicks,
+          paidShare: totalClicks ? Math.round(paidClicks / totalClicks * 100) : 0,
+          payingMerchants: merchants.filter((m) => m.paying).length,
+          unmonetizedMerchants: merchants.filter((m) => !m.paying && m.clicks > 0).map((m) => m.domain).slice(0, 50),
+          merchants
+        });
+      } catch (e2) {
+        res.status(500).json({ success: false, error: e2?.message || "Monetization gaps unavailable" });
+      }
+    });
     adminRouter.get("/affiliate/conversions", async (_req, res) => {
       try {
         const store3 = getStore();
@@ -46064,8 +46391,8 @@ var init_loopWatchdog = __esm({
 });
 
 // server/seo/data.ts
-function verticalBySlug(slug3) {
-  return VERTICALS2.find((v) => v.slug === slug3.replace(/\/$/, ""));
+function verticalBySlug(slug4) {
+  return VERTICALS2.find((v) => v.slug === slug4.replace(/\/$/, ""));
 }
 function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
@@ -46794,7 +47121,7 @@ var init_data = __esm({
       { slug: "current-account", label: "Current Account", query: "current account" }
     ];
     titleCase = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
-    cityName = (slug3) => CITIES.find((c) => c.slug === slug3)?.name || titleCase(slug3.replace(/-/g, " "));
+    cityName = (slug4) => CITIES.find((c) => c.slug === slug4)?.name || titleCase(slug4.replace(/-/g, " "));
     cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(", ");
   }
 });
@@ -46985,10 +47312,10 @@ async function productSitemapPaths(limit = 200) {
     for (const v of ["ecommerce", "grocery"]) {
       const rows = await findCatalogueOffers2(v, { limit: 200 }).catch(() => []);
       for (const r of rows) {
-        const slug3 = productSlug(String(r.title || ""));
-        if (slug3.length < 3 || seen.has(slug3)) continue;
-        seen.add(slug3);
-        paths.push(`/product/${slug3}`);
+        const slug4 = productSlug(String(r.title || ""));
+        if (slug4.length < 3 || seen.has(slug4)) continue;
+        seen.add(slug4);
+        paths.push(`/product/${slug4}`);
         if (paths.length >= limit) break;
       }
       if (paths.length >= limit) break;
@@ -47392,9 +47719,9 @@ function placementTokens(path14) {
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
-function productMatches(slug3, title) {
-  if (slugOf2(title) === slug3) return true;
-  const want = slug3.split("-").filter((t) => t.length > 1);
+function productMatches(slug4, title) {
+  if (slugOf2(title) === slug4) return true;
+  const want = slug4.split("-").filter((t) => t.length > 1);
   if (!want.length) return false;
   const have = new Set(slugOf2(title).split("-").filter((t) => t.length > 1));
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
@@ -47402,8 +47729,8 @@ function productMatches(slug3, title) {
 }
 function selectSnapshotRows(candidates, path14, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug3 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path14.replace(/\/+$/, ""))?.[1] || "";
-    const pool3 = candidates.filter((r) => productMatches(slug3, r.title));
+    const slug4 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path14.replace(/\/+$/, ""))?.[1] || "";
+    const pool3 = candidates.filter((r) => productMatches(slug4, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
     for (const r of pool3.sort((a, b) => a.price - b.price)) {
@@ -47519,12 +47846,12 @@ var init_liveSnapshot = __esm({
 
 // server.prod.ts
 var import_path8 = __toESM(require("path"), 1);
-var import_fs7 = __toESM(require("fs"), 1);
+var import_fs8 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 
 // server/index.ts
 var import_path7 = __toESM(require("path"), 1);
-var import_fs6 = __toESM(require("fs"), 1);
+var import_fs7 = __toESM(require("fs"), 1);
 var import_express4 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
 var __dirname2 = process.cwd();
@@ -47592,10 +47919,10 @@ async function createApp() {
     const name = import_path7.default.basename(req.path);
     const candidates = [import_path7.default.join(dist, name), import_path7.default.join(process.cwd(), "public", name)];
     for (const file of candidates) {
-      if (import_fs6.default.existsSync(file)) {
+      if (import_fs7.default.existsSync(file)) {
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         res.setHeader("Cache-Control", "public, max-age=3600");
-        res.send(import_fs6.default.readFileSync(file, "utf8"));
+        res.send(import_fs7.default.readFileSync(file, "utf8"));
         return;
       }
     }
@@ -47607,7 +47934,7 @@ async function createApp() {
     }
     res.status(404).send("Not found");
   });
-  if (import_fs6.default.existsSync(dist)) {
+  if (import_fs7.default.existsSync(dist)) {
     app.use(import_express4.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
@@ -47620,7 +47947,7 @@ async function createApp() {
     }));
     const { enhanceHtml: enhanceHtml2 } = await Promise.resolve().then(() => (init_render(), render_exports));
     const { snapshotForPath: snapshotForPath2, renderSnapshotHtml: renderSnapshotHtml2, snapshotJsonLd: snapshotJsonLd2 } = await Promise.resolve().then(() => (init_liveSnapshot(), liveSnapshot_exports));
-    const baseHtml = import_fs6.default.readFileSync(import_path7.default.join(dist, "index.html"), "utf8");
+    const baseHtml = import_fs7.default.readFileSync(import_path7.default.join(dist, "index.html"), "utf8");
     app.get("*", async (req, res) => {
       res.setHeader("Cache-Control", "no-store, must-revalidate");
       const acc = String(req.headers.accept || "");
@@ -47686,7 +48013,7 @@ async function boot(start, label = "Try1Second") {
 async function startWorker() {
   const app = await createApp();
   const dist = import_path8.default.resolve(process.cwd(), "dist");
-  if (import_fs7.default.existsSync(dist)) {
+  if (import_fs8.default.existsSync(dist)) {
     app.use(import_express5.default.static(dist, {
       // index.html must never be cached (it names the current hashed bundle);
       // hashed /assets/* files are immutable and safe to cache for a year.

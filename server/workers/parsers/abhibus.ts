@@ -69,6 +69,8 @@ export function parseAbhiBusServices(
       travel: { route: `${route.fromName} → ${route.toName}`, date: route.jdate, seatType: busType || 'unknown' },
       attributes: {
         operator: operator || 'AbhiBus',
+        // AbhiBus service key: the seat screen is addressed by it.
+        ...(key ? { service_id: key } : {}),
         ...(t.startTime ? { departure: `${String(t.startTime)}${t.arriveTime ? ` → ${String(t.arriveTime)}` : ''}` } : {}),
         ...(t.travelTime ? { duration: `~${String(t.travelTime).slice(0, 8)} h` } : {}),
         ...(Number.isFinite(seats) ? { seats_available: String(seats) } : {}),

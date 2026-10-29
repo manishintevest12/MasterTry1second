@@ -138,6 +138,8 @@ export function parseMmtBusListing(
         travel: { route, date: depart || undefined, seatType: mmtBusType(b) },
         attributes: {
           route,
+          // MMT trip key: the id its own bus page addresses a service by.
+          ...(key ? { trip_key: key } : {}),
           operator,
           bus_type: mmtBusType(b),
           departure: departureLabel,

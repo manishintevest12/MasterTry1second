@@ -76,6 +76,9 @@ export function parseRedBusSearch(
       travel: { route: `${route.fromName} → ${route.toName}`, date: route.doj, seatType: busType || 'unknown' },
       attributes: {
         operator,
+        // ids redBus published for this service: needed to rebuild its seat page at click time.
+        ...(inv.serviceId ? { service_id: String(inv.serviceId) } : {}),
+        ...(inv.routeId ? { route_id: String(inv.routeId) } : {}),
         ...(inv.departureTime ? { departure: `${inv.departureTime.slice(11, 16)}${inv.arrivalTime ? ` → ${inv.arrivalTime.slice(11, 16)} (+1)` : ''}` } : {}),
         ...(inv.departureTime ? { departure_time: inv.departureTime.slice(11, 16) } : {}),
         ...(duration ? { duration } : {}),

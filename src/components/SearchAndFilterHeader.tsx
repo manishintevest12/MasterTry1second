@@ -43,6 +43,7 @@ import {
   ECOM_CATEGORIES,
 } from '../data/categoriesData';
 import { JourneyDatePickerModal } from './JourneyDatePickerModal';
+import BusPointPicker, { type BusPoint } from './BusPointPicker';
 
 // ---- Date helpers: all displayed dates are DD-MM-YYYY, always anchored to the real current date ----
 const fmtDMY = (d: Date) =>
@@ -165,6 +166,9 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   const [hotelGuests, setHotelGuests] = useState<string>('2 Adults · 1 Room');
 
   // 4. Bus
+  // Boarding / dropping point picker (owner 29 Oct): the city's own point list opens from the
+  // From and To fields, exactly like the reference screenshots.
+  const [busPointPicker, setBusPointPicker] = useState<'boarding' | 'dropping' | null>(null);
   const [busFrom, setBusFrom] = useState<string>('Indore (IDR)');
   const [busTo, setBusTo] = useState<string>('Bhopal (BHO)');
   const [busDate, setBusDate] = useState<string>(() => `${todayDMY()} (Today)`);
@@ -289,6 +293,31 @@ const handleSelectJourneyDate = (formattedDate: string) => {
     wasScrapingRef.current = isScrapingLive;
   }, [isScrapingLive]);
   const verticalLabel = (VERTICAL_META as any)[vertical]?.name || 'Search';
+
+  const handleBusPoint = (point: BusPoint) => {
+    const cityWord = String(point.city || '').trim();
+    const value = cityWord ? `${point.name}, ${cityWord}` : point.name;
+    const isBoarding = busPointPicker === 'boarding';
+    // Same search path the fields use, so the picked point really narrows the results
+    // ("<point>, <city>" resolves to that AREA location on the platform's own registry).
+    if (isBoarding) {
+      setBusFrom(value);
+      const q = routeQuery(value, busTo);
+      setSearchQuery(q);
+      triggerLiveLocationScrape(q, undefined, travelDatesFor('bus', busDate));
+    } else {
+      setBusTo(value);
+      const q = routeQuery(busFrom, value);
+      setSearchQuery(q);
+      triggerLiveLocationScrape(q, undefined, travelDatesFor('bus', busDate));
+    }
+    try {
+      localStorage.setItem('try1.busLastRoute', JSON.stringify({
+        from: isBoarding ? value : busFrom,
+        to: isBoarding ? busTo : value,
+      }));
+    } catch { /* storage blocked: the sheet just shows no recents */ }
+  };
 
   return (
     <div className="border-b border-slate-200">
@@ -1080,6 +1109,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                     className="w-full"
                     inputClassName="text-xs font-bold text-slate-900"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setBusPointPicker('boarding')}
+                    className="mt-1 ml-4 text-[10px] font-bold text-[#d84e55] hover:underline"
+                  >
+                    Boarding points
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -1134,6 +1170,13 @@ const handleSelectJourneyDate = (formattedDate: string) => {
                   className="w-full"
                   inputClassName="text-xs font-bold text-slate-900"
                 />
+                <button
+                  type="button"
+                  onClick={() => setBusPointPicker('dropping')}
+                  className="mt-1 ml-4 text-[10px] font-bold text-[#d84e55] hover:underline"
+                >
+                  Dropping points
+                </button>
               </div>
 
               <button
@@ -1759,6 +1802,15 @@ const handleSelectJourneyDate = (formattedDate: string) => {
       </React.Suspense>
 
       {/* Reusable Location Picker Modal */}
+      {/* Bus boarding / dropping point sheet (owner 29 Oct reference UI) */}
+      <BusPointPicker
+        open={busPointPicker !== null}
+        city={busPointPicker === 'dropping' ? busTo : busFrom}
+        kind={busPointPicker === 'boarding' ? 'boarding' : 'dropping'}
+        onClose={() => setBusPointPicker(null)}
+        onSelect={handleBusPoint}
+      />
+
       <LocationPickerModal
         isOpen={isLocationModalOpen}
         onClose={() => setIsLocationModalOpen(false)}
