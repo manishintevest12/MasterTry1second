@@ -44,10 +44,20 @@ class _HomeBannerStripState extends State<HomeBannerStrip> {
       _startCycle();
       return;
     }
-    widget.api.homeBanners(section: widget.section).then((b) {
-      SessionCache.put(cacheKey, b);
+    // OWNER 29 OCT: parity with the web strip — when a section pool has no banners yet,
+    // borrow the homepage pool instead of leaving a gap (the server flag decides).
+    widget.api.homeBanners(section: widget.section).then((b) async {
+      var list = b;
+      if (list.isEmpty && widget.section != 'home') {
+        try {
+          list = await widget.api.homeBanners();
+        } catch (_) {
+          list = const [];
+        }
+      }
+      SessionCache.put(cacheKey, list);
       if (mounted) {
-        setState(() => _banners = b);
+        setState(() => _banners = list);
         _startCycle();
       }
     }).catchError((_) {

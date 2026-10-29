@@ -1461,10 +1461,21 @@ class Try1SecondApi {
 
   /// Owner 24 Oct: section-targeted banners ('home' keeps the mixed strip,
   /// 'rewards'/'quickapps' serve that section's admin-authored set).
+  /// OWNER 29 OCT: the server owns the banner cadence (Admin -> Home Banners),
+  /// so the app repeats a strip after the same number of results as the web.
+  /// 12 is the honest default until /api/home-banners answers.
+  final Map<String, int> _bannerCadence = {};
+  int bannerCadence(String section) => _bannerCadence[section] ?? 12;
+
   Future<List<HomeBanner>> homeBanners({String section = 'home'}) async {
     final data = await _get(section == 'home'
         ? '/api/home-banners'
         : '/api/home-banners?section=${Uri.encodeQueryComponent(section)}');
+    final slot = data['slot'];
+    if (slot is Map && slot['everyN'] is num) {
+      final n = (slot['everyN'] as num).toInt();
+      _bannerCadence[section] = (slot['enabled'] == false) ? 0 : n;
+    }
     final rows = data['banners'];
     if (rows is! List) return const [];
     return [

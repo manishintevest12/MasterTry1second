@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/api.dart';
@@ -59,6 +60,17 @@ class _QuickAppsScreenState extends State<QuickAppsScreen> {
     }
   }
 
+  /// Results per banner block: server cadence, 12 until the API answers.
+  int get _everyN {
+    final n = AppState.instance.api.bannerCadence('quickapps');
+    return n > 0 ? n : 12;
+  }
+
+  static int _chunkCount(int items, int everyN) {
+    final n = everyN <= 0 ? items : everyN;
+    return n <= 0 ? 0 : (items + n - 1) ~/ n;
+  }
+
   @override
   Widget build(BuildContext context) {
     final apps = (_apps ?? const <QuickApp>[])
@@ -118,16 +130,42 @@ class _QuickAppsScreenState extends State<QuickAppsScreen> {
                         : RefreshIndicator(
                             color: T1SColors.red,
                             onRefresh: _load,
-                            child: GridView.builder(
+                            // OWNER 29 OCT ("quick apps mai hr 12 results ke baad banner"):
+                            // the grid is chunked so a full-width strip can sit between blocks,
+                            // at the cadence the server publishes (Admin -> Home Banners).
+                            child: ListView.builder(
                               padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-                              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 320,
-                                mainAxisExtent: 116,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                              ),
-                              itemCount: apps.length,
-                              itemBuilder: (context, i) => _AppCard(app: apps[i], onTap: () => _open(apps[i])),
+                              itemCount: _chunkCount(apps.length, _everyN),
+                              itemBuilder: (context, chunk) {
+                                final start = chunk * _everyN;
+                                final end = math.min(start + _everyN, apps.length);
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    GridView.builder(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                                        maxCrossAxisExtent: 320,
+                                        mainAxisExtent: 116,
+                                        crossAxisSpacing: 10,
+                                        mainAxisSpacing: 10,
+                                      ),
+                                      itemCount: end - start,
+                                      itemBuilder: (context, i) => _AppCard(app: apps[start + i], onTap: () => _open(apps[start + i])),
+                                    ),
+                                    if (start + _everyN < apps.length) ...[
+                                      const SizedBox(height: 10),
+                                      HomeBannerStrip(
+                                        api: AppState.instance.api,
+                                        slot: chunk + 1,
+                                        section: 'quickapps',
+                                        onOpenVertical: (v) => AppState.instance.openVertical(v),
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              },
                             ),
                           ),
           ),

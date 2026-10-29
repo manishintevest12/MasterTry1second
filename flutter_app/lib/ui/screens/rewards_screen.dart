@@ -137,6 +137,28 @@ class _DealsHubState extends State<_DealsHub> {
     }
   }
 
+  /// Deal cards with the rewards banner inserted after every N rows (server cadence).
+  List<Widget> _dealRowsWithBanners(List<Deal> deals) {
+    final everyN = deals.length <= 2 ? 0 : widget.state.api.bannerCadence('rewards');
+    final rows = <Widget>[];
+    for (var i = 0; i < deals.length; i++) {
+      if (everyN > 0 && (i + 1) % everyN == 0 && i + 1 < deals.length) {
+        rows.add(Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: HomeBannerStrip(
+            api: widget.state.api,
+            slot: (i + 1) ~/ everyN,
+            section: 'rewards',
+            onOpenVertical: (v) => widget.state.openVertical(v),
+          ),
+        ));
+      }
+      rows.add(DealCard(deal: deals[i], apiBase: widget.state.api.baseUrl));
+      rows.add(const SizedBox(height: 10));
+    }
+    return rows;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Owner decision: a deal without a real image never renders.
@@ -323,10 +345,9 @@ class _DealsHubState extends State<_DealsHub> {
 
           if (filtered.isNotEmpty) ...[
             SectionTitle(_merchant == null ? 'LIVE DEALS · AUTO-ACQUIRED' : '$_merchant DEALS'),
-            for (final d in _kindFiltered(filtered)) ...[
-              DealCard(deal: d, apiBase: widget.state.api.baseUrl),
-              const SizedBox(height: 10),
-            ],
+            // OWNER 29 OCT ("aise hi reward section mai kr na"): the deals list repeats
+            // the banner strip after every N results, at the server's cadence.
+            ..._dealRowsWithBanners(_kindFiltered(filtered)),
           ],
         ],
       ),
