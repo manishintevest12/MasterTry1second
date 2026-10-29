@@ -1712,11 +1712,16 @@ apiRouter.post('/product-page', async (req, res) => {
   // search floor already uses for non-travel verticals keeps every shop visible on the first
   // paint; each row keeps its own fetched_at, so the page's "last verified" honesty is intact.
   {
-    const { findCatalogueOffers } = await import('../catalogue/catalogueService');
+    // OWNER 29 OCT ("iphone 16 daala to sirf Flipkart ka results"): the join below used to read
+    // the VERTICAL's newest 80 rows with no query dimension, so only whichever seller had been
+    // saved most recently reached the comparison and every other shop looked absent. The lookup
+    // is now about THIS product (see catalogue/productCatalogue.ts); isSameProduct still decides
+    // what may enter the list.
+    const { findProductCatalogueRows } = await import('../catalogue/productCatalogue');
     const haveKey = new Set(all.map((x: any) => `${String(x.o.seller || '').toLowerCase()}|${String(x.o.title || '').toLowerCase()}`));
     const now = Date.now();
     for (const v of ['ecommerce', 'grocery']) {
-      const rows = await findCatalogueOffers(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+      const rows = await findProductCatalogueRows(v, { query: lensQuery, pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
       for (const r of rows) {
         const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
         const title = String(r.title || '');
@@ -1826,11 +1831,16 @@ apiRouter.post('/product-page', async (req, res) => {
   // empty "Price unavailable" page, and the poll keeps running so they upgrade in place.
   let floorOnly = false;
   if (!offers.length) {
-    const { findCatalogueOffers } = await import('../catalogue/catalogueService');
+    // OWNER 29 OCT ("iphone 16 daala to sirf Flipkart ka results"): the join below used to read
+    // the VERTICAL's newest 80 rows with no query dimension, so only whichever seller had been
+    // saved most recently reached the comparison and every other shop looked absent. The lookup
+    // is now about THIS product (see catalogue/productCatalogue.ts); isSameProduct still decides
+    // what may enter the list.
+    const { findProductCatalogueRows } = await import('../catalogue/productCatalogue');
     const floor: any[] = [];
     const floorSellers = new Set<string>();
     for (const v of ['ecommerce', 'grocery']) {
-      const rows = await findCatalogueOffers(v, { pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
+      const rows = await findProductCatalogueRows(v, { query: lensQuery, pincode: req.body?.pincode, city: req.body?.city, limit: 80 }).catch(() => []);
       for (const r of rows) {
         const title = String(r.title || '');
         const price = Number(r.effective_price ?? r.mandatory_total ?? 0) || 0;
@@ -3071,13 +3081,19 @@ apiRouter.get('/home-banners', async (req, res) => {
     // do"): ?section=rewards|quickapps serves that section's admin banners;
     // the default remains the mixed home strip (admin + live banners).
     const section = String((req.query as any)?.section || 'home');
+    // OWNER 29 OCT (rewards + quick apps cadence): the strip's placement is server config, so
+    // every client repeats the banner after the SAME number of results and the owner can
+    // retune it from Admin -> Home Banners without a release. Additive field only.
+    const { bannerSlotFor } = await import('../home/bannerSlots');
+    const slot = await bannerSlotFor(section).catch(() => null);
+    const meta = { everyN: slot?.everyN ?? 0, enabled: slot?.enabled !== false, fallbackToHome: slot?.fallbackToHome !== false };
     if (section !== 'home') {
       const banners = await cachedSection(`section-banners:${section}`, () => buildSectionBannersOnly(section));
-      res.json({ success: true, banners });
+      res.json({ success: true, banners, slot: meta });
       return;
     }
     const banners = await cachedSection('home:section-banners', buildHomeBannersList);
-    res.json({ success: true, banners });
+    res.json({ success: true, banners, slot: meta });
   } catch {
     res.json({ success: true, banners: [] }); // honest: no banners configured
   }

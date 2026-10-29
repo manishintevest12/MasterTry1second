@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Crown, TrendingDown, ExternalLink, Store, Ticket } from 'lucide-react';
 import { AdBannerSlot } from './AdBannerSlot';
+import { InlineBanner, useBannerEveryN } from './HomeBannerStrip';
 import { CouponCard, ShowcaseItem } from './HomeShowcase';
 
 /**
@@ -32,6 +33,8 @@ const VERTICAL_LABEL: Record<string, string> = {
 
 export const RewardsTopPicks: React.FC = () => {
   const [picks, setPicks] = useState<TopPick[] | null>(null);
+  // OWNER 29 OCT: rewards repeats the homepage-style strip at the server cadence.
+  const bannerEveryN = useBannerEveryN('rewards');
   const [error, setError] = useState('');
   // Owner 23 Oct: 'Special Offers For You' moved from the homepage to HERE —
   // the same /api/home/showcase coupon section, identical CouponCard grid.
@@ -116,8 +119,9 @@ export const RewardsTopPicks: React.FC = () => {
       {picks && picks.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {picks.map((p, i) => (
+            <React.Fragment key={`${p.vertical}-${i}`}>
+            <InlineBanner section="rewards" index={i} total={picks.length} everyN={bannerEveryN} />
             <a
-              key={`${p.vertical}-${i}`}
               href={p.url}
               target="_blank"
               rel="noopener noreferrer sponsored"
@@ -150,6 +154,7 @@ export const RewardsTopPicks: React.FC = () => {
                 </span>
               </div>
             </a>
+            </React.Fragment>
           ))}
         </div>
       )}

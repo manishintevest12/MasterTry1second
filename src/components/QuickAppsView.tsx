@@ -13,10 +13,12 @@ import {
 import { useApp } from '../context/AppContext';
 import { INITIAL_QUICK_APP_PARTNERS } from '../data/quickAppsData';
 import { QuickAppPartner } from '../types';
-import { HomeBannerStrip } from './HomeBannerStrip';
+import { HomeBannerStrip, InlineBanner, useBannerEveryN } from './HomeBannerStrip';
 
 export const QuickAppsView: React.FC = () => {
   const { quickAppPartners, trackQuickAppRedirection } = useApp();
+  // OWNER 29 OCT: cadence is server-owned (Admin -> Home Banners), default every 12 apps.
+  const bannerEveryN = useBannerEveryN('quickapps');
   // Owner 22 Oct: the hub must show EVERY company on the site (the live
   // affiliate registry, not just the curated few) and every launch must run
   // through /api/out so the affiliate tracking is injected server-side.
@@ -288,9 +290,9 @@ export const QuickAppsView: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredPartners.map((partner) => (
+            {filteredPartners.map((partner, index) => (
+              <React.Fragment key={partner.id}>
               <div
-                key={partner.id}
                 className="bg-white rounded-2xl border border-slate-200 hover:border-red-400 shadow-xs hover:shadow-md transition-all duration-200 p-4 flex items-center justify-between gap-3 group"
               >
                 {/* Company Logo + Name + Category */}
@@ -335,6 +337,12 @@ export const QuickAppsView: React.FC = () => {
                   <ExternalLink className="w-3.5 h-3.5" />
                 </button>
               </div>
+              {/* OWNER 29 OCT: "jaisa homepage pr banners hai waise banner quick apps mai hr
+                  12 results ke baad dikhe". After every 12th app card the homepage banner strip
+                  takes a full-width row; it borrows the homepage pool when the quickapps
+                  section has none of its own, so the row is never empty. */}
+              <InlineBanner section="quickapps" index={index} total={filteredPartners.length} everyN={bannerEveryN} />
+              </React.Fragment>
             ))}
           </div>
         )}

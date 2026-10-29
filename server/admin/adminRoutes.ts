@@ -897,6 +897,84 @@ adminRouter.delete('/home-banners/:id', async (req, res) => {
   } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not delete banner' }); }
 });
 
+// ---- Banner slot control (OWNER 29 OCT: "ye sab banner manage karne ke liye admin mai end
+// to end system banao"). Where each pool shows and after how many results it repeats lives in
+// app_settings ('banner_slots'), so the cadence is retunable without a web/app release. ----
+
+/** Slot config + per-section inventory, so the panel can show what is live where. */
+adminRouter.get('/home-banners/slots', async (_req, res) => {
+  try {
+    const { getBannerSlots, BANNER_SECTIONS } = await import('../home/bannerSlots');
+    const slots = await getBannerSlots();
+    let rows: any[] = [];
+    try { rows = await getStore().query<any>('SELECT * FROM home_banners'); } catch { rows = []; }
+    const inventory = BANNER_SECTIONS.map((section) => {
+      const mine = rows.filter((r) => String(r.section || 'home') === section);
+      return {
+        section,
+        total: mine.length,
+        active: mine.filter((r) => Number(r.is_active ?? 1) === 1).length,
+      };
+    });
+    res.json({ success: true, slots, inventory, sections: BANNER_SECTIONS });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not load banner slots' }); }
+});
+
+/** Patch one or more slots. Body: { slots: { rewards: { everyN: 12, enabled: true } } }. */
+adminRouter.post('/home-banners/slots', async (req, res) => {
+  try {
+    const { saveBannerSlots } = await import('../home/bannerSlots');
+    const patch = req.body?.slots ?? req.body?.patch ?? req.body ?? {};
+    const slots = await saveBannerSlots(patch);
+    audit(req, 'home_banner_slots_update', JSON.stringify(patch).slice(0, 180));
+    purgeSectionCache(); // cadence change is live on the next request
+    res.json({ success: true, slots });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not save banner slots' }); }
+});
+
+/** Duplicate a banner (fast template reuse for a second section). */
+adminRouter.post('/home-banners/:id/duplicate', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rows = await getStore().query<any>('SELECT * FROM home_banners WHERE id = ?', [id]);
+    const r = rows[0];
+    if (!r) return res.status(404).json({ success: false, error: 'Banner not found' });
+    const section = BANNER_SECTIONS.includes(String(req.body?.section || '')) ? String(req.body.section) : String(r.section || 'home');
+    await ensureBannerSectionColumn();
+    await getStore().execute(
+      'INSERT INTO home_banners (image_url, link_url, title, subtitle, section, is_active, position, gradient_start, gradient_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [r.image_url, r.link_url, r.title ?? null, r.subtitle ?? null, section, Number(r.is_active ?? 1), Number(r.position ?? 0) + 1, r.gradient_start ?? null, r.gradient_end ?? null],
+    );
+    audit(req, 'home_banner_duplicate', String(id));
+    purgeSectionCache();
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not duplicate banner' }); }
+});
+
+/** Self-healing banner health: a strip whose image no longer loads would render a blank card. */
+adminRouter.get('/home-banners/health', async (_req, res) => {
+  try {
+    const rows = await getStore().query<any>('SELECT * FROM home_banners');
+    const check = async (r: any) => {
+      const url = String(r.image_url || '');
+      if (!/^https?:\/\//.test(url)) return { id: Number(r.id), ok: false, reason: 'not an absolute image URL' };
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 6000);
+        const head = await fetch(url, { method: 'HEAD', signal: ctrl.signal, redirect: 'follow' }).finally(() => clearTimeout(timer));
+        const type = String(head.headers.get('content-type') || '');
+        return head.ok && (!type || type.startsWith('image/'))
+          ? { id: Number(r.id), ok: true }
+          : { id: Number(r.id), ok: false, reason: `HTTP ${head.status}${type ? ` ${type}` : ''}` };
+      } catch (e: any) {
+        return { id: Number(r.id), ok: false, reason: String(e?.name === 'AbortError' ? 'timed out' : e?.message || e).slice(0, 120) };
+      }
+    };
+    const results = await Promise.all(rows.map(check));
+    res.json({ success: true, results, broken: results.filter((r) => !r.ok).length });
+  } catch (e: any) { res.status(500).json({ success: false, error: e?.message || 'Could not check banners' }); }
+});
+
 // ---- Quick Apps custom merchants (owner 23 Oct): admin-managed manual entries
 // (MySQL quick_apps_custom) merged into /api/quick-apps for web + app. ----
 adminRouter.get('/quick-apps', async (_req, res) => {

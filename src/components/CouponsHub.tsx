@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Tag, Copy, Check, ExternalLink, Filter, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { InlineBanner, useBannerEveryN } from './HomeBannerStrip';
 
 /** Coupons hub — REAL coupon codes only (GET /api/v1/offers?has_coupon=true).
  *  A code is shown only when an affiliate network actually returned it.
@@ -28,6 +29,8 @@ interface RealCoupon {
 export const CouponsHub: React.FC = () => {
   const { addPoints, setActiveNavTab } = useApp();
   const [coupons, setCoupons] = useState<RealCoupon[]>([]);
+  // OWNER 29 OCT: rewards lists repeat the banner at the server cadence (default 12).
+  const bannerEveryN = useBannerEveryN('rewards');
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -115,9 +118,10 @@ export const CouponsHub: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {coupons.map((coupon) => (
+          {coupons.map((coupon, couponIndex) => (
+            <React.Fragment key={coupon.id}>
+            <InlineBanner section="rewards" index={couponIndex} total={coupons.length} everyN={bannerEveryN} />
             <div
-              key={coupon.id}
               className="bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-orange-300 hover:shadow-md transition-all"
             >
               <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 flex items-center">
@@ -167,6 +171,7 @@ export const CouponsHub: React.FC = () => {
                 </div>
               </div>
             </div>
+            </React.Fragment>
           ))}
         </div>
       )}

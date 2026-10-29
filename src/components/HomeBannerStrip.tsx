@@ -22,7 +22,14 @@ export type HomeBanner = {
 
 // Module-level cache: every strip on the page shares ONE fetch per page load.// Owner 24 Oct: per-SECTION caches — home keeps the mixed strip, rewards and
 // quickapps fetch their own admin-authored banner sets via ?section=.
+/** Server-owned placement for a pool: after how many results the strip repeats. */
+export type BannerSlotMeta = { everyN: number; enabled: boolean; fallbackToHome: boolean };
+const DEFAULT_SLOT: BannerSlotMeta = { everyN: 12, enabled: true, fallbackToHome: true };
+
 const bannerCache = new Map<string, HomeBanner[]>();
+const slotCache = new Map<string, BannerSlotMeta>();
+/** Fallback cadence when the server has not answered yet (owner 29 Oct: every 12 results). */
+export const BANNER_EVERY_FALLBACK = 12;
 const bannerInflight = new Map<string, Promise<HomeBanner[]>>();
 
 export function fetchHomeBanners(section = 'home'): Promise<HomeBanner[]> {
@@ -33,6 +40,14 @@ export function fetchHomeBanners(section = 'home'): Promise<HomeBanner[]> {
       const r = await fetch(section === 'home' ? '/api/home-banners' : `/api/home-banners?section=${encodeURIComponent(section)}`);
       const d = r.ok ? await r.json() : null;
       const list: HomeBanner[] = d?.success && Array.isArray(d.banners) ? (d.banners as HomeBanner[]) : [];
+      // OWNER 29 OCT: the server owns the cadence (Admin -> Home Banners), so web and the
+      // Android app repeat a banner after the same number of results.
+      const slot = d?.slot || {};
+      slotCache.set(section, {
+        everyN: Number.isFinite(Number(slot.everyN)) ? Number(slot.everyN) : DEFAULT_SLOT.everyN,
+        enabled: slot.enabled !== false,
+        fallbackToHome: slot.fallbackToHome !== false,
+      });
       bannerCache.set(section, list);
       return list;
     } catch {
@@ -52,18 +67,33 @@ const resolveImage = (url: string) => (/^https?:\/\//.test(url) ? url : url);
 const BADGE: Record<string, string> = { movies: 'MOVIE PICK', food: 'FOOD PICK', ecommerce: 'MEGA DEAL' };
 const CTA: Record<string, string> = { movies: 'Book Now', food: 'Order Now', ecommerce: 'Grab Deal' };
 
-export const HomeBannerStrip: React.FC<{ slot: number; section?: string; onLaunchVertical?: (vertical: string) => void }> = ({ slot, section = 'home', onLaunchVertical }) => {
+/**
+ * OWNER 29 OCT ("jaisa homepage pr banners hai waise banner quick apps mai"):
+ *   - `bare` drops the strip's own max-width/padding box so it can sit inside another
+ *     grid (the Quick Apps results grid) at that grid's exact width.
+ *   - `fallbackSection` keeps the strip populated when a section has no banners of its
+ *     own yet: Quick Apps shows the admin's homepage picks instead of nothing.
+ */
+export const HomeBannerStrip: React.FC<{
+  slot: number;
+  section?: string;
+  onLaunchVertical?: (vertical: string) => void;
+  bare?: boolean;
+  fallbackSection?: string;
+}> = ({ slot, section = 'home', onLaunchVertical, bare = false, fallbackSection }) => {
   const [banners, setBanners] = useState<HomeBanner[] | null>(null);
   const [idx, setIdx] = useState(0);
   useEffect(() => {
     let alive = true;
-    fetchHomeBanners(section).then((b) => {
-      if (alive) setBanners(b);
-    });
+    fetchHomeBanners(section)
+      .then((b) => (b.length || !fallbackSection ? b : fetchHomeBanners(fallbackSection)))
+      .then((b) => {
+        if (alive) setBanners(b);
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [section, fallbackSection]);
   // Auto-cycle the strip (5s per slide, like the hero carousel).
   useEffect(() => {
     if (!banners || banners.length < 2) return;
@@ -94,9 +124,8 @@ export const HomeBannerStrip: React.FC<{ slot: number; section?: string; onLaunc
   const grad = b.gradient?.length === 2 ? b.gradient : (STRIP_GRADIENTS[b.link] || (['#DC2626', '#7F1D1D'] as [string, string]));
   const cta = CTA[b.link] || 'Order Now';
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div
+  const strip = (
+    <div
         className="relative w-full overflow-hidden rounded-2xl shadow-md"
         style={{ background: `linear-gradient(120deg, ${grad[0]} 0%, ${grad[1]} 100%)` }}
       >
@@ -158,7 +187,55 @@ export const HomeBannerStrip: React.FC<{ slot: number; section?: string; onLaunc
             ))}
           </div>
         )}
-      </div>
+    </div>
+  );
+
+  // `bare` = the caller owns the outer box (grid cell), so the strip keeps its own
+  // rounded card but drops the max-width/padding wrapper.
+  if (bare) return strip;
+  return <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">{strip}</div>;
+};
+
+/**
+ * OWNER 29 OCT ("jaisa homepage pr banners hai waise banner quick apps mai hr 12 results ke
+ * baad dikhe", phir "aise hi reward section mai kr na"): one hook + one component so every
+ * results list repeats the same homepage-style strip at the server's cadence.
+ *
+ *   const everyN = useBannerEveryN('rewards');
+ *   ...inside the list map: <InlineBanner section="rewards" index={i} total={list.length} everyN={everyN} />
+ */
+export function useBannerEveryN(section: string): number {
+  const [everyN, setEveryN] = useState<number>(() => slotCache.get(section)?.everyN ?? BANNER_EVERY_FALLBACK);
+  useEffect(() => {
+    let alive = true;
+    const apply = () => {
+      const slot = slotCache.get(section);
+      if (alive && slot) setEveryN(slot.enabled ? slot.everyN : 0);
+    };
+    apply();
+    fetchHomeBanners(section === 'home' ? 'home' : section).then(apply).catch(() => { /* keep the fallback cadence */ });
+    return () => {
+      alive = false;
+    };
+  }, [section]);
+  return everyN;
+}
+
+/** A full-width banner row for a results grid; renders nothing between the wrong items. */
+export const InlineBanner: React.FC<{
+  section: string;
+  index: number;
+  total: number;
+  everyN: number;
+  fallbackSection?: string;
+}> = ({ section, index, total, everyN, fallbackSection = 'home' }) => {
+  const n = Math.round(Number(everyN) || 0);
+  if (n <= 0) return null;                 // cadence switched off for this pool
+  if ((index + 1) % n !== 0) return null;  // only after a full block of results
+  if (index + 1 >= total) return null;     // never as the last row of the list
+  return (
+    <div className="col-span-full">
+      <HomeBannerStrip slot={(index + 1) / n} section={section} fallbackSection={fallbackSection} bare />
     </div>
   );
 };

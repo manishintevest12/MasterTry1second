@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Sparkles, ArrowRight, ShieldCheck, Zap, Tag, RefreshCw } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { DealCard, KIND_LABEL, type PublicDeal } from './DealCard';
+import { InlineBanner, useBannerEveryN } from './HomeBannerStrip';
 
 /** Real partner offers from the affiliate aggregator (GET /api/v1/offers).
  *  Cards render only what the network actually returned — no fabricated cashback. */
@@ -31,6 +32,8 @@ const TYPE_TABS: Array<{ id: string; label: string }> = [
 export const OffersHub: React.FC = () => {
   const { addPoints, setVertical, setActiveNavTab, addToast } = useApp();
   const [offers, setOffers] = useState<RealOffer[]>([]);
+  // OWNER 29 OCT: rewards lists repeat the banner at the server cadence (default 12).
+  const bannerEveryN = useBannerEveryN('rewards');
   const [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState<PublicDeal[]>([]);
   const [dealsLoading, setDealsLoading] = useState(true);
@@ -208,9 +211,10 @@ export const OffersHub: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {offers.map((offer) => (
+          {offers.map((offer, offerIndex) => (
+            <React.Fragment key={offer.id}>
+            <InlineBanner section="rewards" index={offerIndex} total={offers.length} everyN={bannerEveryN} />
             <div
-              key={offer.id}
               className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-red-300 hover:shadow-md transition-all relative overflow-hidden"
             >
               <div>
@@ -253,6 +257,7 @@ export const OffersHub: React.FC = () => {
                 </span>
               )}
             </div>
+            </React.Fragment>
           ))}
         </div>
       )}
