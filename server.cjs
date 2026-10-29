@@ -32391,7 +32391,8 @@ function rowToOffer(row, isLiveNow) {
   };
 }
 function searchCacheTtl(vertical) {
-  if (["flights", "hotels", "bus", "cab", "movies"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
+  if (["movies", "ecommerce", "creditcards"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
+  if (["flights", "hotels", "bus", "cab"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   if (["loans", "insurance", "creditcards", "banking"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
   return { ttlSec: 900, staleSec: 2700 };
 }
@@ -37907,6 +37908,7 @@ var init_heroBanners = __esm({
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
+  DAILY_CATALOGUE_SEEDS: () => DAILY_CATALOGUE_SEEDS,
   FINANCE_DAILY_SEEDS: () => FINANCE_DAILY_SEEDS,
   SEED_QUERIES: () => SEED_QUERIES,
   bootWarm: () => bootWarm,
@@ -37970,7 +37972,7 @@ async function bootWarm() {
   }
 }
 async function keepWarmDefaults() {
-  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS], "KeepWarm");
+  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...DAILY_CATALOGUE_SEEDS], "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
   const store3 = getStore();
@@ -38012,7 +38014,7 @@ async function main() {
     });
   }, intervalMin * 6e4);
 }
-var SEED_QUERIES, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, invokedAsScript;
+var SEED_QUERIES, DAILY_CATALOGUE_SEEDS, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, invokedAsScript;
 var init_warm = __esm({
   "server/cron/warm.ts"() {
     init_db();
@@ -38033,7 +38035,6 @@ var init_warm = __esm({
       { query: "health insurance", vertical: "insurance", city: "Indore", pincode: "452001" },
       { query: "hdfc credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
       { query: "best credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
-      { query: "iphone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "pizza", vertical: "food", city: "Indore", pincode: "452001" },
       { query: "delhi to jaipur", vertical: "bus" },
       { query: "goa", vertical: "hotels" },
@@ -38041,9 +38042,10 @@ var init_warm = __esm({
       { query: "demat account", vertical: "banking", city: "Indore", pincode: "452001" },
       // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
       // phones — warm those catalogues so the section always has fresh rows to show.
+      { query: "refrigerator", vertical: "ecommerce", city: "Indore", pincode: "452001" },
+      { query: "iphone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "laptop", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "smart tv", vertical: "ecommerce", city: "Indore", pincode: "452001" },
-      { query: "refrigerator", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "washing machine", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       // Owner 29 Oct ("tab pr click kr ke smart watch ya kuch v karo, pehle to results nahi
       // aata"): every e-commerce DEPARTMENT is a browse query in its own right, and a tapped
@@ -38068,6 +38070,18 @@ var init_warm = __esm({
       { query: "oneplus 12", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "sony wh-1000xm5", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "boat earbuds", vertical: "ecommerce", city: "Indore", pincode: "452001" }
+    ];
+    DAILY_CATALOGUE_SEEDS = [
+      // Movies — the city listing and the two things people actually type.
+      { query: "movies in indore", vertical: "movies", city: "Indore", pincode: "452001" },
+      { query: "movie tickets indore", vertical: "movies", city: "Indore", pincode: "452001" },
+      // Credit cards: the issuers live in FINANCE_DAILY_SEEDS, so only the two broad intents are
+      // added here (SEED_QUERIES already warms 'best credit card').
+      { query: "credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
+      { query: "credit card offers", vertical: "creditcards", city: "Indore", pincode: "452001" }
+      // E-COMMERCE needs no entries here: SEED_QUERIES carries the product intents and every
+      // e-commerce department (departmentSeedQueries) is seeded, so the daily rotation refreshes
+      // the whole tab set without warming the same query twice in one cycle.
     ];
     FINANCE_DAILY_SEEDS = [
       // Loans — every BankBazaar loan-type page the worker routes to.

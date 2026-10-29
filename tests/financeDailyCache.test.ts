@@ -19,7 +19,9 @@ test('search cache TTL: finance segments 24h fresh / 48h stale-serve', () => {
   assert.ok(body.includes('ttlSec: 86_400'), 'fresh window = 24h (daily scrape)');
   assert.ok(body.includes('staleSec: 172_800'), 'stale-serve window = 48h');
   // Travel keeps its fast 5-min window (fares move) — the change is finance-only.
-  assert.ok(body.includes("['flights', 'hotels', 'bus', 'cab', 'movies']"), 'travel tier untouched');
+  assert.ok(body.includes("['flights', 'hotels', 'bus', 'cab']"), 'travel tier untouched');
+  // Owner 29 Oct: the slow-moving catalogue verticals join the daily tier.
+  assert.ok(body.includes("['movies', 'ecommerce', 'creditcards']"), 'movies/ecommerce/creditcards are daily too');
 });
 
 test('cacheGet semantics: fresh hit, then stale-serve (instant + background refresh), then miss', async () => {
@@ -53,8 +55,10 @@ test('finance daily seeds: every keep-warm cycle refreshes all 4 finance vertica
 
 test('keepWarmDefaults warms the finance daily seeds too (cron, boot, cold-search triggers)', async () => {
   const src = readFileSync('server/cron/warm.ts', 'utf8');
-  assert.ok(src.includes('[...SEED_QUERIES, ...FINANCE_DAILY_SEEDS]'),
+  assert.ok(src.includes('...FINANCE_DAILY_SEEDS'),
       'the daily-refresh seeds ride on the keep-warm cycle');
+  assert.ok(src.includes('...DAILY_CATALOGUE_SEEDS'),
+      'movies/credit cards ride the same once-a-day cycle');
 });
 
 test('freshness engine already credits finance 24h (the search TTL now matches it)', () => {

@@ -128,7 +128,14 @@ function rowToOffer(row: CatalogueRow, isLiveNow: boolean): NormalizedOffer {
  * re-acquires live prices. Fresh results are only ever as old as the TTL above.
  */
 function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } {
-  if (['flights', 'hotels', 'bus', 'cab', 'movies'].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
+  // Owner 29 Oct ("movies, ecommerce, credit card ye sb har samay change ni hote — din me ek
+  // baar peeche se chale aur data real time sab ko mile"): a film's showtimes, a phone's
+  // listed price and a bank's card table move at most once a day. They now share the finance
+  // policy — 24h fresh / 48h stale-while-revalidate — so every user reads the saved
+  // catalogue instantly and the ONE daily live refresh happens in the keep-warm rotation
+  // (DAILY_CATALOGUE_SEEDS) instead of on each request.
+  if (['movies', 'ecommerce', 'creditcards'].includes(vertical)) return { ttlSec: 86_400, staleSec: 172_800 };
+  if (['flights', 'hotels', 'bus', 'cab'].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   // Owner 23 Oct ("loan, insurance, credit card, bank account ka data change ni
   // hota frequently — save kr ke result fast do, din me ek baar scrap krwao"):
   // these finance segments publish rate/card/account tables that move at most

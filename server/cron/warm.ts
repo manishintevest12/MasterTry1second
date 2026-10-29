@@ -43,7 +43,6 @@ export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: strin
   { query: 'health insurance', vertical: 'insurance', city: 'Indore', pincode: '452001' },
   { query: 'hdfc credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
   { query: 'best credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
-  { query: 'iphone', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'pizza', vertical: 'food', city: 'Indore', pincode: '452001' },
   { query: 'delhi to jaipur', vertical: 'bus' },
   { query: 'goa', vertical: 'hotels' },
@@ -51,9 +50,10 @@ export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: strin
   { query: 'demat account', vertical: 'banking', city: 'Indore', pincode: '452001' },
   // Owner 22 Oct: Best-in-Tech section must span laptops/TVs/appliances, not just
   // phones — warm those catalogues so the section always has fresh rows to show.
+  { query: 'refrigerator', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
+  { query: 'iphone', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'laptop', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'smart tv', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
-  { query: 'refrigerator', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   { query: 'washing machine', vertical: 'ecommerce', city: 'Indore', pincode: '452001' },
   // Owner 29 Oct ("tab pr click kr ke smart watch ya kuch v karo, pehle to results nahi
   // aata"): every e-commerce DEPARTMENT is a browse query in its own right, and a tapped
@@ -92,6 +92,29 @@ export const SEED_QUERIES: Array<{ query: string; vertical: string; city?: strin
  * (city 'Indore', pincode '452001') so the warm key equals the default-search
  * key the web + Flutter clients actually send.
  */
+/**
+ * Slow-moving catalogue verticals (owner 29 Oct: "movies, ecommerce, credit card ye sab har
+ * samay change ni hote — din me ek baar peeche se chale aur data real time sab ko mile").
+ *
+ * These three publish catalogues that move at most once a day (a film's showtimes, a phone's
+ * listed price, a bank's card table), yet every user search used to pay for a live scan. With
+ * a 24h search TTL they are now a free cache hit all day and the ONE live refresh happens in
+ * the background when the day expires — every user, at every hour, still reads the same saved
+ * catalogue instantly.
+ */
+export const DAILY_CATALOGUE_SEEDS: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
+  // Movies — the city listing and the two things people actually type.
+  { query: 'movies in indore', vertical: 'movies', city: 'Indore', pincode: '452001' },
+  { query: 'movie tickets indore', vertical: 'movies', city: 'Indore', pincode: '452001' },
+  // Credit cards: the issuers live in FINANCE_DAILY_SEEDS, so only the two broad intents are
+  // added here (SEED_QUERIES already warms 'best credit card').
+  { query: 'credit card', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
+  { query: 'credit card offers', vertical: 'creditcards', city: 'Indore', pincode: '452001' },
+  // E-COMMERCE needs no entries here: SEED_QUERIES carries the product intents and every
+  // e-commerce department (departmentSeedQueries) is seeded, so the daily rotation refreshes
+  // the whole tab set without warming the same query twice in one cycle.
+];
+
 export const FINANCE_DAILY_SEEDS: Array<{ query: string; vertical: string; city?: string; pincode?: string }> = [
   // Loans — every BankBazaar loan-type page the worker routes to.
   { query: 'home loan', vertical: 'loans', city: 'Indore', pincode: '452001' },
@@ -266,7 +289,7 @@ export async function keepWarmDefaults(): Promise<void> {
   // FINANCE_DAILY_SEEDS ride along on every keep-warm cycle: with their 24h
   // search TTL this is a cache hit (free) all day and the ONE live daily scrape
   // when they expire — the owner's "din me ek baar scrap" (23 Oct).
-  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS], 'KeepWarm');
+  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...DAILY_CATALOGUE_SEEDS], 'KeepWarm');
 }
 
 /** One warm pass: fresh top queries from the last 7 days (or seeds). */
