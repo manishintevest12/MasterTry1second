@@ -134,7 +134,13 @@ function searchCacheTtl(vertical: string): { ttlSec: number; staleSec: number } 
   // policy — 24h fresh / 48h stale-while-revalidate — so every user reads the saved
   // catalogue instantly and the ONE daily live refresh happens in the keep-warm rotation
   // (DAILY_CATALOGUE_SEEDS) instead of on each request.
-  if (['movies', 'ecommerce', 'creditcards'].includes(vertical)) return { ttlSec: 86_400, staleSec: 172_800 };
+  // Owner 29 Oct (corrected same day: "sorry din mai ek baar ni hr 1 ghunte mai ek baar kro.
+  // hr city ke liye check kr naa"): ONE HOUR, not one day, and per city. These catalogues
+  // move hourly enough (new showtimes, price drops, fresh card offers) that a day-old row is
+  // misleading, while a per-request scan is what made them feel slow. 1h fresh + 3h
+  // stale-while-revalidate: the keep-warm rotation (every 12 min) re-scrapes each city's set
+  // as it expires and every user reads the saved catalogue instantly.
+  if (['movies', 'ecommerce', 'creditcards'].includes(vertical)) return { ttlSec: 3_600, staleSec: 10_800 };
   if (['flights', 'hotels', 'bus', 'cab'].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   // Owner 23 Oct ("loan, insurance, credit card, bank account ka data change ni
   // hota frequently — save kr ke result fast do, din me ek baar scrap krwao"):

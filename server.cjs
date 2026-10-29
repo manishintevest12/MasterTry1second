@@ -32391,7 +32391,7 @@ function rowToOffer(row, isLiveNow) {
   };
 }
 function searchCacheTtl(vertical) {
-  if (["movies", "ecommerce", "creditcards"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
+  if (["movies", "ecommerce", "creditcards"].includes(vertical)) return { ttlSec: 3600, staleSec: 10800 };
   if (["flights", "hotels", "bus", "cab"].includes(vertical)) return { ttlSec: 300, staleSec: 900 };
   if (["loans", "insurance", "creditcards", "banking"].includes(vertical)) return { ttlSec: 86400, staleSec: 172800 };
   return { ttlSec: 900, staleSec: 2700 };
@@ -37908,13 +37908,65 @@ var init_heroBanners = __esm({
 // server/cron/warm.ts
 var warm_exports = {};
 __export(warm_exports, {
-  DAILY_CATALOGUE_SEEDS: () => DAILY_CATALOGUE_SEEDS,
+  CATALOGUE_QUERIES: () => CATALOGUE_QUERIES,
+  FALLBACK_CITIES: () => FALLBACK_CITIES,
   FINANCE_DAILY_SEEDS: () => FINANCE_DAILY_SEEDS,
   SEED_QUERIES: () => SEED_QUERIES,
   bootWarm: () => bootWarm,
+  catalogueCities: () => catalogueCities,
+  hourlyCatalogueSeeds: () => hourlyCatalogueSeeds,
   keepWarmDefaults: () => keepWarmDefaults,
   keepWarmDestinations: () => keepWarmDestinations
 });
+async function catalogueCities(max = 10) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  try {
+    const store3 = getStore();
+    const rows = await store3.query(
+      `SELECT city, MAX(pincode) AS pincode, COUNT(*) AS n
+       FROM searches
+       WHERE created_at > (NOW() - INTERVAL 7 DAY) AND city IS NOT NULL AND city <> ''
+       GROUP BY city ORDER BY n DESC LIMIT ?`,
+      [max]
+    ).catch(() => []);
+    for (const r of rows) {
+      const city = String(r.city || "").trim();
+      const pincode = String(r.pincode || "").trim();
+      const key = city.toLowerCase();
+      if (!city || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ city, pincode });
+    }
+  } catch {
+  }
+  for (const c of FALLBACK_CITIES) {
+    if (out.length >= max) break;
+    const key = c.city.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out.slice(0, max);
+}
+async function hourlyCatalogueSeeds(perCycle = 18) {
+  const cities = await catalogueCities();
+  const pairs = [];
+  for (const q3 of CATALOGUE_QUERIES) {
+    for (const c of cities) {
+      const query = q3.query.endsWith(" in") || q3.query.endsWith("tickets") ? `${q3.query} ${c.city}`.replace(/\s+/g, " ") : q3.query;
+      pairs.push({ query, vertical: q3.vertical, city: c.city, pincode: c.pincode });
+    }
+  }
+  if (!pairs.length) return [];
+  const take = Math.min(perCycle, pairs.length);
+  const slice = [];
+  for (let i = 0; i < take; i += 1) {
+    slice.push(pairs[(catalogueCursor + i) % pairs.length]);
+  }
+  catalogueCursor = (catalogueCursor + take) % pairs.length;
+  return slice;
+}
 async function keepWarmDestinations() {
   if (DESTINATION_WARM.length === 0) return;
   const slice = [];
@@ -37972,7 +38024,13 @@ async function bootWarm() {
   }
 }
 async function keepWarmDefaults() {
-  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...DAILY_CATALOGUE_SEEDS], "KeepWarm");
+  let catalogue = [];
+  try {
+    catalogue = await hourlyCatalogueSeeds();
+  } catch (e2) {
+    log.warn("Cron", "Hourly catalogue seeds unavailable this cycle", { error: String(e2?.message || e2).slice(0, 120) });
+  }
+  await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...catalogue], "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
   const store3 = getStore();
@@ -38014,7 +38072,7 @@ async function main() {
     });
   }, intervalMin * 6e4);
 }
-var SEED_QUERIES, DAILY_CATALOGUE_SEEDS, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, invokedAsScript;
+var SEED_QUERIES, CATALOGUE_QUERIES, FALLBACK_CITIES, catalogueCursor, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, invokedAsScript;
 var init_warm = __esm({
   "server/cron/warm.ts"() {
     init_db();
@@ -38071,18 +38129,31 @@ var init_warm = __esm({
       { query: "sony wh-1000xm5", vertical: "ecommerce", city: "Indore", pincode: "452001" },
       { query: "boat earbuds", vertical: "ecommerce", city: "Indore", pincode: "452001" }
     ];
-    DAILY_CATALOGUE_SEEDS = [
-      // Movies — the city listing and the two things people actually type.
-      { query: "movies in indore", vertical: "movies", city: "Indore", pincode: "452001" },
-      { query: "movie tickets indore", vertical: "movies", city: "Indore", pincode: "452001" },
-      // Credit cards: the issuers live in FINANCE_DAILY_SEEDS, so only the two broad intents are
-      // added here (SEED_QUERIES already warms 'best credit card').
-      { query: "credit card", vertical: "creditcards", city: "Indore", pincode: "452001" },
-      { query: "credit card offers", vertical: "creditcards", city: "Indore", pincode: "452001" }
-      // E-COMMERCE needs no entries here: SEED_QUERIES carries the product intents and every
-      // e-commerce department (departmentSeedQueries) is seeded, so the daily rotation refreshes
-      // the whole tab set without warming the same query twice in one cycle.
+    CATALOGUE_QUERIES = [
+      // Movies — the city listing plus the two things people type.
+      { query: "movies in", vertical: "movies" },
+      { query: "movie tickets", vertical: "movies" },
+      // Credit cards — the broad intents (issuer queries live in FINANCE_DAILY_SEEDS).
+      { query: "credit card", vertical: "creditcards" },
+      { query: "best credit card", vertical: "creditcards" },
+      // E-commerce — one intent per department family (SEED_QUERIES already warms Indore).
+      { query: "mobile phone", vertical: "ecommerce" },
+      { query: "laptop", vertical: "ecommerce" },
+      { query: "smart watch", vertical: "ecommerce" }
     ];
+    FALLBACK_CITIES = [
+      { city: "Indore", pincode: "452001" },
+      { city: "Bhopal", pincode: "462001" },
+      { city: "Mumbai", pincode: "400001" },
+      { city: "Delhi", pincode: "110001" },
+      { city: "Bengaluru", pincode: "560001" },
+      { city: "Hyderabad", pincode: "500001" },
+      { city: "Pune", pincode: "411001" },
+      { city: "Jaipur", pincode: "302001" },
+      { city: "Ahmedabad", pincode: "380001" },
+      { city: "Lucknow", pincode: "226001" }
+    ];
+    catalogueCursor = 0;
     FINANCE_DAILY_SEEDS = [
       // Loans — every BankBazaar loan-type page the worker routes to.
       { query: "home loan", vertical: "loans", city: "Indore", pincode: "452001" },

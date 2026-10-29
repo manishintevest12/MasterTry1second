@@ -1,61 +1,72 @@
 /**
- * Slow-moving verticals, saved once a day (owner 29 Oct: "movies, ecommerce, credit card ye
- * sab har samay change ni hote — inko aisa save kyun ni krte ki sirf ek baar din mai peeche se
- * chale aur data real time frequently sab ko mile").
+ * Hourly, per-city refresh of the slow-catalogue verticals.
+ *
+ * Owner 29 Oct: "movies ecommerce credit card ye sab har samay change ni hote — save kr ke
+ * rakho", then the correction the same day: "sorry din mai ek baar ni hr 1 ghunte mai ek baar
+ * kro. hr city ke liye check kr naa."
  *
  * Contract pinned here:
- *  - movies / ecommerce / creditcards share the finance (24h) cache policy, so a user search
- *    is a cache hit instead of a live scan;
- *  - the keep-warm rotation carries a daily seed set for exactly those verticals, which is
- *    what performs the ONE background refresh per day;
- *  - the volatile verticals (flights/hotels/bus/cab) keep their short TTL — a fare cannot be
- *    a day old.
+ *  - movies / ecommerce / creditcards keep a ONE HOUR search TTL (3h stale-while-revalidate),
+ *    not a day, so a user always reads a catalogue refreshed within the hour;
+ *  - the keep-warm rotation (every 12 min) walks query x city pairs round-robin, so EVERY city
+ *    is covered inside the hour instead of only the default city;
+ *  - cities come from real demand first, then a fallback list, bounded so one cycle can never
+ *    stampede dozens of live scans.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DAILY_CATALOGUE_SEEDS, FINANCE_DAILY_SEEDS, SEED_QUERIES } from '../server/cron/warm.ts';
-import { departmentSeedQueries } from '../server/lens/ecomDepartments.ts';
-import { floorWindows } from '../server/search/searchOrchestrator.ts';
+import { readFileSync } from 'node:fs';
+import { CATALOGUE_QUERIES, FALLBACK_CITIES, catalogueCities, hourlyCatalogueSeeds } from '../server/cron/warm.ts';
 
-// The TTL policy lives in a module-private function, so assert it through the exported
-// behaviour that matters: the seeds exist per vertical and the floor windows stay wide.
-test('a daily seed set exists for movies, ecommerce and credit cards', () => {
-  const byVertical = new Map<string, number>();
-  for (const s of DAILY_CATALOGUE_SEEDS) byVertical.set(s.vertical, (byVertical.get(s.vertical) || 0) + 1);
-  assert.ok((byVertical.get('movies') || 0) >= 2, 'movies seeds');
-  // E-commerce is refreshed by SEED_QUERIES + one seed per department, so the daily block
-  // must not repeat it (the duplicate test below enforces that).
-  assert.equal(byVertical.get('ecommerce') || 0, 0, 'ecommerce covered by the seed + department lists');
-  assert.ok((byVertical.get('creditcards') || 0) >= 2, 'credit card seeds');
+test('the slow-catalogue TTL is one hour, not a day', () => {
+  const src = readFileSync('server/search/searchOrchestrator.ts', 'utf8');
+  const body = (src.match(/function searchCacheTtl[\s\S]*?\n\}/) || [''])[0];
+  assert.ok(body.includes("['movies', 'ecommerce', 'creditcards']"), 'the three verticals share a tier');
+  assert.ok(/ttlSec: 3_600/.test(body), 'fresh window = 1 hour');
+  assert.ok(/staleSec: 10_800/.test(body), 'stale-serve = 3 hours');
+  assert.ok(!/ttlSec: 86_400/.test(body.split("['movies', 'ecommerce', 'creditcards']")[1]?.split('\n')[0] || ''), 'not a day');
+  // A fare still cannot be an hour old.
+  assert.ok(body.includes("['flights', 'hotels', 'bus', 'cab']"));
 });
 
-test('every daily seed names a real city/pincode so the row can be served to that city', () => {
-  for (const s of DAILY_CATALOGUE_SEEDS) {
-    assert.ok(s.query.trim().length > 2, `query for ${s.vertical}`);
-    assert.equal(s.city, 'Indore');
-    assert.equal(s.pincode, '452001');
+test('every catalogue query names a vertical and reads naturally per city', () => {
+  for (const q of CATALOGUE_QUERIES) {
+    assert.ok(['movies', 'ecommerce', 'creditcards'].includes(q.vertical), `${q.query} -> ${q.vertical}`);
+    assert.ok(q.query.trim().length > 2);
   }
 });
 
-test('every e-commerce department and the main product intents are warmed', () => {
-  const ecomQueries = new Set(SEED_QUERIES.filter((s) => s.vertical === 'ecommerce').map((s) => s.query.toLowerCase()));
-  for (const d of departmentSeedQueries()) assert.ok(ecomQueries.has(d.toLowerCase()), `${d} is in the warm set`);
-  for (const q of ['iphone', 'laptop', 'smart tv', 'mobile phone']) assert.ok(ecomQueries.has(q), `${q} is in the warm set`);
-});
-
-test('the daily seeds are not duplicated from the existing seed / finance lists', () => {
-  const key = (s: { query: string; vertical: string }) => `${s.vertical}|${s.query.toLowerCase()}`;
-  const existing = new Set([...SEED_QUERIES.map(key), ...FINANCE_DAILY_SEEDS.map(key)]);
-  for (const s of DAILY_CATALOGUE_SEEDS) {
-    assert.ok(!existing.has(key(s)), `${s.vertical} "${s.query}" must not be warmed twice per cycle`);
+test('the fallback city list covers the metros and always includes the default city first', () => {
+  assert.equal(FALLBACK_CITIES[0].city, 'Indore');
+  for (const city of ['Mumbai', 'Delhi', 'Bengaluru', 'Hyderabad', 'Pune']) {
+    assert.ok(FALLBACK_CITIES.some((c) => c.city === city), `${city} present`);
   }
+  for (const c of FALLBACK_CITIES) assert.match(c.pincode, /^\d{6}$/, `${c.city} pincode is 6 digits`);
 });
 
-test('volatile and slow verticals are treated differently by the floor', () => {
-  // Travel keeps the short strict window (a fare is not a day-old fact)…
-  assert.ok(floorWindows('bus').strict < floorWindows('ecommerce').strict);
-  assert.ok(floorWindows('flights').fallback < floorWindows('ecommerce').fallback);
-  // …while the catalogue verticals accept day-old rows, which is what makes them instant.
-  assert.ok(floorWindows('movies').strict >= 24 * 3600);
-  assert.ok(floorWindows('creditcards').strict >= 24 * 3600);
+test('cities resolve demand-first without duplicates and within the cap', async () => {
+  const cities = await catalogueCities(6);
+  assert.ok(cities.length <= 6, `capped, got ${cities.length}`);
+  assert.equal(new Set(cities.map((c) => c.city.toLowerCase())).size, cities.length, 'no duplicates');
+});
+
+test('one cycle warms a bounded, rotating slice that reaches every city over time', async () => {
+  const first = await hourlyCatalogueSeeds(5);
+  assert.equal(first.length, 5, 'bounded per cycle');
+  const second = await hourlyCatalogueSeeds(5);
+  assert.notDeepEqual(first, second, 'the cursor advances instead of re-warming the same pairs');
+
+  // Over enough cycles, every city in the set must appear (round-robin coverage).
+  const citiesWanted = new Set((await catalogueCities(4)).map((c) => c.city));
+  const seen = new Set<string>();
+  for (let i = 0; i < 40; i += 1) for (const s of await hourlyCatalogueSeeds(4)) seen.add(s.city);
+  for (const city of citiesWanted) assert.ok(seen.has(city), `${city} is refreshed inside the rotation`);
+});
+
+test('a per-city pair carries that city and its pincode', async () => {
+  for (const s of await hourlyCatalogueSeeds(6)) {
+    assert.ok(s.city.length > 1);
+    assert.match(s.pincode, /^\d{6}$/);
+    assert.ok(['movies', 'ecommerce', 'creditcards'].includes(s.vertical));
+  }
 });

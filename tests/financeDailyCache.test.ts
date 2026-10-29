@@ -57,8 +57,8 @@ test('keepWarmDefaults warms the finance daily seeds too (cron, boot, cold-searc
   const src = readFileSync('server/cron/warm.ts', 'utf8');
   assert.ok(src.includes('...FINANCE_DAILY_SEEDS'),
       'the daily-refresh seeds ride on the keep-warm cycle');
-  assert.ok(src.includes('...DAILY_CATALOGUE_SEEDS'),
-      'movies/credit cards ride the same once-a-day cycle');
+  assert.ok(src.includes('hourlyCatalogueSeeds'),
+      'movies/credit cards ride the hourly per-city rotation');
 });
 
 test('freshness engine already credits finance 24h (the search TTL now matches it)', () => {
