@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
+import 'core/push_alerts.dart';
 import 'core/theme.dart';
 import 'ui/main_shell.dart';
 import 'ui/screens/product_screen.dart';
@@ -8,6 +11,9 @@ import 'ui/splash_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Device alerts: permission + token registration. Deliberately not awaited, so a slow
+  // or unavailable Play Services never delays the first frame.
+  unawaited(PushAlerts.init());
   runApp(const Try1SecondApp());
 }
 

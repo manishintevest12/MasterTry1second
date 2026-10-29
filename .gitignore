@@ -17,3 +17,5 @@ flutter_app/ios/.symlinks/
 tmp/
 __pycache__/
 *.pyc
+fcm-service-account.json
+flutter_app/dist/
