@@ -69,7 +69,7 @@ test('etraveliFlightsItems emits honest rows with shareableUrl deeplinks', () =>
   const { flights, searchPath } = parseEtraveliFlights(fixture);
   const items = etraveliFlightsItems(flights, GOTOGATE_IN, source, { from: 'Delhi', to: 'Mumbai' }, 'DEL', 'BOM', '2026-10-28', searchPath);
   assert.ok(items.length >= 5, `expected >=5 rows, got ${items.length}`);
-  const first = items[0];
+  const first: any = items[0];
   assert.equal(first.seller, 'Gotogate');
   assert.equal(first.currency, 'INR');
   assert.match(first.title, /QP1805|Akasa/);
@@ -84,7 +84,7 @@ test('etraveliFlightsItems emits honest rows with shareableUrl deeplinks', () =>
 
 test('etraveliFlightsItems drops wrong-route, wrong-day, non-INR and insane fares', () => {
   const { flights } = parseEtraveliFlights(fixture);
-  const good = flights[0];
+  const good: any = flights[0];
   const mk = (over: Record<string, unknown>) => ({ ...good, ...over }) as any;
   const batch = [
     good,

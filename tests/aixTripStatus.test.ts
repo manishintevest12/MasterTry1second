@@ -71,7 +71,7 @@ test('aixScheduledFareItems builds honest per-flight cards (fare calendar price 
   const flights = parseAixTripStatus(LIVE, '2026-10-28');
   const items = aixScheduledFareItems(flights, { dt: '2026-10-28', pr: 6677, taxes: 1798, available: 37 }, src, 'New Delhi', 'Mumbai', 'DEL', 'BOM');
   assert.equal(items.length, flights.length);
-  const it = items[0];
+  const it: any = items[0];
   assert.equal(it.brand, 'Air India Express');
   assert.equal(it.price, 6677);
   assert.equal(it.currency, 'INR');

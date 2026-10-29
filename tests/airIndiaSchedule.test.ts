@@ -89,7 +89,7 @@ test('airIndiaScheduledFareItems builds honest per-flight cards (fare-calendar p
   const flights = parseAirIndiaSchedules(LIVE, '2026-10-28');
   const items = airIndiaScheduledFareItems(flights, { dt: '2026-10-28', pr: 7205, tax: 1795 }, src, 'New Delhi', 'Mumbai', 'DEL', 'BOM');
   assert.equal(items.length, flights.length);
-  const it = items.find((i: any) => i.attributes.flight_number === 'AI2573')!;
+  const it: any = items.find((i: any) => i.attributes.flight_number === 'AI2573')!;
   assert.equal(it.brand, 'Air India');
   assert.equal(it.price, 7205);
   assert.equal(it.currency, 'INR');
