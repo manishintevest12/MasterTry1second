@@ -99,6 +99,31 @@ function istMinutesNow(now: Date): number {
   return ist.getUTCHours() * 60 + ist.getUTCMinutes();
 }
 
+/**
+ * The gateway stamps sessions in UTC, not IST: `showTime: '2026-10-29T17:15'` is the show
+ * District itself renders as 10:45 PM. 29 Oct e2e render of that session showed 10:45 PM on the
+ * platform's seat page, so every comparison below happens on the IST clock after this shift.
+ * Returns null for anything that is not a full datetime stamp.
+ */
+function stampToIst(stamp: string | undefined): { dateISO: string; minutes: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(stamp || ''));
+  if (!m) return null;
+  const utcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  const ist = new Date(utcMs + IST_OFFSET_MS);
+  return {
+    dateISO: ist.toISOString().slice(0, 10),
+    minutes: ist.getUTCHours() * 60 + ist.getUTCMinutes(),
+  };
+}
+
+/**
+ * A counter shuts BEFORE the show starts, so "has not started yet" is not the same as "can still
+ * buy". 29 Oct owner screenshots: the resolver picked the earliest not-yet-started show, which is
+ * exactly the show whose window had just closed, and District answered "Sorry! Booking is now
+ * closed". Only shows with real head-room and free seats are candidates now.
+ */
+const BOOKING_HEADROOM_MIN = 25;
+
 // City aggregates cost a handful of gateway calls, so they are shared for a few minutes: a
 // burst of clicks on the same city's movies must not fan out into a scrape each time.
 const AGG_TTL_MS = 5 * 60_000;
@@ -130,14 +155,14 @@ export async function refreshSeatDestination(destination: string, now: Date = ne
   // District's seat URL carries no city; the city index (stamped during aggregation) tells us
   // which sessions to ask for. Without it we would be guessing, so we fall back instead.
   if (!parsed.city) parsed.city = lookupSeatCity(parsed.fid, parsed.cinemaId);
-  // Same day and the show has not started yet: the captured session is still the right one.
+  // Same day: the stored session may still be live, but its link is only valid if it carries the
+  // show's format code. Legacy rows repeated the cinema id there (what District answered with
+  // "booking is now closed"), so the link is always REBUILT from the live show - never replayed.
   if (parsed.dateISO === target) {
     const aggs = await cityAggregates(parsed.host, gwCitySlug(parsed.city)).catch(() => null);
     const show = aggs ? findShow(aggs, parsed, target, now) : null;
-    if (!show && parsed.dateISO === target) return fallback; // cannot verify -> keep as is
-    if (show && show.sid === parsed.sid) return fallback;
-    if (show) return buildSeatLink(parsed, show, target, fallback);
-    return fallback;
+    if (!show) return fallback; // no bookable show left -> the platform's own dated page
+    return buildSeatLink(parsed, show, target, fallback);
   }
 
   const citySlug = gwCitySlug(parsed.city);
@@ -159,6 +184,7 @@ export async function refreshSeatDestination(destination: string, now: Date = ne
 interface ResolvedShow {
   sid: string;
   mid: string;
+  /** session format code = the platform's own `entityDataCode` (4th encsessionid segment) */
   fid: string;
   contentId: string;
   cinemaId: string;
@@ -183,11 +209,22 @@ function findShow(
       const sameCinema = parsed.cinemaId ? cinemaId === parsed.cinemaId : true;
       const sameMid = parsed.mid ? String(s.mid || '').toLowerCase() === parsed.mid.toLowerCase() : true;
       if (!sameCinema && !sameMid) continue;
+      // Sold-out shows have no seat map to show, so they are never a destination.
+      if (typeof s.avail === 'number' && s.avail <= 0) continue;
       // Prices in this gateway are today's live sessions; tomorrow's rows only exist when the
       // platform has opened them. Either way the date is stamped from `target`.
       if (target === today) {
-        const mins = timeToMinutes(s.time);
-        if (mins === null || mins <= nowMin) continue; // already started -> closed window
+        // Prefer the platform's own closeTime: that is the moment it stops selling, which is
+        // always earlier than the show start. Only when the payload has none do we fall back to
+        // a start-time margin.
+        const close = stampToIst(s.closeTime);
+        if (close && close.dateISO === today) {
+          if (close.minutes <= nowMin + 10) continue; // window already shut -> "Booking is now closed"
+        } else {
+          const start = stampToIst(s.showTime);
+          const mins = start && start.dateISO === today ? start.minutes : timeToMinutes(s.time);
+          if (mins === null || mins <= nowMin + BOOKING_HEADROOM_MIN) continue;
+        }
       }
       candidates.push({
         sid: String(s.sid),
@@ -215,6 +252,7 @@ function buildSeatLink(parsed: SeatDestination, show: ResolvedShow, dateISO: str
     sid: show.sid,
     mid: show.mid,
     fid: show.fid,
+    entityDataCode: show.fid,
     contentId: show.contentId,
     dateISO,
   });

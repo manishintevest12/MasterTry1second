@@ -23997,8 +23997,9 @@ function encSessionId(ctx) {
   const cid = String(ctx.cid ?? ctx.cinemaId ?? "").trim();
   const sid = String(ctx.sid ?? "").trim();
   const mid = String(ctx.mid ?? "").trim();
-  if (!cid || !sid || !mid) return "";
-  return `${cid}-${sid}-${mid.toLowerCase()}-${cid}`;
+  const code = String(ctx.entityDataCode ?? ctx.fid ?? "").trim().toLowerCase();
+  if (!cid || !sid || !mid || !code) return "";
+  return `${cid}-${sid}-${mid.toLowerCase()}-${code}`;
 }
 function movieSeatLink(ctx) {
   const enc2 = encSessionId(ctx);
@@ -24104,6 +24105,17 @@ var init_seatCityIndex = __esm({
 });
 
 // server/workers/parsers/districtGw.ts
+function istClock(stamp) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(stamp || "");
+  if (!m) return "";
+  const utcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  const ist = new Date(utcMs + (5 * 60 + 30) * 6e4);
+  let h = ist.getUTCHours();
+  const min = String(ist.getUTCMinutes()).padStart(2, "0");
+  const ap = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${String(h).padStart(2, "0")}:${min} ${ap}`;
+}
 function gwCitySlug(city) {
   return (city || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -24210,17 +24222,21 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       if (!agg.theatres.includes(cinema.name)) agg.theatres.push(cinema.name);
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || "").trim();
+        const tDisplay = istClock(t) || t;
         if (t) {
           rememberSeatCity(citySlug2, ss?.fid ? String(ss.fid) : null, cinema.id);
           agg.shows.push({
-            time: t,
+            time: tDisplay,
             theatre: cinema.name,
             cinemaId: cinema.id,
             areas: areas.slice(0, 4),
             sid: ss?.sid != null ? String(ss.sid) : void 0,
             mid: mid ? String(mid) : void 0,
             fid: ss?.fid ? String(ss.fid).toLowerCase() : void 0,
-            contentId: contentByTitle.get(key) ?? null
+            contentId: contentByTitle.get(key) ?? null,
+            showTime: ss?.showTime ? String(ss.showTime) : void 0,
+            closeTime: ss?.closeTime ? String(ss.closeTime) : void 0,
+            avail: Number.isFinite(Number(ss?.avail)) ? Number(ss?.avail) : void 0
           });
         }
       }
@@ -33675,6 +33691,16 @@ function istMinutesNow(now) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS2);
   return ist.getUTCHours() * 60 + ist.getUTCMinutes();
 }
+function stampToIst(stamp) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(stamp || ""));
+  if (!m) return null;
+  const utcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  const ist = new Date(utcMs + IST_OFFSET_MS2);
+  return {
+    dateISO: ist.toISOString().slice(0, 10),
+    minutes: ist.getUTCHours() * 60 + ist.getUTCMinutes()
+  };
+}
 async function cityAggregates(host, citySlug2) {
   const key = `${host}|${citySlug2}`;
   const hit = aggCache.get(key);
@@ -33693,10 +33719,8 @@ async function refreshSeatDestination(destination, now = /* @__PURE__ */ new Dat
   if (parsed.dateISO === target) {
     const aggs = await cityAggregates(parsed.host, gwCitySlug(parsed.city)).catch(() => null);
     const show = aggs ? findShow(aggs, parsed, target, now) : null;
-    if (!show && parsed.dateISO === target) return fallback;
-    if (show && show.sid === parsed.sid) return fallback;
-    if (show) return buildSeatLink(parsed, show, target, fallback);
-    return fallback;
+    if (!show) return fallback;
+    return buildSeatLink(parsed, show, target, fallback);
   }
   const citySlug2 = gwCitySlug(parsed.city);
   for (const host of [parsed.host, parsed.host === "district" ? "ticketnew" : "district"]) {
@@ -33720,9 +33744,16 @@ function findShow(aggs, parsed, target, now) {
       const sameCinema = parsed.cinemaId ? cinemaId === parsed.cinemaId : true;
       const sameMid = parsed.mid ? String(s.mid || "").toLowerCase() === parsed.mid.toLowerCase() : true;
       if (!sameCinema && !sameMid) continue;
+      if (typeof s.avail === "number" && s.avail <= 0) continue;
       if (target === today2) {
-        const mins = timeToMinutes(s.time);
-        if (mins === null || mins <= nowMin) continue;
+        const close = stampToIst(s.closeTime);
+        if (close && close.dateISO === today2) {
+          if (close.minutes <= nowMin + 10) continue;
+        } else {
+          const start = stampToIst(s.showTime);
+          const mins = start && start.dateISO === today2 ? start.minutes : timeToMinutes(s.time);
+          if (mins === null || mins <= nowMin + BOOKING_HEADROOM_MIN) continue;
+        }
       }
       candidates.push({
         sid: String(s.sid),
@@ -33749,12 +33780,13 @@ function buildSeatLink(parsed, show, dateISO, fallback) {
     sid: show.sid,
     mid: show.mid,
     fid: show.fid,
+    entityDataCode: show.fid,
     contentId: show.contentId,
     dateISO
   });
   return link || fallback;
 }
-var IST_OFFSET_MS2, AGG_TTL_MS, aggCache;
+var IST_OFFSET_MS2, BOOKING_HEADROOM_MIN, AGG_TTL_MS, aggCache;
 var init_liveSeatSession = __esm({
   "server/movies/liveSeatSession.ts"() {
     init_districtGw();
@@ -33762,6 +33794,7 @@ var init_liveSeatSession = __esm({
     init_freshMovieLink();
     init_seatCityIndex();
     IST_OFFSET_MS2 = (5 * 60 + 30) * 6e4;
+    BOOKING_HEADROOM_MIN = 25;
     AGG_TTL_MS = 5 * 6e4;
     aggCache = /* @__PURE__ */ new Map();
   }

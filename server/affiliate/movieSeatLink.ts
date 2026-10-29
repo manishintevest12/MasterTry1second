@@ -56,6 +56,13 @@ export interface SeatCtx {
   dateISO?: string;
   /** session format id (fid), used by District's seat-layout route */
   fid?: string;
+  /**
+   * The platform's own 4th encsessionid segment ("entityDataCode"). It is the show's film
+   * format id, which equals the session's `fid`. 29 Oct: this code used the CINEMA id here,
+   * which made District/TicketNew resolve a dead session — the user saw "Sorry! Booking is
+   * now closed" (District) and a blank seat screen (TicketNew).
+   */
+  entityDataCode?: string;
 }
 
 /** Same slug the platforms use for city / cinema name paths. */
@@ -75,8 +82,14 @@ export function encSessionId(ctx: SeatCtx): string {
   const cid = String(ctx.cid ?? ctx.cinemaId ?? '').trim();
   const sid = String(ctx.sid ?? '').trim();
   const mid = String(ctx.mid ?? '').trim();
-  if (!cid || !sid || !mid) return '';
-  return `${cid}-${sid}-${mid.toLowerCase()}-${cid}`;
+  // 4th segment = the show's format/entity code (session `fid`). LIVE-VERIFIED 29 Oct against
+  // the platforms' own payload: every session carries `encSessionId: cid-sid-mid-entityDataCode`
+  // with entityDataCode = its fid (e.g. 1023935-22229-obd01m-1dn1tx75u42). Repeating the
+  // cinema id there is an unknown session to both platforms, and District then answers
+  // "Booking is now closed" while TicketNew renders an empty seat shell.
+  const code = String(ctx.entityDataCode ?? ctx.fid ?? '').trim().toLowerCase();
+  if (!cid || !sid || !mid || !code) return '';
+  return `${cid}-${sid}-${mid.toLowerCase()}-${code}`;
 }
 
 /**

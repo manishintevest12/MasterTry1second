@@ -19,3 +19,4 @@ __pycache__/
 *.pyc
 fcm-service-account.json
 flutter_app/dist/
+fcm-env-value.txt

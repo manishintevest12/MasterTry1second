@@ -32,6 +32,19 @@ export const GW_HOSTS: Record<GwHost, string> = {
 };
 
 /** District/TicketNew city slug: "New Delhi" -> "new-delhi". */
+/** '2026-10-29T17:15' (gateway stamp, UTC) -> the platform's own '10:45 PM'. Clock strings pass through. */
+function istClock(stamp: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(stamp || '');
+  if (!m) return '';
+  const utcMs = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+  const ist = new Date(utcMs + (5 * 60 + 30) * 60_000);
+  let h = ist.getUTCHours();
+  const min = String(ist.getUTCMinutes()).padStart(2, '0');
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${String(h).padStart(2, '0')}:${min} ${ap}`;
+}
+
 export function gwCitySlug(city: string | undefined): string {
   return (city || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
@@ -108,6 +121,16 @@ export interface GwShowtime {
   mid?: string;
   fid?: string;
   contentId?: number | null;
+  /** Show start exactly as the platform states it, `YYYY-MM-DDTHH:mm` in IST. */
+  showTime?: string;
+  /**
+   * When this show stops selling seats (`closeTime`, same shape). 29 Oct: the exit resolver
+   * picked "the earliest show that has not started", which is exactly the show whose counter
+   * had just shut - that is why users landed on "Sorry! Booking is now closed".
+   */
+  closeTime?: string;
+  /** Seats still free across the priced areas; 0 means sold out, so the seat map is pointless. */
+  avail?: number;
 }
 
 export interface GwMovieAgg {
@@ -209,12 +232,16 @@ export async function gwCityMovieAggregates(
       // per-show time + seat-class prices (cap 8 shows, earliest first per source order)
       if (agg.shows.length < 8) {
         const t = String(ss?.showTime || ss?.showtime || '').trim();
+        // The gateway stamps sessions in UTC (`2026-10-29T17:15` = District's own 10:45 PM),
+        // so the card must show the IST clock time, never the raw stamp (owner sees 5:30-early
+        // times otherwise).
+        const tDisplay = istClock(t) || t;
         if (t) {
           // Stamp fid/cinema -> city so a CLICK can re-resolve this show's seat session for
           // today without being told the city (District's seat URL does not carry it).
           rememberSeatCity(citySlug, ss?.fid ? String(ss.fid) : null, cinema.id);
           agg.shows.push({
-            time: t,
+            time: tDisplay,
             theatre: cinema.name,
             cinemaId: cinema.id,
             areas: areas.slice(0, 4),
@@ -222,6 +249,9 @@ export async function gwCityMovieAggregates(
             mid: mid ? String(mid) : undefined,
             fid: ss?.fid ? String(ss.fid).toLowerCase() : undefined,
             contentId: contentByTitle.get(key) ?? null,
+            showTime: ss?.showTime ? String(ss.showTime) : undefined,
+            closeTime: ss?.closeTime ? String(ss.closeTime) : undefined,
+            avail: Number.isFinite(Number(ss?.avail)) ? Number(ss?.avail) : undefined,
           });
         }
       }
