@@ -25,6 +25,7 @@ import {
   Navigation,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { AUTO_COLLAPSE_EVENT } from '../utils/scrollToResults';
 import { VERTICAL_META } from '../data/mockData';
 import { LocationPickerModal } from './LocationPickerModal';
 // Lazy: the map bundle (Leaflet) only downloads when the pin picker opens —
@@ -281,17 +282,25 @@ const handleSelectJourneyDate = (formattedDate: string) => {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   React.useEffect(() => { setMobileFiltersOpen(false); }, [vertical]);
   const wasScrapingRef = React.useRef(false);
+  // OWNER 29 Oct ("mobile responsive mai hide ho raha hai ... search button pr click ho jaye tho
+  // user results area mai khud navigate kr jaye"): the panel now collapses on EVERY search this
+  // component starts (not only on a rising edge that never happened while a scan was already
+  // running), and the jump to the results is done by the shared helper, which keeps retrying until
+  // the results section has actually mounted and the layout has settled.
+  const collapseFiltersForMobile = React.useCallback(() => {
+    if (typeof window === 'undefined' || window.innerWidth >= 640) return;
+    setMobileFiltersOpen(false);
+  }, []);
   React.useEffect(() => {
-    if (isScrapingLive && !wasScrapingRef.current && typeof window !== 'undefined' && window.innerWidth < 640) {
-      setMobileFiltersOpen(false);
-      // bring the results to the top of the screen
-      setTimeout(() => {
-        const el = document.getElementById('t1s-results-top');
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 60);
-    }
+    if (typeof window === 'undefined') return;
+    const onAutoCollapse = () => collapseFiltersForMobile();
+    window.addEventListener(AUTO_COLLAPSE_EVENT, onAutoCollapse);
+    return () => window.removeEventListener(AUTO_COLLAPSE_EVENT, onAutoCollapse);
+  }, [collapseFiltersForMobile]);
+  React.useEffect(() => {
+    if (isScrapingLive && typeof window !== 'undefined' && window.innerWidth < 640) collapseFiltersForMobile();
     wasScrapingRef.current = isScrapingLive;
-  }, [isScrapingLive]);
+  }, [isScrapingLive, collapseFiltersForMobile]);
   const verticalLabel = (VERTICAL_META as any)[vertical]?.name || 'Search';
 
   const handleBusPoint = (point: BusPoint) => {

@@ -183,8 +183,41 @@ function rowPrice(o: any): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/**
+ * OWNER 29 Oct ("abhi ek hi company jaise dekho blinkit se sb item bata raha hai, yaha sb company
+ * ka dikhana chaiye tha"): the grid used to be the first N rows the pipeline happened to return,
+ * which after a multi-source scan is often ONE company's cheapest shelf. The answer must show
+ * every company that actually answered: one best row per seller first (cheapest wins inside a
+ * seller), then everyone's next row until the grid is full. Prices are never re-sorted away from
+ * reality - each row keeps its own real price, only the VISIBLE mix changes.
+ */
+export function diversifyByProvider(rows: AssistantRow[], limit: number): AssistantRow[] {
+  const priced = (r: AssistantRow) => (r.priceAvailable ? r.price : Number.POSITIVE_INFINITY);
+  const queues = new Map<string, AssistantRow[]>();
+  for (const r of [...rows].sort((a, b) => priced(a) - priced(b))) {
+    const key = String(r.provider || '').trim().toLowerCase() || 'unknown';
+    const q = queues.get(key) || [];
+    q.push(r);
+    queues.set(key, q);
+  }
+  // Providers ordered by their own cheapest row, so the cheapest company leads the grid.
+  const order = [...queues.keys()].sort((a, b) => priced(queues.get(a)![0]) - priced(queues.get(b)![0]));
+  const out: AssistantRow[] = [];
+  let round = 0;
+  while (out.length < limit) {
+    let added = false;
+    for (const key of order) {
+      const q = queues.get(key)!;
+      if (q[round]) { out.push(q[round]); added = true; if (out.length >= limit) break; }
+    }
+    if (!added) break;
+    round += 1;
+  }
+  return out;
+}
+
 /** Map pipeline offers to the compact rows the assistant answer shows. */
-export function toAssistantRows(results: any[], limit = 6): AssistantRow[] {
+export function toAssistantRows(results: any[], limit = 6, opts: { diversify?: boolean } = {}): AssistantRow[] {
   const out: AssistantRow[] = [];
   const seen = new Set<string>();
   for (const o of Array.isArray(results) ? results : []) {
@@ -215,9 +248,10 @@ export function toAssistantRows(results: any[], limit = 6): AssistantRow[] {
       ...(Object.keys(specs).length ? { specs } : {}),
       ...(Array.isArray(o.sellerQuotes) && o.sellerQuotes.length > 1 ? { sellerCount: o.sellerQuotes.length } : {}),
     });
-    if (out.length >= limit) break;
+    // A diversified grid needs the cheaper rows of OTHER companies too, so build a wider pool.
+    if (out.length >= (opts.diversify ? Math.max(limit * 8, 48) : limit)) break;
   }
-  return out;
+  return opts.diversify ? diversifyByProvider(out, limit) : out.slice(0, limit);
 }
 
 /**

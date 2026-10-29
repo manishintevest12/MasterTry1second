@@ -2198,7 +2198,8 @@ apiRouter.post('/assist/answer', async (req, res) => {
 
     // Same API-boundary rule as the feed: bare flight rows trail.
     const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
-    const shaped = toAssistantRows(ordered, 6);
+    // 29 Oct: every company that answered gets a card, not whichever seller filled the first 6.
+    const shaped = toAssistantRows(ordered, 6, { diversify: true });
     const answer = shapeAssistantAnswer(
       fallbackVertical ? fallbackVertical : meta.vertical,
       meta.query,

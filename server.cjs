@@ -37018,7 +37018,34 @@ function rowPrice(o) {
   const n = Number(p.finalPayablePrice ?? p.effectivePrice ?? p.mandatoryTotal ?? p.listPrice ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
-function toAssistantRows(results, limit = 6) {
+function diversifyByProvider(rows, limit) {
+  const priced = (r) => r.priceAvailable ? r.price : Number.POSITIVE_INFINITY;
+  const queues = /* @__PURE__ */ new Map();
+  for (const r of [...rows].sort((a, b) => priced(a) - priced(b))) {
+    const key = String(r.provider || "").trim().toLowerCase() || "unknown";
+    const q3 = queues.get(key) || [];
+    q3.push(r);
+    queues.set(key, q3);
+  }
+  const order = [...queues.keys()].sort((a, b) => priced(queues.get(a)[0]) - priced(queues.get(b)[0]));
+  const out = [];
+  let round = 0;
+  while (out.length < limit) {
+    let added = false;
+    for (const key of order) {
+      const q3 = queues.get(key);
+      if (q3[round]) {
+        out.push(q3[round]);
+        added = true;
+        if (out.length >= limit) break;
+      }
+    }
+    if (!added) break;
+    round += 1;
+  }
+  return out;
+}
+function toAssistantRows(results, limit = 6, opts = {}) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const o of Array.isArray(results) ? results : []) {
@@ -37049,9 +37076,9 @@ function toAssistantRows(results, limit = 6) {
       ...Object.keys(specs).length ? { specs } : {},
       ...Array.isArray(o.sellerQuotes) && o.sellerQuotes.length > 1 ? { sellerCount: o.sellerQuotes.length } : {}
     });
-    if (out.length >= limit) break;
+    if (out.length >= (opts.diversify ? Math.max(limit * 8, 48) : limit)) break;
   }
-  return out;
+  return opts.diversify ? diversifyByProvider(out, limit) : out.slice(0, limit);
 }
 function shapeAssistantAnswer(vertical, query, rows, opts = {}) {
   const label = verticalLabel(vertical);
@@ -41329,7 +41356,7 @@ var init_routes = __esm({
           }
         }
         const ordered = orderFlightRowsLast(rows, String(searchInput.vertical));
-        const shaped = toAssistantRows(ordered, 6);
+        const shaped = toAssistantRows(ordered, 6, { diversify: true });
         const answer = shapeAssistantAnswer(
           fallbackVertical ? fallbackVertical : meta.vertical,
           meta.query,

@@ -1,3 +1,4 @@
+import { scrollToResults } from '../utils/scrollToResults';
 import { pollDecision } from '../lib/searchPolling';
 import { canonicalizeRows, sameVertical, canonicalVertical } from '../lib/verticalAlias';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
@@ -978,13 +979,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // auto-scrolls to the results section so the user never has to hunt for results on a
     // small screen. Tab-switch/background triggers (no explicit query) never scroll.
     const userInitiated = overrideQuery !== undefined;
-    const scrollToResults = () => {
-      requestAnimationFrame(() => {
-        try {
-          document.getElementById('t1s-results-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } catch {}
-      });
-    };
+    // OWNER 29 Oct (mobile: "search click ke baad results area mai khud navigate"): one rAF was
+    // too early - the results section mounts after this call, so the jump silently did nothing.
+    // The shared helper keeps landing until the page settles and accounts for the sticky navbar.
     if (userInitiated) scrollToResults(); // jump to the live-scraping loader straight away
     const targetLoc = overrideLoc || userLocation;
     // Empty search box -> the vertical's own sensible starting query (what its placeholder suggests),

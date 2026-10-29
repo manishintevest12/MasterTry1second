@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../core/api.dart';
+import '../../core/assist_voice.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import 'common.dart';
@@ -62,11 +63,12 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
   @override
   void dispose() {
     _chatClearTimer?.cancel();
+    AssistVoice.stop();
     _askCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _ask([String? override]) async {
+  Future<void> _ask([String? override, bool viaVoice = false]) async {
     final text = (override ?? _askCtrl.text).trim();
     if (text.isEmpty) return;
     _askCtrl.clear();
@@ -80,6 +82,9 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
         _chat.add((me: false, text: answer.reply));
         _answer = answer.understood ? answer : null;
       });
+      // Owner 29 Oct: a question asked with the microphone is answered by ear too, using the
+      // exact same reply text that is on screen.
+      if (viaVoice) await AssistVoice.speak(answer.reply);
     } catch (e) {
       setState(() => _chat.add((me: false, text: 'Could not reach the server. Please try again.')));
     } finally {
@@ -109,12 +114,45 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
           if (r.finalResult) {
             setState(() => _listening = false);
             _speech.stop();
-            _ask(r.recognizedWords);
+            _ask(r.recognizedWords, true);
           }
         },
       );
     } catch (_) {
       setState(() => _chat.add((me: false, text: 'Voice is not available on this device. Please type your question.')));
+    }
+  }
+
+  /// Label for the "Open all in …" button: the vertical the tap actually opens.
+  String _answerOpenLabel(String? v) {
+    switch ((v ?? '').toLowerCase()) {
+      case 'grocery':
+        return 'Grocery';
+      case 'ecommerce':
+        return 'Shopping';
+      case 'creditcards':
+        return 'Credit Cards';
+      case 'movies':
+        return 'Movies';
+      case 'bus':
+        return 'Bus';
+      case 'cab':
+        return 'Cabs';
+      case 'food':
+        return 'Food';
+      case 'flights':
+        return 'Flights';
+      case 'hotels':
+        return 'Hotels';
+      case 'loans':
+        return 'Loans';
+      case 'insurance':
+        return 'Insurance';
+      case '':
+        return 'Results';
+      default:
+        final s = v!;
+        return s[0].toUpperCase() + s.substring(1);
     }
   }
 
@@ -223,13 +261,13 @@ class _HomeLensAndAssistantState extends State<HomeLensAndAssistant> {
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: Text(
-                        'Open all →',
+                        'Open all in ${_answerOpenLabel(_answer!.vertical)} →',
                         style: T1SText.label(context).copyWith(fontSize: 10, color: T1SColors.red),
                       ),
                     ),
                   ],
                 ),
-                for (final r in _answer!.results.take(4))
+                for (final r in _answer!.results.take(6))
                   Container(
                     margin: const EdgeInsets.only(bottom: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

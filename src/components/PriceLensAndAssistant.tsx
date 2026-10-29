@@ -35,6 +35,30 @@ interface LensResponse {
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
+/**
+ * OWNER 29 Oct ("jb saamne wala voice ki through question kre tho answer dono text and voice form
+ * mai wapas aana chaiye"): a spoken question gets a spoken answer as well. Uses the device's own
+ * speech engine - the reply text is the single source, so voice and text can never disagree, and
+ * a browser without voices simply stays silent (text always shows).
+ */
+const speakReply = (text: string) => {
+  try {
+    const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
+    if (!synth || !text.trim()) return;
+    synth.cancel();
+    const hindi = /[\u0900-\u097F]/.test(text);
+    const u = new SpeechSynthesisUtterance(text.replace(/₹/g, ' rupees ').replace(/→/g, ' to '));
+    u.lang = hindi ? 'hi-IN' : 'en-IN';
+    const voices = synth.getVoices();
+    const pick = voices.find((v) => v.lang?.toLowerCase() === u.lang.toLowerCase())
+      || voices.find((v) => v.lang?.toLowerCase().startsWith(hindi ? 'hi' : 'en'));
+    if (pick) u.voice = pick;
+    u.rate = 1;
+    u.pitch = 1;
+    synth.speak(u);
+  } catch { /* voice output is best-effort; the text answer always stands */ }
+};
+
 /** Price Lens: sits inside the hero, between the headline and the two launch buttons. */
 export const PriceLens: React.FC = () => {
   const { openProductPage } = useApp();
@@ -129,6 +153,7 @@ export const PriceLensAndAssistant: React.FC = () => {
     setChat([]);
     return () => {
       if (chatClearTimer.current) window.clearTimeout(chatClearTimer.current);
+      try { window.speechSynthesis?.cancel(); } catch { /* nothing to stop */ }
     };
   }, []);
   // OWNER 28 Oct: the assistant ANSWERS with real rows for every vertical, not just
@@ -139,7 +164,7 @@ export const PriceLensAndAssistant: React.FC = () => {
     results: Array<{ title: string; provider: string; price: number; priceAvailable: boolean; imageUrl?: string; specs?: Record<string, string> }>;
   } | null>(null);
 
-  const runAsk = async (text?: string) => {
+  const runAsk = async (text?: string, viaVoice = false) => {
     const q = (text ?? ask).trim();
     if (!q) return;
     setAsk('');
@@ -150,7 +175,10 @@ export const PriceLensAndAssistant: React.FC = () => {
       // SAME acquisition pipeline as the feed and returns the priced rows.
       const res = await fetch('/api/assist/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: q }) });
       const data = await res.json();
-      setChat((c) => [...c.slice(-3), { from: 'ai', text: data.reply || 'Sorry, I could not understand that.' }]);
+      const replyText = data.reply || 'Sorry, I could not understand that.';
+      setChat((c) => [...c.slice(-3), { from: 'ai', text: replyText }]);
+      // A voice question is answered in voice too, from the exact same text.
+      if (viaVoice) speakReply(replyText);
       setAnswer(data.understood ? {
         vertical: data.vertical ?? null,
         engineVertical: data.engineVertical,
@@ -249,7 +277,7 @@ export const PriceLensAndAssistant: React.FC = () => {
             aria-label="Ask the assistant"
             className="flex-1 min-w-0 bg-transparent outline-hidden text-sm text-slate-900 placeholder:text-slate-400 py-1"
           />
-          <VoiceSearchButton accent="red" size="md" onTranscript={(t) => { setAsk(t); runAsk(t); }} />
+          <VoiceSearchButton accent="red" size="md" onTranscript={(t) => { setAsk(t); runAsk(t, true); }} />
           <button
             type="submit"
             disabled={askBusy || !ask.trim()}
