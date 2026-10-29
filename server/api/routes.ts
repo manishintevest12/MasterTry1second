@@ -11,6 +11,7 @@ import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
+import { recallGood, rememberGood } from '../search/lastKnownGood';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
@@ -692,6 +693,16 @@ apiRouter.post('/search', async (req, res) => {
         latencyMs: Date.now() - searchStart,
       });
     }
+    const lkgTimeout = recallGood(input);
+    if (lkgTimeout) {
+      return res.json({
+        results: lkgTimeout.rows,
+        ...lkgTimeout,
+        pendingRefresh: true,
+        honestNotice: 'Showing our last verified prices for this search while live sources keep scanning. They update here automatically.',
+        latencyMs: Date.now() - searchStart,
+      });
+    }
     return res.json({
       results: [],
       honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
@@ -1161,7 +1172,30 @@ apiRouter.post('/scrape/live', async (req, res) => {
     // -> explicit notice.
     const majority = scored.filter((x) => x.hit >= 0.5 && x.hit < 1);
     kept = full.length ? full : majority;
+    // TIER 3, RELAXED (owner 29 Oct: "ek sbse bda bug jo humesa ke liye fix kro — results
+    // kabhi aata hai kabhi ni aata, consistent kro"). Tier 3 used to be an empty page with
+    // 'no exact matches', even when the sources HAD returned rows that named part of the
+    // query ('Smartwatches' vs a title that says 'Smart Watch 1.83in'). A search that
+    // produced real rows must never answer nothing: the partially-matching rows are shown,
+    // ranked by how much of the query they match. Only a truly empty source response falls
+    // through to the last verified answer below.
+    if (!kept.length) kept = scored.filter((x) => x.hit > 0);
     if (!kept.length) {
+      const lkg = recallGood(input);
+      if (lkg) {
+        res.json({
+          results: lkg.rows,
+          honestNotice: 'Live sources are not answering for this search right now, so we are showing the last prices we verified for it. They refresh automatically.',
+          sourcesAttempted: response.state.sourcesAttempted,
+          sourcesSucceeded: response.state.sourcesSucceeded,
+          sourcesFailed: response.state.sourcesFailed,
+          servedFrom: 'last_verified',
+          pendingRefresh: true,
+          resultsCount: lkg.rows.length,
+          latencyMs: response.latencyMs,
+        });
+        return;
+      }
       res.json({
         results: [],
         honestNotice: `No exact matches for '${input.query}' from live sources right now. Sources returned only loosely related items, which we do not show.`,
@@ -1215,6 +1249,25 @@ apiRouter.post('/scrape/live', async (req, res) => {
     brandById.set(o.id, { brand: o.brand, gtin: ids.gtin || ids.ean || ids.upc || undefined });
   }
   const grouped = groupSameProduct(mappedItems as any[], (it: any) => brandById.get(it.id) || {});
+  // Consistency layer: keep the answer that carried verified rows, and never answer a
+  // search with nothing while we hold its last verified rows (403 / rate-limit / slow poll).
+  if (grouped.length) rememberGood(input, grouped, response.state.servedFrom);
+  if (!grouped.length) {
+    const lkg = recallGood(input);
+    if (lkg) {
+      return res.json({
+        results: lkg.rows,
+        honestNotice: 'Live sources are not answering for this search right now, so we are showing the last prices we verified for it. They refresh automatically.',
+        sourcesAttempted: response.state.sourcesAttempted,
+        sourcesSucceeded: response.state.sourcesSucceeded,
+        sourcesFailed: response.state.sourcesFailed,
+        servedFrom: 'last_verified',
+        pendingRefresh: true,
+        resultsCount: lkg.rows.length,
+        latencyMs: response.latencyMs,
+      });
+    }
+  }
   res.json({
     results: grouped,
     honestNotice: response.state.honestNotice,
