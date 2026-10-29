@@ -33868,9 +33868,10 @@ function buildSpokenAnswer(query, hits, totalSellers) {
     return `I could not verify a live price for ${q3} just now. Prices change fast, so open Try1Second dot com to see the comparison, or ask me again in a moment.`;
   }
   const first = hits[0];
-  const pricePart = `the lowest verified price for ${q3} is ${speakPrice(first.price)}${first.seller ? ` at ${first.seller}` : ""}`;
+  const ate = (s) => s ? ` at ${s}` : "";
+  const pricePart = `the lowest verified price for ${q3} is ${speakPrice(first.price)}${ate(first.seller)}`;
   const rest = hits.slice(1);
-  const others = rest.length ? ` I also found ${rest.map((h) => `${h.seller || "another seller"} at ${speakPrice(h.price)}`).join(", and ")}.` : "";
+  const others = rest.length ? ` I also found ${rest.map((h) => h.seller ? `${h.seller} at ${speakPrice(h.price)}` : `${speakPrice(h.price)} elsewhere`).join(", and ")}.` : "";
   const sellers = totalSellers > 1 ? `${totalSellers} sellers compared.` : "";
   return `On Try1Second, ${pricePart}.${others} ${sellers} Prices update live.`.replace(/\s+/g, " ").trim();
 }
@@ -33945,8 +33946,9 @@ async function handleAlexaRequest(envelope, deps) {
     query,
     vertical,
     ...city ? { city } : {},
-    // Voice gets the same engine; the budget only decides when we stop waiting, never what we say.
-    coldDeadlineMs: Math.min(VOICE_BUDGET_MS, deps.timeoutMs ?? VOICE_BUDGET_MS)
+    // Ask for a QUICK first snapshot (like the web feed does) and spend the rest of the budget
+    // polling, instead of letting one slow cold call consume the whole allowance.
+    coldDeadlineMs: 1200
   };
   let response = null;
   const budget = deps.timeoutMs ?? VOICE_BUDGET_MS;
@@ -33962,11 +33964,11 @@ async function handleAlexaRequest(envelope, deps) {
   }
   let hits = pickVoiceHits(response, 3);
   const remaining = budget - (Date.now() - startedAt);
-  if (!hits.length && deps.searchMore && remaining > 1200) {
+  if (!hits.length && deps.searchMore && remaining > 400) {
     try {
       const filled = await Promise.race([
-        deps.searchMore(input, Math.max(900, remaining - 250)),
-        new Promise((resolve) => setTimeout(() => resolve(null), Math.max(900, remaining - 200)))
+        deps.searchMore(input, Math.max(800, remaining - 250)),
+        new Promise((resolve) => setTimeout(() => resolve(null), Math.max(800, remaining - 200)))
       ]);
       if (filled) {
         response = filled;
@@ -33979,6 +33981,8 @@ async function handleAlexaRequest(envelope, deps) {
   const totalSellers = new Set((response?.results || []).map((r) => String(r?.seller || r?.vendor || ""))).size;
   const answer = clip(buildSpokenAnswer(query, hits, totalSellers));
   if (!hits.length) {
+    const rows = Array.isArray(response?.results) ? response.results.length : 0;
+    log3("info", `alexa: no priced row for "${query}" (rows=${rows}, ${Date.now() - startedAt}ms, vertical=${vertical})`);
     return speak(answer, {
       reprompt: "Do you want me to try again?",
       card: { title: `Try1Second: ${query}`, content: `We could not verify a live price for "${query}" just now. Open ${SITE_URL} for the full comparison.` }
@@ -33998,7 +34002,7 @@ async function handleAlexaRequest(envelope, deps) {
 var VOICE_BUDGET_MS, MAX_REQUEST_AGE_MS, SITE_URL, VERTICAL_HINTS, VERTICAL_FROM_SLOT;
 var init_handler = __esm({
   "server/alexa/handler.ts"() {
-    VOICE_BUDGET_MS = 6500;
+    VOICE_BUDGET_MS = 7e3;
     MAX_REQUEST_AGE_MS = 15e4;
     SITE_URL = "https://www.try1second.com";
     VERTICAL_HINTS = [
@@ -34034,6 +34038,38 @@ var init_handler = __esm({
       loan: "loans",
       insurance: "insurance"
     };
+  }
+});
+
+// server/alexa/searchClient.ts
+async function liveSearchForVoice(input, timeoutMs = 6e3) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(500, timeoutMs));
+  try {
+    const res = await fetch(`${LOOPBACK}/api/scrape/live`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-t1s-voice": "1" },
+      body: JSON.stringify({
+        query: input.query,
+        vertical: input.vertical,
+        city: input.city,
+        pincode: input.pincode,
+        from: input.from,
+        to: input.to
+      }),
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error(`search endpoint answered ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+var LOOPBACK;
+var init_searchClient = __esm({
+  "server/alexa/searchClient.ts"() {
+    init_settings();
+    LOOPBACK = process.env.ALEXA_LOOPBACK_URL || `http://127.0.0.1:${settings.port}`;
   }
 });
 
@@ -40799,6 +40835,7 @@ var init_routes = __esm({
     init_freshMovieLink();
     init_liveSeatSession();
     init_handler();
+    init_searchClient();
     init_feedOrder();
     init_latencyBudget();
     init_queryRelevance();
@@ -42096,8 +42133,11 @@ var init_routes = __esm({
       try {
         const envelope = req.body || {};
         const reply = await handleAlexaRequest(envelope, {
-          search: runSearch,
-          searchMore: runSearchPolled,
+          // Voice reads the same answer the web feed reads (last-chance pass, last-verified rows,
+          // relevance ranking included) so a listener never hears "no price" while the site shows one.
+          search: (input) => liveSearchForVoice(input, 6200),
+          // Second pass on the leftover budget: a cold source often answers on the retry.
+          searchMore: (input, deadlineMs) => liveSearchForVoice(input, deadlineMs),
           skillId: process.env.ALEXA_SKILL_ID || void 0,
           log: (level, message) => level === "warn" ? log.warn("Alexa", message) : log.info("Alexa", message)
         });

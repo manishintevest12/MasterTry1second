@@ -23,7 +23,7 @@
  */
 import type { SearchInput, SearchResponse } from '../search/searchOrchestrator';
 
-export const VOICE_BUDGET_MS = 6_500;
+export const VOICE_BUDGET_MS = 7_000;
 /** Amazon retries a request it thinks got lost; requests older than this are stale. */
 export const MAX_REQUEST_AGE_MS = 150_000;
 const SITE_URL = 'https://www.try1second.com';
@@ -182,10 +182,13 @@ export function buildSpokenAnswer(query: string, hits: VoiceHit[], totalSellers:
     return `I could not verify a live price for ${q} just now. Prices change fast, so open Try1Second dot com to see the comparison, or ask me again in a moment.`;
   }
   const first = hits[0];
-  const pricePart = `the lowest verified price for ${q} is ${speakPrice(first.price)}${first.seller ? ` at ${first.seller}` : ''}`;
+  // A route-level row (bus, flights) carries no shop name; naming a fake one would be worse than
+  // saying only the price.
+  const ate = (s: string) => (s ? ` at ${s}` : '');
+  const pricePart = `the lowest verified price for ${q} is ${speakPrice(first.price)}${ate(first.seller)}`;
   const rest = hits.slice(1);
   const others = rest.length
-    ? ` I also found ${rest.map((h) => `${h.seller || 'another seller'} at ${speakPrice(h.price)}`).join(', and ')}.`
+    ? ` I also found ${rest.map((h) => (h.seller ? `${h.seller} at ${speakPrice(h.price)}` : `${speakPrice(h.price)} elsewhere`)).join(', and ')}.`
     : '';
   const sellers = totalSellers > 1 ? `${totalSellers} sellers compared.` : '';
   return `On Try1Second, ${pricePart}.${others} ${sellers} Prices update live.`.replace(/\s+/g, ' ').trim();
@@ -294,8 +297,9 @@ export async function handleAlexaRequest(envelope: AlexaRequestEnvelope, deps: A
     query,
     vertical,
     ...(city ? { city } : {}),
-    // Voice gets the same engine; the budget only decides when we stop waiting, never what we say.
-    coldDeadlineMs: Math.min(VOICE_BUDGET_MS, deps.timeoutMs ?? VOICE_BUDGET_MS),
+    // Ask for a QUICK first snapshot (like the web feed does) and spend the rest of the budget
+    // polling, instead of letting one slow cold call consume the whole allowance.
+    coldDeadlineMs: 1_200,
   };
 
   let response: SearchResponse | null = null;
@@ -316,11 +320,11 @@ export async function handleAlexaRequest(envelope: AlexaRequestEnvelope, deps: A
   // owner hears as "no price found" on a product). Spend the remaining budget on the polling path
   // before saying we could not verify anything.
   const remaining = budget - (Date.now() - startedAt);
-  if (!hits.length && deps.searchMore && remaining > 1_200) {
+  if (!hits.length && deps.searchMore && remaining > 400) {
     try {
       const filled = (await Promise.race([
-        deps.searchMore(input, Math.max(900, remaining - 250)),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(900, remaining - 200))),
+        deps.searchMore(input, Math.max(800, remaining - 250)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(800, remaining - 200))),
       ])) as SearchResponse | null;
       if (filled) {
         response = filled;
@@ -334,6 +338,8 @@ export async function handleAlexaRequest(envelope: AlexaRequestEnvelope, deps: A
   const answer = clip(buildSpokenAnswer(query, hits, totalSellers));
 
   if (!hits.length) {
+    const rows = Array.isArray((response as any)?.results) ? (response as any).results.length : 0;
+    log('info', `alexa: no priced row for "${query}" (rows=${rows}, ${Date.now() - startedAt}ms, vertical=${vertical})`);
     // Nothing verified: say so and invite a retry. The card still carries the site so the user is
     // never left at a dead end.
     return speak(answer, {

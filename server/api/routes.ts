@@ -15,6 +15,7 @@ import { recallGood, rememberGood } from '../search/lastKnownGood';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
 import { handleAlexaRequest, type AlexaRequestEnvelope } from '../alexa/handler';
+import { liveSearchForVoice } from '../alexa/searchClient';
 import { orderFlightRowsLast } from '../search/feedOrder';
 import { resultDeadlineMs } from '../search/latencyBudget';
 import { isAccessoryOfQuery } from '../search/queryRelevance';
@@ -2104,8 +2105,11 @@ apiRouter.post('/alexa', async (req, res) => {
   try {
     const envelope = (req.body || {}) as AlexaRequestEnvelope;
     const reply = await handleAlexaRequest(envelope, {
-      search: runSearch,
-      searchMore: runSearchPolled,
+      // Voice reads the same answer the web feed reads (last-chance pass, last-verified rows,
+      // relevance ranking included) so a listener never hears "no price" while the site shows one.
+      search: (input) => liveSearchForVoice(input, 6_200),
+      // Second pass on the leftover budget: a cold source often answers on the retry.
+      searchMore: (input, deadlineMs) => liveSearchForVoice(input, deadlineMs),
       skillId: process.env.ALEXA_SKILL_ID || undefined,
       log: (level, message) => (level === 'warn' ? log.warn('Alexa', message) : log.info('Alexa', message)),
     });
