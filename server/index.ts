@@ -69,6 +69,13 @@ export async function createApp(): Promise<express.Express> {
     // 13 Oct): the app supervisor can start two instances; only the lock holder runs
     // the refresh workers, affiliate sync and boot-warm. Everyone still serves HTTP.
     const { runSingleton } = await import('./common/singleton');
+    const governor = await import('./common/resourceGuard');
+    // OWNER 29 Oct: Hostinger pushed the whole account into its protective CPU mode
+    // because the account was burning too much CPU, and that blocked every mobile
+    // request. Arm the governor at boot and record this boot so a restart loop can
+    // never masquerade as a runaway process.
+    governor.startResourceGovernor();
+    const boot = governor.noteBoot();
     const startBackgroundDuties = async () => {
       startWorkers();
       bootstrapAffiliateSync();
@@ -80,7 +87,12 @@ export async function createApp(): Promise<express.Express> {
       // so page-load searches hit warm cache (Section 8 cron-warmer).
       import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
     };
-    const owned = await runSingleton('background', startBackgroundDuties);
+    // T1S_BACKGROUND=off (or T1S_QUIET=1, or a restart storm) means: serve traffic,
+    // run NO optional background work. Searches still work; the box just stops
+    // burning CPU so the host's protection can clear itself.
+    const owned = governor.backgroundAllowed()
+      ? await runSingleton('background', startBackgroundDuties)
+      : (log.warn('Bootstrap', 'Background duties DISABLED (T1S_BACKGROUND=off / quiet boot) — serving HTTP only'), false);
     // SELF-HEAL (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results bahut late"):
     // production served every vertical COLD because the instance that won the
     // background lock at boot had died/been reaped and the survivors NEVER retried
@@ -89,6 +101,7 @@ export async function createApp(): Promise<express.Express> {
     // <=12 min — keep-warm can never silently die forever again.
     if (!owned) {
       const takeover = setInterval(() => {
+        if (!governor.backgroundAllowed()) return;  // quiet mode / hot box: stay HTTP-only
         void runSingleton('background', startBackgroundDuties).then((now) => {
           if (now) {
             clearInterval(takeover);

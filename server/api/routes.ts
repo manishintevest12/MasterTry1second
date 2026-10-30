@@ -12,6 +12,7 @@ import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, rememberGood } from '../search/lastKnownGood';
+import { allowPending, forgetPending, pollKey } from './pollBudget';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
 import { handleAlexaRequest, type AlexaRequestEnvelope } from '../alexa/handler';
@@ -765,7 +766,7 @@ apiRouter.post('/search', async (req, res) => {
       results: [],
       honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
       sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [], servedFrom: 'unavailable',
-      pendingRefresh: true, resultsCount: 0, latencyMs: Date.now() - searchStart,
+      pendingRefresh: allowPending(chainKey, true), resultsCount: 0, latencyMs: Date.now() - searchStart,
     });
   }
   // SELF-HEAL SAFETY NET (owner 23 Oct — "loader ke 3-2-1 hone pr bhi results
@@ -1090,6 +1091,13 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // inside 3s regardless of vertical, and the client's 3-2-1 countdown is truthful.
   input.coldDeadlineMs = resultDeadlineMs();
   const searchStart = Date.now();
+  // OWNER 29 Oct ("Connection reset by peer ... for all verticals"): one identity per
+  // search chain, so the "still working" flag can expire instead of feeding an endless
+  // poll loop that the hosting edge reads as abuse and answers with TCP resets.
+  const chainKey = pollKey([
+    req.ip, input.vertical, input.query, input.city, input.pincode,
+    input.travelDates?.depart, input.travelDates?.return,
+  ]);
   // Cab: a bare location ("vijay nagar indore") is resolved to the city's standard outstation route.
   if (String(input.vertical) === 'cab') input.query = resolveCabQuery(input.query, input.city);
   // Same origin and destination is not a trip: refuse instead of showing some other route's fares.
@@ -1122,7 +1130,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
     if (fallback) {
       return res.json({
         ...fallback,
-        pendingRefresh: true,
+        pendingRefresh: allowPending(chainKey, true),
         honestNotice: 'Showing our last verified prices while live sources keep scanning. They update here automatically.',
         latencyMs: Date.now() - searchStart,
       });
@@ -1248,7 +1256,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
           sourcesSucceeded: response.state.sourcesSucceeded,
           sourcesFailed: response.state.sourcesFailed,
           servedFrom: 'last_verified',
-          pendingRefresh: true,
+          pendingRefresh: allowPending(chainKey, true),
           resultsCount: lkg.rows.length,
           latencyMs: response.latencyMs,
         });
@@ -1344,12 +1352,16 @@ apiRouter.post('/scrape/live', async (req, res) => {
         sourcesSucceeded: response.state.sourcesSucceeded,
         sourcesFailed: response.state.sourcesFailed,
         servedFrom: 'last_verified',
-        pendingRefresh: true,
+        pendingRefresh: allowPending(chainKey, true),
         resultsCount: lkg.rows.length,
         latencyMs: response.latencyMs,
       });
     }
   }
+  // A finished chain releases its budget immediately: the next search for the same
+  // words gets a full fresh window instead of inheriting an expired one.
+  const stillPending = allowPending(chainKey, !!response.state.pendingRefresh);
+  if (!stillPending) forgetPending(chainKey);
   res.json({
     results: grouped,
     honestNotice: response.state.honestNotice,
@@ -1357,7 +1369,7 @@ apiRouter.post('/scrape/live', async (req, res) => {
     sourcesSucceeded: response.state.sourcesSucceeded,
     sourcesFailed: response.state.sourcesFailed,
     servedFrom: response.state.servedFrom,
-        pendingRefresh: !!response.state.pendingRefresh,
+    pendingRefresh: stillPending,
     resultsCount: grouped.length,
     latencyMs: response.latencyMs,
   });

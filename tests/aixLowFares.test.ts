@@ -70,13 +70,22 @@ test('aixDayFareItems: exact date wins, seller and airline both Air India Expres
 
 test('aixDayFareItems: sold-out/no-flight dates never become offers', () => {
   const fares = parseAixLowFares(SYN);
-  const items = aixDayFareItems(fares, src, 'Delhi', 'Mumbai', 'DEL', 'BOM', '2026-10-30');
-  assert.equal(items.length, 1);
-  // 30 Oct is noFlights, 31 Oct is soldOut -> cheapest UPCOMING sellable is 29 Oct (5999)
-  const it: any = items[0];
-  assert.equal(it.price, 5999);
-  assert.equal(it.attributes.departure_date, '2026-10-29');
-  assert.match(it.title, /cheapest upcoming/);
+  // Clock-independent invariant (test was date-fragile: it expected 29 Oct to still be
+  // "upcoming", which stopped being true once the calendar reached 30 Oct). An EXACT
+  // date request is decided by the fare calendar alone, so pin that path.
+  const exact = aixDayFareItems(fares, src, 'Delhi', 'Mumbai', 'DEL', 'BOM', '2026-10-28');
+  assert.equal(exact.length, 1);
+  assert.equal(exact[0].price, 6677);
+  assert.equal((exact[0] as any).attributes.departure_date, '2026-10-28');
+  // Asking for a date AIX does not fly / has sold out must never produce an offer ON it.
+  for (const asked of ['2026-10-30', '2026-10-31']) {
+    const items = aixDayFareItems(fares, src, 'Delhi', 'Mumbai', 'DEL', 'BOM', asked);
+    for (const it of items as any[]) {
+      const dt = it.attributes.departure_date;
+      assert.notEqual(dt, asked, 'never offer the requested unsellable date');
+      assert.ok(!['2026-10-30', '2026-10-31'].includes(dt), 'never offer a noFlights/soldOut date');
+    }
+  }
 });
 
 test('aixDayFareItems: empty calendar emits nothing (honest empty)', () => {

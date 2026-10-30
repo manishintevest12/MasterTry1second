@@ -14,6 +14,8 @@ import { getStore, runMigrations } from '../common/db';
 import { runSearchPolled } from '../search/searchOrchestrator';
 import { log } from '../common/logger';
 import { purgeStaleBankingOffers, purgePhotolessHotelOffers } from '../catalogue/catalogueService';
+import { backgroundAllowed, resourceSnapshot } from '../common/resourceGuard';
+import { settings } from '../common/settings';
 
 /**
  * Seed queries (Section 8): when the searches table has no history yet (fresh
@@ -297,8 +299,64 @@ let destWarmCursor = 0;
  * 20-destination rotation in ~2h (12-min cadence) so every Top Destinations
  * candidate keeps a fresh recorded fare + fresh hotel rows with live art.
  */
+/**
+ * WARM LEASE (owner 29 Oct — Hostinger switched the whole account into its
+ * protective CPU/reCAPTCHA mode because the account was burning too much CPU, and
+ * that blocked every mobile request).
+ *
+ * Warm work is the account's biggest optional CPU user, and with WEB_CONCURRENCY
+ * workers plus the fire-and-forget emergency warm, several processes could each
+ * start a full pass at the same moment. A MySQL advisory lease (GET_LOCK with a
+ * 0s wait, released as soon as the pass ends) means exactly ONE process warms at a
+ * time, whichever got there first; everyone else simply returns and stays idle.
+ * This is a cooperative lease, not a lifetime lock: a crashed warmer releases it.
+ */
+let warmLeaseConn: any = null;
+
+async function getWarmLease(): Promise<boolean> {
+  if (!settings.mysqlUrl) return true;             // single-instance / file mode
+  if (warmLeaseConn) return true;                  // already ours
+  try {
+    const mysql = (await import('mysql2/promise')).default as any;
+    const conn = await mysql.createConnection(settings.mysqlUrl);
+    const [rows] = (await conn.query('SELECT COALESCE(GET_LOCK(?, 0), 0) AS got', ['try1second_warm_pass'])) as any[];
+    if (Number(rows?.[0]?.got) !== 1) { await conn.end().catch(() => undefined); return false; }
+    conn.on('error', () => undefined);
+    warmLeaseConn = conn;
+    // A pass that wedges must never hold the lease for the rest of the process life.
+    setTimeout(() => { void releaseWarmLease(); }, 20 * 60_000).unref?.();
+    return true;
+  } catch {
+    return true;                                   // MySQL hiccup must not stop warming
+  }
+}
+
+async function releaseWarmLease(): Promise<void> {
+  const conn = warmLeaseConn;
+  warmLeaseConn = null;
+  if (!conn) return;
+  try {
+    await conn.query('SELECT RELEASE_LOCK(?)', ['try1second_warm_pass']);
+    await conn.end();
+  } catch { /* holder is gone; the lock died with it */ }
+}
+
+/** True when this pass may run: resource governor says yes AND nobody else is warming. */
+async function mayWarm(tag: string): Promise<boolean> {
+  if (!backgroundAllowed()) {
+    log.info(tag, 'Warm pass skipped (resource governor: box under pressure or background disabled)', resourceSnapshot() as any);
+    return false;
+  }
+  if (!(await getWarmLease())) {
+    log.info(tag, 'Warm pass skipped (another process holds the warm lease)');
+    return false;
+  }
+  return true;
+}
+
 export async function keepWarmDestinations(): Promise<void> {
   if (DESTINATION_WARM.length === 0) return;
+  if (!(await mayWarm('DestWarm'))) return;
   const slice: Array<Record<string, any>> = [];
   for (let i = 0; i < 4; i++) {
     slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
@@ -327,6 +385,8 @@ async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<
     await new Promise((r) => setImmediate(r));
   }
   log.info(tag, `Warmer finished: ${ok}/${rows.length} queries warmed`);
+  // Hand the lease back so the next interval (or another worker) can warm.
+  await releaseWarmLease();
 }
 
 /**
@@ -336,6 +396,7 @@ async function warmRows(rows: Array<Record<string, any>>, tag: string): Promise<
  */
 export async function bootWarm(): Promise<void> {
   try {
+    if (!(await mayWarm('BootWarm'))) return;
     // Hygiene (21 Oct): drop stale-shape banking rows from the pre-worker account impl.
     await purgeStaleBankingOffers();
     // Hygiene (22 Oct): drop photo-less stale hotel rows (pre-gallery batches wrote
@@ -365,6 +426,7 @@ export async function bootWarm(): Promise<void> {
     void warmRows(targets, 'BootWarm'); // fire-and-forget: never block the listen()
   } catch (e: any) {
     log.warn('Cron', 'Boot-warm skipped', { error: String(e?.message || e).slice(0, 100) });
+    await releaseWarmLease();
   }
 }
 
@@ -376,6 +438,7 @@ export async function bootWarm(): Promise<void> {
  * keeps the acquisition cost low: only genuinely expired queries re-hit sources.
  */
 export async function keepWarmDefaults(): Promise<void> {
+  if (!(await mayWarm('KeepWarm'))) return;
   // FINANCE_DAILY_SEEDS ride along on every keep-warm cycle: with their 24h
   // search TTL this is a cache hit (free) all day and the ONE live daily scrape
   // when they expire — the owner's "din me ek baar scrap" (23 Oct).

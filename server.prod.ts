@@ -7,6 +7,7 @@ import fs from 'fs';
 import express from 'express';
 import { createApp } from './server/index';
 import { boot } from './server/multiCore';
+import { listenWithKeepAlive } from './server/httpServer';
 
 async function startWorker() {
   const app = await createApp();
@@ -23,7 +24,9 @@ async function startWorker() {
     app.get('*', (_req: any, res: any) => { res.setHeader('Cache-Control', 'no-store, must-revalidate'); res.sendFile(path.join(dist, 'index.html')); });
   }
   const PORT = Number(process.env.PORT || 3000);
-  app.listen(PORT, () => console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`));
+  // See server/httpServer.ts: the edge's pooled keep-alive must never outlive Node's,
+  // otherwise a phone's search ends in a bare TCP reset (owner bug, 29 Oct).
+  listenWithKeepAlive(app, PORT);
 }
 
 // WEB_CONCURRENCY=6 (or 'auto') lets all 6 vCPUs serve requests; unset keeps one worker.

@@ -6890,8 +6890,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
             let lastBody = "";
-            for (const path14 of oyoCityPaths(city)) {
-              const r = await cffiFetch(`${OYO_WEB_URL}/${path14}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
+            for (const path15 of oyoCityPaths(city)) {
+              const r = await cffiFetch(`${OYO_WEB_URL}/${path15}/?checkin=${ddmmyyyy3(checkin)}&checkout=${ddmmyyyy3(checkout)}&guests=2&rooms=1`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9" }
@@ -6901,7 +6901,7 @@ var init_hotels = __esm({
               if (r.status !== 200) continue;
               const state = parseOyoPreloadedState(r.body);
               const hotels = parseOyoHotels(state || {});
-              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path14 });
+              if (hotels.length) return parseOyoOffers(hotels, ctx.source, city, { checkin, checkout, path: path15 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `OYO has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `OYO city page HTTP ${lastStatus}: ${lastBody}`, lastStatus);
@@ -6921,8 +6921,8 @@ var init_hotels = __esm({
             if (!city || city.length < 3) return [];
             const { checkin, checkout } = stayDates(ctx.query);
             let lastStatus = 0;
-            for (const path14 of emtCityPaths(city)) {
-              const r = await cffiFetch(`https://www.easemytrip.com/${path14}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
+            for (const path15 of emtCityPaths(city)) {
+              const r = await cffiFetch(`https://www.easemytrip.com/${path15}/?checkin=${ddmmyyyyDash(checkin)}&checkout=${ddmmyyyyDash(checkout)}&c=IN&num_rooms=1&adults=2`, {
                 impersonate: "chrome",
                 timeoutMs: 3e4,
                 headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" }
@@ -6933,7 +6933,7 @@ var init_hotels = __esm({
               if (!items.length) continue;
               const links = parseEmtHotelLinks(r.body);
               const hotels = parseEmtHotels(items, links);
-              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path14 });
+              if (hotels.length) return parseEmtOffers(hotels, ctx.source, city, { checkin, checkout, path: path15 });
             }
             if (lastStatus === 404) throw new AcquisitionError("EMPTY_RESPONSE", `EaseMyTrip has no city page for "${city}"`);
             if (lastStatus !== 0) throw new AcquisitionError("SERVER_ERROR", `EaseMyTrip city page HTTP ${lastStatus}`, lastStatus);
@@ -7024,10 +7024,10 @@ function ixigoIsoDate(d) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 function parseIxigoFlights(nextData, fromCode, toCode) {
-  const entries = nextData?.props?.pageProps?.cheapFlightsData;
-  if (!Array.isArray(entries)) return [];
+  const entries2 = nextData?.props?.pageProps?.cheapFlightsData;
+  if (!Array.isArray(entries2)) return [];
   const flights = [];
-  for (const e2 of entries) {
+  for (const e2 of entries2) {
     const airline = String(e2.airline || "").trim();
     const fare = Number(e2.fare);
     if (!airline || !Number.isFinite(fare) || fare <= 0) continue;
@@ -9854,9 +9854,9 @@ function parseAirIndiaSchedules(body, wantDateIso) {
   } catch {
     return [];
   }
-  const entries = Array.isArray(d?.data) ? d.data : [];
+  const entries2 = Array.isArray(d?.data) ? d.data : [];
   const out = [];
-  for (const entry of entries) {
+  for (const entry of entries2) {
     const legs = entry?.flights;
     if (!Array.isArray(legs) || !legs.length) continue;
     const first = legs[0];
@@ -18162,24 +18162,24 @@ var init_indriveIntercity = __esm({
 });
 
 // server/common/geoProxy.ts
-async function throttledNominatim(path14) {
-  const hit = cache4.get(path14);
+async function throttledNominatim(path15) {
+  const hit = cache4.get(path15);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastCallAt + MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastCallAt = Date.now();
   try {
-    const r = await fetch(`${NOMINATIM}${path14}`, {
+    const r = await fetch(`${NOMINATIM}${path15}`, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(8e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path14.slice(0, 60)}`);
+      log.warn("GeoProxy", `Nominatim HTTP ${r.status} for ${path15.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(path14, { at: Date.now(), value });
+    cache4.set(path15, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Nominatim unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -18189,16 +18189,16 @@ async function throttledNominatim(path14) {
 async function geoSearch(q3, limit = 6) {
   const clean3 = q3.trim().slice(0, 120);
   if (clean3.length < 2) return [];
-  const path14 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
-  const rows = await throttledNominatim(path14);
+  const path15 = `/search?q=${encodeURIComponent(clean3)}&countrycodes=in&format=jsonv2&limit=${limit}&addressdetails=0`;
+  const rows = await throttledNominatim(path15);
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => r.lat && r.lon).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: String(r.display_name || "").slice(0, 200) }));
 }
 async function geoReverse(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const la = lat.toFixed(6), lo = lng.toFixed(6);
-  const path14 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
-  const row = await throttledNominatim(path14);
+  const path15 = `/reverse?lat=${la}&lon=${lo}&format=jsonv2&zoom=18&addressdetails=1`;
+  const row = await throttledNominatim(path15);
   const a = row?.address;
   if (!row || !a) return null;
   const locality = a.road || a.pedestrian || a.neighbourhood || a.suburb || a.hamlet || a.quarter || "";
@@ -18213,24 +18213,24 @@ async function geoReverse(lat, lng) {
     pincode: /^\d{6}$/.test(String(a.postcode || "")) ? String(a.postcode) : void 0
   };
 }
-async function throttledPhoton(path14) {
-  const hit = cache4.get(path14);
+async function throttledPhoton(path15) {
+  const hit = cache4.get(path15);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
   const wait = lastPhotonAt + PHOTON_MIN_INTERVAL_MS - Date.now();
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastPhotonAt = Date.now();
   try {
-    const r = await fetch(`${PHOTON}${path14}`, {
+    const r = await fetch(`${PHOTON}${path15}`, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(6e3)
     });
     if (!r.ok) {
-      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path14.slice(0, 60)}`);
+      log.warn("GeoProxy", `Photon HTTP ${r.status} for ${path15.slice(0, 60)}`);
       return null;
     }
     const value = await r.json();
     if (cache4.size >= CACHE_MAX) cache4.delete(cache4.keys().next().value);
-    cache4.set(`photon:${path14}`, { at: Date.now(), value });
+    cache4.set(`photon:${path15}`, { at: Date.now(), value });
     return value;
   } catch (e2) {
     log.warn("GeoProxy", `Photon unreachable: ${String(e2?.message || e2).slice(0, 80)}`);
@@ -18319,9 +18319,9 @@ async function rapidoServedCities(fetchText) {
   const xml = await fetchText(CITIES_SITEMAP);
   const cities = [];
   for (const m of xml.matchAll(/<loc>https:\/\/www\.rapido\.bike\/([^/]+)\/main-page<\/loc>/g)) {
-    const path14 = m[1];
-    if (!path14 || path14.includes(".")) continue;
-    cities.push({ name: decodeURIComponent(path14).replace(/[_%20]/g, " ").trim(), mainPagePath: path14 });
+    const path15 = m[1];
+    if (!path15 || path15.includes(".")) continue;
+    cities.push({ name: decodeURIComponent(path15).replace(/[_%20]/g, " ").trim(), mainPagePath: path15 });
   }
   if (!cities.length) throw new Error(`Rapido cities sitemap carried no city pages (len=${xml.length})`);
   citiesCache = { at: Date.now(), cities };
@@ -24133,9 +24133,9 @@ function gwHeaders(host) {
     "x-guest-token": gwGuestToken()
   };
 }
-async function gwJson(host, path14, timeoutMs = 12e3) {
+async function gwJson(host, path15, timeoutMs = 12e3) {
   try {
-    const res = await cffiFetch(`${GW_HOSTS[host]}${path14}`, { headers: gwHeaders(host), timeoutMs });
+    const res = await cffiFetch(`${GW_HOSTS[host]}${path15}`, { headers: gwHeaders(host), timeoutMs });
     if (res.status !== 200) return null;
     return JSON.parse(res.body);
   } catch {
@@ -30142,6 +30142,171 @@ var init_productImages = __esm({
   }
 });
 
+// server/common/resourceGuard.ts
+var resourceGuard_exports = {};
+__export(resourceGuard_exports, {
+  backgroundAllowed: () => backgroundAllowed,
+  clearDeleteHold: () => clearDeleteHold,
+  deleteHoldActive: () => deleteHoldActive,
+  guardBackground: () => guardBackground,
+  hasSharedDb: () => hasSharedDb,
+  noteBoot: () => noteBoot,
+  quietBoot: () => quietBoot,
+  resourceSnapshot: () => resourceSnapshot,
+  startDeleteHold: () => startDeleteHold,
+  startResourceGovernor: () => startResourceGovernor
+});
+function sample() {
+  const now = Date.now();
+  const usage = process.cpuUsage(lastCpu);
+  const elapsedMs = Math.max(1, now - lastCpuAt);
+  const instant = (usage.user + usage.system) / 1e3 / elapsedMs * 100;
+  cpuPct = cpuPct === 0 ? instant : cpuPct * 0.6 + instant * 0.4;
+  lastCpu = process.cpuUsage();
+  lastCpuAt = now;
+  const cores = Math.max(1, import_node_os2.default.cpus().length);
+  const loadPerCore = import_node_os2.default.loadavg()[0] / cores;
+  const heap = heapPct();
+  if (cpuPct >= CPU_CRITICAL || loadPerCore >= LOAD_CRITICAL || heap >= HEAP_HIGH) {
+    pressure = "critical";
+    lastReason = `cpu ${cpuPct.toFixed(0)}% load/core ${loadPerCore.toFixed(2)} heap ${(heap * 100).toFixed(0)}%`;
+  } else if (cpuPct >= CPU_HIGH || loadPerCore >= LOAD_HIGH) {
+    pressure = "high";
+    lastReason = `cpu ${cpuPct.toFixed(0)}% load/core ${loadPerCore.toFixed(2)} heap ${(heap * 100).toFixed(0)}%`;
+  } else {
+    pressure = "ok";
+    lastReason = `cpu ${cpuPct.toFixed(0)}% load/core ${loadPerCore.toFixed(2)} heap ${(heap * 100).toFixed(0)}%`;
+  }
+}
+function startResourceGovernor() {
+  if (sampling) return;
+  sampling = true;
+  setInterval(sample, SAMPLE_MS).unref();
+  log.info("Governor", "Resource governor armed (background work yields above 70% CPU / 1.5 load-per-core)");
+}
+function backgroundAllowed() {
+  if (envOff()) return false;
+  if (quietBoot()) return false;
+  if (deleteHoldActive()) return false;
+  return pressure !== "critical";
+}
+async function guardBackground(name, fn) {
+  if (!backgroundAllowed()) {
+    log.info("Governor", `Background "${name}" skipped \u2014 ${envOff() ? "T1S_BACKGROUND=off" : quietBoot() ? "quiet boot (restart storm)" : lastReason}`);
+    return { ran: false };
+  }
+  return { ran: true, value: await fn() };
+}
+function readBoots() {
+  try {
+    const raw = JSON.parse(import_node_fs5.default.readFileSync(BOOT_FILE(), "utf8"));
+    return { boots: Array.isArray(raw?.boots) ? raw.boots.filter((n) => Number.isFinite(n)) : [], quietUntil: Number(raw?.quietUntil) || void 0 };
+  } catch {
+    return { boots: [] };
+  }
+}
+function writeBoots(logged) {
+  try {
+    import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
+    import_node_fs5.default.writeFileSync(BOOT_FILE(), JSON.stringify(logged));
+  } catch {
+  }
+}
+function quietBoot(now = Date.now()) {
+  const logged = readBoots();
+  return Boolean(logged.quietUntil && now < logged.quietUntil);
+}
+function noteBoot(now = Date.now()) {
+  const logged = readBoots();
+  logged.boots = logged.boots.filter((t) => now - t < STORM_WINDOW_MS);
+  logged.boots.push(now);
+  const storm = logged.boots.length >= STORM_BOOTS;
+  if (storm) logged.quietUntil = now + QUIET_HOLD_MS;
+  writeBoots(logged);
+  if (storm) {
+    log.error("Governor", `RESTART STORM: ${logged.boots.length} boots in ${STORM_WINDOW_MS / 6e4} min \u2014 background duties OFF for ${QUIET_HOLD_MS / 6e4} min so the host stops seeing a runaway process`);
+  }
+  return { quiet: storm, boots: logged.boots.length };
+}
+function startDeleteHold(ms, why = "owner stop") {
+  try {
+    import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
+    import_node_fs5.default.writeFileSync(HOLD_FILE(), JSON.stringify({ until: Date.now() + ms, why }));
+    log.warn("Governor", `Background duties paused for ${Math.round(ms / 6e4)} min (${why})`);
+  } catch {
+  }
+}
+function deleteHoldActive(now = Date.now()) {
+  try {
+    const raw = JSON.parse(import_node_fs5.default.readFileSync(HOLD_FILE(), "utf8"));
+    return Number(raw?.until) > now;
+  } catch {
+    return false;
+  }
+}
+function clearDeleteHold() {
+  try {
+    import_node_fs5.default.unlinkSync(HOLD_FILE());
+  } catch {
+  }
+}
+var import_node_fs5, import_node_os2, import_node_path5, import_node_v8, SAMPLE_MS, CPU_HIGH, CPU_CRITICAL, LOAD_HIGH, LOAD_CRITICAL, HEAP_HIGH, cpuPct, pressure, sampling, lastCpu, lastCpuAt, lastReason, envOff, heapPct, resourceSnapshot, BOOT_FILE, STORM_WINDOW_MS, STORM_BOOTS, QUIET_HOLD_MS, HOLD_FILE, hasSharedDb;
+var init_resourceGuard = __esm({
+  "server/common/resourceGuard.ts"() {
+    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_os2 = __toESM(require("node:os"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_v8 = __toESM(require("node:v8"), 1);
+    init_settings();
+    init_logger();
+    SAMPLE_MS = 15e3;
+    CPU_HIGH = 70;
+    CPU_CRITICAL = 88;
+    LOAD_HIGH = 1.5;
+    LOAD_CRITICAL = 3;
+    HEAP_HIGH = 0.85;
+    cpuPct = 0;
+    pressure = "ok";
+    sampling = false;
+    lastCpu = process.cpuUsage();
+    lastCpuAt = Date.now();
+    lastReason = "not sampled yet";
+    envOff = () => {
+      const v = String(process.env.T1S_BACKGROUND || process.env.T1S_QUIET || "").trim().toLowerCase();
+      return v === "off" || v === "0" || v === "false" || v === "1" || v === "on";
+    };
+    heapPct = () => {
+      const m = process.memoryUsage();
+      const limit = import_node_v8.default.getHeapStatistics?.().heap_size_limit || 0;
+      return limit > 0 ? m.heapUsed / limit : 0;
+    };
+    resourceSnapshot = () => {
+      if (lastReason === "not sampled yet") {
+        try {
+          sample();
+        } catch {
+        }
+      }
+      return {
+        cpuPct: Math.round(cpuPct),
+        loadPerCore: Math.round(import_node_os2.default.loadavg()[0] / Math.max(1, import_node_os2.default.cpus().length) * 100) / 100,
+        heapPct: Math.round(heapPct() * 100),
+        rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        pressure,
+        pressure,
+        backgroundAllowed: backgroundAllowed(),
+        reason: lastReason
+      };
+    };
+    BOOT_FILE = () => import_node_path5.default.join(dataDir, "boots.json");
+    STORM_WINDOW_MS = 30 * 6e4;
+    STORM_BOOTS = 4;
+    QUIET_HOLD_MS = 30 * 6e4;
+    HOLD_FILE = () => import_node_path5.default.join(dataDir, "background-hold.json");
+    hasSharedDb = () => Boolean(settings.mysqlUrl);
+  }
+});
+
 // server/catalogue/prune.ts
 var prune_exports = {};
 __export(prune_exports, {
@@ -30300,6 +30465,7 @@ async function startCatalogueRetention() {
   };
   await runOnce().catch((e2) => log.warn("Prune", "Initial retention pass failed", { error: String(e2?.message || e2).slice(0, 140) }));
   const timer = setInterval(() => {
+    if (!backgroundAllowed()) return;
     void runOnce().catch(() => void 0);
   }, 60 * 6e4);
   if (timer.unref) timer.unref();
@@ -30310,6 +30476,7 @@ var init_prune = __esm({
   "server/catalogue/prune.ts"() {
     init_db();
     init_logger();
+    init_resourceGuard();
     BATCH = 2e3;
     MAX_BATCHES = 500;
     DAY = 864e5;
@@ -33528,6 +33695,39 @@ var init_lastKnownGood = __esm({
   }
 });
 
+// server/api/pollBudget.ts
+var PENDING_WINDOW_MS, KEY_TTL_MS, entries, sweep, pollKey, allowPending, forgetPending;
+var init_pollBudget = __esm({
+  "server/api/pollBudget.ts"() {
+    PENDING_WINDOW_MS = 25e3;
+    KEY_TTL_MS = 10 * 6e4;
+    entries = /* @__PURE__ */ new Map();
+    sweep = (now) => {
+      if (entries.size < 512) return;
+      for (const [key, e2] of entries) {
+        if (now - e2.seenAt > KEY_TTL_MS) entries.delete(key);
+      }
+    };
+    pollKey = (parts) => parts.map((p) => String(p ?? "").trim().toLowerCase()).join("|");
+    allowPending = (key, pending, now = Date.now()) => {
+      if (!pending) return false;
+      if (!key) return true;
+      sweep(now);
+      const existing = entries.get(key);
+      if (!existing) {
+        entries.set(key, { firstPendingAt: now, seenAt: now });
+        return true;
+      }
+      existing.seenAt = now;
+      if (now - existing.firstPendingAt > PENDING_WINDOW_MS) return false;
+      return true;
+    };
+    forgetPending = (key) => {
+      if (key) entries.delete(key);
+    };
+  }
+});
+
 // server/movies/freshMovieLink.ts
 function movieShowDate(now = /* @__PURE__ */ new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
@@ -35173,11 +35373,11 @@ async function deleteSpendEntry(userId, id) {
   await store3.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
-function summarizeSpend(entries) {
-  const total = entries.reduce((s, e2) => s + e2.amount, 0);
+function summarizeSpend(entries2) {
+  const total = entries2.reduce((s, e2) => s + e2.amount, 0);
   const merchantMap = /* @__PURE__ */ new Map();
   const monthMap = /* @__PURE__ */ new Map();
-  for (const e2 of entries) {
+  for (const e2 of entries2) {
     const key = e2.merchant.trim();
     const cur = merchantMap.get(key) || { merchant: key, total: 0, count: 0 };
     cur.total += e2.amount;
@@ -35188,11 +35388,11 @@ function summarizeSpend(entries) {
   }
   const byMerchant = [...merchantMap.values()].sort((a, b) => b.total - a.total);
   const byMonth = [...monthMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12).map(([month, tot]) => ({ month, total: tot }));
-  return { total, entries: entries.length, byMerchant, byMonth };
+  return { total, entries: entries2.length, byMerchant, byMonth };
 }
 async function spendSummary(userId) {
-  const entries = await listSpendEntries(userId);
-  return { entries, summary: summarizeSpend(entries) };
+  const entries2 = await listSpendEntries(userId);
+  return { entries: entries2, summary: summarizeSpend(entries2) };
 }
 var MERCHANT_RE, isActive;
 var init_spendLens = __esm({
@@ -35824,7 +36024,7 @@ var init_cabDeeplink = __esm({
 function load8() {
   if (cache8) return cache8;
   try {
-    cache8 = JSON.parse(import_node_fs5.default.readFileSync(CACHE_FILE2, "utf8"));
+    cache8 = JSON.parse(import_node_fs6.default.readFileSync(CACHE_FILE2, "utf8"));
   } catch {
     cache8 = {};
   }
@@ -35835,8 +36035,8 @@ function persist4() {
   saveTimer3 = setTimeout(() => {
     saveTimer3 = null;
     try {
-      import_node_fs5.default.mkdirSync(import_node_path5.default.dirname(CACHE_FILE2), { recursive: true });
-      import_node_fs5.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
+      import_node_fs6.default.mkdirSync(import_node_path6.default.dirname(CACHE_FILE2), { recursive: true });
+      import_node_fs6.default.writeFileSync(CACHE_FILE2, JSON.stringify(cache8 || {}));
     } catch {
     }
   }, 1500);
@@ -35896,13 +36096,13 @@ function resolveMerchantCrispLogo(rawName) {
   inflight3.set(key, p);
   return p;
 }
-var import_node_fs5, import_node_path5, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
+var import_node_fs6, import_node_path6, UA4, CACHE_FILE2, MISS_TTL_MS2, FETCH_TIMEOUT_MS3, cache8, inflight3, saveTimer3, MERCHANT_ALIAS, MERCHANT_DESC_RX;
 var init_merchantCrispLogo = __esm({
   "server/pipeline/merchantCrispLogo.ts"() {
-    import_node_fs5 = __toESM(require("node:fs"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
     UA4 = "Try1Second/1.0 (contact: standardpetro.in@gmail.com)";
-    CACHE_FILE2 = import_node_path5.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
+    CACHE_FILE2 = import_node_path6.default.join(process.cwd(), "data", "merchant-crisp-logos.json");
     MISS_TTL_MS2 = 7 * 864e5;
     FETCH_TIMEOUT_MS3 = 4e3;
     cache8 = null;
@@ -37817,7 +38017,7 @@ function fcmServiceAccount() {
   let text = raw;
   if (!text && file) {
     try {
-      text = import_node_fs6.default.readFileSync(file, "utf8");
+      text = import_node_fs7.default.readFileSync(file, "utf8");
     } catch (e2) {
       log.warn("Push", `FCM service account file unreadable: ${clip2(e2?.message || e2, 80)}`);
       return null;
@@ -38141,11 +38341,11 @@ async function pushStats() {
   }
   return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, import_node_fs6, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip2, httpsImage, fcmTokenCache;
+var import_crypto30, import_node_fs7, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip2, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
     import_crypto30 = __toESM(require("crypto"), 1);
-    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_fs7 = __toESM(require("node:fs"), 1);
     init_db();
     init_logger();
     webpushLib = null;
@@ -39229,8 +39429,51 @@ async function hourlyCatalogueSeeds(perCycle = 18) {
   catalogueCursor = (catalogueCursor + take) % pairs.length;
   return slice;
 }
+async function getWarmLease() {
+  if (!settings.mysqlUrl) return true;
+  if (warmLeaseConn) return true;
+  try {
+    const mysql4 = (await import("mysql2/promise")).default;
+    const conn = await mysql4.createConnection(settings.mysqlUrl);
+    const [rows] = await conn.query("SELECT COALESCE(GET_LOCK(?, 0), 0) AS got", ["try1second_warm_pass"]);
+    if (Number(rows?.[0]?.got) !== 1) {
+      await conn.end().catch(() => void 0);
+      return false;
+    }
+    conn.on("error", () => void 0);
+    warmLeaseConn = conn;
+    setTimeout(() => {
+      void releaseWarmLease();
+    }, 20 * 6e4).unref?.();
+    return true;
+  } catch {
+    return true;
+  }
+}
+async function releaseWarmLease() {
+  const conn = warmLeaseConn;
+  warmLeaseConn = null;
+  if (!conn) return;
+  try {
+    await conn.query("SELECT RELEASE_LOCK(?)", ["try1second_warm_pass"]);
+    await conn.end();
+  } catch {
+  }
+}
+async function mayWarm(tag) {
+  if (!backgroundAllowed()) {
+    log.info(tag, "Warm pass skipped (resource governor: box under pressure or background disabled)", resourceSnapshot());
+    return false;
+  }
+  if (!await getWarmLease()) {
+    log.info(tag, "Warm pass skipped (another process holds the warm lease)");
+    return false;
+  }
+  return true;
+}
 async function keepWarmDestinations() {
   if (DESTINATION_WARM.length === 0) return;
+  if (!await mayWarm("DestWarm")) return;
   const slice = [];
   for (let i = 0; i < 4; i++) {
     slice.push(DESTINATION_WARM[(destWarmCursor + i) % DESTINATION_WARM.length]);
@@ -39256,9 +39499,11 @@ async function warmRows(rows, tag) {
     await new Promise((r2) => setImmediate(r2));
   }
   log.info(tag, `Warmer finished: ${ok2}/${rows.length} queries warmed`);
+  await releaseWarmLease();
 }
 async function bootWarm() {
   try {
+    if (!await mayWarm("BootWarm")) return;
     await purgeStaleBankingOffers();
     await purgePhotolessHotelOffers();
     const store3 = getStore();
@@ -39283,9 +39528,11 @@ async function bootWarm() {
     void warmRows(targets, "BootWarm");
   } catch (e2) {
     log.warn("Cron", "Boot-warm skipped", { error: String(e2?.message || e2).slice(0, 100) });
+    await releaseWarmLease();
   }
 }
 async function keepWarmDefaults() {
+  if (!await mayWarm("KeepWarm")) return;
   let catalogue = [];
   try {
     catalogue = await hourlyCatalogueSeeds();
@@ -39334,13 +39581,15 @@ async function main() {
     });
   }, intervalMin * 6e4);
 }
-var SEED_QUERIES, CATALOGUE_QUERIES, FALLBACK_CITIES, catalogueCursor, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, invokedAsScript;
+var SEED_QUERIES, CATALOGUE_QUERIES, FALLBACK_CITIES, catalogueCursor, FINANCE_DAILY_SEEDS, DESTINATION_WARM, destWarmCursor, warmLeaseConn, invokedAsScript;
 var init_warm = __esm({
   "server/cron/warm.ts"() {
     init_db();
     init_searchOrchestrator();
     init_logger();
     init_catalogueService();
+    init_resourceGuard();
+    init_settings();
     init_ecomDepartments();
     SEED_QUERIES = [
       { query: "mobile phone", vertical: "ecommerce", city: "Indore", pincode: "452001" },
@@ -39489,6 +39738,7 @@ var init_warm = __esm({
       { query: "dehradun", vertical: "hotels" }
     ];
     destWarmCursor = 0;
+    warmLeaseConn = null;
     invokedAsScript = /cron/.test(String(process.argv[1] || ""));
     if (invokedAsScript) {
       main().catch((e2) => {
@@ -40349,7 +40599,7 @@ async function buildQuickAppsList() {
       byName.set(name, bucket);
       seen.add(name.toLowerCase());
     }
-    const entries = Array.from(byName.entries()).map(([name, b]) => {
+    const entries2 = Array.from(byName.entries()).map(([name, b]) => {
       const dom = Array.from(b.domains)[0] || nameDomainOf(name) || "example.com";
       const homepage = `https://${dom}`;
       return {
@@ -40425,7 +40675,7 @@ async function buildQuickAppsList() {
     } catch {
     }
     const knownNames = new Set([...homeSix, ...curatedExtra, ...customApps].map((x) => String(x.name).toLowerCase()));
-    const ordered = quickAppsPartnerFirst(entries.filter((e2) => !knownNames.has(e2.name.toLowerCase())));
+    const ordered = quickAppsPartnerFirst(entries2.filter((e2) => !knownNames.has(e2.name.toLowerCase())));
     const logos = await Promise.all(ordered.map((e2) => resolveMerchantCrispLogo(e2.name).catch(() => null)));
     const registryAffiliates = ordered.filter((e2) => !curatedDomains.has(e2.dom)).map((e2, i) => ({
       ...e2.payload,
@@ -40822,16 +41072,17 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path6, import_express, import_crypto31, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path7, import_express, import_crypto31, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
-    import_node_path6 = require("node:path");
+    import_node_path7 = require("node:path");
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
     init_ecomDepartments();
     init_lastKnownGood();
+    init_pollBudget();
     init_freshMovieLink();
     init_liveSeatSession();
     init_handler();
@@ -41296,7 +41547,7 @@ var init_routes = __esm({
           sourcesSucceeded: [],
           sourcesFailed: [],
           servedFrom: "unavailable",
-          pendingRefresh: true,
+          pendingRefresh: allowPending(chainKey, true),
           resultsCount: 0,
           latencyMs: Date.now() - searchStart
         });
@@ -41337,7 +41588,7 @@ var init_routes = __esm({
     apiRouter.get("/version", async (_req, res) => {
       let bundle = null;
       try {
-        const html = await (0, import_promises2.readFile)((0, import_node_path6.join)(process.cwd(), "dist/index.html"), "utf8");
+        const html = await (0, import_promises2.readFile)((0, import_node_path7.join)(process.cwd(), "dist/index.html"), "utf8");
         bundle = (html.match(/assets\/index-[A-Za-z0-9_-]+\.js/) || [null])[0];
       } catch {
         bundle = null;
@@ -41373,6 +41624,15 @@ var init_routes = __esm({
       }
       input.coldDeadlineMs = resultDeadlineMs();
       const searchStart = Date.now();
+      const chainKey2 = pollKey([
+        req.ip,
+        input.vertical,
+        input.query,
+        input.city,
+        input.pincode,
+        input.travelDates?.depart,
+        input.travelDates?.return
+      ]);
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (["flights", "bus", "cab"].includes(String(input.vertical))) {
         const rt = parseRouteQuery(input.query);
@@ -41403,7 +41663,7 @@ var init_routes = __esm({
         if (fallback) {
           return res.json({
             ...fallback,
-            pendingRefresh: true,
+            pendingRefresh: allowPending(chainKey2, true),
             honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
             latencyMs: Date.now() - searchStart
           });
@@ -41490,7 +41750,7 @@ var init_routes = __esm({
               sourcesSucceeded: response.state.sourcesSucceeded,
               sourcesFailed: response.state.sourcesFailed,
               servedFrom: "last_verified",
-              pendingRefresh: true,
+              pendingRefresh: allowPending(chainKey2, true),
               resultsCount: lkg.rows.length,
               latencyMs: response.latencyMs
             });
@@ -41560,12 +41820,14 @@ var init_routes = __esm({
             sourcesSucceeded: response.state.sourcesSucceeded,
             sourcesFailed: response.state.sourcesFailed,
             servedFrom: "last_verified",
-            pendingRefresh: true,
+            pendingRefresh: allowPending(chainKey2, true),
             resultsCount: lkg.rows.length,
             latencyMs: response.latencyMs
           });
         }
       }
+      const stillPending = allowPending(chainKey2, !!response.state.pendingRefresh);
+      if (!stillPending) forgetPending(chainKey2);
       res.json({
         results: grouped,
         honestNotice: response.state.honestNotice,
@@ -41573,7 +41835,7 @@ var init_routes = __esm({
         sourcesSucceeded: response.state.sourcesSucceeded,
         sourcesFailed: response.state.sourcesFailed,
         servedFrom: response.state.servedFrom,
-        pendingRefresh: !!response.state.pendingRefresh,
+        pendingRefresh: stillPending,
         resultsCount: grouped.length,
         latencyMs: response.latencyMs
       });
@@ -46601,12 +46863,17 @@ function startRecoveryScanner() {
   started = true;
   const SCAN_MS = 10 * 6e4;
   const timer = setInterval(() => {
+    if (!backgroundAllowed()) {
+      log.info("Recovery", "Scan pass skipped (resource governor)", resourceSnapshot());
+      return;
+    }
     void withLock("recovery-scanner", () => recoveryScanPass()).catch((e2) => {
       log.warn("Recovery", "Scan pass failed (will retry next tick)", { error: String(e2?.message || e2).slice(0, 120) });
     });
   }, SCAN_MS);
   if (timer.unref) timer.unref();
   setTimeout(() => {
+    if (!backgroundAllowed()) return;
     void withLock("recovery-scanner", () => recoveryScanPass()).catch(() => void 0);
   }, 9e4).unref?.();
   log.info("Recovery", "Source recovery scanner armed (10-min cadence, probes respect challenge ladder, admin-disabled stays off)");
@@ -46619,6 +46886,7 @@ var DOWN_CLASSES, STALE_AFTER_MS, DEGRADED_REPROBE_GAP_MS, MAX_PROBES_PER_PASS, 
 var init_recoveryScanner = __esm({
   "server/sources/recoveryScanner.ts"() {
     init_logger();
+    init_resourceGuard();
     init_cache();
     init_health();
     init_registry();
@@ -46871,18 +47139,18 @@ var init_admitad = __esm({
         this.token = { access_token: j.access_token, expires_in: Number(j.expires_in || 300), fetchedAt: Date.now() };
         log.info("Affiliate", "Admitad OAuth2 token acquired", { expires_in: this.token.expires_in });
       }
-      async apiGet(path14, params = {}) {
+      async apiGet(path15, params = {}) {
         await this.authenticate();
         const qs = new URLSearchParams(params).toString();
-        const res = await fetch(`${settings.admitad.baseUrl}${path14}${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${settings.admitad.baseUrl}${path15}${qs ? `?${qs}` : ""}`, {
           headers: { Authorization: `Bearer ${this.token.access_token}` }
         });
         if (res.status === 401) {
           this.token = null;
           await this.authenticate();
-          return this.apiGet(path14, params);
+          return this.apiGet(path15, params);
         }
-        if (!res.ok) throw new Error(`admitad: GET ${path14} failed (HTTP ${res.status})`);
+        if (!res.ok) throw new Error(`admitad: GET ${path15} failed (HTTP ${res.status})`);
         return res.json();
       }
       async fetchOffers(opts = {}) {
@@ -46922,9 +47190,9 @@ var init_admitad = __esm({
         }
         for (const wid of websiteIds) {
           if (offers.length >= maxOffers) break;
-          const path14 = `/coupons/website/${encodeURIComponent(wid)}/`;
+          const path15 = `/coupons/website/${encodeURIComponent(wid)}/`;
           for (let page = 0; page < maxPages && offers.length < maxOffers; page++) {
-            const j = await this.apiGet(path14, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
+            const j = await this.apiGet(path15, { limit: Math.min(100, maxOffers - offers.length), offset: page * 100 });
             const results = j?.results || [];
             if (results.length === 0) break;
             for (const c of results) {
@@ -47099,12 +47367,12 @@ var init_cuelinks = __esm({
       }
       async authenticate() {
       }
-      async api(path14, init) {
-        const res = await fetch(`${settings.cuelinks.apiBase}${path14}`, {
+      async api(path15, init) {
+        const res = await fetch(`${settings.cuelinks.apiBase}${path15}`, {
           ...init,
           headers: { Authorization: `Token ${settings.cuelinks.apiKey}`, "Content-Type": "application/json", ...init?.headers || {} }
         });
-        if (!res.ok) throw new Error(`cuelinks: ${path14} HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`cuelinks: ${path15} HTTP ${res.status}`);
         return res.json();
       }
       /** Live coupons/deals across joined campaigns. Paginates a few pages; every
@@ -47477,8 +47745,8 @@ function listSeoPaths() {
   for (const [a, b] of BUS_ROUTES) paths.push(`/bus/${routeSlug(a, b, "bus")}`);
   return [...new Set(paths)];
 }
-function resolveAppRoute(path14) {
-  const seg = path14.replace(/\/+$/, "").split("/").filter(Boolean);
+function resolveAppRoute(path15) {
+  const seg = path15.replace(/\/+$/, "").split("/").filter(Boolean);
   if (seg.length === 0) return null;
   const head2 = seg[0];
   const tail = seg[1];
@@ -47531,8 +47799,8 @@ function resolveAppRoute(path14) {
   }
   return { vertical: vid };
 }
-function resolveSeoPage(path14) {
-  let clean3 = path14.split("?")[0].replace(/\/+$/, "") || "/";
+function resolveSeoPage(path15) {
+  let clean3 = path15.split("?")[0].replace(/\/+$/, "") || "/";
   const ALIAS = {
     movie: "movies",
     cab: "cabs",
@@ -48308,14 +48576,14 @@ var init_staticPages = __esm({
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin: 14px 0; }
   footer { border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 16px; color: #64748b; font-size: 13px; }
 `;
-    shell = (title, description, path14, body) => `<!doctype html>
+    shell = (title, description, path15, body) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${title}</title>
 <meta name="description" content="${description}" />
-<link rel="canonical" href="${SEO_HOST}${path14}" />
+<link rel="canonical" href="${SEO_HOST}${path15}" />
 <meta name="robots" content="index, follow" />
 <meta property="og:title" content="${title}" />
 <meta property="og:description" content="${description}" />
@@ -48391,18 +48659,18 @@ async function productSitemapPaths(limit = 200) {
 }
 function readWarmFile() {
   try {
-    const fs14 = require("node:fs");
-    if (fs14.existsSync(WARM_FILE)) return fs14.readFileSync(WARM_FILE, "utf8");
+    const fs15 = require("node:fs");
+    if (fs15.existsSync(WARM_FILE)) return fs15.readFileSync(WARM_FILE, "utf8");
   } catch {
   }
   return null;
 }
 function writeWarmFile(xml) {
   try {
-    const fs14 = require("node:fs");
-    const path14 = require("node:path");
-    fs14.mkdirSync(path14.dirname(WARM_FILE), { recursive: true });
-    fs14.writeFileSync(WARM_FILE, xml);
+    const fs15 = require("node:fs");
+    const path15 = require("node:path");
+    fs15.mkdirSync(path15.dirname(WARM_FILE), { recursive: true });
+    fs15.writeFileSync(WARM_FILE, xml);
   } catch {
   }
 }
@@ -48538,18 +48806,18 @@ async function mysqlLock(name) {
   }
 }
 function fileLock(name) {
-  const file = import_node_path7.default.join(dataDir, `singleton-${name}.lock`);
+  const file = import_node_path8.default.join(dataDir, `singleton-${name}.lock`);
   try {
-    const st = import_node_fs7.default.statSync(file);
+    const st = import_node_fs8.default.statSync(file);
     if (Date.now() - st.mtimeMs < STALE_MS) return false;
-    import_node_fs7.default.unlinkSync(file);
+    import_node_fs8.default.unlinkSync(file);
   } catch {
   }
   try {
-    import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
-    const fd = import_node_fs7.default.openSync(file, "wx");
-    import_node_fs7.default.writeSync(fd, String(process.pid));
-    import_node_fs7.default.closeSync(fd);
+    import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
+    const fd = import_node_fs8.default.openSync(file, "wx");
+    import_node_fs8.default.writeSync(fd, String(process.pid));
+    import_node_fs8.default.closeSync(fd);
     return true;
   } catch {
     return false;
@@ -48578,11 +48846,11 @@ async function runSingleton(name, fn) {
   await fn();
   return true;
 }
-var import_node_fs7, import_node_path7, import_promise3, STALE_MS;
+var import_node_fs8, import_node_path8, import_promise3, STALE_MS;
 var init_singleton = __esm({
   "server/common/singleton.ts"() {
-    import_node_fs7 = __toESM(require("node:fs"), 1);
-    import_node_path7 = __toESM(require("node:path"), 1);
+    import_node_fs8 = __toESM(require("node:fs"), 1);
+    import_node_path8 = __toESM(require("node:path"), 1);
     import_promise3 = __toESM(require("mysql2/promise"), 1);
     init_settings();
     init_logger();
@@ -48596,8 +48864,8 @@ __export(render_exports, {
   enhanceHtml: () => enhanceHtml,
   listSeoPaths: () => listSeoPaths
 });
-function jsonLd(path14) {
-  const page = resolveSeoPage(path14);
+function jsonLd(path15) {
+  const page = resolveSeoPage(path15);
   const blocks = [];
   const org = {
     "@context": "https://schema.org",
@@ -48608,7 +48876,7 @@ function jsonLd(path14) {
     description: "Independent metasearch engine comparing live prices across flights, hotels, bus, shopping, grocery, food, movies, loans, insurance, cabs, cards and banking in India."
   };
   blocks.push(JSON.stringify(org));
-  if (path14 === "/") {
+  if (path15 === "/") {
     blocks.push(JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -48683,8 +48951,8 @@ function prerenderLoader(page) {
     </div>
   </div>`;
 }
-function prerenderBody(path14) {
-  const page = resolveSeoPage(path14);
+function prerenderBody(path15) {
+  const page = resolveSeoPage(path15);
   if (!page) return "";
   const faqHtml = page.faqs.map((f) => `
     <dt>${esc3(f.q)}</dt><dd>${esc3(f.a)}</dd>`).join("");
@@ -48704,12 +48972,12 @@ function prerenderBody(path14) {
     `</section>`
   ].join("");
 }
-function enhanceHtml(html, path14) {
-  const page = resolveSeoPage(path14);
-  const isNoindex = /^\/(admin|merchant|api)/.test(path14);
+function enhanceHtml(html, path15) {
+  const page = resolveSeoPage(path15);
+  const isNoindex = /^\/(admin|merchant|api)/.test(path15);
   const title = page ? page.title : DEFAULT_TITLE;
   const desc = page ? page.description : DEFAULT_DESC;
-  const canonical = `${SEO_HOST}${(path14 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
+  const canonical = `${SEO_HOST}${(path15 || "/").split("?")[0].replace(/\/+$/, "") || "/"}`;
   let out = html;
   out = out.replace(/<title>[^<]*<\/title>/, `<title>${esc3(title)}</title>`);
   out = out.replace(
@@ -48743,11 +49011,11 @@ function enhanceHtml(html, path14) {
     `<link rel="alternate" hreflang="en-in" href="${esc3(canonical)}" />`,
     `<link rel="alternate" hreflang="x-default" href="${esc3(canonical)}" />`
   ];
-  if (!isNoindex) for (const b of jsonLd(path14)) head2.push(`<script type="application/ld+json">${b}</script>`);
+  if (!isNoindex) for (const b of jsonLd(path15)) head2.push(`<script type="application/ld+json">${b}</script>`);
   out = out.replace("</head>", `${head2.join("\n")}
 </head>`);
   if (!isNoindex) {
-    const body = prerenderBody(path14);
+    const body = prerenderBody(path15);
     if (body) {
       out = out.replace(/<div id="root"><\/div>/, `<div id="root">${body}</div>`);
     }
@@ -48773,12 +49041,12 @@ __export(liveSnapshot_exports, {
   snapshotForPath: () => snapshotForPath,
   snapshotJsonLd: () => snapshotJsonLd
 });
-function placementTokens(path14) {
-  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path14.replace(/\/+$/, ""));
+function placementTokens(path15) {
+  const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(path15.replace(/\/+$/, ""));
   if (prod) {
     return prod[1].split("-").filter((t) => t.length > 1 && !/^(the|and|for|with)$/.test(t));
   }
-  const route2 = resolveAppRoute(path14);
+  const route2 = resolveAppRoute(path15);
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
@@ -48790,9 +49058,9 @@ function productMatches(slug4, title) {
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
   return hit / want.length >= 0.8;
 }
-function selectSnapshotRows(candidates, path14, max = MAX_ROWS, bySlug = false) {
+function selectSnapshotRows(candidates, path15, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug4 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path14.replace(/\/+$/, ""))?.[1] || "";
+    const slug4 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path15.replace(/\/+$/, ""))?.[1] || "";
     const pool3 = candidates.filter((r) => productMatches(slug4, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
@@ -48805,7 +49073,7 @@ function selectSnapshotRows(candidates, path14, max = MAX_ROWS, bySlug = false) 
     }
     return out0;
   }
-  const tokens2 = placementTokens(path14);
+  const tokens2 = placementTokens(path15);
   const relevant = tokens2.length ? candidates.filter((r) => {
     const t = ` ${r.title.toLowerCase()} ${String(r.seller || "").toLowerCase()} `;
     return tokens2.every((tok) => t.includes(tok));
@@ -48838,9 +49106,9 @@ function renderSnapshotHtml(snapshot, heading = "Latest verified prices") {
     `</section>`
   ].join("");
 }
-function snapshotJsonLd(snapshot, path14) {
+function snapshotJsonLd(snapshot, path15) {
   if (!snapshot || !snapshot.rows.length) return null;
-  const page = resolveSeoPage(path14);
+  const page = resolveSeoPage(path15);
   return JSON.stringify({
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -48862,15 +49130,15 @@ function snapshotJsonLd(snapshot, path14) {
     }))
   });
 }
-async function snapshotForPath(path14) {
-  const page = resolveSeoPage(path14);
+async function snapshotForPath(path15) {
+  const page = resolveSeoPage(path15);
   if (!page) return null;
-  const key = (path14 || "/").replace(/\/+$/, "") || "/";
+  const key = (path15 || "/").replace(/\/+$/, "") || "/";
   const hit = cache10.get(key);
   if (hit && Date.now() - hit.at < SNAPSHOT_TTL_MS) return hit.snap;
   let snap = null;
   try {
-    const route2 = resolveAppRoute(path14);
+    const route2 = resolveAppRoute(path15);
     const prod = /^\/product\/([a-z0-9-]{3,80})$/.exec(key);
     const verticals = prod ? ["ecommerce", "grocery"] : route2?.vertical ? [route2.vertical] : [];
     if (verticals.length) {
@@ -48954,15 +49222,19 @@ async function createApp() {
   await bootstrapBackend2();
   if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
+    const governor = await Promise.resolve().then(() => (init_resourceGuard(), resourceGuard_exports));
+    governor.startResourceGovernor();
+    const boot2 = governor.noteBoot();
     const startBackgroundDuties = async () => {
       startWorkers2();
       bootstrapAffiliateSync2();
       Promise.resolve().then(() => (init_prune(), prune_exports)).then(({ startCatalogueRetention: startCatalogueRetention2 }) => startCatalogueRetention2()).catch(() => void 0);
       Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
     };
-    const owned = await runSingleton2("background", startBackgroundDuties);
+    const owned = governor.backgroundAllowed() ? await runSingleton2("background", startBackgroundDuties) : (log3.warn("Bootstrap", "Background duties DISABLED (T1S_BACKGROUND=off / quiet boot) \u2014 serving HTTP only"), false);
     if (!owned) {
       const takeover = setInterval(() => {
+        if (!governor.backgroundAllowed()) return;
         void runSingleton2("background", startBackgroundDuties).then((now) => {
           if (now) {
             clearInterval(takeover);
@@ -49041,18 +49313,18 @@ async function createApp() {
 
 // server/multiCore.ts
 var import_node_cluster = __toESM(require("node:cluster"), 1);
-var import_node_os2 = __toESM(require("node:os"), 1);
+var import_node_os3 = __toESM(require("node:os"), 1);
 function workerCount(env = process.env) {
   const raw = String(env.WEB_CONCURRENCY || "").trim().toLowerCase();
   if (!raw || raw === "1" || raw === "off" || raw === "false") return 1;
-  if (raw === "auto" || raw === "true") return Math.max(1, import_node_os2.default.cpus().length);
+  if (raw === "auto" || raw === "true") return Math.max(1, import_node_os3.default.cpus().length);
   const n = Number(raw);
   return Number.isFinite(n) && n > 1 ? Math.min(Math.floor(n), 32) : 1;
 }
 async function boot(start, label = "Try1Second") {
   const workers = workerCount();
   if (workers > 1 && import_node_cluster.default.isPrimary) {
-    console.log(`[${label}] primary ${process.pid}: forking ${workers} workers (${import_node_os2.default.cpus().length} vCPU, WEB_CONCURRENCY=${process.env.WEB_CONCURRENCY})`);
+    console.log(`[${label}] primary ${process.pid}: forking ${workers} workers (${import_node_os3.default.cpus().length} vCPU, WEB_CONCURRENCY=${process.env.WEB_CONCURRENCY})`);
     let shuttingDown = false;
     const fork = () => import_node_cluster.default.fork();
     for (let i = 0; i < workers; i++) fork();
@@ -49073,6 +49345,35 @@ async function boot(start, label = "Try1Second") {
   await start();
 }
 
+// server/httpServer.ts
+var import_http = __toESM(require("http"), 1);
+var KEEP_ALIVE_TIMEOUT_MS = 65e3;
+var createListener = (app) => {
+  const server = import_http.default.createServer(app);
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 1e3;
+  server.requestTimeout = 0;
+  server.maxRequestsPerSocket = 0;
+  server.timeout = 0;
+  server.on("clientError", (err, socket) => {
+    try {
+      if (socket?.writable) socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    } catch {
+    }
+    if (err?.code && err.code !== "ECONNRESET" && err.code !== "EPIPE") {
+      console.warn("[Try1Second] client error:", err.code);
+    }
+  });
+  return server;
+};
+var listenWithKeepAlive = (app, port, label = "Try1Second") => {
+  const server = createListener(app);
+  server.listen(port, () => {
+    console.log(`[${label}] Independent metasearch engine running on port ${port}`);
+  });
+  return server;
+};
+
 // server.prod.ts
 async function startWorker() {
   const app = await createApp();
@@ -49092,7 +49393,7 @@ async function startWorker() {
     });
   }
   const PORT = Number(process.env.PORT || 3e3);
-  app.listen(PORT, () => console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`));
+  listenWithKeepAlive(app, PORT);
 }
 boot(startWorker, "try1second").catch((e2) => {
   console.error("[try1second] FATAL: server failed to start:", e2);

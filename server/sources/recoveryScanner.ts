@@ -27,6 +27,7 @@
  */
 import type { FailureClass, ParsedQuery, SourceConfig, SourceHealth, VerticalId } from '../types';
 import { log } from '../common/logger';
+import { backgroundAllowed, resourceSnapshot } from '../common/resourceGuard';
 import { withLock } from '../common/cache';
 import { recordAttempt, recordFailure, recordSuccess, getAllHealth } from './health';
 import { getSources } from './registry';
@@ -246,6 +247,13 @@ export function startRecoveryScanner(): void {
   started = true;
   const SCAN_MS = 10 * 60_000;
   const timer = setInterval(() => {
+    // OWNER 29 Oct (Hostinger protective CPU mode): probing is optional work. When the
+    // box is already hot it is skipped outright, so recovery can never be the thing that
+    // keeps the account CPU-flat and the app blocked.
+    if (!backgroundAllowed()) {
+      log.info('Recovery', 'Scan pass skipped (resource governor)', resourceSnapshot() as any);
+      return;
+    }
     void withLock('recovery-scanner', () => recoveryScanPass()).catch((e: any) => {
       log.warn('Recovery', 'Scan pass failed (will retry next tick)', { error: String(e?.message || e).slice(0, 120) });
     });
@@ -253,6 +261,7 @@ export function startRecoveryScanner(): void {
   if (timer.unref) timer.unref();
   // One pass shortly after boot: catch sources that recovered while the process was down.
   setTimeout(() => {
+    if (!backgroundAllowed()) return;
     void withLock('recovery-scanner', () => recoveryScanPass()).catch(() => undefined);
   }, 90_000).unref?.();
   log.info('Recovery', 'Source recovery scanner armed (10-min cadence, probes respect challenge ladder, admin-disabled stays off)');

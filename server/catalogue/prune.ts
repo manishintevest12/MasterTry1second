@@ -15,6 +15,7 @@
  */
 import { getStore } from '../common/db';
 import { log } from '../common/logger';
+import { backgroundAllowed } from '../common/resourceGuard';
 
 const BATCH = 2000;
 const MAX_BATCHES = 500; // up to 1M rows/table/hour — enough to catch up from an over-cap state
@@ -262,7 +263,10 @@ export async function startCatalogueRetention(): Promise<void> {
     if (sizeMb > 0) log.info('Prune', `Retention pass done (DB ${sizeMb.toFixed(0)} MB${emergency ? ' EMERGENCY' : ''}, ${removed} rows removed)`);
   };
   await runOnce().catch((e: any) => log.warn('Prune', 'Initial retention pass failed', { error: String(e?.message || e).slice(0, 140) }));
-  const timer = setInterval(() => { void runOnce().catch(() => undefined); }, 60 * 60_000);
+  const timer = setInterval(() => {
+    if (!backgroundAllowed()) return;   // governor: never add load to an already-hot box
+    void runOnce().catch(() => undefined);
+  }, 60 * 60_000);
   if (timer.unref) timer.unref();
   log.info('Prune', `Size-aware retention armed (SOFT ${SOFT_CAP_MB} MB / HARD ${HARD_CAP_MB} MB, hourly passes, one-table compaction)`);
 }

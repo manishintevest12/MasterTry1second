@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { boot } from './server/multiCore.js';
+import { listenWithKeepAlive } from './server/httpServer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,9 +41,9 @@ async function startPrimary() {
   }
 
   const PORT = Number(process.env.PORT || 3000);
-  app.listen(PORT, () => {
-    console.log(`[Try1Second] Independent metasearch engine running on port ${PORT}`);
-  });
+  // Same listener as production (server/httpServer.ts): keep-alive must outlive the
+  // edge's proxy window or requests die as 'Connection reset by peer'.
+  listenWithKeepAlive(app, PORT);
 }
 
 // Multi-core is opt-in via WEB_CONCURRENCY (see server/multiCore.ts): unset = one worker.
