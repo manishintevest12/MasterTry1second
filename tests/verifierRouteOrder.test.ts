@@ -56,13 +56,16 @@ test('apex host: /.well-known/assetlinks.json is 200 JSON with no redirect', asy
   } finally { await s.close(); }
 });
 
-test('apex host: a normal page is still 301 onto www', async () => {
+test('apex host: pages answer 200 (no host redirect) unless FORCE_WWW_REDIRECT=1', async () => {
   const s = await boot();
   try {
-    const res = await request(s.url, '/flights', 'try1second.com');
-    assert.equal(res.status, 301);
-    assert.equal(res.headers.location, 'https://www.try1second.com/flights');
-  } finally { await s.close(); }
+    const res = await request(s.url, '/', 'try1second.com');
+    assert.equal(res.status, 200);
+    process.env.FORCE_WWW_REDIRECT = '1';
+    const forced = await request(s.url, '/flights', 'try1second.com');
+    assert.equal(forced.status, 301);
+    assert.equal(forced.headers.location, 'https://www.try1second.com/flights');
+  } finally { delete process.env.FORCE_WWW_REDIRECT; await s.close(); }
 });
 
 test('www host: verification file and pages both answer 200', async () => {

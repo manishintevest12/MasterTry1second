@@ -15,10 +15,22 @@ test('verification files on the apex are served, never redirected', () => {
   assert.equal(isVerificationPath('/.well-known/assetlinks.json'), true);
 });
 
-test('normal apex traffic still moves onto www (PageSpeed canonical)', () => {
+test('apex pages answer 200 by default; www is chosen by the canonical tag', () => {
+  const prev = process.env.FORCE_WWW_REDIRECT;
+  delete process.env.FORCE_WWW_REDIRECT;
+  assert.equal(shouldRedirectApexToWww('try1second.com', '/flights'), false);
+  assert.equal(shouldRedirectApexToWww('try1second.com:443', '/'), false);
+  if (prev !== undefined) process.env.FORCE_WWW_REDIRECT = prev;
+});
+
+test('FORCE_WWW_REDIRECT=1 restores the old 301 for normal pages only', () => {
+  const prev = process.env.FORCE_WWW_REDIRECT;
+  process.env.FORCE_WWW_REDIRECT = '1';
   assert.equal(shouldRedirectApexToWww('try1second.com', '/flights'), true);
   assert.equal(shouldRedirectApexToWww('try1second.com:443', '/'), true);
+  assert.equal(shouldRedirectApexToWww('try1second.com', '/.well-known/assetlinks.json'), false);
   assert.equal(canonicalWwwUrl('/flights?x=1'), 'https://www.try1second.com/flights?x=1');
+  if (prev === undefined) delete process.env.FORCE_WWW_REDIRECT; else process.env.FORCE_WWW_REDIRECT = prev;
 });
 
 test('www and other hosts are never redirected (no loops, no third-party bounce)', () => {
