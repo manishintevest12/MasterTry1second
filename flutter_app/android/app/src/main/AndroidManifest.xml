@@ -41,13 +41,25 @@
                  /redirect, /api/*, /admininsta and /merchantinstab2b straight back to
                  the system browser, so affiliate attribution and the AdSense
                  interstitial keep working exactly as before. -->
+            <!-- ONE HOST PER FILTER (owner 30 Oct, infra hardening). Android <=11
+                 fails verification for EVERY host declared in a single filter as soon as
+                 one host cannot be verified. The apex host still answers Hostinger's own
+                 301 (hPanel Force-WWW runs before our Node app), so a shared filter would
+                 also have disabled www links on older devices. Separate filters verify
+                 independently: www is verified today even while the apex edge redirect is
+                 still switched on at the panel. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="www.try1second.com"/>
-                <data android:scheme="https" android:host="try1second.com"/>
                 <data android:scheme="http" android:host="www.try1second.com"/>
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="try1second.com"/>
                 <data android:scheme="http" android:host="try1second.com"/>
             </intent-filter>
 
