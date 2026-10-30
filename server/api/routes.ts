@@ -773,10 +773,31 @@ apiRouter.post('/search', async (req, res) => {
         latencyMs: Date.now() - searchStart,
       });
     }
+    // OWNER 30 Oct (priority): "first attempt mai hi results lao — ye nahi ki pehle khaali
+    // aaya aur 15s baad bhar gaya". An empty first answer is only honest when the live
+    // acquisition genuinely has nothing yet, so before giving up we keep waiting on the SAME
+    // in-flight search up to a cold ceiling. Nothing is cached or faked here: the extra wait
+    // either returns the real rows the pipeline produced or the same honest pending marker.
+    const ceilingMs = Math.max(budgetMs, Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 9000));
+    const late = (await Promise.race([
+      searched,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ceilingMs - budgetMs)),
+    ])) as Awaited<ReturnType<typeof runSearch>> | null;
+    if (late && (late.results || []).length) {
+      return res.json({
+        ...late,
+        pendingRefresh: allowPending(chainKey, true),
+        honestNotice: 'Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.',
+        latencyMs: Date.now() - searchStart,
+      });
+    }
     return res.json({
       results: [],
       honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
-      sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [], servedFrom: 'unavailable',
+      sourcesAttempted: (late as any)?.sourcesAttempted || [],
+      sourcesSucceeded: (late as any)?.sourcesSucceeded || [],
+      sourcesFailed: (late as any)?.sourcesFailed || [],
+      servedFrom: 'unavailable',
       pendingRefresh: allowPending(chainKey, true), resultsCount: 0, latencyMs: Date.now() - searchStart,
     });
   }
@@ -1146,10 +1167,29 @@ apiRouter.post('/scrape/live', async (req, res) => {
         latencyMs: Date.now() - searchStart,
       });
     }
+    // OWNER 30 Oct (same rule as /api/search): never hand the app an empty first answer
+    // while the live search is still in flight — wait on it up to the cold ceiling and
+    // return whatever real rows it produced.
+    const coldCeiling = Math.max(2000, Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 9000));
+    const late = (await Promise.race([
+      searchedLive,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(0, coldCeiling - (Date.now() - searchStart)))),
+    ])) as Awaited<ReturnType<typeof runSearch>> | null;
+    if (late && (late.results || []).length) {
+      return res.json({
+        ...late,
+        pendingRefresh: allowPending(chainKey, true),
+        honestNotice: 'Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.',
+        latencyMs: Date.now() - searchStart,
+      });
+    }
     return res.json({
       results: [],
       honestNotice: 'Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.',
-      sourcesAttempted: [], sourcesSucceeded: [], sourcesFailed: [], servedFrom: 'unavailable',
+      sourcesAttempted: (late as any)?.sourcesAttempted || [],
+      sourcesSucceeded: (late as any)?.sourcesSucceeded || [],
+      sourcesFailed: (late as any)?.sourcesFailed || [],
+      servedFrom: 'unavailable',
       pendingRefresh: true, resultsCount: 0, latencyMs: Date.now() - searchStart,
     });
   }
