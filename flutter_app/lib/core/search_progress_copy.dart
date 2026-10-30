@@ -38,7 +38,7 @@ const _fallback = SearchCopy(
 const Map<String, SearchCopy> kSearchCopy = {
   'flights': SearchCopy(
     heading: 'Finding your best fare…',
-    sub: 'Some fares hide on page 3. We check page 47 on every airline and booking site.',
+    sub: 'Every airline and booking site prices the same seat differently. We are checking them all right now.',
     unit: 'airlines & booking sites',
     sources: ['Air India', 'IndiGo', 'Akasa Air', 'SpiceJet', 'MakeMyTrip', 'EaseMyTrip', 'Ixigo', 'Yatra', 'Cleartrip'],
   ),
@@ -62,7 +62,7 @@ const Map<String, SearchCopy> kSearchCopy = {
   ),
   'ecommerce': SearchCopy(
     heading: 'Finding your best price…',
-    sub: 'Some deals hide on page 3. We check page 300.',
+    sub: 'The same product is priced differently on every store. We are checking them all right now.',
     unit: 'stores',
     sources: ['Amazon India', 'Flipkart', 'Meesho', 'Myntra', 'Ajio', 'Tata CLiQ', 'Croma', 'Reliance Digital', 'JioMart'],
   ),
