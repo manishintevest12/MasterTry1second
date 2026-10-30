@@ -40,6 +40,15 @@ test('Play App Signing certificate is appended from ANDROID_PLAY_SHA256 and vali
   if (before === undefined) delete process.env.ANDROID_PLAY_SHA256; else process.env.ANDROID_PLAY_SHA256 = before;
 });
 
+test('the release key pasted into the Play var is not duplicated', () => {
+  const before = process.env.ANDROID_PLAY_SHA256;
+  process.env.ANDROID_PLAY_SHA256 = RELEASE.toLowerCase();
+  const list = fingerprintList();
+  assert.equal(list.length, 2, 'release + debug only, no duplicate');
+  assert.equal(new Set(list).size, list.length);
+  if (before === undefined) delete process.env.ANDROID_PLAY_SHA256; else process.env.ANDROID_PLAY_SHA256 = before;
+});
+
 test('aasa is served only with a real Team ID, never invented', () => {
   const before = process.env.IOS_TEAM_ID;
   delete process.env.IOS_TEAM_ID;

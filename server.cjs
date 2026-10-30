@@ -48899,7 +48899,7 @@ function extraFingerprints() {
   return String(process.env.ANDROID_PLAY_SHA256 || "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
 }
 function fingerprintList() {
-  return [RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()];
+  return [.../* @__PURE__ */ new Set([RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()])];
 }
 function assetLinksJson() {
   return [

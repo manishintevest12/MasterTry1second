@@ -44,7 +44,11 @@ function extraFingerprints(): string[] {
 }
 
 export function fingerprintList(): string[] {
-  return [RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()];
+  // Deduplicated: the env var is meant for Play's APP SIGNING certificate, but the
+  // upload key's SHA-256 is what Play Console shows first, and pasting that just
+  // repeats the release key already listed. A duplicate is harmless to Android but
+  // it hides the fact that the Play certificate is still missing, so it is dropped.
+  return [...new Set([RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()])];
 }
 
 /** The exact JSON Android's verifier expects. */
