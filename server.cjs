@@ -23492,7 +23492,7 @@ function bmsDiscoverHeaders(region) {
     "x-bms-id": "1"
   };
 }
-function bmsBuyTicketsUrl(region, eventCode, dateISO) {
+function bmsBuyTicketsUrl2(region, eventCode, dateISO) {
   const code = String(eventCode || "").trim();
   if (!code || !region?.regionCode || !region?.regionSlug) return "";
   if (!/^ET\d{6,}$/i.test(code)) return "";
@@ -23536,7 +23536,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
         // code is missing.
         // Booking code MUST be the one from the page URL (ET…); the card id (EG…) is an
         // event code whose buytickets page says "no shows available" — LIVE-VERIFIED.
-        sellerUrl: bmsBuyTicketsUrl(region, pageCode) || ctaUrl,
+        sellerUrl: bmsBuyTicketsUrl2(region, pageCode) || ctaUrl,
         availability: "in_stock",
         // now-showing in this region per BMS itself
         location: { city: region.regionName },
@@ -23547,7 +23547,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
           ...eventCode ? { event_code: eventCode } : {},
           movie_page_url: ctaUrl,
           ...pageCode ? { booking_code: pageCode } : {},
-          ...pageCode ? { booking_url: bmsBuyTicketsUrl(region, pageCode) } : {},
+          ...pageCode ? { booking_url: bmsBuyTicketsUrl2(region, pageCode) } : {},
           platform: "BookMyShow"
         },
         evidence: {
@@ -24679,24 +24679,17 @@ var init_movies = __esm({
                   o.attributes["theatre_count"] = String(agg.theatres.length);
                   o.attributes["shows_today"] = String(agg.showCount);
                   o.attributes["showtimes"] = JSON.stringify(agg.shows.slice(0, 5));
-                  const bmsCity = String(o.location?.city || region.regionName || "");
-                  const bmsCheapest = cheapestShow(agg.shows, {
-                    host,
-                    city: bmsCity,
-                    dateISO: istTodayISO(),
-                    contentId: agg.contentId
-                  });
-                  if (bmsCheapest) {
-                    o.attributes["cheapest_show"] = JSON.stringify(bmsCheapest);
-                    if (bmsCheapest.url) {
-                      o.attributes["seat_url"] = bmsCheapest.url;
-                      o.attributes["book_platform"] = bmsCheapest.platform;
-                      o.attributes["book_note"] = `Seat map for the cheapest show: ${bmsCheapest.theatre} ${bmsCheapest.time} \xB7 ${bmsCheapest.seatClass} \u20B9${bmsCheapest.price} (opens on ${bmsCheapest.platform})`;
-                    }
-                    o.evidence.extractedFields = [...o.evidence.extractedFields || [], "cheapest_show"];
+                  o.attributes["book_platform"] = "BookMyShow";
+                  o.attributes["price_origin"] = "live seat prices observed at these theatres (District/TicketNew sessions)";
+                  const bmsCta = String(o.sellerUrl || "");
+                  if (!/^https:\/\/in\.bookmyshow\.com\//.test(bmsCta)) {
+                    const ev = String(o.attributes["event_code"] || "").trim() || (String(o.attributes["image_url"] || "").match(/\/(et\d{6,})-/i) || [])[1] || "";
+                    const rebuilt = ev ? bmsBuyTicketsUrl(region, ev) : "";
+                    if (rebuilt) o.sellerUrl = rebuilt;
                   }
-                  applySeatCta(o);
-                  o.attributes["data_note"] = `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) observed in live ${host === "district" ? "District" : "TicketNew"} sessions across ${agg.theatres.length} theatres for this movie in this city. Book opens that cheapest show's seat map on ${bmsCheapest?.platform || (host === "district" ? "District" : "TicketNew")}.`;
+                  o.attributes["data_note"] = `Seat prices (\u20B9${agg.minPrice}\u2013\u20B9${agg.maxPrice}) are the live fares observed at these ${agg.theatres.length} theatres in ${region.regionName} today. BookMyShow opens its own showtime list for this movie and date; the fare there is BookMyShow's own.`;
+                  delete o.attributes["seat_url"];
+                  delete o.attributes["book_note"];
                   o.evidence.extractedFields = [...o.evidence.extractedFields || [], "price_min", "price_max", "theatres", "shows_today"];
                   bmsLastPrice.set(keyOf2(o), { at: Date.now(), price: agg.minPrice, band: o.attributes["price_band"], note: o.attributes["data_note"] });
                 } else {
@@ -28670,7 +28663,7 @@ function merchantDeepLink(merchant, title, vertical, ctx = {}) {
       return from && to && dd ? `https://www.easemytrip.com/flight-search/?from=${e(from)}&to=${e(to)}&ddate=${e(dd)}` : "https://www.easemytrip.com/flights.html";
     }
     if (has("ixigo")) {
-      return from && to && ymd ? `https://www.ixigo.com/flights?from=${e(from)}&to=${e(to)}&depart=${ymd}` : "https://www.ixigo.com/flights";
+      return from && to && isoD ? `https://www.ixigo.com/search/flight/${e(from)}/${e(to)}/${e(isoD)}/1/0` : "https://www.ixigo.com/flights";
     }
     if (has("yatra")) {
       return from && to && dd ? `https://www.yatra.com/flight/search?flight-type=on&from=${e(from)}&to=${e(to)}&departDate=${e(dd)}&adults=1&child=0&infant=0&class=Economy&flexi=0` : "https://www.yatra.com/flights";

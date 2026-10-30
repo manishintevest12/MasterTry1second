@@ -142,7 +142,12 @@ export function merchantDeepLink(merchant: string, title: string, vertical?: str
       return from && to && dd ? `https://www.easemytrip.com/flight-search/?from=${e(from)}&to=${e(to)}&ddate=${e(dd)}` : 'https://www.easemytrip.com/flights.html';
     }
     if (has('ixigo')) {
-      return from && to && ymd ? `https://www.ixigo.com/flights?from=${e(from)}&to=${e(to)}&depart=${ymd}` : 'https://www.ixigo.com/flights';
+      // Owner 29 Oct ("ixigo blank page after redirection"): /flights?from=..&to=..&depart=..
+      // is ixigo's MARKETING landing page — it answers 200 with no itinerary and renders
+      // an empty shell in the in-app browser. The path their own results live on (and the
+      // one our flights worker scrapes) is /search/flight/<from>/<to>/<ISO date>/1/0.
+      // Verified live: 592KB of real Indore→Delhi results, fares on the page.
+      return from && to && isoD ? `https://www.ixigo.com/search/flight/${e(from)}/${e(to)}/${e(isoD)}/1/0` : 'https://www.ixigo.com/flights';
     }
     if (has('yatra')) {
       return from && to && dd ? `https://www.yatra.com/flight/search?flight-type=on&from=${e(from)}&to=${e(to)}&departDate=${e(dd)}&adults=1&child=0&infant=0&class=Economy&flexi=0` : 'https://www.yatra.com/flights';

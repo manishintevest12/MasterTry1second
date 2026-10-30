@@ -295,27 +295,29 @@ export const moviesWorker: VerticalWorker = {
               o.attributes['theatre_count'] = String(agg.theatres.length);
               o.attributes['shows_today'] = String(agg.showCount);
               o.attributes['showtimes'] = JSON.stringify(agg.shows.slice(0, 5));
-              // Owner 28 Oct: BookMyShow rows get the same treatment as the mesh rows - the CTA
-              // opens the seat map of the cheapest show whose fare we print, instead of BMS'
-              // cinema-list page where that price cannot be found.
-              const bmsCity = String((o.location as any)?.city || region.regionName || '');
-              const bmsCheapest = cheapestShow(agg.shows, {
-                host,
-                city: bmsCity,
-                dateISO: istTodayISO(),
-                contentId: agg.contentId,
-              });
-              if (bmsCheapest) {
-                o.attributes['cheapest_show'] = JSON.stringify(bmsCheapest);
-                if (bmsCheapest.url) {
-                  o.attributes['seat_url'] = bmsCheapest.url;
-                  o.attributes['book_platform'] = bmsCheapest.platform;
-                  o.attributes['book_note'] = `Seat map for the cheapest show: ${bmsCheapest.theatre} ${bmsCheapest.time} · ${bmsCheapest.seatClass} ₹${bmsCheapest.price} (opens on ${bmsCheapest.platform})`;
-                }
-                (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'cheapest_show'];
+              // Owner 29 Oct, SUPERSEDES the 28 Oct CTA swap: "bookmyshow ke saamne district ka
+              // logo aa raha hai aur redirection district ke seat par ho raha hai, jab ki
+              // bookmyshow ke seat par hona chahiye". A BookMyShow row is BookMyShow's offer:
+              // it must carry BookMyShow's own branding and its own booking page. Pointing it
+              // at the mesh's seat map (a) mislabelled the row as District/TicketNew, and
+              // (b) took the user to a different merchant than the one they clicked.
+              // The mesh fare is still printed (it IS the live seat price of these very
+              // theatres) but the CTA now stays on BookMyShow's buytickets page for the same
+              // movie + date, and the note says where the fare came from. District and
+              // TicketNew keep their own seat-map rows untouched.
+              o.attributes['book_platform'] = 'BookMyShow';
+              o.attributes['price_origin'] = 'live seat prices observed at these theatres (District/TicketNew sessions)';
+              const bmsCta = String(o.sellerUrl || '');
+              if (!/^https:\/\/in\.bookmyshow\.com\//.test(bmsCta)) {
+                const ev = String(o.attributes['event_code'] || '').trim()
+                  || (String(o.attributes['image_url'] || '').match(/\/(et\d{6,})-/i) || [])[1]
+                  || '';
+                const rebuilt = ev ? bmsBuyTicketsUrl(region, ev) : '';
+                if (rebuilt) o.sellerUrl = rebuilt;
               }
-              applySeatCta(o);
-              o.attributes['data_note'] = `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) observed in live ${host === 'district' ? 'District' : 'TicketNew'} sessions across ${agg.theatres.length} theatres for this movie in this city. Book opens that cheapest show's seat map on ${bmsCheapest?.platform || (host === 'district' ? 'District' : 'TicketNew')}.`;
+              o.attributes['data_note'] = `Seat prices (₹${agg.minPrice}–₹${agg.maxPrice}) are the live fares observed at these ${agg.theatres.length} theatres in ${region.regionName} today. BookMyShow opens its own showtime list for this movie and date; the fare there is BookMyShow's own.`;
+              delete o.attributes['seat_url'];
+              delete o.attributes['book_note'];
               (o.evidence as any).extractedFields = [...((o.evidence as any).extractedFields || []), 'price_min', 'price_max', 'theatres', 'shows_today'];
               bmsLastPrice.set(keyOf(o), { at: Date.now(), price: agg.minPrice, band: o.attributes['price_band'], note: o.attributes['data_note'] });
             } else {

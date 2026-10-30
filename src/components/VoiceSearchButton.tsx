@@ -21,7 +21,9 @@ interface SpeechRecognitionLike {
 export const VoiceSearchButton: React.FC<{
   onTranscript: (text: string) => void;
   accent?: 'orange' | 'blue' | 'red' | 'dark';
-  size?: 'sm' | 'md';
+  /** sm/md keep every existing caller identical; lg exists so a bigger card can scale
+   *  the mic with its send button instead of leaving a small button beside a large one. */
+  size?: 'sm' | 'md' | 'lg';
 }> = ({ onTranscript, accent = 'orange', size = 'sm' }) => {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -87,7 +89,8 @@ export const VoiceSearchButton: React.FC<{
       ? listening ? 'bg-red-700 animate-pulse' : 'bg-slate-900 hover:bg-slate-800'
       : listening ? 'bg-red-600 animate-pulse' : 'bg-orange-600 hover:bg-orange-700';
 
-  const dims = size === 'sm' ? 'w-7 h-7' : 'w-9 h-9';
+  const dims = size === 'sm' ? 'w-7 h-7' : size === 'lg' ? 'w-11 h-11 sm:w-12 sm:h-12' : 'w-9 h-9';
+  const iconDims = size === 'lg' ? 'w-5 h-5 sm:w-6 sm:h-6' : 'w-3.5 h-3.5';
 
   return (
     <button
@@ -97,7 +100,7 @@ export const VoiceSearchButton: React.FC<{
       aria-label={listening ? 'Stop voice search' : 'Start voice search'}
       className={`${dims} ${palette} text-white rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer shadow-xs`}
     >
-      {listening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+      {listening ? <MicOff className={iconDims} /> : <Mic className={iconDims} />}
     </button>
   );
 };

@@ -72,13 +72,13 @@ export const PriceLens: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-3xl mb-6 text-slate-900">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-900/5 p-3 sm:p-4">
+    <div className="w-full max-w-4xl mb-7 text-slate-900">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-900/10 p-4 sm:p-6">
         <form
           onSubmit={(e) => { e.preventDefault(); go(); }}
-          className="flex items-center gap-2 bg-slate-50 border border-slate-200 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/15 rounded-xl px-3 py-2 transition-all"
+          className="flex items-center gap-2.5 sm:gap-3 bg-slate-50 border border-slate-200 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/15 rounded-2xl px-4 sm:px-5 py-3 sm:py-4 transition-all"
         >
-          <Link2 className="w-4 h-4 text-slate-400 shrink-0" />
+          <Link2 className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 shrink-0" />
           <input
             value={link}
             onChange={(e) => setLink(e.target.value)}
@@ -88,11 +88,11 @@ export const PriceLens: React.FC = () => {
             }}
             placeholder="Paste a product link (Amazon, Flipkart, Myntra...) OR type a product name — both work"
             aria-label="Paste a product link or type a product name"
-            className="flex-1 min-w-0 bg-transparent outline-hidden text-sm text-slate-900 placeholder:text-slate-400 py-1"
+            className="flex-1 min-w-0 bg-transparent outline-hidden text-base sm:text-lg text-slate-900 placeholder:text-slate-400 py-1.5 sm:py-2"
           />
           {link && (
             <button type="button" onClick={() => setLink('')} className="text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Clear">
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           )}
           <button
@@ -100,29 +100,29 @@ export const PriceLens: React.FC = () => {
             aria-label="Find Cheapest"
             title="Find Cheapest"
             disabled={!link.trim()}
-            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black cursor-pointer transition-colors"
+            className="shrink-0 inline-flex items-center justify-center gap-1.5 px-5 sm:px-6 py-3 sm:py-4 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black cursor-pointer transition-colors"
           >
             {/* Owner 23 Oct: lens icon only — the paste area gets the space. */}
-            <Search className="w-4 h-4" />
+            <Search className="w-5 h-5 sm:w-6 sm:h-6" />
             <span className="sr-only">Find Cheapest</span>
           </button>
         </form>
 
         {/* supports: merchant logos */}
-        <div className="flex items-center gap-2.5 mt-3 px-1 overflow-x-auto scrollbar-none">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Supports</span>
+        <div className="flex items-center gap-3 sm:gap-3.5 mt-4 sm:mt-5 px-1 overflow-x-auto scrollbar-none">
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 shrink-0">Supports</span>
           {SUPPORTED.map((m) => (
-            <span key={m.domain} title={m.name} className="w-7 h-7 shrink-0 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center shadow-2xs">
+            <span key={m.domain} title={m.name} className="w-9 h-9 sm:w-11 sm:h-11 shrink-0 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center shadow-2xs">
               <img
                 src={`https://www.google.com/s2/favicons?domain=${m.domain}&sz=64`}
                 alt={m.name}
-                className="w-5 h-5 object-contain"
+                className="w-6 h-6 sm:w-7 sm:h-7 object-contain"
                 loading="lazy"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
               />
             </span>
           ))}
-          <span className="text-[10px] font-semibold text-slate-400 shrink-0">+ any shopping site</span>
+          <span className="text-[11px] sm:text-xs font-semibold text-slate-400 shrink-0">+ any shopping site</span>
         </div>
       </div>
     </div>
@@ -200,13 +200,16 @@ export const PriceLensAndAssistant: React.FC = () => {
   };
 
   return (
-    <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20 space-y-4">
+    /* Aligned with the hero search card above: same page gutter + same max-w-4xl column,
+       so the two enlarged sections share one left edge instead of stepping in and out. */
+    <section className="px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
+      <div className="max-w-6xl mx-auto">
       {/* ============ AI ASSISTANT (text + voice) ============ */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-900/5 p-3 sm:p-4">
-        <div className="flex items-center gap-2 mb-2.5 px-1">
-          <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-500 to-rose-700 text-white flex items-center justify-center"><Sparkles className="w-3.5 h-3.5" /></span>
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-900">Ask Try1Second AI</h2>
-          <span className="text-[10px] text-slate-400 font-semibold hidden sm:inline">type or speak · Hindi, English, Hinglish</span>
+      <div className="max-w-4xl bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-900/10 p-4 sm:p-6">
+        <div className="flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4 px-1">
+          <span className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-red-500 to-rose-700 text-white flex items-center justify-center"><Sparkles className="w-4 h-4 sm:w-5 sm:h-5" /></span>
+          <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-slate-900">Ask Try1Second AI</h2>
+          <span className="text-[11px] sm:text-xs text-slate-400 font-semibold hidden sm:inline">type or speak · Hindi, English, Hinglish</span>
         </div>
 
         {chat.length > 0 && (
@@ -268,33 +271,34 @@ export const PriceLensAndAssistant: React.FC = () => {
 
         <form
           onSubmit={(e) => { e.preventDefault(); runAsk(); }}
-          className="flex items-center gap-2 bg-slate-50 border border-slate-200 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/15 rounded-xl px-3 py-2 transition-all"
+          className="flex items-center gap-2.5 sm:gap-3 bg-slate-50 border border-slate-200 focus-within:border-red-500 focus-within:ring-2 focus-within:ring-red-500/15 rounded-2xl px-4 sm:px-5 py-3 sm:py-4 transition-all"
         >
           <input
             value={ask}
             onChange={(e) => setAsk(e.target.value)}
             placeholder='Ask anything: "Delhi to Mumbai flight ka rate batao"'
             aria-label="Ask the assistant"
-            className="flex-1 min-w-0 bg-transparent outline-hidden text-sm text-slate-900 placeholder:text-slate-400 py-1"
+            className="flex-1 min-w-0 bg-transparent outline-hidden text-base sm:text-lg text-slate-900 placeholder:text-slate-400 py-1.5 sm:py-2"
           />
-          <VoiceSearchButton accent="red" size="md" onTranscript={(t) => { setAsk(t); runAsk(t, true); }} />
+          <VoiceSearchButton accent="red" size="lg" onTranscript={(t) => { setAsk(t); runAsk(t, true); }} />
           <button
             type="submit"
             disabled={askBusy || !ask.trim()}
-            className="shrink-0 w-9 h-9 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white flex items-center justify-center cursor-pointer transition-colors"
+            className="shrink-0 w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white flex items-center justify-center cursor-pointer transition-colors"
             aria-label="Send"
           >
-            {askBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {askBusy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 sm:w-6 sm:h-6" />}
           </button>
         </form>
 
-        <div className="flex flex-wrap gap-1.5 mt-2.5 px-1">
+        <div className="flex flex-wrap gap-2 mt-3 sm:mt-4 px-1">
           {['Delhi to Mumbai flight', 'Indore to Bhopal bus kal', 'Hotels in Goa', 'Chicken biryani'].map((s) => (
-            <button key={s} type="button" onClick={() => runAsk(s)} className="text-[11px] font-semibold text-slate-600 bg-slate-50 hover:bg-red-50 hover:text-red-700 border border-slate-200 rounded-full px-2.5 py-1 cursor-pointer transition-colors">
+            <button key={s} type="button" onClick={() => runAsk(s)} className="text-xs sm:text-sm font-semibold text-slate-600 bg-slate-50 hover:bg-red-50 hover:text-red-700 border border-slate-200 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 cursor-pointer transition-colors">
               {s}
             </button>
           ))}
         </div>
+      </div>
       </div>
     </section>
   );
