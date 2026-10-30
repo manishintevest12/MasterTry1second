@@ -41,6 +41,7 @@ import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from 
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
 import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
+import { directAppTarget, androidIntentUrl, isAndroid, appHandlesIntents } from '../affiliate/appTargets';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
@@ -2942,7 +2943,18 @@ apiRouter.get('/out', async (req, res) => {
   // interstitial (4s countdown + AdSense above the fold), then hop to the
   // merchant. In-app webviews (our Flutter app) skip it — AdSense for Content
   // must not render inside an application webview, and app exits stay instant.
+  // Owner 30 Oct (app-to-app): when the destination is still on the partner's OWN host we
+  // know their Play app. Builds that can hand `intent://` to the OS (marker >= 1.9) get the
+  // package-targeted intent with our tracked URL as browser_fallback_url, so the partner app
+  // opens when installed and the same paid link opens otherwise. Older installs and iOS keep
+  // the instant plain redirect: their webview blocks non-http navigations.
   if (isInAppWebView(req.headers['user-agent'])) {
+    const ua = String(req.headers['user-agent'] || '');
+    const direct = directAppTarget(freshDestination);
+    if (direct && isAndroid(ua) && appHandlesIntents(ua)) {
+      res.redirect(302, androidIntentUrl(direct, dl.trackingUrl));
+      return;
+    }
     res.redirect(302, dl.trackingUrl);
     return;
   }
@@ -2956,7 +2968,18 @@ apiRouter.get('/out', async (req, res) => {
   // hop straight into the installed app; non-cab destinations unchanged.
   let cabScheme: string | null = null;
   try { cabScheme = cabWebUrlToAppScheme(freshDestination, await getCabDeeplinkConfig()); } catch { /* web-only nicety */ }
-  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
+  // Owner 30 Oct: the same app hop is offered on the AdSense interstitial as ONE TAP
+  // ("Open in the app"), never as an automatic jump — an automatic hop would skip the ad
+  // page the earnings depend on. Money-safe: only direct merchant hosts qualify (an
+  // affiliate converter hop must stay in the browser or the commission is lost).
+  let appIntent: string | null = null;
+  try {
+    const direct = directAppTarget(freshDestination);
+    if (direct && isAndroid(String(req.headers['user-agent'] || ''))) {
+      appIntent = androidIntentUrl(direct, dl.trackingUrl);
+    }
+  } catch { /* web-only nicety */ }
+  res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme, appIntent)}`);
 });
 
 // ---- Manual coupons / offers / cashback for the exit page (owner 27 Oct) ----

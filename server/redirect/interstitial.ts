@@ -48,13 +48,22 @@ function unb64url(s: string): string { return Buffer.from(s, 'base64url').toStri
  * "agoda.com") — the page displays ONLY that name, so affiliate converter
  * domains (linkinr.com, ekaro, cuelinks...) never appear to the user.
  */
-export function createInterstitialPointer(url: string, partner?: string | null, appScheme?: string | null): string {
+export function createInterstitialPointer(
+  url: string,
+  partner?: string | null,
+  appScheme?: string | null,
+  appIntent?: string | null,
+): string {
   // Owner 23 Oct: cab exits carry the provider's native app scheme (uber://,
   // olacabs://) so the interstitial can offer a direct "open the app" hop.
+  // Owner 30 Oct: every partner with a verified Play app also carries an Android
+  // `intent://` URL (package + our tracked URL as browser_fallback_url), so the tap can
+  // land in the partner's own app and still fall back to the paid link when it is absent.
   const payload = b64url(JSON.stringify({
     d: url.slice(0, 3000),
     p: String(partner || '').slice(0, 120),
     s: String(appScheme || '').slice(0, 500),
+    i: String(appIntent || '').slice(0, 1200),
     e: Date.now() + INTERSTITIAL_TTL_MS,
   }));
   const sig = crypto.createHmac('sha256', secret()).update(payload).digest('base64url').slice(0, 32);
@@ -62,7 +71,7 @@ export function createInterstitialPointer(url: string, partner?: string | null, 
 }
 
 /** Verify + decode. Null on malformed signature, tampering or expiry. */
-export function resolveInterstitialMeta(token: string): { url: string; partner: string; appScheme: string } | null {
+export function resolveInterstitialMeta(token: string): { url: string; partner: string; appScheme: string; appIntent: string } | null {
   const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || ''));
   if (!m) return null;
   const expect = crypto.createHmac('sha256', secret()).update(m[1]).digest('base64url').slice(0, 32);
@@ -70,7 +79,12 @@ export function resolveInterstitialMeta(token: string): { url: string; partner: 
   try {
     const j = JSON.parse(unb64url(m[1]));
     if (!j?.d || typeof j.d !== 'string' || Number(j.e) < Date.now()) return null;
-    return { url: j.d, partner: typeof j.p === 'string' ? j.p : '', appScheme: typeof j.s === 'string' ? j.s : '' };
+    return {
+      url: j.d,
+      partner: typeof j.p === 'string' ? j.p : '',
+      appScheme: typeof j.s === 'string' ? j.s : '',
+      appIntent: typeof j.i === 'string' ? j.i : '',
+    };
   } catch { return null; }
 }
 
@@ -157,6 +171,7 @@ export function renderInterstitialPage(opts: {
   seconds?: number;
   partner?: string | null;
   appScheme?: string | null;
+  appIntent?: string | null;
   adSlot?: { provider?: string; adsense_client?: string | null; adsense_slot?: string | null; custom_html?: string | null } | null;
 }): string {
   const seconds = Math.max(1, Math.round(opts.seconds ?? COUNTDOWN_SECONDS));
@@ -252,7 +267,17 @@ export function renderInterstitialPage(opts: {
     <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
   <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now →</a>
-  ${opts.appScheme ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app →</a>` : ''}
+  ${
+    // Owner 30 Oct: the app hop is ONE TAP, never automatic — going straight to the app
+    // would skip the AdSense interstitial the earnings depend on. Android gets the
+    // package-targeted intent (falls back to the tracked URL by itself); iOS and the rest
+    // keep the documented custom scheme when the partner publishes one.
+    opts.appIntent
+      ? `<a class="go" style="background:#111827" href="${esc(opts.appIntent)}" rel="nofollow noopener">Open in the app →</a>`
+      : opts.appScheme
+        ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app →</a>`
+        : ''
+  }
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
 </main>
 <noscript><meta http-equiv="refresh" content="${seconds};url=${esc(target)}"></noscript>
@@ -370,5 +395,11 @@ export async function redirectRouteHandler(req: Request, res: Response): Promise
     const slot = String(process.env.REDIRECT_INTERSTITIAL_AD_SLOT || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || '');
     if (client && slot) adSlot = { provider: 'adsense', adsense_client: client, adsense_slot: slot };
   }
-  res.status(200).type('html').send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
+  res.status(200).type('html').send(renderInterstitialPage({
+    targetUrl: meta.url,
+    partner: meta.partner,
+    appScheme: meta.appScheme,
+    appIntent: meta.appIntent,
+    adSlot,
+  }));
 }
