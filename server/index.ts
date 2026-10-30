@@ -85,7 +85,16 @@ export async function createApp(): Promise<express.Express> {
       import('./catalogue/prune').then(({ startCatalogueRetention }) => startCatalogueRetention()).catch(() => undefined);
       // Instant first paint: pre-warm the most popular searches in the background
       // so page-load searches hit warm cache (Section 8 cron-warmer).
-      import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
+      // OWNER 30 Oct (deploy log 23:06:47 / 23:06:53 / 23:08:00): the deploy restarted
+      // the app three times in 73 seconds and EACH boot ran the full 45-query warm — three
+      // warm passes at once, which is exactly the CPU spike that makes Hostinger's account
+      // protection step in. A boot that dies before it settles should cost nothing, so the
+      // warm now waits one minute and re-checks the governor (a restart storm sets quiet
+      // mode, so a flapping app never warms at all).
+      setTimeout(() => {
+        if (!governor.backgroundAllowed()) return;
+        import('./cron/warm').then(({ bootWarm }) => bootWarm()).catch(() => undefined);
+      }, 60_000).unref?.();
     };
     // T1S_BACKGROUND=off (or T1S_QUIET=1, or a restart storm) means: serve traffic,
     // run NO optional background work. Searches still work; the box just stops

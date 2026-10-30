@@ -8921,7 +8921,8 @@ function yatraTriggerUrl(from, to, depIso, countryFrom = "IN", countryTo = "IN")
 }
 function yatraSrpUrl3(from, to, depIso) {
   const [y, m, d] = depIso.split("-");
-  return `${YATRA_API}/air-search-ui/dom2/trigger?flex=0&viewName=normal&source=fresco-flights&type=O&class=Economy&ADT=1&CHD=0&INF=0&noOfSegments=1&origin=${from}&originCountry=IN&destination=${to}&destinationCountry=IN&flight_depart_date=${encodeURIComponent(`${d}/${m}/${y}`)}&arrivalDate=`;
+  const dd = `${d}/${m}/${y}`;
+  return `${YATRA_API}/air-search-ui/dom2/trigger?type=O&viewName=normal&flex=1&noOfSegments=1&origin=${from}&originCountry=IN&destination=${to}&destinationCountry=IN&departureDate=${encodeURIComponent(dd)}&flight_depart_date=${encodeURIComponent(dd)}&ADT=1&CHD=0&INF=0&class=Economy&lang=en&source=fresco-flights`;
 }
 function yatraCalendarUrl(from, to, fromIso, toIso) {
   const f = fromIso.split("-").reverse().join("-");
@@ -49348,7 +49349,10 @@ async function createApp() {
       startWorkers2();
       bootstrapAffiliateSync2();
       Promise.resolve().then(() => (init_prune(), prune_exports)).then(({ startCatalogueRetention: startCatalogueRetention2 }) => startCatalogueRetention2()).catch(() => void 0);
-      Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
+      setTimeout(() => {
+        if (!governor.backgroundAllowed()) return;
+        Promise.resolve().then(() => (init_warm(), warm_exports)).then(({ bootWarm: bootWarm2 }) => bootWarm2()).catch(() => void 0);
+      }, 6e4).unref?.();
     };
     const owned = governor.backgroundAllowed() ? await runSingleton2("background", startBackgroundDuties) : (log3.warn("Bootstrap", "Background duties DISABLED (T1S_BACKGROUND=off / quiet boot) \u2014 serving HTTP only"), false);
     if (!owned) {

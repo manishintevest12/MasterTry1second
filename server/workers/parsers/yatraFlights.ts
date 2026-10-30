@@ -52,10 +52,21 @@ export function yatraTriggerUrl(from: string, to: string, depIso: string, countr
 /** Yatra's own SRP deeplink (what the site navigates to on Search). */
 export function yatraSrpUrl(from: string, to: string, depIso: string): string {
   const [y, m, d] = depIso.split('-');
-  return `${YATRA_API}/air-search-ui/dom2/trigger?flex=0&viewName=normal&source=fresco-flights`
-    + `&type=O&class=Economy&ADT=1&CHD=0&INF=0&noOfSegments=1`
+  const dd = `${d}/${m}/${y}`;
+  // Owner 29 Oct ("yatra pr jaake home page khul raha hai"): this URL is both the row's
+  // exit target AND the SRP page Yatra's own SPA lives on, so it has to look exactly like
+  // the URL Yatra's homepage form produces. Two things in the old shape were wrong for the
+  // PAGE (they were right for the JSON API the worker calls):
+  //   1. a trailing empty `arrivalDate=` — Yatra's router reads an empty arrival date as a
+  //      malformed search and drops back to the booking home page;
+  //   2. the date param was only `flight_depart_date` (the air-service API name); the SRP
+  //      router reads `departureDate`.
+  // Fix: no empty params, flex=1 (flexible-dates off, which is what the form sends), and
+  // BOTH date names set to the same value so either reader finds the searched day.
+  return `${YATRA_API}/air-search-ui/dom2/trigger?type=O&viewName=normal&flex=1&noOfSegments=1`
     + `&origin=${from}&originCountry=IN&destination=${to}&destinationCountry=IN`
-    + `&flight_depart_date=${encodeURIComponent(`${d}/${m}/${y}`)}&arrivalDate=`;
+    + `&departureDate=${encodeURIComponent(dd)}&flight_depart_date=${encodeURIComponent(dd)}`
+    + `&ADT=1&CHD=0&INF=0&class=Economy&lang=en&source=fresco-flights`;
 }
 
 /** Lowest-fare calendar URL (dd-MM-yyyy window, up to ~60 days). */
