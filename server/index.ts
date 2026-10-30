@@ -9,6 +9,7 @@ import express, { type Request, type Response } from 'express';
 // Gzip all text responses (JS/CSS/JSON/API) — the #1 PageSpeed item missing on
 // Hostinger: Apache does not compress proxied Node output, so Express must.
 import compression from 'compression';
+import * as canonicalHost from './common/canonicalHost';
 
 // Bundle-safe: resolve dist/ from the process working directory (the app root on Hostinger / KVM4).
 // Falls back to the source-relative path when running unbundled via tsx.
@@ -24,23 +25,23 @@ export async function createApp(): Promise<express.Express> {
   app.use(compression()); // gzip BEFORE routes so API JSON + static both compress
   app.use(express.json({ limit: '256kb' }));
 
+  // App Links / Universal Links verification files (owner 29 Oct). Registered FIRST,
+  // ahead of the canonical-host redirect below, so no redirect middleware can ever
+  // shadow them however this file is reordered later.
+  const { registerAppLinkRoutes } = await import('./marketing/appLinkVerify');
+  registerAppLinkRoutes(app as any);
+
   // Canonical host redirect (17 Oct, PageSpeed TTFB fix). Live measurements:
   // https://try1second.com/ (non-www) answers in 0.8-2.6s on Hostinger's edge
   // while https://www.try1second.com/ answers in ~0.25s consistently. PageSpeed
   // was run against the non-www host, so the slow TTFB poisoned FCP/LCP/SI.
   // A 301 here (≈50ms) moves every non-www hit onto the fast www route.
   app.use((req, res, next) => {
-    const host = (req.headers.host || '').toLowerCase();
-    // OWNER 29 Oct (app links): Android's and iOS's verifiers fetch
-    // /.well-known/assetlinks.json and /.well-known/apple-app-site-association
-    // and REJECT the file if the response is a redirect. Both hosts are listed
-    // in the app's intent filter, so the apex host has to answer 200 itself
-    // instead of 301-ing to www -- otherwise verification silently fails and a
-    // tapped try1second.com link opens Chrome instead of the app.
-    const isVerificationFile =
-      (req.path || req.url || '').startsWith('/.well-known/');
-    if (!isVerificationFile && (host === 'try1second.com' || /^try1second\.com:\d+$/.test(host))) {
-      res.redirect(301, `https://www.try1second.com${req.originalUrl || req.url}`);
+    // OWNER 29-30 Oct (app links): the OS verifiers fetch /.well-known/* and REJECT
+    // a redirect, so the apex has to answer those itself. The rule lives in
+    // common/canonicalHost.ts so it is unit-tested instead of regex-matched.
+    if (canonicalHost.shouldRedirectApexToWww(req.headers.host, req.path || req.url)) {
+      res.redirect(301, canonicalHost.canonicalWwwUrl(req.originalUrl || req.url));
       return;
     }
     next();
@@ -74,8 +75,6 @@ export async function createApp(): Promise<express.Express> {
   // /.well-known/apple-app-site-association (iOS) -- HTTPS, no redirect, application/json,
   // which is exactly what the OS verifiers demand before they hand a tapped link to the app
   // instead of the browser. express.static ignores dot-directories, so these are real routes.
-  const { registerAppLinkRoutes } = await import('./marketing/appLinkVerify');
-  registerAppLinkRoutes(app as any);
 
   // Validate + migrate durable storage, load source config, start L2 cache + workers
   await bootstrapBackend();

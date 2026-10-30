@@ -3,19 +3,24 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 /**
- * OWNER 29 Oct: a tapped try1second.com link must open the app, not the browser.
- * Android/iOS verifiers do NOT follow redirects, so the apex host has to serve
- * /.well-known/assetlinks.json with a 200 of its own instead of the canonical 301
- * to www. This pins that exemption in place next to the redirect it guards.
+ * OWNER 30 Oct: the apex -> www 301 must never swallow the verification files, and the
+ * verifier routes must be registered BEFORE that redirect. The behaviour itself is
+ * covered by canonicalHost.test.ts (policy) and verifierRouteOrder.test.ts (real HTTP);
+ * this file pins the wiring in server/index.ts so the guard cannot be dropped by a
+ * future refactor that inlines the redirect again.
  */
 const src = readFileSync(new URL('../server/index.ts', import.meta.url), 'utf8');
 
-test('canonical apex -> www 301 still exists for normal pages', () => {
-  assert.match(src, /res\.redirect\(301, `https:\/\/www\.try1second\.com\$\{req\.originalUrl \|\| req\.url\}`\)/);
+test('index.ts delegates the apex redirect to the tested policy module', () => {
+  assert.match(src, /import \* as canonicalHost from '\.\/common\/canonicalHost'/);
+  assert.match(src, /shouldRedirectApexToWww\(req\.headers\.host, req\.path \|\| req\.url\)/);
+  assert.doesNotMatch(src, /res\.redirect\(301, `https:\/\/www\.try1second\.com\$\{req\.originalUrl/);
 });
 
-test('the .well-known verification paths are exempt from that redirect', () => {
-  assert.match(src, /startsWith\('\/\.well-known\/'\)/);
-  const guard = src.slice(src.indexOf('startsWith(\'/.well-known/\')'), src.indexOf('startsWith(\'/.well-known/\')') + 400);
-  assert.match(guard, /if \(!isVerificationFile && \(host === 'try1second\.com'/, guard.slice(0, 200));
+test('verification routes are registered before the canonical redirect middleware', () => {
+  const routesAt = src.indexOf('registerAppLinkRoutes(app');
+  const redirectAt = src.indexOf('shouldRedirectApexToWww(req.headers.host');
+  assert.ok(routesAt > 0, 'app link routes are registered');
+  assert.ok(redirectAt > 0, 'canonical redirect middleware present');
+  assert.ok(routesAt < redirectAt, 'routes must come first so no redirect can shadow them');
 });
