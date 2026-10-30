@@ -31,7 +31,15 @@ export async function createApp(): Promise<express.Express> {
   // A 301 here (≈50ms) moves every non-www hit onto the fast www route.
   app.use((req, res, next) => {
     const host = (req.headers.host || '').toLowerCase();
-    if (host === 'try1second.com' || /^try1second\.com:\d+$/.test(host)) {
+    // OWNER 29 Oct (app links): Android's and iOS's verifiers fetch
+    // /.well-known/assetlinks.json and /.well-known/apple-app-site-association
+    // and REJECT the file if the response is a redirect. Both hosts are listed
+    // in the app's intent filter, so the apex host has to answer 200 itself
+    // instead of 301-ing to www -- otherwise verification silently fails and a
+    // tapped try1second.com link opens Chrome instead of the app.
+    const isVerificationFile =
+      (req.path || req.url || '').startsWith('/.well-known/');
+    if (!isVerificationFile && (host === 'try1second.com' || /^try1second\.com:\d+$/.test(host))) {
       res.redirect(301, `https://www.try1second.com${req.originalUrl || req.url}`);
       return;
     }

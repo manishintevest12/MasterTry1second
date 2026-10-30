@@ -49389,7 +49389,8 @@ async function createApp() {
   app.use(import_express4.default.json({ limit: "256kb" }));
   app.use((req, res, next) => {
     const host = (req.headers.host || "").toLowerCase();
-    if (host === "try1second.com" || /^try1second\.com:\d+$/.test(host)) {
+    const isVerificationFile = (req.path || req.url || "").startsWith("/.well-known/");
+    if (!isVerificationFile && (host === "try1second.com" || /^try1second\.com:\d+$/.test(host))) {
       res.redirect(301, `https://www.try1second.com${req.originalUrl || req.url}`);
       return;
     }
