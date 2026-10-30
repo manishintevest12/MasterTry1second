@@ -62,6 +62,13 @@ export async function createApp(): Promise<express.Express> {
   const { registerSeoRoutes } = await import('./seo/sitemap');
   registerSeoRoutes(app as any);
 
+  // APP LINK VERIFICATION (owner 29 Oct): /.well-known/assetlinks.json (Android) and
+  // /.well-known/apple-app-site-association (iOS) -- HTTPS, no redirect, application/json,
+  // which is exactly what the OS verifiers demand before they hand a tapped link to the app
+  // instead of the browser. express.static ignores dot-directories, so these are real routes.
+  const { registerAppLinkRoutes } = await import('./marketing/appLinkVerify');
+  registerAppLinkRoutes(app as any);
+
   // Validate + migrate durable storage, load source config, start L2 cache + workers
   await bootstrapBackend();
   if (settings.env !== 'test') {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'core/app_state.dart';
+import 'core/deep_links.dart';
 import 'core/push_alerts.dart';
 import 'core/theme.dart';
 import 'ui/main_shell.dart';
@@ -52,6 +53,10 @@ class _Try1SecondAppState extends State<Try1SecondApp> {
   /// been validated, so the app opens on the right screen with fresh badges.
   Future<void> _boot() async {
     await _state.init();
+    // OWNER 29 Oct: every universal link / try1second:// link opens the app on the
+    // matching screen. Started after the session is restored so a product or vertical
+    // link lands on top of a fully painted shell (not the splash).
+    unawaited(DeepLinks.init());
     if (mounted) setState(() => _ready = true);
   }
 

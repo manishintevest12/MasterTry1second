@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- OWNER 29 Oct: Universal Links. With this entitlement, a tapped
+	     https://www.try1second.com/... link opens the app on the matching screen
+	     instead of Safari, provided iOS can fetch
+	     https://www.try1second.com/.well-known/apple-app-site-association. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:www.try1second.com</string>
+		<string>applinks:try1second.com</string>
+	</array>
+</dict>
+</plist>

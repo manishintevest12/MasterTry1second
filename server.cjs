@@ -48886,6 +48886,77 @@ var init_sitemap = __esm({
   }
 });
 
+// server/marketing/appLinkVerify.ts
+var appLinkVerify_exports = {};
+__export(appLinkVerify_exports, {
+  ANDROID_PACKAGE: () => ANDROID_PACKAGE,
+  appleAppSiteAssociation: () => appleAppSiteAssociation,
+  assetLinksJson: () => assetLinksJson,
+  fingerprintList: () => fingerprintList,
+  registerAppLinkRoutes: () => registerAppLinkRoutes
+});
+function extraFingerprints() {
+  return String(process.env.ANDROID_PLAY_SHA256 || "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
+}
+function fingerprintList() {
+  return [RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()];
+}
+function assetLinksJson() {
+  return [
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: ANDROID_PACKAGE,
+        sha256_cert_fingerprints: fingerprintList()
+      }
+    }
+  ];
+}
+function appleAppSiteAssociation() {
+  const team = String(process.env.IOS_TEAM_ID || "").trim();
+  if (!team) return null;
+  const bundle = String(process.env.IOS_BUNDLE_ID || ANDROID_PACKAGE).trim();
+  const appId = `${team}.${bundle}`;
+  const paths = ["/"];
+  return {
+    applinks: {
+      apps: [],
+      details: [{ appID: appId, paths }],
+      // Universal Links 2.0 shape for iOS 13+; both shapes are read by iOS.
+      components: [{ "/": "/*", comment: "every Try1Second path opens the app" }]
+    },
+    // Deep-link the app's own scheme when iOS passes a link through Safari fallback.
+    webcredentials: { apps: [appId] }
+  };
+}
+function registerAppLinkRoutes(app) {
+  app.get("/.well-known/assetlinks.json", (_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(JSON.stringify(assetLinksJson(), null, 2));
+  });
+  app.get("/.well-known/apple-app-site-association", (_req, res) => {
+    const aasa = appleAppSiteAssociation();
+    if (!aasa) {
+      res.status(404).setHeader("Content-Type", "application/json");
+      res.send(JSON.stringify({ error: "iOS universal links need IOS_TEAM_ID to be configured" }));
+      return;
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(JSON.stringify(aasa, null, 2));
+  });
+}
+var ANDROID_PACKAGE, RELEASE_SHA256, DEBUG_SHA256;
+var init_appLinkVerify = __esm({
+  "server/marketing/appLinkVerify.ts"() {
+    ANDROID_PACKAGE = "com.try1second.try1second";
+    RELEASE_SHA256 = "BC:22:41:42:7D:5B:43:B8:51:9F:AE:A3:81:33:45:CA:A3:9E:D6:05:8A:65:38:46:43:85:8D:C8:DC:F1:5C:DE";
+    DEBUG_SHA256 = "45:9E:B5:8E:8F:71:B0:94:26:59:E5:17:96:C1:54:06:F9:D0:98:F5:64:2E:15:89:A2:23:6B:67:58:30:A7:C5";
+  }
+});
+
 // server/common/singleton.ts
 var singleton_exports = {};
 __export(singleton_exports, {
@@ -49339,6 +49410,8 @@ async function createApp() {
   app.use("/api/v1", affiliateRouter2);
   const { registerSeoRoutes: registerSeoRoutes2 } = await Promise.resolve().then(() => (init_sitemap(), sitemap_exports));
   registerSeoRoutes2(app);
+  const { registerAppLinkRoutes: registerAppLinkRoutes2 } = await Promise.resolve().then(() => (init_appLinkVerify(), appLinkVerify_exports));
+  registerAppLinkRoutes2(app);
   await bootstrapBackend2();
   if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));

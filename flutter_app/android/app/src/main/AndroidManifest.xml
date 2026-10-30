@@ -30,6 +30,36 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- ANDROID APP LINKS (owner 29 Oct: "universal link khule to app me khule,
+                 browser me nahi"). autoVerify=true makes Android verify these two hosts
+                 against https://www.try1second.com/.well-known/assetlinks.json at install
+                 time; once verified, a tapped try1second.com link opens THIS activity
+                 instead of Chrome, with no chooser dialog.
+                 Every path on the host is claimed on purpose: the app decides what it can
+                 show natively (see lib/core/deep_links.dart) and hands /api/out,
+                 /redirect, /api/*, /admininsta and /merchantinstab2b straight back to
+                 the system browser, so affiliate attribution and the AdSense
+                 interstitial keep working exactly as before. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="www.try1second.com"/>
+                <data android:scheme="https" android:host="try1second.com"/>
+                <data android:scheme="http" android:host="www.try1second.com"/>
+                <data android:scheme="http" android:host="try1second.com"/>
+            </intent-filter>
+
+            <!-- CUSTOM SCHEME: try1second://flights?query=Delhi%20to%20Mumbai
+                 (push notifications, emails, QR codes, cross-app links). No verification
+                 is possible or needed for a custom scheme. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="try1second"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

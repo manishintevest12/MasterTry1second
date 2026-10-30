@@ -66,5 +66,20 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<!-- OWNER 29 Oct: custom scheme try1second://... opens the app from
+			     Safari, emails and cross-app links (universal links cover https). -->
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.try1second.try1second</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>try1second</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
