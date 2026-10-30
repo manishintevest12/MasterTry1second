@@ -23493,7 +23493,7 @@ function bmsDiscoverHeaders(region) {
     "x-bms-id": "1"
   };
 }
-function bmsBuyTicketsUrl2(region, eventCode, dateISO) {
+function bmsBuyTicketsUrl(region, eventCode, dateISO) {
   const code = String(eventCode || "").trim();
   if (!code || !region?.regionCode || !region?.regionSlug) return "";
   if (!/^ET\d{6,}$/i.test(code)) return "";
@@ -23537,7 +23537,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
         // code is missing.
         // Booking code MUST be the one from the page URL (ET…); the card id (EG…) is an
         // event code whose buytickets page says "no shows available" — LIVE-VERIFIED.
-        sellerUrl: bmsBuyTicketsUrl2(region, pageCode) || ctaUrl,
+        sellerUrl: bmsBuyTicketsUrl(region, pageCode) || ctaUrl,
         availability: "in_stock",
         // now-showing in this region per BMS itself
         location: { city: region.regionName },
@@ -23548,7 +23548,7 @@ function parseMovieCards(payload, source, region, query, fingerprint) {
           ...eventCode ? { event_code: eventCode } : {},
           movie_page_url: ctaUrl,
           ...pageCode ? { booking_code: pageCode } : {},
-          ...pageCode ? { booking_url: bmsBuyTicketsUrl2(region, pageCode) } : {},
+          ...pageCode ? { booking_url: bmsBuyTicketsUrl(region, pageCode) } : {},
           platform: "BookMyShow"
         },
         evidence: {
@@ -30391,7 +30391,6 @@ var init_resourceGuard = __esm({
         loadPerCore: Math.round(import_node_os2.default.loadavg()[0] / Math.max(1, import_node_os2.default.cpus().length) * 100) / 100,
         heapPct: Math.round(heapPct() * 100),
         rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
-        pressure,
         pressure,
         backgroundAllowed: backgroundAllowed(),
         reason: lastReason
@@ -41610,6 +41609,15 @@ var init_routes = __esm({
       if (String(input.vertical) === "cab") input.query = resolveCabQuery(input.query, input.city);
       if (!input.query?.trim()) return res.status(400).json({ success: false, error: "A search query is required." });
       const searchStart = Date.now();
+      const chainKey = pollKey([
+        req.ip,
+        input.vertical,
+        input.query,
+        input.city,
+        input.pincode,
+        input.travelDates?.depart,
+        input.travelDates?.return
+      ]);
       input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
       const budgetMs = Math.min(resultDeadlineMs(), 2e3);
       const searched = runSearch(input);
@@ -41724,7 +41732,7 @@ var init_routes = __esm({
       }
       input.coldDeadlineMs = resultDeadlineMs();
       const searchStart = Date.now();
-      const chainKey2 = pollKey([
+      const chainKey = pollKey([
         req.ip,
         input.vertical,
         input.query,
@@ -41763,7 +41771,7 @@ var init_routes = __esm({
         if (fallback) {
           return res.json({
             ...fallback,
-            pendingRefresh: allowPending(chainKey2, true),
+            pendingRefresh: allowPending(chainKey, true),
             honestNotice: "Showing our last verified prices while live sources keep scanning. They update here automatically.",
             latencyMs: Date.now() - searchStart
           });
@@ -41850,7 +41858,7 @@ var init_routes = __esm({
               sourcesSucceeded: response.state.sourcesSucceeded,
               sourcesFailed: response.state.sourcesFailed,
               servedFrom: "last_verified",
-              pendingRefresh: allowPending(chainKey2, true),
+              pendingRefresh: allowPending(chainKey, true),
               resultsCount: lkg.rows.length,
               latencyMs: response.latencyMs
             });
@@ -41920,14 +41928,14 @@ var init_routes = __esm({
             sourcesSucceeded: response.state.sourcesSucceeded,
             sourcesFailed: response.state.sourcesFailed,
             servedFrom: "last_verified",
-            pendingRefresh: allowPending(chainKey2, true),
+            pendingRefresh: allowPending(chainKey, true),
             resultsCount: lkg.rows.length,
             latencyMs: response.latencyMs
           });
         }
       }
-      const stillPending = allowPending(chainKey2, !!response.state.pendingRefresh);
-      if (!stillPending) forgetPending(chainKey2);
+      const stillPending = allowPending(chainKey, !!response.state.pendingRefresh);
+      if (!stillPending) forgetPending(chainKey);
       res.json({
         results: grouped,
         honestNotice: response.state.honestNotice,
