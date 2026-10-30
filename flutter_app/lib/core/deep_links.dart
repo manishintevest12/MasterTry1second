@@ -45,7 +45,10 @@ class DeepLinks {
     'insurance': 'insurance',
     'credit-cards': 'creditcards',
     'bank-accounts': 'account',
-    'banking': 'banking',
+    // The site exposes /banking as its own page; the app has no banking TAB --
+    // both banking and bank accounts live in the 'account' vertical, so the link
+    // must land there instead of on an id no screen knows (blank compare tab).
+    'banking': 'account',
   };
 
   /// City / place style slugs: the tail is the starting query as-is.
