@@ -83,10 +83,23 @@ async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', 
   const origin = `https://www.${site}`;
   const srpUrl = `${origin}/Hotel-Search?destination=${encodeURIComponent(`${city}, India`)}&d1=${checkin}&d2=${checkout}&rooms=1`;
   let cookies: Record<string, string> | undefined;
-  const primed = await cffiFetch(srpUrl, { impersonate, timeoutMs: 30_000, returnCookies: true, cookies, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } });
-  cookies = primed.cookies || cookies;
+  // OWNER 30 Oct ("hotels ke gated sources pr kaam kro"): Expedia Group's edge answers a
+  // bare 429 / "Bot or Not?" to first contact and then ADMITS the same request after the
+  // session is warmed. So prime with a short ladder (impersonate chrome -> safari, brief
+  // backoff between tries) instead of failing the whole source on the first challenge.
+  // Every attempt is a real request; nothing is fabricated, and if all tries stay gated the
+  // source still reports ACCESS_CHALLENGE honestly.
+  const primeLadder = [impersonate, impersonate === 'chrome' ? 'safari17_0' : 'chrome'];
+  let primed: any = null;
+  for (let i = 0; i < primeLadder.length; i++) {
+    primed = await cffiFetch(srpUrl, { impersonate: primeLadder[i], timeoutMs: 30_000, returnCookies: true, cookies, headers: { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9' } });
+    cookies = primed.cookies || cookies;
+    const gated = primed.status === 429 || (primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4000)));
+    if (!gated) break;
+    if (i < primeLadder.length - 1) await new Promise((r) => setTimeout(r, 1200));
+  }
   if (primed.status === 429 || (primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4000)))) {
-    throw new AcquisitionError('ACCESS_CHALLENGE', `${site} SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
+    throw new AcquisitionError('ACCESS_CHALLENGE', `${site} SRP edge returned a bot challenge (HTTP ${primed.status}) after ${primeLadder.length} attempts`, primed.status);
   }
   if (primed.status !== 200) throw new AcquisitionError('SERVER_ERROR', `${site} SRP HTTP ${primed.status}`, primed.status);
   const duaid = (primed.body.match(/"duaid":"([0-9a-f-]{36})"/) || [])[1] || cookies?.DUAID || '';
@@ -113,7 +126,24 @@ async function expediaGroupSearch(ctx: any, site: 'expedia.com' | 'hotels.com', 
       'x-page-id': 'page.Hotel-Search,H,20',
     },
   });
-  if (r.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `${site} GraphQL edge returned a bot challenge (HTTP 429)`, 429);
+  if (r.status === 429) {
+    // Same reasoning as the prime ladder: back off once, replay with the warmed cookies.
+    await new Promise((res) => setTimeout(res, 1800));
+    const again = await cffiFetch(`${origin}/graphql`, {
+      method: 'POST', impersonate: primeLadder[primeLadder.length - 1], timeoutMs: 45_000, cookies, body: payload,
+      headers: {
+        'Content-Type': 'application/json', Accept: '*/*', Origin: origin, Referer: srpUrl,
+        'client-info': `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === 'hotels.com' ? 'us-west-2' : 'us-east-1'}`,
+        'x-page-id': 'page.Hotel-Search,H,20',
+      },
+    });
+    if (again.status === 429) throw new AcquisitionError('ACCESS_CHALLENGE', `${site} GraphQL edge returned a bot challenge (HTTP 429) after retry`, 429);
+    if (again.status !== 200) throw new AcquisitionError('SERVER_ERROR', `${site} GraphQL HTTP ${again.status} (retry): ${again.body.slice(0, 160)}`, again.status);
+    const fx2 = await usdToInrRate();
+    const items2 = parseExpediaGroup(again.body, ctx.source, site, checkin, checkout, fx2);
+    if (!items2.length) throw new AcquisitionError('EMPTY_RESPONSE', `${site} GraphQL retry returned no priced LodgingCards for "${city}"`);
+    return items2;
+  }
   if (r.status !== 200) throw new AcquisitionError('SERVER_ERROR', `${site} GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
   const fx = await usdToInrRate(); // live USD->INR; null => keep USD as listed (never a guessed rate)
   const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout, fx);
