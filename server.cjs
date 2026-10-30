@@ -29603,6 +29603,7 @@ __export(merchantLogos_exports, {
   getMerchantLogo: () => getMerchantLogo,
   listMerchantLogos: () => listMerchantLogos,
   merchantLogoMap: () => merchantLogoMap,
+  resolveBrandFavicon: () => resolveBrandFavicon,
   upsertMerchantLogo: () => upsertMerchantLogo,
   validateLogoPayload: () => validateLogoPayload
 });
@@ -29664,13 +29665,117 @@ async function deleteMerchantLogo(nameKey) {
   await ensureMerchantLogosTable();
   await getStore().execute("DELETE FROM merchant_logos WHERE name_key = ?", [String(nameKey || "").slice(0, 80)]);
 }
-var ensured, DATA_URL_RE;
+async function resolveBrandFavicon(nameKey) {
+  const key = String(nameKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const domain = KEY_DOMAIN[key];
+  if (!domain) return void 0;
+  const hit = faviconCache.get(domain);
+  if (hit && Date.now() - hit.at < FAVICON_TTL_MS) return { bytes: hit.bytes, mime: hit.mime };
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4e3);
+    const res = await fetch(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`, {
+      signal: ctl.signal,
+      headers: { "user-agent": "Mozilla/5.0 (compatible; Try1SecondLogoBot/1.0)" }
+    });
+    clearTimeout(t);
+    if (!res.ok) return void 0;
+    const mime = String(res.headers.get("content-type") || "").split(";")[0] || "image/png";
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length < 100 || !/^image\//.test(mime)) return void 0;
+    faviconCache.set(domain, { bytes, mime, at: Date.now() });
+    return { bytes, mime };
+  } catch {
+    return void 0;
+  }
+}
+var ensured, DATA_URL_RE, KEY_DOMAIN, faviconCache, FAVICON_TTL_MS;
 var init_merchantLogos = __esm({
   "server/marketing/merchantLogos.ts"() {
     init_db();
     init_deals();
     ensured = false;
     DATA_URL_RE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+    KEY_DOMAIN = {
+      reliance: "reliancedigital.in",
+      reliancedigital: "reliancedigital.in",
+      croma: "croma.com",
+      amazon: "amazon.in",
+      amzn: "amazon.in",
+      flipkart: "flipkart.com",
+      myntra: "myntra.com",
+      ajio: "ajio.com",
+      tatacliq: "tatacliq.com",
+      tata: "tatacliq.com",
+      meesho: "meesho.com",
+      nykaa: "nykaa.com",
+      snapdeal: "snapdeal.com",
+      jiomart: "jiomart.com",
+      blinkit: "blinkit.com",
+      zepto: "zeptonow.com",
+      zeptonow: "zeptonow.com",
+      instamart: "swiggy.com",
+      swiggy: "swiggy.com",
+      bigbasket: "bigbasket.com",
+      bbnow: "bigbasket.com",
+      flipkartminutes: "flipkart.com",
+      dmart: "dmart.in",
+      spencer: "spencers.in",
+      more: "moreretail.in",
+      vijaysales: "vijaysales.com",
+      poorvika: "poorvika.com",
+      sangeetha: "sangeethamobiles.com",
+      paytm: "paytm.com",
+      tataneu: "newnue.com",
+      firstcry: "firstcry.com",
+      redbus: "redbus.in",
+      abhibus: "abhibus.com",
+      zingbus: "zingbus.com",
+      ola: "olacabs.com",
+      uber: "uber.com",
+      rapido: "rapido.bike",
+      indrive: "indrive.com",
+      blusmart: "blusmart.com",
+      makemytrip: "makemytrip.com",
+      goibibo: "goibibo.com",
+      cleartrip: "cleartrip.com",
+      yatra: "yatra.com",
+      easemytrip: "easemytrip.com",
+      ixigo: "ixigo.com",
+      booking: "booking.com",
+      agoda: "agoda.com",
+      airbnb: "airbnb.co.in",
+      oyo: "oyorooms.com",
+      treebo: "treebo.com",
+      bookmyshow: "bookmyshow.com",
+      district: "district.in",
+      ticketnew: "ticketnew.com",
+      pvr: "pvrcinemas.com",
+      cinepolis: "cinepolisindia.com",
+      inox: "inoxmovies.com",
+      zomato: "zomato.com",
+      dominos: "dominos.co.in",
+      pizzahut: "pizzahut.co.in",
+      eatsure: "eatsure.com",
+      ovenstory: "ovenstorypizzas.com",
+      hdfc: "hdfcbank.com",
+      icici: "icicibank.com",
+      sbi: "sbi.co.in",
+      axis: "axisbank.com",
+      kotak: "kotak.com",
+      bajaj: "bajajfinserv.in",
+      acko: "acko.com",
+      digit: "godigit.com",
+      policybazaar: "policybazaar.com",
+      paisabazaar: "paisabazaar.com",
+      bankbazaar: "bankbazaar.com",
+      indigo: "goindigo.in",
+      spicejet: "spicejet.com",
+      airindia: "airindia.in",
+      akasa: "akasaair.com"
+    };
+    faviconCache = /* @__PURE__ */ new Map();
+    FAVICON_TTL_MS = 12 * 60 * 6e4;
   }
 });
 
@@ -41122,6 +41227,7 @@ var init_routes = __esm({
     init_pricePlausibility();
     init_spellFix();
     init_dealScore();
+    init_deals();
     init_priceAlerts();
     init_notifications();
     init_push();
@@ -42112,17 +42218,26 @@ var init_routes = __esm({
           kept: same.length
         });
       }
+      const productImageUrls = [product?.image, ...Array.isArray(product?.images) ? product.images : []].filter((u) => typeof u === "string" && u.startsWith("https://"));
       const toRow = ({ o, price }) => {
         const attrs = o.attributes || {};
         const imgs = Array.from(new Set([
           String(attrs.image_url || o.image || o.images?.[0] || ""),
-          ...String(attrs.image_urls || "").split("|")
+          ...String(attrs.image_urls || "").split("|"),
+          ...productImageUrls
         ].filter((u) => u.startsWith("https://"))));
+        const sellerName = String(o.seller || o.vendor || "");
+        const logoKey = merchantKeyOf(sellerName);
         return {
           id: o.id,
           title: o.title,
-          seller: String(o.seller || o.vendor || ""),
+          seller: sellerName,
           price,
+          // Seller brand logo: /api/logos/<key> always answers a real image now (admin upload
+          // or the brand's own favicon), so the app can paint the seller mark instead of a
+          // grey placeholder. Web resolves the same key via FAV().
+          sellerLogoKey: logoKey,
+          sellerLogo: logoKey ? `/api/logos/${logoKey}` : "",
           listPrice: Number(o.prices?.listPrice ?? 0) || 0,
           image: imgs[0] || null,
           images: imgs.slice(0, 8),
@@ -42154,6 +42269,8 @@ var init_routes = __esm({
           listPrice: sd.listPrice || 0,
           image: sd.image,
           images: sd.image ? [sd.image] : [],
+          sellerLogoKey: merchantKeyOf(sd.seller),
+          sellerLogo: merchantKeyOf(sd.seller) ? `/api/logos/${merchantKeyOf(sd.seller)}` : "",
           availability: "unknown",
           rating: null,
           reviews: null,
@@ -42726,12 +42843,21 @@ var init_routes = __esm({
     });
     apiRouter.get("/logos/:key", async (req, res) => {
       try {
-        const { getMerchantLogo: getMerchantLogo2, decodeLogoDataUrl: decodeLogoDataUrl2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
-        const row = await getMerchantLogo2(String(req.params.key || ""));
+        const { getMerchantLogo: getMerchantLogo2, decodeLogoDataUrl: decodeLogoDataUrl2, resolveBrandFavicon: resolveBrandFavicon2 } = await Promise.resolve().then(() => (init_merchantLogos(), merchantLogos_exports));
+        const row = await getMerchantLogo2(String(req.params.key || "")).catch(() => null);
         const dec = row ? decodeLogoDataUrl2(row.logo) : null;
-        if (!dec) return res.status(404).type("image/png").end();
-        res.set("Cache-Control", "public, max-age=300");
-        res.type(dec.mime).send(dec.bytes);
+        if (dec) {
+          res.set("Cache-Control", "public, max-age=300");
+          res.type(dec.mime).send(dec.bytes);
+          return;
+        }
+        const fav = await resolveBrandFavicon2(String(req.params.key || ""));
+        if (fav) {
+          res.set("Cache-Control", "public, max-age=86400");
+          res.type(fav.mime).send(fav.bytes);
+          return;
+        }
+        return res.status(404).type("image/png").end();
       } catch {
         res.status(404).end();
       }

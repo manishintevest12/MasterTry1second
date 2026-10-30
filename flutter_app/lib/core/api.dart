@@ -878,8 +878,13 @@ class ProductOffer {
   final int reviews;
   final String availability; // '' | 'out_of_stock' | ...
   final int variantCount;
+  /// Seller brand logo (owner 29 Oct: "logo not showing for sellers"). Server sends
+  /// `/api/logos/<key>` which ALWAYS answers a real image now (admin upload, else the
+  /// brand's own favicon), so the compared-sellers circle paints a real mark instead
+  /// of the grey storefront placeholder. Relative path: prefix it with the API base.
+  final String sellerLogo;
   const ProductOffer(this.title, this.seller, this.price, this.listPrice, this.image, this.rating, this.goUrl,
-      {this.reviews = 0, this.availability = '', this.variantCount = 0});
+      {this.reviews = 0, this.availability = '', this.variantCount = 0, this.sellerLogo = ''});
   factory ProductOffer.fromJson(Map<String, dynamic> j) => ProductOffer(
         '${j['title'] ?? ''}',
         '${j['seller'] ?? ''}',
@@ -891,6 +896,7 @@ class ProductOffer {
         reviews: (j['reviews'] is num) ? (j['reviews'] as num).toInt() : 0,
         availability: '${j['availability'] ?? ''}',
         variantCount: (j['variantCount'] is num) ? (j['variantCount'] as num).toInt() : 0,
+        sellerLogo: '${j['sellerLogo'] ?? (j['sellerLogoKey'] != null ? '/api/logos/${j['sellerLogoKey']}' : '')}',
       );
 }
 

@@ -56,6 +56,7 @@ import { isSameProduct, sharesIdentity } from '../lens/sameProduct';
 import { dropImplausiblePrices } from '../lens/pricePlausibility';
 import { fixSpelling } from '../lens/spellFix';
 import { analyseDeal } from '../lens/dealScore';
+import { merchantKeyOf } from '../marketing/deals';
 import { createAlert, listAlerts, deleteAlert } from '../lens/priceAlerts';
 import { userNotifications, broadcastNotifications, markRead, markAllRead } from '../notifications/notifications';
 import { pushPublicKey, saveWebSubscription, saveFcmToken, removeSubscription } from '../push/push';
@@ -1774,14 +1775,28 @@ apiRouter.post('/product-page', async (req, res) => {
       query: lensQuery, dropped: plausible.dropped.slice(0, 3).map((x: any) => `${x.o?.seller}:${x.price}`), kept: same.length,
     });
   }
+  // Product-level photos for this exact product. An offer row (especially a catalogue
+  // replay row) often carries no photo of its own, which left the compared-sellers
+  // circles BLANK on the Product Page (owner 29 Oct). Same product, so the product photo
+  // is the honest thumbnail; the seller's own logo is sent alongside it.
+  const productImageUrls = [product?.image, ...(Array.isArray(product?.images) ? product.images : [])]
+    .filter((u: any) => typeof u === 'string' && u.startsWith('https://'));
   const toRow = ({ o, price }: any) => {
     const attrs = o.attributes || {};
     const imgs = Array.from(new Set([
       String(attrs.image_url || o.image || o.images?.[0] || ''),
       ...String(attrs.image_urls || '').split('|'),
+      ...productImageUrls,
     ].filter((u: string) => u.startsWith('https://'))));
+    const sellerName = String(o.seller || o.vendor || '');
+    const logoKey = merchantKeyOf(sellerName);
     return {
-      id: o.id, title: o.title, seller: String(o.seller || o.vendor || ''), price,
+      id: o.id, title: o.title, seller: sellerName, price,
+      // Seller brand logo: /api/logos/<key> always answers a real image now (admin upload
+      // or the brand's own favicon), so the app can paint the seller mark instead of a
+      // grey placeholder. Web resolves the same key via FAV().
+      sellerLogoKey: logoKey,
+      sellerLogo: logoKey ? `/api/logos/${logoKey}` : '',
       listPrice: Number(o.prices?.listPrice ?? 0) || 0,
       image: imgs[0] || null, images: imgs.slice(0, 8),
       availability: o.availability || 'unknown',
@@ -1814,6 +1829,7 @@ apiRouter.post('/product-page', async (req, res) => {
     offers.push({
       id: `seed-${k}`, title: sd.title, seller: sd.seller, price: sd.price,
       listPrice: sd.listPrice || 0, image: sd.image, images: sd.image ? [sd.image] : [],
+      sellerLogoKey: merchantKeyOf(sd.seller), sellerLogo: merchantKeyOf(sd.seller) ? `/api/logos/${merchantKeyOf(sd.seller)}` : '',
       availability: 'unknown', rating: null, reviews: null, canonicalEntityId: null,
       goUrl: sd.url, variantCount: 0,
     });
@@ -2612,12 +2628,26 @@ apiRouter.get('/merchant/leads', authMiddleware, requireAuth, async (req, res) =
 // (stable absolute URL usable by web <img>, Flutter Image.network and email clients).
 apiRouter.get('/logos/:key', async (req, res) => {
   try {
-    const { getMerchantLogo, decodeLogoDataUrl } = await import('../marketing/merchantLogos');
-    const row = await getMerchantLogo(String(req.params.key || ''));
+    const { getMerchantLogo, decodeLogoDataUrl, resolveBrandFavicon } = await import('../marketing/merchantLogos');
+    // Storage trouble must never mean "no logo": fall through to the brand favicon.
+    const row = await getMerchantLogo(String(req.params.key || '')).catch(() => null);
     const dec = row ? decodeLogoDataUrl(row.logo) : null;
-    if (!dec) return res.status(404).type('image/png').end();
-    res.set('Cache-Control', 'public, max-age=300');
-    res.type(dec.mime).send(dec.bytes);
+    if (dec) {
+      res.set('Cache-Control', 'public, max-age=300');
+      res.type(dec.mime).send(dec.bytes);
+      return;
+    }
+    // No admin upload for this brand: self-heal with the brand's own favicon instead of
+    // answering "no logo" (owner 29 Oct — the Product Page compared-sellers circles were
+    // all empty because every one of them was a 404). Cached 12h in-process; unknown
+    // brands still 404 so the UI keeps its initials badge instead of inventing a logo.
+    const fav = await resolveBrandFavicon(String(req.params.key || ''));
+    if (fav) {
+      res.set('Cache-Control', 'public, max-age=86400');
+      res.type(fav.mime).send(fav.bytes);
+      return;
+    }
+    return res.status(404).type('image/png').end();
   } catch {
     res.status(404).end();
   }
