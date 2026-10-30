@@ -34,6 +34,77 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// server/marketing/appLinkVerify.ts
+var appLinkVerify_exports = {};
+__export(appLinkVerify_exports, {
+  ANDROID_PACKAGE: () => ANDROID_PACKAGE,
+  appleAppSiteAssociation: () => appleAppSiteAssociation,
+  assetLinksJson: () => assetLinksJson,
+  fingerprintList: () => fingerprintList,
+  registerAppLinkRoutes: () => registerAppLinkRoutes
+});
+function extraFingerprints() {
+  return String(process.env.ANDROID_PLAY_SHA256 || "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
+}
+function fingerprintList() {
+  return [.../* @__PURE__ */ new Set([RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()])];
+}
+function assetLinksJson() {
+  return [
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: ANDROID_PACKAGE,
+        sha256_cert_fingerprints: fingerprintList()
+      }
+    }
+  ];
+}
+function appleAppSiteAssociation() {
+  const team = String(process.env.IOS_TEAM_ID || "").trim();
+  if (!team) return null;
+  const bundle = String(process.env.IOS_BUNDLE_ID || ANDROID_PACKAGE).trim();
+  const appId = `${team}.${bundle}`;
+  const paths = ["/"];
+  return {
+    applinks: {
+      apps: [],
+      details: [{ appID: appId, paths }],
+      // Universal Links 2.0 shape for iOS 13+; both shapes are read by iOS.
+      components: [{ "/": "/*", comment: "every Try1Second path opens the app" }]
+    },
+    // Deep-link the app's own scheme when iOS passes a link through Safari fallback.
+    webcredentials: { apps: [appId] }
+  };
+}
+function registerAppLinkRoutes(app) {
+  app.get("/.well-known/assetlinks.json", (_req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(JSON.stringify(assetLinksJson(), null, 2));
+  });
+  app.get("/.well-known/apple-app-site-association", (_req, res) => {
+    const aasa = appleAppSiteAssociation();
+    if (!aasa) {
+      res.status(404).setHeader("Content-Type", "application/json");
+      res.send(JSON.stringify({ error: "iOS universal links need IOS_TEAM_ID to be configured" }));
+      return;
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.send(JSON.stringify(aasa, null, 2));
+  });
+}
+var ANDROID_PACKAGE, RELEASE_SHA256, DEBUG_SHA256;
+var init_appLinkVerify = __esm({
+  "server/marketing/appLinkVerify.ts"() {
+    ANDROID_PACKAGE = "com.try1second.try1second";
+    RELEASE_SHA256 = "BC:22:41:42:7D:5B:43:B8:51:9F:AE:A3:81:33:45:CA:A3:9E:D6:05:8A:65:38:46:43:85:8D:C8:DC:F1:5C:DE";
+    DEBUG_SHA256 = "45:9E:B5:8E:8F:71:B0:94:26:59:E5:17:96:C1:54:06:F9:D0:98:F5:64:2E:15:89:A2:23:6B:67:58:30:A7:C5";
+  }
+});
+
 // server/common/settings.ts
 var settings_exports = {};
 __export(settings_exports, {
@@ -6186,10 +6257,17 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
   const origin = `https://www.${site}`;
   const srpUrl = `${origin}/Hotel-Search?destination=${encodeURIComponent(`${city}, India`)}&d1=${checkin}&d2=${checkout}&rooms=1`;
   let cookies;
-  const primed = await cffiFetch(srpUrl, { impersonate, timeoutMs: 3e4, returnCookies: true, cookies, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } });
-  cookies = primed.cookies || cookies;
+  const primeLadder = [impersonate, impersonate === "chrome" ? "safari17_0" : "chrome"];
+  let primed = null;
+  for (let i = 0; i < primeLadder.length; i++) {
+    primed = await cffiFetch(srpUrl, { impersonate: primeLadder[i], timeoutMs: 3e4, returnCookies: true, cookies, headers: { Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en;q=0.9" } });
+    cookies = primed.cookies || cookies;
+    const gated = primed.status === 429 || primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4e3));
+    if (!gated) break;
+    if (i < primeLadder.length - 1) await new Promise((r2) => setTimeout(r2, 1200));
+  }
   if (primed.status === 429 || primed.status === 200 && /Bot or Not\?/.test(primed.body.slice(0, 4e3))) {
-    throw new AcquisitionError("ACCESS_CHALLENGE", `${site} SRP edge returned a bot challenge (HTTP ${primed.status})`, primed.status);
+    throw new AcquisitionError("ACCESS_CHALLENGE", `${site} SRP edge returned a bot challenge (HTTP ${primed.status}) after ${primeLadder.length} attempts`, primed.status);
   }
   if (primed.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${site} SRP HTTP ${primed.status}`, primed.status);
   const duaid = (primed.body.match(/"duaid":"([0-9a-f-]{36})"/) || [])[1] || cookies?.DUAID || "";
@@ -6223,7 +6301,30 @@ async function expediaGroupSearch(ctx, site, impersonate, city, checkin, checkou
       "x-page-id": "page.Hotel-Search,H,20"
     }
   });
-  if (r.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", `${site} GraphQL edge returned a bot challenge (HTTP 429)`, 429);
+  if (r.status === 429) {
+    await new Promise((res) => setTimeout(res, 1800));
+    const again = await cffiFetch(`${origin}/graphql`, {
+      method: "POST",
+      impersonate: primeLadder[primeLadder.length - 1],
+      timeoutMs: 45e3,
+      cookies,
+      body: payload,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "*/*",
+        Origin: origin,
+        Referer: srpUrl,
+        "client-info": `shopping-pwa,eb187b18bd35573abd2de93e9fd6a422a6206cfe,${site === "hotels.com" ? "us-west-2" : "us-east-1"}`,
+        "x-page-id": "page.Hotel-Search,H,20"
+      }
+    });
+    if (again.status === 429) throw new AcquisitionError("ACCESS_CHALLENGE", `${site} GraphQL edge returned a bot challenge (HTTP 429) after retry`, 429);
+    if (again.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${site} GraphQL HTTP ${again.status} (retry): ${again.body.slice(0, 160)}`, again.status);
+    const fx2 = await usdToInrRate();
+    const items2 = parseExpediaGroup(again.body, ctx.source, site, checkin, checkout, fx2);
+    if (!items2.length) throw new AcquisitionError("EMPTY_RESPONSE", `${site} GraphQL retry returned no priced LodgingCards for "${city}"`);
+    return items2;
+  }
   if (r.status !== 200) throw new AcquisitionError("SERVER_ERROR", `${site} GraphQL HTTP ${r.status}: ${r.body.slice(0, 160)}`, r.status);
   const fx = await usdToInrRate();
   const items = parseExpediaGroup(r.body, ctx.source, site, checkin, checkout, fx);
@@ -18022,26 +18123,26 @@ var init_bharatTaxi = __esm({
 function parseQuickRideCabs(html, source, pageUrl, from, to) {
   const items = [];
   const rows = html.match(/<tr[^>]*>[\s\S]*?<\/tr>/g) || [];
-  const norm6 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  const norm7 = (s) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
   const fare = (s) => {
-    const m = /([\d,]{3,7})/.exec(norm6(s).replace(/[₹]/g, ""));
+    const m = /([\d,]{3,7})/.exec(norm7(s).replace(/[₹]/g, ""));
     return m ? Number(m[1].replace(/,/g, "")) : null;
   };
   const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   for (const row of rows) {
     const cells = row.match(/<t[dh][^>]*>[\s\S]*?<\/t[dh]>/g) || [];
     if (cells.length < 4) continue;
-    const rf = norm6(cells[0] || "").toLowerCase();
-    const rt = norm6(cells[1] || "").toLowerCase();
-    const f = norm6(from || "").toLowerCase();
-    const t = norm6(to || "").toLowerCase();
+    const rf = norm7(cells[0] || "").toLowerCase();
+    const rt = norm7(cells[1] || "").toLowerCase();
+    const f = norm7(from || "").toLowerCase();
+    const t = norm7(to || "").toLowerCase();
     const routeMatch = f && t && (rf.includes(f) || f.includes(rf)) && (rt.includes(t) || t.includes(rt));
     if (!routeMatch) continue;
     const oneWay = fare(cells[2] || "");
     const roundTrip = fare(cells[3] || "");
     if (oneWay && oneWay > 0) {
       items.push(newRawItem(source, {
-        title: `${norm6(cells[0] || "")} to ${norm6(cells[1] || "")} cab (one-way)`,
+        title: `${norm7(cells[0] || "")} to ${norm7(cells[1] || "")} cab (one-way)`,
         brand: "Quick Ride",
         price: Math.round(oneWay),
         currency: "INR",
@@ -18051,7 +18152,7 @@ function parseQuickRideCabs(html, source, pageUrl, from, to) {
         attributes: {
           pickup: from,
           drop: to,
-          route: `${norm6(cells[0] || "")} to ${norm6(cells[1] || "")}`,
+          route: `${norm7(cells[0] || "")} to ${norm7(cells[1] || "")}`,
           vehicle_type: "cab (outstation)",
           trip_type: "one-way",
           round_trip_fare: roundTrip ? String(roundTrip) : "",
@@ -18092,10 +18193,10 @@ async function indriveCityLookup(term) {
 function indrivePickCity(cities, q3) {
   const t = q3.trim().replace(/\s+/g, " ").toLowerCase();
   if (!t) return null;
-  const norm6 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
+  const norm7 = (s) => String(s).toLowerCase().replace(/\s+/g, " ");
   const esc5 = t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const rx = new RegExp(`^${esc5}\\b`);
-  return cities.find((c) => norm6(c.name) === t) || cities.find((c) => rx.test(norm6(c.name))) || cities.find((c) => norm6(c.name).includes(t)) || null;
+  return cities.find((c) => norm7(c.name) === t) || cities.find((c) => rx.test(norm7(c.name))) || cities.find((c) => norm7(c.name).includes(t)) || null;
 }
 async function indrivePrices(fromId, toId) {
   const url = `${HOST_API}/web/v1/prices?city_from_id=${fromId}&city_to_id=${toId}`;
@@ -24157,7 +24258,7 @@ async function gwCityCinemas(host, citySlug2, timeoutMs = 12e3) {
 }
 async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs = 12e3) {
   const byTitle = /* @__PURE__ */ new Map();
-  const norm6 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const norm7 = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const cinemas = await gwCityCinemas(host, citySlug2, timeoutMs);
   const walkOne = async (cinema) => ({
     cinema,
@@ -24181,7 +24282,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
     for (const mv of moviesMeta) titleByMid.set(String(mv?.id || ""), String(mv?.name || "").trim());
     const contentByTitle = /* @__PURE__ */ new Map();
     for (const g of grouped) {
-      const lbl = norm6(String(g?.label || ""));
+      const lbl = norm7(String(g?.label || ""));
       if (lbl && Number(g?.contentId)) contentByTitle.set(lbl, Number(g.contentId));
     }
     const posterByMid = /* @__PURE__ */ new Map();
@@ -24191,7 +24292,7 @@ async function gwCityMovieAggregates(host, citySlug2, maxCinemas = 10, timeoutMs
       const mid = String(ss?.mid || "");
       const title = titleByMid.get(mid) || "";
       if (!title) continue;
-      const key = norm6(title);
+      const key = norm7(title);
       if (!key) continue;
       const areas = [];
       for (const a of ss?.areas || []) {
@@ -35698,11 +35799,12 @@ function b64url2(s) {
 function unb64url2(s) {
   return Buffer.from(s, "base64url").toString("utf8");
 }
-function createInterstitialPointer(url, partner, appScheme) {
+function createInterstitialPointer(url, partner, appScheme, appIntent) {
   const payload = b64url2(JSON.stringify({
     d: url.slice(0, 3e3),
     p: String(partner || "").slice(0, 120),
     s: String(appScheme || "").slice(0, 500),
+    i: String(appIntent || "").slice(0, 1200),
     e: Date.now() + INTERSTITIAL_TTL_MS
   }));
   const sig = import_crypto29.default.createHmac("sha256", secret2()).update(payload).digest("base64url").slice(0, 32);
@@ -35716,7 +35818,12 @@ function resolveInterstitialMeta(token) {
   try {
     const j = JSON.parse(unb64url2(m[1]));
     if (!j?.d || typeof j.d !== "string" || Number(j.e) < Date.now()) return null;
-    return { url: j.d, partner: typeof j.p === "string" ? j.p : "", appScheme: typeof j.s === "string" ? j.s : "" };
+    return {
+      url: j.d,
+      partner: typeof j.p === "string" ? j.p : "",
+      appScheme: typeof j.s === "string" ? j.s : "",
+      appIntent: typeof j.i === "string" ? j.i : ""
+    };
   } catch {
     return null;
   }
@@ -35843,7 +35950,11 @@ function renderInterstitialPage(opts) {
     <span class="dot"></span><span id="lbl">Try1Second redirecting to ${esc(shown)} in <span id="s">${seconds}</span>s</span>
   </div><br>
   <a class="go" id="go" href="${esc(target)}" rel="nofollow noopener">Go now \u2192</a>
-  ${opts.appScheme ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app \u2192</a>` : ""}
+  ${// Owner 30 Oct: the app hop is ONE TAP, never automatic — going straight to the app
+  // would skip the AdSense interstitial the earnings depend on. Android gets the
+  // package-targeted intent (falls back to the tracked URL by itself); iOS and the rest
+  // keep the documented custom scheme when the partner publishes one.
+  opts.appIntent ? `<a class="go" style="background:#111827" href="${esc(opts.appIntent)}" rel="nofollow noopener">Open in the app \u2192</a>` : opts.appScheme ? `<a class="go" style="background:#111827" href="${esc(opts.appScheme)}" rel="nofollow noopener">Open in the app \u2192</a>` : ""}
   <p class="fine">We compared live prices so you pay the lowest. The store page opens automatically.</p>
 </main>
 <noscript><meta http-equiv="refresh" content="${seconds};url=${esc(target)}"></noscript>
@@ -35954,7 +36065,13 @@ async function redirectRouteHandler(req, res) {
     const slot2 = String(process.env.REDIRECT_INTERSTITIAL_AD_SLOT || process.env.ADSENSE_SLOT || process.env.ADSENSE_SLOT_ID || "");
     if (client && slot2) adSlot = { provider: "adsense", adsense_client: client, adsense_slot: slot2 };
   }
-  res.status(200).type("html").send(renderInterstitialPage({ targetUrl: meta.url, partner: meta.partner, appScheme: meta.appScheme, adSlot }));
+  res.status(200).type("html").send(renderInterstitialPage({
+    targetUrl: meta.url,
+    partner: meta.partner,
+    appScheme: meta.appScheme,
+    appIntent: meta.appIntent,
+    adSlot
+  }));
 }
 var import_crypto29, INTERSTITIAL_TTL_MS, COUNTDOWN_SECONDS;
 var init_interstitial = __esm({
@@ -35965,6 +36082,106 @@ var init_interstitial = __esm({
     init_logger();
     INTERSTITIAL_TTL_MS = 10 * 60 * 1e3;
     COUNTDOWN_SECONDS = 4;
+  }
+});
+
+// server/affiliate/appTargets.ts
+function hostOf2(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+function directAppTarget(destinationUrl) {
+  const host = hostOf2(destinationUrl);
+  if (!host) return null;
+  for (const [re, target] of BY_HOST) if (re.test(host)) return target;
+  return null;
+}
+function androidIntentUrl(target, webUrl) {
+  let rest = "";
+  try {
+    const u = new URL(webUrl);
+    rest = `https://${u.host}${u.pathname}${u.search}`;
+  } catch {
+    rest = webUrl;
+  }
+  const payload = rest.replace(/^https:\/\//, "");
+  return `intent://${payload}#Intent;scheme=https;package=${target.pkg};S.browser_fallback_url=${encodeURIComponent(webUrl)};end`;
+}
+function isAndroid(ua) {
+  return /android/i.test(String(ua || ""));
+}
+function appBuildMarker(ua) {
+  const m = String(ua || "").match(/Try1SecondApp\/(\d+(?:\.\d+)?)/);
+  return m ? m[1] : null;
+}
+function appHandlesIntents(ua) {
+  const v = appBuildMarker(ua);
+  if (!v) return false;
+  return parseFloat(v) >= 1.9;
+}
+var BY_HOST, norm6, BY_NAME;
+var init_appTargets = __esm({
+  "server/affiliate/appTargets.ts"() {
+    BY_HOST = [
+      // cabs (native schemes already used by the cab exit page)
+      [/(^|\.)olacabs\.com$|(^|\.)olacabs\.in$/, { label: "Ola", pkg: "com.olacabs.customer", scheme: "olacabs://" }],
+      [/(^|\.)uber\.com$/, { label: "Uber", pkg: "com.ubercab", scheme: "uber://" }],
+      [/(^|\.)rapido\.bike$/, { label: "Rapido", pkg: "com.rapido.passenger", scheme: "rapido://" }],
+      [/(^|\.)indriver\.com$/, { label: "inDrive", pkg: "sinet.startup.inDriver" }],
+      // flights
+      [/(^|\.)goindigo\.in$/, { label: "IndiGo", pkg: "in.goindigo.android" }],
+      [/(^|\.)airindia\.com$|(^|\.)airindia\.in$/, { label: "Air India", pkg: "com.bets.airindia.ui" }],
+      [/(^|\.)akasaair\.com$/, { label: "Akasa Air", pkg: "com.akasaair.ibe" }],
+      [/(^|\.)spicejet\.com$/, { label: "SpiceJet", pkg: "com.vl.spicejet" }],
+      [/(^|\.)makemytrip\.com$/, { label: "MakeMyTrip", pkg: "com.makemytrip" }],
+      [/(^|\.)goibibo\.com$/, { label: "Goibibo", pkg: "com.goibibo" }],
+      [/(^|\.)yatra\.com$/, { label: "Yatra", pkg: "com.yatra.base" }],
+      [/(^|\.)cleartrip\.com$/, { label: "Cleartrip", pkg: "com.cleartrip.android" }],
+      [/(^|\.)easemytrip\.com$/, { label: "EaseMyTrip", pkg: "com.easemytrip.android" }],
+      [/(^|\.)ixigo\.com$/, { label: "ixigo", pkg: "com.ixigo.train.ixigotrains" }],
+      // hotels
+      [/(^|\.)agoda\.com$/, { label: "Agoda", pkg: "com.agoda.mobile.consumer" }],
+      [/(^|\.)booking\.com$/, { label: "Booking.com", pkg: "com.booking" }],
+      [/(^|\.)oyorooms\.com$|(^|\.)oyorooms\.com\.*$|(^|\.)oyo\.com$/, { label: "OYO", pkg: "com.oyo.consumer" }],
+      [/(^|\.)airbnb\.(co\.in|com)$/, { label: "Airbnb", pkg: "com.airbnb.android" }],
+      // bus
+      [/(^|\.)redbus\.in$/, { label: "redBus", pkg: "in.redbus.android", scheme: "redbus://" }],
+      [/(^|\.)abhibus\.com$/, { label: "AbhiBus", pkg: "com.app.abhibus" }],
+      [/(^|\.)zingbus\.com$/, { label: "zingbus", pkg: "com.zingbusbtoc.zingbus" }],
+      // movies
+      [/(^|\.)bookmyshow\.com$/, { label: "BookMyShow", pkg: "com.bt.bms", scheme: "bookmyshow://" }],
+      [/(^|\.)district\.in$/, { label: "District", pkg: "com.application.zomato.district" }],
+      [/(^|\.)cinepolis(india)?\.com$/, { label: "Cin\xE9polis", pkg: "com.ia.cinepolis.india" }],
+      [/(^|\.)ticketnew\.com$/, { label: "TicketNew", pkg: "ticketnew.android.ui" }],
+      // food
+      [/(^|\.)swiggy\.com$/, { label: "Swiggy", pkg: "in.swiggy.android", scheme: "swiggy://" }],
+      [/(^|\.)zomato\.com$/, { label: "Zomato", pkg: "com.application.zomato", scheme: "zomato://" }],
+      [/(^|\.)dominos\.co\.in$/, { label: "Domino's", pkg: "com.Dominos" }],
+      // grocery
+      [/(^|\.)blinkit\.com$/, { label: "Blinkit", pkg: "com.grofers.customerapp", scheme: "blinkit://" }],
+      [/(^|\.)zepto\.com$/, { label: "Zepto", pkg: "com.zeptoconsumerapp" }],
+      [/(^|\.)bigbasket\.com$/, { label: "BigBasket", pkg: "com.bigbasket.mobileapp" }],
+      [/(^|\.)jiomart\.com$/, { label: "JioMart", pkg: "com.jpl.jiomart" }],
+      // ecommerce
+      [/(^|\.)amazon\.(in|com)$|(^|\.)amzn\.to$/, { label: "Amazon", pkg: "com.amazon.mShop.android.shopping", scheme: "amazon://" }],
+      [/(^|\.)flipkart\.com$/, { label: "Flipkart", pkg: "com.flipkart.android", scheme: "flipkart://" }],
+      [/(^|\.)myntra\.com$/, { label: "Myntra", pkg: "com.myntra.android", scheme: "myntra://" }],
+      [/(^|\.)ajio\.com$/, { label: "AJIO", pkg: "com.ril.ajio" }],
+      [/(^|\.)meesho\.com$/, { label: "Meesho", pkg: "com.meesho.supply" }],
+      [/(^|\.)tatacliq\.com$/, { label: "Tata CLiQ", pkg: "com.tul.tatacliq" }],
+      [/(^|\.)reliancedigital\.in$/, { label: "Reliance Digital", pkg: "in.digital.reliance" }],
+      // banking / loans / insurance
+      [/(^|\.)hdfcbank\.com$/, { label: "HDFC Bank", pkg: "com.hdfcbank.android.now" }],
+      [/(^|\.)paisabazaar\.com$/, { label: "Paisabazaar", pkg: "com.paisabazaar" }],
+      [/(^|\.)bankbazaar\.com$/, { label: "BankBazaar", pkg: "com.bankbazaar.app" }],
+      [/(^|\.)insurancedekho\.com$/, { label: "InsuranceDekho", pkg: "com.insurancedekho.pos" }],
+      [/(^|\.)acko\.com$/, { label: "Acko", pkg: "com.acko.android" }]
+    ];
+    norm6 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    BY_NAME = BY_HOST.map(([, t]) => [norm6(t.label), t]);
   }
 });
 
@@ -41205,6 +41422,7 @@ var init_routes = __esm({
     init_deeplink();
     init_cabLinks();
     init_interstitial();
+    init_appTargets();
     init_cabDeeplink();
     init_showcase();
     init_cachedSections();
@@ -41648,12 +41866,25 @@ var init_routes = __esm({
             latencyMs: Date.now() - searchStart
           });
         }
+        const ceilingMs = Math.max(budgetMs, Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 9e3));
+        const late = await Promise.race([
+          searched,
+          new Promise((resolve) => setTimeout(() => resolve(null), ceilingMs - budgetMs))
+        ]);
+        if (late && (late.results || []).length) {
+          return res.json({
+            ...late,
+            pendingRefresh: allowPending(chainKey, true),
+            honestNotice: "Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.",
+            latencyMs: Date.now() - searchStart
+          });
+        }
         return res.json({
           results: [],
           honestNotice: "Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.",
-          sourcesAttempted: [],
-          sourcesSucceeded: [],
-          sourcesFailed: [],
+          sourcesAttempted: late?.sourcesAttempted || [],
+          sourcesSucceeded: late?.sourcesSucceeded || [],
+          sourcesFailed: late?.sourcesFailed || [],
           servedFrom: "unavailable",
           pendingRefresh: allowPending(chainKey, true),
           resultsCount: 0,
@@ -41776,12 +42007,25 @@ var init_routes = __esm({
             latencyMs: Date.now() - searchStart
           });
         }
+        const coldCeiling = Math.max(2e3, Number(process.env.T1S_COLD_SEARCH_CEILING_MS || 9e3));
+        const late = await Promise.race([
+          searchedLive,
+          new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, coldCeiling - (Date.now() - searchStart))))
+        ]);
+        if (late && (late.results || []).length) {
+          return res.json({
+            ...late,
+            pendingRefresh: allowPending(chainKey, true),
+            honestNotice: "Live prices, straight from the sources that answered. Any remaining sites keep scanning and fill in here automatically.",
+            latencyMs: Date.now() - searchStart
+          });
+        }
         return res.json({
           results: [],
           honestNotice: "Live sources are still scanning for exactly what you typed. Prices appear here automatically within a few seconds.",
-          sourcesAttempted: [],
-          sourcesSucceeded: [],
-          sourcesFailed: [],
+          sourcesAttempted: late?.sourcesAttempted || [],
+          sourcesSucceeded: late?.sourcesSucceeded || [],
+          sourcesFailed: late?.sourcesFailed || [],
           servedFrom: "unavailable",
           pendingRefresh: true,
           resultsCount: 0,
@@ -41971,7 +42215,7 @@ var init_routes = __esm({
       const priced = search.results.map((o) => ({ o, price: Number(o.prices?.effectivePrice ?? o.prices?.mandatoryTotal ?? 0) || 0 })).filter((x) => x.price > 0);
       const relevant = vertical === "ecommerce" || !vertical ? priced.filter((x) => isSameProduct(scanQuery, String(x.o.title || ""))) : priced;
       const cheapestFirst = relevant.sort((a, b) => a.price - b.price).slice(0, 8);
-      const hostOf2 = (u) => {
+      const hostOf3 = (u) => {
         try {
           return new URL(u).hostname.replace(/^www\./, "");
         } catch {
@@ -41980,7 +42224,7 @@ var init_routes = __esm({
       };
       const sellerQuotes = cheapestFirst.map((x, i) => ({
         id: `sq-${x.o.id || i}`,
-        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf2(String(x.o.sellerUrl || "")) || "Verified source")),
+        sellerName: hotelSellerLabel(x.o, String(x.o.seller || x.o.vendor || hostOf3(String(x.o.sellerUrl || "")) || "Verified source")),
         price: x.price,
         currency: "\u20B9",
         url: (() => {
@@ -41989,7 +42233,7 @@ var init_routes = __esm({
         })(),
         isLowest: i === 0,
         isLiveScraped: true,
-        sourceDomain: hostOf2(String(x.o.sellerUrl || "")),
+        sourceDomain: hostOf3(String(x.o.sellerUrl || "")),
         deliveryOrEta: x.o.attributes?.eta ? `Delivers in ${x.o.attributes.eta}` : void 0
       }));
       if (product.pagePrice && Number(product.pagePrice) > 0) {
@@ -43086,6 +43330,12 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       const dl = await buildSecureDeeplink(freshDestination);
       await recordPointerClick(freshDestination, resolved.offerId, dl.network);
       if (isInAppWebView(req.headers["user-agent"])) {
+        const ua = String(req.headers["user-agent"] || "");
+        const direct = directAppTarget(freshDestination);
+        if (direct && isAndroid(ua) && appHandlesIntents(ua)) {
+          res.redirect(302, androidIntentUrl(direct, dl.trackingUrl));
+          return;
+        }
         res.redirect(302, dl.trackingUrl);
         return;
       }
@@ -43099,7 +43349,15 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
         cabScheme = cabWebUrlToAppScheme(freshDestination, await getCabDeeplinkConfig());
       } catch {
       }
-      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme)}`);
+      let appIntent = null;
+      try {
+        const direct = directAppTarget(freshDestination);
+        if (direct && isAndroid(String(req.headers["user-agent"] || ""))) {
+          appIntent = androidIntentUrl(direct, dl.trackingUrl);
+        }
+      } catch {
+      }
+      res.redirect(302, `/redirect?k=${createInterstitialPointer(dl.trackingUrl, partnerHost, cabScheme, appIntent)}`);
     });
     apiRouter.get("/promo-offers", async (req, res) => {
       try {
@@ -45086,9 +45344,9 @@ function splitCsvLine(line) {
 }
 function headerIndex(headers, key) {
   const wanted = HEADER_ALIASES[key] || [];
-  const norm6 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
+  const norm7 = headers.map((h) => h.toLowerCase().replace(/[()]/g, " ").replace(/\s+/g, " ").trim());
   for (const w of wanted) {
-    const i = norm6.findIndex((h) => h === w || h.startsWith(`${w} `));
+    const i = norm7.findIndex((h) => h === w || h.startsWith(`${w} `));
     if (i >= 0) return i;
   }
   return -1;
@@ -48894,77 +49152,6 @@ var init_sitemap = __esm({
   }
 });
 
-// server/marketing/appLinkVerify.ts
-var appLinkVerify_exports = {};
-__export(appLinkVerify_exports, {
-  ANDROID_PACKAGE: () => ANDROID_PACKAGE,
-  appleAppSiteAssociation: () => appleAppSiteAssociation,
-  assetLinksJson: () => assetLinksJson,
-  fingerprintList: () => fingerprintList,
-  registerAppLinkRoutes: () => registerAppLinkRoutes
-});
-function extraFingerprints() {
-  return String(process.env.ANDROID_PLAY_SHA256 || "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
-}
-function fingerprintList() {
-  return [.../* @__PURE__ */ new Set([RELEASE_SHA256, DEBUG_SHA256, ...extraFingerprints()])];
-}
-function assetLinksJson() {
-  return [
-    {
-      relation: ["delegate_permission/common.handle_all_urls"],
-      target: {
-        namespace: "android_app",
-        package_name: ANDROID_PACKAGE,
-        sha256_cert_fingerprints: fingerprintList()
-      }
-    }
-  ];
-}
-function appleAppSiteAssociation() {
-  const team = String(process.env.IOS_TEAM_ID || "").trim();
-  if (!team) return null;
-  const bundle = String(process.env.IOS_BUNDLE_ID || ANDROID_PACKAGE).trim();
-  const appId = `${team}.${bundle}`;
-  const paths = ["/"];
-  return {
-    applinks: {
-      apps: [],
-      details: [{ appID: appId, paths }],
-      // Universal Links 2.0 shape for iOS 13+; both shapes are read by iOS.
-      components: [{ "/": "/*", comment: "every Try1Second path opens the app" }]
-    },
-    // Deep-link the app's own scheme when iOS passes a link through Safari fallback.
-    webcredentials: { apps: [appId] }
-  };
-}
-function registerAppLinkRoutes(app) {
-  app.get("/.well-known/assetlinks.json", (_req, res) => {
-    res.setHeader("Content-Type", "application/json");
-    res.setHeader("Cache-Control", "public, max-age=300");
-    res.send(JSON.stringify(assetLinksJson(), null, 2));
-  });
-  app.get("/.well-known/apple-app-site-association", (_req, res) => {
-    const aasa = appleAppSiteAssociation();
-    if (!aasa) {
-      res.status(404).setHeader("Content-Type", "application/json");
-      res.send(JSON.stringify({ error: "iOS universal links need IOS_TEAM_ID to be configured" }));
-      return;
-    }
-    res.setHeader("Content-Type", "application/json");
-    res.setHeader("Cache-Control", "public, max-age=300");
-    res.send(JSON.stringify(aasa, null, 2));
-  });
-}
-var ANDROID_PACKAGE, RELEASE_SHA256, DEBUG_SHA256;
-var init_appLinkVerify = __esm({
-  "server/marketing/appLinkVerify.ts"() {
-    ANDROID_PACKAGE = "com.try1second.try1second";
-    RELEASE_SHA256 = "BC:22:41:42:7D:5B:43:B8:51:9F:AE:A3:81:33:45:CA:A3:9E:D6:05:8A:65:38:46:43:85:8D:C8:DC:F1:5C:DE";
-    DEBUG_SHA256 = "45:9E:B5:8E:8F:71:B0:94:26:59:E5:17:96:C1:54:06:F9:D0:98:F5:64:2E:15:89:A2:23:6B:67:58:30:A7:C5";
-  }
-});
-
 // server/common/singleton.ts
 var singleton_exports = {};
 __export(singleton_exports, {
@@ -49384,6 +49571,28 @@ var import_path7 = __toESM(require("path"), 1);
 var import_fs7 = __toESM(require("fs"), 1);
 var import_express4 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
+
+// server/common/canonicalHost.ts
+var APEX_HOST = "try1second.com";
+function isVerificationPath(path15) {
+  return String(path15 || "").toLowerCase().startsWith("/.well-known/");
+}
+function apexRedirectEnabled() {
+  return String(process.env.FORCE_WWW_REDIRECT || "").trim() === "1";
+}
+function shouldRedirectApexToWww(host, path15) {
+  if (!apexRedirectEnabled()) return false;
+  const h = String(host || "").toLowerCase();
+  const isApex = h === APEX_HOST || new RegExp(`^${APEX_HOST.replace(/\./g, "\\.")}:\\d+$`).test(h);
+  if (!isApex) return false;
+  if (isVerificationPath(String(path15 || ""))) return false;
+  return true;
+}
+function canonicalWwwUrl(originalUrl) {
+  return `https://www.${APEX_HOST}${originalUrl || "/"}`;
+}
+
+// server/index.ts
 var __dirname2 = process.cwd();
 async function createApp() {
   const app = (0, import_express4.default)();
@@ -49395,11 +49604,11 @@ async function createApp() {
   });
   app.use((0, import_compression.default)());
   app.use(import_express4.default.json({ limit: "256kb" }));
+  const { registerAppLinkRoutes: registerAppLinkRoutes2 } = await Promise.resolve().then(() => (init_appLinkVerify(), appLinkVerify_exports));
+  registerAppLinkRoutes2(app);
   app.use((req, res, next) => {
-    const host = (req.headers.host || "").toLowerCase();
-    const isVerificationFile = (req.path || req.url || "").startsWith("/.well-known/");
-    if (!isVerificationFile && (host === "try1second.com" || /^try1second\.com:\d+$/.test(host))) {
-      res.redirect(301, `https://www.try1second.com${req.originalUrl || req.url}`);
+    if (shouldRedirectApexToWww(req.headers.host, req.path || req.url)) {
+      res.redirect(301, canonicalWwwUrl(req.originalUrl || req.url));
       return;
     }
     next();
@@ -49419,8 +49628,6 @@ async function createApp() {
   app.use("/api/v1", affiliateRouter2);
   const { registerSeoRoutes: registerSeoRoutes2 } = await Promise.resolve().then(() => (init_sitemap(), sitemap_exports));
   registerSeoRoutes2(app);
-  const { registerAppLinkRoutes: registerAppLinkRoutes2 } = await Promise.resolve().then(() => (init_appLinkVerify(), appLinkVerify_exports));
-  registerAppLinkRoutes2(app);
   await bootstrapBackend2();
   if (settings3.env !== "test") {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));

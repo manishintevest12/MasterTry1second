@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'product_screen.dart';
+import 'package:try1second/core/app_handoff.dart';
 import 'package:try1second/core/nav_stack.dart';
 
 /// Derives a friendly seller name from the redirect's final host, mirroring the
@@ -121,15 +122,39 @@ class _InAppBrowserScreenState extends State<InAppBrowserScreen> {
       // already carries "; wv)"; this marker makes iOS deterministic too.
       ..setUserAgent(
           'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) '
-          'Chrome/128.0.0.0 Mobile Safari/537.36 Try1SecondApp/1.8')
+          'Chrome/128.0.0.0 Mobile Safari/537.36 Try1SecondApp/1.9')
       ..setNavigationDelegate(NavigationDelegate(
         onPageStarted: (url) => _set(url: url, loading: true),
         onPageFinished: (url) => _syncState(url: url, loading: false),
-        // Block popups/blank targets inside the embedded view.
-        onNavigationRequest: (req) => req.url.startsWith('http') ? NavigationDecision.navigate : NavigationDecision.prevent,
+        // App-to-app (owner 30 Oct): a merchant exit can arrive as
+        // `intent://...#Intent;package=<partner>;S.browser_fallback_url=<paid url>;end`,
+        // or as a partner scheme (uber://, olacabs://, blinkit://, swiggy://...). A webview
+        // cannot resolve either, so it is handed to the OS: the partner's installed app
+        // opens, and when it is missing the engine's browser_fallback_url (our tracked
+        // affiliate link) loads here instead — the click is never lost either way.
+        onNavigationRequest: (req) {
+          if (AppHandoff.isExternalHandoff(req.url)) {
+            _handOff(req.url);
+            return NavigationDecision.prevent;
+          }
+          return req.url.startsWith('http')
+              ? NavigationDecision.navigate
+              : NavigationDecision.prevent;
+        },
       ))
       ..loadRequest(Uri.parse(widget.url));
     _controller = c;
+  }
+
+  /// Hands a partner app URL to the OS and keeps a paid fallback if the app is absent.
+  Future<void> _handOff(String url) async {
+    final fallback = await AppHandoff.open(url);
+    if (!mounted) return;
+    if (fallback != null && fallback.isNotEmpty) {
+      _set(loading: true);
+      await _controller?.loadRequest(Uri.parse(fallback));
+      _syncState(url: fallback);
+    }
   }
 
   void _set({String? url, bool? loading}) {
