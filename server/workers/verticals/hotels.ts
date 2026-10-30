@@ -50,8 +50,19 @@ function cityFromQuery(ctx: { query: any }): string | null {
   const raw = String(q.rawQuery || '').trim();
   // The destination the USER TYPED always wins over their device/profile city
   // (searching "Goa" from Delhi must never return Delhi hotels).
-  const strip = (x: string) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, ' ')
-    .replace(/,.*$/, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+  // Owner 29 Oct (ixigo returned NOT_FOUND for "Shimla 5 Nov 2026"): a DATE left inside the
+  // city string becomes part of the slug, so every city-page source 404s and the vertical
+  // loses a seller for a query shape users actually type. Strip dates, day numbers and years
+  // BEFORE the keyword pass, then keep at most three words (Indian city names are short).
+  const strip = (x: string) => x
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, ' ')
+    .replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, ' ')
+    .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, ' ')
+    .replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, ' ')
+    .replace(/\b(19|20)\d{2}\b/g, ' ')
+    .replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, ' ')
+    .replace(/,.*$/, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim()
+    .split(' ').slice(0, 3).join(' ');
   const cleaned = strip(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q.location?.city) return String(q.location.city);

@@ -6168,7 +6168,7 @@ var init_agodaHotels = __esm({
 function cityFromQuery(ctx) {
   const q3 = ctx.query;
   const raw = String(q3.rawQuery || "").trim();
-  const strip2 = (x) => x.replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  const strip2 = (x) => x.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ").replace(/\b\d{1,2}[\/.-]\d{1,2}([\/.-]\d{2,4})?\b/g, " ").replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s*\d{0,4}\b/gi, " ").replace(/\b\d{1,2}(st|nd|rd|th)?\b/g, " ").replace(/\b(19|20)\d{2}\b/g, " ").replace(/\b(hotels?|rooms?|stay|stays|resorts?|in|near|at|for|book|booking|cheap|best|budget|luxury|check-?in:?|check-?out:?|tonight|night|nights|today|tomorrow|weekend|this|next|under|price)\b/gi, " ").replace(/,.*$/, "").replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim().split(" ").slice(0, 3).join(" ");
   const cleaned = strip2(raw);
   if (cleaned.length >= 3 && cleaned.length <= 40) return cleaned;
   if (q3.location?.city) return String(q3.location.city);
