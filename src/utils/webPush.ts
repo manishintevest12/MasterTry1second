@@ -98,7 +98,7 @@ export async function enablePush(): Promise<{ ok: boolean; status: PushSupport; 
   let sub = await reg.pushManager.getSubscription().catch(() => null);
   if (!sub) {
     sub = await withTimeout(
-      reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) }),
+      reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) as unknown as BufferSource }),
       45000,
       'The push service did not answer. Check the connection and tap Enable again.',
     ).catch(() => null);

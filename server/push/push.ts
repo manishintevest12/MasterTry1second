@@ -306,7 +306,7 @@ export async function saveWebSubscription(input: {
 }
 
 /** Save an Android (FCM) registration token. Same table, kind='fcm'. */
-export async function saveFcmToken(input: { userId?: number | null; token: string; ua?: string | null }): Promise<{ ok: boolean; error?: string }> {
+export async function saveFcmToken(input: { userId?: number | null; token: string; ua?: string | null; platform?: string | null }): Promise<{ ok: boolean; error?: string }> {
   const token = clip(input.token, 1000);
   if (token.length < 20) return { ok: false, error: 'Invalid device token' };
   const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;

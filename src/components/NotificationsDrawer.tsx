@@ -57,7 +57,7 @@ export const NotificationsDrawer: React.FC = () => {
     setPushBusy(true);
     try {
       await disablePush();
-      setPushState(await pushStatus().catch(() => 'default'));
+      setPushState(await pushStatus().catch((): PushSupport => 'default'));
     } finally {
       setPushBusy(false);
     }

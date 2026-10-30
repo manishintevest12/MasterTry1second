@@ -11,7 +11,8 @@
  * fixes voice too.
  */
 import { settings } from '../common/settings';
-import type { SearchInput, SearchResponse } from '../search/searchOrchestrator';
+import type { SearchInput } from '../search/searchOrchestrator';
+import type { SearchResponse } from '../types';
 
 const LOOPBACK = process.env.ALEXA_LOOPBACK_URL || `http://127.0.0.1:${settings.port}`;
 

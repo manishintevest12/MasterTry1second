@@ -729,6 +729,15 @@ apiRouter.post('/search', async (req, res) => {
   // still running at the deadline, answer with the honest still-acquiring marker
   // (pendingRefresh) and let the pipeline finish into the cache the next poll reads.
   const searchStart = Date.now();
+  // OWNER 30 Oct (console audit): this handler called allowPending(chainKey, ...) but never
+  // declared the key, so the honest "sources still scanning, no rows yet" answer threw a
+  // ReferenceError -> 500 exactly when a vertical was slow. Same identity recipe as the
+  // /scrape/live path: one key per search chain, so the flag can expire instead of feeding
+  // an endless poll loop.
+  const chainKey = pollKey([
+    req.ip, input.vertical, input.query, input.city, input.pincode,
+    input.travelDates?.depart, input.travelDates?.return,
+  ]);
   input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
   // Owner 28 Oct, 'har vertical hotels jaisa': measured cold verticals answered at 3.3-4.5s
   // because the race timer fired at 2.4s and the fallback then ran on top. Acquisition now

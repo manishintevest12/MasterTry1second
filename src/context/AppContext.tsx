@@ -768,11 +768,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [items, setItems] = useState<ComparisonItem[]>([]);
 
   // Load the persisted verified catalogue (real acquisitions only).
+  //
+  // OWNER 30 Oct (console audit): /api/catalogue is an ADMIN-ONLY endpoint
+  // (authMiddleware + requireAdmin on the server), but this effect called it for
+  // every visitor — so every page load logged "GET /api/catalogue 403" in the
+  // browser console and burned a request that could never succeed. The session
+  // token is now sent, and nothing is requested at all unless an admin token
+  // exists, so the prefill still works for the admin dashboard and visitors get
+  // a clean console (their rows come from the real live search instead).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/catalogue');
+        const adminToken = localStorage.getItem('t1s_admin_token') || '';
+        if (!adminToken) return;
+        const res = await fetch('/api/catalogue', { headers: { Authorization: `Bearer ${adminToken}` } });
         if (!res.ok) return;
         const data = await res.json();
         const mapped: ComparisonItem[] = [];

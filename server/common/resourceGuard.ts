@@ -111,7 +111,6 @@ export const resourceSnapshot = (): ResourceSnapshot => {
     heapPct: Math.round(heapPct() * 100),
     rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
     pressure,
-  pressure,
     backgroundAllowed: backgroundAllowed(),
     reason: lastReason,
   };

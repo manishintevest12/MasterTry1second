@@ -63,7 +63,7 @@ test('aasa is served only with a real Team ID, never invented', () => {
 
 test('both verification routes answer JSON with no redirect', () => {
   const routes = new Map<string, (req: any, res: any) => void>();
-  registerAppLinkRoutes({ get: (p, h) => routes.set(p, h) } as any);
+  registerAppLinkRoutes({ get: (p: string, h: (req: any, res: any) => void) => { routes.set(p, h); } } as any);
   assert.ok(routes.has('/.well-known/assetlinks.json'));
   assert.ok(routes.has('/.well-known/apple-app-site-association'));
 

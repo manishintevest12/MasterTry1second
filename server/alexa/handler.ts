@@ -21,7 +21,8 @@
  *   Alexa waits ~8s. We answer within VOICE_BUDGET_MS and then either speak real rows or the
  *   honest "still checking" line, so the skill never times out mid-sentence.
  */
-import type { SearchInput, SearchResponse } from '../search/searchOrchestrator';
+import type { SearchInput } from '../search/searchOrchestrator';
+import type { SearchResponse } from '../types';
 
 export const VOICE_BUDGET_MS = 7_000;
 /** Amazon retries a request it thinks got lost; requests older than this are stale. */
