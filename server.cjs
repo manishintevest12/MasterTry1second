@@ -42318,12 +42318,12 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path7, import_express, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path7, import_express2, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
     import_node_path7 = require("node:path");
-    import_express = require("express");
+    import_express2 = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
     init_liveSearchGate();
@@ -42384,7 +42384,7 @@ var init_routes = __esm({
     init_bookmyshow();
     init_badRequestLog();
     init_merchantCrispLogo();
-    apiRouter = (0, import_express.Router)();
+    apiRouter = (0, import_express2.Router)();
     clientDiag = [];
     apiRouter.post("/client-diag", (req, res) => {
       const b = req.body || {};
@@ -46845,10 +46845,10 @@ async function ensureBannerSectionColumn() {
   } catch {
   }
 }
-var import_express2, adminRouter, audit, BANNER_SECTIONS2, sqlDate;
+var import_express3, adminRouter, audit, BANNER_SECTIONS2, sqlDate;
 var init_adminRoutes = __esm({
   "server/admin/adminRoutes.ts"() {
-    import_express2 = require("express");
+    import_express3 = require("express");
     init_registry();
     init_health();
     init_orchestrator();
@@ -46872,7 +46872,7 @@ var init_adminRoutes = __esm({
     init_logger();
     init_cabDeeplink();
     init_acceptanceRunner();
-    adminRouter = (0, import_express2.Router)();
+    adminRouter = (0, import_express3.Router)();
     adminRouter.use(authMiddleware);
     adminRouter.use(requireAdmin);
     audit = (req, action, target, details) => {
@@ -49078,13 +49078,13 @@ async function bootstrapAffiliateSync() {
     syncAllAffiliates().catch(() => void 0);
   }, 3e4).unref?.();
 }
-var import_express3, affiliateRouter;
+var import_express4, affiliateRouter;
 var init_api = __esm({
   "server/affiliate/api.ts"() {
-    import_express3 = require("express");
+    import_express4 = require("express");
     init_store();
     init_aggregator();
-    affiliateRouter = (0, import_express3.Router)();
+    affiliateRouter = (0, import_express4.Router)();
     affiliateRouter.get("/offers", async (req, res) => {
       try {
         const rows = await listOffers({
@@ -50612,13 +50612,146 @@ var init_liveSnapshot = __esm({
 // server.prod.ts
 var import_path8 = __toESM(require("path"), 1);
 var import_fs8 = __toESM(require("fs"), 1);
-var import_express5 = __toESM(require("express"), 1);
+var import_express6 = __toESM(require("express"), 1);
 
 // server/index.ts
 init_badRequestLog();
+
+// server/common/lenientJson.ts
+var import_express = __toESM(require("express"), 1);
+init_badRequestLog();
+var JSONISH = /^(application\/json|application\/[a-z0-9.+-]*\+json|text\/plain|text\/json)/i;
+var PASSTHROUGH = /^(multipart\/form-data|application\/octet-stream|application\/x-www-form-urlencoded)/i;
+function parseLenientJson(text) {
+  const clean3 = text.replace(/^\uFEFF/, "").trim();
+  if (!clean3) return { value: {}, repaired: true };
+  try {
+    return { value: JSON.parse(clean3), repaired: false };
+  } catch (_) {
+  }
+  const dropTrailingCommas = (s) => s.replace(/,\s*([}\]])/g, "$1");
+  const quotJsTokens = (s) => s.replace(/\bNaN\b|\bundefined\b|\bInfinity\b|-Infinity/g, "null");
+  const quoteBareKeys = (s) => s.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
+  const singleToDouble = (s) => s.replace(/'/g, '"');
+  const attempts = [
+    dropTrailingCommas(clean3),
+    quotJsTokens(clean3),
+    quoteBareKeys(clean3),
+    singleToDouble(clean3),
+    singleToDouble(quoteBareKeys(quotJsTokens(dropTrailingCommas(clean3)))),
+    // "…=value&…" pasted into a JSON slot
+    clean3
+  ];
+  for (const attempt of attempts) {
+    try {
+      const value = JSON.parse(attempt);
+      return { value, repaired: true };
+    } catch (_) {
+    }
+  }
+  if (clean3.includes("=")) {
+    try {
+      const params = new URLSearchParams(clean3);
+      const obj = {};
+      params.forEach((v, k) => {
+        obj[k] = v;
+      });
+      if (Object.keys(obj).length) return { value: obj, repaired: true };
+    } catch (_) {
+    }
+  }
+  return { value: {}, repaired: true };
+}
+function lenientJsonBody(limit = "256kb") {
+  const readRaw = import_express.default.text({
+    limit,
+    type: (req) => {
+      const ct = String(req.headers?.["content-type"] || "");
+      if (PASSTHROUGH.test(ct)) return false;
+      if (JSONISH.test(ct)) return true;
+      return !ct && (Number(req.headers?.["content-length"] || 0) > 0 || !!req.headers?.["transfer-encoding"]);
+    }
+  });
+  return (req, res, next) => {
+    const ct = String(req.headers?.["content-type"] || "");
+    if (PASSTHROUGH.test(ct)) return next();
+    const declaresBody = Number(req.headers?.["content-length"] || 0) > 0 || !!req.headers?.["transfer-encoding"];
+    if (!declaresBody) {
+      req.body = req.body === void 0 ? {} : req.body;
+      return next();
+    }
+    readRaw(req, res, (err) => {
+      const raw = typeof req.body === "string" ? req.body : "";
+      if (err) {
+        try {
+          recordBadRequest(req, `body_unreadable:${err.type || err.message || "error"}`, raw);
+        } catch (_) {
+        }
+        req.body = {};
+        return next();
+      }
+      const { value, repaired } = parseLenientJson(raw);
+      if (repaired) {
+        try {
+          recordBadRequest(req, "body_repaired", raw.slice(0, 300));
+        } catch (_) {
+        }
+      }
+      req.body = value && typeof value === "object" ? value : {};
+      next();
+    });
+  };
+}
+
+// server/common/gracefulPublicStatus.ts
+init_badRequestLog();
+var MASKED = /* @__PURE__ */ new Set([400, 405, 408, 409, 413, 415, 421, 422, 425, 429, 500, 502, 503, 504]);
+var READ_POST_PATHS = ["/api/search", "/api/scrape/live", "/api/compare", "/api/hotels/", "/api/flights/"];
+var isMaskable = (req) => {
+  const path15 = (req.path || req.originalUrl || "").split("?")[0];
+  if (!path15.startsWith("/api/")) return false;
+  if (path15.startsWith("/api/admin")) return false;
+  if (path15.startsWith("/api/version") || path15.startsWith("/api/health")) return false;
+  if (path15.startsWith("/api/client-diag")) return false;
+  if (req.method === "GET" || req.method === "HEAD") return true;
+  if (req.method !== "POST") return false;
+  return READ_POST_PATHS.some((p) => path15.startsWith(p));
+};
+function gracefulPublicStatus(app) {
+  app.use((req, res, next) => {
+    if (!isMaskable(req)) return next();
+    const sendJson = res.json.bind(res);
+    res.json = function gracefulJson(body) {
+      const code = res.statusCode;
+      if (!MASKED.has(code)) return sendJson(body);
+      try {
+        recordBadRequest(
+          req,
+          `status_masked:${code}`,
+          JSON.stringify(body ?? {}).slice(0, 300)
+        );
+      } catch (_) {
+      }
+      res.status(200);
+      const base = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+      return sendJson({
+        ...base,
+        success: false,
+        ok: false,
+        retrying: true,
+        pendingRefresh: true,
+        retryAfterSec: 4,
+        notice: "Still gathering results from the sources. Retrying automatically."
+      });
+    };
+    next();
+  });
+}
+
+// server/index.ts
 var import_path7 = __toESM(require("path"), 1);
 var import_fs7 = __toESM(require("fs"), 1);
-var import_express4 = __toESM(require("express"), 1);
+var import_express5 = __toESM(require("express"), 1);
 var import_compression = __toESM(require("compression"), 1);
 
 // server/common/canonicalHost.ts
@@ -50644,7 +50777,7 @@ function canonicalWwwUrl(originalUrl) {
 // server/index.ts
 var __dirname2 = process.cwd();
 async function createApp() {
-  const app = (0, import_express4.default)();
+  const app = (0, import_express5.default)();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
     res.removeHeader("X-Powered-By");
@@ -50652,7 +50785,8 @@ async function createApp() {
     next();
   });
   app.use((0, import_compression.default)());
-  app.use(import_express4.default.json({ limit: "256kb" }));
+  app.use(lenientJsonBody("256kb"));
+  gracefulPublicStatus(app);
   app.use((err, req, res, next) => {
     if (!err || err.type !== "entity.parse.failed" && err.type !== "entity.too.large" && err.status !== 400) {
       next(err);
@@ -50666,7 +50800,17 @@ async function createApp() {
       next(err);
       return;
     }
-    res.status(400).json({ success: false, error: "bad_request_body", retryable: true });
+    const path15 = String(req?.path || req?.originalUrl || "");
+    const publicRead = path15.startsWith("/api/") && !path15.startsWith("/api/admin");
+    res.status(publicRead ? 200 : 400).json({
+      success: false,
+      ok: false,
+      retrying: true,
+      pendingRefresh: true,
+      retryAfterSec: 4,
+      error: "bad_request_body",
+      retryable: true
+    });
   });
   const { registerAppLinkRoutes: registerAppLinkRoutes2 } = await Promise.resolve().then(() => (init_appLinkVerify(), appLinkVerify_exports));
   registerAppLinkRoutes2(app);
@@ -50748,7 +50892,7 @@ async function createApp() {
     res.status(404).send("Not found");
   });
   if (import_fs7.default.existsSync(dist)) {
-    app.use(import_express4.default.static(dist, {
+    app.use(import_express5.default.static(dist, {
       // index.html names the current hashed bundle, so it must never be cached;
       // hashed /assets/* files are immutable and safe to cache for a year.
       index: false,
@@ -50904,7 +51048,7 @@ async function startWorker() {
   const app = await createApp();
   const dist = import_path8.default.resolve(process.cwd(), "dist");
   if (import_fs8.default.existsSync(dist)) {
-    app.use(import_express5.default.static(dist, {
+    app.use(import_express6.default.static(dist, {
       // index.html must never be cached (it names the current hashed bundle);
       // hashed /assets/* files are immutable and safe to cache for a year.
       setHeaders: (res, filePath) => {
