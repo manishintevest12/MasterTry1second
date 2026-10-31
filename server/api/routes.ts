@@ -71,36 +71,6 @@ import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
 import { bmsUpcomingUrl, bmsDiscoverUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion, bmsPosterLikes, bmsPageGenres, parseNowShowingCards } from '../workers/parsers/bookmyshow';
 
 export const apiRouter = Router();
-/**
- * APP SOCKET SAFETY (owner 31 Oct: "jaise website pr dikha rahe ho waise hi tho app mai
- * dikhana hai tho issue kaha hai").
- *
- * Reproduced root cause: the Hostinger LiteSpeed edge closes an idle client connection
- * after 5s ("Keep-Alive: timeout=5"). Chrome hides that by retrying a reset GET on a fresh
- * socket, so the website always looks fine. The Flutter build that is currently installed on
- * phones does NOT retry, so it prints "ClientException ... Connection reset by peer" — and no
- * amount of server data changes the fact that its pooled socket is already dead.
- *
- * The one thing the SERVER can do for those already-installed builds is stop the client from
- * ever reusing a socket: answer the app's API calls with `Connection: close`. The edge then
- * closes the connection after the response, the app dials fresh every time, and the stale
- * socket that produced errno 104 simply stops existing. Static assets are untouched (the
- * browser/web keeps its normal keep-alive), and the cost is one handshake per API call.
- *
- * Scoped strictly to the app's own honest User-Agent ("Try1Second/..."), so web visitors and
- * search-engine crawlers are unaffected. Once every device runs v1.8.46+ (which retires idle
- * sockets at 3s by itself) this header is harmless and can be dropped.
- */
-apiRouter.use((req, res, next) => {
-  const ua = String(req.headers['user-agent'] || '');
-  if (/^Try1Second\//i.test(ua)) {
-    res.setHeader('Connection', 'close');
-    // Belt and braces for any proxy that rewrites the hop-by-hop header pair.
-    res.setHeader('Keep-Alive', 'timeout=0');
-  }
-  next();
-});
-
 /** Process start, reported by /api/version so a restart is provable. */
 const startedAtIso = new Date().toISOString();
 
