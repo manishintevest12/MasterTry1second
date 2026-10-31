@@ -1,64 +1,90 @@
 /**
- * OWNER 31 Oct: "kabhi 400, kabhi ye error, 10 build de diye, abhi tk fix nahi hua — pura project
- * check karo aur 100% fix do."
+ * OWNER 31 Oct: "already cloudflare ka details diya hua hai, please check and fix everything in app."
  *
- * Measured on production while writing this (11:09 UTC restart, bundle index-Bg4kwiqS.js):
- *   /api/version        200 in 0.48s
- *   /api/health         200 in 0.38s
- *   /api/quick-apps     200 in 3.8s cold / 0.5s warm (21KB)
- *   POST /api/scrape/live flights  200 in 0.71s (74KB)
- * So the API itself is healthy and fast — every "ClientException: Connection reset by peer" the
- * owner sees happens on the path between the phone and the Hostinger LiteSpeed edge, which:
- *   - kills idle client sockets after 5s (proven: same socket, 200 then 7s sleep then reset), and
- *   - resets the excess when one page fires many API calls at once (the app needed a 3-request gate
- *     to stop this; the web app never had one, and a mobile page load here fires deals + quick-apps
- *     + banners + showcase + movies together).
+ * The Cloudflare relay (https://t1s-api-relay.allleadsspipl.workers.dev) already protects the Flutter
+ * app: it retries an upstream reset up to 6 times on fresh connections, so the Hostinger edge's
+ * 5s idle-socket kills and connection-cap resets never reach the user. The web app never used it —
+ * browsers still talk to www.try1second.com directly, which is exactly why the owner keeps seeing
+ * "ClientException: Connection reset by peer" in mobile Chrome while the app behaves.
  *
- * This is the web counterpart of the app's fix, installed once over window.fetch so all ~56 call
- * sites get it with no change at the call site and no UI change:
- *   1. at most 3 /api/ requests in flight; the rest queue (FIFO) instead of piling onto the edge;
- *   2. identical in-flight GETs share one request (a duplicate burst cannot burn a connection);
- *   3. a transport failure or an edge 429/503 is retried (2 retries, 250/700ms) so a reset becomes
- *      invisible instead of a red error box;
- *   4. anything not same-origin /api/ passes straight through, untouched.
+ * This module closes that gap and keeps the concurrency hygiene that browsers need:
+ *   1. at most 3 /api/ requests in flight (the app learned this the hard way with maxConnectionsPerHost);
+ *   2. identical in-flight GETs share one request;
+ *   3. a transport failure or an edge 429/503 is retried, on the same origin first and then THROUGH
+ *      THE CLOUDFLARE RELAY, which is the hop that actually survives the edge;
+ *   4. the route that worked is remembered for the session, so a page that needed the relay keeps
+ *      using it instead of re-paying the failed attempt on every call;
+ *   5. non-/api/ and cross-origin traffic is untouched, and a real JSON 400 still reaches the caller
+ *      straight away (never retried, never rewritten).
  */
+
+/**
+ * Cloudflare Worker that fronts the same API. Kept in sync with deploy/api-relay-cloudflare and the
+ * Flutter app's kDefaultApiBase. Override at build time with VITE_API_RELAY if the worker ever moves.
+ */
+export const RELAY_BASE: string =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_RELAY) ||
+  'https://t1s-api-relay.allleadsspipl.workers.dev';
 
 export interface GatedFetchOptions {
   maxConcurrent?: number;
-  retries?: number;
+  retriesPerRoute?: number;
   retryStatuses?: number[];
-  /** Only URLs for which this returns true are gated. Defaults to same-origin /api/. */
   isGated?: (url: string) => boolean;
+  /** Absolute base of the Cloudflare relay. Empty string disables the relay hop. */
+  relayBase?: string;
 }
 
-type Pending = () => void;
-
 const DEFAULT_RETRY_STATUSES = [429, 503];
+const PREFER_RELAY_KEY = 't1s_prefer_relay';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** A request that died before any bytes of a usable response (what the edge reset looks like). */
 function isTransportError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === 'AbortError') return false;
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') return false;
   const msg = String((error as any)?.message || error || '');
-  return /Failed to fetch|NetworkError|Load failed|Connection reset|network connection was lost|fetch failed/i.test(msg);
+  return /Failed to fetch|NetworkError|Load failed|Connection reset|network connection was lost|fetch failed|ERR_CONNECTION/i.test(msg);
 }
 
-/**
- * Wrap a fetch implementation with the concurrency gate + retries. Exported separately so the
- * behaviour can be tested without touching a browser.
- */
+/** Same-origin /api/x?y  ->  https://relay/api/x?y  (relay preserves path + query). */
+export function relayUrlFor(absoluteUrl: string, relayBase: string): string | null {
+  if (!relayBase) return null;
+  try {
+    const parsed = new URL(absoluteUrl);
+    if (!parsed.pathname.startsWith('/api/') && !parsed.pathname.startsWith('/uploads/')) return null;
+    return relayBase.replace(/\/+$/, '') + parsed.pathname + parsed.search;
+  } catch {
+    return null;
+  }
+}
+
 export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOptions = {}): typeof fetch {
   const maxConcurrent = Math.max(1, options.maxConcurrent ?? 3);
-  const retries = Math.max(0, options.retries ?? 2);
+  const retriesPerRoute = Math.max(0, options.retriesPerRoute ?? 1);
   const retryStatuses = options.retryStatuses ?? DEFAULT_RETRY_STATUSES;
   const isGated = options.isGated ?? (() => true);
+  const relayBase = options.relayBase ?? '';
 
   let active = 0;
-  const waiting: Pending[] = [];
+  const waiting: Array<() => void> = [];
   const inFlightGets = new Map<string, Promise<Response>>();
+  let preferRelay = false;
+  try {
+    preferRelay = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PREFER_RELAY_KEY) === '1';
+  } catch {
+    preferRelay = false;
+  }
+
+  const rememberRelay = (on: boolean): void => {
+    preferRelay = on;
+    try {
+      if (on) sessionStorage.setItem(PREFER_RELAY_KEY, '1');
+    } catch {
+      /* storage disabled: in-memory preference is enough */
+    }
+  };
 
   const acquire = (): Promise<void> => {
     if (active < maxConcurrent) {
@@ -71,67 +97,90 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
   const release = (): void => {
     const next = waiting.shift();
     if (next) {
-      next(); // hand the slot straight over: `active` stays the same
+      next();
       return;
     }
     active--;
   };
 
-  const runOnce = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const runOnce = async (request: Request): Promise<Response> => {
     await acquire();
     try {
-      return await baseFetch(input as any, init);
+      return await baseFetch(request);
     } finally {
       release();
     }
   };
 
   const gatedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    if (!isGated(url)) return baseFetch(input as any, init);
+    const absolute = typeof input === 'string'
+      ? new URL(input, typeof location !== 'undefined' ? location.href : 'http://localhost').toString()
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+
+    if (!isGated(absolute)) return baseFetch(input as any, init);
 
     const method = (init?.method || (typeof input === 'object' && 'method' in input ? (input as Request).method : 'GET')).toUpperCase();
     const signal = init?.signal ?? (typeof input === 'object' && 'signal' in input ? (input as Request).signal : undefined);
+    const relayUrl = relayUrlFor(absolute, relayBase);
 
-    // Share an identical GET that is already on the wire. The body must be cloned per caller.
-    const getKey = method === 'GET' ? url : '';
-    if (getKey) {
-      const existing = inFlightGets.get(getKey);
-      if (existing) {
-        const shared = await existing;
-        return shared.clone();
-      }
+    const cacheKey = method === 'GET' ? absolute : '';
+    if (cacheKey) {
+      const existing = inFlightGets.get(cacheKey);
+      if (existing) return (await existing).clone();
     }
+
+    // One canonical request whose body is never consumed (every attempt runs on a clone), so the
+    // relay hop can replay a POST with its payload intact.
+    const canonical = typeof input === 'object' && 'clone' in input && input instanceof Request
+      ? input
+      : new Request(absolute, init);
+
+    const routes: Array<{ url: string; viaRelay: boolean }> = [];
+    const originRoute = { url: absolute, viaRelay: false };
+    const relayRoute = relayUrl ? { url: relayUrl, viaRelay: true } : null;
+    if (preferRelay && relayRoute) routes.push(relayRoute, originRoute);
+    else routes.push(originRoute);
+    if (relayRoute && !preferRelay) routes.push(relayRoute);
 
     const execute = (async (): Promise<Response> => {
       let lastError: unknown;
       let lastResponse: Response | undefined;
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-        try {
-          const response = await runOnce(input, init);
-          // The edge's protective mode answers 429/503 with an HTML body instead of our JSON. Those
-          // are transient and are answered correctly a moment later (measured repeatedly), so retry
-          // rather than showing the owner a red box.
-          if (retryStatuses.includes(response.status) && attempt < retries) {
-            lastResponse = response;
-            await sleep(attempt === 0 ? 250 : 700);
-            continue;
+
+      for (const route of routes) {
+        for (let attempt = 0; attempt <= retriesPerRoute; attempt++) {
+          if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+          try {
+            const attemptRequest = route.url === absolute ? canonical.clone() : new Request(route.url, canonical.clone());
+            const response = await runOnce(attemptRequest);
+
+            // The edge's protective mode answers 429/503 with an HTML body. Those are transient, so
+            // they are retried on the same route before falling through to the relay.
+            if (retryStatuses.includes(response.status) && attempt < retriesPerRoute) {
+              lastResponse = response;
+              await sleep(attempt === 0 ? 250 : 700);
+              continue;
+            }
+            // A route that produced a real answer is the route to keep.
+            if (route.viaRelay && response.status < 500) rememberRelay(true);
+            else if (!route.viaRelay && preferRelay && response.status < 500) rememberRelay(false);
+            return response;
+          } catch (error) {
+            lastError = error;
+            if (!isTransportError(error)) throw error;
+            if (attempt < retriesPerRoute) await sleep(attempt === 0 ? 250 : 700);
           }
-          return response;
-        } catch (error) {
-          lastError = error;
-          if (!isTransportError(error) || attempt === retries) throw error;
-          await sleep(attempt === 0 ? 250 : 700);
         }
       }
+
       if (lastResponse) return lastResponse;
       throw lastError;
     })();
 
-    if (getKey) {
-      inFlightGets.set(getKey, execute);
-      execute.finally(() => inFlightGets.delete(getKey)).catch(() => undefined);
+    if (cacheKey) {
+      inFlightGets.set(cacheKey, execute);
+      execute.finally(() => inFlightGets.delete(cacheKey)).catch(() => undefined);
     }
     return execute;
   };
@@ -149,7 +198,8 @@ export function installApiGate(): void {
   const origin = window.location?.origin ?? '';
   const gated = createGatedFetch(window.fetch.bind(window), {
     maxConcurrent: 3,
-    retries: 2,
+    retriesPerRoute: 1,
+    relayBase: RELAY_BASE,
     isGated: (url) => {
       try {
         const parsed = new URL(url, origin || 'http://localhost');

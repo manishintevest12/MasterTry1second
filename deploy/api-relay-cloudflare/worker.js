@@ -28,6 +28,36 @@ const DEFAULT_ORIGIN = 'https://www.try1second.com';
 // Paths this relay will forward. Anything else is refused, so it can never be used as an open
 // proxy by someone who guesses the hostname.
 const ALLOWED_PREFIXES = ['/api/', '/uploads/'];
+
+/**
+ * OWNER 31 Oct: the web app talks to www.try1second.com directly, so the Hostinger edge's resets
+ * (idle sockets killed at 5s, excess connections reset) still hit browsers. The app already goes
+ * through this relay; browsers can too now. CORS is limited to our own origins, and a request is
+ * authorised when it comes from one of them even without the shared key (everything under /api/ is
+ * public anyway; the key stays required for non-browser clients so the relay cannot be borrowed).
+ */
+const ALLOWED_ORIGINS = new Set([
+  'https://www.try1second.com',
+  'https://try1second.com',
+  'http://localhost:8791',
+  'http://127.0.0.1:8791',
+]);
+
+function corsHeaders(origin) {
+  const h = new Headers();
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    h.set('access-control-allow-origin', origin);
+    h.set('vary', 'Origin');
+  }
+  h.set('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  h.set(
+    'access-control-allow-headers',
+    'content-type, authorization, x-relay-key, x-t1s-session, x-requested-with, accept, accept-encoding, x-t1s-via',
+  );
+  h.set('access-control-expose-headers', 'x-t1s-relay-attempts');
+  h.set('access-control-max-age', '86400');
+  return h;
+}
 // Headers that describe the phone->Cloudflare hop and must not be forwarded as-is.
 const HOP_BY_HOP = new Set([
   'host',
@@ -93,9 +123,22 @@ export default {
       return json({ status: 'ok', role: 't1s-api-relay', origin: env.ORIGIN || DEFAULT_ORIGIN });
     }
 
+    const originHeader = request.headers.get('origin') || '';
+    const cors = corsHeaders(originHeader);
+
+    // Browser preflight: answer locally, never reach the origin.
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: cors });
+    }
+
     const key = env.RELAY_KEY || '';
-    if (key && request.headers.get('x-relay-key') !== key) {
-      return json({ error: 'unauthorized' }, 401);
+    const fromAllowedBrowser = ALLOWED_ORIGINS.has(originHeader);
+    if (key && request.headers.get('x-relay-key') !== key && !fromAllowedBrowser) {
+      const denied = new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: cors,
+      });
+      return denied;
     }
 
     if (!ALLOWED_PREFIXES.some((p) => url.pathname.startsWith(p))) {
@@ -114,7 +157,7 @@ export default {
     // Retry ladder. A reset/abort/5xx at the Hostinger edge is invisible to the phone as long
     // as one of these attempts completes. POSTs are only retried when the request never got a
     // response (a thrown fetch), never after a real status, so a search is not duplicated.
-    const delays = [0, 250, 700, 1500];
+    const delays = [0, 250, 700, 1500, 2500, 4000];
     let lastError = null;
     for (let i = 0; i < delays.length; i++) {
       if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
@@ -124,6 +167,7 @@ export default {
           res.status === 502 || res.status === 503 || res.status === 504;
         if (retriable && i < delays.length - 1 && request.method !== 'POST') continue;
         const out = new Headers(res.headers);
+        for (const [k, v] of cors.entries()) out.set(k, v);
         // Never let an intermediary cache an API answer; the origin already sets its own rules.
         out.set('x-t1s-relay-attempts', String(i + 1));
         return new Response(res.body, { status: res.status, headers: out });
