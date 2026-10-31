@@ -42174,6 +42174,14 @@ var init_routes = __esm({
     init_bookmyshow();
     init_merchantCrispLogo();
     apiRouter = (0, import_express.Router)();
+    apiRouter.use((req, res, next) => {
+      const ua = String(req.headers["user-agent"] || "");
+      if (/^Try1Second\//i.test(ua)) {
+        res.setHeader("Connection", "close");
+        res.setHeader("Keep-Alive", "timeout=0");
+      }
+      next();
+    });
     startedAtIso = (/* @__PURE__ */ new Date()).toISOString();
     apiRouter.get("/health", authMiddleware, async (req, res) => {
       const admin = req.user?.role === "admin";
