@@ -14,7 +14,7 @@ import { newRawItem } from '../../sources/contract';
 import type { RawSourceItem, SourceConfig } from '../../types';
 import { photonGeocode, cityFromRouteText, geocodePlace, cityForPlace, type GeoPoint } from '../parsers/osmTravel';
 import { geoSearch, geoReverse } from '../../common/geoProxy';
-import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity, buildRapidoAvailability, buildRapidoIntercityNotice } from '../parsers/rapidoCabs';
+import { rapidoServedCities, rapidoCityLookup, rapidoCitySlug, canonCity } from '../parsers/rapidoCabs';
 import { rapidoGuestFares, rapidoServiceCatalog, buildRapidoFareRows } from '../parsers/rapidoFares';
 import { uberIndiaCityFor } from '../parsers/uberIndiaCities';
 import { buildUberProductsRequestBody, parseUberProductsResponse, buildUberGoBookUrl, type UberGoPlace } from '../parsers/uberGoProducts';
@@ -825,19 +825,11 @@ export const cabWorker: VerticalWorker = {
         if (!b) b = await osmCity(rt.to, a?.name);
         if (!a || !b) return []; // Rapido does not serve one of the cities — honestly no rows
         if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) {
-          // Owner 23 Oct ("rapido ni aa raha"): intercity queries showed Uber's
-          // app-booking row but Rapido silently vanished. Rapido publishes no
-          // intercity service, so emit ONE honest presence row that SAYS city
-          // rides only (both cities served) instead of disappearing — no fare
-          // and no intercity claim is invented.
-          return buildRapidoIntercityNotice({
-            source: ctx.source,
-            from: rt.from,
-            to: rt.to,
-            fromCity: a.name,
-            toCity: b.name,
-            mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`,
-          });
+          // OWNER 31 Oct (supersedes the 23 Oct presence row): "intercity ride mai hide
+          // kro, aur city rides mai dikhao results with price". Rapido publishes no
+          // intercity service at all (their own fare API answers HTTP 500 for it), so an
+          // intercity search now shows NO Rapido row instead of a priceless one.
+          return [];
         }
         // Owner 24 Oct ("real price chaiye bhai"): Rapido's guest booking PWA publishes
         // LIVE intra-city fare windows (wasm-signed unup fare API — see rapidoFares.ts).
@@ -846,13 +838,10 @@ export const cabWorker: VerticalWorker = {
         // come back empty. Nothing is invented in between.
         const fare = await rapidoLiveFaresSafe(ctx, rt, a.name);
         if (fare.length) return fare;
-        return buildRapidoAvailability({
-          source: ctx.source,
-          from: rt.from,
-          to: rt.to,
-          city: a.name,
-          mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`,
-        });
+        // OWNER 31 Oct: city rides show Rapido ONLY with a real fare. When the live quote
+        // cannot be obtained the availability rows ("Fare on app") are no longer shown —
+        // a Rapido card without a price is exactly what the owner asked to stop showing.
+        return [];
       },
     },
     {

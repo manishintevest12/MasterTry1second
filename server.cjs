@@ -18494,60 +18494,7 @@ function rapidoCityLookup(cities, city) {
   const t = canonCity(city);
   return cities.find((c) => canonCity(c.name) === t) || null;
 }
-function buildRapidoIntercityNotice(inp) {
-  const route2 = `${inp.from} \u2192 ${inp.to}`;
-  return [newRawItem(inp.source, {
-    title: `${inp.from} to ${inp.to} cab (Rapido \u2014 city rides only, app booking)`,
-    currency: "INR",
-    seller: "Rapido",
-    sellerUrl: inp.mainPageUrl,
-    availability: "unknown",
-    travel: { route: route2 },
-    location: { city: inp.fromCity },
-    identifiers: { sku: `rapido-intercity-${rapidoCitySlug(inp.fromCity)}` },
-    attributes: {
-      pickup: inp.from,
-      drop: inp.to,
-      vehicle_type: "City rides (Bike / Auto / Cab)",
-      price_basis: "app_only_fares",
-      app_only: "true",
-      data_note: `Rapido publishes intra-city rides only \u2014 it has no published intercity service or fare for ${inp.from} \u2192 ${inp.to}. City rides are available in Rapido's served cities (${inp.fromCity} and ${inp.toCity}). This row exists so the route compare stays honest about what each app offers; fares are calculated in the Rapido app.`
-    },
-    evidence: {
-      extractedFields: ["title", "seller", "currency"],
-      sourceUrl: inp.mainPageUrl,
-      sourceReference: "rapido.bike served-city registry \u2014 no intercity coverage published"
-    }
-  })];
-}
-function buildRapidoAvailability(inp) {
-  const route2 = `${inp.from} \u2192 ${inp.to}`;
-  return SERVICES.map((svc, i) => newRawItem(inp.source, {
-    title: `${inp.from} to ${inp.to} Rapido ${svc.vehicle} (city ride, one-way)`,
-    currency: "INR",
-    seller: "Rapido",
-    sellerUrl: inp.mainPageUrl,
-    availability: "unknown",
-    travel: { route: route2 },
-    location: { city: inp.city },
-    identifiers: { sku: `rapido-${rapidoCitySlug(inp.city)}-${svc.vehicle.toLowerCase().replace(/\s+/g, "-")}` },
-    attributes: {
-      pickup: inp.from,
-      drop: inp.to,
-      vehicle_type: svc.vehicle,
-      service_blurb: svc.blurb,
-      price_basis: "app_only_fares",
-      app_only: "true",
-      data_note: `Rapido operates in ${inp.city}: ${svc.blurb}. Rapido calculates fares in-app \u2014 no web pricing exists, so this row is priced "available only on app" rather than estimated. ` + (i === 0 ? `Availability verified from Rapido's own served-city registry (rapido.bike ${inp.city} city page).` : "")
-    },
-    evidence: {
-      extractedFields: ["title", "seller", "currency"],
-      sourceUrl: inp.mainPageUrl,
-      sourceReference: "rapido.bike served-city page availability (app-only fares)"
-    }
-  }));
-}
-var CITIES_SITEMAP, CITY_SLUG_ALIASES, citiesCache, CITY_NAME_ALIASES, SERVICES;
+var CITIES_SITEMAP, CITY_SLUG_ALIASES, citiesCache, CITY_NAME_ALIASES;
 var init_rapidoCabs = __esm({
   "server/workers/parsers/rapidoCabs.ts"() {
     init_contract();
@@ -18584,11 +18531,6 @@ var init_rapidoCabs = __esm({
       "north delhi": "delhi",
       shahdara: "delhi"
     };
-    SERVICES = [
-      { vehicle: "Bike Taxi", blurb: "bike rides" },
-      { vehicle: "Auto", blurb: "auto rides for city travel" },
-      { vehicle: "Cab", blurb: "sedan cabs" }
-    ];
   }
 });
 
@@ -22268,24 +22210,11 @@ var init_cab = __esm({
             if (!b) b = await osmCity(rt.to, a?.name);
             if (!a || !b) return [];
             if (rapidoCitySlug(a.name) !== rapidoCitySlug(b.name)) {
-              return buildRapidoIntercityNotice({
-                source: ctx.source,
-                from: rt.from,
-                to: rt.to,
-                fromCity: a.name,
-                toCity: b.name,
-                mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`
-              });
+              return [];
             }
             const fare = await rapidoLiveFaresSafe(ctx, rt, a.name);
             if (fare.length) return fare;
-            return buildRapidoAvailability({
-              source: ctx.source,
-              from: rt.from,
-              to: rt.to,
-              city: a.name,
-              mainPageUrl: `https://www.rapido.bike/${a.mainPagePath}/main-page`
-            });
+            return [];
           }
         },
         {
@@ -32987,6 +32916,39 @@ var init_flightTimeBackfill = __esm({
   }
 });
 
+// server/search/rapidoPriceGate.ts
+function gateRapidoRows(offers, intercity = false) {
+  const kept = [];
+  const dropped = [];
+  for (const offer of offers || []) {
+    if (!isRapido(offer)) {
+      kept.push(offer);
+      continue;
+    }
+    if (intercity) {
+      dropped.push({ title: String(offer?.title || "").slice(0, 80), seller: "Rapido", reason: "intercity" });
+      continue;
+    }
+    if (pricedOf(offer) > 0) {
+      kept.push(offer);
+      continue;
+    }
+    dropped.push({ title: String(offer?.title || "").slice(0, 80), seller: "Rapido", reason: "no_fare" });
+  }
+  return { kept, dropped };
+}
+var isRapido, pricedOf;
+var init_rapidoPriceGate = __esm({
+  "server/search/rapidoPriceGate.ts"() {
+    isRapido = (offer) => {
+      const seller = String(offer?.seller || offer?.vendor || offer?.brand || "").toLowerCase();
+      const src2 = String(offer?.provenance?.sourceId || "").toLowerCase();
+      return seller.includes("rapido") || src2.includes("rapido");
+    };
+    pricedOf = (offer) => Number(offer?.prices?.effectivePrice ?? offer?.prices?.mandatoryTotal ?? offer?.prices?.listPrice ?? 0) || 0;
+  }
+});
+
 // server/affiliate/affiliateNetwork.ts
 async function attachAffiliateDeepLinks(offers) {
   return offers.map((o) => {
@@ -33920,6 +33882,21 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
       combined = collapseSellerVariants(combined, priceOfRow);
     }
   }
+  if (String(vertical) === "cab") {
+    const gated = gateRapidoRows(combined);
+    if (gated.dropped.length) {
+      log.info("Search", "Hid Rapido rows without a fare (owner 31 Oct)", {
+        dropped: gated.dropped.length,
+        kept: gated.kept.length,
+        reasons: gated.dropped.reduce((acc, d) => {
+          acc[d.reason] = (acc[d.reason] || 0) + 1;
+          return acc;
+        }, {}),
+        query: String(input.query || "").slice(0, 60)
+      });
+      combined = gated.kept;
+    }
+  }
   combined = await attachAffiliateDeepLinks(combined);
   const branded = withCardArt(stripCardLogoStandIns(stripMerchantLogoFallbacks(withBrandImages(combined))));
   const ranked = rankOffers(await withProductImages(await withMerchantLogos(await withLenderLogos(branded))), { userPincode: input.pincode, userCity: input.city });
@@ -34068,6 +34045,7 @@ var init_searchOrchestrator = __esm({
     init_catalogueService();
     init_flightSchedule();
     init_flightTimeBackfill();
+    init_rapidoPriceGate();
     init_verticalEngine();
     init_affiliateNetwork();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];

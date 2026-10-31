@@ -38,6 +38,9 @@ import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
 import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
+import { gateRapidoRows } from './rapidoPriceGate';
+import { cityFromRouteText } from '../workers/parsers/osmTravel';
+import { canonCity } from '../workers/parsers/rapidoCabs';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
 import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
 
@@ -1110,6 +1113,26 @@ async function finalizeLive(
     // Same query, same shop, different colour -> one card (owner 28 Oct: "iphone 18"
     // answered with 130 cards, mostly the same listing in Burgundy/Black/Silver).
     combined = collapseSellerVariants(combined as any[], priceOfRow) as any;
+    }
+  }
+
+  // 8.7 RAPIDO PRICE GATE (owner 31 Oct: "intercity ride mai hide kro, aur city rides
+  // mai dikhao results with price so simple"). Rapido publishes no intercity service and
+  // its live city quotes can fail, so a Rapido card is shown only when it carries a real
+  // fare; intercity searches carry no Rapido row at all. Applied centrally so a catalogue
+  // replay or a cached row from an older build cannot reintroduce a priceless card.
+  if (String(vertical) === 'cab') {
+    // Intercity is already handled at the source (the Rapido worker returns no rows for a
+    // two-city trip), so this central gate enforces the remaining rule: a Rapido card must
+    // carry a real fare. Nothing here guesses city vs intercity from free text.
+    const gated = gateRapidoRows(combined as any[]);
+    if (gated.dropped.length) {
+      log.info('Search', 'Hid Rapido rows without a fare (owner 31 Oct)', {
+        dropped: gated.dropped.length, kept: gated.kept.length,
+        reasons: gated.dropped.reduce((acc: Record<string, number>, d: any) => { acc[d.reason] = (acc[d.reason] || 0) + 1; return acc; }, {}),
+        query: String(input.query || '').slice(0, 60),
+      });
+      combined = gated.kept as any;
     }
   }
 

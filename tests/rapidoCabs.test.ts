@@ -164,3 +164,4 @@ test('intercity notice row passes offer validation (schema-honest)', () => {
     `app_only_fares intercity notice must validate: ${JSON.stringify(validated).slice(0, 200)}`);
   assert.ok(!validated.unverified.includes('fare'), 'app_only_fares counts as an answer, not a missing field');
 });
+
