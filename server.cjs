@@ -3108,9 +3108,9 @@ function lenovoHeaders(term) {
 function lenovoTitle(p) {
   const summary = String(p.summary || "").trim();
   if (summary && summary.length >= 3) return summary.slice(0, 200);
-  const slug4 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
-  if (slug4.includes("-")) {
-    return slug4.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
+  const slug5 = String(p.url || "").split("?")[0].split("/").filter(Boolean).slice(-2, -1)[0] || "";
+  if (slug5.includes("-")) {
+    return slug5.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 200);
   }
   const alt = String(p?.media?.gallery?.[0]?.imageAlt || "").trim();
   if (alt && !/^(front|side|back|top|bottom|left|right|angle)/i.test(alt)) {
@@ -3490,8 +3490,8 @@ function parseJiomart(body, source, pageUrl) {
     const price = Number.isFinite(eff) && eff > 0 ? eff : marked;
     if (!Number.isFinite(price) || price <= 0) continue;
     const brand = String(it.brand?.name || "").trim();
-    const slug4 = String(it.slug || "").trim();
-    const pdp = slug4 ? `https://www.jiomart.com/p/${slug4}` : "https://www.jiomart.com";
+    const slug5 = String(it.slug || "").trim();
+    const pdp = slug5 ? `https://www.jiomart.com/p/${slug5}` : "https://www.jiomart.com";
     const imgs = [...new Set(
       (it.medias || []).filter((m) => m?.type === "image" && typeof m.url === "string").map((m) => String(m.url).replace(/^http:/, "https:")).filter((u) => /^https:\/\//.test(u))
     )].slice(0, 6);
@@ -3575,9 +3575,9 @@ function parseRelianceDigital(html, source, pageUrl) {
     const price = Number(it?.price?.effective?.min);
     if (!name || !Number.isFinite(price) || price <= 0) continue;
     if (it?.sellable === false) continue;
-    const slug4 = String(it?.slug || "").trim();
-    if (!slug4 || seen.has(slug4)) continue;
-    seen.add(slug4);
+    const slug5 = String(it?.slug || "").trim();
+    if (!slug5 || seen.has(slug5)) continue;
+    seen.add(slug5);
     const marked = Number(it?.price?.marked?.min);
     const mrp = Number.isFinite(marked) && marked > price ? marked : void 0;
     const brand = it?.brand?.name ? String(it.brand.name) : void 0;
@@ -3585,7 +3585,7 @@ function parseRelianceDigital(html, source, pageUrl) {
     const ean = Array.isArray(it?.attributes?.identifier?.ean) ? String(it.attributes.identifier.ean[0] || "") : "";
     const sku = Array.isArray(it?.attributes?.identifier?.sku_code) ? String(it.attributes.identifier.sku_code[0] || "") : "";
     const rating = Number(it?.rating);
-    const url = `${RELIANCE_WEB}/product/${slug4}`;
+    const url = `${RELIANCE_WEB}/product/${slug5}`;
     out.push(newRawItem(source, {
       title: name.slice(0, 200),
       brand,
@@ -3773,8 +3773,8 @@ var init_ecommerce = __esm({
           run: async (ctx) => {
             const term = q(ctx);
             if (!term) return [];
-            const slug4 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
-            const url = `https://www.myntra.com/${encodeURIComponent(slug4)}`;
+            const slug5 = term.toLowerCase().replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
+            const url = `https://www.myntra.com/${encodeURIComponent(slug5)}`;
             const r = await ctx.fetch(url);
             if (r.status !== 200) throw new AcquisitionError("FORBIDDEN", `Myntra HTTP ${r.status}`, r.status);
             const items = parseMyntra(r.body, ctx.source, url);
@@ -5252,8 +5252,8 @@ function parseGoibiboHotelsSsr(body) {
     let image = String(pickFirst(h.obj, IMG_KEYS) || "");
     if (image && image.startsWith("//")) image = "https:" + image;
     const locality = String(pickFirst(h.obj, ["locality", "area", "address", "location"]) || "");
-    const slug4 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
-    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug4 || void 0 });
+    const slug5 = String(pickFirst(h.obj, ["slug", "hotelUrl", "url", "link"]) || "");
+    out.push({ name, price, rating, image: image || void 0, locality: locality || void 0, url: slug5 || void 0 });
     if (out.length >= 60) break;
   }
   return out;
@@ -5986,8 +5986,8 @@ var init_saffronStays = __esm({
 function agodaCitySlugs(city) {
   const out = [];
   for (const v of cityVariants(city)) {
-    const slug4 = `${slugOf(v)}-in`;
-    if (!out.includes(slug4)) out.push(slug4);
+    const slug5 = `${slugOf(v)}-in`;
+    if (!out.includes(slug5)) out.push(slug5);
   }
   return out.slice(0, 6);
 }
@@ -6435,7 +6435,7 @@ var init_hotels = __esm({
           run: async (ctx) => {
             const city = cityFromQuery(ctx);
             if (!city || city.length < 3) return [];
-            const slug4 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const slug5 = city.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
             const mmtChromeHeaders = {
               "sec-ch-ua": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
               "sec-ch-ua-mobile": "?0",
@@ -6451,8 +6451,8 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             for (const url of [
-              `https://www.makemytrip.com/hotels-in-${slug4}/`,
-              `https://www.makemytrip.com/hotels/hotels-in-${slug4}/`
+              `https://www.makemytrip.com/hotels-in-${slug5}/`,
+              `https://www.makemytrip.com/hotels/hotels-in-${slug5}/`
             ]) {
               let bigBody = null;
               let r;
@@ -6565,8 +6565,8 @@ var init_hotels = __esm({
             };
             let lastErr = null;
             const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
-            for (const slug4 of attempts) {
-              const url = `https://www.goibibo.com/hotels/${slug4}/`;
+            for (const slug5 of attempts) {
+              const url = `https://www.goibibo.com/hotels/${slug5}/`;
               let bigBody = null;
               for (let attempt = 1; attempt <= 4; attempt++) {
                 let r;
@@ -6917,8 +6917,8 @@ var init_hotels = __esm({
             const { checkin, checkout } = stayDates(ctx.query);
             let cityId = agodaCityIdCache.get(city.toLowerCase());
             if (!cityId) {
-              for (const slug4 of agodaCitySlugs(city)) {
-                const r = await cffiFetch(`https://www.agoda.com/city/${slug4}.html`, {
+              for (const slug5 of agodaCitySlugs(city)) {
+                const r = await cffiFetch(`https://www.agoda.com/city/${slug5}.html`, {
                   impersonate: "chrome",
                   timeoutMs: 2e4,
                   headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" }
@@ -7156,13 +7156,13 @@ var init_hotels = __esm({
 // server/workers/parsers/ixigoFlights.ts
 function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
   const iataOf = (city, code) => code && /^[A-Z]{3}$/.test(code) ? code.toUpperCase() : iata[city.toLowerCase().trim()] || null;
-  const slug4 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
-  const fromTok = iataOf(from, fromCode) || slug4(from);
-  const toTok = iataOf(to, toCode) || slug4(to);
+  const slug5 = (city) => city.toLowerCase().trim().replace(/\s+/g, "_");
+  const fromTok = iataOf(from, fromCode) || slug5(from);
+  const toTok = iataOf(to, toCode) || slug5(to);
   const alts = [];
   const altIata = iataOf(from, fromCode);
   if (altIata && altIata !== fromTok) alts.push(altIata);
-  if (altIata) alts.push(slug4(from));
+  if (altIata) alts.push(slug5(from));
   if (fromTok.includes("_")) alts.push(fromTok.replace(/_/g, "-"));
   return { fromTok, toTok, alts };
 }
@@ -9252,11 +9252,11 @@ var init_yatraFlights = __esm({
 
 // server/workers/parsers/goibiboFlights.ts
 function goibiboRouteUrl(fromCity, toCity) {
-  const slug4 = (c) => {
+  const slug5 = (c) => {
     const k = String(c).toLowerCase().trim().replace(/\s*\([^)]*\)/g, "").trim();
     return (SLUG_ALIASES[k] || k).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   };
-  return `https://www.goibibo.com/flights/${slug4(fromCity)}-to-${slug4(toCity)}-flights/`;
+  return `https://www.goibibo.com/flights/${slug5(fromCity)}-to-${slug5(toCity)}-flights/`;
 }
 function stripTags(s) {
   return String(s).replace(/<[^>]*>/g, "").trim();
@@ -17598,12 +17598,12 @@ function citySlug(city, raw) {
 function zomatoNationalPresence(source, term, reason) {
   return zomatoPresence(source, "india", term, reason);
 }
-function zomatoPresence(source, slug4, term, reason) {
+function zomatoPresence(source, slug5, term, reason) {
   const q3 = encodeURIComponent(term || "restaurants");
-  const url = `https://www.zomato.com/${slug4}/restaurants?q=${q3}`;
+  const url = `https://www.zomato.com/${slug5}/restaurants?q=${q3}`;
   const label = term ? `\`${term}\`` : "restaurants";
   return [newRawItem(source, {
-    title: `Zomato: ${label} in ${slug4} \u2014 browse menus & order on Zomato`.slice(0, 200),
+    title: `Zomato: ${label} in ${slug5} \u2014 browse menus & order on Zomato`.slice(0, 200),
     seller: "Zomato",
     sellerUrl: url,
     currency: "INR",
@@ -17612,7 +17612,7 @@ function zomatoPresence(source, slug4, term, reason) {
       price_basis: "app_only_fares",
       data_note: `Zomato's edge blocked our listing crawl (${reason}); menus and live prices are on Zomato itself \u2014 this is a direct handoff, no prices invented.`
     },
-    identifiers: { sku: `zomato-search-${slug4}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
+    identifiers: { sku: `zomato-search-${slug5}-${(term || "restaurants").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}` },
     evidence: { sourceUrl: url, extractedFields: ["seller", "deeplink"], sourceReference: "Zomato search deeplink (availability handoff while the listing crawl is edge-gated)" }
   })];
 }
@@ -17792,17 +17792,17 @@ var init_food = __esm({
             const left = () => 24e3 - (Date.now() - t0);
             const raw = String(ctx.query.rawQuery || "");
             const term = String(ctx.query.entityName || raw).replace(/\b(in|near)\s+[a-z\s]+$/i, "").trim();
-            const slug4 = citySlug(ctx.query.location?.city, raw);
-            if (!slug4) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
-            const url = `https://www.zomato.com/${slug4}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
+            const slug5 = citySlug(ctx.query.location?.city, raw);
+            if (!slug5) return zomatoNationalPresence(ctx.source, term || raw, "no city in query");
+            const url = `https://www.zomato.com/${slug5}/restaurants?q=${encodeURIComponent(term || "restaurants")}`;
             let r = await ctx.fetch(url, { timeoutMs: 4500 });
             for (let attempt = 1; attempt < 3 && (r.status === 403 || r.status === 202 || r.status === 429) && left() > 6e3; attempt++) {
               await new Promise((res) => setTimeout(res, 900));
               r = await ctx.fetch(url, { timeoutMs: 4500 });
             }
-            if (r.status !== 200) return zomatoPresence(ctx.source, slug4, term, `HTTP ${r.status}`);
+            if (r.status !== 200) return zomatoPresence(ctx.source, slug5, term, `HTTP ${r.status}`);
             const items = parseZomatoRestaurants(r.body, ctx.source, url, "Zomato");
-            if (!items.length) return zomatoPresence(ctx.source, slug4, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
+            if (!items.length) return zomatoPresence(ctx.source, slug5, term, looksLikeChallenge(r.body) ? "challenge shell" : "no parseable listings");
             const toOrder = (u) => u.replace(/\/(?:info|order)?\/?$/, "") + "/order";
             const restUrls = items.slice(0, 6).map((it) => String(it.sellerUrl || "")).filter((u) => /zomato\.com\//.test(u)).map(toOrder);
             const qTokens = term.toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
@@ -17846,7 +17846,7 @@ var init_food = __esm({
             }
             if (dishItems.length) return dishItems;
             if (items.length) return items;
-            return zomatoPresence(ctx.source, slug4, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
+            return zomatoPresence(ctx.source, slug5, term, restUrls.length && !hintAgg.priceHits ? `no embedded menu prices (hints: ${JSON.stringify(hintAgg)})` : "no usable rows");
           }
         },
         {
@@ -21497,13 +21497,13 @@ var init_uberIndiaCities = __esm({
       "zamania-uttar-pradesh-in",
       "zira-punjab-in"
     ];
-    PARSED = SLUGS.map((slug4) => {
-      let rest = slug4.endsWith("-in") ? slug4.slice(0, -3).split("-") : slug4.split("-");
+    PARSED = SLUGS.map((slug5) => {
+      let rest = slug5.endsWith("-in") ? slug5.slice(0, -3).split("-") : slug5.split("-");
       const tail2 = rest.length > 2 ? `${rest[rest.length - 2]}-${rest[rest.length - 1]}` : "";
       const tail1 = rest[rest.length - 1];
       if (UBER_IN_STATE_SUFFIXES.has(tail2)) rest = rest.slice(0, -2);
       else if (UBER_IN_STATE_SUFFIXES.has(tail1)) rest = rest.slice(0, -1);
-      return { slug: slug4, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
+      return { slug: slug5, city: rest.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") };
     });
     BY_CANON = /* @__PURE__ */ new Map();
     for (const e2 of PARSED) {
@@ -21667,8 +21667,8 @@ function uberDestMatchScore(routeEnd, destName) {
   for (const t of a) if (b.includes(t) || b.some((x) => x.length > 3 && t.length > 3 && (x.includes(t) || t.includes(x)))) hits++;
   return hits / a.length;
 }
-async function uberCityFares(slug4, city) {
-  const url = `https://www.uber.com/global/en/r/cities/${slug4}/`;
+async function uberCityFares(slug5, city) {
+  const url = `https://www.uber.com/global/en/r/cities/${slug5}/`;
   const r = await cffiFetch(url, { impersonate: "chrome", timeoutMs: 2e4, headers: { Accept: "text/html", "Accept-Language": "en-IN,en;q=0.9" } });
   if (r.status !== 200 || !(r.body || "").includes("Average price with UberX")) throw new AcquisitionError("EMPTY_RESPONSE", `Uber city guide page unavailable (HTTP ${r.status}) for ${city}`);
   const out = [];
@@ -21680,7 +21680,7 @@ async function uberCityFares(slug4, city) {
     const priceM = txts[i + 1].match(/^\s*(?:₹|Rs\.?\s*)([\d,]+)\s*$/);
     if (priceM && !/^\s*[₹]/.test(txts[i])) {
       const price = Number(priceM[1].replace(/,/g, ""));
-      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug4, fetchedUrl: url });
+      if (price > 0) out.push({ dest: txts[i], price, city, slug: slug5, fetchedUrl: url });
     }
   }
   return out;
@@ -23867,9 +23867,9 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     const title = String(mv.name || "").trim();
     if (!title) continue;
     if (queryTerm && !matchesQuery(title, queryTerm)) continue;
-    const slug4 = ticketnewSlug(title);
-    if (seen.has(slug4)) continue;
-    seen.add(slug4);
+    const slug5 = ticketnewSlug(title);
+    if (seen.has(slug5)) continue;
+    seen.add(slug5);
     const attrs = {
       image_url: mv.appImgPath ? String(mv.appImgPath) : null,
       language: mv.lang || null,
@@ -23882,7 +23882,7 @@ function parseTicketNewMovies(movies, source, cityKey, queryTerm) {
     out.push(newRawItem(source, {
       title,
       seller: "TicketNew",
-      sellerUrl: slug4 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug4}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
+      sellerUrl: slug5 ? `${TICKETNEW_BASE}/${cityKey}/movies/${slug5}` : `${TICKETNEW_BASE}/movies/${cityKey}`,
       currency: "INR",
       attributes: attrs,
       evidence: {
@@ -24176,9 +24176,9 @@ function movieSeatLink(ctx) {
     const city = slugPath(ctx.city);
     const cid = String(ctx.cid ?? ctx.cinemaId ?? "").trim();
     if (!city || !cid) return "";
-    const slug4 = slugPath(ctx.cinemaName) || "cinema";
+    const slug5 = slugPath(ctx.cinemaName) || "cinema";
     if (contentId) q3.push(`contentid=${contentId}`);
-    return `https://ticketnew.com/movies/${city}/${slug4}-c/${cid}?${q3.join("&")}`;
+    return `https://ticketnew.com/movies/${city}/${slug5}-c/${cid}?${q3.join("&")}`;
   }
   const fid = String(ctx.fid || "").trim();
   if (!fid) {
@@ -25212,8 +25212,8 @@ function parseRedBusSearch(json, source, route2) {
   const inventories = Array.isArray(d?.data?.inventories) ? d.data.inventories : [];
   if (!inventories.length) return [];
   const fingerprint = (0, import_crypto15.createHash)("sha256").update(json.slice(0, 5e4)).digest("hex");
-  const slug4 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-  const searchUrl = `https://www.redbus.in/bus-tickets/${slug4(route2.fromName)}-to-${slug4(route2.toName)}.aspx`;
+  const slug5 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+  const searchUrl = `https://www.redbus.in/bus-tickets/${slug5(route2.fromName)}-to-${slug5(route2.toName)}.aspx`;
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   for (const inv of inventories) {
@@ -25724,8 +25724,8 @@ var init_bus = __esm({
             const raw = String(ctx.query.rawQuery || "");
             const rt = routeFromQuery3(raw);
             if (!rt) return [];
-            const slug4 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
-            const pageUrl = `https://www.redbus.in/bus-tickets/${slug4(rt.from)}-to-${slug4(rt.to)}.aspx`;
+            const slug5 = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim().replace(/\s+/g, "-");
+            const pageUrl = `https://www.redbus.in/bus-tickets/${slug5(rt.from)}-to-${slug5(rt.to)}.aspx`;
             const steps = [];
             const t0 = Date.now();
             let resolved = {};
@@ -26125,9 +26125,9 @@ function parseIssuerIndex(html, bankSlug) {
   const re = new RegExp(`https://cardinsider\\.com/${bankSlug}/([a-z0-9-]+)/`, "gi");
   const out = /* @__PURE__ */ new Set();
   for (const m of html.matchAll(re)) {
-    const slug4 = m[1];
-    if (!/credit-card$/.test(slug4)) continue;
-    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug4)) continue;
+    const slug5 = m[1];
+    if (!/credit-card$/.test(slug5)) continue;
+    if (/^(best|check|credit-card|hdfc-bank-credit-cards|how|add-on|.*-vs-.*|.*lifetime-free.*|.*forex.*|.*lounge.*|.*customer-care.*|.*bill-payment.*|.*pin-generation.*|.*eligibility.*|.*application-status.*|.*limit.*|.*login.*)/.test(slug5)) continue;
     out.add(m[0]);
   }
   return [...out];
@@ -26313,11 +26313,11 @@ async function bankCardIndex(bankSlug) {
       let h = raw;
       if (h.startsWith(hub.base)) h = h.slice(hub.base.length);
       if (!h.startsWith("/") || !hub.pathRe.test(h)) continue;
-      const slug4 = h.split("/").pop().replace(/\.page$/, "");
-      if (NOISE.test(slug4)) continue;
-      seen.set(hub.base + h, slug4);
+      const slug5 = h.split("/").pop().replace(/\.page$/, "");
+      if (NOISE.test(slug5)) continue;
+      seen.set(hub.base + h, slug5);
     }
-    const links = [...seen].map(([url, slug4]) => ({ url, slug: slug4 }));
+    const links = [...seen].map(([url, slug5]) => ({ url, slug: slug5 }));
     CACHE.set(bankSlug, { at: Date.now(), links });
     return links;
   } catch {
@@ -29091,7 +29091,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const domain = safeDomain(targetUrl);
   const store4 = getStore();
   try {
-    const slug4 = (opts.companySlug || "").toLowerCase().slice(0, 64);
+    const slug5 = (opts.companySlug || "").toLowerCase().slice(0, 64);
     const labels = domain.split(".").filter(Boolean);
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
@@ -29099,7 +29099,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
       `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
-      [slug4, domain, parent2, parent3]
+      [slug5, domain, parent2, parent3]
     );
     const r = rows?.[0];
     if (r && String(r.monetization || "").toLowerCase() === "adsense" && !r.template) {
@@ -32634,8 +32634,7 @@ function learnFlightSchedules(offers) {
     if (String(offer?.vertical || "") !== "flights") continue;
     const flightNo2 = flightNoOf(offer);
     if (!flightNo2) continue;
-    const departure = normalizeClockTime(attr(offer, "departure_time", "departure time", "departure"));
-    const arrival = normalizeClockTime(attr(offer, "arrival_time", "arrival time", "arrival"));
+    const { departure, arrival } = timesOf(offer);
     if (!departure || !arrival) continue;
     const durationRaw = Number(attr(offer, "duration_minutes", "duration minutes"));
     const stopsRaw = attr(offer, "stops");
@@ -32676,10 +32675,15 @@ function enrichFlightSchedules(offers) {
       out.push(offer);
       continue;
     }
-    const departure = normalizeClockTime(attr(offer, "departure_time", "departure time", "departure"));
-    const arrival = normalizeClockTime(attr(offer, "arrival_time", "arrival time", "arrival"));
+    const { departure, arrival } = timesOf(offer);
     if (departure && arrival) {
-      out.push(offer);
+      const attrsIn = offer?.attributes || {};
+      const needsAttrFix = !normalizeClockTime(attr(offer, ...DEP_KEYS2)) || !normalizeClockTime(attr(offer, ...ARR_KEYS2));
+      if (needsAttrFix) {
+        out.push({ ...offer, attributes: { ...attrsIn, departure: attrsIn.departure || departure, arrival: attrsIn.arrival || arrival } });
+      } else {
+        out.push(offer);
+      }
       continue;
     }
     const flightNo2 = flightNoOf(offer);
@@ -32706,7 +32710,15 @@ function enrichFlightSchedules(offers) {
   }
   return out;
 }
-var MAX_ENTRIES, persistEnabled, memory, tableReady, pendingWrites, keyOf, attr, routeOf, flightNoOf;
+function hasFlightSchedule(item) {
+  const specs = item?.specs || {};
+  const dep = normalizeClockTime(specs["departure time"] || specs.departure);
+  const arr = normalizeClockTime(specs["arrival time"] || specs.arrival);
+  if (dep && arr) return true;
+  const fromRow = timesOf(item);
+  return !!(fromRow.departure && fromRow.arrival);
+}
+var MAX_ENTRIES, persistEnabled, memory, tableReady, pendingWrites, keyOf, attr, DEP_KEYS2, ARR_KEYS2, textTimes, timesOf, routeOf, flightNoOf;
 var init_flightSchedule = __esm({
   "server/common/flightSchedule.ts"() {
     init_db();
@@ -32727,6 +32739,29 @@ var init_flightSchedule = __esm({
       }
       return void 0;
     };
+    DEP_KEYS2 = ["departure_time", "departure time", "departure", "dep_time", "depTime", "std", "dep", "from_time"];
+    ARR_KEYS2 = ["arrival_time", "arrival time", "arrival", "arr_time", "arrTime", "sta", "arr", "to_time"];
+    textTimes = (offer) => {
+      const texts = [offer?.title, offer?.subtitle, offer?.description, offer?.attributes?.data_note].filter((t) => typeof t === "string" && t.trim() !== "");
+      for (const text of texts) {
+        const m = /(\d{1,2}:\d{2})\s*(?:→|->|–|—|-|to)\s*(\d{1,2}:\d{2})/i.exec(text);
+        if (!m) continue;
+        const departure = normalizeClockTime(m[1]);
+        const arrival = normalizeClockTime(m[2]);
+        if (departure && arrival) return { departure, arrival };
+      }
+      return null;
+    };
+    timesOf = (offer) => {
+      const departure = normalizeClockTime(attr(offer, ...DEP_KEYS2));
+      const arrival = normalizeClockTime(attr(offer, ...ARR_KEYS2));
+      if (departure && arrival) return { departure, arrival };
+      const fromText = textTimes(offer);
+      return {
+        departure: departure || fromText?.departure || null,
+        arrival: arrival || fromText?.arrival || null
+      };
+    };
     routeOf = (offer) => {
       const raw = attr(offer, "route", "Route") || offer?.travel?.route || "";
       const codes = String(raw).match(/\b[A-Z]{3}\b/g);
@@ -32745,6 +32780,178 @@ var init_flightSchedule = __esm({
       const m = title.match(/\b([0-9]?[A-Z]{1,2})\s?(\d{3,4})\b/);
       return m ? normalizeFlightNo(`${m[1]}${m[2]}`) : null;
     };
+  }
+});
+
+// server/search/flightTimeBackfill.ts
+function routeTokensOf(route2) {
+  const raw = String(route2 ?? "").trim();
+  if (!raw) return null;
+  const parts = raw.split(/\s*(?:→|->|—|–|\bto\b)\s*/i).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 2 && parts[0] && parts[1]) {
+    return { from: slug4(parts[0]), to: slug4(parts[1]) };
+  }
+  const codes = raw.match(/\b[A-Z]{3}\b/g);
+  if (codes && codes.length >= 2) return { from: codes[0].toLowerCase(), to: codes[1].toLowerCase() };
+  return null;
+}
+function routeDateOf(offer) {
+  const route2 = offer?.attributes?.route || offer?.travel?.route || "";
+  const date = String(offer?.travel?.date || offer?.attributes?.travel_date || "").trim();
+  if (!route2 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  return { route: String(route2), date };
+}
+async function harvestRoute(from, to, date) {
+  const url = `https://www.ixigo.com/search/flight/${from}/${to}/${date}/1/0`;
+  const res = await cffiFetch(url, { impersonate: "chrome", timeoutMs: HARVEST_TIMEOUT_MS });
+  if (res.status !== 200) return 0;
+  const m = String(res.body || "").match(/<script id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
+  if (!m) return 0;
+  let next;
+  try {
+    next = JSON.parse(m[1]);
+  } catch {
+    return 0;
+  }
+  const flights = parseIxigoFlights(next);
+  if (!flights.length) return 0;
+  const synthetic = flights.filter((f) => f.flightNumber && f.departureTime && f.arrivalTime).map((f) => {
+    const legs = f.legs || [];
+    const fromCode = legs[0]?.from;
+    const toCode = legs[legs.length - 1]?.to;
+    return {
+      vertical: "flights",
+      brand: f.airline,
+      title: `${f.airline} ${f.flightNumber}`,
+      attributes: {
+        flight_number: f.flightNumber,
+        airline: f.airline,
+        departure: f.departureTime,
+        arrival: f.arrivalTime,
+        ...f.durationMinutes ? { duration_minutes: f.durationMinutes } : {},
+        ...f.stops !== null ? { stops: f.stops } : {},
+        ...fromCode && toCode ? { route: `${fromCode} \u2192 ${toCode}` } : {}
+      }
+    };
+  });
+  if (!synthetic.length) return 0;
+  return learnFlightSchedules(synthetic);
+}
+function harvestOnce(from, to, date) {
+  const key = `${from}|${to}|${date}`;
+  const hit = harvestCache.get(key);
+  if (hit && Date.now() - hit.at < (hit.ok ? HARVEST_OK_TTL_MS : HARVEST_FAIL_TTL_MS)) {
+    return Promise.resolve(hit.learned);
+  }
+  const running2 = harvestInflight.get(key);
+  if (running2) return running2;
+  const job = (async () => {
+    let learned = 0;
+    try {
+      learned = await harvestRoute(from, to, date);
+    } catch {
+      learned = 0;
+    } finally {
+      harvestInflight.delete(key);
+      harvestCache.set(key, { at: Date.now(), ok: learned > 0, learned });
+    }
+    return learned;
+  })();
+  harvestInflight.set(key, job);
+  return job;
+}
+async function backfillFlightTimes(offers, opts = {}) {
+  const budgetMs = opts.budgetMs ?? 3e3;
+  const harvestAllowed = opts.harvest !== false;
+  let out = enrichFlightSchedules(offers);
+  const missing = out.filter((o) => String(o?.vertical) === "flights" && !isPresenceRow(o) && !hasFlightSchedule(o));
+  if (!missing.length || !harvestAllowed) return out;
+  const keys = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const row of missing) {
+    const rd = routeDateOf(row);
+    if (!rd) continue;
+    const toks2 = routeTokensOf(rd.route);
+    if (!toks2) continue;
+    const k = `${toks2.from}|${toks2.to}|${rd.date}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    keys.push({ from: toks2.from, to: toks2.to, date: rd.date });
+    if (keys.length >= HARVEST_KEY_LIMIT) break;
+  }
+  if (!keys.length) return out;
+  const learned = await withBudget(
+    Promise.all(keys.map((k) => harvestOnce(k.from, k.to, k.date))).then((r) => r.reduce((a, b) => a + b, 0)),
+    budgetMs,
+    0
+  );
+  if (learned > 0) {
+    out = enrichFlightSchedules(out);
+  }
+  return out;
+}
+function hideFlightRowsWithoutTimes(offers) {
+  const kept = [];
+  const dropped = [];
+  for (const offer of offers || []) {
+    if (String(offer?.vertical) !== "flights") {
+      kept.push(offer);
+      continue;
+    }
+    if (isPresenceRow(offer)) {
+      kept.push(offer);
+      continue;
+    }
+    if (hasFlightSchedule(offer)) {
+      kept.push(offer);
+      continue;
+    }
+    dropped.push({
+      title: String(offer?.title || "").slice(0, 80),
+      seller: String(offer?.seller || offer?.vendor || "").slice(0, 40),
+      reason: "no_time"
+    });
+  }
+  return { kept, dropped };
+}
+function noteFlightTimeDrop(vertical, dropped, remaining) {
+  if (!dropped.length) return;
+  log.info("Search", "Hid flight rows without a time (owner 30 Oct)", {
+    vertical,
+    dropped: dropped.length,
+    kept: remaining,
+    sample: dropped.slice(0, 3).map((d) => `${d.seller}: ${d.title}`.slice(0, 70))
+  });
+}
+var HARVEST_OK_TTL_MS, HARVEST_FAIL_TTL_MS, HARVEST_TIMEOUT_MS, HARVEST_KEY_LIMIT, harvestCache, harvestInflight, slug4, isPresenceRow, withBudget;
+var init_flightTimeBackfill = __esm({
+  "server/search/flightTimeBackfill.ts"() {
+    init_curlCffiFetch();
+    init_flightSchedule();
+    init_ixigoFlights();
+    init_logger();
+    HARVEST_OK_TTL_MS = 20 * 6e4;
+    HARVEST_FAIL_TTL_MS = 5 * 6e4;
+    HARVEST_TIMEOUT_MS = 12e3;
+    HARVEST_KEY_LIMIT = 2;
+    harvestCache = /* @__PURE__ */ new Map();
+    harvestInflight = /* @__PURE__ */ new Map();
+    slug4 = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, "_");
+    isPresenceRow = (offer) => String(offer?.id || "").startsWith("presence_") || String(offer?.attributes?.price_basis || "") === "live_fares_unavailable";
+    withBudget = (p, ms, fallback) => new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(fallback), ms);
+      if (typeof timer.unref === "function") timer.unref();
+      p.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        () => {
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      );
+    });
   }
 });
 
@@ -33607,6 +33814,12 @@ async function finalizeLive(totalStart, input, parsed, ctx, outcome, persist5 = 
   if (String(vertical) === "flights") {
     const honestEmpty = (outcome.failed || []).filter((f) => f.failureClass === "EMPTY_RESPONSE").map((f) => f.sourceId).filter((id) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
     combined = [...combined, ...await buildFlightSellerPresence(parsed, combined, [...outcome.succeeded || [], ...honestEmpty])];
+    combined = await backfillFlightTimes(combined);
+    const timed = hideFlightRowsWithoutTimes(combined);
+    if (timed.dropped.length) {
+      noteFlightTimeDrop(String(vertical), timed.dropped, timed.kept.length);
+      combined = timed.kept;
+    }
   }
   if (["loans", "creditcards", "insurance", "account"].includes(String(vertical))) {
     try {
@@ -33822,6 +34035,7 @@ var init_searchOrchestrator = __esm({
     init_verticalEngine();
     init_catalogueService();
     init_flightSchedule();
+    init_flightTimeBackfill();
     init_verticalEngine();
     init_affiliateNetwork();
     BUS_PRIMARY_LIVE_SELLERS = ["abhibus", "redbus"];
@@ -34326,9 +34540,9 @@ function refreshMovieDestination(destination, now = /* @__PURE__ */ new Date()) 
     if (/^\/booking\//.test(url.pathname)) {
       const code = url.searchParams.get("code") || url.searchParams.get("etCode") || "";
       const region = url.searchParams.get("region") || "";
-      const slug4 = url.searchParams.get("slug") || "";
-      if (code && region && slug4) {
-        url.pathname = `/movies/${region}/${slug4}/buytickets/${code}/${compact}`;
+      const slug5 = url.searchParams.get("slug") || "";
+      if (code && region && slug5) {
+        url.pathname = `/movies/${region}/${slug5}/buytickets/${code}/${compact}`;
         url.search = "";
       } else {
         return destination;
@@ -40968,12 +41182,12 @@ async function deletePromoOffer(id) {
 }
 async function promosForMerchant(merchant, limit = 3) {
   await ensurePromoTable();
-  const slug4 = cleanSlug(merchant);
+  const slug5 = cleanSlug(merchant);
   const domain = cleanDomain(merchant);
-  if (!slug4 && !domain) return [];
+  if (!slug5 && !domain) return [];
   const rows = await getStore().query(
     "SELECT * FROM promo_offers WHERE (merchant_slug = ? OR merchant_domain = ?) ORDER BY priority ASC, id DESC LIMIT 40",
-    [slug4, domain]
+    [slug5, domain]
   ).catch(() => []);
   return rows.map(rowToPromo).filter((r) => isPromoLive(r)).slice(0, Math.max(1, Math.min(5, limit)));
 }
@@ -42496,8 +42710,8 @@ var init_routes = __esm({
         }
       }
       const keepUnpriced = ["movie", "movies", "cab", "banking"].includes(String(input.vertical));
-      const isPresenceRow = (x) => String(x.o?.id || "").startsWith("presence_");
-      if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced || isPresenceRow(x));
+      const isPresenceRow2 = (x) => String(x.o?.id || "").startsWith("presence_");
+      if (kept.some((x) => x.priced) && !keepUnpriced) kept = kept.filter((x) => x.priced || isPresenceRow2(x));
       if (String(input.vertical) === "bus") {
         const live = kept.filter((x) => x.o.attributes?.fare_type !== "indicative_estimate");
         if (live.length) kept = live;
@@ -44007,16 +44221,16 @@ __export(profiles_exports, {
   validateProfile: () => validateProfile
 });
 function validateProfile(i) {
-  const slug4 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
+  const slug5 = String(i.slug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
   const domain = String(i.company_domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
   const network = String(i.network || "").trim().toLowerCase();
   const template = String(i.template || "").trim();
-  if (!slug4) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
+  if (!slug5) return { ok: false, error: "Company slug is required (e.g. flipkart)" };
   if (!domain || !domain.includes(".")) return { ok: false, error: "Company domain is required (e.g. flipkart.com)" };
   if (!AFFILIATE_NETWORKS.includes(network)) return { ok: false, error: "Unknown network" };
   if (!template) {
     const clean3 = {
-      slug: slug4,
+      slug: slug5,
       company_domain: domain,
       network: AFFILIATE_NETWORKS.includes(network) ? network : "direct",
       template: null,
@@ -44042,7 +44256,7 @@ function validateProfile(i) {
   return {
     ok: true,
     clean: {
-      slug: slug4,
+      slug: slug5,
       company_domain: domain,
       network,
       template,
@@ -44081,8 +44295,8 @@ async function saveProfile(i) {
   }
   return { ok: true };
 }
-async function deleteProfile(slug4) {
-  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug4 || "").trim().toLowerCase()]);
+async function deleteProfile(slug5) {
+  await getStore().execute("DELETE FROM affiliate_configs WHERE slug = ?", [String(slug5 || "").trim().toLowerCase()]);
 }
 var AFFILIATE_NETWORKS;
 var init_profiles = __esm({
@@ -48481,8 +48695,8 @@ var init_loopWatchdog = __esm({
 });
 
 // server/seo/data.ts
-function verticalBySlug(slug4) {
-  return VERTICALS2.find((v) => v.slug === slug4.replace(/\/$/, ""));
+function verticalBySlug(slug5) {
+  return VERTICALS2.find((v) => v.slug === slug5.replace(/\/$/, ""));
 }
 function routeSlug(a, b, noun) {
   return `${a}-to-${b}-${noun}`;
@@ -49211,7 +49425,7 @@ var init_data = __esm({
       { slug: "current-account", label: "Current Account", query: "current account" }
     ];
     titleCase = (s) => s.replace(/(^|\s|-)\w/g, (m) => m.toUpperCase());
-    cityName = (slug4) => CITIES.find((c) => c.slug === slug4)?.name || titleCase(slug4.replace(/-/g, " "));
+    cityName = (slug5) => CITIES.find((c) => c.slug === slug5)?.name || titleCase(slug5.replace(/-/g, " "));
     cityList = () => CITIES.slice(0, 8).map((c) => c.name).join(", ");
   }
 });
@@ -49402,10 +49616,10 @@ async function productSitemapPaths(limit = 200) {
     for (const v of ["ecommerce", "grocery"]) {
       const rows = await findCatalogueOffers2(v, { limit: 200 }).catch(() => []);
       for (const r of rows) {
-        const slug4 = productSlug(String(r.title || ""));
-        if (slug4.length < 3 || seen.has(slug4)) continue;
-        seen.add(slug4);
-        paths.push(`/product/${slug4}`);
+        const slug5 = productSlug(String(r.title || ""));
+        if (slug5.length < 3 || seen.has(slug5)) continue;
+        seen.add(slug5);
+        paths.push(`/product/${slug5}`);
         if (paths.length >= limit) break;
       }
       if (paths.length >= limit) break;
@@ -49809,9 +50023,9 @@ function placementTokens(path15) {
   const hint = `${route2?.query || ""}`.replace(/\([^)]*\)/g, " ").toLowerCase();
   return hint.replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
 }
-function productMatches(slug4, title) {
-  if (slugOf2(title) === slug4) return true;
-  const want = slug4.split("-").filter((t) => t.length > 1);
+function productMatches(slug5, title) {
+  if (slugOf2(title) === slug5) return true;
+  const want = slug5.split("-").filter((t) => t.length > 1);
   if (!want.length) return false;
   const have = new Set(slugOf2(title).split("-").filter((t) => t.length > 1));
   const hit = want.filter((t) => have.has(t) || [...have].some((h) => h.startsWith(t) || t.startsWith(h))).length;
@@ -49819,8 +50033,8 @@ function productMatches(slug4, title) {
 }
 function selectSnapshotRows(candidates, path15, max = MAX_ROWS, bySlug = false) {
   if (bySlug) {
-    const slug4 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path15.replace(/\/+$/, ""))?.[1] || "";
-    const pool3 = candidates.filter((r) => productMatches(slug4, r.title));
+    const slug5 = /^\/product\/([a-z0-9-]{3,80})$/.exec(path15.replace(/\/+$/, ""))?.[1] || "";
+    const pool3 = candidates.filter((r) => productMatches(slug5, r.title));
     const seen0 = /* @__PURE__ */ new Set();
     const out0 = [];
     for (const r of pool3.sort((a, b) => a.price - b.price)) {

@@ -89,6 +89,40 @@ const attr = (offer: any, ...keys: string[]): string | undefined => {
   return undefined;
 };
 
+/**
+ * Owner 30 Oct ("flight mai time ni aa raha, uska time le kr aao"): parsers do not all
+ * use the same key for a clock time. Read every shape we have seen (attributes, specs,
+ * and the card title/subtitle text some presence sources publish as "6E 6972 · 13:55 →
+ * 15:30") BEFORE declaring a row timeless, so a row whose source really did publish
+ * timings is never hidden for a key mismatch.
+ */
+const DEP_KEYS = ['departure_time', 'departure time', 'departure', 'dep_time', 'depTime', 'std', 'dep', 'from_time'];
+const ARR_KEYS = ['arrival_time', 'arrival time', 'arrival', 'arr_time', 'arrTime', 'sta', 'arr', 'to_time'];
+
+const textTimes = (offer: any): { departure: string; arrival: string } | null => {
+  const texts = [offer?.title, offer?.subtitle, offer?.description, offer?.attributes?.data_note]
+    .filter((t) => typeof t === 'string' && t.trim() !== '') as string[];
+  for (const text of texts) {
+    const m = /(\d{1,2}:\d{2})\s*(?:→|->|–|—|-|to)\s*(\d{1,2}:\d{2})/i.exec(text);
+    if (!m) continue;
+    const departure = normalizeClockTime(m[1]);
+    const arrival = normalizeClockTime(m[2]);
+    if (departure && arrival) return { departure, arrival };
+  }
+  return null;
+};
+
+const timesOf = (offer: any): { departure: string | null; arrival: string | null } => {
+  const departure = normalizeClockTime(attr(offer, ...DEP_KEYS));
+  const arrival = normalizeClockTime(attr(offer, ...ARR_KEYS));
+  if (departure && arrival) return { departure, arrival };
+  const fromText = textTimes(offer);
+  return {
+    departure: departure || fromText?.departure || null,
+    arrival: arrival || fromText?.arrival || null,
+  };
+};
+
 const routeOf = (offer: any): string | null => {
   const raw = attr(offer, 'route', 'Route') || offer?.travel?.route || '';
   const codes = String(raw).match(/\b[A-Z]{3}\b/g);
@@ -206,8 +240,7 @@ export function learnFlightSchedules(offers: any[]): number {
     if (String(offer?.vertical || '') !== 'flights') continue;
     const flightNo = flightNoOf(offer);
     if (!flightNo) continue;
-    const departure = normalizeClockTime(attr(offer, 'departure_time', 'departure time', 'departure'));
-    const arrival = normalizeClockTime(attr(offer, 'arrival_time', 'arrival time', 'arrival'));
+    const { departure, arrival } = timesOf(offer);
     if (!departure || !arrival) continue;
     const durationRaw = Number(attr(offer, 'duration_minutes', 'duration minutes'));
     const stopsRaw = attr(offer, 'stops');
@@ -258,10 +291,17 @@ export function enrichFlightSchedules<T extends Record<string, any>>(offers: T[]
       out.push(offer);
       continue;
     }
-    const departure = normalizeClockTime(attr(offer, 'departure_time', 'departure time', 'departure'));
-    const arrival = normalizeClockTime(attr(offer, 'arrival_time', 'arrival time', 'arrival'));
+    const { departure, arrival } = timesOf(offer);
     if (departure && arrival) {
-      out.push(offer);
+      // A row whose timings live only in its title text gets them into attributes too,
+      // so the card (and the next search) can use them as a real schedule.
+      const attrsIn = (offer as any)?.attributes || {};
+      const needsAttrFix = !normalizeClockTime(attr(offer, ...DEP_KEYS)) || !normalizeClockTime(attr(offer, ...ARR_KEYS));
+      if (needsAttrFix) {
+        out.push({ ...offer, attributes: { ...attrsIn, departure: attrsIn.departure || departure, arrival: attrsIn.arrival || arrival } });
+      } else {
+        out.push(offer);
+      }
       continue;
     }
     const flightNo = flightNoOf(offer);
@@ -290,12 +330,21 @@ export function enrichFlightSchedules<T extends Record<string, any>>(offers: T[]
   return out;
 }
 
-/** True when a mapped card item carries a usable departure + arrival. */
+/**
+ * True when a row carries a usable departure + arrival time.
+ *
+ * Owner 30 Oct: this now also reads the card's attribute keys and its own title text,
+ * because the flight hide rule depends on it — a row whose source really did publish
+ * "13:55 → 15:30" (in attributes, in specs, or in the card text) must never be treated
+ * as timeless and hidden.
+ */
 export function hasFlightSchedule(item: any): boolean {
   const specs = item?.specs || {};
   const dep = normalizeClockTime(specs['departure time'] || specs.departure);
   const arr = normalizeClockTime(specs['arrival time'] || specs.arrival);
-  return !!(dep && arr);
+  if (dep && arr) return true;
+  const fromRow = timesOf(item);
+  return !!(fromRow.departure && fromRow.arrival);
 }
 
 /** Test helper: the in-process memory size. */

@@ -37,6 +37,7 @@ import { buildFlightSellerPresence, PRESENCE_SHOW_ON_EMPTY_IDS } from './sellerP
 import { getVerticalEngine } from '../verticals/verticalEngine';
 import { findCatalogueOffers, persistOffer, recordPriceSnapshot, type CatalogueRow } from '../catalogue/catalogueService';
 import { enrichFlightSchedules } from '../common/flightSchedule';
+import { backfillFlightTimes, hideFlightRowsWithoutTimes, noteFlightTimeDrop } from './flightTimeBackfill';
 import { filterByNamedProviders } from '../verticals/verticalEngine';
 import { attachAffiliateDeepLinks } from '../affiliate/affiliateNetwork';
 
@@ -1020,6 +1021,19 @@ async function finalizeLive(
       // card must survive (handled via showOnEmpty inside the builder).
       .filter((id: string) => !PRESENCE_SHOW_ON_EMPTY_IDS.has(id));
     combined = [...combined, ...(await buildFlightSellerPresence(parsed, combined, [...(outcome.succeeded || []), ...honestEmpty]))];
+
+    // 7.6 FLIGHT TIME BACKFILL + HONEST HIDE (owner 30 Oct: "flight mai time ni aa
+    // raha uska time le kr aao kaise v agar phir v naa aaye tho usko hide kr do jo
+    // time naa de"). First try to GET the timings: one bounded live harvest of the
+    // searched route+date teaches the schedule memory every carrier's dep/arr, and the
+    // rows are filled from what a real source published. Whatever is still timeless is
+    // then hidden (presence cards without a fare, and other verticals, are untouched).
+    combined = await backfillFlightTimes(combined as any) as any;
+    const timed = hideFlightRowsWithoutTimes(combined as any[]);
+    if (timed.dropped.length) {
+      noteFlightTimeDrop(String(vertical), timed.dropped, timed.kept.length);
+      combined = timed.kept as any;
+    }
   }
 
   // 7.9 MANUAL FINANCE INVENTORY (owner 27 Oct): entries the owner typed in the admin
