@@ -21703,6 +21703,24 @@ async function uberPudoPlace(bias, query, type) {
     return null;
   }
 }
+function parseUberSessionCookie(raw) {
+  const out = {};
+  const text = String(raw ?? "").trim();
+  if (!text) return out;
+  for (const chunk of text.split(/[\n,;]+/)) {
+    const part = chunk.trim();
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (eq > 0) {
+      const name = part.slice(0, eq).trim();
+      const value = part.slice(eq + 1).trim();
+      if (name && value) out[name] = value;
+    } else if (eq === -1 && !out.sid) {
+      out.sid = part;
+    }
+  }
+  return out;
+}
 async function uberGoFlowSafe(ctx, rt) {
   try {
     const city = ctxCity(ctx);
@@ -21711,8 +21729,21 @@ async function uberGoFlowSafe(ctx, rt) {
     const [pu, dr] = await Promise.all([uberPudoPlace(a, rt.from, "PICKUP"), uberPudoPlace(b, rt.to, "DROPOFF")]);
     const pickup = pu ?? { lat: a.lat, lng: a.lon, name: rt.from.slice(0, 120) };
     const drop = dr ?? { lat: b.lat, lng: b.lon, name: rt.to.slice(0, 120) };
+    const session = uberSessionCookies();
+    const hasSession = Object.keys(session).length > 0;
     let graphql = null;
-    for (const fp of ["chrome", "safari17_0"]) {
+    if (hasSession) {
+      const r = await cffiFetch("https://m.uber.com/go/graphql", {
+        method: "POST",
+        impersonate: "chrome",
+        timeoutMs: 25e3,
+        cookies: session,
+        headers: { "Content-Type": "application/json", "x-csrf-token": "x", Accept: "application/json", Origin: "https://m.uber.com", Referer: "https://m.uber.com/go/product-selection" },
+        body: buildUberProductsRequestBody(pickup, drop)
+      });
+      if (r.status === 200 && (r.body || "").includes('"products"')) graphql = r;
+    }
+    for (const fp of graphql ? [] : ["chrome", "safari17_0"]) {
       const prime = await cffiFetch("https://m.uber.com/go/looking", {
         impersonate: fp,
         timeoutMs: 2e4,
@@ -21762,8 +21793,8 @@ async function uberGoFlowSafe(ctx, rt) {
         ...p.etaMinutes ? { eta_minutes: String(p.etaMinutes) } : {},
         ...p.description ? { vehicle_description: p.description } : {},
         ...p.tier ? { fare_tier: p.tier } : {},
-        price_basis: p.fare != null ? `Uber guest web quote for this route on ${today2}` : "app_only_fares",
-        data_note: p.fare != null ? `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today2}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+        price_basis: p.fare != null ? hasSession ? `Uber live session quote for this route on ${today2}` : `Uber guest web quote for this route on ${today2}` : "app_only_fares",
+        data_note: p.fare != null ? hasSession ? `Live fare from Uber's own ride web app (m.uber.com/go Products query, sent with the operator's own rider session on ${today2}); deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today2}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.` : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`
       },
       identifiers: { sku: `uber-go-${rt.from}-${rt.to}-${p.displayName}`.toLowerCase().replace(/\s+/g, "-") },
       evidence: { sourceUrl: "https://m.uber.com/go/graphql", extractedFields: ["products tiers", "displayName", "fares", "capacity"], sourceReference: "Uber guest ride web app Products query (ANONYMOUS)" }
@@ -21974,7 +22005,7 @@ async function olaRateCardFallback(ctx, rt, reason) {
   if (!items.length) throw new AcquisitionError("EMPTY_RESPONSE", `Ola rate-card DB has no live consumer card for ${city.name}`);
   return items.sort((x, y) => x.price - y.price);
 }
-var _uberTokenCache, UBER_CITY_SLUGS, OLA_RC_BASE, OLA_RC_KEY, _olaCityCache, OLA_CATEGORY_LABELS, cabWorker;
+var _uberTokenCache, UBER_CITY_SLUGS, uberSessionCookies, OLA_RC_BASE, OLA_RC_KEY, _olaCityCache, OLA_CATEGORY_LABELS, cabWorker;
 var init_cab = __esm({
   "server/workers/verticals/cab.ts"() {
     init_cabLinks();
@@ -22014,6 +22045,7 @@ var init_cab = __esm({
       { keys: ["bhubaneswar"], slug: "bhubaneswar-odisha-in", city: "Bhubaneswar" },
       { keys: ["jodhpur"], slug: "jodhpur-rajasthan-in", city: "Jodhpur" }
     ];
+    uberSessionCookies = () => parseUberSessionCookie(process.env.UBER_SESSION_COOKIE);
     OLA_RC_BASE = "https://webapps.olacabs.com";
     OLA_RC_KEY = "a3abb50bpd6p4bcdb519df4f0a140f53jfkhqfad";
     _olaCityCache = null;
@@ -22122,7 +22154,7 @@ var init_cab = __esm({
             }
             if (!authHeaders && serverToken) authHeaders = { Authorization: `Token ${serverToken}` };
             const noCredsPath = async (why) => uberSsrFallback(ctx, rt, why, await uberGoFlowSafe(ctx, rt));
-            if (!authHeaders) return noCredsPath("official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)");
+            if (!authHeaders) return noCredsPath("no Uber credential configured (official UBER_APPLICATION_ID + UBER_CLIENT_SECRET / UBER_SERVER_TOKEN, or an UBER_SESSION_COOKIE rider session)");
             const [a, b] = await Promise.all([geocodePudo(rt.from, ctxCity(ctx)), geocodePudo(rt.to, ctxCity(ctx))]);
             if (!a || !b) return [];
             const apiHost = String(process.env.UBER_API_HOST || "api.uber.com").trim() || "api.uber.com";

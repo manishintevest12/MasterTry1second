@@ -222,6 +222,48 @@ async function uberPudoPlace(bias: { lat: number; lon: number }, query: string, 
   } catch { return null; }
 }
 
+/**
+ * Uber RIDER SESSION (owner 30 Oct: "ek option open source add kro github se jo
+ * uber ka price real time").
+ *
+ * The open-source finding, verified against two live repos — jgalea/uber-cli and
+ * Emerson1337/CanIGetHome — is that NO anonymous Uber ride price exists any more
+ * (every guest endpoint answers {"code":"unauthorized"}), and both working OSS
+ * projects therefore send the rider's OWN session cookie to
+ * POST https://m.uber.com/go/graphql (Products / FareEstimate). That is exactly
+ * the endpoint this file already replays; the missing piece was the session.
+ *
+ * So with UBER_SESSION_COOKIE set (the owner's own logged-in m.uber.com cookie,
+ * pasted in hPanel env, the same way OLA_API_KEY is set), the identical Products
+ * request returns REAL route-scoped fares for UberX/Moto/Auto/Premier without any
+ * developer token. Without it, nothing changes: guest flow + published averages.
+ *
+ * Accepted value shapes: "sid=...", "sid=...; jwt-session=...", a raw sid value,
+ * or several newline/comma separated name=value pairs.
+ */
+export function parseUberSessionCookie(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  const text = String(raw ?? '').trim();
+  if (!text) return out;
+  for (const chunk of text.split(/[\n,;]+/)) {
+    const part = chunk.trim();
+    if (!part) continue;
+    const eq = part.indexOf('=');
+    if (eq > 0) {
+      const name = part.slice(0, eq).trim();
+      const value = part.slice(eq + 1).trim();
+      if (name && value) out[name] = value;
+    } else if (eq === -1 && !out.sid) {
+      // A bare value is taken as the sid (the one cookie Uber's API actually needs).
+      // A fragment that merely LOOKS like "===" is not a value, so it is ignored.
+      out.sid = part;
+    }
+  }
+  return out;
+}
+
+const uberSessionCookies = (): Record<string, string> => parseUberSessionCookie(process.env.UBER_SESSION_COOKIE);
+
 /** Returns availability rows from Uber's own guest web catalog. Never throws. */
 async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promise<any[]> {
   try {
@@ -232,9 +274,26 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
     const [pu, dr] = await Promise.all([uberPudoPlace(a, rt.from, 'PICKUP'), uberPudoPlace(b, rt.to, 'DROPOFF')]);
     const pickup: UberGoPlace = pu ?? { lat: a.lat, lng: a.lon, name: rt.from.slice(0, 120) };
     const drop: UberGoPlace = dr ?? { lat: b.lat, lng: b.lon, name: rt.to.slice(0, 120) };
+    // Owner 30 Oct: the OSS session route. When UBER_SESSION_COOKIE is configured the
+    // SAME Products query runs with the rider's session, so Uber answers with real
+    // fares instead of {"code":"unauthorized"}; try it first (it needs no priming).
+    const session = uberSessionCookies();
+    const hasSession = Object.keys(session).length > 0;
     // Ladder: chrome fingerprint, then safari (some Akamai edges rotate).
     let graphql: { status: number; body: string } | null = null;
-    for (const fp of ['chrome', 'safari17_0']) {
+    if (hasSession) {
+      const r = await cffiFetch('https://m.uber.com/go/graphql', {
+        method: 'POST', impersonate: 'chrome', timeoutMs: 25_000,
+        cookies: session,
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': 'x', Accept: 'application/json', Origin: 'https://m.uber.com', Referer: 'https://m.uber.com/go/product-selection' },
+        body: buildUberProductsRequestBody(pickup, drop),
+      });
+      if (r.status === 200 && (r.body || '').includes('"products"')) graphql = r;
+    }
+    // A stale/wrong session must never leave Uber with no rows: if the session quote
+    // produced nothing, the anonymous ladder still runs and the honest presence /
+    // published-average fallbacks remain the caller's safety net.
+    for (const fp of (graphql ? [] : ['chrome', 'safari17_0'])) {
       const prime = await cffiFetch('https://m.uber.com/go/looking', {
         impersonate: fp, timeoutMs: 20_000, returnCookies: true,
         headers: { Accept: 'text/html', 'Accept-Language': 'en-IN,en;q=0.9', Referer: 'https://www.uber.com/global/en/price-estimate/' },
@@ -276,9 +335,13 @@ async function uberGoFlowSafe(ctx: any, rt: { from: string; to: string }): Promi
         ...(p.etaMinutes ? { eta_minutes: String(p.etaMinutes) } : {}),
         ...(p.description ? { vehicle_description: p.description } : {}),
         ...(p.tier ? { fare_tier: p.tier } : {}),
-        price_basis: p.fare != null ? `Uber guest web quote for this route on ${today}` : 'app_only_fares',
+        price_basis: p.fare != null
+          ? (hasSession ? `Uber live session quote for this route on ${today}` : `Uber guest web quote for this route on ${today}`)
+          : 'app_only_fares',
         data_note: p.fare != null
-          ? `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+          ? (hasSession
+            ? `Live fare from Uber's own ride web app (m.uber.com/go Products query, sent with the operator's own rider session on ${today}); deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`
+            : `Live fare from Uber's own guest ride web app (m.uber.com/go Products query) on ${today}; deeplink is the owner-specified m.uber.com/looking format with pickup/drop prefilled, routed via /api/out so an affiliate campaign attaches when available.`)
           : `Uber's own guest ride web app (m.uber.com/go) lists ${p.displayName} as available for this exact route, but quotes the fare only after login / in the app -- never estimated. Deeplink opens Uber's booking flow with this route prefilled, routed via /api/out so an affiliate campaign attaches when available.`,
       },
       identifiers: { sku: `uber-go-${rt.from}-${rt.to}-${p.displayName}`.toLowerCase().replace(/\s+/g, '-') },
@@ -640,7 +703,7 @@ export const cabWorker: VerticalWorker = {
         // credential-less path: appended after an SSR published-average price row, or
         // replacing the generic presence row entirely.
         const noCredsPath = async (why: string) => uberSsrFallback(ctx, rt, why, await uberGoFlowSafe(ctx, rt));
-        if (!authHeaders) return noCredsPath('official Uber API credentials not configured (UBER_APPLICATION_ID/UBER_CLIENT_SECRET or UBER_SERVER_TOKEN)');
+        if (!authHeaders) return noCredsPath('no Uber credential configured (official UBER_APPLICATION_ID + UBER_CLIENT_SECRET / UBER_SERVER_TOKEN, or an UBER_SESSION_COOKIE rider session)');
         const [a, b] = await Promise.all([geocodePudo(rt.from, ctxCity(ctx)), geocodePudo(rt.to, ctxCity(ctx))]);
         if (!a || !b) return [];
         const apiHost = String(process.env.UBER_API_HOST || 'api.uber.com').trim() || 'api.uber.com'; // set UBER_API_HOST=sandbox-api.uber.com to test against Uber's sandbox
