@@ -42109,7 +42109,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path7, import_express, import_crypto31, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path7, import_express, import_crypto31, apiRouter, clientDiag, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -42174,6 +42174,28 @@ var init_routes = __esm({
     init_bookmyshow();
     init_merchantCrispLogo();
     apiRouter = (0, import_express.Router)();
+    clientDiag = [];
+    apiRouter.post("/client-diag", (req, res) => {
+      const b = req.body || {};
+      const clip4 = (v, n) => String(v ?? "").slice(0, n);
+      clientDiag.push({
+        at: Date.now(),
+        endpoint: clip4(b.endpoint, 120),
+        error: clip4(b.error, 300),
+        platform: clip4(b.platform, 120),
+        addressFamily: clip4(b.addressFamily, 20),
+        appVersion: clip4(b.appVersion, 40),
+        retries: Number(b.retries) || 0,
+        network: clip4(b.network, 60)
+      });
+      const cutoff = Date.now() - 24 * 36e5;
+      while (clientDiag.length > 200 || clientDiag[0] && clientDiag[0].at < cutoff) clientDiag.shift();
+      res.json({ ok: true });
+    });
+    apiRouter.get("/admin/client-diag", authMiddleware, requireAdmin, (_req, res) => {
+      const cutoff = Date.now() - 24 * 36e5;
+      res.json({ entries: clientDiag.filter((e2) => e2.at >= cutoff).slice(-200) });
+    });
     startedAtIso = (/* @__PURE__ */ new Date()).toISOString();
     apiRouter.get("/health", authMiddleware, async (req, res) => {
       const admin = req.user?.role === "admin";

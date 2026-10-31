@@ -10,6 +10,7 @@ import 'dart:async';
 
 import 'dart:convert';
 import 'dart:io' as io;
+import 'dart:io' show Socket, InternetAddress, InternetAddressType, SocketException, ConnectionTask;
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -996,22 +997,63 @@ class Try1SecondApi {
   /// apps identify themselves; they don't pretend to be browsers), so the
   /// app drops the impersonation entirely. Cleanest long-term posture:
   /// identified client, no fingerprint conflict, no mismatch trigger.
-  static const String kAppUserAgent =
-      'Try1Second/1.8.22 (Android; app; +https://try1second.com)';
+  /// Real build identity, injected at build time (--dart-define=APP_VERSION=1.8.48+55) so the
+  /// UA finally names the build that is actually running. It used to be frozen at 1.8.22,
+  /// which made server-side triage of "which app is on the phone" impossible.
+  static const String kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.8.48+55');
 
+  static const String kAppUserAgent =
+      'Try1Second/$kAppVersion (Android; app; +https://try1second.com)';
+
+  /// OWNER 31 Oct ("1.8.47 dikha pr error abhi v wahi hai"): three theories were wrong, so
+  /// the app now (a) dials IPv4 FIRST — www.try1second.com publishes an AAAA record and a
+  /// broken IPv6 path on a mobile network produces exactly "connection reset by peer" while
+  /// Chrome hides it by racing families — and (b) never keeps more than 3 sockets open,
+  /// because firing the whole home screen at once can trip the edge's per-IP connection cap.
   static http.Client _hardenedClient() {
     final inner = io.HttpClient()
-      ..connectionTimeout = const Duration(seconds: 6)
-      // OWNER 31 Oct (repeated "Connection reset by peer, errno = 104"): the Hostinger
-      // LiteSpeed edge advertises `Keep-Alive: timeout=5` and closes an idle socket at 5s,
-      // while this client kept sockets for 20s — so the FIRST request after a pause dialled
-      // a socket the edge had already killed and Dart raised a reset. Dropping our idle
-      // window below the edge's (3s < 5s) means we retire the socket ourselves first, so the
-      // reset mostly stops happening instead of only being retried away.
-      ..idleTimeout = const Duration(seconds: 3)
-      ..maxConnectionsPerHost = 8
+      ..connectionTimeout = const Duration(seconds: 8)
+      ..idleTimeout = const Duration(milliseconds: 300)
+      ..maxConnectionsPerHost = 3
       ..userAgent = kAppUserAgent;
+    // IPv4-first dialler. Falls back to the platform's own resolution when no A record is
+    // available, so behaviour can only get better, never worse.
+    inner.connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) async {
+      final host = proxyHost ?? uri.host;
+      final port = proxyPort ?? uri.port;
+      try {
+        final v4 = await InternetAddress.lookup(host, type: InternetAddressType.IPv4);
+        if (v4.isNotEmpty) {
+          final socket = await Socket.connect(v4.first, port, timeout: const Duration(seconds: 8));
+          return ConnectionTask.fromSocket(Future<Socket>.value(socket), () => socket.destroy());
+        }
+      } catch (_) {/* fall through to the default dialler */}
+      final any = await InternetAddress.lookup(host);
+      if (any.isEmpty) throw const SocketException('no address for host');
+      final socket = await Socket.connect(any.first, port, timeout: const Duration(seconds: 8));
+      return ConnectionTask.fromSocket(Future<Socket>.value(socket), () => socket.destroy());
+    };
     return IOClient(inner);
+  }
+
+  /// Bounded parallelism: at most 3 requests in flight at once (the home screen asks for
+  /// deals, quick-apps, banners, showcase and movies together).
+  static int _inFlight = 0;
+  static final List<Completer<void>> _slotQueue = <Completer<void>>[];
+
+  static Future<void> _acquireSlot() async {
+    if (_inFlight < 3) { _inFlight++; return; }
+    final waiter = Completer<void>();
+    _slotQueue.add(waiter);
+    await waiter.future;
+  }
+
+  static void _releaseSlot() {
+    if (_slotQueue.isNotEmpty) {
+      _slotQueue.removeAt(0).complete();
+    } else if (_inFlight > 0) {
+      _inFlight--;
+    }
   }
 
   Try1SecondApi({String? baseUrl})
@@ -1448,11 +1490,12 @@ class Try1SecondApi {
   /// attempt dials its OWN connection and closes it immediately after the response. There is
   /// no reused socket left for the edge to reset, which is exactly the behaviour a browser
   /// gets for free by retrying invisibly.
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client) fn, {String? token}) async {
-    http.Response res;
+  Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client) fn,
+      {String? token, String? path}) async {
     // One connection per attempt: build a client, use it once, close it. A transport blip
     // costs one more fresh connection (400ms, then 900ms apart), never a dead pooled socket.
     Future<http.Response> attempt() async {
+      await _acquireSlot();
       final client = clientInjected ? _client : _hardenedClient();
       try {
         return await fn(client).timeout(_httpTimeout);
@@ -1462,33 +1505,42 @@ class Try1SecondApi {
             client.close();
           } catch (_) {/* already closed */}
         }
+        _releaseSlot();
       }
     }
 
+    http.Response res;
     try {
-      res = await attempt();
-    } on TimeoutException {
-      res = await attempt();
-    } on http.ClientException {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
       try {
+        res = await attempt();
+      } on TimeoutException {
         res = await attempt();
       } on http.ClientException {
-        await Future<void>.delayed(const Duration(milliseconds: 900));
-        res = await attempt();
-      }
-    } on io.SocketException {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      try {
-        res = await attempt();
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        try {
+          res = await attempt();
+        } on http.ClientException {
+          await Future<void>.delayed(const Duration(milliseconds: 900));
+          res = await attempt();
+        }
       } on io.SocketException {
-        await Future<void>.delayed(const Duration(milliseconds: 900));
-        res = await attempt();
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        try {
+          res = await attempt();
+        } on io.SocketException {
+          await Future<void>.delayed(const Duration(milliseconds: 900));
+          res = await attempt();
+        }
       }
+    } catch (e) {
+      // Every connection attempt failed. Report it so the failure becomes visible
+      // server-side (the edge drops these before Node ever sees them), then surface it.
+      unawaited(_reportTransportFailure(path ?? '', e));
+      rethrow;
     }
-    // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an
-    // HTML error page (reproduced on /api/scrape/live hotels+loans). One quiet
-    // retry clears it; a second failure is reported honestly.
+
+    // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an HTML error
+    // page (reproduced on /api/scrape/live hotels+loans). One quiet retry clears it.
     try {
       return _decode(res);
     } on ApiHttpException {
@@ -1501,7 +1553,6 @@ class Try1SecondApi {
       return _decode(res);
     }
   }
-
 
   /// Home banners (owner 23 Oct): admin-managed wide landscape strips between
   /// every home section on the home tab.
@@ -1587,13 +1638,13 @@ class Try1SecondApi {
     final uri = Uri.parse('$baseUrl$path');
     final h = _headers(token);
     final b = jsonEncode(body);
-    return _send((c) => c.post(uri, headers: h, body: b), token: token);
+    return _send((c) => c.post(uri, headers: h, body: b), token: token, path: path);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
     final uri = Uri.parse('$baseUrl$path');
     final h = _headers(token);
-    return _send((c) => c.get(uri, headers: h), token: token);
+    return _send((c) => c.get(uri, headers: h), token: token, path: path);
   }
 
   /// One-shot request for the few endpoints that need the raw response (DELETE status
@@ -1618,6 +1669,35 @@ class Try1SecondApi {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       return once();
     }
+  }
+
+  /// Fire-and-forget transport report -> POST /api/client-diag (owner 31 Oct).
+  /// Deliberately uses its own HttpClient and never the slot queue, so it cannot deadlock
+  /// or hold a request slot while the app is already in trouble.
+  Future<void> _reportTransportFailure(String path, Object error) async {
+    if (clientInjected) return; // tests stay silent
+    try {
+      final client = IOClient(io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
+      try {
+        await client
+            .post(
+              Uri.parse('$baseUrl/api/client-diag'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'endpoint': path,
+                'error': '$error',
+                'platform': '${io.Platform.operatingSystem} ${io.Platform.version}',
+                'addressFamily': 'ipv4-first',
+                'appVersion': kAppVersion,
+                'retries': 2,
+                'network': '',
+              }),
+            )
+            .timeout(const Duration(seconds: 6));
+      } finally {
+        client.close();
+      }
+    } catch (_) {/* diagnostics must never break the app */}
   }
 
   Map<String, dynamic> _decode(http.Response res) {

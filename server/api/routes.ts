@@ -71,6 +71,48 @@ import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
 import { bmsUpcomingUrl, bmsDiscoverUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion, bmsPosterLikes, bmsPageGenres, parseNowShowingCards } from '../workers/parsers/bookmyshow';
 
 export const apiRouter = Router();
+/**
+ * CLIENT TRANSPORT DIAGNOSTICS (owner 31 Oct: "1.8.47 dikha pr error abhi v wahi hai").
+ *
+ * We have been fixing the app's "Connection reset by peer" blind, because the failure happens
+ * between the phone and the Hostinger edge — Node never sees the request, so no server log can
+ * describe it. The app now reports its own transport failures here (endpoint, error text,
+ * platform, which address family it dialled, retry count) and the owner's admin console can
+ * read them. In-memory ring buffer only: no PII, no tokens, capped at 200 entries / 24h.
+ */
+interface ClientDiagEntry {
+  at: number;
+  endpoint: string;
+  error: string;
+  platform: string;
+  addressFamily: string;
+  appVersion: string;
+  retries: number;
+  network: string;
+}
+const clientDiag: ClientDiagEntry[] = [];
+apiRouter.post('/client-diag', (req, res) => {
+  const b = req.body || {};
+  const clip = (v: unknown, n: number) => String(v ?? '').slice(0, n);
+  clientDiag.push({
+    at: Date.now(),
+    endpoint: clip(b.endpoint, 120),
+    error: clip(b.error, 300),
+    platform: clip(b.platform, 120),
+    addressFamily: clip(b.addressFamily, 20),
+    appVersion: clip(b.appVersion, 40),
+    retries: Number(b.retries) || 0,
+    network: clip(b.network, 60),
+  });
+  const cutoff = Date.now() - 24 * 3600_000;
+  while (clientDiag.length > 200 || (clientDiag[0] && clientDiag[0].at < cutoff)) clientDiag.shift();
+  res.json({ ok: true });
+});
+apiRouter.get('/admin/client-diag', authMiddleware, requireAdmin, (_req, res) => {
+  const cutoff = Date.now() - 24 * 3600_000;
+  res.json({ entries: clientDiag.filter((e) => e.at >= cutoff).slice(-200) });
+});
+
 /** Process start, reported by /api/version so a restart is provable. */
 const startedAtIso = new Date().toISOString();
 
