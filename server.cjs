@@ -34235,14 +34235,14 @@ function liveConcurrencyLimit(cpu = cpuPct2) {
   return Math.max(floor, Math.min(base, scaled));
 }
 function governorStats() {
-  let active = 0;
+  let active2 = 0;
   let queued = 0;
   for (const j of jobs.values()) {
-    if (j.promise) active += 1;
+    if (j.promise) active2 += 1;
     else queued += 1;
   }
   return {
-    active,
+    active: active2,
     queued,
     cpuPercent: Math.round(cpuPct2 * 10) / 10,
     limit: liveConcurrencyLimit(),
@@ -37698,6 +37698,100 @@ var init_showcase = __esm({
   }
 });
 
+// server/api/requestGuard.ts
+function sessionKeyOf(req) {
+  const header = (name) => String(req.headers[name] || "").trim();
+  const explicit = header("x-t1s-session") || header("x-device-id") || header("x-session-id") || header("x-t1s-device");
+  if (explicit) return `s:${explicit.slice(0, 80)}`;
+  const ip = String(
+    (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket?.remoteAddress || ""
+  );
+  const ua = String(req.headers["user-agent"] || "").slice(0, 60);
+  return `h:${ip}|${ua}`;
+}
+function beginScrape(req, vertical, queryKey = "") {
+  const now = Date.now();
+  sweep2(now);
+  const key = sessionKeyOf(req);
+  const noop = () => void 0;
+  const existing = active.get(key);
+  if (existing && queryKey && existing.queryKey && existing.queryKey !== queryKey) {
+    return { ok: false, reason: "session_busy", retryAfterSec: RETRY_AFTER_SEC, release: noop };
+  }
+  if (existing) {
+    return { ok: true, retryAfterSec: 0, release: noop };
+  }
+  const stats2 = governorStats();
+  if (stats2.queued >= Math.max(1, liveQueueMax() - 1)) {
+    return { ok: false, reason: "queue_full", retryAfterSec: RETRY_AFTER_SEC, release: noop };
+  }
+  active.set(key, { startedAt: now, vertical, queryKey });
+  let released = false;
+  return {
+    ok: true,
+    retryAfterSec: 0,
+    release: () => {
+      if (released) return;
+      released = true;
+      active.delete(key);
+    }
+  };
+}
+function send429(res, slot2, vertical) {
+  res.setHeader("Retry-After", String(slot2.retryAfterSec));
+  res.status(429).json({
+    success: false,
+    results: [],
+    resultsCount: 0,
+    vertical,
+    error: slot2.reason === "queue_full" ? "server_busy" : "search_in_progress",
+    pendingRefresh: true,
+    retryAfterSec: slot2.retryAfterSec,
+    honestNotice: slot2.reason === "queue_full" ? "Server is at capacity right now. Please retry in a few seconds \u2014 no search was started, so nothing is stuck." : "Your previous search is still running. Please retry in a few seconds.",
+    servedFrom: "unavailable",
+    sourcesAttempted: [],
+    sourcesSucceeded: [],
+    sourcesFailed: []
+  });
+  log.info("Search", "Refused a scrape (request guard, owner 31 Oct)", {
+    reason: slot2.reason,
+    retryAfterSec: slot2.retryAfterSec,
+    activeSessions: active.size
+  });
+}
+function send504(res, vertical, startedAt) {
+  res.status(504).json({
+    success: false,
+    results: [],
+    resultsCount: 0,
+    vertical,
+    error: "request_timeout",
+    pendingRefresh: false,
+    honestNotice: "This search took too long and was stopped so the server stays responsive. Please retry.",
+    servedFrom: "unavailable",
+    sourcesAttempted: [],
+    sourcesSucceeded: [],
+    sourcesFailed: [],
+    latencyMs: Date.now() - startedAt
+  });
+  log.info("Search", "Stopped a scrape at the strict request deadline (owner 31 Oct)", { vertical, ms: Date.now() - startedAt });
+}
+var SESSION_TTL_MS, RETRY_AFTER_SEC, active, sweep2;
+var init_requestGuard = __esm({
+  "server/api/requestGuard.ts"() {
+    init_loadGovernor();
+    init_logger();
+    SESSION_TTL_MS = 45e3;
+    RETRY_AFTER_SEC = 3;
+    active = /* @__PURE__ */ new Map();
+    sweep2 = (now) => {
+      for (const [key, entry] of active) {
+        if (now - entry.startedAt > SESSION_TTL_MS) active.delete(key);
+      }
+    };
+  }
+});
+
 // server/lens/productLink.ts
 function isSafePublicUrl(raw) {
   let u;
@@ -39267,8 +39361,8 @@ async function pushStats() {
   let inactive = 0;
   let sent24h = 0;
   for (const r of rows) {
-    const active = Number(r.is_active) === 1;
-    if (!active) {
+    const active2 = Number(r.is_active) === 1;
+    if (!active2) {
       inactive++;
       continue;
     }
@@ -41040,13 +41134,13 @@ async function upsertAppLink(input) {
   const v = validateAppLinkUrl(input.url);
   if (!v.ok) return { ok: false, error: v.error };
   const version = String(input.version ?? "").trim().slice(0, 30) || null;
-  const active = input.is_active === false ? 0 : 1;
+  const active2 = input.is_active === false ? 0 : 1;
   const store4 = getStore();
   const existing = await store4.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
   if (existing.length) {
-    await store4.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active, key]);
+    await store4.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active2, key]);
   } else {
-    await store4.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active]);
+    await store4.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active2]);
   }
   return { ok: true };
 }
@@ -42055,6 +42149,7 @@ var init_routes = __esm({
     init_cabDeeplink();
     init_showcase();
     init_cachedSections();
+    init_requestGuard();
     init_db();
     init_db();
     init_cache();
@@ -42654,6 +42749,10 @@ var init_routes = __esm({
       if (!input.query?.trim()) {
         return res.json({ results: [], honestNotice: "No query provided", latencyMs: 0 });
       }
+      const slot2 = beginScrape(req, String(input.vertical), `${input.query}|${input.city || ""}|${input.pincode || ""}|${input.travelDates?.depart || ""}`);
+      if (!slot2.ok) return send429(res, slot2, String(input.vertical));
+      res.on("close", slot2.release);
+      res.on("finish", slot2.release);
       input.coldDeadlineMs = resultDeadlineMs();
       const searchStart = Date.now();
       const chainKey = pollKey([
@@ -42688,6 +42787,15 @@ var init_routes = __esm({
       res.on("close", () => {
         if (!res.writableEnded) liveAbort.abort();
       });
+      const hardDeadlineMs = Math.max(5e3, Number(process.env.T1S_HARD_REQUEST_MS || 15e3));
+      const hardTimer = setTimeout(() => {
+        if (res.writableEnded || res.headersSent) return;
+        liveAbort.abort();
+        send504(res, String(input.vertical), searchStart);
+      }, hardDeadlineMs);
+      if (typeof hardTimer.unref === "function") hardTimer.unref();
+      res.on("close", () => clearTimeout(hardTimer));
+      res.on("finish", () => clearTimeout(hardTimer));
       const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
       searchedLive.catch(() => void 0);
       const response = await Promise.race([
@@ -43686,15 +43794,18 @@ var init_routes = __esm({
     });
     apiRouter.get("/deals", async (req, res) => {
       try {
-        const { getDealsWithCounts: getDealsWithCounts2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
-        const { deals, counts } = await getDealsWithCounts2({
-          merchant: req.query.merchant,
-          kind: req.query.kind,
-          vertical: req.query.vertical,
-          hasImage: req.query.hasImage,
-          limit: Number(req.query.limit) || 100
-        });
-        res.json({ success: true, deals, counts });
+        const cacheKey = `deals:${req.query.merchant || ""}|${req.query.kind || ""}|${req.query.vertical || ""}|${req.query.hasImage || ""}|${Number(req.query.limit) || 100}`;
+        const payload = await cachedSection(cacheKey, async () => {
+          const { getDealsWithCounts: getDealsWithCounts2 } = await Promise.resolve().then(() => (init_deals(), deals_exports));
+          return getDealsWithCounts2({
+            merchant: req.query.merchant,
+            kind: req.query.kind,
+            vertical: req.query.vertical,
+            hasImage: req.query.hasImage,
+            limit: Number(req.query.limit) || 100
+          });
+        }, 6e4);
+        res.json({ success: true, deals: payload.deals, counts: payload.counts });
       } catch {
         res.json({ success: true, deals: [], counts: {} });
       }

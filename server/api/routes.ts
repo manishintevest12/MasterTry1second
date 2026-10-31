@@ -46,6 +46,7 @@ import { directAppTarget, androidIntentUrl, isAndroid, appHandlesIntents } from 
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
+import { beginScrape, send429, send504, withDeadline } from './requestGuard';
 import { getStore } from '../common/db';
 import { runMigrations, resetToFileStore, recoverMysqlWithLocalHost } from '../common/db';
 import { initCache, cacheStats } from '../common/cache';
@@ -1200,6 +1201,17 @@ apiRouter.post('/scrape/live', async (req, res) => {
   if (!input.query?.trim()) {
     return res.json({ results: [], honestNotice: 'No query provided', latencyMs: 0 });
   }
+  // OWNER 31 Oct (mobile "SocketConnection reset by peer" report): ONE scrape per session.
+  // A second search from the same device while its own search is still running is refused
+  // with 429 + Retry-After instead of starting another scrape; when the global queue is at
+  // its ceiling the same 429 comes back immediately rather than queueing a mobile client
+  // behind a stampede. The slot is always released when the response finishes or the client
+  // disconnects, and stale slots self-expire (45s) so a restart can never wedge a device.
+  const slot = beginScrape(req, String(input.vertical), `${input.query}|${input.city || ''}|${input.pincode || ''}|${input.travelDates?.depart || ''}`);
+  if (!slot.ok) return send429(res, slot, String(input.vertical));
+  res.on('close', slot.release);
+  res.on('finish', slot.release);
+
   // OWNER RULE (27 Oct, "muje hr vertical ka results within 3 sec chaiye"): every
   // vertical gets the same budget, not just products. Claiming the deadline here means
   // the pipeline must answer with real rows (or the honest still-acquiring marker)
@@ -1239,6 +1251,18 @@ apiRouter.post('/scrape/live', async (req, res) => {
   const liveAbort = new AbortController();
   // A closed socket abandons this waiter; work that other waiters still want keeps going.
   res.on('close', () => { if (!res.writableEnded) liveAbort.abort(); });
+  // OWNER 31 Oct ("Add a strict request timeout"): a hard ceiling above the 3s countdown and
+  // the cold ceiling. If a search somehow still has not answered by then, the waiter is
+  // abandoned and the client gets a 504 JSON answer (never a hung socket, never another job).
+  const hardDeadlineMs = Math.max(5_000, Number(process.env.T1S_HARD_REQUEST_MS || 15_000));
+  const hardTimer = setTimeout(() => {
+    if (res.writableEnded || res.headersSent) return;
+    liveAbort.abort();
+    send504(res, String(input.vertical), searchStart);
+  }, hardDeadlineMs);
+  if (typeof (hardTimer as any).unref === 'function') (hardTimer as any).unref();
+  res.on('close', () => clearTimeout(hardTimer));
+  res.on('finish', () => clearTimeout(hardTimer));
   const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
   searchedLive.catch(() => undefined);
   const response = (await Promise.race([
@@ -2633,15 +2657,21 @@ apiRouter.get('/ads', async (req, res) => {
 // GET /api/deals?merchant=flipkart&kind=coupon&vertical=ecommerce&hasImage=1  -> live, unexpired deals (affiliate-free pointers) + counts
 apiRouter.get('/deals', async (req, res) => {
   try {
-    const { getDealsWithCounts } = await import('../marketing/deals');
-    const { deals, counts } = await getDealsWithCounts({
-      merchant: req.query.merchant as string | undefined,
-      kind: req.query.kind as string | undefined,
-      vertical: req.query.vertical as string | undefined,
-      hasImage: req.query.hasImage as string | undefined,
-      limit: Number(req.query.limit) || 100,
-    });
-    res.json({ success: true, deals, counts });
+    // OWNER 31 Oct ("prevent duplicate requests from the mobile app", "caching so repeated
+    // requests do not start new work"): the app asks for /api/deals?limit=200 on every open
+    // and the DB assembly is ~1.6s, so the assembled payload is cached for 60s per filter set.
+    const cacheKey = `deals:${req.query.merchant || ''}|${req.query.kind || ''}|${req.query.vertical || ''}|${req.query.hasImage || ''}|${Number(req.query.limit) || 100}`;
+    const payload = await cachedSection(cacheKey, async () => {
+      const { getDealsWithCounts } = await import('../marketing/deals');
+      return getDealsWithCounts({
+        merchant: req.query.merchant as string | undefined,
+        kind: req.query.kind as string | undefined,
+        vertical: req.query.vertical as string | undefined,
+        hasImage: req.query.hasImage as string | undefined,
+        limit: Number(req.query.limit) || 100,
+      });
+    }, 60_000);
+    res.json({ success: true, deals: payload.deals, counts: payload.counts });
   } catch { res.json({ success: true, deals: [], counts: {} }); }
 });
 
