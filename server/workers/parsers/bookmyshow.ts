@@ -278,6 +278,77 @@ export function bmsPosterReleaseDate(posterUrl: string): string | null {
   }
 }
 
+/**
+ * Likes count BMS bakes into the poster CDN URL for now-showing cards
+ * ("...l-text,ie-NTE4SysgTGlrZXM%3D..." decodes to "518K Likes"). Same honest
+ * technique as bmsPosterReleaseDate: we only read what BMS itself printed.
+ */
+export function bmsPosterLikes(posterUrl: string): string | null {
+  // A poster URL can bake SEVERAL texts (likes, language, certification); only the
+  // segment that actually says "Likes" is the likes count.
+  for (const m of String(posterUrl || '').matchAll(/[,:]ie-([A-Za-z0-9+/=%]+)/g)) {
+    try {
+      const txt = Buffer.from(decodeURIComponent(m[1]), 'base64').toString('utf8').trim();
+      if (/Likes?/i.test(txt)) return txt.replace(/\s+/g, ' ');
+    } catch { /* try the next segment */ }
+  }
+  return null;
+}
+
+/** Genres from a movie's own BMS page JSON ("genre":["Action","Adventure",...]). */
+export function bmsPageGenres(html: string): string | null {
+  const m = /"genre":\[([^\]]*)\]/.exec(String(html || ''));
+  if (!m) return null;
+  const parts = (m[1].match(/"([^"]+)"/g) || []).map((x) => x.replace(/"/g, '').trim()).filter(Boolean);
+  return parts.length ? parts.slice(0, 3).join('/') : null;
+}
+
+/* ===================== NOW SHOWING (owner 31 Oct: homepage Currently Showing) ===================== */
+
+export interface NowShowingMovie {
+  title: string;
+  /** BMS certification badge printed on the card ("U", "UA16+", "A"). */
+  certification: string | null;
+  /** Languages BMS prints under the title ("Hindi, Kannada, Telugu"). */
+  languages: string | null;
+  poster: string | null;
+  pageUrl: string;
+  eventCode: string | null;
+}
+
+/**
+ * Parse BMS's now-showing discovery payload. Same strict card reader as the upcoming tab
+ * (only real /movies/ pages, never promo cards), but the text slots differ: the
+ * now-showing card prints title, then certification, then languages — not genres.
+ */
+export function parseNowShowingCards(payload: any, _region: BmsRegion): NowShowingMovie[] {
+  const out: NowShowingMovie[] = [];
+  const seen = new Set<string>();
+  for (const L of payload?.listings || []) {
+    for (const card of L?.cards || []) {
+      const ctaUrl: string = String(card?.ctaUrl || '');
+      if (!ctaUrl.startsWith('https://in.bookmyshow.com/movies/')) continue;
+      const text: any[] = Array.isArray(card?.text) ? card.text : [];
+      const title = String(text[0]?.components?.[0]?.text || '').trim();
+      if (!title || title.length > 120) continue;
+      const key = String(card?.id || ctaUrl);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const cert = String(text[1]?.components?.[0]?.text || '').trim();
+      const langs = String(text[2]?.components?.[0]?.text || '').trim();
+      out.push({
+        title,
+        certification: /^[Uu][A-Gg]?([A-Za-z0-9+]{0,4})$|^A$/.test(cert) ? cert : null,
+        languages: langs && langs.length <= 120 ? langs : null,
+        poster: String(card?.image?.url || '') || null,
+        pageUrl: ctaUrl,
+        eventCode: bmsBookingCode(ctaUrl),
+      });
+    }
+  }
+  return out;
+}
+
 /** Parse the upcoming-discovery payload into UpcomingMovie rows. Strict: only BMS movie-page cards, never promo cards. */
 export function parseUpcomingCards(payload: any, region: BmsRegion): UpcomingMovie[] {
   const out: UpcomingMovie[] = [];

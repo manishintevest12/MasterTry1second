@@ -67,7 +67,7 @@ import { log } from '../common/logger';
 import { pythonDiagnostics, cffiFetch } from '../common/curlCffiFetch';
 import { YATRA_HOTELS_API_KEY } from '../workers/parsers/yatraHotels';
 import { parseMmtAutosuggest } from '../workers/parsers/mmtAutosuggest';
-import { bmsUpcomingUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion } from '../workers/parsers/bookmyshow';
+import { bmsUpcomingUrl, bmsDiscoverUrl, bmsDiscoverHeaders, parseUpcomingCards, resolveBmsRegion, bmsPosterLikes, bmsPageGenres, parseNowShowingCards } from '../workers/parsers/bookmyshow';
 
 export const apiRouter = Router();
 /** Process start, reported by /api/version so a restart is provable. */
@@ -339,6 +339,76 @@ apiRouter.get('/movies/upcoming', async (req, res) => {
     return res.json({ movies });
   } catch (e: any) {
     return res.json({ movies: [], error: String(e?.message || e).slice(0, 120) });
+  }
+});
+
+// ---- Currently showing (owner 31 Oct: homepage "Currently Showing" section) ----
+// BookMyShow's own NOW-SHOWING discovery for the visitor's region, parsed with the same
+// strict card reader as the upcoming tab (only BMS movie pages, never promo cards). This is
+// real in-theatre inventory: title, genres, the likes count BMS prints, the poster and a
+// per-movie Book page. Cached 30 minutes like the upcoming tab; honest empty state.
+const nowShowingCache = new Map<string, { at: number; movies: any[] }>();
+apiRouter.get('/movies/currently-showing', async (req, res) => {
+  const city = String(req.query.city || '').slice(0, 60).trim();
+  const cacheKey = (city || 'default').toLowerCase();
+  const hit = nowShowingCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return res.json({ movies: hit.movies, city });
+  try {
+    const fetchJson = async (url: string) => {
+      const r = await cffiFetch(url, { impersonate: 'safari', timeoutMs: 15_000, headers: { Accept: 'application/json' } });
+      if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+      return JSON.parse(r.body || '{}');
+    };
+    const region = await resolveBmsRegion(city || undefined, fetchJson);
+    let r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: 'safari', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
+    if (r.status !== 200) r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: 'chrome', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
+    if (r.status !== 200) return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
+    const parsed = parseNowShowingCards(JSON.parse(r.body || '{}'), region).slice(0, 12);
+    // The now-showing discovery payload prints certification + languages, not genres, and
+    // carries the likes count inside the poster URL. The card the owner asked for needs
+    // "Action/Comedy/Drama" and "155K+ Likes", so genres are read from each movie's OWN BMS
+    // page (its JSON "genre" array) with a small bounded fan-out, and likes decoded from the
+    // poster BMS printed. Nothing is invented: a movie with no genre data on its page simply
+    // falls back to the certification+languages line BMS itself shows.
+    const genreOf = async (url: string): Promise<string | null> => {
+      // One honest retry with the other fingerprint: BMS throttles a 4-wide fan-out
+      // intermittently, and a missed page only costs that card its genre line.
+      for (const fp of ['safari', 'chrome'] as const) {
+        try {
+          const p = await cffiFetch(url, { impersonate: fp, timeoutMs: 8_000, headers: { Accept: 'text/html' } });
+          if (p.status === 200) {
+            const g = bmsPageGenres(p.body || '');
+            if (g) return g;
+          }
+        } catch { /* next fingerprint */ }
+      }
+      return null;
+    };
+    const genres: Array<string | null> = new Array(parsed.length).fill(null);
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < parsed.length) {
+        const i = cursor++;
+        genres[i] = await genreOf(parsed[i].pageUrl);
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]); // 3 at a time, 12 pages max
+    const movies = parsed.map((m, i) => ({
+      title: m.title,
+      // Genres from the movie's own page; when BMS publishes none there, fall back to the
+      // certification + languages the discovery card itself prints (never invented).
+      genres: genres[i] || [m.certification, m.languages].filter(Boolean).join(' · ') || null,
+      likes: bmsPosterLikes(m.poster || ''),
+      poster: m.poster,
+      pageUrl: m.pageUrl,
+      eventCode: m.eventCode,
+      // Every exit routes through /api/out (affiliate + interstitial policy).
+      goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) }),
+    }));
+    if (movies.length) nowShowingCache.set(cacheKey, { at: Date.now(), movies });
+    return res.json({ movies, city: region.regionName || city });
+  } catch (e: any) {
+    return res.json({ movies: [], city, error: String(e?.message || e).slice(0, 120) });
   }
 });
 

@@ -23,6 +23,7 @@ import React, { useEffect, useState, type SyntheticEvent } from 'react';
 import { Sparkles, Ticket, Flame, PiggyBank, Cpu, Bolt, MapPin, CreditCard, ArrowRight, Star, Plane } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { HomeBannerStrip } from './HomeBannerStrip';
+import { CurrentlyShowing } from './CurrentlyShowing';
 import { scaledImage } from '../utils/scaledImage';
 
 export interface ShowcaseItem {
@@ -273,6 +274,14 @@ export default function HomeShowcase() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // OWNER 31 Oct: the Currently Showing card's Book button takes the visitor to the
+  // MOVIES vertical (our own film feed with real showtimes) — never to an outside page.
+  const bookMovie = () => {
+    setVertical('movies' as never);
+    setActiveNavTab('compare');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const viewAll = (secId: string) => {
     const v = SECTION_VERTICAL[secId] || 'ecommerce';
     setVertical(v as never);
@@ -348,6 +357,10 @@ export default function HomeShowcase() {
             {/* Owner 23 Oct: a dynamic admin banner strip sits between EVERY
                 section (e.g. between 'Picked Just for You' and 'Go Big'). */}
             {idx > 0 && <HomeBannerStrip slot={idx + 1} onLaunchVertical={(v) => launchQuery('', v)} />}
+            {/* OWNER 31 Oct: "Currently Showing" sits directly below the first showcase
+                section ('Picked Just for You') and reuses the approved Upcoming Movies card
+                with a Book button that opens the movies vertical. */}
+            {idx === 0 && <CurrentlyShowing onBook={bookMovie} />}
             <div>
               <div className="flex items-end justify-between mb-3 gap-3">
                 <div className="flex items-center gap-2 min-w-0">

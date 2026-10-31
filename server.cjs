@@ -23695,6 +23695,49 @@ function bmsPosterReleaseDate(posterUrl) {
     return null;
   }
 }
+function bmsPosterLikes(posterUrl) {
+  for (const m of String(posterUrl || "").matchAll(/[,:]ie-([A-Za-z0-9+/=%]+)/g)) {
+    try {
+      const txt = Buffer.from(decodeURIComponent(m[1]), "base64").toString("utf8").trim();
+      if (/Likes?/i.test(txt)) return txt.replace(/\s+/g, " ");
+    } catch {
+    }
+  }
+  return null;
+}
+function bmsPageGenres(html) {
+  const m = /"genre":\[([^\]]*)\]/.exec(String(html || ""));
+  if (!m) return null;
+  const parts = (m[1].match(/"([^"]+)"/g) || []).map((x) => x.replace(/"/g, "").trim()).filter(Boolean);
+  return parts.length ? parts.slice(0, 3).join("/") : null;
+}
+function parseNowShowingCards(payload, _region) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const L of payload?.listings || []) {
+    for (const card of L?.cards || []) {
+      const ctaUrl = String(card?.ctaUrl || "");
+      if (!ctaUrl.startsWith("https://in.bookmyshow.com/movies/")) continue;
+      const text = Array.isArray(card?.text) ? card.text : [];
+      const title = String(text[0]?.components?.[0]?.text || "").trim();
+      if (!title || title.length > 120) continue;
+      const key = String(card?.id || ctaUrl);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const cert = String(text[1]?.components?.[0]?.text || "").trim();
+      const langs = String(text[2]?.components?.[0]?.text || "").trim();
+      out.push({
+        title,
+        certification: /^[Uu][A-Gg]?([A-Za-z0-9+]{0,4})$|^A$/.test(cert) ? cert : null,
+        languages: langs && langs.length <= 120 ? langs : null,
+        poster: String(card?.image?.url || "") || null,
+        pageUrl: ctaUrl,
+        eventCode: bmsBookingCode(ctaUrl)
+      });
+    }
+  }
+  return out;
+}
 function parseUpcomingCards(payload, region) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -41972,7 +42015,7 @@ async function bootstrapBackend() {
   log.info("Bootstrap", `Sources loaded (db: ${loaded.dbKind}, overlay rows: ${loaded.loaded})`);
   await initCache();
 }
-var import_promises2, import_node_path7, import_express, import_crypto31, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
+var import_promises2, import_node_path7, import_express, import_crypto31, apiRouter, startedAtIso, hotelLocationCache, busLocationCache, busStopsCache, upcomingCache2, nowShowingCache, QUICK_APP_ALLOW_DOMAINS, QUICK_APP_HOME_SIX, HOTEL_SOURCE_LABEL, _lastEmergencyWarmAt, lastGoodOffers, deepRefreshInFlight, deepRefreshLast, leadHits, validHex, bannerGradient;
 var init_routes = __esm({
   "server/api/routes.ts"() {
     import_promises2 = require("node:fs/promises");
@@ -42255,6 +42298,63 @@ var init_routes = __esm({
         return res.json({ movies });
       } catch (e2) {
         return res.json({ movies: [], error: String(e2?.message || e2).slice(0, 120) });
+      }
+    });
+    nowShowingCache = /* @__PURE__ */ new Map();
+    apiRouter.get("/movies/currently-showing", async (req, res) => {
+      const city = String(req.query.city || "").slice(0, 60).trim();
+      const cacheKey = (city || "default").toLowerCase();
+      const hit = nowShowingCache.get(cacheKey);
+      if (hit && Date.now() - hit.at < 30 * 6e4) return res.json({ movies: hit.movies, city });
+      try {
+        const fetchJson = async (url) => {
+          const r2 = await cffiFetch(url, { impersonate: "safari", timeoutMs: 15e3, headers: { Accept: "application/json" } });
+          if (r2.status !== 200) throw new Error(`HTTP ${r2.status}`);
+          return JSON.parse(r2.body || "{}");
+        };
+        const region = await resolveBmsRegion(city || void 0, fetchJson);
+        let r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: "safari", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+        if (r.status !== 200) r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: "chrome", timeoutMs: 15e3, headers: bmsDiscoverHeaders(region) });
+        if (r.status !== 200) return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
+        const parsed = parseNowShowingCards(JSON.parse(r.body || "{}"), region).slice(0, 12);
+        const genreOf = async (url) => {
+          for (const fp of ["safari", "chrome"]) {
+            try {
+              const p = await cffiFetch(url, { impersonate: fp, timeoutMs: 8e3, headers: { Accept: "text/html" } });
+              if (p.status === 200) {
+                const g = bmsPageGenres(p.body || "");
+                if (g) return g;
+              }
+            } catch {
+            }
+          }
+          return null;
+        };
+        const genres = new Array(parsed.length).fill(null);
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < parsed.length) {
+            const i = cursor++;
+            genres[i] = await genreOf(parsed[i].pageUrl);
+          }
+        };
+        await Promise.all([worker(), worker(), worker()]);
+        const movies = parsed.map((m, i) => ({
+          title: m.title,
+          // Genres from the movie's own page; when BMS publishes none there, fall back to the
+          // certification + languages the discovery card itself prints (never invented).
+          genres: genres[i] || [m.certification, m.languages].filter(Boolean).join(" \xB7 ") || null,
+          likes: bmsPosterLikes(m.poster || ""),
+          poster: m.poster,
+          pageUrl: m.pageUrl,
+          eventCode: m.eventCode,
+          // Every exit routes through /api/out (affiliate + interstitial policy).
+          goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) })
+        }));
+        if (movies.length) nowShowingCache.set(cacheKey, { at: Date.now(), movies });
+        return res.json({ movies, city: region.regionName || city });
+      } catch (e2) {
+        return res.json({ movies: [], city, error: String(e2?.message || e2).slice(0, 120) });
       }
     });
     apiRouter.get("/geo/search", async (req, res) => {
