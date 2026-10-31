@@ -30,6 +30,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { AcquisitionError } from './httpClient';
+import { nextProxy, noteProxyResult, rotationEnabled, rotationTries } from './proxyRotator';
 
 // Works under tsx dev (file at server/common/), the bundled server.cjs at repo root,
 // and ESM test imports where __dirname does not exist.
@@ -118,6 +119,8 @@ async function cffiFetchDirect(
     returnCookies?: boolean;
     /** Return response headers after the call (for token-minting flows). */
     returnHeaders?: boolean;
+    /** Egress proxy for THIS call (`http://user:pass@host:port`, socks5://...). */
+    proxy?: string;
   } = {},
 ): Promise<CffiResponse> {
   const payload = JSON.stringify({
@@ -129,6 +132,7 @@ async function cffiFetchDirect(
     ...(opts.returnCookies ? { returnCookies: true } : {}),
     ...(opts.returnHeaders ? { returnHeaders: true } : {}),
     ...(opts.httpVersion ? { httpVersion: opts.httpVersion } : {}),
+    ...(opts.proxy ? { proxy: opts.proxy } : {}),
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 20_000) / 1000)),
     impersonate: opts.impersonate || 'safari17_0',
   });
@@ -178,7 +182,7 @@ async function cffiFetchDirect(
 export async function cffiFetch(
   url: string,
   opts: Parameters<typeof cffiFetchDirect>[1] = {},
-): Promise<CffiResponse & { via?: 'direct' | 'aws' | 'cf' }> {
+): Promise<CffiResponse & { via?: 'direct' | 'aws' | 'cf' | 'proxy' }> {
   let direct: CffiResponse | null = null;
   let directError: any = null;
   try {
@@ -189,8 +193,44 @@ export async function cffiFetch(
 
   const { hostInPolicy, isGatedResponse, relayConfigured, edgeRelayFetch, noteDirectGate } = await import('../sources/edgeRelay');
   const policyHit = hostInPolicy(url);
-  const gated = direct ? isGatedResponse(direct.status, direct.body) : false;
+  let gated = direct ? isGatedResponse(direct.status, direct.body) : false;
   if (gated) noteDirectGate();
+
+  /**
+   * OWNER 31 Oct ("rotational proxy ... jiss se ye finish v naa ho kabji"): before giving up on
+   * a gate, replay the identical request through rotated proxies from the pool. Each attempt
+   * gets a DIFFERENT exit, so one burnt IP can no longer end a source. A leg that succeeds
+   * becomes the answer and the call returns as `via: 'proxy'`.
+   */
+  if ((gated || directError) && rotationEnabled() && !opts.proxy) {
+    const tried = new Set<string>();
+    const tries = rotationTries();
+    for (let i = 0; i < tries; i++) {
+      const leg = nextProxy(tried);
+      if (!leg) break;
+      tried.add(leg.url);
+      let res: CffiResponse | null = null;
+      let err: any = null;
+      try {
+        res = await cffiFetchDirect(url, { ...opts, proxy: leg.url });
+      } catch (e) {
+        err = e;
+      }
+      const legGated = res ? isGatedResponse(res.status, res.body) : false;
+      noteProxyResult(leg.url, {
+        ok: !!res && !legGated,
+        status: res?.status,
+        gated: legGated,
+        error: err ? String(err.message || err) : undefined,
+      });
+      if (res && !legGated) return { ...res, via: 'proxy' };
+      if (res) {
+        // Keep the least-bad response so the caller still reports honestly.
+        direct = res;
+        gated = legGated;
+      }
+    }
+  }
 
   if (policyHit && relayConfigured() && (gated || directError)) {
     const relayed = await edgeRelayFetch(url, opts);

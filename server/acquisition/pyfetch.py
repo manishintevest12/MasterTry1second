@@ -98,6 +98,10 @@ def main() -> None:
     body = req.get("body")
     timeout = float(req.get("timeoutSec") or 20)
     impersonate = str(req.get("impersonate") or "safari17_0")
+    # Owner 31 Oct ("rotational proxy"): the pool hands curl_cffi a different exit per
+    # attempt, so a gated IP never ends the scrape. Empty = direct, exactly as before.
+    proxy_url = str(req.get("proxy") or "").strip()
+
 
     http_version = str(req.get("httpVersion") or "").strip()
 
@@ -132,7 +136,10 @@ def main() -> None:
                     kw["http_version"] = CurlHttpVersion.V1_1
                 except Exception:
                     pass
-            if use_doh:
+            if proxy_url:
+                kw["proxies"] = {"http": proxy_url, "https": proxy_url}
+            if use_doh and not proxy_url:
+                # DoH + an explicit proxy can fight each other; the proxy already owns DNS.
                 kw["doh_url"] = DOH_URL
             if method == "POST":
                 r = s.post(url, headers=headers, data=body, timeout=timeout, **kw)

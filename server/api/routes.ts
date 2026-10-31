@@ -11,6 +11,7 @@ import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
+import { proxyPoolStatus } from '../common/proxyRotator';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, rememberGood } from '../search/lastKnownGood';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
@@ -1220,6 +1221,14 @@ apiRouter.get('/version', async (_req, res) => {
 // and how many requests have been coalesced, queued out or abandoned.
 apiRouter.get('/admin/load/health', authMiddleware, requireAdmin, async (_req, res) => {
   res.json({ ok: true, ...liveGateStats() });
+});
+
+// OWNER 31 Oct ("rotational proxy ... jiss se ye finish v naa ho kabhi"): the egress pool the
+// scrape pipeline rotates through, with per-leg success/failure counts and remaining cool-down.
+// Admin-only like every other internal view, so no competitor learns our exits.
+apiRouter.get('/admin/proxy-pool', authMiddleware, requireAdmin, (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, ...proxyPoolStatus() });
 });
 
 apiRouter.post('/scrape/live', async (req, res) => {

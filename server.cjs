@@ -1479,6 +1479,140 @@ var init_health = __esm({
   }
 });
 
+// server/common/proxyRotator.ts
+function maskProxy(url) {
+  try {
+    const u = new URL(url);
+    if (u.username || u.password) {
+      u.username = u.username ? `${u.username.slice(0, 2)}***` : "";
+      u.password = u.password ? "***" : "";
+    }
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return url.replace(/\/\/[^@/]*@/, "//***@");
+  }
+}
+function normalize(entry) {
+  const raw = entry.trim();
+  if (!raw) return null;
+  const withScheme = /^[a-z0-9+.-]+:\/\//i.test(raw) ? raw : `http://${raw}`;
+  try {
+    const u = new URL(withScheme);
+    if (!u.hostname || !u.port) return null;
+    if (!/^(https?|socks5h?|socks4a?):$/.test(u.protocol)) return null;
+    return withScheme;
+  } catch {
+    return null;
+  }
+}
+function loadLegs() {
+  const raw = process.env.T1S_PROXY_LIST || "";
+  if (raw === signature) return legs;
+  signature = raw;
+  const seen = /* @__PURE__ */ new Set();
+  const next = [];
+  for (const part of raw.split(/[\s,;]+/)) {
+    const url = normalize(part);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const existing = legs.find((l) => l.url === url);
+    next.push(existing ?? {
+      url,
+      label: maskProxy(url),
+      ok: 0,
+      fails: 0,
+      streak: 0,
+      parkedUntil: 0,
+      usedAt: 0,
+      lastError: "",
+      lastStatus: 0
+    });
+    if (next.length >= MAX_LEGS) break;
+  }
+  legs = next;
+  cursor = 0;
+  return legs;
+}
+function rotationDisabled() {
+  return /^(1|true|yes|on)$/i.test(process.env.T1S_PROXY_DISABLE || "");
+}
+function rotationTries() {
+  const n = Number(process.env.T1S_PROXY_TRIES);
+  if (!Number.isFinite(n)) return 2;
+  return Math.max(0, Math.min(6, Math.floor(n)));
+}
+function rotationPoolSize() {
+  return loadLegs().length;
+}
+function rotationEnabled() {
+  return !rotationDisabled() && rotationPoolSize() > 0;
+}
+function nextProxy(skip = /* @__PURE__ */ new Set()) {
+  const pool2 = loadLegs().filter((l) => !skip.has(l.url));
+  if (!pool2.length) return null;
+  const now = Date.now();
+  const healthy = pool2.filter((l) => l.parkedUntil <= now);
+  const ordered = healthy.length ? healthy : pool2.slice().sort((a, b) => a.parkedUntil - b.parkedUntil);
+  const leg = ordered[cursor % ordered.length];
+  cursor = (cursor + 1) % Math.max(1, loadLegs().length);
+  return leg || null;
+}
+function noteProxyResult(url, result) {
+  const leg = loadLegs().find((l) => l.url === url);
+  if (!leg) return;
+  leg.usedAt = Date.now();
+  leg.lastStatus = result.status || 0;
+  if (result.ok && !result.gated) {
+    leg.ok += 1;
+    leg.streak = 0;
+    leg.parkedUntil = 0;
+    leg.lastError = "";
+    return;
+  }
+  leg.fails += 1;
+  leg.streak += 1;
+  leg.lastError = (result.error || (result.gated ? `gated ${result.status || ""}` : `status ${result.status || ""}`)).slice(0, 160);
+  if (leg.ok === 0 && leg.streak >= HOPELESS_FAILS) {
+    leg.parkedUntil = Date.now() + HOPELESS_PARK_MS;
+    return;
+  }
+  const step = PARK_LADDER_MS[Math.min(leg.streak - 1, PARK_LADDER_MS.length - 1)];
+  leg.parkedUntil = Date.now() + step;
+}
+function proxyPoolStatus() {
+  loadLegs();
+  const now = Date.now();
+  return {
+    enabled: rotationEnabled(),
+    tries: rotationTries(),
+    size: legs.length,
+    healthy: legs.filter((l) => l.parkedUntil <= now).length,
+    parked: legs.filter((l) => l.parkedUntil > now).length,
+    legs: legs.map((l) => ({
+      label: l.label,
+      ok: l.ok,
+      fails: l.fails,
+      streak: l.streak,
+      parkedForSec: l.parkedUntil > now ? Math.ceil((l.parkedUntil - now) / 1e3) : 0,
+      lastStatus: l.lastStatus,
+      lastError: l.lastError,
+      usedSecAgo: l.usedAt ? Math.round((now - l.usedAt) / 1e3) : null
+    }))
+  };
+}
+var PARK_LADDER_MS, HOPELESS_PARK_MS, HOPELESS_FAILS, MAX_LEGS, legs, cursor, signature;
+var init_proxyRotator = __esm({
+  "server/common/proxyRotator.ts"() {
+    PARK_LADDER_MS = [6e4, 3e5, 12e5];
+    HOPELESS_PARK_MS = 36e5;
+    HOPELESS_FAILS = 5;
+    MAX_LEGS = 24;
+    legs = [];
+    cursor = 0;
+    signature = "";
+  }
+});
+
 // server/sources/edgeRelay.ts
 var edgeRelay_exports = {};
 __export(edgeRelay_exports, {
@@ -1533,12 +1667,12 @@ function isGatedResponse(status, body, opts) {
   return false;
 }
 function relayLegs() {
-  const legs = [];
+  const legs2 = [];
   const awsUrl = String(process.env.EDGE_RELAY_AWS_URL || "").trim();
   const cfUrl = String(process.env.EDGE_RELAY_CF_URL || "").trim();
-  if (awsUrl) legs.push({ name: "aws", url: awsUrl, token: String(process.env.EDGE_RELAY_AWS_TOKEN || "") });
-  if (cfUrl) legs.push({ name: "cf", url: cfUrl, token: String(process.env.EDGE_RELAY_CF_TOKEN || "") });
-  return legs;
+  if (awsUrl) legs2.push({ name: "aws", url: awsUrl, token: String(process.env.EDGE_RELAY_AWS_TOKEN || "") });
+  if (cfUrl) legs2.push({ name: "cf", url: cfUrl, token: String(process.env.EDGE_RELAY_CF_TOKEN || "") });
+  return legs2;
 }
 function breakerOpen(name) {
   const b = breakers.get(name);
@@ -1566,9 +1700,9 @@ function relayConfigured() {
 }
 async function edgeRelayFetch(url, opts = {}) {
   if (relayDisabled()) return null;
-  const legs = relayLegs();
-  if (!legs.length) return null;
-  for (const leg of legs) {
+  const legs2 = relayLegs();
+  if (!legs2.length) return null;
+  for (const leg of legs2) {
     if (breakerOpen(leg.name)) continue;
     stats.attempts++;
     try {
@@ -1732,6 +1866,7 @@ async function cffiFetchDirect(url, opts = {}) {
     ...opts.returnCookies ? { returnCookies: true } : {},
     ...opts.returnHeaders ? { returnHeaders: true } : {},
     ...opts.httpVersion ? { httpVersion: opts.httpVersion } : {},
+    ...opts.proxy ? { proxy: opts.proxy } : {},
     timeoutSec: Math.max(2, Math.ceil((opts.timeoutMs || 2e4) / 1e3)),
     impersonate: opts.impersonate || "safari17_0"
   });
@@ -1785,8 +1920,36 @@ async function cffiFetch(url, opts = {}) {
   }
   const { hostInPolicy: hostInPolicy2, isGatedResponse: isGatedResponse2, relayConfigured: relayConfigured2, edgeRelayFetch: edgeRelayFetch2, noteDirectGate: noteDirectGate2 } = await Promise.resolve().then(() => (init_edgeRelay(), edgeRelay_exports));
   const policyHit = hostInPolicy2(url);
-  const gated = direct ? isGatedResponse2(direct.status, direct.body) : false;
+  let gated = direct ? isGatedResponse2(direct.status, direct.body) : false;
   if (gated) noteDirectGate2();
+  if ((gated || directError) && rotationEnabled() && !opts.proxy) {
+    const tried = /* @__PURE__ */ new Set();
+    const tries = rotationTries();
+    for (let i = 0; i < tries; i++) {
+      const leg = nextProxy(tried);
+      if (!leg) break;
+      tried.add(leg.url);
+      let res = null;
+      let err = null;
+      try {
+        res = await cffiFetchDirect(url, { ...opts, proxy: leg.url });
+      } catch (e2) {
+        err = e2;
+      }
+      const legGated = res ? isGatedResponse2(res.status, res.body) : false;
+      noteProxyResult(leg.url, {
+        ok: !!res && !legGated,
+        status: res?.status,
+        gated: legGated,
+        error: err ? String(err.message || err) : void 0
+      });
+      if (res && !legGated) return { ...res, via: "proxy" };
+      if (res) {
+        direct = res;
+        gated = legGated;
+      }
+    }
+  }
   if (policyHit && relayConfigured2() && (gated || directError)) {
     const relayed = await edgeRelayFetch2(url, opts);
     if (relayed) {
@@ -1809,6 +1972,7 @@ var init_curlCffiFetch = __esm({
     import_node_fs2 = __toESM(require("node:fs"), 1);
     import_node_url = require("node:url");
     init_httpClient();
+    init_proxyRotator();
     import_meta = {};
     liveChildren = /* @__PURE__ */ new Set();
     HELPER = (() => {
@@ -7168,13 +7332,13 @@ function ixigoRouteTokens(from, to, fromCode, toCode, iata = {}) {
 }
 function ixigoLegs(fn) {
   const segs = String(fn || "").split("*").map((x) => x.trim()).filter(Boolean);
-  const legs = [];
+  const legs2 = [];
   for (const seg of segs) {
     const m = seg.match(/^([A-Z]{3})-([A-Z]{3})-(.+)$/);
     if (!m) return [];
-    legs.push({ from: m[1], to: m[2], flightNo: m[3] });
+    legs2.push({ from: m[1], to: m[2], flightNo: m[3] });
   }
-  return legs;
+  return legs2;
 }
 function ixigoIsoDate(d) {
   const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(d || "").trim());
@@ -7189,11 +7353,11 @@ function parseIxigoFlights(nextData, fromCode, toCode) {
     const airline = String(e2.airline || "").trim();
     const fare = Number(e2.fare);
     if (!airline || !Number.isFinite(fare) || fare <= 0) continue;
-    const legs = ixigoLegs(String(e2.flightNumber || ""));
-    if (!legs.length) continue;
-    if (fromCode && legs[0].from !== fromCode.toUpperCase()) continue;
-    if (toCode && legs[legs.length - 1].to !== toCode.toUpperCase()) continue;
-    const fn = legs.map((l) => l.flightNo).join("+");
+    const legs2 = ixigoLegs(String(e2.flightNumber || ""));
+    if (!legs2.length) continue;
+    if (fromCode && legs2[0].from !== fromCode.toUpperCase()) continue;
+    if (toCode && legs2[legs2.length - 1].to !== toCode.toUpperCase()) continue;
+    const fn = legs2.map((l) => l.flightNo).join("+");
     let duration = null;
     const dur = parseInt(String(e2.duration ?? ""), 10);
     if (Number.isFinite(dur) && dur > 0) duration = dur;
@@ -7210,7 +7374,7 @@ function parseIxigoFlights(nextData, fromCode, toCode) {
       arrivalTime: e2.arrival_time ? String(e2.arrival_time) : null,
       durationMinutes: duration,
       stops: Number.isFinite(Number(e2.numOfStops)) ? Number(e2.numOfStops) : null,
-      legs
+      legs: legs2
     });
   }
   return flights;
@@ -7430,8 +7594,8 @@ function parseEmtAirbus(jsonText) {
   for (const g of groups) {
     for (const f of g?.s || []) {
       const segKey = String(f?.segMatchingKey || "");
-      const legs = segKey.split("^").map((s) => s.trim());
-      const parsed = legs.map((leg) => {
+      const legs2 = segKey.split("^").map((s) => s.trim());
+      const parsed = legs2.map((leg) => {
         const m = leg.match(SEG_RE);
         if (m) return { dep: m[1], arr: m[2], ac: m[3], fn: m[4], full: true };
         const n = leg.match(LEG_NO_ROUTE_RE);
@@ -9298,13 +9462,13 @@ function parseGoibiboSsr(html, source, pageUrl, fromCity, toCity) {
     if (!Number.isFinite(price) || price <= 0) continue;
     const keys = Array.isArray(j.journeyKeys) ? j.journeyKeys : [];
     if (!keys.length) continue;
-    const legs = String(keys[0]).split("|");
-    const firstKey = legs[0];
-    const lastKey = legs[legs.length - 1];
+    const legs2 = String(keys[0]).split("|");
+    const firstKey = legs2[0];
+    const lastKey = legs2[legs2.length - 1];
     const firstSeg = jm[firstKey];
     const lastSeg = jm[lastKey];
     if (!firstSeg) continue;
-    const stops = legs.length - 1;
+    const stops = legs2.length - 1;
     const name = stripTags(String(j.simpleAirlineHeading?.nm || "")) || EMT_AIRLINES[String(j.airlineCodes?.[0] || "")]?.name || "Flight";
     const flightNo2 = stripTags(String(j.flightNumber || j.simpleAirlineHeading?.cd || "")).slice(0, 40);
     const depT = String(firstSeg.depTime || "");
@@ -10016,10 +10180,10 @@ function parseAirIndiaSchedules(body, wantDateIso) {
   const entries2 = Array.isArray(d?.data) ? d.data : [];
   const out = [];
   for (const entry of entries2) {
-    const legs = entry?.flights;
-    if (!Array.isArray(legs) || !legs.length) continue;
-    const first = legs[0];
-    const last = legs[legs.length - 1];
+    const legs2 = entry?.flights;
+    if (!Array.isArray(legs2) || !legs2.length) continue;
+    const first = legs2[0];
+    const last = legs2[legs2.length - 1];
     const depTime = localHm2(first?.origin?.departureLocalTime);
     const arrTime = localHm2(last?.destination?.arrivalLocalTime);
     const num12 = String(first?.flightNumber || "").trim();
@@ -10166,9 +10330,9 @@ function parseAllianceAirSchedule(schedule, depIso) {
   if (!Array.isArray(rows)) return [];
   const out = [];
   for (const row of rows) {
-    const legs = row?.connecting_flight_routes || [];
-    const first = legs[0];
-    const last = legs[legs.length - 1];
+    const legs2 = row?.connecting_flight_routes || [];
+    const first = legs2[0];
+    const last = legs2[legs2.length - 1];
     if (!first || !last) continue;
     const dep = first?.departure_date || {};
     if (!dep?.day) continue;
@@ -10185,7 +10349,7 @@ function parseAllianceAirSchedule(schedule, depIso) {
       price: Math.round(price),
       availability: Number(first.availability || 0),
       travelDate,
-      stops: legs.length - 1,
+      stops: legs2.length - 1,
       baggageKg: first?.facilities?.baggage?.adult?.weight || void 0
     });
   }
@@ -11277,10 +11441,10 @@ function parseCleartripFlights(body, source, fromCity, toCity, depIso) {
   const out = [];
   for (const c of cards) {
     const s = c.summary || {};
-    const legs = Array.isArray(s.flights) ? s.flights : [];
-    if (!legs.length) continue;
-    const airlineCode = String(legs[0].airlineCode || "");
-    const flightNo2 = legs.map((l) => `${l.airlineCode || ""}${l.flightNumber || ""}`.trim()).join("/").slice(0, 40);
+    const legs2 = Array.isArray(s.flights) ? s.flights : [];
+    if (!legs2.length) continue;
+    const airlineCode = String(legs2[0].airlineCode || "");
+    const flightNo2 = legs2.map((l) => `${l.airlineCode || ""}${l.flightNumber || ""}`.trim()).join("/").slice(0, 40);
     const st = Array.isArray(c.subTravelOptionIds) ? subOptions[c.subTravelOptionIds[0]] : null;
     const fareId = st?.fareIds?.[0] || st?.cheapestFareId;
     const fare = fareId ? fares[fareId] : null;
@@ -15121,7 +15285,7 @@ function listingLogo(L) {
   return String(url || "").replace(/^http:/, "https:");
 }
 function listingLegs(L) {
-  const legs = [];
+  const legs2 = [];
   const sections = (L?.journeys || [])[0]?.detailsAndFares?.content?.sections || [];
   for (const sec of sections) {
     if (sec?.__typename !== "FlightsJourneyDetailsInformation" && !sec?.content) continue;
@@ -15146,7 +15310,7 @@ function listingLegs(L) {
             if (m) flightNo2 = `${m[1]}${m[2]}`;
           }
           const dt = (side) => String((side?.journeyDateTime || [])[0]?.text || "").trim();
-          legs.push({
+          legs2.push({
             flightNo: flightNo2,
             dep: dt(fc?.connectionDeparture),
             depAirport: String(fc?.connectionDeparture?.subtitle || "").trim(),
@@ -15158,7 +15322,7 @@ function listingLegs(L) {
       }
     }
   }
-  return legs;
+  return legs2;
 }
 function listingDuration(L) {
   const tl = listingTimeline(L);
@@ -15200,19 +15364,19 @@ function parseExpediaFlights(body, source, route2, dateIso, srpUrl, fx, cap = 40
     const usd2 = listingPrice(L);
     if (!usd2) continue;
     const tl = listingTimeline(L);
-    const legs = listingLegs(L);
-    const dep = legs[0]?.dep || String(tl?.start?.primary || "").trim();
-    const arr = (legs[legs.length - 1] || {}).arr || String(tl?.end?.primary || "").trim();
+    const legs2 = listingLegs(L);
+    const dep = legs2[0]?.dep || String(tl?.start?.primary || "").trim();
+    const arr = (legs2[legs2.length - 1] || {}).arr || String(tl?.end?.primary || "").trim();
     if (!dep || !arr) continue;
-    const airline = listingAirlineName(L) || (legs[0]?.flightNo || "").slice(0, 2);
+    const airline = listingAirlineName(L) || (legs2[0]?.flightNo || "").slice(0, 2);
     if (!airline) continue;
-    const flightNos = legs.map((l) => l.flightNo).filter(Boolean);
+    const flightNos = legs2.map((l) => l.flightNo).filter(Boolean);
     const flightNo2 = flightNos.join("/");
     const stops = parseStops(tl?.stops);
     const duration = listingDuration(L);
-    const depAirport = legs[0]?.depAirport || "";
-    const arrAirport = legs[legs.length - 1]?.arrAirport || "";
-    const aircraft = legs.map((l) => l.aircraft).filter(Boolean)[0] || "";
+    const depAirport = legs2[0]?.depAirport || "";
+    const arrAirport = legs2[legs2.length - 1]?.arrAirport || "";
+    const aircraft = legs2.map((l) => l.aircraft).filter(Boolean)[0] || "";
     const key = `${airline}|${flightNo2}|${dep}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -28753,10 +28917,10 @@ function dates(d) {
   return { iso: s, ymd: `${yyyy}${mm}${dd}`, dmy: `${dd}/${mm}/${yyyy}`, dMonY: `${dd}-${months[Number(mm) - 1] || "Jan"}-${yyyy}`, dd, mm, yyyy };
 }
 function route(t) {
-  const legs = String(t || "").split(/\s+to\s+/i);
-  if (legs.length !== 2) return null;
-  const from = legs[0].trim();
-  const to = legs[1].trim();
+  const legs2 = String(t || "").split(/\s+to\s+/i);
+  if (legs2.length !== 2) return null;
+  const from = legs2[0].trim();
+  const to = legs2[1].trim();
   return from && to ? { from, to } : null;
 }
 function hotelCity(title, ctx) {
@@ -29177,10 +29341,10 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   if (!v || !q3) return "";
   const has = (...keys) => keys.some((k) => v.includes(k));
   const mmtFlightSrp = () => {
-    const legs = String(travel?.route || "").toLowerCase().split(/\s+to\s+/);
-    if (legs.length !== 2) return "";
-    const from = IATA[legs[0].trim()];
-    const to = IATA[legs[1].trim()];
+    const legs2 = String(travel?.route || "").toLowerCase().split(/\s+to\s+/);
+    if (legs2.length !== 2) return "";
+    const from = IATA[legs2[0].trim()];
+    const to = IATA[legs2[1].trim()];
     if (!from || !to) return "";
     const d = String(travel?.date || "");
     const iso2 = /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "";
@@ -29206,12 +29370,12 @@ function merchantSearchFallback(vendor, title, vertical, travel) {
   if (has("makemytrip")) {
     if (vertical === "flights") return mmtFlightSrp() || `https://www.makemytrip.com/flights/`;
     if (vertical === "bus") {
-      const legs = String(travel?.route || "").split(/\s+to\s+/i);
+      const legs2 = String(travel?.route || "").split(/\s+to\s+/i);
       const d = String(travel?.date || "");
-      if (legs.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      if (legs2.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
         const [y, m, day] = d.split("-");
-        const f = legs[0].trim().replace(/\s+/g, "-");
-        const t = legs[1].trim().replace(/\s+/g, "-");
+        const f = legs2[0].trim().replace(/\s+/g, "-");
+        const t = legs2[1].trim().replace(/\s+/g, "-");
         return `https://www.makemytrip.com/bus/search/${encodeURIComponent(f)}/${encodeURIComponent(t)}/${day}-${m}-${y}`;
       }
     }
@@ -32820,9 +32984,9 @@ async function harvestRoute(from, to, date) {
   const flights = parseIxigoFlights(next);
   if (!flights.length) return 0;
   const synthetic = flights.filter((f) => f.flightNumber && f.departureTime && f.arrivalTime).map((f) => {
-    const legs = f.legs || [];
-    const fromCode = legs[0]?.from;
-    const toCode = legs[legs.length - 1]?.to;
+    const legs2 = f.legs || [];
+    const fromCode = legs2[0]?.from;
+    const toCode = legs2[legs2.length - 1]?.to;
     return {
       vertical: "flights",
       brand: f.airline,
@@ -42118,6 +42282,7 @@ var init_routes = __esm({
     init_verticalAlias();
     init_searchOrchestrator();
     init_liveSearchGate();
+    init_proxyRotator();
     init_ecomDepartments();
     init_lastKnownGood();
     init_pollBudget();
@@ -42448,10 +42613,10 @@ var init_routes = __esm({
           return null;
         };
         const genres = new Array(parsed.length).fill(null);
-        let cursor = 0;
+        let cursor2 = 0;
         const worker = async () => {
-          while (cursor < parsed.length) {
-            const i = cursor++;
+          while (cursor2 < parsed.length) {
+            const i = cursor2++;
             genres[i] = await genreOf(parsed[i].pageUrl);
           }
         };
@@ -42749,6 +42914,10 @@ var init_routes = __esm({
     });
     apiRouter.get("/admin/load/health", authMiddleware, requireAdmin, async (_req, res) => {
       res.json({ ok: true, ...liveGateStats() });
+    });
+    apiRouter.get("/admin/proxy-pool", authMiddleware, requireAdmin, (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true, ...proxyPoolStatus() });
     });
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
