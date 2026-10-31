@@ -1492,8 +1492,8 @@ class Try1SecondApi {
   /// gets for free by retrying invisibly.
   Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client) fn,
       {String? token, String? path}) async {
-    // One connection per attempt: build a client, use it once, close it. A transport blip
-    // costs one more fresh connection (400ms, then 900ms apart), never a dead pooled socket.
+    /// One connection per attempt: build a client, use it once, close it, so a socket the
+    /// edge already killed can never be reused.
     Future<http.Response> attempt() async {
       await _acquireSlot();
       final client = clientInjected ? _client : _hardenedClient();
@@ -1509,49 +1509,37 @@ class Try1SecondApi {
       }
     }
 
-    http.Response res;
-    try {
+    // OWNER 31 Oct ("abhi aisa issue pure app mai aa raha hai ... solution ab do kaise v"):
+    // the reset is thrown by the edge, not by our server, so the answer is the same one a
+    // browser gives for free — keep retrying on a brand-new connection until one gets
+    // through. Four extra attempts with growing pauses (250/600/1200/2500ms) ride out a
+    // burst of resets that three attempts could not. Only transport failures are retried;
+    // a real HTTP status/API error is surfaced immediately.
+    const delays = <int>[250, 600, 1200, 2500];
+    Object? lastError;
+    for (var i = 0; i <= delays.length; i++) {
       try {
-        res = await attempt();
-      } on TimeoutException {
-        res = await attempt();
-      } on http.ClientException {
-        await Future<void>.delayed(const Duration(milliseconds: 400));
+        final res = await attempt();
+        // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an HTML
+        // error page; one quiet retry clears it, a second failure is reported honestly.
         try {
-          res = await attempt();
-        } on http.ClientException {
-          await Future<void>.delayed(const Duration(milliseconds: 900));
-          res = await attempt();
+          return _decode(res);
+        } on ApiHttpException {
+          rethrow; // 403/410 edge block: retrying is pointless and feeds the WAF
+        } on Exception {
+          if (i == delays.length) rethrow;
         }
-      } on io.SocketException {
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        try {
-          res = await attempt();
-        } on io.SocketException {
-          await Future<void>.delayed(const Duration(milliseconds: 900));
-          res = await attempt();
-        }
+      } catch (e) {
+        lastError = e;
       }
-    } catch (e) {
-      // Every connection attempt failed. Report it so the failure becomes visible
-      // server-side (the edge drops these before Node ever sees them), then surface it.
-      unawaited(_reportTransportFailure(path ?? '', e));
-      rethrow;
+      if (i < delays.length) {
+        await Future<void>.delayed(Duration(milliseconds: delays[i]));
+      }
     }
-
-    // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an HTML error
-    // page (reproduced on /api/scrape/live hotels+loans). One quiet retry clears it.
-    try {
-      return _decode(res);
-    } on ApiHttpException {
-      rethrow; // 403/410 edge block: retrying is pointless and feeds the WAF
-    } on Exception {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      try {
-        res = await attempt();
-      } catch (_) { /* fall through: report the original failure */ }
-      return _decode(res);
-    }
+    unawaited(_reportTransportFailure(path ?? '', lastError ?? 'unknown'));
+    throw (lastError is Exception)
+        ? lastError
+        : http.ClientException('connection failed: $lastError');
   }
 
   /// Home banners (owner 23 Oct): admin-managed wide landscape strips between
