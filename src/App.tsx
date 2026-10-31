@@ -3,37 +3,39 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense } from 'react';
+import React, { Suspense } from 'react';
+import { lazyWithRetry } from './lib/lazyWithRetry';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { VerticalNav } from './components/VerticalNav';
 import { SearchAndFilterHeader } from './components/SearchAndFilterHeader';
-const ComparisonFeed = lazy(() => import('./components/ComparisonFeed').then((m) => ({ default: m.ComparisonFeed })));
+const ComparisonFeed = lazyWithRetry(() => import('./components/ComparisonFeed').then((m) => ({ default: m.ComparisonFeed })));
 import { HomeView } from './components/HomeView';
-const QuickAppsView = lazy(() => import('./components/QuickAppsView').then((m) => ({ default: m.QuickAppsView })));
-const AiInsightsView = lazy(() => import('./components/AiInsightsView').then((m) => ({ default: m.AiInsightsView })));
-const RewardsHub = lazy(() => import('./components/RewardsHub').then((m) => ({ default: m.RewardsHub })));
+const QuickAppsView = lazyWithRetry(() => import('./components/QuickAppsView').then((m) => ({ default: m.QuickAppsView })));
+const AiInsightsView = lazyWithRetry(() => import('./components/AiInsightsView').then((m) => ({ default: m.AiInsightsView })));
+const RewardsHub = lazyWithRetry(() => import('./components/RewardsHub').then((m) => ({ default: m.RewardsHub })));
 import { FixedBottomBar } from './components/FixedBottomBar';
-const RedirectionModal = lazy(() => import('./components/RedirectionModal').then((m) => ({ default: m.RedirectionModal })));
-const ReviewModal = lazy(() => import('./components/ReviewModal').then((m) => ({ default: m.ReviewModal })));
-const PriceAlertModal = lazy(() => import('./components/PriceAlertModal').then((m) => ({ default: m.PriceAlertModal })));
-const ProductPageView = lazy(() => import('./components/ProductPageView').then((m) => ({ default: m.ProductPageView })));
-const PriceAlertsView = lazy(() => import('./components/PriceAlertsView').then((m) => ({ default: m.PriceAlertsView })));
-const SpendLensView = lazy(() => import('./components/SpendLensView').then((m) => ({ default: m.SpendLensView })));
-const BrowserExtensionModal = lazy(() => import('./components/BrowserExtensionModal').then((m) => ({ default: m.BrowserExtensionModal })));
-const NotificationsDrawer = lazy(() => import('./components/NotificationsDrawer').then((m) => ({ default: m.NotificationsDrawer })));
-const SmartCartDrawer = lazy(() => import('./components/SmartCartDrawer').then((m) => ({ default: m.SmartCartDrawer })));
-const ProfileModal = lazy(() => import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal })));
+const RedirectionModal = lazyWithRetry(() => import('./components/RedirectionModal').then((m) => ({ default: m.RedirectionModal })));
+const ReviewModal = lazyWithRetry(() => import('./components/ReviewModal').then((m) => ({ default: m.ReviewModal })));
+const PriceAlertModal = lazyWithRetry(() => import('./components/PriceAlertModal').then((m) => ({ default: m.PriceAlertModal })));
+const ProductPageView = lazyWithRetry(() => import('./components/ProductPageView').then((m) => ({ default: m.ProductPageView })));
+const PriceAlertsView = lazyWithRetry(() => import('./components/PriceAlertsView').then((m) => ({ default: m.PriceAlertsView })));
+const SpendLensView = lazyWithRetry(() => import('./components/SpendLensView').then((m) => ({ default: m.SpendLensView })));
+const BrowserExtensionModal = lazyWithRetry(() => import('./components/BrowserExtensionModal').then((m) => ({ default: m.BrowserExtensionModal })));
+const NotificationsDrawer = lazyWithRetry(() => import('./components/NotificationsDrawer').then((m) => ({ default: m.NotificationsDrawer })));
+const SmartCartDrawer = lazyWithRetry(() => import('./components/SmartCartDrawer').then((m) => ({ default: m.SmartCartDrawer })));
+const ProfileModal = lazyWithRetry(() => import('./components/ProfileModal').then((m) => ({ default: m.ProfileModal })));
 import { ToastContainer } from './components/ToastContainer';
-const Footer = lazy(() => import('./components/Footer').then((m) => ({ default: m.Footer })));
-const AffiliatePartnersSection = lazy(() => import('./components/AffiliatePartnersSection').then((m) => ({ default: m.AffiliatePartnersSection })));
-const InfoAndLegalModal = lazy(() => import('./components/InfoAndLegalModal').then((m) => ({ default: m.InfoAndLegalModal })));
-const PartnerInquiryModal = lazy(() => import('./components/PartnerInquiryModal').then((m) => ({ default: m.PartnerInquiryModal })));
-const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
-const AdminLoginView = lazy(() => import('./components/admin/AdminLoginView').then((m) => ({ default: m.AdminLoginView })));
-const MerchantPortal = lazy(() => import('./components/merchant/MerchantPortal').then((m) => ({ default: m.MerchantPortal })));
-const MerchantLoginView = lazy(() => import('./components/merchant/MerchantLoginView').then((m) => ({ default: m.MerchantLoginView })));
-const CplLeadCaptureModal = lazy(() => import('./components/CplLeadCaptureModal').then((m) => ({ default: m.CplLeadCaptureModal })));
+const Footer = lazyWithRetry(() => import('./components/Footer').then((m) => ({ default: m.Footer })));
+const AffiliatePartnersSection = lazyWithRetry(() => import('./components/AffiliatePartnersSection').then((m) => ({ default: m.AffiliatePartnersSection })));
+const InfoAndLegalModal = lazyWithRetry(() => import('./components/InfoAndLegalModal').then((m) => ({ default: m.InfoAndLegalModal })));
+const PartnerInquiryModal = lazyWithRetry(() => import('./components/PartnerInquiryModal').then((m) => ({ default: m.PartnerInquiryModal })));
+const AdminDashboard = lazyWithRetry(() => import('./components/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const AdminLoginView = lazyWithRetry(() => import('./components/admin/AdminLoginView').then((m) => ({ default: m.AdminLoginView })));
+const MerchantPortal = lazyWithRetry(() => import('./components/merchant/MerchantPortal').then((m) => ({ default: m.MerchantPortal })));
+const MerchantLoginView = lazyWithRetry(() => import('./components/merchant/MerchantLoginView').then((m) => ({ default: m.MerchantLoginView })));
+const CplLeadCaptureModal = lazyWithRetry(() => import('./components/CplLeadCaptureModal').then((m) => ({ default: m.CplLeadCaptureModal })));
 
 const MainContent: React.FC = () => {
   const {
@@ -123,7 +125,10 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      {/* OWNER 31 Oct: a failed chunk/render must never leave a blank white page. */}
+      <AppErrorBoundary>
+        <MainContent />
+      </AppErrorBoundary>
     </AppProvider>
   );
 }

@@ -1,6 +1,10 @@
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { installChunkRecovery } from './lib/chunkRecovery';
+
+// OWNER 31 Oct: recover from a throttled/blocked chunk instead of showing a blank page.
+installChunkRecovery();
 // Firebase Analytics is ~200KB of SDK for a non-critical concern. Load it only
 // once the browser is idle so it never blocks first paint (PageSpeed TBT fix).
 // Firebase Analytics (SDK + gtag.js, ~190KB executed) is deferred until the FIRST REAL
