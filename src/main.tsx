@@ -2,9 +2,14 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { installChunkRecovery } from './lib/chunkRecovery';
+import { installApiGate } from './lib/apiGate';
 
 // OWNER 31 Oct: recover from a throttled/blocked chunk instead of showing a blank page.
 installChunkRecovery();
+
+// OWNER 31 Oct: the Hostinger edge resets piled-up API connections. Cap concurrency at 3 and
+// retry a reset/429 once instead of showing 'Connection reset by peer' to the visitor.
+installApiGate();
 // Firebase Analytics is ~200KB of SDK for a non-critical concern. Load it only
 // once the browser is idle so it never blocks first paint (PageSpeed TBT fix).
 // Firebase Analytics (SDK + gtag.js, ~190KB executed) is deferred until the FIRST REAL
