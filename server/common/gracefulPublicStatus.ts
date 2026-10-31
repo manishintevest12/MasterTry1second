@@ -52,7 +52,16 @@ const isMaskable = (req: Request): boolean => {
   return false;
 };
 
-export function gracefulPublicStatus(app: Express): void {
+export interface GracefulOptions {
+  /**
+   * Last-resort rows for a refused search: the caller supplies real, previously verified rows so a
+   * masked answer still carries data instead of an empty list. Without this, an empty 200 renders as
+   * "No matching options found" on the client (owner 31 Oct, every vertical).
+   */
+  fallbackRows?: (req: Request) => any[] | null | undefined;
+}
+
+export function gracefulPublicStatus(app: Express, options: GracefulOptions = {}): void {
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (!isMaskable(req)) return next();
 
@@ -66,7 +75,8 @@ export function gracefulPublicStatus(app: Express): void {
       } catch (_) {/* diagnostics must never change the answer */}
       res.status(200);
       const base = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
-      return sendJson({
+      const path = String((req as any).path || (req as any).originalUrl || '').split('?')[0];
+      const masked: any = {
         ...base,
         success: false,
         ok: false,
@@ -74,7 +84,26 @@ export function gracefulPublicStatus(app: Express): void {
         pendingRefresh: true,
         retryAfterSec: 4,
         notice: 'Still gathering results from the sources. Retrying automatically.',
-      });
+      };
+      // A refused SEARCH must never answer "nothing found": hand back the vertical's last verified
+      // rows (real rows only, never re-priced) so the feed stays populated instead of showing the
+      // client's empty-state card.
+      if (options.fallbackRows && /^\/api\/(search|scrape\/live|compare)/.test(path)) {
+        const current = Array.isArray(masked.results) ? masked.results : [];
+        if (!current.length) {
+          try {
+            const rows = options.fallbackRows(req);
+            if (rows && rows.length) {
+              masked.results = rows;
+              masked.resultsCount = rows.length;
+              masked.servedFrom = 'last_verified';
+              masked.honestNotice =
+                'Live sources are busy right now, so these are the prices we last verified for this vertical. They refresh automatically.';
+            }
+          } catch (_) {/* a fallback may never change the response contract */}
+        }
+      }
+      return sendJson(masked);
     } as any;
 
     next();

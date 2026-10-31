@@ -6,6 +6,7 @@
 import { recordBadRequest } from './common/badRequestLog';
 import { lenientJsonBody } from './common/lenientJson';
 import { gracefulPublicStatus } from './common/gracefulPublicStatus';
+import { recallGoodForVertical } from './search/lastKnownGood';
 import path from 'path';
 import fs from 'fs';
 import express, { type Request, type Response } from 'express';
@@ -31,7 +32,16 @@ export async function createApp(): Promise<express.Express> {
   // produced at all: the body parser repairs whatever the phone sends instead of rejecting it, and
   // public read endpoints answer a 200 retry envelope instead of 4xx/5xx (see gracefulPublicStatus).
   app.use(lenientJsonBody('256kb'));
-  gracefulPublicStatus(app as any);
+  // A refused search still carries data: the newest verified rows for that vertical, so no client
+  // ever lands on "No matching options found" just because a scan was refused (owner 31 Oct).
+  gracefulPublicStatus(app as any, {
+    fallbackRows: (req: any) => {
+      const body = (req?.body && typeof req.body === 'object') ? req.body : {};
+      const vertical = String(body.vertical || req?.query?.vertical || '');
+      const hit = recallGoodForVertical(vertical);
+      return hit?.rows ?? null;
+    },
+  });
 
   // Still recorded (never answered with a failure): anything the parser had to repair, and anything
   // express rejects outside the lenient path, lands in the bad-request log for /api/admin/client-diag.

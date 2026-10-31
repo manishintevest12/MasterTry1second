@@ -13,7 +13,7 @@ import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../
 import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { proxyPoolStatus } from '../common/proxyRotator';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
-import { recallGood, rememberGood } from '../search/lastKnownGood';
+import { recallGood, recallGoodForVertical, rememberGood } from '../search/lastKnownGood';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
 import { refreshMovieDestination } from '../movies/freshMovieLink';
 import { refreshSeatDestination } from '../movies/liveSeatSession';
@@ -1480,6 +1480,24 @@ apiRouter.post('/scrape/live', async (req, res) => {
           servedFrom: 'last_verified',
           pendingRefresh: allowPending(chainKey, true),
           resultsCount: lkg.rows.length,
+          latencyMs: response.latencyMs,
+        });
+        return;
+      }
+      // OWNER 31 Oct ("no matching option found error in every vertical"): before answering an
+      // empty set, use the newest verified answer for this VERTICAL. A gated source must never turn
+      // a whole vertical into an empty page - these are real rows we already verified, not invented.
+      const verticalGood = recallGoodForVertical(String(input.vertical || ''));
+      if (verticalGood) {
+        res.json({
+          results: verticalGood.rows,
+          honestNotice: `Live sources returned only loosely related items for '${input.query}', so we are showing the last prices we verified in this vertical. They refresh automatically.`,
+          sourcesAttempted: response.state.sourcesAttempted,
+          sourcesSucceeded: response.state.sourcesSucceeded,
+          sourcesFailed: response.state.sourcesFailed,
+          servedFrom: 'last_verified',
+          pendingRefresh: allowPending(chainKey, true),
+          resultsCount: verticalGood.rows.length,
           latencyMs: response.latencyMs,
         });
         return;

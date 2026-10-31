@@ -79,6 +79,30 @@ export function recallGood(
   return hit;
 }
 
+/**
+ * OWNER 31 Oct ("no matching option found error in every vertical"): the per-search store only
+ * answers the EXACT same question, so a vertical whose live sources are gated answered nothing
+ * for a slightly different query and the app landed on its "No matching options found" card.
+ * This hands back the newest verified answer for that VERTICAL, whatever the query or city, so
+ * a vertical can always show real, previously verified rows instead of an empty page. Rows are
+ * never re-priced or invented; the caller marks them as last-verified.
+ */
+export function recallGoodForVertical(
+  vertical: string,
+  maxAgeMs = 6 * 60 * 60 * 1000,
+): { rows: any[]; at: number; servedFrom: string } | null {
+  const v = norm(vertical);
+  if (!v) return null;
+  let best: LastGoodEntry | null = null;
+  for (const [key, hit] of store) {
+    if (!key.startsWith(`${v}|`)) continue;
+    if (!hit.rows.length) continue;
+    if (Date.now() - hit.at > maxAgeMs) continue;
+    if (!best || hit.at > best.at) best = hit;
+  }
+  return best;
+}
+
 /** Test/maintenance hook. */
 export function clearLastGood(): void {
   store.clear();
