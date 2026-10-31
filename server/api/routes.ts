@@ -92,6 +92,7 @@ interface ClientDiagEntry {
   network: string;
 }
 const clientDiag: ClientDiagEntry[] = [];
+import { listBadRequests } from '../common/badRequestLog';
 apiRouter.post('/client-diag', (req, res) => {
   const b = req.body || {};
   const clip = (v: unknown, n: number) => String(v ?? '').slice(0, n);
@@ -111,7 +112,13 @@ apiRouter.post('/client-diag', (req, res) => {
 });
 apiRouter.get('/admin/client-diag', authMiddleware, requireAdmin, (_req, res) => {
   const cutoff = Date.now() - 24 * 3600_000;
-  res.json({ entries: clientDiag.filter((e) => e.at >= cutoff).slice(-200) });
+  // OWNER 31 Oct: `badRequests` proves WHERE an HTTP 400 came from. Anything listed here was
+  // rejected by this process (with the bytes the client sent); if the app still shows HTTP 400
+  // while this list stays empty, the request never reached us and the 400 is LiteSpeed/relay.
+  res.json({
+    entries: clientDiag.filter((e) => e.at >= cutoff).slice(-200),
+    badRequests: listBadRequests(),
+  });
 });
 
 /** Process start, reported by /api/version so a restart is provable. */

@@ -34,6 +34,42 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// server/common/badRequestLog.ts
+function recordBadRequest(req, reason, raw) {
+  const h = (name) => clip((req && req.headers ? req.headers[name] : "") || "", 160);
+  RING.push({
+    at: Date.now(),
+    method: clip(req && req.method, 10),
+    url: clip(req && (req.originalUrl || req.url), 200),
+    contentType: h("content-type"),
+    contentLength: h("content-length"),
+    via: h("x-t1s-via"),
+    userAgent: h("user-agent"),
+    session: h("x-t1s-session"),
+    relayed: Boolean(h("x-t1s-via") || h("x-relay-key")),
+    reason: clip(reason, 200),
+    raw: clip(raw, 300)
+  });
+  const cutoff = Date.now() - TTL_MS;
+  while (RING.length > MAX || RING[0] && RING[0].at < cutoff) RING.shift();
+}
+function listBadRequests() {
+  const cutoff = Date.now() - TTL_MS;
+  return RING.filter((e2) => e2.at >= cutoff);
+}
+var RING, MAX, TTL_MS, clip;
+var init_badRequestLog = __esm({
+  "server/common/badRequestLog.ts"() {
+    RING = [];
+    MAX = 200;
+    TTL_MS = 24 * 60 * 60 * 1e3;
+    clip = (v, n) => {
+      const s = typeof v === "string" ? v : v == null ? "" : String(v);
+      return s.length > n ? s.slice(0, n) : s;
+    };
+  }
+});
+
 // server/marketing/appLinkVerify.ts
 var appLinkVerify_exports = {};
 __export(appLinkVerify_exports, {
@@ -4834,7 +4870,7 @@ async function fetchRateFrom(source) {
   }
 }
 async function usdToInrRate() {
-  if (cache2 && Date.now() - cache2.fetchedAt < TTL_MS) return { rate: cache2.rate, source: cache2.source };
+  if (cache2 && Date.now() - cache2.fetchedAt < TTL_MS2) return { rate: cache2.rate, source: cache2.source };
   const sources2 = [
     "https://open.er-api.com/v6/latest/USD",
     "https://api.exchangerate-api.com/v4/latest/USD"
@@ -4848,12 +4884,12 @@ async function usdToInrRate() {
   }
   return null;
 }
-var cache2, TTL_MS;
+var cache2, TTL_MS2;
 var init_fxRates = __esm({
   "server/common/fxRates.ts"() {
     init_curlCffiFetch();
     cache2 = null;
-    TTL_MS = 60 * 60 * 1e3;
+    TTL_MS2 = 60 * 60 * 1e3;
   }
 });
 
@@ -24401,7 +24437,7 @@ var init_movieSeatLink = __esm({
 // server/movies/seatCityIndex.ts
 function trim() {
   for (const map of [byFid, byCinema]) {
-    while (map.size > MAX) {
+    while (map.size > MAX2) {
       const first = map.keys().next().value;
       if (first === void 0) break;
       map.delete(first);
@@ -24422,12 +24458,12 @@ function lookupSeatCity(fid, cinemaId) {
   if (c && byCinema.has(c)) return byCinema.get(c);
   return "";
 }
-var byFid, byCinema, MAX;
+var byFid, byCinema, MAX2;
 var init_seatCityIndex = __esm({
   "server/movies/seatCityIndex.ts"() {
     byFid = /* @__PURE__ */ new Map();
     byCinema = /* @__PURE__ */ new Map();
-    MAX = 5e3;
+    MAX2 = 5e3;
   }
 });
 
@@ -35074,7 +35110,7 @@ function slot(envelope, ...names) {
   }
   return "";
 }
-function clip(text, max = 480) {
+function clip2(text, max = 480) {
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const stop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf(", "));
@@ -35170,7 +35206,7 @@ async function handleAlexaRequest(envelope, deps) {
     }
   }
   const totalSellers = new Set((response?.results || []).map((r) => String(r?.seller || r?.vendor || ""))).size;
-  const answer = clip(buildSpokenAnswer(query, hits, totalSellers));
+  const answer = clip2(buildSpokenAnswer(query, hits, totalSellers));
   if (!hits.length) {
     const rows = Array.isArray(response?.results) ? response.results.length : 0;
     log3("info", `alexa: no priced row for "${query}" (rows=${rows}, ${Date.now() - startedAt}ms, vertical=${vertical})`);
@@ -37878,9 +37914,17 @@ function beginScrape(req, vertical, queryKey = "") {
   sweep2(now);
   const key = sessionKeyOf(req);
   const noop = () => void 0;
-  const existing = active.get(key);
+  let existing = active.get(key);
   if (existing && queryKey && existing.queryKey && existing.queryKey !== queryKey) {
-    return { ok: false, reason: "session_busy", retryAfterSec: RETRY_AFTER_SEC, release: noop };
+    log.info("Search", "New search superseded the running one (owner 31 Oct)", {
+      vertical,
+      from: existing.vertical,
+      fromKey: existing.queryKey.slice(0, 60),
+      toKey: queryKey.slice(0, 60),
+      ranForMs: now - existing.startedAt
+    });
+    active.delete(key);
+    existing = void 0;
   }
   if (existing) {
     return { ok: true, retryAfterSec: 0, release: noop };
@@ -37889,7 +37933,8 @@ function beginScrape(req, vertical, queryKey = "") {
   if (stats2.queued >= Math.max(1, liveQueueMax() - 1)) {
     return { ok: false, reason: "queue_full", retryAfterSec: RETRY_AFTER_SEC, release: noop };
   }
-  active.set(key, { startedAt: now, vertical, queryKey });
+  const token = {};
+  active.set(key, { startedAt: now, vertical, queryKey, token });
   let released = false;
   return {
     ok: true,
@@ -37897,7 +37942,7 @@ function beginScrape(req, vertical, queryKey = "") {
     release: () => {
       if (released) return;
       released = true;
-      active.delete(key);
+      if (active.get(key)?.token === token) active.delete(key);
     }
   };
 }
@@ -39198,7 +39243,7 @@ async function webpush() {
       webpushLib = mod?.default || mod;
     } catch (e2) {
       webpushLib = null;
-      log.warn("Push", `web-push is not installed in this deployment (${clip2(e2?.message || e2, 80)}) \u2014 run npm install`);
+      log.warn("Push", `web-push is not installed in this deployment (${clip3(e2?.message || e2, 80)}) \u2014 run npm install`);
     }
   }
   return webpushLib;
@@ -39220,7 +39265,7 @@ function fcmServiceAccount() {
     try {
       text = import_node_fs7.default.readFileSync(file, "utf8");
     } catch (e2) {
-      log.warn("Push", `FCM service account file unreadable: ${clip2(e2?.message || e2, 80)}`);
+      log.warn("Push", `FCM service account file unreadable: ${clip3(e2?.message || e2, 80)}`);
       return null;
     }
   }
@@ -39256,7 +39301,7 @@ async function fcmAccessToken(sa) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.access_token) {
-    throw Object.assign(new Error(`FCM auth failed: ${clip2(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
+    throw Object.assign(new Error(`FCM auth failed: ${clip3(data?.error_description || data?.error || res.status, 120)}`), { statusCode: 401 });
   }
   fcmTokenCache = { key: cacheKey, token: String(data.access_token), exp: Date.now() + Number(data.expires_in || 3600) * 1e3 };
   return fcmTokenCache.token;
@@ -39271,8 +39316,8 @@ async function sendFcm(row, payload) {
     const token = await fcmAccessToken(sa);
     const message = {
       token: row.endpoint,
-      notification: { title: clip2(payload.title, 140), body: clip2(payload.body, 400), ...image ? { image } : {} },
-      data: { url: String(target).slice(0, 500), kind: clip2(payload.kind || "admin", 30), tag: clip2(payload.tag || "try1second", 60) },
+      notification: { title: clip3(payload.title, 140), body: clip3(payload.body, 400), ...image ? { image } : {} },
+      data: { url: String(target).slice(0, 500), kind: clip3(payload.kind || "admin", 30), tag: clip3(payload.tag || "try1second", 60) },
       android: {
         priority: "HIGH",
         notification: { ...image ? { image } : {}, ...icon ? { icon } : {}, click_action: "FLUTTER_NOTIFICATION_CLICK" }
@@ -39287,10 +39332,10 @@ async function sendFcm(row, payload) {
     if (res.ok) return "ok";
     const status = String(data?.error?.status || "");
     if (res.status === 404 || status === "UNREGISTERED" || /not.?registered|invalid.?registration/i.test(JSON.stringify(data))) return "gone";
-    log.warn("Push", `FCM rejected a device: ${clip2(data?.error?.message || res.status, 140)}`);
+    log.warn("Push", `FCM rejected a device: ${clip3(data?.error?.message || res.status, 140)}`);
     return "failed";
   } catch (e2) {
-    log.warn("Push", `FCM send failed: ${clip2(e2?.message || e2, 120)}`);
+    log.warn("Push", `FCM send failed: ${clip3(e2?.message || e2, 120)}`);
     return "failed";
   }
 }
@@ -39312,7 +39357,7 @@ async function vapidKeys() {
       }
     }
   } catch (e2) {
-    log.debug("Push", `VAPID read skipped: ${clip2(e2?.message || e2, 80)}`);
+    log.debug("Push", `VAPID read skipped: ${clip3(e2?.message || e2, 80)}`);
   }
   const lib = await webpush();
   if (!lib) throw new Error("Push library is not installed on the server (run npm install)");
@@ -39325,7 +39370,7 @@ async function vapidKeys() {
     );
     log.info("Push", "Generated and stored a fresh VAPID keypair (web push ready)");
   } catch (e2) {
-    log.warn("Push", `Could not persist VAPID keys: ${clip2(e2?.message || e2, 80)}`);
+    log.warn("Push", `Could not persist VAPID keys: ${clip3(e2?.message || e2, 80)}`);
   }
   return cached2;
 }
@@ -39362,9 +39407,9 @@ async function upsertSubscription(input) {
   return Number(r?.insertId || 0);
 }
 async function saveWebSubscription(input) {
-  const endpoint = clip2(input.subscription?.endpoint, 2e3);
-  const p256dh = clip2(input.subscription?.keys?.p256dh, 255);
-  const auth = clip2(input.subscription?.keys?.auth, 255);
+  const endpoint = clip3(input.subscription?.endpoint, 2e3);
+  const p256dh = clip3(input.subscription?.keys?.p256dh, 255);
+  const auth = clip3(input.subscription?.keys?.auth, 255);
   if (!/^https:\/\//i.test(endpoint)) return { ok: false, error: "Invalid push endpoint" };
   if (!p256dh || !auth) return { ok: false, error: "Push subscription is missing its keys" };
   const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;
@@ -39374,26 +39419,26 @@ async function saveWebSubscription(input) {
     hash: sha256(endpoint),
     p256dh,
     auth,
-    ua: clip2(input.ua, 255) || null,
+    ua: clip3(input.ua, 255) || null,
     userId
   });
   return { ok: true, id };
 }
 async function saveFcmToken(input) {
-  const token = clip2(input.token, 1e3);
+  const token = clip3(input.token, 1e3);
   if (token.length < 20) return { ok: false, error: "Invalid device token" };
   const userId = input.userId && Number.isFinite(Number(input.userId)) ? Number(input.userId) : null;
   await upsertSubscription({
     kind: "fcm",
     endpoint: token,
     hash: sha256(`fcm:${token}`),
-    ua: clip2(input.ua, 255) || null,
+    ua: clip3(input.ua, 255) || null,
     userId
   });
   return { ok: true };
 }
 async function removeSubscription(rawEndpoint) {
-  const endpoint = clip2(rawEndpoint, 2e3);
+  const endpoint = clip3(rawEndpoint, 2e3);
   if (!endpoint) return 0;
   const hashes = [sha256(endpoint), sha256(`fcm:${endpoint}`)];
   const store4 = getStore();
@@ -39405,14 +39450,14 @@ async function removeSubscription(rawEndpoint) {
 }
 function buildPushBody(payload) {
   const body = JSON.stringify({
-    title: clip2(payload.title, 140),
-    body: clip2(payload.body, 400),
+    title: clip3(payload.title, 140),
+    body: clip3(payload.body, 400),
     image: httpsImage(payload.image),
     icon: httpsImage(payload.icon) || "https://try1second.com/favicon-192.png",
     badge: httpsImage(payload.badge) || "https://try1second.com/favicon-96.png",
     ctaUrl: payload.ctaUrl ? String(payload.ctaUrl).slice(0, 500) : "/",
-    tag: clip2(payload.tag || "try1second", 60),
-    kind: clip2(payload.kind || "admin", 30),
+    tag: clip3(payload.tag || "try1second", 60),
+    kind: clip3(payload.kind || "admin", 30),
     url: payload.url ? String(payload.url).slice(0, 500) : null
   });
   if (body.length <= 3600) return body;
@@ -39455,7 +39500,7 @@ async function sendOne(row, payload) {
       "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
       [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
     );
-    log.warn("Push", `send failed (${code || "network"}): ${clip2(e2?.message || e2, 120)}`);
+    log.warn("Push", `send failed (${code || "network"}): ${clip3(e2?.message || e2, 120)}`);
     return "failed";
   }
 }
@@ -39483,7 +39528,7 @@ async function pushToUser(userId, payload) {
     if (!rows.length) return { sent: 0, gone: 0, failed: 0, skipped: 0 };
     return await sendTo(rows, payload);
   } catch (e2) {
-    log.warn("Push", `pushToUser skipped: ${clip2(e2?.message || e2, 100)}`);
+    log.warn("Push", `pushToUser skipped: ${clip3(e2?.message || e2, 100)}`);
     return { sent: 0, gone: 0, failed: 0, skipped: 0 };
   }
 }
@@ -39496,7 +39541,7 @@ async function pushToAll(payload) {
     if (!rows.length) return { sent: 0, gone: 0, failed: 0, skipped: 0 };
     return await sendTo(rows, payload);
   } catch (e2) {
-    log.warn("Push", `pushToAll skipped: ${clip2(e2?.message || e2, 100)}`);
+    log.warn("Push", `pushToAll skipped: ${clip3(e2?.message || e2, 100)}`);
     return { sent: 0, gone: 0, failed: 0, skipped: 0 };
   }
 }
@@ -39542,7 +39587,7 @@ async function pushStats() {
   }
   return { web, android, inactive, sent24h, vapidReady, fcmReady: fcmServiceAccount() !== null };
 }
-var import_crypto30, import_node_fs7, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip2, httpsImage, fcmTokenCache;
+var import_crypto30, import_node_fs7, webpushLib, libTried, VAPID_KEY, VAPID_SUBJECT, MAX_FAILS, cached2, configured, transport, sha256, clip3, httpsImage, fcmTokenCache;
 var init_push = __esm({
   "server/push/push.ts"() {
     import_crypto30 = __toESM(require("crypto"), 1);
@@ -39558,7 +39603,7 @@ var init_push = __esm({
     configured = false;
     transport = null;
     sha256 = (s) => import_crypto30.default.createHash("sha256").update(s).digest("hex");
-    clip2 = (s, n) => String(s ?? "").trim().slice(0, n);
+    clip3 = (s, n) => String(s ?? "").trim().slice(0, n);
     httpsImage = (raw) => {
       const s = String(raw || "").trim();
       return /^https:\/\//i.test(s) ? s.slice(0, 1e3) : null;
@@ -42337,21 +42382,22 @@ var init_routes = __esm({
     init_yatraHotels();
     init_mmtAutosuggest();
     init_bookmyshow();
+    init_badRequestLog();
     init_merchantCrispLogo();
     apiRouter = (0, import_express.Router)();
     clientDiag = [];
     apiRouter.post("/client-diag", (req, res) => {
       const b = req.body || {};
-      const clip4 = (v, n) => String(v ?? "").slice(0, n);
+      const clip5 = (v, n) => String(v ?? "").slice(0, n);
       clientDiag.push({
         at: Date.now(),
-        endpoint: clip4(b.endpoint, 120),
-        error: clip4(b.error, 300),
-        platform: clip4(b.platform, 120),
-        addressFamily: clip4(b.addressFamily, 20),
-        appVersion: clip4(b.appVersion, 40),
+        endpoint: clip5(b.endpoint, 120),
+        error: clip5(b.error, 300),
+        platform: clip5(b.platform, 120),
+        addressFamily: clip5(b.addressFamily, 20),
+        appVersion: clip5(b.appVersion, 40),
         retries: Number(b.retries) || 0,
-        network: clip4(b.network, 60)
+        network: clip5(b.network, 60)
       });
       const cutoff = Date.now() - 24 * 36e5;
       while (clientDiag.length > 200 || clientDiag[0] && clientDiag[0].at < cutoff) clientDiag.shift();
@@ -42359,7 +42405,10 @@ var init_routes = __esm({
     });
     apiRouter.get("/admin/client-diag", authMiddleware, requireAdmin, (_req, res) => {
       const cutoff = Date.now() - 24 * 36e5;
-      res.json({ entries: clientDiag.filter((e2) => e2.at >= cutoff).slice(-200) });
+      res.json({
+        entries: clientDiag.filter((e2) => e2.at >= cutoff).slice(-200),
+        badRequests: listBadRequests()
+      });
     });
     startedAtIso = (/* @__PURE__ */ new Date()).toISOString();
     apiRouter.get("/health", authMiddleware, async (req, res) => {
@@ -44768,7 +44817,7 @@ function extractMyxDeals(root, limit = 24) {
       merchant_key: "myntra",
       merchant_name: "Myntra",
       kind: "sale",
-      title: clip3(brand ? `${brand} ${name}` : name, 120),
+      title: clip4(brand ? `${brand} ${name}` : name, 120),
       description: `Live on Myntra's offers page at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.mrp) ?? price}).`,
       code: null,
       discount_text: disc,
@@ -44834,7 +44883,7 @@ function extractTatacliqDeals(body, cap = 32) {
         merchant_key: "tatacliq",
         merchant_name: "Tata CLiQ",
         kind: "sale",
-        title: clip3(brand ? `${brand} ${title}` : title, 120),
+        title: clip4(brand ? `${brand} ${title}` : title, 120),
         description: `In stock on Tata CLiQ at \u20B9${price.toLocaleString("en-IN")} (MRP \u20B9${usd(p?.price?.mrpPrice?.doubleValue) ?? price}).`,
         code: null,
         discount_text: `${disc}% OFF`,
@@ -44884,7 +44933,7 @@ function extractAmazonCardDeals(html) {
       merchant_key: "amazon",
       merchant_name: "Amazon",
       kind: "coupon",
-      title: clip3(title, 120),
+      title: clip4(title, 120),
       description: amount ? `Amazon lists a \u20B9${amount} clip-on coupon on this product${Number.isFinite(whole) ? ` (current price \u20B9${whole.toLocaleString("en-IN")})` : ""}.` : `Amazon lists a ${pct}% clip-on coupon on this product.`,
       code: null,
       // Amazon coupons clip at the product page, they have no public code
@@ -44909,15 +44958,15 @@ function extractAmazonBankOffers(dpHtml, asin, title) {
     const raw = strip(m[0].replace(/\s*•\s*/g, " ")).slice(0, 220);
     if (!raw || raw.length < 20) continue;
     if (!/[₹]|Rs\.?|\d\s*%/.test(raw)) continue;
-    const t = clip3(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
+    const t = clip4(strip(raw.split(/(?<=offer|EMI)\b/)[0] || raw).replace(/<|>/g, " "), 120);
     if (seen.has(t)) continue;
     seen.add(t);
     out.push({
       merchant_key: "amazon",
       merchant_name: "Amazon",
       kind: "bank_offer",
-      title: clip3(t, 120),
-      description: `Listed on this Amazon product page${title ? ` (${clip3(title, 60)})` : ""}.`,
+      title: clip4(t, 120),
+      description: `Listed on this Amazon product page${title ? ` (${clip4(title, 60)})` : ""}.`,
       code: null,
       discount_text: null,
       min_order: null,
@@ -45018,12 +45067,12 @@ function cleanDeal(d) {
     merchant_name: d.merchant_name,
     kind: d.kind,
     vertical: d.vertical || MERCHANT_VERTICAL[d.merchant_key] || null,
-    title: clip3(strip(d.title), 200),
-    description: clip3(strip(d.description || ""), 600) || null,
-    code: clip3(strip(d.code || ""), 60) || null,
-    discount_text: clip3(strip(d.discount_text || ""), 80) || null,
+    title: clip4(strip(d.title), 200),
+    description: clip4(strip(d.description || ""), 600) || null,
+    code: clip4(strip(d.code || ""), 60) || null,
+    discount_text: clip4(strip(d.discount_text || ""), 80) || null,
     min_order: null,
-    terms: clip3(strip(d.terms || ""), 600) || null,
+    terms: clip4(strip(d.terms || ""), 600) || null,
     dest_url: String(d.dest_url).slice(0, 1e3),
     valid_till: d.valid_till || null,
     sort_weight: d.sort_weight ?? 0,
@@ -45070,8 +45119,8 @@ async function syncAutoDeals() {
       }
       outcomes.push({ provider: p.provider, ok: true, deals: saved });
     } catch (e2) {
-      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip3(String(e2?.message || e2), 160) });
-      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip3(String(e2?.message || e2), 120) });
+      outcomes.push({ provider: p.provider, ok: false, deals: 0, error: clip4(String(e2?.message || e2), 160) });
+      log.warn("Deals", `Auto sync failed for ${p.provider} (isolated)`, { error: clip4(String(e2?.message || e2), 120) });
     }
   }
   try {
@@ -45088,7 +45137,7 @@ async function syncAutoDeals() {
   log.info("Deals", "Auto sync complete", { outcomes: JSON.stringify(outcomes) });
   return outcomes;
 }
-var import_crypto32, strip, clip3, COUPON_TXT;
+var import_crypto32, strip, clip4, COUPON_TXT;
 var init_acquisition = __esm({
   "server/deals/acquisition.ts"() {
     import_crypto32 = require("crypto");
@@ -45097,7 +45146,7 @@ var init_acquisition = __esm({
     init_db();
     init_deals();
     strip = (s) => String(s || "").replace(/\s+/g, " ").trim();
-    clip3 = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
+    clip4 = (s, n) => s.length > n ? `${s.slice(0, n - 1)}\u2026` : s;
     COUPON_TXT = /(?:₹|Rs\.?\s?)\s?(\d{2,5})\s?coupon|Save (?:up to )?(?:₹|Rs\.?\s?)(\d{2,5}) with (?:coupon| promo)|(\d{1,2})% (?:with )?coupon/i;
   }
 });
@@ -50566,6 +50615,7 @@ var import_fs8 = __toESM(require("fs"), 1);
 var import_express5 = __toESM(require("express"), 1);
 
 // server/index.ts
+init_badRequestLog();
 var import_path7 = __toESM(require("path"), 1);
 var import_fs7 = __toESM(require("fs"), 1);
 var import_express4 = __toESM(require("express"), 1);
@@ -50603,6 +50653,21 @@ async function createApp() {
   });
   app.use((0, import_compression.default)());
   app.use(import_express4.default.json({ limit: "256kb" }));
+  app.use((err, req, res, next) => {
+    if (!err || err.type !== "entity.parse.failed" && err.type !== "entity.too.large" && err.status !== 400) {
+      next(err);
+      return;
+    }
+    try {
+      recordBadRequest(req, `body_rejected:${err.type || err.status || "bad_request"}`, err.body);
+    } catch (_) {
+    }
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    res.status(400).json({ success: false, error: "bad_request_body", retryable: true });
+  });
   const { registerAppLinkRoutes: registerAppLinkRoutes2 } = await Promise.resolve().then(() => (init_appLinkVerify(), appLinkVerify_exports));
   registerAppLinkRoutes2(app);
   app.use((req, res, next) => {

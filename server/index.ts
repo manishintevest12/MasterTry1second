@@ -3,6 +3,7 @@
  * Replaces the old single-file server.ts while preserving its working endpoints.
  * Deploy target: Hostinger KVM4 (modular monolith + MySQL + Redis + background workers).
  */
+import { recordBadRequest } from './common/badRequestLog';
 import path from 'path';
 import fs from 'fs';
 import express, { type Request, type Response } from 'express';
@@ -24,6 +25,24 @@ export async function createApp(): Promise<express.Express> {
   app.use((_req, res, next) => { res.removeHeader('X-Powered-By'); res.removeHeader('Server'); next(); });
   app.use(compression()); // gzip BEFORE routes so API JSON + static both compress
   app.use(express.json({ limit: '256kb' }));
+
+  // OWNER 31 Oct (app showing "HTTP 400" everywhere): record every body-parse rejection with the
+  // exact bytes the client sent, and answer JSON instead of express's bare HTML "Bad Request", so
+  // one request from the phone tells us whether the 400 was produced here or upstream of us.
+  app.use((err: any, req: any, res: any, next: any) => {
+    if (!err || (err.type !== 'entity.parse.failed' && err.type !== 'entity.too.large' && err.status !== 400)) {
+      next(err);
+      return;
+    }
+    try {
+      recordBadRequest(req, `body_rejected:${err.type || err.status || 'bad_request'}`, err.body);
+    } catch (_) {/* diagnostics must never change the response */}
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    res.status(400).json({ success: false, error: 'bad_request_body', retryable: true });
+  });
 
   // App Links / Universal Links verification files (owner 29 Oct). Registered FIRST,
   // ahead of the canonical-host redirect below, so no redirect middleware can ever
