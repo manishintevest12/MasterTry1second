@@ -75,12 +75,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 30),
         children: [
-          // Owner 22 Oct: visible build stamp so the installed APK version can
-          // be verified on-device (Profile screen, always current build).
+          // OWNER 31 Oct, explicit permission: this stamp used to be the hardcoded string
+          // 'Try1Second v1.8.16 · build 23 Oct', so every build since 23 Oct claimed to be
+          // v1.8.16 and the installed version could never be verified on the device. It now
+          // shows the version baked in at build time (--dart-define=APP_VERSION).
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Text(
-              'Try1Second v1.8.16 · build 23 Oct',
+              'Try1Second v${Try1SecondApi.kAppVersion}',
               textAlign: TextAlign.center,
               style: tx(context, 9.5, w: FontWeight.w800, color: muted(context)),
             ),

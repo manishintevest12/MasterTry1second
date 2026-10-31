@@ -57,18 +57,20 @@ void main() {
     expect(cached.results.first.title, contains('OnePlus'));
   });
 
-  test('a different query has no cache and still surfaces the failure',
-      () async {
+  test('a different query never borrows another query\'s rows', () async {
+    // OWNER 31 Oct: no error box may reach the screen, so a cache miss for a DIFFERENT query
+    // answers the app's own scanning state instead of throwing - but it must never invent rows.
     final api = Try1SecondApi(baseUrl: base, fallbackBase: base);
     await api.search('mobile phone', vertical: 'ecommerce');
     await server.close(force: true);
 
     final offlineApi = Try1SecondApi(baseUrl: base, fallbackBase: base);
-    await expectLater(
-      offlineApi.search('air purifier', vertical: 'ecommerce'),
-      throwsA(anything),
-      reason: 'no cache for this query: never invent results',
-    );
+    final landed =
+        await offlineApi.search('air purifier', vertical: 'ecommerce');
+    expect(landed.results, isEmpty,
+        reason: 'never invent results for a query we never saw');
+    expect(landed.results, isEmpty,
+        reason: 'never invent results for a query we never saw');
   });
 
   test(
