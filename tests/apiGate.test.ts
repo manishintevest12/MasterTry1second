@@ -168,3 +168,43 @@ test('when every route is resetting, the last good answer is replayed from offli
   delete (globalThis as any).localStorage;
 });
 
+test('an HTML 400 from the edge is a refusal: reroute, then cover with cache, never show 400', async () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    get length() { return store.size; },
+    key: (i: number) => Array.from(store.keys())[i] ?? null,
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+  };
+
+  let phase: 'ok' | 'refuse' = 'ok';
+  let path = '';
+  const base = (async (input: any) => {
+    const url = typeof input === 'object' && input && 'url' in input ? (input as any).url : String(input);
+    path = new URL(url, 'http://x').pathname;
+    if (phase === 'ok') {
+      return new Response('{"success":true,"affiliates":[{"id":"a1"}]}', {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    }
+    // Our API never sends HTML: this is the edge / a WAF refusing the request.
+    return new Response('<html><body>Bad Request</body></html>', {
+      status: 400, headers: { 'content-type': 'text/html' },
+    });
+  }) as unknown as typeof fetch;
+
+  const gated = createGatedFetch(base, { retriesPerRoute: 0, relayBase: 'https://relay.test' });
+  const live = await gated('https://www.try1second.com/api/quick-apps');
+  assert.equal(live.status, 200);
+  await new Promise((r) => setTimeout(r, 10));
+
+  phase = 'refuse';
+  const res = await gated('https://www.try1second.com/api/quick-apps');
+  assert.equal(res.status, 200, 'never a 400 to the page');
+  assert.equal(res.headers.get('x-t1s-cache'), 'stale');
+  assert.equal(path, '/api/quick-apps', 'the relay path is the same path');
+  delete (globalThis as any).localStorage;
+});
+

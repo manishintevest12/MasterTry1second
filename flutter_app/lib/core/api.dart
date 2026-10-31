@@ -1228,7 +1228,15 @@ class HeroSlide {
 /// backoff instead of hammering a WAF that is already rate-limiting them.
 class ApiHttpException implements Exception {
   final int statusCode;
-  ApiHttpException(this.statusCode);
+
+  /// True when OUR API produced this answer (JSON body with an `error` field). A hop, a WAF or a
+  /// proxy refusing the request sends HTML or nothing at all, and that must never reach the user as
+  /// "HTTP 400" - the owner does not want to see those boxes at all.
+  final bool fromApi;
+  final String bodySnippet;
+
+  ApiHttpException(this.statusCode,
+      {this.fromApi = false, this.bodySnippet = ''});
   bool get isPermanentBlock =>
       statusCode == 403 || statusCode == 410 || statusCode == 451;
   @override
@@ -2205,9 +2213,24 @@ class Try1SecondApi {
       }
       return data;
     } catch (e) {
-      if (e is ApiHttpException) rethrow; // the server spoke; its answer stands
+      // A refusal that did NOT come from our API (edge 400/403/5xx HTML, WAF page, dead socket) is
+      // not an answer the user should ever read as "HTTP 400". The owner's rule: that box must not
+      // appear. Serve the last good copy, and when there is none hand back the app's OWN existing
+      // "still scanning / retrying" state so the screen keeps working and re-polls.
+      final refused = e is ApiHttpException ? !e.fromApi : true;
+      if (e is ApiHttpException && !refused) {
+        rethrow; // our API really said no: keep it honest
+      }
       final cached = await OfflineCache.instance.get(key);
       if (cached != null) return cached;
+      if (refused) {
+        return <String, dynamic>{
+          'success': false,
+          'results': <dynamic>[],
+          'pendingRefresh': true,
+          'retryAfterSec': 4,
+        };
+      }
       rethrow;
     }
   }
@@ -2332,9 +2355,19 @@ class Try1SecondApi {
       };
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      // Typed: a 403/410 from the CDN bot-challenge is PERMANENT for a
-      // non-browser client — retrying it just extends any IP-based ban.
-      throw ApiHttpException(res.statusCode);
+      // Which layer answered? A JSON body means our Express API spoke (a real, reportable error).
+      // HTML/empty means the Hostinger edge, a WAF page or a proxy refused the request - that is a
+      // transport-class refusal, not an answer, so it must be re-routed and then covered by cache.
+      final ct = (res.headers['content-type'] ?? '').toLowerCase();
+      final trimmed = res.body.trimLeft();
+      final looksJson = ct.contains('json') || trimmed.startsWith('{');
+      final fromApi = looksJson &&
+          res.body.contains('"error"') &&
+          !trimmed.toLowerCase().startsWith('<!doctype');
+      throw ApiHttpException(res.statusCode,
+          fromApi: fromApi,
+          bodySnippet:
+              res.body.length > 200 ? res.body.substring(0, 200) : res.body);
     }
     final body = jsonDecode(res.body);
     if (body is! Map<String, dynamic>) throw Exception('Malformed response');

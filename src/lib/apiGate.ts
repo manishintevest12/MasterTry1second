@@ -42,6 +42,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** True when the body did not come from OUR API: HTML/empty means the edge, a WAF page or a proxy
+ * refused the request. Those are reroutable and must never be shown as an API error. */
+function isHopRefusal(response: Response): boolean {
+  if (response.ok) return false;
+  const ct = (response.headers.get('content-type') || '').toLowerCase();
+  return !ct.includes('json');
+}
+
+/** Statuses that a hop uses to refuse a request (never produced by our API as HTML). */
+function isRefusalStatus(status: number): boolean {
+  return status === 400 || status === 403 || status === 404 || status === 405 || status === 408
+    || status === 421 || status === 425 || status === 429 || status >= 500;
+}
+
 function isTransportError(error: unknown): boolean {
   if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') return false;
   const msg = String((error as any)?.message || error || '');
@@ -221,6 +235,12 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
               await sleep(attempt === 0 ? 250 : 700);
               continue;
             }
+            // An HTML/non-JSON refusal (edge 400/403/5xx, WAF page) is not our API speaking: move
+            // to the next way home instead of handing "HTTP 400" to the page.
+            if (isHopRefusal(response) && isRefusalStatus(response.status)) {
+              lastResponse = response;
+              break;
+            }
             // A route that produced a real answer is the route to keep.
             if (route.viaRelay && response.status < 500) rememberRelay(true);
             else if (!route.viaRelay && preferRelay && response.status < 500) rememberRelay(false);
@@ -237,8 +257,7 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
         }
       }
 
-      if (lastResponse) return lastResponse;
-      // Every route failed in transport: replay the last good answer for this exact call.
+      // Every route failed: replay the last good answer for this exact call.
       if (storageKey) {
         const cached = cacheGet(storageKey);
         if (cached) {
@@ -252,6 +271,7 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
           });
         }
       }
+      if (lastResponse) return lastResponse;
       throw lastError;
     })();
 
