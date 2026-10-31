@@ -620,6 +620,18 @@ Future<List<UpcomingMovie>> fetchUpcomingMovies(Try1SecondApi api) async {
   return [for (final m in (res['movies'] as List? ?? const [])) if (m is Map<String, dynamic>) UpcomingMovie.fromJson(m)];
 }
 
+/// GET /api/movies/currently-showing — in-theatre movies for the homepage
+/// "Currently Showing" section (owner 31 Oct). Same card data as the upcoming rail
+/// (poster, genres, likes, /api/out-masked goUrl) with no trailer link: the CTA is
+/// "Book", which opens the app's own movies vertical.
+Future<List<UpcomingMovie>> fetchCurrentlyShowingMovies(Try1SecondApi api) async {
+  final res = await api.getJson('/api/movies/currently-showing');
+  return [
+    for (final m in (res['movies'] as List? ?? const []))
+      if (m is Map<String, dynamic>) UpcomingMovie.fromJson({...m, 'trailerUrl': ''}),
+  ];
+}
+
 /// GET /api/home/showcase — the curated homepage sections under the launch grid.
 Future<List<ShowcaseSection>> fetchHomeShowcase(Try1SecondApi api) async {
   final res = await api.getJson('/api/home/showcase');
@@ -990,7 +1002,13 @@ class Try1SecondApi {
   static http.Client _hardenedClient() {
     final inner = io.HttpClient()
       ..connectionTimeout = const Duration(seconds: 6)
-      ..idleTimeout = const Duration(seconds: 20)
+      // OWNER 31 Oct (repeated "Connection reset by peer, errno = 104"): the Hostinger
+      // LiteSpeed edge advertises `Keep-Alive: timeout=5` and closes an idle socket at 5s,
+      // while this client kept sockets for 20s — so the FIRST request after a pause dialled
+      // a socket the edge had already killed and Dart raised a reset. Dropping our idle
+      // window below the edge's (3s < 5s) means we retire the socket ourselves first, so the
+      // reset mostly stops happening instead of only being retried away.
+      ..idleTimeout = const Duration(seconds: 3)
       ..maxConnectionsPerHost = 8
       ..userAgent = kAppUserAgent;
     return IOClient(inner);
@@ -1002,7 +1020,9 @@ class Try1SecondApi {
             : baseUrl.trim().replaceAll(RegExp(r'/+$'), ''),
         _client = _hardenedClient();
 
-  Try1SecondApi.withClient(this.baseUrl, http.Client client) : _client = client;
+  Try1SecondApi.withClient(this.baseUrl, http.Client client) : _client = client {
+    clientInjected = true;
+  }
 
   final String baseUrl;
 
@@ -1392,10 +1412,22 @@ class Try1SecondApi {
 
   static const _jsonHeaders = {'Content-Type': 'application/json'};
 
-  final http.Client _client;
+  http.Client _client;
+  bool clientInjected = false;
 
-  Map<String, String> _headers(String? token) =>
-      token == null ? _jsonHeaders : {..._jsonHeaders, 'Authorization': 'Bearer $token'};
+  /// Owner 31 Oct ("Allow only one scrape per user/session at a time"): every request
+  /// carries this app instance's own session id so the server can refuse a SECOND search
+  /// from this device while its previous one is still running (HTTP 429) instead of
+  /// starting another scrape. Stable for the life of the process, which is exactly the
+  /// window the server's slot lives in (it self-expires after 45s).
+  static final String _sessionId =
+      'app-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}';
+
+  Map<String, String> _headers(String? token) => {
+        ..._jsonHeaders,
+        'x-t1s-session': _sessionId,
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
 
   /// Speed fix (21 Oct): no request may hang forever — a stuck socket used to
   /// leave a vertical's spinner up indefinitely. 30s covers every endpoint
@@ -1409,16 +1441,36 @@ class Try1SecondApi {
   /// retried — the retry is purely for transport blips.
   Future<Map<String, dynamic>> _send(Future<http.Response> Function() fn, {String? token}) async {
     http.Response res;
+    // Owner 31 Oct (mobile "ClientException: Connection reset by peer, errno = 104" on
+    // /api/deals and /api/quick-apps while the website worked): a pooled keep-alive socket
+    // that the edge already closed fails the NEXT request on it, and retrying on the same
+    // pool hit the same dead socket again. Each transport failure now drops the whole pool
+    // (fresh connection) and backs off before the retry, up to two extra attempts.
+    Future<http.Response> attemptWithFreshClient() async {
+      _resetClient();
+      return fn().timeout(_httpTimeout);
+    }
+
     try {
       res = await fn().timeout(_httpTimeout);
     } on TimeoutException {
-      res = await fn().timeout(_httpTimeout);
+      res = await attemptWithFreshClient();
     } on http.ClientException {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-      res = await fn().timeout(_httpTimeout);
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      try {
+        res = await attemptWithFreshClient();
+      } on http.ClientException {
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        res = await attemptWithFreshClient();
+      }
     } on io.SocketException {
-      await Future<void>.delayed(const Duration(milliseconds: 600));
-      res = await fn().timeout(_httpTimeout);
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      try {
+        res = await attemptWithFreshClient();
+      } on io.SocketException {
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        res = await attemptWithFreshClient();
+      }
     }
     // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an
     // HTML error page (reproduced on /api/scrape/live hotels+loans). One quiet
@@ -1530,7 +1582,42 @@ class Try1SecondApi {
     return _send(() => _client.get(uri, headers: h), token: token);
   }
 
+  /// Drops the pooled connections so the next attempt dials a brand-new socket.
+  /// Never called from a test-injected client (Try1SecondApi.withClient).
+  void _resetClient() {
+    if (clientInjected) return;
+    try {
+      _client.close();
+    } catch (_) {/* already closed */}
+    _client = _hardenedClient();
+  }
+
   Map<String, dynamic> _decode(http.Response res) {
+    // OWNER 31 Oct: the API now answers 429 when this device already has a search running
+    // or the server is at capacity. That is NOT an error state: the body already says
+    // "retry in a few seconds", so it is returned as data and the UI keeps showing the
+    // honest scanning state instead of a red socket exception.
+    if (res.statusCode == 429) {
+      try {
+        final body = jsonDecode(res.body);
+        if (body is Map<String, dynamic>) {
+          final retry = body['retryAfterSec'];
+          return {
+            ...body,
+            'success': false,
+            'pendingRefresh': true,
+            'retryAfterSec': retry is num ? retry.toInt() : int.tryParse(res.headers['retry-after'] ?? '') ?? 3,
+          };
+        }
+      } catch (_) {/* fall through to the generic handling */}
+      return {
+        'success': false,
+        'results': <dynamic>[],
+        'pendingRefresh': true,
+        'retryAfterSec': int.tryParse(res.headers['retry-after'] ?? '') ?? 3,
+        'error': 'server_busy',
+      };
+    }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       // Typed: a 403/410 from the CDN bot-challenge is PERMANENT for a
       // non-browser client — retrying it just extends any IP-based ban.
