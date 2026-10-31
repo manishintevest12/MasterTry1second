@@ -1,0 +1,9 @@
+# Try1Second API relay — Cloudflare Worker.
+# Deploy: npx wrangler deploy   (no DNS change: it answers on the *.workers.dev hostname)
+name = "t1s-api-relay"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+ORIGIN = "https://www.try1second.com"

@@ -17,7 +17,11 @@ import 'package:http/io_client.dart';
 
 import 'compare.dart';
 
-const String kDefaultApiBase = 'https://www.try1second.com';
+/// API origin. Overridable at build time (--dart-define=API_BASE=https://...), which is how
+/// the app can be pointed at the Cloudflare relay without touching any UI: the relay answers
+/// the exact same paths, so nothing above this constant changes.
+const String kDefaultApiBase = String.fromEnvironment('API_BASE',
+    defaultValue: 'https://www.try1second.com');
 
 // ---------------------------------------------------------------------------
 // Models
