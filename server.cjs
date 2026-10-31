@@ -257,7 +257,7 @@ function persistSoon() {
   }, 250);
 }
 function recordSourcePrices(vertical, query, offers) {
-  const store3 = load();
+  const store4 = load();
   const perSource = /* @__PURE__ */ new Map();
   for (const o of offers || []) {
     const sid = String(o.sourceId || "");
@@ -268,14 +268,14 @@ function recordSourcePrices(vertical, query, offers) {
   }
   const now = Date.now();
   for (const [sid, price] of perSource) {
-    store3[`${vertical}|${sid}`] = { price: Math.round(price * 100) / 100, query: String(query || "").slice(0, 80), at: now };
+    store4[`${vertical}|${sid}`] = { price: Math.round(price * 100) / 100, query: String(query || "").slice(0, 80), at: now };
   }
   if (perSource.size) persistSoon();
 }
 function enrichFailedWithLastPrice(vertical, failed) {
-  const store3 = load();
+  const store4 = load();
   return (failed || []).map((f) => {
-    const e2 = store3[`${vertical}|${f.sourceId}`];
+    const e2 = store4[`${vertical}|${f.sourceId}`];
     return e2 ? { ...f, lastPrice: { ...e2 } } : f;
   });
 }
@@ -777,6 +777,7 @@ var init_queryUnderstanding = __esm({
 var db_exports = {};
 __export(db_exports, {
   FileStore: () => FileStore,
+  closeStoreConnections: () => closeStoreConnections,
   getStore: () => getStore,
   localHostCandidates: () => localHostCandidates,
   normalizeSqlValue: () => normalizeSqlValue,
@@ -805,6 +806,16 @@ function normalizeSqlValue(p) {
 function sanitizeBindParams(params) {
   return (params || []).map(normalizeSqlValue);
 }
+async function closeStoreConnections() {
+  const current = store;
+  if (current && typeof current.close === "function") {
+    try {
+      await current.close();
+    } catch {
+    }
+  }
+  store = null;
+}
 function getStore() {
   if (store) return store;
   if (settings.mysqlUrl) {
@@ -813,7 +824,15 @@ function getStore() {
         uri: settings.mysqlUrl,
         waitForConnections: true,
         connectionLimit: 10,
-        queueLimit: 0,
+        // OWNER 30 Oct ('close all database connections properly'): a bounded wait queue
+        // and idle reaping. Without maxIdle/idleTimeout mysql2 keeps every connection it
+        // ever opened until the process dies, which on shared hosting counts against the
+        // account's connection limit.
+        queueLimit: 25,
+        maxIdle: 4,
+        idleTimeout: 6e4,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 1e4,
         connectTimeout: 8e3,
         // All app-written datetimes are UTC strings; read/write them as UTC so DATETIME
         // round-trips identically regardless of the host's local timezone.
@@ -990,6 +1009,13 @@ var init_db = __esm({
         const [result] = await this.pool.execute(sql, _MysqlStore.bind(params));
         const r = result;
         return { affectedRows: r.affectedRows, insertId: r.insertId };
+      }
+      /** Close every pooled connection (graceful shutdown / redeploy). Safe to call twice. */
+      async close() {
+        try {
+          await this.pool.end();
+        } catch {
+        }
       }
       async transaction(fn) {
         const conn = await this.pool.getConnection();
@@ -1430,8 +1456,8 @@ function markDisabled(sourceId) {
 async function persist(h) {
   try {
     const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store3 = getStore3();
-    await store3.execute(
+    const store4 = getStore3();
+    await store4.execute(
       `INSERT INTO source_health (source_id, state, consecutive_failures, last_success_at, last_failure_at, last_failure_class, circuit_open_until, total_attempts, total_successes, avg_latency_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE state=VALUES(state), consecutive_failures=VALUES(consecutive_failures), last_success_at=VALUES(last_success_at), last_failure_at=VALUES(last_failure_at), last_failure_class=VALUES(last_failure_class), circuit_open_until=VALUES(circuit_open_until), total_attempts=VALUES(total_attempts), total_successes=VALUES(total_successes), avg_latency_ms=VALUES(avg_latency_ms)`,
@@ -1618,6 +1644,29 @@ var init_edgeRelay = __esm({
 });
 
 // server/common/curlCffiFetch.ts
+var curlCffiFetch_exports = {};
+__export(curlCffiFetch_exports, {
+  cffiFetch: () => cffiFetch,
+  killBridgeChildren: () => killBridgeChildren,
+  liveBridgeChildren: () => liveBridgeChildren,
+  pythonBin: () => pythonBin,
+  pythonDiagnostics: () => pythonDiagnostics
+});
+function liveBridgeChildren() {
+  return liveChildren.size;
+}
+function killBridgeChildren() {
+  let killed = 0;
+  for (const child of liveChildren) {
+    try {
+      child.kill("SIGKILL");
+      killed += 1;
+    } catch {
+    }
+  }
+  liveChildren.clear();
+  return killed;
+}
 function runProbe(bin) {
   return new Promise((resolve) => {
     let out = "";
@@ -1689,10 +1738,15 @@ async function cffiFetchDirect(url, opts = {}) {
   const py = await pythonBin();
   return new Promise((resolve, reject) => {
     const child = (0, import_node_child_process.spawn)(py, [HELPER], { stdio: ["pipe", "pipe", "pipe"] });
+    liveChildren.add(child);
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
+      try {
+        child.kill("SIGKILL");
+      } catch {
+      }
+      liveChildren.delete(child);
       reject(new AcquisitionError("TIMEOUT", "curl_cffi bridge timed out"));
     }, (opts.timeoutMs || 2e4) + 5e3);
     child.stdout.on("data", (d) => {
@@ -1703,10 +1757,12 @@ async function cffiFetchDirect(url, opts = {}) {
     });
     child.on("error", (e2) => {
       clearTimeout(timer);
+      liveChildren.delete(child);
       reject(new AcquisitionError("CAPABILITY_UNAVAILABLE", `python3 bridge unavailable: ${e2.message}`));
     });
     child.on("close", () => {
       clearTimeout(timer);
+      liveChildren.delete(child);
       try {
         const res = JSON.parse(out || "{}");
         if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ""), ...res.cookies ? { cookies: res.cookies } : {}, ...res.headers ? { headers: res.headers } : {} });
@@ -1745,7 +1801,7 @@ async function cffiFetch(url, opts = {}) {
   if (direct) return { ...direct, via: "direct" };
   throw directError || new AcquisitionError("SERVER_ERROR", "curl_cffi bridge unavailable");
 }
-var import_node_child_process, import_node_path2, import_node_fs2, import_node_url, import_meta, HELPER, PY_CANDIDATES, pyChoice, probeResults;
+var import_node_child_process, import_node_path2, import_node_fs2, import_node_url, import_meta, liveChildren, HELPER, PY_CANDIDATES, pyChoice, probeResults;
 var init_curlCffiFetch = __esm({
   "server/common/curlCffiFetch.ts"() {
     import_node_child_process = require("node:child_process");
@@ -1754,6 +1810,7 @@ var init_curlCffiFetch = __esm({
     import_node_url = require("node:url");
     init_httpClient();
     import_meta = {};
+    liveChildren = /* @__PURE__ */ new Set();
     HELPER = (() => {
       const cands = [];
       try {
@@ -23385,22 +23442,22 @@ async function collectCandidates(spec) {
   return { bundles, candidates, notes };
 }
 async function saveEndpointOverride(sourceId, key, value, evidenceUrl, bundleUrl) {
-  const store3 = getStore();
+  const store4 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
-  const upd = await store3.execute(
+  const upd = await store4.execute(
     "UPDATE source_endpoint_overrides SET value = ?, evidence_url = ?, bundle_url = ?, healed_at = ? WHERE source_id = ? AND rule_key = ?",
     [value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now, sourceId, key]
   );
   if (!upd.affectedRows) {
-    await store3.execute(
+    await store4.execute(
       "INSERT INTO source_endpoint_overrides (source_id, rule_key, value, evidence_url, bundle_url, healed_at) VALUES (?, ?, ?, ?, ?, ?)",
       [sourceId, key, value.slice(0, 500), evidenceUrl.slice(0, 500), bundleUrl.slice(0, 500), now]
     );
   }
 }
 async function getEndpointOverrides(sourceId) {
-  const store3 = getStore();
-  const rows = await store3.query(
+  const store4 = getStore();
+  const rows = await store4.query(
     "SELECT rule_key, value, healed_at, bundle_url FROM source_endpoint_overrides WHERE source_id = ?",
     [sourceId]
   );
@@ -26925,8 +26982,8 @@ function getSource(id) {
 async function loadSourcesFromDb() {
   try {
     const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-    const store3 = getStore3();
-    const rows = await store3.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
+    const store4 = getStore3();
+    const rows = await store4.query("SELECT id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency FROM source_adapters");
     for (const row of rows) {
       const existing = sources.find((s) => s.id === row.id);
       if (!existing) continue;
@@ -26942,7 +26999,7 @@ async function loadSourcesFromDb() {
       if (row.rate_limit_pm) existing.rateLimit.maxRequestsPerMinute = Number(row.rate_limit_pm);
       if (row.max_concurrency) existing.rateLimit.maxConcurrency = Number(row.max_concurrency);
     }
-    return { loaded: rows.length, dbKind: store3.kind };
+    return { loaded: rows.length, dbKind: store4.kind };
   } catch {
     return { loaded: 0, dbKind: "none" };
   }
@@ -26954,8 +27011,8 @@ function updateSource(id, patch) {
   void (async () => {
     try {
       const { getStore: getStore3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const store3 = getStore3();
-      await store3.execute(
+      const store4 = getStore3();
+      await store4.execute(
         `INSERT INTO source_adapters (id, name, method, verticals, enabled, priority, config, rate_limit_pm, max_concurrency)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), priority=VALUES(priority), config=VALUES(config), rate_limit_pm=VALUES(rate_limit_pm), max_concurrency=VALUES(max_concurrency)`,
@@ -29032,13 +29089,13 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
     return { trackingUrl: targetUrl, network: "already_tracked", matchedProfile: "already_tracked" };
   }
   const domain = safeDomain(targetUrl);
-  const store3 = getStore();
+  const store4 = getStore();
   try {
     const slug4 = (opts.companySlug || "").toLowerCase().slice(0, 64);
     const labels = domain.split(".").filter(Boolean);
     const parent2 = labels.length >= 2 ? labels.slice(-2).join(".") : domain;
     const parent3 = labels.length >= 3 ? labels.slice(-3).join(".") : domain;
-    const rows = await store3.query(
+    const rows = await store4.query(
       `SELECT network, campaign_key, template, subid_param, extra_params, monetization, affiliate_id FROM affiliate_configs
        WHERE active = 1 AND (slug = ? OR company_domain = ? OR company_domain = ? OR company_domain = ?)
        ORDER BY CHAR_LENGTH(company_domain) DESC LIMIT 1`,
@@ -29058,7 +29115,7 @@ async function buildSecureDeeplink(targetUrl, opts = {}) {
   const amz = amazonAssociatesUrl(targetUrl);
   if (amz) return { trackingUrl: amz, network: "amazon-associates", matchedProfile: "amazon_associates" };
   try {
-    const rows = await store3.query(
+    const rows = await store4.query(
       `SELECT network_id, deep_link_template, campaign_id, sub_id FROM affiliate_links
        WHERE vendor_domain = ? LIMIT 1`,
       [domain]
@@ -29097,8 +29154,8 @@ function parseJsonObj(v) {
 async function recordPointerClick(dest, offerId, network) {
   const clickId = import_crypto23.default.randomUUID();
   try {
-    const store3 = getStore();
-    await store3.execute(
+    const store4 = getStore();
+    await store4.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, NULL)`,
       [offerId ? Number(String(offerId).match(/\d+/)?.[0]) || null : null, network || "direct", safeDomain(dest), dest.slice(0, 2e3), clickId]
@@ -29191,15 +29248,15 @@ function iso(d) {
   return d ? new Date(d).toISOString().slice(0, 19).replace("T", " ") : null;
 }
 async function upsertOffers(offers) {
-  const store3 = getStore();
+  const store4 = getStore();
   let n = 0;
   for (const o of offers) {
-    const existing = await store3.query(
+    const existing = await store4.query(
       "SELECT id FROM affiliate_offers WHERE network_source = ? AND network_offer_id = ?",
       [o.network_source, o.network_offer_id]
     );
     if (existing.length > 0) {
-      await store3.execute(
+      await store4.execute(
         `UPDATE affiliate_offers SET title = ?, description = ?, coupon_code = ?, discount_value = ?, discount_type = ?,
          affiliate_url = ?, original_url = ?, categories = ?, starts_at = ?, expires_at = ?, status = ?, merchant_logo = ?, commission_note = ?, last_seen_at = NOW()
          WHERE network_source = ? AND network_offer_id = ?`,
@@ -29222,7 +29279,7 @@ async function upsertOffers(offers) {
         ])
       );
     } else {
-      await store3.execute(
+      await store4.execute(
         `INSERT INTO affiliate_offers (${COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         sanitizeBindParams([
           o.network_source,
@@ -29249,8 +29306,8 @@ async function upsertOffers(offers) {
   return n;
 }
 async function expirePastOffers() {
-  const store3 = getStore();
-  const r = await store3.execute(
+  const store4 = getStore();
+  const r = await store4.execute(
     `UPDATE affiliate_offers SET status = 'expired' WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < NOW()`,
     []
   );
@@ -29294,7 +29351,7 @@ function dedupBestOffers(rows) {
   return Array.from(best.values());
 }
 async function listOffers(q3) {
-  const store3 = getStore();
+  const store4 = getStore();
   const where = ["status = 'active'"];
   const params = [];
   if (q3.source) {
@@ -29324,7 +29381,7 @@ async function listOffers(q3) {
   const sql = `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
                discount_value, discount_type, affiliate_url, original_url, categories, starts_at, expires_at, status, commission_note, created_at, updated_at
                FROM affiliate_offers WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ${pool2} OFFSET ${offset}`;
-  const rows = await store3.query(sql, params);
+  const rows = await store4.query(sql, params);
   return dedupBestOffers(rows).slice(0, limit);
 }
 var COLS, NETWORK_BASE;
@@ -29440,20 +29497,20 @@ function toPublicDeal(r) {
 async function ensureDealsSchema() {
   if (schemaChecked) return;
   schemaChecked = true;
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    if (store3.kind === "mysql") {
+    if (store4.kind === "mysql") {
       try {
-        await store3.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
+        await store4.execute("ALTER TABLE deals ADD COLUMN vertical VARCHAR(40) DEFAULT NULL AFTER kind");
       } catch {
       }
     }
-    const rows = await store3.query("SELECT id, merchant_key, vertical FROM deals");
+    const rows = await store4.query("SELECT id, merchant_key, vertical FROM deals");
     for (const r of rows) {
       if (!r.vertical || r.vertical === "") {
         const v = MERCHANT_VERTICAL[r.merchant_key];
         if (v) {
-          await store3.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
+          await store4.execute("UPDATE deals SET vertical = ? WHERE id = ?", [v, Number(r.id)]);
         }
       }
     }
@@ -29591,22 +29648,22 @@ async function saveDeal(i) {
   const v = validateDeal(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store3 = getStore();
+  const store4 = getStore();
   const vals = [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, "admin"];
   if (i.id) {
-    const ex = await store3.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
+    const ex = await store4.query("SELECT id FROM deals WHERE id = ?", [Number(i.id)]);
     if (!ex.length) return { ok: false, error: "Deal not found" };
-    await store3.execute(
+    await store4.execute(
       "UPDATE deals SET merchant_key=?, merchant_name=?, kind=?, vertical=?, title=?, description=?, code=?, discount_text=?, min_order=?, terms=?, dest_url=?, valid_till=?, sort_weight=?, is_active=?, source=? WHERE id=?",
       [...vals, Number(i.id)]
     );
     return { ok: true, id: Number(i.id) };
   }
-  await store3.execute(
+  await store4.execute(
     "INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     vals
   );
-  const row = await store3.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
+  const row = await store4.query("SELECT id FROM deals WHERE merchant_key = ? AND title = ? ORDER BY id DESC LIMIT 1", [c.merchant_key, c.title]);
   return { ok: true, id: row[0] ? Number(row[0].id) : void 0 };
 }
 async function deleteDeal(id) {
@@ -30516,10 +30573,10 @@ __export(prune_exports, {
   startCatalogueRetention: () => startCatalogueRetention
 });
 async function batchedDelete(sql, params) {
-  const store3 = getStore();
+  const store4 = getStore();
   let total = 0;
   for (let i = 0; i < MAX_BATCHES; i++) {
-    const res = await store3.execute(`${sql} LIMIT ${BATCH}`, params);
+    const res = await store4.execute(`${sql} LIMIT ${BATCH}`, params);
     const n = res.affectedRows || 0;
     total += n;
     if (n < BATCH) break;
@@ -30528,8 +30585,8 @@ async function batchedDelete(sql, params) {
   return total;
 }
 async function pruneCatalogue(scale = 1) {
-  const store3 = getStore();
-  if (store3.kind !== "mysql") return 0;
+  const store4 = getStore();
+  if (store4.kind !== "mysql") return 0;
   let removed = 0;
   const steps = [
     ["offers", "DELETE FROM offers WHERE fetched_at < ?", [daysAgo(RETENTION.offersDays, scale)]],
@@ -30570,11 +30627,11 @@ async function pruneCatalogue(scale = 1) {
   return removed;
 }
 async function compactCatalogue() {
-  const store3 = getStore();
-  if (store3.kind !== "mysql") return;
+  const store4 = getStore();
+  if (store4.kind !== "mysql") return;
   for (const table of ["offers", "source_evidence", "price_history", "source_health", "affiliate_offers", "deals"]) {
     try {
-      await store3.query(`OPTIMIZE TABLE ${table}`);
+      await store4.query(`OPTIMIZE TABLE ${table}`);
       log.info("Prune", `Compacted ${table}`);
     } catch (e2) {
       log.warn("Prune", `${table} compaction skipped`, { error: String(e2?.message || e2).slice(0, 140) });
@@ -30582,10 +30639,10 @@ async function compactCatalogue() {
   }
 }
 async function databaseSizeMb() {
-  const store3 = getStore();
-  if (store3.kind !== "mysql") return 0;
+  const store4 = getStore();
+  if (store4.kind !== "mysql") return 0;
   try {
-    const rows = await store3.query(
+    const rows = await store4.query(
       `SELECT COALESCE(SUM(data_length + index_length) / 1048576, 0) AS mb
          FROM information_schema.tables WHERE table_schema = DATABASE()`
     );
@@ -30596,10 +30653,10 @@ async function databaseSizeMb() {
   }
 }
 async function compactLargestTable() {
-  const store3 = getStore();
-  if (store3.kind !== "mysql") return null;
+  const store4 = getStore();
+  if (store4.kind !== "mysql") return null;
   try {
-    const rows = await store3.query(
+    const rows = await store4.query(
       `SELECT table_name AS tbl, (data_length + index_length) / 1048576 AS mb
          FROM information_schema.tables
         WHERE table_schema = DATABASE()
@@ -30610,7 +30667,7 @@ async function compactLargestTable() {
     );
     const first = Array.isArray(rows) ? rows[0] : rows?.[0];
     if (!first?.tbl) return null;
-    await store3.query(`OPTIMIZE TABLE \`${first.tbl}\``);
+    await store4.query(`OPTIMIZE TABLE \`${first.tbl}\``);
     log.info("Prune", `Compacted ${first.tbl} (${Number(first.mb ?? 0).toFixed(0)} MB)`);
     return String(first.tbl);
   } catch (e2) {
@@ -30629,13 +30686,13 @@ function notifyWriteDenied(err) {
     "Hostinger DB size cap engaged: INSERT/UPDATE denied (read-only). Auto-shrink started \u2014 writes resume automatically once the host re-checks size. Optional accelerant: OPTIMIZE TABLE on offers/source_evidence/price_history in phpMyAdmin."
   );
   void (async () => {
-    const store3 = getStore();
+    const store4 = getStore();
     try {
-      if (store3.kind === "mysql") {
+      if (store4.kind === "mysql") {
         await pruneCatalogue(0.5);
         for (const table of COMPACTABLE) {
           try {
-            await store3.query(`OPTIMIZE TABLE \`${table}\``);
+            await store4.query(`OPTIMIZE TABLE \`${table}\``);
             log.info("Prune", `Emergency compaction done: ${table}`);
           } catch {
           }
@@ -30748,9 +30805,9 @@ function tokenOverlap(a, b) {
   return ta.size === 0 ? 0 : inter / ta.size;
 }
 async function resolveCanonicalEntity(offer) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    const rows = await store3.query(
+    const rows = await store4.query(
       "SELECT id, name, brand FROM canonical_entities WHERE vertical = ? ORDER BY id DESC LIMIT 500",
       [offer.vertical]
     );
@@ -30767,7 +30824,7 @@ async function resolveCanonicalEntity(offer) {
         matchEvidence: `deterministic score ${best.score.toFixed(2)}`
       };
     }
-    const res = await store3.execute(
+    const res = await store4.execute(
       "INSERT INTO canonical_entities (vertical, name, brand) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
       [offer.vertical, offer.title.slice(0, 500), offer.brand || null]
     );
@@ -32290,9 +32347,9 @@ __export(catalogueService_exports, {
   updateVolatileFields: () => updateVolatileFields
 });
 async function persistOffer(offer, raw, source) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    const res = await store3.execute(
+    const res = await store4.execute(
       `INSERT INTO offers (
          canonical_entity_id, vertical, title, brand, identifiers, attributes, vendor, seller, seller_url,
          location_pincode, location_city, list_price, mandatory_total, effective_price, verified_savings,
@@ -32332,7 +32389,7 @@ async function persistOffer(offer, raw, source) {
     );
     const evidence = buildEvidence(offer, raw);
     try {
-      await store3.execute(
+      await store4.execute(
         `INSERT INTO source_evidence (offer_id, source_id, source_method, source_url, source_reference, fetched_at, extracted_fields, evidence_hash)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -32356,9 +32413,9 @@ async function persistOffer(offer, raw, source) {
   }
 }
 async function recordPriceSnapshot(offer, rowId) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    await store3.execute(
+    await store4.execute(
       `INSERT INTO price_history (offer_id, canonical_entity_id, mandatory_total, effective_price, currency, source_id, freshness_status)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -32375,7 +32432,7 @@ async function recordPriceSnapshot(offer, rowId) {
   }
 }
 async function findCatalogueOffers(vertical, opts = {}) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
     const params = [vertical];
     let where = "vertical = ? AND validation_status != ?";
@@ -32393,7 +32450,7 @@ async function findCatalogueOffers(vertical, opts = {}) {
       params.push(`%${t}%`);
     }
     params.push(opts.limit ?? 50);
-    return await store3.query(
+    return await store4.query(
       `SELECT id, vertical, title, vendor, seller, location_pincode, location_city, mandatory_total, effective_price,
               currency, availability, freshness_status, validation_status, confidence, fetched_at, source_id, canonical_entity_id,
               seller_url, brand
@@ -32406,10 +32463,10 @@ async function findCatalogueOffers(vertical, opts = {}) {
   }
 }
 async function refreshCandidates(opts) {
-  const store3 = getStore();
-  if (store3.kind !== "mysql") return [];
+  const store4 = getStore();
+  if (store4.kind !== "mysql") return [];
   try {
-    return await store3.query(
+    return await store4.query(
       `SELECT o.id, o.vertical, o.title, o.vendor, o.seller, o.mandatory_total, o.effective_price, o.currency,
               o.availability, o.freshness_status, o.validation_status, o.fetched_at, o.source_id, o.canonical_entity_id
        FROM offers o
@@ -32430,9 +32487,9 @@ async function refreshCandidates(opts) {
   }
 }
 async function updateVolatileFields(rowId, patch) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    await store3.execute(
+    await store4.execute(
       `UPDATE offers SET mandatory_total = ?, effective_price = ?, availability = ?, freshness_status = ?, validated_at = ?, expires_at = ?, fetched_at = NOW() WHERE id = ?`,
       [
         patch.mandatoryTotal ?? null,
@@ -32449,9 +32506,9 @@ async function updateVolatileFields(rowId, patch) {
   }
 }
 async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    return await store3.query(
+    return await store4.query(
       `SELECT effective_price, captured_at FROM price_history WHERE canonical_entity_id = ? ORDER BY captured_at DESC LIMIT ?`,
       [canonicalEntityId, limit]
     );
@@ -32460,17 +32517,17 @@ async function priceHistoryForEntity(canonicalEntityId, limit = 60) {
   }
 }
 async function purgePhotolessHotelOffers() {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    await store3.execute(PURGE_BAD_HOTEL_ART_SQL);
+    await store4.execute(PURGE_BAD_HOTEL_ART_SQL);
   } catch (e2) {
     log.debug("Catalogue", "Hotel art hygiene skipped", { error: String(e2).slice(0, 100) });
   }
 }
 async function purgeStaleBankingOffers() {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    await store3.execute(
+    await store4.execute(
       `DELETE FROM offers WHERE vertical = 'banking' AND (attributes IS NULL OR attributes NOT LIKE '%"account_type"%')`
     );
   } catch (e2) {
@@ -32754,8 +32811,8 @@ async function resolveRedirect(dest, opts = {}) {
     }
   }
   try {
-    const store3 = getStore();
-    await store3.execute(
+    const store4 = getStore();
+    await store4.execute(
       `INSERT INTO affiliate_clicks (offer_id, network_id, vendor_domain, destination_url, click_id, user_id)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [opts.offerId ? extractNumericId(opts.offerId) : null, network || "direct", safeDomain2(dest), dest, clickId, opts.userId || null]
@@ -32916,7 +32973,7 @@ async function saveManualFinanceOffer(input) {
   const v = validateFinanceOffer(input);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store3 = getStore();
+  const store4 = getStore();
   const attributes = JSON.stringify({
     manual: 1,
     rate_label: c.rate_label,
@@ -32933,9 +32990,9 @@ async function saveManualFinanceOffer(input) {
     ...c.rate_label ? { unit: c.rate_label } : {}
   });
   if (c.id) {
-    const ex = await store3.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
+    const ex = await store4.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [c.id, SOURCE_ID]).catch(() => []);
     if (!ex.length) return { ok: false, error: "That entry does not exist (or is not a manual finance entry)" };
-    await store3.execute(
+    await store4.execute(
       `UPDATE offers SET vertical=?, title=?, seller=?, seller_url=?, effective_price=?, attributes=?,
          location_city=?, freshness_status=?, validation_status='VALID', fetched_at=NOW()
        WHERE id=? AND source_id=?`,
@@ -32944,7 +33001,7 @@ async function saveManualFinanceOffer(input) {
     await log2(c.id, c.vertical, "update", c.actor, c);
     return { ok: true, id: c.id };
   }
-  const res = await store3.execute(
+  const res = await store4.execute(
     `INSERT INTO offers (vertical, title, vendor, seller, seller_url, effective_price, attributes,
         location_city, currency, availability, match_state, freshness_status, validation_status, confidence,
         source_id, source_method, source_url, fetched_at, validated_at)
@@ -32956,10 +33013,10 @@ async function saveManualFinanceOffer(input) {
   return { ok: true, id };
 }
 async function deleteManualFinanceOffer(id, actor) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT id, vertical FROM offers WHERE id = ? AND source_id = ?", [Number(id), SOURCE_ID]).catch(() => []);
   if (!rows.length) return { ok: false, error: "Entry not found" };
-  await store3.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
+  await store4.execute(`UPDATE offers SET freshness_status='INVALID', updated_at=NOW() WHERE id = ? AND source_id = ?`, [Number(id), SOURCE_ID]);
   await log2(Number(id), rows[0].vertical, "delete", actor || null, rows[0]);
   return { ok: true };
 }
@@ -33859,6 +33916,310 @@ var init_searchOrchestrator = __esm({
   }
 });
 
+// server/common/loadGovernor.ts
+var loadGovernor_exports = {};
+__export(loadGovernor_exports, {
+  cpuPercent: () => cpuPercent,
+  cpuTargetPercent: () => cpuTargetPercent,
+  governorStats: () => governorStats,
+  liveConcurrencyLimit: () => liveConcurrencyLimit,
+  liveMaxConcurrency: () => liveMaxConcurrency,
+  liveQueueMax: () => liveQueueMax,
+  pressurePercent: () => pressurePercent,
+  resetLoadGovernor: () => resetLoadGovernor,
+  runGated: () => runGated,
+  sampleCpu: () => sampleCpu,
+  startLoadGovernor: () => startLoadGovernor,
+  stopLoadGovernor: () => stopLoadGovernor
+});
+function sampleCpu(now = Date.now()) {
+  const usage = process.cpuUsage(lastUsage);
+  const wallMs = Math.max(1, now - lastSampleAt);
+  const instant = (usage.user + usage.system) / (wallMs * 1e3) * 100;
+  cpuPct2 = cpuPct2 ? cpuPct2 * 0.6 + instant * 0.4 : instant;
+  lastUsage = process.cpuUsage();
+  lastSampleAt = now;
+  return cpuPct2;
+}
+function startLoadGovernor() {
+  if (sampler) return;
+  lastUsage = process.cpuUsage();
+  lastSampleAt = Date.now();
+  sampler = setInterval(() => {
+    try {
+      sampleCpu();
+    } catch {
+    }
+  }, 1e3);
+  sampler.unref?.();
+}
+function stopLoadGovernor() {
+  if (sampler) {
+    clearInterval(sampler);
+    sampler = null;
+  }
+}
+function liveConcurrencyLimit(cpu = cpuPct2) {
+  const base = liveMaxConcurrency();
+  const target = cpuTargetPercent();
+  const floor = Math.min(base, liveFloor());
+  if (cpu <= target) return base;
+  const scaled = Math.floor(base * (target / cpu));
+  return Math.max(floor, Math.min(base, scaled));
+}
+function governorStats() {
+  let active = 0;
+  let queued = 0;
+  for (const j of jobs.values()) {
+    if (j.promise) active += 1;
+    else queued += 1;
+  }
+  return {
+    active,
+    queued,
+    cpuPercent: Math.round(cpuPct2 * 10) / 10,
+    limit: liveConcurrencyLimit(),
+    targetCpuPercent: cpuTargetPercent(),
+    maxConcurrency: liveMaxConcurrency(),
+    queueMax: liveQueueMax(),
+    ...counters
+  };
+}
+function settle(waiter, outcome) {
+  if (waiter.settled) return;
+  waiter.settled = true;
+  if (waiter.timer) {
+    clearTimeout(waiter.timer);
+    waiter.timer = null;
+  }
+  waiter.resolve(outcome);
+}
+function activeCount() {
+  let n = 0;
+  for (const j of jobs.values()) if (j.promise) n += 1;
+  return n;
+}
+function queuedJobs() {
+  return [...jobs.values()].filter((j) => !j.promise).sort((a, b) => a.enqueuedAt - b.enqueuedAt);
+}
+function dropIfUnwanted(job) {
+  if (job.promise) return false;
+  if (job.waiters.some((w) => !w.settled)) return false;
+  jobs.delete(job.key);
+  counters.abandonedJobs += 1;
+  return true;
+}
+function startJob(job) {
+  if (job.promise) return;
+  job.startedAt = Date.now();
+  job.promise = (async () => {
+    try {
+      return await job.runner();
+    } finally {
+      if (jobs.get(job.key) === job) jobs.delete(job.key);
+    }
+  })();
+  job.promise.then(
+    () => {
+      counters.completedJobs += 1;
+      pump();
+    },
+    () => {
+      counters.failedJobs += 1;
+      pump();
+    }
+  );
+  for (const w of job.waiters) {
+    job.promise.then(
+      (value) => settle(w, { status: "ok", value, coalesced: true, waitedMs: Date.now() - job.enqueuedAt }),
+      () => settle(w, { status: "failed", waitedMs: Date.now() - job.enqueuedAt })
+    );
+  }
+}
+function pump() {
+  for (let guard = 0; guard < 500; guard++) {
+    if (activeCount() >= liveConcurrencyLimit()) return;
+    const next = queuedJobs()[0];
+    if (!next) return;
+    if (!next.waiters.some((w) => !w.settled)) {
+      if (dropIfUnwanted(next)) continue;
+    }
+    startJob(next);
+  }
+}
+function attach(job, opts, enqueuedAt) {
+  return new Promise((resolve) => {
+    const waiter = { resolve, timer: null, settled: false };
+    job.waiters.push(waiter);
+    const finish = (outcome) => {
+      settle(waiter, outcome);
+      if (dropIfUnwanted(job)) pump();
+    };
+    if (opts.signal?.aborted) return finish({ status: "cancelled", waitedMs: 0 });
+    opts.signal?.addEventListener("abort", () => finish({ status: "cancelled", waitedMs: Date.now() - enqueuedAt }), { once: true });
+    if (job.promise) {
+      job.promise.then(
+        (value) => settle(waiter, { status: "ok", value, coalesced: true, waitedMs: Date.now() - enqueuedAt }),
+        () => settle(waiter, { status: "failed", waitedMs: Date.now() - enqueuedAt })
+      );
+      return;
+    }
+    const waitMs = Math.max(50, opts.waitMs ?? defaultWaitMs());
+    waiter.timer = setTimeout(() => {
+      counters.timedOutRequests += 1;
+      finish({ status: "timeout", waitedMs: Date.now() - enqueuedAt });
+    }, waitMs);
+    waiter.timer.unref?.();
+    opts.signal?.addEventListener("abort", () => finish({ status: "cancelled", waitedMs: Date.now() - enqueuedAt }), { once: true });
+  });
+}
+async function runGated(key, work, opts = {}) {
+  const enqueuedAt = Date.now();
+  const existing = jobs.get(key);
+  if (existing) {
+    counters.coalescedRequests += 1;
+    if (existing.promise) return attach(existing, opts, enqueuedAt);
+    return attach(existing, opts, enqueuedAt);
+  }
+  const job = { key, enqueuedAt, startedAt: 0, runner: work, promise: null, waiters: [] };
+  if (activeCount() < liveConcurrencyLimit()) {
+    jobs.set(key, job);
+    startJob(job);
+    try {
+      const value = await job.promise;
+      return { status: "ok", value, coalesced: false, waitedMs: Date.now() - enqueuedAt };
+    } catch {
+      return { status: "failed", waitedMs: Date.now() - enqueuedAt };
+    }
+  }
+  if (queuedJobs().length >= liveQueueMax()) {
+    counters.busyRequests += 1;
+    return { status: "busy", waitedMs: 0 };
+  }
+  jobs.set(key, job);
+  const waiting = attach(job, opts, enqueuedAt);
+  pump();
+  return waiting;
+}
+function resetLoadGovernor() {
+  for (const job of jobs.values()) for (const w of job.waiters) settle(w, { status: "cancelled", waitedMs: 0 });
+  jobs.clear();
+  cpuPct2 = 0;
+  lastUsage = process.cpuUsage();
+  lastSampleAt = Date.now();
+  counters.abandonedJobs = 0;
+  counters.coalescedRequests = 0;
+  counters.timedOutRequests = 0;
+  counters.busyRequests = 0;
+  counters.failedJobs = 0;
+  counters.completedJobs = 0;
+}
+function pressurePercent() {
+  const snap = resourceSnapshot();
+  const cpu = Math.max(cpuPct2, Number(snap?.cpuPercent) || 0);
+  return Math.min(100, Math.round(cpu));
+}
+var envNum, liveMaxConcurrency, liveQueueMax, cpuTargetPercent, liveFloor, defaultWaitMs, cpuPct2, lastUsage, lastSampleAt, sampler, cpuPercent, jobs, counters;
+var init_loadGovernor = __esm({
+  "server/common/loadGovernor.ts"() {
+    init_resourceGuard();
+    envNum = (name, fallback) => {
+      const n = Number(process.env[name]);
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+    liveMaxConcurrency = () => Math.max(1, Math.floor(envNum("T1S_LIVE_MAX_CONCURRENCY", 16)));
+    liveQueueMax = () => Math.max(1, Math.floor(envNum("T1S_LIVE_QUEUE_MAX", 40)));
+    cpuTargetPercent = () => envNum("T1S_CPU_TARGET_PCT", 50);
+    liveFloor = () => Math.max(1, Math.floor(envNum("T1S_LIVE_MIN_CONCURRENCY", 2)));
+    defaultWaitMs = () => envNum("T1S_LIVE_QUEUE_WAIT_MS", 2500);
+    cpuPct2 = 0;
+    lastUsage = process.cpuUsage();
+    lastSampleAt = Date.now();
+    sampler = null;
+    cpuPercent = () => cpuPct2;
+    jobs = /* @__PURE__ */ new Map();
+    counters = { abandonedJobs: 0, coalescedRequests: 0, timedOutRequests: 0, busyRequests: 0, failedJobs: 0, completedJobs: 0 };
+  }
+});
+
+// server/search/liveSearchGate.ts
+function liveInputKey(input) {
+  return [
+    String(input.vertical || ""),
+    String(input.query || "").trim().toLowerCase(),
+    String(input.city || "").trim().toLowerCase(),
+    String(input.pincode || ""),
+    String(input.locality || "").trim().toLowerCase(),
+    input.travelDates?.depart || "",
+    input.travelDates?.return || "",
+    input.from || "",
+    input.to || "",
+    input.guests || "",
+    typeof input.lat === "number" ? input.lat.toFixed(4) : "",
+    typeof input.lng === "number" ? input.lng.toFixed(4) : ""
+  ].join("|");
+}
+function cacheable(res) {
+  if (!res) return false;
+  if (!(res.results || []).length) return false;
+  const served = String(res.state?.servedFrom || "");
+  return served !== "unavailable" && served !== "validation";
+}
+function store2(key, res) {
+  if (!cacheable(res)) return;
+  if (repeatCache.size >= REPEAT_CACHE_MAX) {
+    const entries2 = [...repeatCache.entries()].sort((a, b) => a[1].at - b[1].at);
+    for (const [k] of entries2.slice(0, Math.ceil(entries2.length / 3))) repeatCache.delete(k);
+  }
+  repeatCache.set(key, { at: Date.now(), body: res });
+}
+function repeatCacheLookup(key) {
+  const hit = repeatCache.get(key);
+  if (!hit) return null;
+  const ttl = REPEAT_TTL_MS();
+  if (ttl <= 0 || Date.now() - hit.at > ttl) {
+    repeatCache.delete(key);
+    return null;
+  }
+  return hit.body;
+}
+async function runLiveSearch(input, opts = {}) {
+  const key = liveInputKey(input);
+  if (!opts.bypassRepeatCache) {
+    const hit = repeatCacheLookup(key);
+    if (hit) {
+      return {
+        ...hit,
+        state: { ...hit.state, servedFrom: "cache" }
+        // untouched rows + labels; latency is measured by the caller
+      };
+    }
+  }
+  const outcome = await runGated(key, () => runSearch(input), { signal: opts.signal });
+  if (outcome.status !== "ok") {
+    if (process.env.LOG_LEVEL === "debug") {
+      console.error(JSON.stringify({ dbg: "live-gate", key, status: outcome.status, waitedMs: outcome.waitedMs, cpu: Math.round(cpuPercent()) }));
+    }
+    return null;
+  }
+  store2(key, outcome.value);
+  return outcome.value;
+}
+var repeatCache, REPEAT_TTL_MS, REPEAT_CACHE_MAX, liveGateStats;
+var init_liveSearchGate = __esm({
+  "server/search/liveSearchGate.ts"() {
+    init_searchOrchestrator();
+    init_loadGovernor();
+    repeatCache = /* @__PURE__ */ new Map();
+    REPEAT_TTL_MS = () => {
+      const n = Number(process.env.T1S_LIVE_REPEAT_CACHE_MS);
+      return Number.isFinite(n) && n >= 0 ? n : 15e3;
+    };
+    REPEAT_CACHE_MAX = 400;
+    liveGateStats = () => ({ ...governorStats(), repeatCached: repeatCache.size, repeatTtlMs: REPEAT_TTL_MS() });
+  }
+});
+
 // server/search/lastKnownGood.ts
 function searchKey(input) {
   return [
@@ -33873,23 +34234,23 @@ function rememberGood(input, rows, servedFrom = "") {
   if (!Array.isArray(rows) || rows.length === 0) return;
   const key = searchKey(input);
   if (!key.trim()) return;
-  store2.set(key, { rows, at: Date.now(), servedFrom });
-  if (store2.size > MAX_ENTRIES2) {
-    const oldest = [...store2.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, store2.size - MAX_ENTRIES2);
-    for (const [k] of oldest) store2.delete(k);
+  store3.set(key, { rows, at: Date.now(), servedFrom });
+  if (store3.size > MAX_ENTRIES2) {
+    const oldest = [...store3.entries()].sort((a, b) => a[1].at - b[1].at).slice(0, store3.size - MAX_ENTRIES2);
+    for (const [k] of oldest) store3.delete(k);
   }
 }
 function recallGood(input, maxAgeMs = 6 * 60 * 60 * 1e3) {
-  const hit = store2.get(searchKey(input));
+  const hit = store3.get(searchKey(input));
   if (!hit || !hit.rows.length) return null;
   if (Date.now() - hit.at > maxAgeMs) return null;
   return hit;
 }
-var MAX_ENTRIES2, store2, norm5;
+var MAX_ENTRIES2, store3, norm5;
 var init_lastKnownGood = __esm({
   "server/search/lastKnownGood.ts"() {
     MAX_ENTRIES2 = 400;
-    store2 = /* @__PURE__ */ new Map();
+    store3 = /* @__PURE__ */ new Map();
     norm5 = (s) => String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
   }
 });
@@ -34850,24 +35211,24 @@ function verifyPassword(password, stored) {
 }
 async function registerUser(email, password, displayName) {
   if (!email || !password || password.length < 8) return { ok: false, error: "Email and a password of at least 8 characters are required" };
-  const store3 = getStore();
-  const existing = await store3.query("SELECT id FROM users WHERE email = ?", [email.toLowerCase()]);
+  const store4 = getStore();
+  const existing = await store4.query("SELECT id FROM users WHERE email = ?", [email.toLowerCase()]);
   if (existing.length > 0) return { ok: false, error: "An account with this email already exists" };
   const role = settings.adminEmails.includes(email.toLowerCase()) ? "admin" : "user";
-  const res = await store3.execute(
+  const res = await store4.execute(
     "INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
     [email.toLowerCase(), hashPassword(password), displayName || null, role]
   );
   return { ok: true, userId: res.insertId || void 0 };
 }
 async function loginUser(email, password) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT id, email, password_hash, display_name, role FROM users WHERE email = ?", [email.toLowerCase()]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT id, email, password_hash, display_name, role FROM users WHERE email = ?", [email.toLowerCase()]);
   if (rows.length === 0) return { ok: false, error: "Invalid credentials" };
   const row = rows[0];
   if (!verifyPassword(password, row.password_hash)) return { ok: false, error: "Invalid credentials" };
   const token = import_crypto25.default.randomBytes(32).toString("hex");
-  await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+  await store4.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -34880,13 +35241,13 @@ async function loginUser(email, password) {
 }
 async function userForToken(token) {
   if (!token) return null;
-  const store3 = getStore();
-  const sess = await store3.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
+  const store4 = getStore();
+  const sess = await store4.query(`SELECT user_id, expires_at FROM sessions WHERE id = ?`, [token]);
   if (sess.length === 0) return null;
   const exp = String(sess[0].expires_at || "").replace("T", " ").slice(0, 19);
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (!exp || exp <= now) return null;
-  const rows = await store3.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [Number(sess[0].user_id)]);
+  const rows = await store4.query(`SELECT id, email, display_name, role FROM users WHERE id = ?`, [Number(sess[0].user_id)]);
   if (rows.length === 0) return null;
   const r = rows[0];
   return { id: Number(r.id), email: r.email, role: r.role, displayName: r.display_name || void 0 };
@@ -34937,7 +35298,7 @@ function firstHttps(doc) {
 async function resolveCatalogueImage(query, vertical, opts = {}) {
   const tokens2 = imageTokens(query);
   if (!tokens2.length) return null;
-  const store3 = getStore();
+  const store4 = getStore();
   const params = [vertical];
   let where = `vertical = ? AND attributes IS NOT NULL AND attributes LIKE '%image%'`;
   for (const t of tokens2) {
@@ -34945,7 +35306,7 @@ async function resolveCatalogueImage(query, vertical, opts = {}) {
     params.push(`%${t.replace(/[%_]/g, "")}%`);
   }
   try {
-    const rows = await store3.query(
+    const rows = await store4.query(
       `SELECT title, attributes FROM offers WHERE ${where} ORDER BY fetched_at DESC LIMIT 40`,
       params
     );
@@ -35054,26 +35415,26 @@ function nowIso2() {
   return (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
 }
 async function isEligibleAdmin(email) {
-  const store3 = getStore();
+  const store4 = getStore();
   if (settings.adminEmails.includes(email)) return true;
-  const rows = await store3.query("SELECT role FROM users WHERE email = ?", [email]);
+  const rows = await store4.query("SELECT role FROM users WHERE email = ?", [email]);
   return rows.length > 0 && rows[0].role === "admin";
 }
 async function requestAdminOtp(email) {
   const clean3 = String(email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean3)) return { ok: false, sent: false, error: "A valid email address is required" };
-  const store3 = getStore();
-  const recent = await store3.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean3]);
+  const store4 = getStore();
+  const recent = await store4.query("SELECT created_at, expires_at FROM otp_codes WHERE email = ?", [clean3]);
   const now = Date.now();
   const hourAgo = now - 60 * 60 * 1e3;
   const lastHour = recent.filter((r) => parseDbUtc(r.created_at) > hourAgo);
   if (lastHour.length >= HOURLY_CAP) return { ok: false, sent: false, error: "Too many codes requested. Try again later." };
   const lastCreated = Math.max(0, ...lastHour.map((r) => parseDbUtc(r.created_at) || 0));
   if (now - lastCreated < RESEND_COOLDOWN_MS) return { ok: false, sent: false, error: "A code was just sent. Please wait a minute before requesting another." };
-  await store3.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
   const code = String(import_crypto26.default.randomInt(0, 1e6)).padStart(6, "0");
   const expiresAt = new Date(now + OTP_TTL_MS).toISOString().slice(0, 19).replace("T", " ");
-  await store3.execute(
+  await store4.execute(
     "INSERT INTO otp_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
     [clean3, hashOtp(code), expiresAt, 0, nowIso2()]
   );
@@ -35094,7 +35455,7 @@ async function requestAdminOtp(email) {
     `Your Try1Second admin login code: ${code} (expires in 10 minutes)`
   );
   if (!mail.ok) {
-    await store3.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
     log.warn("Otp", `OTP email delivery failed for admin: ${mail.error}`);
     return { ok: false, sent: false, error: "Could not send the login code right now. Please try again later.", deliveryError: mail.error };
   }
@@ -35105,24 +35466,24 @@ async function verifyAdminOtp(email, code) {
   const clean3 = String(email || "").trim().toLowerCase();
   const otp = String(code || "").replace(/\D/g, "");
   if (!clean3 || otp.length !== 6) return { ok: false, error: "Enter the 6-digit code sent to your email" };
-  const store3 = getStore();
-  const rows = await store3.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean3]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT id, code_hash, expires_at, attempts FROM otp_codes WHERE email = ?", [clean3]);
   if (rows.length === 0) return { ok: false, error: "No active code. Request a new one." };
   const row = rows[rows.length - 1];
   if (Number(row.attempts || 0) >= MAX_VERIFY_ATTEMPTS) {
-    await store3.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
     return { ok: false, error: "Too many incorrect attempts. Request a new code." };
   }
   const exp = parseDbUtc(row.expires_at);
   if (!Number.isFinite(exp) || exp < Date.now()) {
-    await store3.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+    await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
     return { ok: false, error: "Code expired. Request a new one." };
   }
   if (!verifyOtpHash(otp, row.code_hash)) {
-    await store3.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
+    await store4.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
     return { ok: false, error: "Incorrect code" };
   }
-  await store3.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
+  await store4.execute("DELETE FROM otp_codes WHERE email = ?", [clean3]);
   const eligible = await isEligibleAdmin(clean3);
   if (!eligible) return { ok: false, error: "Invalid code" };
   log.info("Otp", `Admin OTP verified for ${clean3}`);
@@ -35292,8 +35653,8 @@ async function withUserLock(userId, fn) {
 }
 async function registerReferral(referrerId, refereeId) {
   if (referrerId === refereeId) return { ok: false, error: "Cannot refer yourself" };
-  const store3 = getStore();
-  return store3.transaction(async (tx) => {
+  const store4 = getStore();
+  return store4.transaction(async (tx) => {
     const existing = await tx.query("SELECT id FROM referrals WHERE referee_id = ?", [refereeId]);
     if (existing.length > 0) return { ok: false, error: "This user was already referred" };
     const res = await tx.execute("INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)", [referrerId, refereeId, "pending"]);
@@ -35311,13 +35672,13 @@ async function registerReferral(referrerId, refereeId) {
   });
 }
 async function validPointBalance(userId) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
   return rows.reduce((sum, r) => sum + Number(r.points || 0), 0);
 }
 async function claimSpinEligibility(userId) {
-  const store3 = getStore();
-  return withUserLock(userId, () => store3.transaction(async (tx) => {
+  const store4 = getStore();
+  return withUserLock(userId, () => store4.transaction(async (tx) => {
     const rows = await tx.query("SELECT points FROM referral_point_events WHERE user_id = ?", [userId]);
     const points = rows.reduce((sum, r) => sum + Number(r.points || 0), 0);
     const consumed = await consumedPoints(userId, tx);
@@ -35334,22 +35695,22 @@ async function consumedPoints(userId, tx) {
   return rows.length * POINTS_PER_SPIN_ELIGIBILITY;
 }
 async function eligibleSpinCount(userId) {
-  const store3 = getStore();
-  const rows = await store3.query(
+  const store4 = getStore();
+  const rows = await store4.query(
     "SELECT id FROM spin_eligibilities WHERE user_id = ? AND consumed_at IS NULL",
     [userId]
   );
   return rows.length;
 }
 async function executeSpin(userId, idempotencyKey) {
-  const store3 = getStore();
+  const store4 = getStore();
   const key = idempotencyKey || import_crypto28.default.randomUUID();
-  const prior = await store3.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
+  const prior = await store4.query("SELECT id, prize_id FROM spins WHERE user_id = ? AND idempotency_key = ?", [userId, key]);
   if (prior.length > 0) {
     const prize = await prizeFor(Number(prior[0].prize_id));
     return { status: "DUPLICATE", spinId: Number(prior[0].id), prize };
   }
-  return withUserLock(userId, () => store3.transaction(async (tx) => {
+  return withUserLock(userId, () => store4.transaction(async (tx) => {
     const elig = await tx.query(
       "SELECT id FROM spin_eligibilities WHERE user_id = ? AND consumed_at IS NULL ORDER BY id LIMIT 1",
       [userId]
@@ -35428,12 +35789,12 @@ async function submitFulfilmentDetails(userId, spinId, contact) {
   if (!contact.name?.trim() || !/^\+?\d[\d\s-]{7,14}$/.test(contact.phone || "")) {
     return { ok: false, error: "Valid name and phone are required for prize fulfilment" };
   }
-  const store3 = getStore();
-  const rows = await store3.query("SELECT id, user_id FROM spins WHERE id = ?", [spinId]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT id, user_id FROM spins WHERE id = ?", [spinId]);
   if (rows.length === 0) return { ok: false, error: "Spin not found" };
   if (Number(rows[0].user_id) !== userId) return { ok: false, error: "This spin belongs to another user" };
   try {
-    const res = await store3.execute(
+    const res = await store4.execute(
       `UPDATE fulfilment_records SET contact_name = ?, contact_phone = ?, contact_location = ?, status = ?
        WHERE spin_id = ? AND user_id = ?`,
       [contact.name.trim().slice(0, 160), contact.phone.trim().slice(0, 30), (contact.location || "").trim().slice(0, 500), "CONTACT_REQUIRED", spinId, userId]
@@ -35459,8 +35820,8 @@ async function updateFulfilmentStatus(recordId, status) {
   return res.affectedRows > 0;
 }
 async function ensureReferralCode(userId) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
   const existing = rows[0]?.referral_code ? String(rows[0].referral_code) : "";
   if (existing) return existing;
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -35468,9 +35829,9 @@ async function ensureReferralCode(userId) {
     const bytes = import_crypto28.default.randomBytes(6);
     for (let i = 0; i < 6; i++) code += REF_CODE_ALPHABET[bytes[i] % REF_CODE_ALPHABET.length];
     try {
-      const res = await store3.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
+      const res = await store4.execute("UPDATE users SET referral_code = ? WHERE id = ?", [code, userId]);
       if (res.affectedRows > 0) return code;
-      const again = await store3.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
+      const again = await store4.query("SELECT referral_code FROM users WHERE id = ?", [userId]);
       if (again[0]?.referral_code) return String(again[0].referral_code);
     } catch (e2) {
       if (!/uq_referral_code|Duplicate/i.test(String(e2?.message || ""))) throw e2;
@@ -35481,8 +35842,8 @@ async function ensureReferralCode(userId) {
 async function applyReferralCode(refereeId, rawCode) {
   const code = String(rawCode || "").trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a referral code" };
-  const store3 = getStore();
-  const rows = await store3.query("SELECT id FROM users WHERE referral_code = ?", [code]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT id FROM users WHERE referral_code = ?", [code]);
   if (!rows.length) return { ok: false, error: "That referral code is not valid" };
   const referrerId = Number(rows[0].id);
   const r = await registerReferral(referrerId, refereeId);
@@ -35490,13 +35851,13 @@ async function applyReferralCode(refereeId, rawCode) {
   return { ok: true, awarded: r.awarded, referrerCode: code };
 }
 async function referralStats(userId) {
-  const store3 = getStore();
-  const referred = await store3.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
-  const by = await store3.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
+  const store4 = getStore();
+  const referred = await store4.query("SELECT COUNT(*) c FROM referrals WHERE referrer_id = ? AND status = 'valid'", [userId]);
+  const by = await store4.query("SELECT referrer_id FROM referrals WHERE referee_id = ? LIMIT 1", [userId]);
   let referredByCode = null;
   const referrerId = by[0]?.referrer_id ? Number(by[0].referrer_id) : 0;
   if (referrerId) {
-    const u = await store3.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
+    const u = await store4.query("SELECT referral_code FROM users WHERE id = ?", [referrerId]);
     referredByCode = u[0]?.referral_code ? String(u[0].referral_code) : null;
   }
   return { referredCount: Number(referred[0]?.c || 0), referredByCode };
@@ -35529,8 +35890,8 @@ function validateEntry(i) {
 async function addSpendEntry(i) {
   const v = validateEntry(i);
   if (!v.ok) return v;
-  const store3 = getStore();
-  const res = await store3.execute(
+  const store4 = getStore();
+  const res = await store4.execute(
     `INSERT INTO spend_entries (user_id, merchant, amount, item_title, vertical, entry_date, source, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -35544,12 +35905,12 @@ async function addSpendEntry(i) {
       1
     ]
   );
-  const rows = await store3.query("SELECT id FROM spend_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", [i.userId]);
+  const rows = await store4.query("SELECT id FROM spend_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1", [i.userId]);
   return { ok: true, id: Number(res?.insertId ?? rows[0]?.id) };
 }
 async function listSpendEntries(userId) {
-  const store3 = getStore();
-  const rows = (await store3.query(
+  const store4 = getStore();
+  const rows = (await store4.query(
     "SELECT id, merchant, amount, item_title, vertical, entry_date, source, is_active, created_at FROM spend_entries WHERE user_id = ?",
     [userId]
   )).filter(isActive);
@@ -35566,10 +35927,10 @@ async function listSpendEntries(userId) {
   }));
 }
 async function deleteSpendEntry(userId, id) {
-  const store3 = getStore();
-  const mine = await store3.query("SELECT id FROM spend_entries WHERE user_id = ?", [userId]);
+  const store4 = getStore();
+  const mine = await store4.query("SELECT id FROM spend_entries WHERE user_id = ?", [userId]);
   if (!mine.some((r) => Number(r.id) === Number(id))) return false;
-  await store3.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  await store4.execute("UPDATE spend_entries SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
 function summarizeSpend(entries2) {
@@ -35636,7 +35997,7 @@ __export(placements_exports, {
   upsertTopPick: () => upsertTopPick
 });
 async function listTopPicks(vertical, includeInactive = false) {
-  const store3 = getStore();
+  const store4 = getStore();
   const params = [];
   let where = "";
   if (!includeInactive) {
@@ -35646,7 +36007,7 @@ async function listTopPicks(vertical, includeInactive = false) {
     where += where ? " AND vertical = ?" : " WHERE vertical = ?";
     params.push(vert(vertical));
   }
-  const rows = await store3.query(
+  const rows = await store4.query(
     `SELECT * FROM top_picks${where} ORDER BY position ASC, id ASC LIMIT 50`,
     params
   );
@@ -35671,7 +36032,7 @@ async function upsertTopPick(input) {
   const check = validateDestination(destination, { allowEmbeddedRedirect: true });
   if (!check.valid) return { ok: false, error: `Destination rejected: ${check.reason}` };
   const rating = Math.max(0, Math.min(5, Number(input.rating ?? 0)));
-  const store3 = getStore();
+  const store4 = getStore();
   const perks = JSON.stringify((input.perks || []).map((p) => String(p).slice(0, 120)).slice(0, 6));
   const values = [
     vertical,
@@ -35692,7 +36053,7 @@ async function upsertTopPick(input) {
     input.is_active === false ? 0 : 1
   ];
   if (input.id) {
-    await store3.execute(
+    await store4.execute(
       `UPDATE top_picks SET vertical=?, partner_name=?, partner_code=?, badge_text=?, headline=?, offer_text=?,
        price_badge=?, perks=?, cta_text=?, destination_url=?, image_url=?, logo_bg=?, logo_text=?,
        rating=?, position=?, is_active=? WHERE id=?`,
@@ -35701,7 +36062,7 @@ async function upsertTopPick(input) {
     purgeSectionCache("rewards:");
     return { ok: true, id: input.id };
   }
-  const result = await store3.execute(
+  const result = await store4.execute(
     `INSERT INTO top_picks (vertical, partner_name, partner_code, badge_text, headline, offer_text,
      price_badge, perks, cta_text, destination_url, image_url, logo_bg, logo_text, rating, position, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -35734,15 +36095,15 @@ async function upsertAdSlot(input) {
     const slot2 = str(input.adsense_slot, 60);
     if (!/^ca-pub-[0-9]{10,}$/.test(client || "")) return { ok: false, error: "AdSense client must look like ca-pub-XXXXXXXXXXXXXXXX" };
     if (!/^[0-9]{6,20}$/.test(slot2 || "")) return { ok: false, error: "AdSense slot id must be numeric" };
-    const store4 = getStore();
-    const existing2 = await store4.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+    const store5 = getStore();
+    const existing2 = await store5.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
     if (existing2.length) {
-      await store4.execute(
+      await store5.execute(
         "UPDATE ad_slots SET provider=?, adsense_client=?, adsense_slot=?, custom_html=NULL, is_active=? WHERE slot_key=?",
         ["adsense", client, slot2, input.is_active === false ? 0 : 1, slot_key]
       );
     } else {
-      await store4.execute(
+      await store5.execute(
         "INSERT INTO ad_slots (slot_key, provider, adsense_client, adsense_slot, is_active) VALUES (?, ?, ?, ?, ?)",
         [slot_key, "adsense", client, slot2, input.is_active === false ? 0 : 1]
       );
@@ -35751,15 +36112,15 @@ async function upsertAdSlot(input) {
   }
   const html = String(input.custom_html || "").slice(0, 8e3);
   if (!html.trim()) return { ok: false, error: "Custom HTML is required for the custom_html provider" };
-  const store3 = getStore();
-  const existing = await store3.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
+  const store4 = getStore();
+  const existing = await store4.query("SELECT id FROM ad_slots WHERE slot_key = ?", [slot_key]);
   if (existing.length) {
-    await store3.execute(
+    await store4.execute(
       "UPDATE ad_slots SET provider=?, custom_html=?, adsense_client=NULL, adsense_slot=NULL, is_active=? WHERE slot_key=?",
       ["custom_html", html, input.is_active === false ? 0 : 1, slot_key]
     );
   } else {
-    await store3.execute(
+    await store4.execute(
       "INSERT INTO ad_slots (slot_key, provider, custom_html, is_active) VALUES (?, ?, ?, ?)",
       [slot_key, "custom_html", html, input.is_active === false ? 0 : 1]
     );
@@ -36648,10 +37009,10 @@ async function fetchVerticalOffers(vertical, limit) {
   const key = `${vertical}|${limit}`;
   const hit = poolCache.get(key);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.rows;
-  const store3 = getStore();
+  const store4 = getStore();
   let rows = [];
   try {
-    rows = await store3.query(
+    rows = await store4.query(
       `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
        FROM offers WHERE vertical = ? ORDER BY fetched_at DESC LIMIT ${Math.max(limit, 500)}`,
@@ -36678,7 +37039,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   const cacheKey = `${vertical}|byCity|${cities.length}|${perCityLimit}`;
   const hit = cityPoolCache.get(cacheKey);
   if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.map;
-  const store3 = getStore();
+  const store4 = getStore();
   const perCitySql = (like) => `SELECT id, vertical, title, brand, attributes, vendor, seller, seller_url, location_city,
               list_price, mandatory_total, effective_price, validation_status, fetched_at
        FROM offers WHERE vertical = ? AND (${like}) ORDER BY fetched_at DESC LIMIT ${perCityLimit}`;
@@ -36689,7 +37050,7 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
       const params = [vertical];
       for (const k of c.keys) params.push(`%${k}%`, `%${k}%`);
       try {
-        return [c.name, (await store3.query(perCitySql(like), params)).slice(0, perCityLimit)];
+        return [c.name, (await store4.query(perCitySql(like), params)).slice(0, perCityLimit)];
       } catch (e2) {
         log.debug("Showcase", "per-city pool query failed", { vertical, city: c.name, error: String(e2).slice(0, 100) });
         return [c.name, []];
@@ -36711,9 +37072,9 @@ async function fetchVerticalOffersByCity(vertical, cities, perCityLimit = 60) {
   return map;
 }
 async function fetchAffiliateRows(limit) {
-  const store3 = getStore();
+  const store4 = getStore();
   try {
-    const rows = await store3.query(
+    const rows = await store4.query(
       `SELECT id, network_source, network_offer_id, merchant_name, merchant_logo, title, description, coupon_code,
               discount_value, discount_type, affiliate_url, original_url, categories, commission_note, last_seen_at
        FROM affiliate_offers WHERE status = 'active' ORDER BY id DESC LIMIT 600`,
@@ -38457,18 +38818,18 @@ async function pushPublicKey() {
   return ensureVapid();
 }
 async function upsertSubscription(input) {
-  const store3 = getStore();
-  const existing = await store3.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
+  const store4 = getStore();
+  const existing = await store4.query("SELECT id FROM push_subscriptions WHERE endpoint_hash = ?", [input.hash]);
   if (existing.length) {
     const id = Number(existing[0].id);
-    await store3.execute(
+    await store4.execute(
       `UPDATE push_subscriptions SET user_id = COALESCE(?, user_id), p256dh = COALESCE(?, p256dh),
          auth = COALESCE(?, auth), ua = COALESCE(?, ua), is_active = 1, fail_count = 0 WHERE id = ?`,
       [input.userId ?? null, input.p256dh ?? null, input.auth ?? null, input.ua ?? null, id]
     );
     return id;
   }
-  const r = await store3.execute(
+  const r = await store4.execute(
     `INSERT INTO push_subscriptions (user_id, kind, endpoint, endpoint_hash, p256dh, auth, ua, is_active, fail_count)
      VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)`,
     [input.userId ?? null, input.kind, input.endpoint, input.hash, input.p256dh ?? null, input.auth ?? null, input.ua ?? null]
@@ -38510,8 +38871,8 @@ async function removeSubscription(rawEndpoint) {
   const endpoint = clip2(rawEndpoint, 2e3);
   if (!endpoint) return 0;
   const hashes = [sha256(endpoint), sha256(`fcm:${endpoint}`)];
-  const store3 = getStore();
-  const r = await store3.execute(
+  const store4 = getStore();
+  const r = await store4.execute(
     `UPDATE push_subscriptions SET is_active = 0 WHERE endpoint_hash IN (?, ?) AND is_active = 1`,
     hashes
   );
@@ -38533,17 +38894,17 @@ function buildPushBody(payload) {
   return JSON.stringify({ ...JSON.parse(body), image: null });
 }
 async function sendOne(row, payload) {
-  const store3 = getStore();
+  const store4 = getStore();
   const now = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " ");
   if (row.kind === "fcm") {
     const r = await sendFcm(row, payload);
     if (r === "ok") {
-      await store3.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+      await store4.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
     } else if (r === "gone") {
-      await store3.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      await store4.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
     } else if (r === "failed") {
       const fails = Number(row.fail_count || 0) + 1;
-      await store3.execute(
+      await store4.execute(
         "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
         [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
       );
@@ -38556,16 +38917,16 @@ async function sendOne(row, payload) {
       { endpoint: row.endpoint, keys: { p256dh: String(row.p256dh || ""), auth: String(row.auth || "") } },
       body
     );
-    await store3.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
+    await store4.execute("UPDATE push_subscriptions SET last_ok_at = ?, fail_count = 0 WHERE id = ?", [now, Number(row.id)]);
     return "ok";
   } catch (e2) {
     const code = Number(e2?.statusCode || 0);
     if (code === 404 || code === 410) {
-      await store3.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
+      await store4.execute("UPDATE push_subscriptions SET is_active = 0, last_fail_at = ? WHERE id = ?", [now, Number(row.id)]);
       return "gone";
     }
     const fails = Number(row.fail_count || 0) + 1;
-    await store3.execute(
+    await store4.execute(
       "UPDATE push_subscriptions SET fail_count = ?, last_fail_at = ?, is_active = ? WHERE id = ?",
       [fails, now, fails >= MAX_FAILS ? 0 : 1, Number(row.id)]
     );
@@ -38631,9 +38992,9 @@ function pushNotificationRow(n) {
   }).catch(() => null);
 }
 async function pushStats() {
-  const store3 = getStore();
+  const store4 = getStore();
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
-  const rows = await store3.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
+  const rows = await store4.query("SELECT kind, is_active, last_ok_at FROM push_subscriptions").catch(() => []);
   let web = 0;
   let android = 0;
   let inactive = 0;
@@ -38695,8 +39056,8 @@ function validateNotification(i) {
 async function createNotification(i) {
   const v = validateNotification(i);
   if (!v.ok) return v;
-  const store3 = getStore();
-  const res = await store3.execute(
+  const store4 = getStore();
+  const res = await store4.execute(
     `INSERT INTO notifications (user_id, kind, title, body, image, cta_url, search_query, product_title, price_now, price_prev, target_price, seller, is_active, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -38716,7 +39077,7 @@ async function createNotification(i) {
       (i.createdBy || "system").slice(0, 190)
     ]
   );
-  const rows = await store3.query("SELECT id FROM notifications");
+  const rows = await store4.query("SELECT id FROM notifications");
   const id = Number(res?.insertId ?? rows[rows.length - 1]?.id ?? 0);
   log.info("Notifications", `Created ${i.kind} notification ${id}${i.userId ? ` for user ${i.userId}` : " (broadcast)"}`);
   pushNotificationRow({
@@ -38761,17 +39122,17 @@ async function listAllNotifications(limit = 100) {
   return getStore().query("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", [limit]).catch(() => []);
 }
 async function deactivateNotification(id) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT id FROM notifications WHERE id = ?", [Number(id)]);
   if (!rows.length) return false;
-  await store3.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
+  await store4.execute("UPDATE notifications SET is_active = ? WHERE id = ?", [0, Number(id)]);
   return true;
 }
 async function userNotifications(userId, limit = 50) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
   const reads = new Set(
-    (await store3.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+    (await store4.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
   const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId)).sort((a, b) => Number(b.id) - Number(a.id)).slice(0, limit).map((r) => ({
     id: Number(r.id),
@@ -38809,22 +39170,22 @@ async function broadcastNotifications(limit = 50) {
   }));
 }
 async function markRead(userId, notificationId) {
-  const store3 = getStore();
-  const exists = await store3.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
+  const store4 = getStore();
+  const exists = await store4.query("SELECT notification_id FROM notification_reads WHERE notification_id = ? AND user_id = ?", [Number(notificationId), Number(userId)]);
   if (exists.length) return;
-  await store3.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
+  await store4.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(notificationId), Number(userId)]);
 }
 async function markAllRead(userId) {
-  const store3 = getStore();
-  const rows = await store3.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
+  const store4 = getStore();
+  const rows = await store4.query("SELECT * FROM notifications WHERE is_active = ?", [1]);
   const visible = rows.filter((r) => r.user_id == null || Number(r.user_id) === Number(userId));
   const reads = new Set(
-    (await store3.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
+    (await store4.query("SELECT notification_id FROM notification_reads WHERE user_id = ?", [Number(userId)])).map((r) => Number(r.notification_id))
   );
   let n = 0;
   for (const r of visible) {
     if (!reads.has(Number(r.id))) {
-      await store3.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
+      await store4.execute("INSERT INTO notification_reads (notification_id, user_id) VALUES (?, ?)", [Number(r.id), Number(userId)]);
       n++;
     }
   }
@@ -38869,18 +39230,18 @@ function validateAlert(i) {
 async function createAlert(i) {
   const v = validateAlert(i);
   if (!v.ok) return v;
-  const store3 = getStore();
-  const mine = (await store3.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive2);
+  const store4 = getStore();
+  const mine = (await store4.query("SELECT id, search_query, is_active FROM price_alerts WHERE user_id = ?", [i.userId])).filter(isActive2);
   if (mine.length >= 50) return { ok: false, error: "You have reached the 50 active alert limit." };
   const dup = mine.find((r) => String(r.search_query).toLowerCase() === i.searchQuery.trim().toLowerCase());
   if (dup) {
-    await store3.execute(
+    await store4.execute(
       "UPDATE price_alerts SET target_price=?, price_at_set=?, notified_at=?, email=? WHERE id=?",
       [Math.round(i.targetPrice), i.priceAtSet ?? null, null, i.email, Number(dup.id)]
     );
     return { ok: true, id: Number(dup.id) };
   }
-  const res = await store3.execute(
+  const res = await store4.execute(
     `INSERT INTO price_alerts (user_id, email, product_title, search_query, source_url, image, target_price, price_at_set, is_active)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -38895,7 +39256,7 @@ async function createAlert(i) {
       1
     ]
   );
-  const rows = await store3.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
+  const rows = await store4.query("SELECT id FROM price_alerts WHERE user_id = ?", [i.userId]);
   return { ok: true, id: Number(res?.insertId ?? rows[rows.length - 1]?.id) };
 }
 async function listAlerts(userId) {
@@ -38928,13 +39289,13 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 async function checkAlertsOnce(findLivePrice, baseUrl) {
-  const store3 = getStore();
-  const all = (await store3.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive2(a) && !a.notified_at);
+  const store4 = getStore();
+  const all = (await store4.query("SELECT * FROM price_alerts WHERE id > ?", [0])).filter((a) => isActive2(a) && !a.notified_at);
   let notified = 0;
   for (const a of all.slice(0, 40)) {
     try {
       const live = await findLivePrice(String(a.search_query), String(a.product_title));
-      await store3.execute(
+      await store4.execute(
         "UPDATE price_alerts SET last_price=?, last_checked_at=? WHERE id=?",
         [live?.price ?? null, (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]
       );
@@ -38943,7 +39304,7 @@ async function checkAlertsOnce(findLivePrice, baseUrl) {
         const m = alertEmail(a, live.price, live.seller, live.url.startsWith("http") ? live.url : baseUrl + live.url);
         const sent = await sendEmail(String(a.email), m.subject, m.html);
         if (!sent.ok) log.warn("PriceAlerts", `E-mail not sent for alert ${a.id}: ${sent.error} (in-app notification still created)`);
-        await store3.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
+        await store4.execute("UPDATE price_alerts SET notified_at=? WHERE id=?", [(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace("T", " "), Number(a.id)]);
         notified++;
       }
     } catch (e2) {
@@ -39699,8 +40060,8 @@ async function catalogueCities(max = 10) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   try {
-    const store3 = getStore();
-    const rows = await store3.query(
+    const store4 = getStore();
+    const rows = await store4.query(
       `SELECT city, MAX(pincode) AS pincode, COUNT(*) AS n
        FROM searches
        WHERE created_at > (NOW() - INTERVAL 7 DAY) AND city IS NOT NULL AND city <> ''
@@ -39821,8 +40182,8 @@ async function bootWarm() {
     if (!await mayWarm("BootWarm")) return;
     await purgeStaleBankingOffers();
     await purgePhotolessHotelOffers();
-    const store3 = getStore();
-    const rows = await store3.query(
+    const store4 = getStore();
+    const rows = await store4.query(
       `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city
        FROM searches WHERE created_at > (NOW() - INTERVAL 7 DAY)
        GROUP BY raw_query, v, pincode, city
@@ -39857,8 +40218,8 @@ async function keepWarmDefaults() {
   await warmRows([...SEED_QUERIES, ...FINANCE_DAILY_SEEDS, ...catalogue], "KeepWarm");
 }
 async function warmPass(limit, verticalFilter, forceSeed) {
-  const store3 = getStore();
-  const rows = await store3.query(
+  const store4 = getStore();
+  const rows = await store4.query(
     `SELECT raw_query, COALESCE(detected_vertical, vertical) AS v, pincode, city, COUNT(*) AS n
      FROM searches
      WHERE created_at > (NOW() - INTERVAL 7 DAY)
@@ -40192,19 +40553,19 @@ async function approvePartnerFromLead(lead) {
   if (!website) return { ok: false, error: "Inquiry has no website to link" };
   if (!/^https?:\/\//i.test(website)) website = `https://${website}`;
   const category = bucketCategory(String(lead.category || ""));
-  const store3 = getStore();
-  const existing = await store3.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
+  const store4 = getStore();
+  const existing = await store4.query("SELECT * FROM approved_partners WHERE website_url = ? LIMIT 1", [website]);
   if (existing?.length) {
-    await store3.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
+    await store4.execute("UPDATE approved_partners SET status = ? WHERE id = ?", ["active", existing[0].id]);
     return { ok: true, partner: rowToPartner({ ...existing[0], status: "active" }) };
   }
-  const ins = await store3.execute(
+  const ins = await store4.execute(
     `INSERT INTO approved_partners (name, website_url, category, email, phone, badge, status, source_lead_id)
      VALUES (?, ?, ?, ?, ?, 'Verified Partner', 'active', ?)`,
     [name, website, category, lead.email || null, lead.phone || null, lead.leadId]
   );
   const id = Number(ins?.insertId ?? 0);
-  const rows = id ? await store3.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
+  const rows = id ? await store4.query("SELECT * FROM approved_partners WHERE id = ?", [id]) : [];
   return { ok: true, partner: rowToPartner(rows?.[0] || { id }) };
 }
 async function listPartners(activeOnly = true) {
@@ -40413,12 +40774,12 @@ async function upsertAppLink(input) {
   if (!v.ok) return { ok: false, error: v.error };
   const version = String(input.version ?? "").trim().slice(0, 30) || null;
   const active = input.is_active === false ? 0 : 1;
-  const store3 = getStore();
-  const existing = await store3.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
+  const store4 = getStore();
+  const existing = await store4.query("SELECT id FROM app_links WHERE link_key = ?", [key]);
   if (existing.length) {
-    await store3.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active, key]);
+    await store4.execute("UPDATE app_links SET url=?, version=?, is_active=? WHERE link_key=?", [v.url, version, active, key]);
   } else {
-    await store3.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active]);
+    await store4.execute("INSERT INTO app_links (link_key, url, version, is_active) VALUES (?, ?, ?, ?)", [key, v.url, version, active]);
   }
   return { ok: true };
 }
@@ -40733,16 +41094,16 @@ var fileImport_exports = {};
 __export(fileImport_exports, {
   importFileStoreIntoMysql: () => importFileStoreIntoMysql
 });
-async function tableColumns(store3, table) {
+async function tableColumns(store4, table) {
   try {
-    const rows = await store3.query(`DESCRIBE \`${table}\``);
+    const rows = await store4.query(`DESCRIBE \`${table}\``);
     if (!Array.isArray(rows) || rows.length === 0) return null;
     return rows.map((r) => String(r.Field));
   } catch {
     return null;
   }
 }
-async function importRows(store3, table, cols, rows) {
+async function importRows(store4, table, cols, rows) {
   let ok2 = 0;
   let skipped = 0;
   const chunk = 100;
@@ -40761,7 +41122,7 @@ async function importRows(store3, table, cols, rows) {
       params.push(typeof v === "object" && v !== null ? JSON.stringify(v) : v);
     }
     try {
-      const r = await store3.execute(
+      const r = await store4.execute(
         `INSERT IGNORE INTO \`${table}\` (${useCols.map((c) => `\`${c}\``).join(",")}) VALUES ${placeholders}`,
         params
       );
@@ -40774,7 +41135,7 @@ async function importRows(store3, table, cols, rows) {
             skipped++;
             continue;
           }
-          const rr = await store3.execute(
+          const rr = await store4.execute(
             `INSERT IGNORE INTO \`${table}\` (${rc.map((c) => `\`${c}\``).join(",")}) VALUES (${rc.map(() => "?").join(",")})`,
             rc.map((c) => typeof r[c] === "object" && r[c] !== null ? JSON.stringify(r[c]) : r[c])
           );
@@ -40788,8 +41149,8 @@ async function importRows(store3, table, cols, rows) {
   return { ok: ok2, skipped };
 }
 async function importFileStoreIntoMysql() {
-  const store3 = getStore();
-  if (store3.kind !== "mysql") return;
+  const store4 = getStore();
+  if (store4.kind !== "mysql") return;
   const src2 = import_path6.default.join(dataDir, "devstore.json");
   const lock = import_path6.default.join(dataDir, LOCK);
   if (!import_fs6.default.existsSync(src2) && !import_fs6.default.existsSync(lock)) return;
@@ -40804,12 +41165,12 @@ async function importFileStoreIntoMysql() {
     });
     log.info("FileImport", `Importing file-store history into MySQL (${tables.length} tables, resume=${import_fs6.default.existsSync(lock) && claimed})`);
     for (const table of tables) {
-      const cols = await tableColumns(store3, table);
+      const cols = await tableColumns(store4, table);
       if (!cols) {
         log.warn("FileImport", `Skipping '${table}' (${data[table].length} rows) \u2014 no such MySQL table`);
         continue;
       }
-      const { ok: ok2, skipped } = await importRows(store3, table, cols, data[table]);
+      const { ok: ok2, skipped } = await importRows(store4, table, cols, data[table]);
       log.info("FileImport", `'${table}': imported ${ok2}, skipped ${skipped} of ${data[table].length}`);
     }
     const done = import_path6.default.join(dataDir, `devstore.imported-${Date.now()}.json`);
@@ -41300,20 +41661,20 @@ function leadRateOk(ip) {
   return true;
 }
 async function signInGoogleUser(claims) {
-  const store3 = getStore();
-  let rows = await store3.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+  const store4 = getStore();
+  let rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   if (rows.length === 0) {
-    await store3.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
+    await store4.execute("INSERT INTO users (email, password_hash, display_name, role, firebase_uid) VALUES (?, NULL, ?, ?, ?)", [
       claims.email,
       claims.displayName || null,
       "user",
       claims.uid
     ]);
-    rows = await store3.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
+    rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [claims.email]);
   }
   const row = rows[0];
   const token = import_crypto31.default.randomBytes(32).toString("hex");
-  await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+  await store4.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
     token,
     Number(row.id),
     new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -41395,6 +41756,7 @@ var init_routes = __esm({
     import_express = require("express");
     init_verticalAlias();
     init_searchOrchestrator();
+    init_liveSearchGate();
     init_ecomDepartments();
     init_lastKnownGood();
     init_pollBudget();
@@ -41457,14 +41819,14 @@ var init_routes = __esm({
         res.setHeader("Cache-Control", "no-store");
         return res.json({ status: "online" });
       }
-      const store3 = getStore();
+      const store4 = getStore();
       const missing = assertProductionReadiness();
       res.json({
         status: "online",
         commit: deployedCommit(),
         nodeUptimeSec: Math.round(process.uptime()),
         engine: "Try1Second Independent Metasearch Engine v1.0",
-        dataSource: store3.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
+        dataSource: store4.kind === "mysql" ? "mysql" : "file-fallback (set MYSQL_URL for production)",
         l2Cache: settings.redisUrl ? "redis" : settings.redisRestUrl ? "redis-rest (Upstash HTTPS)" : "disabled (set REDIS_URL or UPSTASH_REDIS_REST_URL/TOKEN)",
         searchApi: settings.searchApi.enabled ? "optional-adapter-enabled" : "optional-adapter-disabled",
         productionWarnings: missing,
@@ -41838,7 +42200,11 @@ var init_routes = __esm({
       ]);
       input.coldDeadlineMs = input.coldDeadlineMs || resultDeadlineMs();
       const budgetMs = Math.min(resultDeadlineMs(), 2e3);
-      const searched = runSearch(input);
+      const searchAbort = new AbortController();
+      res.on("close", () => {
+        if (!res.writableEnded) searchAbort.abort();
+      });
+      const searched = runLiveSearch(input, { signal: searchAbort.signal });
       searched.catch(() => void 0);
       const response = await Promise.race([
         searched,
@@ -41940,6 +42306,9 @@ var init_routes = __esm({
         node: process.version
       });
     });
+    apiRouter.get("/admin/load/health", authMiddleware, requireAdmin, async (_req, res) => {
+      res.json({ ok: true, ...liveGateStats() });
+    });
     apiRouter.post("/scrape/live", async (req, res) => {
       const input = {
         query: String(req.body.query || ""),
@@ -41991,7 +42360,11 @@ var init_routes = __esm({
           }
         }
       }
-      const searchedLive = runSearch(input);
+      const liveAbort = new AbortController();
+      res.on("close", () => {
+        if (!res.writableEnded) liveAbort.abort();
+      });
+      const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
       searchedLive.catch(() => void 0);
       const response = await Promise.race([
         searchedLive,
@@ -43169,28 +43542,28 @@ var init_routes = __esm({
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 19).replace("T", " ");
         const sinceDay = new Date(Date.now() - days * 24 * 60 * 60 * 1e3).toISOString().slice(0, 10);
         const vert2 = String(req.query.vertical || "").trim();
-        const store3 = getStore();
-        const searches = vert2 ? await store3.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store3.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
-        const leads = vert2 ? await store3.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store3.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
-        const leadsApproved = vert2 ? await store3.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store3.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
-        const clicks = await store3.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
-        const clicksToday = await store3.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
-        const clicksByDay = await store3.query(
+        const store4 = getStore();
+        const searches = vert2 ? await store4.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ? AND (vertical = ? OR detected_vertical = ?)`, [since, vert2, vert2]) : await store4.query(`SELECT COUNT(*) AS n FROM searches WHERE created_at >= ?`, [since]);
+        const leads = vert2 ? await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ?`, [since, vert2]) : await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ?`, [since]);
+        const leadsApproved = vert2 ? await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND vertical = ? AND status IN ('contacted','approved')`, [since, vert2]) : await store4.query(`SELECT COUNT(*) AS n FROM leads WHERE created_at >= ? AND status IN ('contacted','approved')`, [since]);
+        const clicks = await store4.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ?`, [since]);
+        const clicksToday = await store4.query(`SELECT COUNT(*) AS n FROM affiliate_clicks WHERE DATE(created_at) >= ?`, [sinceDay]);
+        const clicksByDay = await store4.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const topDomains = await store3.query(
+        const topDomains = await store4.query(
           `SELECT vendor_domain AS domain, COUNT(*) AS n FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY n DESC LIMIT 15`,
           [since]
         );
-        const recentClicks = await store3.query(
+        const recentClicks = await store4.query(
           `SELECT c.vendor_domain AS domain, c.network_id AS network, c.created_at AS at,
               o.merchant_name AS merchant, o.title AS offer
        FROM affiliate_clicks c LEFT JOIN affiliate_offers o ON o.id = c.offer_id
        WHERE c.created_at >= ? ORDER BY c.id DESC LIMIT 200`,
           [since]
         );
-        const conversions = await store3.query(
+        const conversions = await store4.query(
           `SELECT v.network_id AS network, v.order_value AS value, v.commission AS commission, v.created_at AS at,
               c.vendor_domain AS domain
        FROM affiliate_conversions v LEFT JOIN affiliate_clicks c ON c.click_id = v.click_id
@@ -43495,21 +43868,21 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       const r = await verifyAdminOtp(String(req.body.email || ""), String(req.body.code || ""));
       if (!r.ok) return res.status(401).json({ success: false, error: r.error });
       const email = r.email;
-      const store3 = getStore();
-      let rows = await store3.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+      const store4 = getStore();
+      let rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
       if (rows.length === 0 && settings.adminEmails.includes(email)) {
-        await store3.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
+        await store4.execute("INSERT INTO users (email, password_hash, display_name, role) VALUES (?, ?, ?, ?)", [
           email,
           `otp-only$${import_crypto31.default.randomBytes(16).toString("hex")}`,
           "Owner Admin",
           "admin"
         ]);
-        rows = await store3.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
+        rows = await store4.query("SELECT id, email, display_name, role FROM users WHERE email = ?", [email]);
       }
       if (rows.length === 0 || rows[0].role !== "admin") return res.status(403).json({ success: false, error: "Not an admin account" });
       const u = rows[0];
       const token = import_crypto31.default.randomBytes(32).toString("hex");
-      await store3.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
+      await store4.execute("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)", [
         token,
         Number(u.id),
         new Date(Date.now() + SESSION_TTL_SEC * 1e3).toISOString().slice(0, 19).replace("T", " ")
@@ -43692,16 +44065,16 @@ async function saveProfile(i) {
   const v = validateProfile(i);
   if (!v.ok) return { ok: false, error: v.error };
   const c = v.clean;
-  const store3 = getStore();
-  const ex = await store3.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
+  const store4 = getStore();
+  const ex = await store4.query("SELECT id FROM affiliate_configs WHERE slug = ?", [c.slug]);
   const cols = [c.company_domain, c.network, c.affiliate_id, c.monetization, c.campaign_key, c.template, c.subid_param, c.active];
   if (ex.length) {
-    await store3.execute(
+    await store4.execute(
       "UPDATE affiliate_configs SET company_domain=?, network=?, affiliate_id=?, monetization=?, campaign_key=?, template=?, subid_param=?, active=? WHERE slug=?",
       [...cols, c.slug]
     );
   } else {
-    await store3.execute(
+    await store4.execute(
       "INSERT INTO affiliate_configs (slug, company_domain, network, affiliate_id, monetization, campaign_key, template, subid_param, active) VALUES (?,?,?,?,?,?,?,?,?)",
       [c.slug, ...cols]
     );
@@ -44040,11 +44413,11 @@ async function syncAutoDeals() {
     { provider: "tatacliq", run: () => acquireTatacliqDeals() },
     { provider: "amazon", run: () => acquireAmazonDeals() }
   ];
-  const store3 = getStore();
+  const store4 = getStore();
   const now = /* @__PURE__ */ new Date();
   const outcomes = [];
   try {
-    await store3.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
+    await store4.execute(`DELETE FROM deals WHERE source='auto' AND (title LIKE '%<%' OR title LIKE '%class=%')`);
   } catch {
   }
   for (const p of providers) {
@@ -44054,14 +44427,14 @@ async function syncAutoDeals() {
       for (const d of deals) {
         const c = cleanDeal(d);
         if (!c.title || /<|class=|&#/.test(c.title)) continue;
-        const ex = await store3.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
+        const ex = await store4.query("SELECT id FROM deals WHERE dedupe_key = ?", [c.dedupe_key]);
         if (ex.length) {
-          await store3.execute(
+          await store4.execute(
             "UPDATE deals SET merchant_name=?, kind=?, vertical=?, title=?, description=?, discount_text=?, terms=?, dest_url=?, sort_weight=?, is_active=?, last_seen_at=? WHERE id=?",
             [c.merchant_name, c.kind, c.vertical, c.title, c.description, c.discount_text, c.terms, c.dest_url, c.sort_weight, 1, now, ex[0].id]
           );
         } else {
-          await store3.execute(
+          await store4.execute(
             `INSERT INTO deals (merchant_key, merchant_name, kind, vertical, title, description, code, discount_text, min_order, terms, dest_url, valid_till, sort_weight, is_active, source, dedupe_key, image_url, last_seen_at)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [c.merchant_key, c.merchant_name, c.kind, c.vertical, c.title, c.description, c.code, c.discount_text, c.min_order, c.terms, c.dest_url, c.valid_till, c.sort_weight, c.is_active, c.source, c.dedupe_key, c.image_url, now]
@@ -44076,12 +44449,12 @@ async function syncAutoDeals() {
     }
   }
   try {
-    const rows = await store3.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
+    const rows = await store4.query(`SELECT id, last_seen_at FROM deals WHERE source = 'auto' AND is_active = 1`);
     const cutoff = Date.now() - 3 * 864e5;
     for (const r of rows) {
       const seen = Date.parse(String(r.last_seen_at || "").replace(" ", "T"));
       if (Number.isFinite(seen) && seen < cutoff) {
-        await store3.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
+        await store4.execute("UPDATE deals SET is_active = ? WHERE id = ?", [0, Number(r.id)]);
       }
     }
   } catch {
@@ -44144,8 +44517,8 @@ function parsePsiResponse(json, strategy) {
 }
 async function ensureTable3() {
   if (ensured6) return;
-  const store3 = await getStore();
-  await store3.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
+  const store4 = await getStore();
+  await store4.execute(`CREATE TABLE IF NOT EXISTS speed_scores (
     id INT AUTO_INCREMENT PRIMARY KEY,
     strategy VARCHAR(10) NOT NULL,
     score INT DEFAULT NULL,
@@ -44161,8 +44534,8 @@ async function ensureTable3() {
 }
 async function ensureQuotaTable() {
   if (quotaEnsured) return;
-  const store3 = await getStore();
-  await store3.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
+  const store4 = await getStore();
+  await store4.execute(`CREATE TABLE IF NOT EXISTS speed_quota_state (
     strategy VARCHAR(10) NOT NULL PRIMARY KEY,
     blocked_until TIMESTAMP NULL,
     last_error VARCHAR(500) NULL,
@@ -44201,14 +44574,14 @@ async function lastGood(strategy) {
 }
 async function latestScores() {
   await ensureTable3();
-  const store3 = await getStore();
+  const store4 = await getStore();
   const out = [];
   for (const strategy of STRATEGIES) {
     const good = await lastGood(strategy);
     const block = await quotaBlock(strategy);
     if (good) {
       const score = rowToScore(good);
-      const newest = await store3.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
+      const newest = await store4.query("SELECT scanned_at, error FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]).catch(() => []);
       const laterFailure = newest?.[0] && (!good.scanned_at || new Date(newest[0].scanned_at).getTime() > new Date(good.scanned_at).getTime());
       out.push({
         ...score,
@@ -44249,15 +44622,15 @@ function rowToScore(r) {
 }
 async function scoreHistory(strategy, limit = 20) {
   await ensureTable3();
-  const store3 = await getStore();
+  const store4 = await getStore();
   const lim = Math.min(Math.max(Number(limit) || 20, 1), 50);
-  const rows = await store3.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
+  const rows = await store4.query(`SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT ${lim}`, [String(strategy).slice(0, 10)]);
   return rows.map(rowToScore);
 }
 async function persistScore(s) {
   await ensureTable3();
-  const store3 = await getStore();
-  await store3.execute(
+  const store4 = await getStore();
+  await store4.execute(
     "INSERT INTO speed_scores (strategy, score, lcp_ms, tbt_ms, cls, url, error, scanned_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [s.strategy, s.score, s.lcp_ms, s.tbt_ms, s.cls, s.url.slice(0, 500), s.error ? String(s.error).slice(0, 500) : null, s.scanned_at]
   );
@@ -44265,10 +44638,10 @@ async function persistScore(s) {
 }
 async function pruneScoreHistory(strategy) {
   await ensureTable3();
-  const store3 = await getStore();
-  const rows = await store3.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
+  const store4 = await getStore();
+  const rows = await store4.query("SELECT id FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 200", [String(strategy).slice(0, 10)]);
   const drop = rows.slice(MAX_ROWS_PER_STRATEGY).map((r) => Number(r.id)).filter((n) => Number.isFinite(n) && n > 0);
-  for (const id of drop) await store3.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
+  for (const id of drop) await store4.execute("DELETE FROM speed_scores WHERE id = ?", [id]);
 }
 async function fetchWithTimeout2(url) {
   const ctrl = new AbortController();
@@ -44283,10 +44656,10 @@ async function fetchWithTimeout2(url) {
 async function runSpeedTest(siteUrl, opts = {}) {
   const url = String(siteUrl || "https://www.try1second.com").trim().slice(0, 300);
   await ensureTable3();
-  const store3 = await getStore();
+  const store4 = await getStore();
   const now = Date.now();
   const gaps = await Promise.all(STRATEGIES.map(async (strategy) => {
-    const last = await store3.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+    const last = await store4.query("SELECT scanned_at FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
     if (!last.length || !last[0].scanned_at) return 0;
     const ts = new Date(last[0].scanned_at).getTime();
     return Number.isFinite(ts) ? now - ts : 0;
@@ -44301,7 +44674,7 @@ async function runSpeedTest(siteUrl, opts = {}) {
       return { strategy, score: null, lcp_ms: null, tbt_ms: null, cls: null, url, scanned_at: (/* @__PURE__ */ new Date()).toISOString(), error: block.last_error, quota_blocked: true, quota_reset_at: block.blocked_until, note: cachedNote };
     }
     if (gaps[i] !== 0 && gaps[i] < MIN_RUN_GAP_MS) {
-      const existing = await store3.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
+      const existing = await store4.query("SELECT * FROM speed_scores WHERE strategy = ? ORDER BY scanned_at DESC LIMIT 1", [strategy]);
       if (existing.length) return { ...rowToScore(existing[0]), cached: true };
     }
     try {
@@ -44984,10 +45357,10 @@ async function runProbe2(targetId, name, vertical, probe) {
   return { ...base, status: "LIVE_TEST_FAILED", failure_category: "HTTP_" + r.status, http_status: r.status, bytes: r.bytes, latency_ms: latency, items_extracted: 0, fields_verified: null, evidence: `HTTP ${r.status}`, next_action: "Review URL/availability" };
 }
 async function runAcceptanceTests() {
-  const jobs = [];
+  const jobs2 = [];
   for (const t of ACCEPTANCE_TARGETS) {
     for (const p of t.probes) {
-      jobs.push(runProbe2(t.id, t.name, t.vertical, p).catch((e2) => ({
+      jobs2.push(runProbe2(t.id, t.name, t.vertical, p).catch((e2) => ({
         source_id: t.id,
         source_name: t.name,
         vertical: t.vertical,
@@ -45007,7 +45380,7 @@ async function runAcceptanceTests() {
   }
   const CONC = 8;
   const rows = [];
-  const queue = [...jobs];
+  const queue = [...jobs2];
   const workers = Array.from({ length: CONC }, async () => {
     while (queue.length) {
       const job = queue.shift();
@@ -45018,10 +45391,10 @@ async function runAcceptanceTests() {
   return rows;
 }
 async function persistAcceptance(rows) {
-  const store3 = getStore();
-  await store3.execute("DELETE FROM source_acceptance_tests");
+  const store4 = getStore();
+  await store4.execute("DELETE FROM source_acceptance_tests");
   for (const r of rows) {
-    await store3.execute(
+    await store4.execute(
       `INSERT INTO source_acceptance_tests (source_id, source_name, vertical, capability, status, failure_category, http_status, bytes, latency_ms, items_extracted, fields_verified, evidence, next_action) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [r.source_id, r.source_name, r.vertical, r.capability, r.status, r.failure_category, r.http_status, r.bytes, r.latency_ms, r.items_extracted, r.fields_verified, r.evidence, r.next_action]
     );
@@ -45159,7 +45532,7 @@ function ratio(n, d) {
   return { numerator: n, denominator: d, percentage: d === 0 ? null : Math.round(n / d * 1e3) / 10 };
 }
 async function buildCoverageReport(windowHours = 24) {
-  const store3 = getStore();
+  const store4 = getStore();
   const since = new Date(Date.now() - windowHours * 3600 * 1e3).toISOString().slice(0, 19).replace("T", " ");
   let searches = [];
   let offerRows = [];
@@ -45167,7 +45540,7 @@ async function buildCoverageReport(windowHours = 24) {
   let affiliateClicks = 0;
   let affiliateConversions = 0;
   try {
-    searches = await store3.query(
+    searches = await store4.query(
       `SELECT id, served_from, results_count, latency_ms, created_at FROM searches WHERE created_at >= ? ORDER BY created_at DESC`,
       [since]
     );
@@ -45175,23 +45548,23 @@ async function buildCoverageReport(windowHours = 24) {
     searches = [];
   }
   try {
-    offerRows = await store3.query(
+    offerRows = await store4.query(
       `SELECT freshness_status, validation_status, availability, vertical FROM offers`
     );
   } catch {
     offerRows = [];
   }
   try {
-    healthRows = await store3.query(
+    healthRows = await store4.query(
       `SELECT source_id, state, total_attempts, total_successes, avg_latency_ms FROM source_health`
     );
   } catch {
     healthRows = [];
   }
   try {
-    const c = await store3.query(`SELECT id FROM affiliate_clicks`);
+    const c = await store4.query(`SELECT id FROM affiliate_clicks`);
     affiliateClicks = c.length;
-    const v = await store3.query(`SELECT id FROM affiliate_conversions`);
+    const v = await store4.query(`SELECT id FROM affiliate_conversions`);
     affiliateConversions = v.length;
   } catch {
   }
@@ -45874,10 +46247,10 @@ var init_adminRoutes = __esm({
       res.json({ success: true, verticals: verticalStatusReport() });
     });
     adminRouter.get("/coverage", async (_req, res) => {
-      const store3 = getStore();
+      const store4 = getStore();
       let searchStats = null;
       try {
-        const rows = await store3.query(
+        const rows = await store4.query(
           `SELECT served_from, COUNT(*) AS c FROM searches GROUP BY served_from`
         );
         searchStats = rows;
@@ -45907,13 +46280,13 @@ var init_adminRoutes = __esm({
       if (!name || typeof quantity !== "number" || quantity < 0) {
         return res.status(400).json({ success: false, error: "name and non-negative quantity are required" });
       }
-      const store3 = getStore();
+      const store4 = getStore();
       try {
-        const prize = await store3.execute(
+        const prize = await store4.execute(
           "INSERT INTO prizes (name, description, weight, active) VALUES (?, ?, ?, 1)",
           [String(name).slice(0, 255), description ? String(description).slice(0, 500) : null, Number(weight) || 1]
         );
-        await store3.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
+        await store4.execute("INSERT INTO prize_inventory (prize_id, quantity) VALUES (?, ?)", [prize.insertId, quantity]);
         audit(req, "prize.create", String(name), { weight, quantity });
         res.json({ success: true, prizeId: prize.insertId });
       } catch (e2) {
@@ -45923,12 +46296,12 @@ var init_adminRoutes = __esm({
     adminRouter.post("/prizes/:id/inventory", async (req, res) => {
       const delta = Number(req.body.delta || 0);
       if (!Number.isFinite(delta)) return res.status(400).json({ success: false, error: "delta must be a number" });
-      const store3 = getStore();
-      const rows = await store3.query("SELECT quantity FROM prize_inventory WHERE prize_id = ?", [Number(req.params.id)]);
+      const store4 = getStore();
+      const rows = await store4.query("SELECT quantity FROM prize_inventory WHERE prize_id = ?", [Number(req.params.id)]);
       if (rows.length === 0) return res.status(404).json({ success: false, error: "Prize inventory not found" });
       const current = Number(rows[0].quantity);
       if (current + delta < 0) return res.status(400).json({ success: false, error: "Inventory cannot become negative" });
-      await store3.execute("UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?", [delta, Number(req.params.id)]);
+      await store4.execute("UPDATE prize_inventory SET quantity = quantity + ? WHERE prize_id = ?", [delta, Number(req.params.id)]);
       audit(req, "prize.inventory", req.params.id, { delta });
       res.json({ success: true, quantity: current + delta });
     });
@@ -46171,10 +46544,10 @@ var init_adminRoutes = __esm({
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const { linkinrCampaignList: linkinrCampaignList2, linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
         const { ekaroStats: ekaroStats2 } = await Promise.resolve().then(() => (init_ekaro(), ekaro_exports));
-        const store3 = getStore();
+        const store4 = getStore();
         let capturedLinks = [];
         try {
-          capturedLinks = await store3.query(
+          capturedLinks = await store4.query(
             `SELECT network_source AS network, vendor_domain AS domain, deep_link_template AS template, campaign_id AS campaign
          FROM affiliate_links ORDER BY vendor_domain ASC LIMIT 500`
           );
@@ -46886,7 +47259,7 @@ var init_adminRoutes = __esm({
     sqlDate = (daysAgo2) => new Date(Date.now() - daysAgo2 * 864e5).toISOString().slice(0, 19).replace("T", " ");
     adminRouter.get("/affiliate/clicks", async (req, res) => {
       try {
-        const store3 = getStore();
+        const store4 = getStore();
         const vendor = String(req.query.vendor || "").trim();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 500));
@@ -46897,20 +47270,20 @@ var init_adminRoutes = __esm({
           where += " AND vendor_domain LIKE ?";
           params.push(`%${vendor}%`);
         }
-        const clicks = await store3.query(
+        const clicks = await store4.query(
           `SELECT id, offer_id, network_id, vendor_domain, destination_url, click_id, created_at
        FROM affiliate_clicks ${where} ORDER BY id DESC LIMIT ${limit}`,
           params
         );
-        const byNetwork = await store3.query(
+        const byNetwork = await store4.query(
           `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
           [since]
         );
-        const byVendor = await store3.query(
+        const byVendor = await store4.query(
           `SELECT vendor_domain, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY vendor_domain ORDER BY count DESC LIMIT 20`,
           [since]
         );
-        const daily = await store3.query(
+        const daily = await store4.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
@@ -46922,10 +47295,10 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/monetization/gaps", async (req, res) => {
       try {
-        const store3 = getStore();
+        const store4 = getStore();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const since = sqlDate(days);
-        const rows = await store3.query(
+        const rows = await store4.query(
           `SELECT vendor_domain,
               COUNT(*) AS clicks,
               SUM(CASE WHEN network_id IS NULL OR network_id = 'direct' THEN 1 ELSE 0 END) AS direct_clicks,
@@ -46971,8 +47344,8 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/affiliate/conversions", async (_req, res) => {
       try {
-        const store3 = getStore();
-        const conversions = await store3.query(
+        const store4 = getStore();
+        const conversions = await store4.query(
           `SELECT v.id, v.click_id, v.network_id, v.order_value, v.commission, v.confirmed_at, v.source_report, v.created_at, k.vendor_domain
        FROM affiliate_conversions v LEFT JOIN affiliate_clicks k ON k.click_id = v.click_id
        ORDER BY v.id DESC LIMIT 200`
@@ -46984,31 +47357,31 @@ var init_adminRoutes = __esm({
     });
     adminRouter.get("/traffic/real", async (req, res) => {
       try {
-        const store3 = getStore();
+        const store4 = getStore();
         const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
         const since = sqlDate(days);
-        const dailySearches = await store3.query(
+        const dailySearches = await store4.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count, AVG(latency_ms) AS avg_latency_ms, SUM(results_count > 0) AS with_results
        FROM searches WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const byVertical = await store3.query(
+        const byVertical = await store4.query(
           `SELECT COALESCE(NULLIF(vertical, ''), 'unknown') AS vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY vertical ORDER BY count DESC`,
           [since]
         );
-        const topQueries = await store3.query(
+        const topQueries = await store4.query(
           `SELECT raw_query, vertical, COUNT(*) AS count FROM searches WHERE created_at >= ? GROUP BY raw_query, vertical ORDER BY count DESC LIMIT 20`,
           [since]
         );
-        const dailyClicks = await store3.query(
+        const dailyClicks = await store4.query(
           `SELECT DATE(created_at) AS day, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY DATE(created_at) ORDER BY day`,
           [since]
         );
-        const clicksByNetwork = await store3.query(
+        const clicksByNetwork = await store4.query(
           `SELECT network_id, COUNT(*) AS count FROM affiliate_clicks WHERE created_at >= ? GROUP BY network_id ORDER BY count DESC`,
           [since]
         );
-        const totals = await store3.query(
+        const totals = await store4.query(
           `SELECT
          SUM(created_at >= ?) AS searches_window,
          SUM(created_at >= ? AND results_count > 0) AS searches_with_results
@@ -47036,11 +47409,11 @@ var init_adminRoutes = __esm({
       try {
         const { settings: settings3 } = await Promise.resolve().then(() => (init_settings(), settings_exports));
         const { linkinrStats: linkinrStats2 } = await Promise.resolve().then(() => (init_linkinr(), linkinr_exports));
-        const store3 = getStore();
-        const dbMode = store3.kind === "mysql" ? "mysql" : "file-fallback";
+        const store4 = getStore();
+        const dbMode = store4.kind === "mysql" ? "mysql" : "file-fallback";
         let links = [];
         try {
-          links = await store3.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
+          links = await store4.query(`SELECT network_source, COUNT(*) AS count FROM affiliate_links GROUP BY network_source`);
         } catch {
           links = [];
         }
@@ -47416,12 +47789,12 @@ function startWorkers() {
   }, settings.worker.refreshIntervalSec * 1e3);
   const retryTimer = setInterval(async () => {
     try {
-      const store3 = getStore();
-      const dead = await store3.query(
+      const store4 = getStore();
+      const dead = await store4.query(
         `SELECT id FROM source_jobs WHERE status = 'failed' AND attempts < 3 ORDER BY created_at ASC LIMIT 10`
       );
       for (const job of dead) {
-        await store3.execute("UPDATE source_jobs SET status = ? WHERE id = ?", ["queued", job.id]);
+        await store4.execute("UPDATE source_jobs SET status = ? WHERE id = ?", ["queued", job.id]);
       }
       if (dead.length > 0) log.info("Worker", `Requeued ${dead.length} recoverable source jobs`);
     } catch {
@@ -47975,8 +48348,8 @@ function startAffiliateWatchdog(intervalMs = 30 * 60 * 1e3) {
   const t = setInterval(async () => {
     try {
       const { listOffers: listOffers2 } = await Promise.resolve().then(() => (init_store(), store_exports));
-      const store3 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
-      const rows = await store3.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
+      const store4 = (await Promise.resolve().then(() => (init_db(), db_exports))).getStore();
+      const rows = await store4.query("SELECT id FROM affiliate_offers WHERE status = 'active' LIMIT 1", []);
       const fresh = await listOffers2({ limit: 1 });
       if (rows.length === 0 && fresh.length === 0) {
         const { registeredProviders: rp } = await Promise.resolve().then(() => (init_aggregator(), aggregator_exports));
@@ -49633,6 +50006,8 @@ async function createApp() {
     const { runSingleton: runSingleton2 } = await Promise.resolve().then(() => (init_singleton(), singleton_exports));
     const governor = await Promise.resolve().then(() => (init_resourceGuard(), resourceGuard_exports));
     governor.startResourceGovernor();
+    const loadGovernor = await Promise.resolve().then(() => (init_loadGovernor(), loadGovernor_exports));
+    loadGovernor.startLoadGovernor();
     const boot2 = governor.noteBoot();
     const startBackgroundDuties = async () => {
       startWorkers2();
@@ -49722,6 +50097,53 @@ async function createApp() {
   }
   return app;
 }
+var shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const { log: log3 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
+  const done = (why) => {
+    try {
+      log3.info("Bootstrap", `Shutdown complete (${why})`);
+    } catch {
+    }
+    process.exit(0);
+  };
+  const hardStop = setTimeout(() => done("deadline"), 5e3);
+  hardStop.unref?.();
+  try {
+    log3.info("Bootstrap", `Shutdown requested (${signal})`);
+  } catch {
+  }
+  try {
+    const { stopLoadGovernor: stopLoadGovernor2 } = await Promise.resolve().then(() => (init_loadGovernor(), loadGovernor_exports));
+    stopLoadGovernor2();
+  } catch {
+  }
+  try {
+    const { killBridgeChildren: killBridgeChildren2 } = await Promise.resolve().then(() => (init_curlCffiFetch(), curlCffiFetch_exports));
+    const killed = killBridgeChildren2();
+    if (killed) log3.warn("Bootstrap", `Reaped ${killed} live curl_cffi bridge process(es)`);
+  } catch {
+  }
+  try {
+    const { closeStoreConnections: closeStoreConnections2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+    await closeStoreConnections2();
+  } catch {
+  }
+  clearTimeout(hardStop);
+  done(signal);
+}
+function installShutdownHooks() {
+  if (process.__t1sShutdownHooks) return;
+  process.__t1sShutdownHooks = true;
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.once(signal, () => {
+      void gracefulShutdown(signal);
+    });
+  }
+}
+installShutdownHooks();
 
 // server/multiCore.ts
 var import_node_cluster = __toESM(require("node:cluster"), 1);
@@ -49737,16 +50159,16 @@ async function boot(start, label = "Try1Second") {
   const workers = workerCount();
   if (workers > 1 && import_node_cluster.default.isPrimary) {
     console.log(`[${label}] primary ${process.pid}: forking ${workers} workers (${import_node_os3.default.cpus().length} vCPU, WEB_CONCURRENCY=${process.env.WEB_CONCURRENCY})`);
-    let shuttingDown = false;
+    let shuttingDown2 = false;
     const fork = () => import_node_cluster.default.fork();
     for (let i = 0; i < workers; i++) fork();
     import_node_cluster.default.on("exit", (worker, code, signal) => {
-      if (shuttingDown) return;
+      if (shuttingDown2) return;
       console.warn(`[${label}] worker ${worker.process.pid} exited (${signal || code}) \u2014 respawning in 2s`);
       setTimeout(fork, 2e3);
     });
     const stop = () => {
-      shuttingDown = true;
+      shuttingDown2 = true;
       for (const w of Object.values(import_node_cluster.default.workers || {})) w?.kill();
       process.exit(0);
     };

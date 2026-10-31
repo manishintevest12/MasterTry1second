@@ -9,6 +9,23 @@
  * reported as blocked (owner policy: never fabricate).
  */
 import { spawn } from 'node:child_process';
+
+/**
+ * OWNER 30 Oct ('close all HTTP connections properly'): every curl_cffi call is a short
+ * python child process. Keep a registry so a graceful shutdown (or a stuck call) can reap
+ * them instead of leaving orphaned interpreters holding sockets against the hosting
+ * account's process limit.
+ */
+const liveChildren = new Set<ReturnType<typeof spawn>>();
+export function liveBridgeChildren(): number { return liveChildren.size; }
+export function killBridgeChildren(): number {
+  let killed = 0;
+  for (const child of liveChildren) {
+    try { child.kill('SIGKILL'); killed += 1; } catch { /* already gone */ }
+  }
+  liveChildren.clear();
+  return killed;
+}
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -119,10 +136,12 @@ async function cffiFetchDirect(
   const py = await pythonBin();
   return new Promise<CffiResponse>((resolve, reject) => {
     const child = spawn(py, [HELPER], { stdio: ['pipe', 'pipe', 'pipe'] });
+    liveChildren.add(child);
     let out = '';
     let err = '';
     const timer = setTimeout(() => {
-      child.kill('SIGKILL');
+      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      liveChildren.delete(child);
       reject(new AcquisitionError('TIMEOUT', 'curl_cffi bridge timed out'));
     }, (opts.timeoutMs || 20_000) + 5_000);
 
@@ -130,10 +149,12 @@ async function cffiFetchDirect(
     child.stderr.on('data', (d: Buffer) => { err += d.toString(); });
     child.on('error', (e) => {
       clearTimeout(timer);
+      liveChildren.delete(child);
       reject(new AcquisitionError('CAPABILITY_UNAVAILABLE', `python3 bridge unavailable: ${e.message}`));
     });
     child.on('close', () => {
       clearTimeout(timer);
+      liveChildren.delete(child);
       try {
         const res = JSON.parse(out || '{}');
         if (res.ok) return resolve({ status: res.status, body: String(res.body ?? ''), ...(res.cookies ? { cookies: res.cookies as Record<string, string> } : {}), ...(res.headers ? { headers: res.headers as Record<string, string> } : {}) });

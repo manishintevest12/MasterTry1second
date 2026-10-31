@@ -86,6 +86,11 @@ class MysqlStore implements DataStore {
     return { affectedRows: r.affectedRows, insertId: r.insertId };
   }
 
+  /** Close every pooled connection (graceful shutdown / redeploy). Safe to call twice. */
+  async close(): Promise<void> {
+    try { await this.pool.end(); } catch { /* already closed */ }
+  }
+
   async transaction<T>(fn: (tx: { query: any; execute: any }) => Promise<T>): Promise<T> {
     const conn = await this.pool.getConnection();
     try {
@@ -443,6 +448,15 @@ export class FileStore implements DataStore {
 // ---------------- Bootstrap ----------------
 let store: DataStore | null = null;
 
+/** OWNER 30 Oct: shut the pool down so a restart never leaves connections open on the DB. */
+export async function closeStoreConnections(): Promise<void> {
+  const current: any = store;
+  if (current && typeof current.close === 'function') {
+    try { await current.close(); } catch { /* ignore */ }
+  }
+  store = null;
+}
+
 export function getStore(): DataStore {
   if (store) return store;
   if (settings.mysqlUrl) {
@@ -451,7 +465,15 @@ export function getStore(): DataStore {
         uri: settings.mysqlUrl,
         waitForConnections: true,
         connectionLimit: 10,
-        queueLimit: 0,
+        // OWNER 30 Oct ('close all database connections properly'): a bounded wait queue
+        // and idle reaping. Without maxIdle/idleTimeout mysql2 keeps every connection it
+        // ever opened until the process dies, which on shared hosting counts against the
+        // account's connection limit.
+        queueLimit: 25,
+        maxIdle: 4,
+        idleTimeout: 60_000,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10_000,
         connectTimeout: 8000,
         // All app-written datetimes are UTC strings; read/write them as UTC so DATETIME
         // round-trips identically regardless of the host's local timezone.

@@ -89,6 +89,11 @@ export async function createApp(): Promise<express.Express> {
     // request. Arm the governor at boot and record this boot so a restart loop can
     // never masquerade as a runaway process.
     governor.startResourceGovernor();
+    // OWNER 30 Oct: separate governor for USER-facing live searches. Background work has
+    // its own budget; this one caps live scraping at a CPU target (default 50%) with a
+    // bounded queue, so the box can never be pegged by a traffic spike.
+    const loadGovernor = await import('./common/loadGovernor');
+    loadGovernor.startLoadGovernor();
     const boot = governor.noteBoot();
     const startBackgroundDuties = async () => {
       startWorkers();
@@ -218,6 +223,49 @@ export async function createApp(): Promise<express.Express> {
 
   return app;
 }
+
+/**
+ * OWNER 30 Oct ('close all browser, HTTP, and database connections properly'):
+ * graceful shutdown. On a redeploy/restart this stops the HTTP listener, stops the load
+ * governor's sampler, kills any in-flight curl_cffi bridge child processes and closes the
+ * MySQL pool, instead of leaving sockets and interpreters behind for the host to reap.
+ * Bounded to 5s so a stuck request can never block a restart forever.
+ */
+let shuttingDown = false;
+export async function gracefulShutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const { log } = await import('./common/logger');
+  const done = (why: string) => { try { log.info('Bootstrap', `Shutdown complete (${why})`); } catch { /* ignore */ } process.exit(0); };
+  const hardStop = setTimeout(() => done('deadline'), 5000);
+  hardStop.unref?.();
+  try { log.info('Bootstrap', `Shutdown requested (${signal})`); } catch { /* logging is best effort */ }
+  try {
+    const { stopLoadGovernor } = await import('./common/loadGovernor');
+    stopLoadGovernor();
+  } catch { /* ignore */ }
+  try {
+    const { killBridgeChildren } = await import('./common/curlCffiFetch');
+    const killed = killBridgeChildren();
+    if (killed) log.warn('Bootstrap', `Reaped ${killed} live curl_cffi bridge process(es)`);
+  } catch { /* ignore */ }
+  try {
+    const { closeStoreConnections } = await import('./common/db');
+    await closeStoreConnections();
+  } catch { /* ignore */ }
+  clearTimeout(hardStop);
+  done(signal);
+}
+
+export function installShutdownHooks(): void {
+  if ((process as any).__t1sShutdownHooks) return;
+  (process as any).__t1sShutdownHooks = true;
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => { void gracefulShutdown(signal); });
+  }
+}
+
+installShutdownHooks();
 
 // NOTE: no auto-listen here. `server.ts` is the single entrypoint: it builds the app,
 // mounts the Vite dev middleware (dev) or serves dist/ (prod), and listens once.

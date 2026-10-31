@@ -10,6 +10,7 @@ import type { Request, Response } from 'express';
 import type { VerticalId } from '../types';
 import { normalizeVerticalId } from '../search/verticalAlias';
 import { runSearch, runSearchPolled, runSearchFast, type SearchInput } from '../search/searchOrchestrator';
+import { runLiveSearch, liveGateStats } from '../search/liveSearchGate';
 import { resolveEcomDepartment } from '../lens/ecomDepartments';
 import { recallGood, rememberGood } from '../search/lastKnownGood';
 import { allowPending, forgetPending, pollKey } from './pollBudget';
@@ -745,7 +746,12 @@ apiRouter.post('/search', async (req, res) => {
   // gets 2.0s and the last-chance floor 0.6s, so the FINAL byte lands under the 3s promise
   // for every vertical instead of only the fast ones.
   const budgetMs = Math.min(resultDeadlineMs(), 2000);
-  const searched = runSearch(input);
+  // OWNER 30 Oct: the primary search endpoint rides the same load governor as
+  // /api/scrape/live (CPU-tied concurrency, FIFO queue, duplicate suppression, repeat
+  // cache). A closed socket cancels this waiter only; the scan keeps filling the cache.
+  const searchAbort = new AbortController();
+  res.on('close', () => { if (!res.writableEnded) searchAbort.abort(); });
+  const searched = runLiveSearch(input, { signal: searchAbort.signal });
   searched.catch(() => undefined); // the abandoned race leg must never crash the process
   const response = (await Promise.race([
     searched,
@@ -1096,6 +1102,13 @@ apiRouter.get('/version', async (_req, res) => {
   });
 });
 
+// OWNER 30 Oct (admin-only diagnostics, never linked from the public frontend):
+// what the load governor is doing right now - CPU, live concurrency ceiling, queue depth
+// and how many requests have been coalesced, queued out or abandoned.
+apiRouter.get('/admin/load/health', authMiddleware, requireAdmin, async (_req, res) => {
+  res.json({ ok: true, ...liveGateStats() });
+});
+
 apiRouter.post('/scrape/live', async (req, res) => {
   const input: SearchInput = {
     query: String(req.body.query || ''),
@@ -1150,7 +1163,13 @@ apiRouter.post('/scrape/live', async (req, res) => {
   // Same 3s ceiling on this endpoint (owner rule 27 Oct): acquisition budget plus a
   // hard race, so a slow assembly step answers with the honest pendingRefresh marker
   // instead of making the app wait past the countdown.
-  const searchedLive = runSearch(input);
+  // OWNER 30 Oct: every live search runs through the load governor (concurrency ceiling
+  // tied to measured CPU, FIFO queue, duplicate suppression, repeat cache). The client
+  // socket closing cancels this waiter so an abandoned search does not keep a slot.
+  const liveAbort = new AbortController();
+  // A closed socket abandons this waiter; work that other waiters still want keeps going.
+  res.on('close', () => { if (!res.writableEnded) liveAbort.abort(); });
+  const searchedLive = runLiveSearch(input, { signal: liveAbort.signal });
   searchedLive.catch(() => undefined);
   const response = (await Promise.race([
     searchedLive,
