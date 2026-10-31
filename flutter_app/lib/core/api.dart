@@ -1581,9 +1581,32 @@ class Try1SecondApi {
           await Future<void>.delayed(Duration(milliseconds: delays[i]));
         }
       }
-      // A transport failure was already retried five times on this hop. Trying the second hop
-      // would double the wait for the same answer (both edges see the same dead network), so the
-      // fallback is reserved for hops that ANSWERED but refused the request.
+      // OWNER 31 Oct ("ClientException: Connection reset by peer, uri=https://www.try1second.com"):
+      // a transport failure MUST also try the other way home. The edge reset is per-path: the
+      // Cloudflare relay retries inside the Worker on fresh connections and very often succeeds
+      // while the direct Hostinger hop keeps resetting, so breaking out here is what left the
+      // owner staring at a red 'Retry' box again. Cost is only paid on the failure path.
+      if (lastError is! ApiHttpException && bases.length > 1) {
+        final other = bases.firstWhere((b) => b != base, orElse: () => base);
+        // Quick victory lap on the other hop: 2 attempts is enough, the Worker itself retries 6x.
+        for (var j = 0; j < 2; j++) {
+          try {
+            final res = await attempt(other);
+            final data = _decode(res);
+            _preferBase(other);
+            return data;
+          } on ApiHttpException catch (e) {
+            lastError = e;
+            if (e.isPermanentBlock) rethrow;
+            if (!_isReroutableStatus(e.statusCode)) rethrow;
+          } catch (e) {
+            lastError = e;
+          }
+          if (j == 0) await Future<void>.delayed(const Duration(milliseconds: 400));
+        }
+        // Both hops are resetting right now; do not loop further, just stop this hop.
+        continue;
+      }
       if (lastError is! ApiHttpException) break;
     }
     unawaited(_reportTransportFailure(path ?? '', lastError ?? 'unknown', onBase: baseUrl));

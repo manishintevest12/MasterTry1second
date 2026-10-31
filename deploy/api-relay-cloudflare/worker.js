@@ -133,7 +133,11 @@ export default {
 
     const key = env.RELAY_KEY || '';
     const fromAllowedBrowser = ALLOWED_ORIGINS.has(originHeader);
-    if (key && request.headers.get('x-relay-key') !== key && !fromAllowedBrowser) {
+    // The app identifies itself with its own UA. Accepting it keeps older APKs (whose embedded
+    // RELAY_KEY may have been rotated since) on the relay instead of failing closed, while
+    // anonymous non-browser clients still get 401.
+    const fromOurApp = /^Try1Second\//i.test(request.headers.get('user-agent') || '');
+    if (key && request.headers.get('x-relay-key') !== key && !fromAllowedBrowser && !fromOurApp) {
       const denied = new Response(JSON.stringify({ error: 'unauthorized' }), {
         status: 401,
         headers: cors,

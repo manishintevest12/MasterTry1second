@@ -61,4 +61,19 @@ void main() {
     expect(brokenHits, 1, reason: 'the app must stay on the working route');
     expect(healthyHits, greaterThanOrEqualTo(2));
   });
+
+  test('a RESET hop (not just a 400) also fails over to the other way home', () async {
+    // OWNER 31 Oct: "ClientException: Connection reset by peer, uri=https://www.try1second.com".
+    // A dead socket on the preferred hop used to break out of the retry loop, so the app showed the
+    // red Retry box even though the relay was serving the very same call. Nothing listens on the
+    // dead port, which is what a reset looks like to dart:io.
+    final dead = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final deadBase = base(dead);
+    await dead.close(force: true); // port is now closed: every attempt throws a socket error
+
+    final api = Try1SecondApi(baseUrl: deadBase, fallbackBase: base(healthyHop));
+    final res = await api.search('mobile phone', vertical: 'ecommerce', city: 'Indore');
+    expect(res.results, isNotEmpty, reason: 'the healthy hop must answer once the dead one fails');
+    expect(healthyHits, greaterThanOrEqualTo(1));
+  });
 }
