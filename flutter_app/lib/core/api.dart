@@ -23,6 +23,10 @@ import 'compare.dart';
 const String kDefaultApiBase = String.fromEnvironment('API_BASE',
     defaultValue: 'https://www.try1second.com');
 
+/// Shared secret of the Cloudflare relay (owner 31 Oct). Empty for direct-origin builds, so
+/// the same code works on both paths; set with --dart-define=RELAY_KEY=...
+const String kRelayKey = String.fromEnvironment('RELAY_KEY');
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -1472,6 +1476,7 @@ class Try1SecondApi {
   Map<String, String> _headers(String? token) => {
         ..._jsonHeaders,
         'x-t1s-session': _sessionId,
+        if (kRelayKey.isNotEmpty) 'x-relay-key': kRelayKey,
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
