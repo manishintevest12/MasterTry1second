@@ -1329,7 +1329,7 @@ class Try1SecondApi {
   }
 
   Future<void> deleteAlert(String token, int id) async {
-    final res = await _client.delete(Uri.parse('$baseUrl/api/alerts/$id'), headers: _headers(token));
+    final res = await _rawRequest((c) => c.delete(Uri.parse('$baseUrl/api/alerts/$id'), headers: _headers(token)));
     if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('Could not delete alert');
   }
 
@@ -1345,7 +1345,7 @@ class Try1SecondApi {
       }, token: token));
 
   Future<SpendData> deleteSpend(String token, int id) async {
-    final res = await _client.delete(Uri.parse('$baseUrl/api/spend/$id'), headers: _headers(token));
+    final res = await _rawRequest((c) => c.delete(Uri.parse('$baseUrl/api/spend/$id'), headers: _headers(token)));
     return SpendData.fromResponse(_decode(res));
   }
 
@@ -1412,7 +1412,7 @@ class Try1SecondApi {
 
   static const _jsonHeaders = {'Content-Type': 'application/json'};
 
-  http.Client _client;
+  final http.Client _client;
   bool clientInjected = false;
 
   /// Owner 31 Oct ("Allow only one scrape per user/session at a time"): every request
@@ -1439,37 +1439,51 @@ class Try1SecondApi {
   /// a dropped carrier link, a dead pooled connection or a connect that died
   /// between addresses. Real API errors (HTTP status, error payloads) are NOT
   /// retried — the retry is purely for transport blips.
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function() fn, {String? token}) async {
+  /// OWNER 31 Oct (installed v1.8.46 and STILL saw "Connection reset by peer"): pooling is
+  /// the problem, not the retry. The Hostinger edge closes a client connection after 5s idle,
+  /// so ANY socket this app keeps can be dead by the time it is reused — an idle timeout that
+  /// merely races that (3s vs 5s) still loses whenever a request waits in the pool behind a
+  /// burst (home fires deals, quick-apps, banners and movies together, and
+  /// maxConnectionsPerHost=8 queues the rest). So the app no longer pools at all: every single
+  /// attempt dials its OWN connection and closes it immediately after the response. There is
+  /// no reused socket left for the edge to reset, which is exactly the behaviour a browser
+  /// gets for free by retrying invisibly.
+  Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client) fn, {String? token}) async {
     http.Response res;
-    // Owner 31 Oct (mobile "ClientException: Connection reset by peer, errno = 104" on
-    // /api/deals and /api/quick-apps while the website worked): a pooled keep-alive socket
-    // that the edge already closed fails the NEXT request on it, and retrying on the same
-    // pool hit the same dead socket again. Each transport failure now drops the whole pool
-    // (fresh connection) and backs off before the retry, up to two extra attempts.
-    Future<http.Response> attemptWithFreshClient() async {
-      _resetClient();
-      return fn().timeout(_httpTimeout);
+    // One connection per attempt: build a client, use it once, close it. A transport blip
+    // costs one more fresh connection (400ms, then 900ms apart), never a dead pooled socket.
+    Future<http.Response> attempt() async {
+      final client = clientInjected ? _client : _hardenedClient();
+      try {
+        return await fn(client).timeout(_httpTimeout);
+      } finally {
+        if (!clientInjected) {
+          try {
+            client.close();
+          } catch (_) {/* already closed */}
+        }
+      }
     }
 
     try {
-      res = await fn().timeout(_httpTimeout);
+      res = await attempt();
     } on TimeoutException {
-      res = await attemptWithFreshClient();
+      res = await attempt();
     } on http.ClientException {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       try {
-        res = await attemptWithFreshClient();
+        res = await attempt();
       } on http.ClientException {
         await Future<void>.delayed(const Duration(milliseconds: 900));
-        res = await attemptWithFreshClient();
+        res = await attempt();
       }
     } on io.SocketException {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       try {
-        res = await attemptWithFreshClient();
+        res = await attempt();
       } on io.SocketException {
         await Future<void>.delayed(const Duration(milliseconds: 900));
-        res = await attemptWithFreshClient();
+        res = await attempt();
       }
     }
     // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an
@@ -1482,7 +1496,7 @@ class Try1SecondApi {
     } on Exception {
       await Future<void>.delayed(const Duration(milliseconds: 400));
       try {
-        res = await fn().timeout(_httpTimeout);
+        res = await attempt();
       } catch (_) { /* fall through: report the original failure */ }
       return _decode(res);
     }
@@ -1573,23 +1587,37 @@ class Try1SecondApi {
     final uri = Uri.parse('$baseUrl$path');
     final h = _headers(token);
     final b = jsonEncode(body);
-    return _send(() => _client.post(uri, headers: h, body: b), token: token);
+    return _send((c) => c.post(uri, headers: h, body: b), token: token);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
     final uri = Uri.parse('$baseUrl$path');
     final h = _headers(token);
-    return _send(() => _client.get(uri, headers: h), token: token);
+    return _send((c) => c.get(uri, headers: h), token: token);
   }
 
-  /// Drops the pooled connections so the next attempt dials a brand-new socket.
-  /// Never called from a test-injected client (Try1SecondApi.withClient).
-  void _resetClient() {
-    if (clientInjected) return;
+  /// One-shot request for the few endpoints that need the raw response (DELETE status
+  /// codes). Same rule as _send: its own connection, closed straight after, one retry.
+  Future<http.Response> _rawRequest(Future<http.Response> Function(http.Client) fn) async {
+    Future<http.Response> once() async {
+      final client = clientInjected ? _client : _hardenedClient();
+      try {
+        return await fn(client).timeout(_httpTimeout);
+      } finally {
+        if (!clientInjected) {
+          try {
+            client.close();
+          } catch (_) {/* already closed */}
+        }
+      }
+    }
+
     try {
-      _client.close();
-    } catch (_) {/* already closed */}
-    _client = _hardenedClient();
+      return await once();
+    } on Object {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      return once();
+    }
   }
 
   Map<String, dynamic> _decode(http.Response res) {
