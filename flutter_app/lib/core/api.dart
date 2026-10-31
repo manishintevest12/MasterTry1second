@@ -27,6 +27,14 @@ const String kDefaultApiBase = String.fromEnvironment('API_BASE',
 /// the same code works on both paths; set with --dart-define=RELAY_KEY=...
 const String kRelayKey = String.fromEnvironment('RELAY_KEY');
 
+/// OWNER 31 Oct ("priority: app ka 400 error fix karo"): the relay is the default hop, but a 400
+/// can be produced by Cloudflare/the relay itself, before our server is ever asked - in that case
+/// the request is fine and only the ROAD is broken. So every call keeps a second way home: the
+/// identical path replayed against the origin host, which is a different edge with different rules.
+/// The hop that answers first is remembered for the rest of the process, so after one failure the
+/// app stays on the working route instead of paying double latency forever.
+const String kOriginFallbackBase = 'https://www.try1second.com';
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -1064,17 +1072,32 @@ class Try1SecondApi {
     }
   }
 
-  Try1SecondApi({String? baseUrl})
+  Try1SecondApi({String? baseUrl, String? fallbackBase})
       : baseUrl = (baseUrl == null || baseUrl.trim().isEmpty)
             ? kDefaultApiBase
             : baseUrl.trim().replaceAll(RegExp(r'/+$'), ''),
+        fallbackBaseUrl = (fallbackBase == null || fallbackBase.trim().isEmpty)
+            ? kOriginFallbackBase
+            : fallbackBase.trim().replaceAll(RegExp(r'/+$'), ''),
         _client = _hardenedClient();
 
-  Try1SecondApi.withClient(this.baseUrl, http.Client client) : _client = client {
+  Try1SecondApi.withClient(this.baseUrl, http.Client client, {String? fallbackBase})
+      : fallbackBaseUrl = (fallbackBase == null || fallbackBase.trim().isEmpty)
+            ? kOriginFallbackBase
+            : fallbackBase.trim().replaceAll(RegExp(r'/+$'), ''),
+        _client = client {
     clientInjected = true;
   }
 
   final String baseUrl;
+
+  /// Second way home, tried when [baseUrl] refuses the request with a re-routable status.
+  final String fallbackBaseUrl;
+
+  /// The hop currently being used (starts at [baseUrl], switches if the fallback proves better).
+  String _activeBase = '';
+
+  String get _base => _activeBase.isEmpty ? baseUrl : _activeBase;
 
   Future<SearchResponse> search(
     String query, {
@@ -1379,7 +1402,7 @@ class Try1SecondApi {
   }
 
   Future<void> deleteAlert(String token, int id) async {
-    final res = await _rawRequest((c) => c.delete(Uri.parse('$baseUrl/api/alerts/$id'), headers: _headers(token)));
+    final res = await _rawRequest((c, base) => c.delete(Uri.parse('$base/api/alerts/$id'), headers: _headers(token)));
     if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('Could not delete alert');
   }
 
@@ -1395,7 +1418,7 @@ class Try1SecondApi {
       }, token: token));
 
   Future<SpendData> deleteSpend(String token, int id) async {
-    final res = await _rawRequest((c) => c.delete(Uri.parse('$baseUrl/api/spend/$id'), headers: _headers(token)));
+    final res = await _rawRequest((c, base) => c.delete(Uri.parse('$base/api/spend/$id'), headers: _headers(token)));
     return SpendData.fromResponse(_decode(res));
   }
 
@@ -1499,15 +1522,15 @@ class Try1SecondApi {
   /// attempt dials its OWN connection and closes it immediately after the response. There is
   /// no reused socket left for the edge to reset, which is exactly the behaviour a browser
   /// gets for free by retrying invisibly.
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client) fn,
+  Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client, String base) fn,
       {String? token, String? path}) async {
     /// One connection per attempt: build a client, use it once, close it, so a socket the
     /// edge already killed can never be reused.
-    Future<http.Response> attempt() async {
+    Future<http.Response> attempt(String base) async {
       await _acquireSlot();
       final client = clientInjected ? _client : _hardenedClient();
       try {
-        return await fn(client).timeout(_httpTimeout);
+        return await fn(client, base).timeout(_httpTimeout);
       } finally {
         if (!clientInjected) {
           try {
@@ -1520,35 +1543,74 @@ class Try1SecondApi {
 
     // OWNER 31 Oct ("abhi aisa issue pure app mai aa raha hai ... solution ab do kaise v"):
     // the reset is thrown by the edge, not by our server, so the answer is the same one a
-    // browser gives for free — keep retrying on a brand-new connection until one gets
-    // through. Four extra attempts with growing pauses (250/600/1200/2500ms) ride out a
-    // burst of resets that three attempts could not. Only transport failures are retried;
-    // a real HTTP status/API error is surfaced immediately.
+    // browser gives for free - keep retrying on a brand-new connection until one gets
+    // through. Only transport failures are retried on the same hop; a real API error is not.
     const delays = <int>[250, 600, 1200, 2500];
+    final bases = <String>[
+      _base,
+      if (fallbackBaseUrl.isNotEmpty && fallbackBaseUrl != _base) fallbackBaseUrl,
+    ];
     Object? lastError;
-    for (var i = 0; i <= delays.length; i++) {
-      try {
-        final res = await attempt();
-        // Owner 23 Oct: hPanel's edge occasionally answers a transient 400 with an HTML
-        // error page; one quiet retry clears it, a second failure is reported honestly.
+    for (final base in bases) {
+      for (var i = 0; i <= delays.length; i++) {
         try {
-          return _decode(res);
-        } on ApiHttpException {
-          rethrow; // 403/410 edge block: retrying is pointless and feeds the WAF
-        } on Exception {
-          if (i == delays.length) rethrow;
+          final res = await attempt(base);
+          try {
+            final data = _decode(res);
+            // Remember the hop that actually answered, so the next call starts there.
+            if (base != baseUrl) _preferBase(base);
+            return data;
+          } on ApiHttpException catch (e) {
+            // 403/410 edge block: retrying is pointless and feeds the WAF.
+            if (e.isPermanentBlock) rethrow;
+            // A real API error the server produced on purpose: report it, do not re-route it.
+            if (!_isReroutableStatus(e.statusCode)) rethrow;
+            // 400 / 404 / 5xx this early usually means the HOP refused the request (Cloudflare
+            // or the relay answering instead of our API). Record it and try the other way home.
+            lastError = e;
+            // Report to the OTHER hop: the refusing one cannot be trusted to log anything, and
+            // its own log would only record itself.
+            unawaited(_reportHttpFailure(
+                path ?? '', res.statusCode, res.body, base == baseUrl ? fallbackBaseUrl : baseUrl));
+            break;
+          }
+        } catch (e) {
+          lastError = e;
         }
-      } catch (e) {
-        lastError = e;
+        if (i < delays.length) {
+          await Future<void>.delayed(Duration(milliseconds: delays[i]));
+        }
       }
-      if (i < delays.length) {
-        await Future<void>.delayed(Duration(milliseconds: delays[i]));
-      }
+      // A transport failure was already retried five times on this hop. Trying the second hop
+      // would double the wait for the same answer (both edges see the same dead network), so the
+      // fallback is reserved for hops that ANSWERED but refused the request.
+      if (lastError is! ApiHttpException) break;
     }
-    unawaited(_reportTransportFailure(path ?? '', lastError ?? 'unknown'));
+    unawaited(_reportTransportFailure(path ?? '', lastError ?? 'unknown', onBase: baseUrl));
     throw (lastError is Exception)
         ? lastError
         : http.ClientException('connection failed: $lastError');
+  }
+
+  /// Statuses that mean "this hop would not serve the request", not "your request was wrong".
+  /// 400 is included deliberately: Cloudflare and the relay both answer 400 with their own page
+  /// when they refuse a request, and the origin then serves the very same call fine.
+  static bool _isReroutableStatus(int status) =>
+      status == 400 ||
+      status == 404 ||
+      status == 405 ||
+      status == 408 ||
+      status == 421 ||
+      status == 425 ||
+      status >= 500;
+
+  /// Sticky hop switch. Cheap and permanent for the life of the process: once the relay has
+  /// refused us, every later call goes straight to the way home that works.
+  String? _preferredBase;
+  void _preferBase(String base) {
+    if (_preferredBase == base) return;
+    _preferredBase = base;
+    _activeBase = base;
   }
 
   /// Home banners (owner 23 Oct): admin-managed wide landscape strips between
@@ -1632,25 +1694,24 @@ class Try1SecondApi {
   }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {
-    final uri = Uri.parse('$baseUrl$path');
     final h = _headers(token);
     final b = jsonEncode(body);
-    return _send((c) => c.post(uri, headers: h, body: b), token: token, path: path);
+    return _send((c, base) => c.post(Uri.parse('$base$path'), headers: h, body: b),
+        token: token, path: path);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
-    final uri = Uri.parse('$baseUrl$path');
     final h = _headers(token);
-    return _send((c) => c.get(uri, headers: h), token: token, path: path);
+    return _send((c, base) => c.get(Uri.parse('$base$path'), headers: h), token: token, path: path);
   }
 
   /// One-shot request for the few endpoints that need the raw response (DELETE status
   /// codes). Same rule as _send: its own connection, closed straight after, one retry.
-  Future<http.Response> _rawRequest(Future<http.Response> Function(http.Client) fn) async {
+  Future<http.Response> _rawRequest(Future<http.Response> Function(http.Client, String base) fn) async {
     Future<http.Response> once() async {
       final client = clientInjected ? _client : _hardenedClient();
       try {
-        return await fn(client).timeout(_httpTimeout);
+        return await fn(client, _base).timeout(_httpTimeout);
       } finally {
         if (!clientInjected) {
           try {
@@ -1671,7 +1732,7 @@ class Try1SecondApi {
   /// Fire-and-forget transport report -> POST /api/client-diag (owner 31 Oct).
   /// Deliberately uses its own HttpClient and never the slot queue, so it cannot deadlock
   /// or hold a request slot while the app is already in trouble.
-  Future<void> _reportTransportFailure(String path, Object error) async {
+  Future<void> _reportTransportFailure(String path, Object error, {String onBase = ''}) async {
     if (clientInjected) return; // tests stay silent
     try {
       final client = IOClient(io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
@@ -1687,7 +1748,38 @@ class Try1SecondApi {
                 'addressFamily': 'ipv4-first',
                 'appVersion': kAppVersion,
                 'retries': 2,
-                'network': '',
+                'network': onBase.replaceFirst('https://', ''),
+              }),
+            )
+            .timeout(const Duration(seconds: 6));
+      } finally {
+        client.close();
+      }
+    } catch (_) {/* diagnostics must never break the app */}
+  }
+
+  /// OWNER 31 Oct: "/api/admin/client-diag" now shows WHY a hop refused us - the status, the hop
+  /// host, and the first 160 characters of the body (Cloudflare's page, LiteSpeed's page and our
+  /// own JSON each look different), so the next report is evidence instead of a guess.
+  Future<void> _reportHttpFailure(String path, int status, String body, String base) async {
+    if (clientInjected) return; // tests stay silent
+    final snippet = body.replaceAll(RegExp(r'\\s+'), ' ').trim();
+    try {
+      final client = IOClient(io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
+      try {
+        await client
+            .post(
+              Uri.parse('$base/api/client-diag'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'endpoint': path,
+                'error': 'HTTP $status from ${base.replaceFirst('https://', '')}: '
+                    '${snippet.length > 160 ? snippet.substring(0, 160) : snippet}',
+                'platform': '${io.Platform.operatingSystem} ${io.Platform.version}',
+                'addressFamily': 'dual-hop',
+                'appVersion': kAppVersion,
+                'retries': 1,
+                'network': base.replaceFirst('https://', ''),
               }),
             )
             .timeout(const Duration(seconds: 6));
