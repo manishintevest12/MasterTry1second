@@ -10,9 +10,16 @@ import 'dart:async';
 
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:io' show Socket, InternetAddress, InternetAddressType, SocketException, ConnectionTask;
+import 'dart:io'
+    show
+        Socket,
+        InternetAddress,
+        InternetAddressType,
+        SocketException,
+        ConnectionTask;
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/io_client.dart';
 
 import 'compare.dart';
@@ -80,7 +87,9 @@ class Offer {
     }
     String? image;
     final media = j['media'];
-    if (media is Map && media['images'] is List && (media['images'] as List).isNotEmpty) {
+    if (media is Map &&
+        media['images'] is List &&
+        (media['images'] as List).isNotEmpty) {
       image = '${(media['images'] as List).first}';
     } else if (j['image'] is String) {
       image = j['image'] as String?;
@@ -91,21 +100,27 @@ class Offer {
     // insurance) rendered the shopping-bag placeholder (owner 22 Oct).
     if (image == null || image.isEmpty) {
       final imgUrls = attrs['image_urls'] ?? '';
-      final first = imgUrls.split('|').where((u) => u.startsWith('https://')).toList();
-      image = [attrs['image_url'] ?? '', first.isEmpty ? '' : first.first, attrs['image'] ?? '']
-          .firstWhere((u) => u.startsWith('https://'), orElse: () => '');
+      final first =
+          imgUrls.split('|').where((u) => u.startsWith('https://')).toList();
+      image = [
+        attrs['image_url'] ?? '',
+        first.isEmpty ? '' : first.first,
+        attrs['image'] ?? ''
+      ].firstWhere((u) => u.startsWith('https://'), orElse: () => '');
       if (image.isEmpty) image = null;
     }
     return Offer(
       id: '${j['id'] ?? ''}',
-      canonicalEntityId: j['canonicalEntityId'] == null ? null : '${j['canonicalEntityId']}',
+      canonicalEntityId:
+          j['canonicalEntityId'] == null ? null : '${j['canonicalEntityId']}',
       title: '${j['title'] ?? ''}',
       brand: j['brand'] == null ? null : '${j['brand']}',
       vendor: '${j['vendor'] ?? ''}',
       seller: '${j['seller'] ?? j['vendor'] ?? ''}',
       sellerUrl: j['sellerUrl'] == null ? null : '${j['sellerUrl']}',
       image: image,
-      effectivePrice: _num(prices['effectivePrice'] ?? prices['mandatoryTotal']),
+      effectivePrice:
+          _num(prices['effectivePrice'] ?? prices['mandatoryTotal']),
       listPrice: _num(prices['listPrice']),
       availability: '${j['availability'] ?? 'unknown'}',
       city: (j['location'] is Map) ? '${(j['location'] as Map)['city']}' : null,
@@ -146,7 +161,8 @@ class SearchResponse {
           .map(Offer.fromJson)
           .toList(),
       servedFrom: '${state['servedFrom'] ?? 'unavailable'}',
-      honestNotice: state['honestNotice'] == null ? null : '${state['honestNotice']}',
+      honestNotice:
+          state['honestNotice'] == null ? null : '${state['honestNotice']}',
     );
   }
 }
@@ -159,7 +175,9 @@ class HistoryPoint {
   const HistoryPoint(this.at, this.price);
 
   static HistoryPoint fromJson(Map<String, dynamic> j) {
-    final at = DateTime.tryParse('${j['capturedAt'] ?? j['captured_at'] ?? ''}') ?? DateTime.now();
+    final at =
+        DateTime.tryParse('${j['capturedAt'] ?? j['captured_at'] ?? ''}') ??
+            DateTime.now();
     return HistoryPoint(at, Offer._num(j['price'] ?? j['effective_price']));
   }
 }
@@ -186,7 +204,6 @@ class Verdict {
 // API client (pure Dart, uses package:http)
 // ---------------------------------------------------------------------------
 
-
 // ---------------------------------------------------------------------------
 // Download links (admin-configured), Quick Apps, auth + rewards models.
 
@@ -205,7 +222,9 @@ class AppLinks {
   static AppLink? _one(dynamic v) {
     if (v is! Map) return null;
     final url = '${v['url'] ?? ''}'.trim();
-    if (!url.startsWith('https://')) return null; // never surface a non-https link
+    if (!url.startsWith('https://')) {
+      return null; // never surface a non-https link
+    }
     final ver = v['version'];
     return AppLink(url, ver == null || '$ver'.isEmpty ? null : '$ver');
   }
@@ -255,7 +274,8 @@ class QuickApp {
         description: '${j['description'] ?? ''}',
         webUrl: '${j['webUrl'] ?? ''}',
         rating: Offer._num(j['rating']),
-        users: j['downloadsOrUsers'] == null ? null : '${j['downloadsOrUsers']}',
+        users:
+            j['downloadsOrUsers'] == null ? null : '${j['downloadsOrUsers']}',
         badge: j['badge'] == null ? null : '${j['badge']}',
         goUrl: '${j['goUrl'] ?? ''}',
       );
@@ -266,7 +286,8 @@ class QuickApp {
   /// and prefix relative icon/go URLs with the API base for the app.
   static List<QuickApp> parseRows(dynamic res, {required String baseUrl}) {
     if (res is! Map<String, dynamic>) return const [];
-    final rows = (res['apps'] as List?) ?? (res['affiliates'] as List?) ?? const [];
+    final rows =
+        (res['apps'] as List?) ?? (res['affiliates'] as List?) ?? const [];
     return rows
         .whereType<Map<String, dynamic>>()
         .map(QuickApp.fromJson)
@@ -274,7 +295,9 @@ class QuickApp {
         .map((a) => QuickApp(
               id: a.id,
               name: a.name,
-              iconUrl: a.iconUrl.startsWith('/') ? '$baseUrl${a.iconUrl}' : a.iconUrl,
+              iconUrl: a.iconUrl.startsWith('/')
+                  ? '$baseUrl${a.iconUrl}'
+                  : a.iconUrl,
               category: a.category,
               description: a.description,
               webUrl: a.webUrl,
@@ -295,24 +318,43 @@ class AuthUser {
   final String role;
   final String? displayName;
   final String? picture;
-  const AuthUser({required this.id, required this.email, required this.role, this.displayName, this.picture});
+  const AuthUser(
+      {required this.id,
+      required this.email,
+      required this.role,
+      this.displayName,
+      this.picture});
 
-  String get name => (displayName != null && displayName!.trim().isNotEmpty) ? displayName!.trim() : email.split('@').first;
+  String get name => (displayName != null && displayName!.trim().isNotEmpty)
+      ? displayName!.trim()
+      : email.split('@').first;
   String get initials {
-    final parts = name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts =
+        name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return '1S';
-    return (parts.length == 1 ? parts.first.substring(0, parts.first.length.clamp(1, 2)) : '${parts.first[0]}${parts.last[0]}').toUpperCase();
+    return (parts.length == 1
+            ? parts.first.substring(0, parts.first.length.clamp(1, 2))
+            : '${parts.first[0]}${parts.last[0]}')
+        .toUpperCase();
   }
 
   static AuthUser fromJson(Map<String, dynamic> j) => AuthUser(
-        id: (j['id'] is num) ? (j['id'] as num).toInt() : int.tryParse('${j['id']}') ?? 0,
+        id: (j['id'] is num)
+            ? (j['id'] as num).toInt()
+            : int.tryParse('${j['id']}') ?? 0,
         email: '${j['email'] ?? ''}',
         role: '${j['role'] ?? 'user'}',
         displayName: j['displayName'] == null ? null : '${j['displayName']}',
         picture: j['picture'] == null ? null : '${j['picture']}',
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'email': email, 'role': role, 'displayName': displayName, 'picture': picture};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'email': email,
+        'role': role,
+        'displayName': displayName,
+        'picture': picture
+      };
 }
 
 class AuthSession {
@@ -325,12 +367,15 @@ class RewardsSummary {
   final int validPoints;
   final int availableSpins;
   final int pointsPerSpin;
-  const RewardsSummary(this.validPoints, this.availableSpins, this.pointsPerSpin);
+  const RewardsSummary(
+      this.validPoints, this.availableSpins, this.pointsPerSpin);
 
   static RewardsSummary fromJson(Map<String, dynamic> j) => RewardsSummary(
         Offer._num(j['validPoints']).toInt(),
         Offer._num(j['availableEligibilities']).toInt(),
-        Offer._num(j['pointsPerSpinEligibility']).toInt() == 0 ? 100 : Offer._num(j['pointsPerSpinEligibility']).toInt(),
+        Offer._num(j['pointsPerSpinEligibility']).toInt() == 0
+            ? 100
+            : Offer._num(j['pointsPerSpinEligibility']).toInt(),
       );
 }
 
@@ -346,7 +391,12 @@ class ScanResult {
   final String provider;
   final double price;
   final String? url;
-  const ScanResult({required this.title, required this.vertical, required this.provider, required this.price, this.url});
+  const ScanResult(
+      {required this.title,
+      required this.vertical,
+      required this.provider,
+      required this.price,
+      this.url});
 }
 
 /// One Price Lens result: a verified same-product offer with a real price.
@@ -356,7 +406,12 @@ class LensOffer {
   final String seller;
   final double price;
   final String goUrl;
-  const LensOffer({required this.id, required this.title, required this.seller, required this.price, required this.goUrl});
+  const LensOffer(
+      {required this.id,
+      required this.title,
+      required this.seller,
+      required this.price,
+      required this.goUrl});
   factory LensOffer.fromJson(Map<String, dynamic> j) => LensOffer(
         id: '${j['id'] ?? ''}',
         title: '${j['title'] ?? ''}',
@@ -375,7 +430,14 @@ class LensResponse {
   final double? savingVsPage;
   final String? message;
   final List<LensOffer> offers;
-  const LensResponse({required this.found, this.title, this.merchant = '', this.pagePrice, this.savingVsPage, this.message, this.offers = const []});
+  const LensResponse(
+      {required this.found,
+      this.title,
+      this.merchant = '',
+      this.pagePrice,
+      this.savingVsPage,
+      this.message,
+      this.offers = const []});
   factory LensResponse.fromJson(Map<String, dynamic> j) {
     final product = (j['product'] as Map?) ?? const {};
     final pvc = (j['pageVsCheapest'] as Map?);
@@ -386,7 +448,10 @@ class LensResponse {
       pagePrice: Offer._num(product['pagePrice']),
       savingVsPage: pvc == null ? null : Offer._num(pvc['saving']),
       message: j['message'] == null ? null : '${j['message']}',
-      offers: ((j['results'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LensOffer.fromJson).toList(),
+      offers: ((j['results'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(LensOffer.fromJson)
+          .toList(),
     );
   }
 }
@@ -398,7 +463,12 @@ class AssistIntent {
   final String query;
   final String? date;
   final String reply;
-  const AssistIntent({required this.understood, this.vertical, required this.query, this.date, required this.reply});
+  const AssistIntent(
+      {required this.understood,
+      this.vertical,
+      required this.query,
+      this.date,
+      required this.reply});
   factory AssistIntent.fromJson(Map<String, dynamic> j) => AssistIntent(
         understood: j['understood'] == true,
         vertical: j['vertical'] == null ? null : '${j['vertical']}',
@@ -407,7 +477,6 @@ class AssistIntent {
         reply: '${j['reply'] ?? ''}',
       );
 }
-
 
 /// One priced row the assistant answered with (POST /api/assist/answer).
 class AssistRow {
@@ -434,7 +503,8 @@ class AssistRow {
         price: Offer._num(j['price']),
         priceAvailable: j['priceAvailable'] == true,
         imageUrl: j['imageUrl'] == null ? null : '${j['imageUrl']}',
-        specs: ((j['specs'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', '$v')),
+        specs: ((j['specs'] as Map?) ?? const {})
+            .map((k, v) => MapEntry('$k', '$v')),
       );
 }
 
@@ -464,7 +534,8 @@ class AssistAnswer {
   factory AssistAnswer.fromJson(Map<String, dynamic> j) => AssistAnswer(
         understood: j['understood'] == true,
         vertical: j['vertical'] == null ? null : '${j['vertical']}',
-        engineVertical: j['engineVertical'] == null ? null : '${j['engineVertical']}',
+        engineVertical:
+            j['engineVertical'] == null ? null : '${j['engineVertical']}',
         query: '${j['query'] ?? ''}',
         date: j['date'] == null ? null : '${j['date']}',
         reply: '${j['reply'] ?? ''}',
@@ -485,13 +556,17 @@ class LiveResponse {
   final List<String> failed;
   final String servedFrom;
   final int latencyMs;
+
   /// Progressive cold-start: fresh catalogue rows were served instantly and live
   /// prices are still being acquired in the background — poll the same search again.
   final bool pendingRefresh;
+
   /// Raw server JSON kept so AppState can persist this response to the on-disk
   /// cache (instant app-open paint) without a second serialization pass.
   final Map<String, dynamic>? rawJson;
-  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed, this.servedFrom, this.latencyMs, {this.pendingRefresh = false, this.rawJson});
+  const LiveResponse(this.items, this.attempted, this.succeeded, this.failed,
+      this.servedFrom, this.latencyMs,
+      {this.pendingRefresh = false, this.rawJson});
 
   factory LiveResponse.fromJson(Map<String, dynamic> j) => LiveResponse(
         [
@@ -500,7 +575,10 @@ class LiveResponse {
         ],
         [for (final x in (j['sourcesAttempted'] as List? ?? const [])) '$x'],
         [for (final x in (j['sourcesSucceeded'] as List? ?? const [])) '$x'],
-        [for (final x in (j['sourcesFailed'] as List? ?? const [])) x is Map ? '${x['sourceId'] ?? x['id'] ?? x}' : '$x'],
+        [
+          for (final x in (j['sourcesFailed'] as List? ?? const []))
+            x is Map ? '${x['sourceId'] ?? x['id'] ?? x}' : '$x'
+        ],
         '${j['servedFrom'] ?? ''}',
         (j['latencyMs'] is num) ? (j['latencyMs'] as num).round() : 0,
         pendingRefresh: j['pendingRefresh'] == true,
@@ -516,7 +594,8 @@ class ShowcaseLaunch {
   final String vertical;
   final String query;
   const ShowcaseLaunch(this.vertical, this.query);
-  factory ShowcaseLaunch.fromJson(Map<String, dynamic> j) => ShowcaseLaunch('${j['vertical'] ?? ''}', '${j['query'] ?? ''}');
+  factory ShowcaseLaunch.fromJson(Map<String, dynamic> j) =>
+      ShowcaseLaunch('${j['vertical'] ?? ''}', '${j['query'] ?? ''}');
 }
 
 class ShowcaseItem {
@@ -532,13 +611,27 @@ class ShowcaseItem {
   final String? badge;
   final String url;
   final ShowcaseLaunch? launch;
-  const ShowcaseItem(this.id, this.title, this.merchant, this.merchantLogo, this.image, this.price, this.mrp, this.discountPct, this.rating, this.badge, this.url, [this.launch]);
+  const ShowcaseItem(
+      this.id,
+      this.title,
+      this.merchant,
+      this.merchantLogo,
+      this.image,
+      this.price,
+      this.mrp,
+      this.discountPct,
+      this.rating,
+      this.badge,
+      this.url,
+      [this.launch]);
 
   factory ShowcaseItem.fromJson(Map<String, dynamic> j) => ShowcaseItem(
         '${j['id'] ?? ''}',
         '${j['title'] ?? ''}',
         '${j['merchant'] ?? ''}',
-        j['merchantLogo'] == null || '${j['merchantLogo']}'.isEmpty ? null : '${j['merchantLogo']}',
+        j['merchantLogo'] == null || '${j['merchantLogo']}'.isEmpty
+            ? null
+            : '${j['merchantLogo']}',
         j['image'] == null || '${j['image']}'.isEmpty ? null : '${j['image']}',
         (j['price'] is num) ? (j['price'] as num).toDouble() : null,
         (j['mrp'] is num) ? (j['mrp'] as num).toDouble() : null,
@@ -546,7 +639,9 @@ class ShowcaseItem {
         (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
         j['badge'] == null || '${j['badge']}'.isEmpty ? null : '${j['badge']}',
         '${j['url'] ?? ''}',
-        (j['launch'] is Map<String, dynamic>) ? ShowcaseLaunch.fromJson(j['launch']) : null,
+        (j['launch'] is Map<String, dynamic>)
+            ? ShowcaseLaunch.fromJson(j['launch'])
+            : null,
       );
 }
 
@@ -562,7 +657,10 @@ class ShowcaseSection {
         '${j['id'] ?? ''}',
         '${j['title'] ?? ''}',
         '${j['subtitle'] ?? ''}',
-        [for (final x in (j['items'] as List? ?? const [])) if (x is Map<String, dynamic>) ShowcaseItem.fromJson(x)],
+        [
+          for (final x in (j['items'] as List? ?? const []))
+            if (x is Map<String, dynamic>) ShowcaseItem.fromJson(x)
+        ],
       );
 }
 
@@ -580,16 +678,33 @@ class RewardTopPick {
   final String? image;
   final String ctaText;
   final String url;
-  const RewardTopPick(this.vertical, this.source, this.partnerName, this.headline, this.offerText, this.priceBadge, this.badgeText, this.rating, this.image, this.ctaText, this.url);
+  const RewardTopPick(
+      this.vertical,
+      this.source,
+      this.partnerName,
+      this.headline,
+      this.offerText,
+      this.priceBadge,
+      this.badgeText,
+      this.rating,
+      this.image,
+      this.ctaText,
+      this.url);
 
   factory RewardTopPick.fromJson(Map<String, dynamic> j) => RewardTopPick(
         '${j['vertical'] ?? ''}',
         '${j['source'] ?? 'live'}',
         '${j['partnerName'] ?? ''}',
         '${j['headline'] ?? ''}',
-        j['offerText'] == null || '${j['offerText']}'.isEmpty ? null : '${j['offerText']}',
-        j['priceBadge'] == null || '${j['priceBadge']}'.isEmpty ? null : '${j['priceBadge']}',
-        j['badgeText'] == null || '${j['badgeText']}'.isEmpty ? null : '${j['badgeText']}',
+        j['offerText'] == null || '${j['offerText']}'.isEmpty
+            ? null
+            : '${j['offerText']}',
+        j['priceBadge'] == null || '${j['priceBadge']}'.isEmpty
+            ? null
+            : '${j['priceBadge']}',
+        j['badgeText'] == null || '${j['badgeText']}'.isEmpty
+            ? null
+            : '${j['badgeText']}',
         (j['rating'] is num) ? (j['rating'] as num).toDouble() : null,
         j['image'] == null || '${j['image']}'.isEmpty ? null : '${j['image']}',
         '${j['ctaText'] ?? 'Grab Deal'}',
@@ -600,7 +715,10 @@ class RewardTopPick {
 /// GET /api/rewards/top-picks — one best pick per vertical (Rewards Top Picks).
 Future<List<RewardTopPick>> fetchRewardsTopPicks(Try1SecondApi api) async {
   final res = await api.getJson('/api/rewards/top-picks');
-  return [for (final x in (res['picks'] as List? ?? const [])) if (x is Map<String, dynamic>) RewardTopPick.fromJson(x)];
+  return [
+    for (final x in (res['picks'] as List? ?? const []))
+      if (x is Map<String, dynamic>) RewardTopPick.fromJson(x)
+  ];
 }
 
 /// One upcoming movie (GET /api/movies/upcoming): BookMyShow's own upcoming
@@ -616,16 +734,25 @@ class UpcomingMovie {
   final String? eventCode;
   final String trailerUrl;
   final String goUrl;
-  const UpcomingMovie(this.title, this.genres, this.likes, this.releaseDate, this.poster, this.pageUrl, this.eventCode, this.trailerUrl, this.goUrl);
+  const UpcomingMovie(this.title, this.genres, this.likes, this.releaseDate,
+      this.poster, this.pageUrl, this.eventCode, this.trailerUrl, this.goUrl);
 
   factory UpcomingMovie.fromJson(Map<String, dynamic> j) => UpcomingMovie(
         '${j['title'] ?? ''}',
-        j['genres'] == null || '${j['genres']}'.isEmpty ? null : '${j['genres']}',
+        j['genres'] == null || '${j['genres']}'.isEmpty
+            ? null
+            : '${j['genres']}',
         j['likes'] == null || '${j['likes']}'.isEmpty ? null : '${j['likes']}',
-        j['releaseDate'] == null || '${j['releaseDate']}'.isEmpty ? null : '${j['releaseDate']}',
-        j['poster'] == null || '${j['poster']}'.isEmpty ? null : '${j['poster']}',
+        j['releaseDate'] == null || '${j['releaseDate']}'.isEmpty
+            ? null
+            : '${j['releaseDate']}',
+        j['poster'] == null || '${j['poster']}'.isEmpty
+            ? null
+            : '${j['poster']}',
         '${j['pageUrl'] ?? ''}',
-        j['eventCode'] == null || '${j['eventCode']}'.isEmpty ? null : '${j['eventCode']}',
+        j['eventCode'] == null || '${j['eventCode']}'.isEmpty
+            ? null
+            : '${j['eventCode']}',
         '${j['trailerUrl'] ?? ''}',
         '${j['goUrl'] ?? ''}',
       );
@@ -634,25 +761,33 @@ class UpcomingMovie {
 /// GET /api/movies/upcoming — upcoming movies for the homepage section.
 Future<List<UpcomingMovie>> fetchUpcomingMovies(Try1SecondApi api) async {
   final res = await api.getJson('/api/movies/upcoming');
-  return [for (final m in (res['movies'] as List? ?? const [])) if (m is Map<String, dynamic>) UpcomingMovie.fromJson(m)];
+  return [
+    for (final m in (res['movies'] as List? ?? const []))
+      if (m is Map<String, dynamic>) UpcomingMovie.fromJson(m)
+  ];
 }
 
 /// GET /api/movies/currently-showing — in-theatre movies for the homepage
 /// "Currently Showing" section (owner 31 Oct). Same card data as the upcoming rail
 /// (poster, genres, likes, /api/out-masked goUrl) with no trailer link: the CTA is
 /// "Book", which opens the app's own movies vertical.
-Future<List<UpcomingMovie>> fetchCurrentlyShowingMovies(Try1SecondApi api) async {
+Future<List<UpcomingMovie>> fetchCurrentlyShowingMovies(
+    Try1SecondApi api) async {
   final res = await api.getJson('/api/movies/currently-showing');
   return [
     for (final m in (res['movies'] as List? ?? const []))
-      if (m is Map<String, dynamic>) UpcomingMovie.fromJson({...m, 'trailerUrl': ''}),
+      if (m is Map<String, dynamic>)
+        UpcomingMovie.fromJson({...m, 'trailerUrl': ''}),
   ];
 }
 
 /// GET /api/home/showcase — the curated homepage sections under the launch grid.
 Future<List<ShowcaseSection>> fetchHomeShowcase(Try1SecondApi api) async {
   final res = await api.getJson('/api/home/showcase');
-  return [for (final s in (res['sections'] as List? ?? const [])) if (s is Map<String, dynamic>) ShowcaseSection.fromJson(s)];
+  return [
+    for (final s in (res['sections'] as List? ?? const []))
+      if (s is Map<String, dynamic>) ShowcaseSection.fromJson(s)
+  ];
 }
 
 /// One deal / coupon / bank offer (GET /api/deals).
@@ -712,7 +847,10 @@ class Deal {
         terms: j['terms'] == null ? null : '${j['terms']}',
         validTill: j['validTill'] == null ? null : '${j['validTill']}',
         goUrl: '${j['goUrl'] ?? ''}',
-        imageUrl: (j['imageUrl'] is String && (j['imageUrl'] as String).startsWith('http')) ? j['imageUrl'] as String : null,
+        imageUrl: (j['imageUrl'] is String &&
+                (j['imageUrl'] as String).startsWith('http'))
+            ? j['imageUrl'] as String
+            : null,
         vertical: j['vertical'] == null ? null : '${j['vertical']}',
         minOrder: j['minOrder'] == null ? null : '${j['minOrder']}',
       );
@@ -721,32 +859,94 @@ class Deal {
   /// response predates the vertical column).
   static String verticalOfMerchant(String key) {
     const m = <String, String>{
-      'amazon': 'ecommerce', 'flipkart': 'ecommerce', 'myntra': 'ecommerce', 'ajio': 'ecommerce',
-      'tatacliq': 'ecommerce', 'meesho': 'ecommerce', 'croma': 'ecommerce', 'nykaa': 'ecommerce',
-      'xiaomi': 'ecommerce', 'oppo': 'ecommerce', 'realme': 'ecommerce', 'lenovo': 'ecommerce',
-      'makemytrip': 'flights', 'goibibo': 'hotels', 'easemytrip': 'flights', 'ixigo': 'flights',
-      'yatra': 'flights', 'cleartrip': 'flights', 'goindigo': 'flights', 'akasaair': 'flights',
-      'booking': 'hotels', 'agoda': 'hotels', 'airbnb': 'hotels',
-      'redbus': 'bus', 'abhibus': 'bus', 'zingbus': 'bus',
-      'ola': 'cab', 'uber': 'cab', 'rapido': 'cab', 'savaari': 'cab', 'quickride': 'cab',
-      'swiggy': 'food', 'zomato': 'food', 'dominos': 'food', 'pizzahut': 'food', 'eatsure': 'food', 'toing': 'food',
-      'blinkit': 'grocery', 'zepto': 'grocery', 'instamart': 'grocery', 'bigbasket': 'grocery',
-      'bookmyshow': 'movies', 'district': 'movies', 'paytm': 'movies', 'ticketnew': 'movies', 'cinepolis': 'movies',
-      'paisabazaar': 'loans', 'bankbazaar': 'loans', 'moneyview': 'loans', 'kreditbee': 'loans', 'navi': 'loans', 'bajajfinserv': 'loans',
-      'policybazaar': 'insurance', 'acko': 'insurance', 'digit': 'insurance', 'insurancedekho': 'insurance', 'ditto': 'insurance', 'coverfox': 'insurance', 'hdfcergo': 'insurance',
-      'cardinsider': 'creditcards', 'sbi': 'creditcards', 'hdfc': 'creditcards', 'axis': 'creditcards', 'icici': 'creditcards',
+      'amazon': 'ecommerce',
+      'flipkart': 'ecommerce',
+      'myntra': 'ecommerce',
+      'ajio': 'ecommerce',
+      'tatacliq': 'ecommerce',
+      'meesho': 'ecommerce',
+      'croma': 'ecommerce',
+      'nykaa': 'ecommerce',
+      'xiaomi': 'ecommerce',
+      'oppo': 'ecommerce',
+      'realme': 'ecommerce',
+      'lenovo': 'ecommerce',
+      'makemytrip': 'flights',
+      'goibibo': 'hotels',
+      'easemytrip': 'flights',
+      'ixigo': 'flights',
+      'yatra': 'flights',
+      'cleartrip': 'flights',
+      'goindigo': 'flights',
+      'akasaair': 'flights',
+      'booking': 'hotels',
+      'agoda': 'hotels',
+      'airbnb': 'hotels',
+      'redbus': 'bus',
+      'abhibus': 'bus',
+      'zingbus': 'bus',
+      'ola': 'cab',
+      'uber': 'cab',
+      'rapido': 'cab',
+      'savaari': 'cab',
+      'quickride': 'cab',
+      'swiggy': 'food',
+      'zomato': 'food',
+      'dominos': 'food',
+      'pizzahut': 'food',
+      'eatsure': 'food',
+      'toing': 'food',
+      'blinkit': 'grocery',
+      'zepto': 'grocery',
+      'instamart': 'grocery',
+      'bigbasket': 'grocery',
+      'bookmyshow': 'movies',
+      'district': 'movies',
+      'paytm': 'movies',
+      'ticketnew': 'movies',
+      'cinepolis': 'movies',
+      'paisabazaar': 'loans',
+      'bankbazaar': 'loans',
+      'moneyview': 'loans',
+      'kreditbee': 'loans',
+      'navi': 'loans',
+      'bajajfinserv': 'loans',
+      'policybazaar': 'insurance',
+      'acko': 'insurance',
+      'digit': 'insurance',
+      'insurancedekho': 'insurance',
+      'ditto': 'insurance',
+      'coverfox': 'insurance',
+      'hdfcergo': 'insurance',
+      'cardinsider': 'creditcards',
+      'sbi': 'creditcards',
+      'hdfc': 'creditcards',
+      'axis': 'creditcards',
+      'icici': 'creditcards',
     };
     return m[key] ?? '';
   }
 
-  String get verticalLabel => (vertical != null && vertical!.isNotEmpty) ? vertical! : verticalOfMerchant(merchantKey);
-  int get percent => int.tryParse(RegExp(r'(\d{1,2})\s*%').firstMatch(discountText ?? '')?.group(1) ?? '') ?? 0;
+  String get verticalLabel => (vertical != null && vertical!.isNotEmpty)
+      ? vertical!
+      : verticalOfMerchant(merchantKey);
+  int get percent =>
+      int.tryParse(
+          RegExp(r'(\d{1,2})\s*%').firstMatch(discountText ?? '')?.group(1) ??
+              '') ??
+      0;
 }
 
 // -- Spend Lens: user-confirmed purchases only (never inferred from clicks) --
 
 class SpendEntryM {
-  const SpendEntryM({required this.id, required this.merchant, required this.amount, this.itemTitle, this.entryDate = '', this.source = 'manual'});
+  const SpendEntryM(
+      {required this.id,
+      required this.merchant,
+      required this.amount,
+      this.itemTitle,
+      this.entryDate = '',
+      this.source = 'manual'});
   final int id;
   final String merchant;
   final double amount;
@@ -759,23 +959,37 @@ class SpendEntryM {
         merchant: (j['merchant'] ?? '').toString(),
         amount: (j['amount'] as num?)?.toDouble() ?? 0,
         itemTitle: j['itemTitle']?.toString(),
-        entryDate: (j['entryDate'] ?? '').toString().substring(0, (j['entryDate'] ?? '').toString().length < 10 ? (j['entryDate'] ?? '').toString().length : 10),
+        entryDate: (j['entryDate'] ?? '').toString().substring(
+            0,
+            (j['entryDate'] ?? '').toString().length < 10
+                ? (j['entryDate'] ?? '').toString().length
+                : 10),
         source: (j['source'] ?? 'manual').toString(),
       );
 }
 
 class SpendSummary {
-  const SpendSummary({this.total = 0, this.count = 0, this.byMerchant = const [], this.byMonth = const []});
+  const SpendSummary(
+      {this.total = 0,
+      this.count = 0,
+      this.byMerchant = const [],
+      this.byMonth = const []});
   final double total;
   final int count;
   final List<Map<String, dynamic>> byMerchant; // {merchant, total, count}
-  final List<Map<String, dynamic>> byMonth;     // {month, total}
+  final List<Map<String, dynamic>> byMonth; // {month, total}
 
   factory SpendSummary.fromJson(Map<String, dynamic>? j) => SpendSummary(
         total: ((j?['total'] as num?)?.toDouble() ?? 0),
         count: ((j?['entries'] as num?)?.toInt() ?? 0),
-        byMerchant: [for (final m in (j?['byMerchant'] as List? ?? const [])) if (m is Map<String, dynamic>) m],
-        byMonth: [for (final m in (j?['byMonth'] as List? ?? const [])) if (m is Map<String, dynamic>) m],
+        byMerchant: [
+          for (final m in (j?['byMerchant'] as List? ?? const []))
+            if (m is Map<String, dynamic>) m
+        ],
+        byMonth: [
+          for (final m in (j?['byMonth'] as List? ?? const []))
+            if (m is Map<String, dynamic>) m
+        ],
       );
 }
 
@@ -784,10 +998,15 @@ class SpendData {
   final List<SpendEntryM> entries;
   final SpendSummary summary;
 
-  static Future<SpendData> fromResponseFuture(Future<Map<String, dynamic>> f) async => SpendData.fromResponse(await f);
+  static Future<SpendData> fromResponseFuture(
+          Future<Map<String, dynamic>> f) async =>
+      SpendData.fromResponse(await f);
 
   static SpendData fromResponse(Map<String, dynamic> res) => SpendData(
-        entries: [for (final e in (res['entries'] as List? ?? const [])) if (e is Map<String, dynamic>) SpendEntryM.fromJson(e)],
+        entries: [
+          for (final e in (res['entries'] as List? ?? const []))
+            if (e is Map<String, dynamic>) SpendEntryM.fromJson(e)
+        ],
         summary: SpendSummary.fromJson(res['summary'] as Map<String, dynamic>?),
       );
 }
@@ -815,11 +1034,18 @@ class PriceAlert {
         id: (j['id'] is num) ? (j['id'] as num).toInt() : 0,
         productTitle: '${j['productTitle'] ?? j['product_title'] ?? ''}',
         searchQuery: '${j['searchQuery'] ?? j['search_query'] ?? ''}',
-        sourceUrl: (j['sourceUrl'] ?? j['source_url']) == null ? null : '${j['sourceUrl'] ?? j['source_url']}',
+        sourceUrl: (j['sourceUrl'] ?? j['source_url']) == null
+            ? null
+            : '${j['sourceUrl'] ?? j['source_url']}',
         image: j['image'] == null ? null : '${j['image']}',
         targetPrice: Offer._num(j['targetPrice'] ?? j['target_price']),
-        priceAtSet: Offer._num(j['priceAtSet'] ?? j['price_at_set']) > 0 ? Offer._num(j['priceAtSet'] ?? j['price_at_set']) : null,
-        notified: j['notified'] == true || j['notified'] == 1 || j['notifiedAt'] != null || j['notified_at'] != null,
+        priceAtSet: Offer._num(j['priceAtSet'] ?? j['price_at_set']) > 0
+            ? Offer._num(j['priceAtSet'] ?? j['price_at_set'])
+            : null,
+        notified: j['notified'] == true ||
+            j['notified'] == 1 ||
+            j['notifiedAt'] != null ||
+            j['notified_at'] != null,
       );
 }
 
@@ -830,7 +1056,8 @@ class AppNotification {
   final String kind;
   final String? createdAt;
   final bool read;
-  const AppNotification(this.id, this.title, this.body, this.kind, this.createdAt, this.read);
+  const AppNotification(
+      this.id, this.title, this.body, this.kind, this.createdAt, this.read);
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
         '${j['id'] ?? ''}',
         '${j['title'] ?? ''}',
@@ -907,13 +1134,18 @@ class ProductOffer {
   final int reviews;
   final String availability; // '' | 'out_of_stock' | ...
   final int variantCount;
+
   /// Seller brand logo (owner 29 Oct: "logo not showing for sellers"). Server sends
   /// `/api/logos/<key>` which ALWAYS answers a real image now (admin upload, else the
   /// brand's own favicon), so the compared-sellers circle paints a real mark instead
   /// of the grey storefront placeholder. Relative path: prefix it with the API base.
   final String sellerLogo;
-  const ProductOffer(this.title, this.seller, this.price, this.listPrice, this.image, this.rating, this.goUrl,
-      {this.reviews = 0, this.availability = '', this.variantCount = 0, this.sellerLogo = ''});
+  const ProductOffer(this.title, this.seller, this.price, this.listPrice,
+      this.image, this.rating, this.goUrl,
+      {this.reviews = 0,
+      this.availability = '',
+      this.variantCount = 0,
+      this.sellerLogo = ''});
   factory ProductOffer.fromJson(Map<String, dynamic> j) => ProductOffer(
         '${j['title'] ?? ''}',
         '${j['seller'] ?? ''}',
@@ -924,16 +1156,23 @@ class ProductOffer {
         '${j['goUrl'] ?? ''}',
         reviews: (j['reviews'] is num) ? (j['reviews'] as num).toInt() : 0,
         availability: '${j['availability'] ?? ''}',
-        variantCount: (j['variantCount'] is num) ? (j['variantCount'] as num).toInt() : 0,
-        sellerLogo: '${j['sellerLogo'] ?? (j['sellerLogoKey'] != null ? '/api/logos/${j['sellerLogoKey']}' : '')}',
+        variantCount:
+            (j['variantCount'] is num) ? (j['variantCount'] as num).toInt() : 0,
+        sellerLogo:
+            '${j['sellerLogo'] ?? (j['sellerLogoKey'] != null ? '/api/logos/${j['sellerLogoKey']}' : '')}',
       );
 }
-
 
 /// Admin-managed home banner (owner 23 Oct): wide landscape strip between
 /// home sections. link is a vertical id ('movies') or an https URL.
 class HomeBanner {
-  const HomeBanner({required this.id, required this.imageUrl, required this.link, this.title, this.subtitle, this.gradient});
+  const HomeBanner(
+      {required this.id,
+      required this.imageUrl,
+      required this.link,
+      this.title,
+      this.subtitle,
+      this.gradient});
   final int id;
   final String imageUrl;
   final String link;
@@ -990,9 +1229,104 @@ class HeroSlide {
 class ApiHttpException implements Exception {
   final int statusCode;
   ApiHttpException(this.statusCode);
-  bool get isPermanentBlock => statusCode == 403 || statusCode == 410 || statusCode == 451;
+  bool get isPermanentBlock =>
+      statusCode == 403 || statusCode == 410 || statusCode == 451;
   @override
   String toString() => 'HTTP $statusCode';
+}
+
+/// OWNER 31 Oct ("ye error kabhi na aaye"): offline-first safety net.
+///
+/// A transport reset means we never heard from the server, NOT that the answer changed. So the
+/// last successful body for the exact same request is kept on disk and served back instantly when
+/// both hops fail, letting the screen render real (slightly older) data instead of a red error box.
+/// Prices are involved, so a cached answer is only ever used when nothing newer arrived and it is
+/// marked `fromCache` for anything that wants to say "showing last known prices".
+class OfflineCache {
+  OfflineCache._();
+  static final OfflineCache instance = OfflineCache._();
+
+  static const String _prefix = 't1s_offline_v1:';
+  static const int _maxEntries = 60;
+  static const Duration _maxAge = Duration(days: 7);
+
+  SharedPreferences? _prefs;
+  bool _disabled = false;
+
+  /// Test hook: when set, the cache lives in this map instead of the platform store, so a plain
+  /// dart:io unit test can exercise it without initialising the Flutter plugin binding.
+  static Map<String, String>? debugMemoryStore;
+
+  Future<SharedPreferences?> _store() async {
+    if (_disabled) return null;
+    if (_prefs != null) return _prefs;
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      return _prefs;
+    } catch (_) {
+      _disabled =
+          true; // no platform store (tests / desktop without plugin): stay silent
+      return null;
+    }
+  }
+
+  String key(String method, String path, [String? body]) {
+    final b = body == null || body.isEmpty ? '' : ':${body.hashCode}';
+    return '$_prefix${method.toUpperCase()}:$path.length:$path$b';
+  }
+
+  Future<void> put(String key, String json) async {
+    final mem = debugMemoryStore;
+    if (mem != null) {
+      mem[key] = '${DateTime.now().millisecondsSinceEpoch}|$json';
+      return;
+    }
+    final p = await _store();
+    if (p == null) return;
+    try {
+      await p.setString(key, '${DateTime.now().millisecondsSinceEpoch}|$json');
+      await _prune(p);
+    } catch (_) {/* cache is best-effort, never let it break a request */}
+  }
+
+  Future<void> _prune(SharedPreferences p) async {
+    final keys = p.getKeys().where((k) => k.startsWith(_prefix)).toList();
+    if (keys.length <= _maxEntries) return;
+    final stamped = <String, int>{};
+    for (final k in keys) {
+      final v = p.getString(k) ?? '';
+      stamped[k] = int.tryParse(v.split('|').first) ?? 0;
+    }
+    final sorted = stamped.keys.toList()
+      ..sort((a, b) => stamped[a]!.compareTo(stamped[b]!));
+    for (final k in sorted.take(keys.length - _maxEntries)) {
+      await p.remove(k);
+    }
+  }
+
+  /// Last known good body for [key], or null when there is nothing usable.
+  Future<Map<String, dynamic>?> get(String key) async {
+    final mem = debugMemoryStore;
+    final raw = mem != null ? mem[key] : (await _store())?.getString(key);
+    if (raw == null) return null;
+    final cut = raw.indexOf('|');
+    if (cut <= 0) return null;
+    final at = int.tryParse(raw.substring(0, cut)) ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch - at > _maxAge.inMilliseconds) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(raw.substring(cut + 1));
+      if (decoded is! Map<String, dynamic>) return null;
+      return {
+        ...decoded,
+        'fromCache': true,
+        'cachedAt': DateTime.fromMillisecondsSinceEpoch(at).toIso8601String(),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class Try1SecondApi {
@@ -1016,7 +1350,8 @@ class Try1SecondApi {
   /// Real build identity, injected at build time (--dart-define=APP_VERSION=1.8.48+55) so the
   /// UA finally names the build that is actually running. It used to be frozen at 1.8.22,
   /// which made server-side triage of "which app is on the phone" impossible.
-  static const String kAppVersion = String.fromEnvironment('APP_VERSION', defaultValue: '1.8.48+55');
+  static const String kAppVersion =
+      String.fromEnvironment('APP_VERSION', defaultValue: '1.8.48+55');
 
   static const String kAppUserAgent =
       'Try1Second/$kAppVersion (Android; app; +https://try1second.com)';
@@ -1034,20 +1369,26 @@ class Try1SecondApi {
       ..userAgent = kAppUserAgent;
     // IPv4-first dialler. Falls back to the platform's own resolution when no A record is
     // available, so behaviour can only get better, never worse.
-    inner.connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) async {
+    inner.connectionFactory =
+        (Uri uri, String? proxyHost, int? proxyPort) async {
       final host = proxyHost ?? uri.host;
       final port = proxyPort ?? uri.port;
       try {
-        final v4 = await InternetAddress.lookup(host, type: InternetAddressType.IPv4);
+        final v4 =
+            await InternetAddress.lookup(host, type: InternetAddressType.IPv4);
         if (v4.isNotEmpty) {
-          final socket = await Socket.connect(v4.first, port, timeout: const Duration(seconds: 8));
-          return ConnectionTask.fromSocket(Future<Socket>.value(socket), () => socket.destroy());
+          final socket = await Socket.connect(v4.first, port,
+              timeout: const Duration(seconds: 8));
+          return ConnectionTask.fromSocket(
+              Future<Socket>.value(socket), () => socket.destroy());
         }
       } catch (_) {/* fall through to the default dialler */}
       final any = await InternetAddress.lookup(host);
       if (any.isEmpty) throw const SocketException('no address for host');
-      final socket = await Socket.connect(any.first, port, timeout: const Duration(seconds: 8));
-      return ConnectionTask.fromSocket(Future<Socket>.value(socket), () => socket.destroy());
+      final socket = await Socket.connect(any.first, port,
+          timeout: const Duration(seconds: 8));
+      return ConnectionTask.fromSocket(
+          Future<Socket>.value(socket), () => socket.destroy());
     };
     return IOClient(inner);
   }
@@ -1058,7 +1399,10 @@ class Try1SecondApi {
   static final List<Completer<void>> _slotQueue = <Completer<void>>[];
 
   static Future<void> _acquireSlot() async {
-    if (_inFlight < 3) { _inFlight++; return; }
+    if (_inFlight < 3) {
+      _inFlight++;
+      return;
+    }
     final waiter = Completer<void>();
     _slotQueue.add(waiter);
     await waiter.future;
@@ -1081,7 +1425,8 @@ class Try1SecondApi {
             : fallbackBase.trim().replaceAll(RegExp(r'/+$'), ''),
         _client = _hardenedClient();
 
-  Try1SecondApi.withClient(this.baseUrl, http.Client client, {String? fallbackBase})
+  Try1SecondApi.withClient(this.baseUrl, http.Client client,
+      {String? fallbackBase})
       : fallbackBaseUrl = (fallbackBase == null || fallbackBase.trim().isEmpty)
             ? kOriginFallbackBase
             : fallbackBase.trim().replaceAll(RegExp(r'/+$'), ''),
@@ -1109,13 +1454,15 @@ class Try1SecondApi {
       'query': query.trim().substring(0, query.trim().length.clamp(0, 300)),
       'vertical': vertical,
       if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
-      if (pincode != null && pincode.trim().isNotEmpty) 'pincode': pincode.trim(),
+      if (pincode != null && pincode.trim().isNotEmpty)
+        'pincode': pincode.trim(),
     });
     return SearchResponse.fromJson(res);
   }
 
   Future<List<HistoryPoint>> history(String entityId, {int limit = 120}) async {
-    final res = await _get('/api/history?entity=${Uri.encodeQueryComponent(entityId)}&limit=$limit');
+    final res = await _get(
+        '/api/history?entity=${Uri.encodeQueryComponent(entityId)}&limit=$limit');
     final points = (res['points'] as List?) ?? const [];
     return points
         .whereType<Map<String, dynamic>>()
@@ -1147,10 +1494,10 @@ class Try1SecondApi {
     return '${res['redirectUrl']}';
   }
 
-
   // -- public content --------------------------------------------------------
 
-  Future<AppLinks> appLinks() async => AppLinks.fromJson(await _get('/api/app-links'));
+  Future<AppLinks> appLinks() async =>
+      AppLinks.fromJson(await _get('/api/app-links'));
 
   /// Smart Cart (owner rule): server totals the basket at every grocery store
   /// and ranks by FULL-basket cost; exits route through /api/out pointers.
@@ -1177,7 +1524,9 @@ class Try1SecondApi {
   Future<ScanResult> scanUrl(String url) async {
     final res = await _post('/api/scan/url', {'url': url.trim()});
     final item = res['item'];
-    if (item is! Map<String, dynamic>) throw Exception('Could not read that page');
+    if (item is! Map<String, dynamic>) {
+      throw Exception('Could not read that page');
+    }
     return ScanResult(
       title: '${item['title'] ?? ''}',
       vertical: '${item['vertical'] ?? ''}',
@@ -1192,12 +1541,13 @@ class Try1SecondApi {
       LensResponse.fromJson(await _post('/api/lens', {'input': input.trim()}));
 
   /// Home AI assistant: a typed or spoken question -> which vertical + query (+ date).
-  Future<AssistIntent> assistIntent(String text) async =>
-      AssistIntent.fromJson(await _post('/api/assist/intent', {'text': text.trim()}));
+  Future<AssistIntent> assistIntent(String text) async => AssistIntent.fromJson(
+      await _post('/api/assist/intent', {'text': text.trim()}));
 
   /// Home AI assistant, full answer: routes the question AND returns the real priced
   /// rows for that vertical (all 12 verticals, every product).
-  Future<AssistAnswer> assistAnswer(String text, {String? city, String? pincode, String? date}) async =>
+  Future<AssistAnswer> assistAnswer(String text,
+          {String? city, String? pincode, String? date}) async =>
       AssistAnswer.fromJson(await _post('/api/assist/answer', {
         'text': text.trim(),
         if (city != null && city.isNotEmpty) 'city': city,
@@ -1210,10 +1560,13 @@ class Try1SecondApi {
   /// Exchanges a Google ID token (from native Google Sign-In) for a Try1Second session.
   Future<AuthSession> loginWithGoogle(String idToken) async {
     final res = await _post('/api/auth/google-mobile', {'idToken': idToken});
-    if (res['success'] != true || res['token'] == null || res['user'] is! Map<String, dynamic>) {
+    if (res['success'] != true ||
+        res['token'] == null ||
+        res['user'] is! Map<String, dynamic>) {
       throw Exception('Google sign-in failed');
     }
-    return AuthSession('${res['token']}', AuthUser.fromJson(res['user'] as Map<String, dynamic>));
+    return AuthSession('${res['token']}',
+        AuthUser.fromJson(res['user'] as Map<String, dynamic>));
   }
 
   Future<AuthUser> me(String token) async {
@@ -1223,17 +1576,20 @@ class Try1SecondApi {
     return AuthUser.fromJson(u);
   }
 
-  Future<RewardsSummary> rewards(String token) async => RewardsSummary.fromJson(await _get('/api/rewards/me', token: token));
+  Future<RewardsSummary> rewards(String token) async =>
+      RewardsSummary.fromJson(await _get('/api/rewards/me', token: token));
 
   Future<SpinPrize> spin(String token) async {
-    final res = await _post('/api/rewards/spin', {'idempotencyKey': 'app-${DateTime.now().microsecondsSinceEpoch}'}, token: token);
+    final res = await _post('/api/rewards/spin',
+        {'idempotencyKey': 'app-${DateTime.now().microsecondsSinceEpoch}'},
+        token: token);
     final p = res['prize'];
     if (p is Map) {
-      return SpinPrize('${p['name'] ?? p['title'] ?? 'Prize'}', p['description'] == null ? null : '${p['description']}');
+      return SpinPrize('${p['name'] ?? p['title'] ?? 'Prize'}',
+          p['description'] == null ? null : '${p['description']}');
     }
     return const SpinPrize('Better luck next time', null);
   }
-
 
   // -- website-parity data (same endpoints the site calls) -------------------
 
@@ -1250,7 +1606,14 @@ class Try1SecondApi {
     String? from,
     String? to,
   }) async {
-    final dateSensitive = const ['hotels', 'flights', 'bus', 'cab', 'movies', 'movie'].contains(vertical);
+    final dateSensitive = const [
+      'hotels',
+      'flights',
+      'bus',
+      'cab',
+      'movies',
+      'movie'
+    ].contains(vertical);
     final res = await _post('/api/scrape/live', {
       'vertical': vertical == 'movie' ? 'movies' : vertical,
       'query': query.trim(),
@@ -1258,7 +1621,11 @@ class Try1SecondApi {
       'city': city,
       // Exact map pin (MapPinPicker): the engine gets the precise point, not just the city.
       if (lat != null && lng != null) 'coordinates': {'lat': lat, 'lng': lng},
-      if (dateSensitive && depart != null) 'travelDates': {'depart': depart, if (returnDate != null) 'return': returnDate},
+      if (dateSensitive && depart != null)
+        'travelDates': {
+          'depart': depart,
+          if (returnDate != null) 'return': returnDate
+        },
       // Explicit PUDO labels (owner 25 Oct): the cab worker geocodes the exact
       // picker labels city-biased instead of regex-extracting the raw query
       // ("Rajwada" alone geocoded to Nashik, 467 km from Indore).
@@ -1285,7 +1652,8 @@ class Try1SecondApi {
     final res = await _post('/api/leads', {
       'source': 'lead_form',
       'vertical': vertical,
-      if (serviceType != null && serviceType.isNotEmpty) 'serviceType': serviceType,
+      if (serviceType != null && serviceType.isNotEmpty)
+        'serviceType': serviceType,
       'firstName': firstName,
       'lastName': lastName,
       'age': age,
@@ -1298,7 +1666,12 @@ class Try1SecondApi {
     return (res['id'] is num) ? (res['id'] as num).toInt() : 0;
   }
 
-  Future<DealsFeed> deals({String? kind, String? merchant, String? vertical, bool hasImage = false, int limit = 200}) async {
+  Future<DealsFeed> deals(
+      {String? kind,
+      String? merchant,
+      String? vertical,
+      bool hasImage = false,
+      int limit = 200}) async {
     final q = <String>[
       'limit=$limit',
       if (kind != null) 'kind=${Uri.encodeQueryComponent(kind)}',
@@ -1308,19 +1681,32 @@ class Try1SecondApi {
     ];
     final res = await _get('/api/deals?${q.join('&')}');
     final counts = <String, int>{};
-    (res['counts'] as Map? ?? const {}).forEach((k, v) { if (k is String && v is num) counts[k] = v.toInt(); });
+    (res['counts'] as Map? ?? const {}).forEach((k, v) {
+      if (k is String && v is num) counts[k] = v.toInt();
+    });
     return DealsFeed(
-      deals: [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)],
+      deals: [
+        for (final d in (res['deals'] as List? ?? const []))
+          if (d is Map<String, dynamic>) Deal.fromJson(d)
+      ],
       counts: counts,
     );
   }
 
   Future<SellerDeals> dealsForSeller(String seller, {int limit = 6}) async {
-    final res = await _get('/api/deals/for-seller?seller=${Uri.encodeQueryComponent(seller)}&limit=$limit');
-    final deals = [for (final d in (res['deals'] as List? ?? const [])) if (d is Map<String, dynamic>) Deal.fromJson(d)];
+    final res = await _get(
+        '/api/deals/for-seller?seller=${Uri.encodeQueryComponent(seller)}&limit=$limit');
+    final deals = [
+      for (final d in (res['deals'] as List? ?? const []))
+        if (d is Map<String, dynamic>) Deal.fromJson(d)
+    ];
     final best = res['best'] as Map?;
-    final offer = (best?['offer'] is Map<String, dynamic>) ? Deal.fromJson(best!['offer'] as Map<String, dynamic>) : null;
-    final coupon = (best?['coupon'] is Map<String, dynamic>) ? Deal.fromJson(best!['coupon'] as Map<String, dynamic>) : null;
+    final offer = (best?['offer'] is Map<String, dynamic>)
+        ? Deal.fromJson(best!['offer'] as Map<String, dynamic>)
+        : null;
+    final coupon = (best?['coupon'] is Map<String, dynamic>)
+        ? Deal.fromJson(best!['coupon'] as Map<String, dynamic>)
+        : null;
     return SellerDeals(deals: deals, bestOffer: offer, bestCoupon: coupon);
   }
 
@@ -1346,7 +1732,10 @@ class Try1SecondApi {
     });
     final product = (res['product'] is Map) ? res['product'] as Map : const {};
     if (res['found'] != true) {
-      return ProductPage(found: false, title: '${product['title'] ?? input}', message: res['message']?.toString());
+      return ProductPage(
+          found: false,
+          title: '${product['title'] ?? input}',
+          message: res['message']?.toString());
     }
     final deal = (res['deal'] is Map) ? res['deal'] as Map : const {};
     return ProductPage(
@@ -1354,24 +1743,42 @@ class Try1SecondApi {
       title: '${product['title'] ?? input}',
       message: res['message']?.toString(),
       images: [for (final i in (res['images'] as List? ?? const [])) '$i'],
-      offers: [for (final o in (res['offers'] as List? ?? const [])) if (o is Map<String, dynamic>) ProductOffer.fromJson(o)],
-      related: [for (final o in (res['related'] as List? ?? const [])) if (o is Map<String, dynamic>) ProductOffer.fromJson(o)],
+      offers: [
+        for (final o in (res['offers'] as List? ?? const []))
+          if (o is Map<String, dynamic>) ProductOffer.fromJson(o)
+      ],
+      related: [
+        for (final o in (res['related'] as List? ?? const []))
+          if (o is Map<String, dynamic>) ProductOffer.fromJson(o)
+      ],
       history: [
         for (final p in (res['history'] as List? ?? const []))
-          if (p is Map<String, dynamic>) HistoryPoint.fromJson({'price': p['price'], 'capturedAt': p['capturedAt'], 'captured_at': p['capturedAt']}),
+          if (p is Map<String, dynamic>)
+            HistoryPoint.fromJson({
+              'price': p['price'],
+              'capturedAt': p['capturedAt'],
+              'captured_at': p['capturedAt']
+            }),
       ].where((p) => p.price > 0).toList(),
       verdict: '${deal['verdict'] ?? 'unknown'}',
       score: (deal['score'] is num) ? (deal['score'] as num).round() : 0,
       headline: '${deal['headline'] ?? deal['label'] ?? ''}',
       hasHistory: deal['hasHistory'] == true,
       points: (deal['points'] is num) ? (deal['points'] as num).toInt() : 0,
-      allTimeLow: (deal['allTimeLow'] is num) ? (deal['allTimeLow'] as num).toDouble() : null,
-      allTimeHigh: (deal['allTimeHigh'] is num) ? (deal['allTimeHigh'] as num).toDouble() : null,
-      average: (deal['average'] is num) ? (deal['average'] as num).toDouble() : null,
+      allTimeLow: (deal['allTimeLow'] is num)
+          ? (deal['allTimeLow'] as num).toDouble()
+          : null,
+      allTimeHigh: (deal['allTimeHigh'] is num)
+          ? (deal['allTimeHigh'] as num).toDouble()
+          : null,
+      average:
+          (deal['average'] is num) ? (deal['average'] as num).toDouble() : null,
       breakup: [
         for (final b in (deal['breakup'] as List? ?? const []))
           if (b is Map<String, dynamic>)
-            DealBreakup('${b['label'] ?? ''}', (b['pts'] is num) ? (b['pts'] as num).toInt() : 0,
+            DealBreakup(
+                '${b['label'] ?? ''}',
+                (b['pts'] is num) ? (b['pts'] as num).toInt() : 0,
                 (b['max'] is num) ? (b['max'] as num).toInt() : 0),
       ],
     );
@@ -1379,7 +1786,10 @@ class Try1SecondApi {
 
   Future<List<PriceAlert>> alerts(String token) async {
     final res = await _get('/api/alerts', token: token);
-    return [for (final a in (res['alerts'] as List? ?? const [])) if (a is Map<String, dynamic>) PriceAlert.fromJson(a)];
+    return [
+      for (final a in (res['alerts'] as List? ?? const []))
+        if (a is Map<String, dynamic>) PriceAlert.fromJson(a)
+    ];
   }
 
   Future<void> createAlert(
@@ -1391,34 +1801,51 @@ class Try1SecondApi {
     String? sourceUrl,
     String? image,
   }) async {
-    await _post('/api/alerts', {
-      'productTitle': productTitle,
-      'searchQuery': searchQuery,
-      'targetPrice': targetPrice,
-      if (priceAtSet != null) 'priceAtSet': priceAtSet,
-      if (sourceUrl != null) 'sourceUrl': sourceUrl,
-      if (image != null) 'image': image,
-    }, token: token);
+    await _post(
+        '/api/alerts',
+        {
+          'productTitle': productTitle,
+          'searchQuery': searchQuery,
+          'targetPrice': targetPrice,
+          if (priceAtSet != null) 'priceAtSet': priceAtSet,
+          if (sourceUrl != null) 'sourceUrl': sourceUrl,
+          if (image != null) 'image': image,
+        },
+        token: token);
   }
 
   Future<void> deleteAlert(String token, int id) async {
-    final res = await _rawRequest((c, base) => c.delete(Uri.parse('$base/api/alerts/$id'), headers: _headers(token)));
-    if (res.statusCode < 200 || res.statusCode >= 300) throw Exception('Could not delete alert');
+    final res = await _rawRequest((c, base) =>
+        c.delete(Uri.parse('$base/api/alerts/$id'), headers: _headers(token)));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Could not delete alert');
+    }
   }
 
-  Future<SpendData> spend(String token) async => SpendData.fromResponse(await _get('/api/spend', token: token));
+  Future<SpendData> spend(String token) async =>
+      SpendData.fromResponse(await _get('/api/spend', token: token));
 
-  Future<SpendData> addSpend(String token, {required String merchant, required double amount, String? itemTitle, required String entryDate, String source = 'manual'}) =>
-      SpendData.fromResponseFuture(_post('/api/spend', {
-        'merchant': merchant,
-        'amount': amount,
-        if (itemTitle != null && itemTitle.isNotEmpty) 'itemTitle': itemTitle,
-        'entryDate': entryDate,
-        'source': source,
-      }, token: token));
+  Future<SpendData> addSpend(String token,
+          {required String merchant,
+          required double amount,
+          String? itemTitle,
+          required String entryDate,
+          String source = 'manual'}) =>
+      SpendData.fromResponseFuture(_post(
+          '/api/spend',
+          {
+            'merchant': merchant,
+            'amount': amount,
+            if (itemTitle != null && itemTitle.isNotEmpty)
+              'itemTitle': itemTitle,
+            'entryDate': entryDate,
+            'source': source,
+          },
+          token: token));
 
   Future<SpendData> deleteSpend(String token, int id) async {
-    final res = await _rawRequest((c, base) => c.delete(Uri.parse('$base/api/spend/$id'), headers: _headers(token)));
+    final res = await _rawRequest((c, base) =>
+        c.delete(Uri.parse('$base/api/spend/$id'), headers: _headers(token)));
     return SpendData.fromResponse(_decode(res));
   }
 
@@ -1427,12 +1854,16 @@ class Try1SecondApi {
     return NotificationFeed(
       res['signedIn'] == true,
       (res['unread'] is num) ? (res['unread'] as num).toInt() : 0,
-      [for (final n in (res['items'] as List? ?? const [])) if (n is Map<String, dynamic>) AppNotification.fromJson(n)],
+      [
+        for (final n in (res['items'] as List? ?? const []))
+          if (n is Map<String, dynamic>) AppNotification.fromJson(n)
+      ],
     );
   }
 
   Future<void> markNotificationsRead(String token, {List<String>? ids}) async {
-    await _post('/api/notifications/read', {if (ids != null) 'ids': ids}, token: token);
+    await _post('/api/notifications/read', {if (ids != null) 'ids': ids},
+        token: token);
   }
 
   Future<String?> referralLink(String token) async {
@@ -1444,38 +1875,51 @@ class Try1SecondApi {
   /// GET /api/geo/search — Nominatim proxy (India-bounded) for the map pin picker.
   Future<List<Map<String, dynamic>>> geoSearch(String q) async {
     final res = await _get('/api/geo/search?q=${Uri.encodeQueryComponent(q)}');
-    return [for (final r in (res['results'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
+    return [
+      for (final r in (res['results'] as List? ?? const []))
+        if (r is Map<String, dynamic>) r
+    ];
   }
 
   /// GET /api/geo/suggest — colony/street-level address typeahead (Photon/OSM,
   /// owner 24 Oct). Rows carry name + granular structured address (street, colony,
   /// city, pincode) + exact coords, optional distance when user coords are given.
-  Future<List<Map<String, dynamic>>> geoSuggest(String q, {double? lat, double? lng}) async {
+  Future<List<Map<String, dynamic>>> geoSuggest(String q,
+      {double? lat, double? lng}) async {
     var path = '/api/geo/suggest?q=\${Uri.encodeQueryComponent(q)}';
     if (lat != null && lng != null) {
       path += '&lat=\${lat.toStringAsFixed(5)}&lng=\${lng.toStringAsFixed(5)}';
     }
     final res = await _get(path);
-    return [for (final r in (res['results'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
+    return [
+      for (final r in (res['results'] as List? ?? const []))
+        if (r is Map<String, dynamic>) r
+    ];
   }
 
   /// GET /api/hotels/locations — LIVE hotel-name + destination typeahead
   /// (TravelGuru autosuggest proxy, same registry Yatra's hotel site uses).
   /// Returns [{name, type: HOTEL|CITY, cityName, stateName, propertyType, sourceId}].
   Future<List<Map<String, dynamic>>> hotelLocations(String q) async {
-    final res = await _get('/api/hotels/locations?q=${Uri.encodeQueryComponent(q)}');
-    return [for (final r in (res['locations'] as List? ?? const [])) if (r is Map<String, dynamic>) r];
+    final res =
+        await _get('/api/hotels/locations?q=${Uri.encodeQueryComponent(q)}');
+    return [
+      for (final r in (res['locations'] as List? ?? const []))
+        if (r is Map<String, dynamic>) r
+    ];
   }
 
   /// GET /api/geo/reverse — name a dropped pin; null when the map has no name (never invented).
   Future<Map<String, dynamic>?> geoReverse(double lat, double lng) async {
-    final res = await _get('/api/geo/reverse?lat=${lat.toStringAsFixed(6)}&lng=${lng.toStringAsFixed(6)}');
+    final res = await _get(
+        '/api/geo/reverse?lat=${lat.toStringAsFixed(6)}&lng=${lng.toStringAsFixed(6)}');
     final place = res['place'];
     return place is Map<String, dynamic> ? place : null;
   }
 
   /// Public GET for ad-hoc read endpoints (status, provenance, picks, ...).
-  Future<Map<String, dynamic>> getJson(String path, {String? token}) => _get(path, token: token);
+  Future<Map<String, dynamic>> getJson(String path, {String? token}) =>
+      _get(path, token: token);
 
   Uri searchUrl(String query) => Uri.parse(
         '$baseUrl/?q=${Uri.encodeQueryComponent(query)}',
@@ -1522,8 +1966,10 @@ class Try1SecondApi {
   /// attempt dials its OWN connection and closes it immediately after the response. There is
   /// no reused socket left for the edge to reset, which is exactly the behaviour a browser
   /// gets for free by retrying invisibly.
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function(http.Client, String base) fn,
-      {String? token, String? path}) async {
+  Future<Map<String, dynamic>> _send(
+      Future<http.Response> Function(http.Client, String base) fn,
+      {String? token,
+      String? path}) async {
     /// One connection per attempt: build a client, use it once, close it, so a socket the
     /// edge already killed can never be reused.
     Future<http.Response> attempt(String base) async {
@@ -1548,7 +1994,8 @@ class Try1SecondApi {
     const delays = <int>[250, 600, 1200, 2500];
     final bases = <String>[
       _base,
-      if (fallbackBaseUrl.isNotEmpty && fallbackBaseUrl != _base) fallbackBaseUrl,
+      if (fallbackBaseUrl.isNotEmpty && fallbackBaseUrl != _base)
+        fallbackBaseUrl,
     ];
     Object? lastError;
     for (final base in bases) {
@@ -1570,8 +2017,8 @@ class Try1SecondApi {
             lastError = e;
             // Report to the OTHER hop: the refusing one cannot be trusted to log anything, and
             // its own log would only record itself.
-            unawaited(_reportHttpFailure(
-                path ?? '', res.statusCode, res.body, base == baseUrl ? fallbackBaseUrl : baseUrl));
+            unawaited(_reportHttpFailure(path ?? '', res.statusCode, res.body,
+                base == baseUrl ? fallbackBaseUrl : baseUrl));
             break;
           }
         } catch (e) {
@@ -1602,14 +2049,17 @@ class Try1SecondApi {
           } catch (e) {
             lastError = e;
           }
-          if (j == 0) await Future<void>.delayed(const Duration(milliseconds: 400));
+          if (j == 0) {
+            await Future<void>.delayed(const Duration(milliseconds: 400));
+          }
         }
         // Both hops are resetting right now; do not loop further, just stop this hop.
         continue;
       }
       if (lastError is! ApiHttpException) break;
     }
-    unawaited(_reportTransportFailure(path ?? '', lastError ?? 'unknown', onBase: baseUrl));
+    unawaited(_reportTransportFailure(path ?? '', lastError ?? 'unknown',
+        onBase: baseUrl));
     throw (lastError is Exception)
         ? lastError
         : http.ClientException('connection failed: $lastError');
@@ -1657,8 +2107,10 @@ class Try1SecondApi {
           backdrop: r['backdrop'] as String?,
           cta: (r['cta'] as String?) ?? 'Explore',
           url: r['url'] as String?,
-          launchVertical: (r['launch'] as Map<String, dynamic>?)?['vertical'] as String?,
-          launchQuery: (r['launch'] as Map<String, dynamic>?)?['query'] as String?,
+          launchVertical:
+              (r['launch'] as Map<String, dynamic>?)?['vertical'] as String?,
+          launchQuery:
+              (r['launch'] as Map<String, dynamic>?)?['query'] as String?,
           gradient: (r['gradient'] as List?)?.whereType<String>().toList(),
         ),
     ];
@@ -1716,21 +2168,54 @@ class Try1SecondApi {
     }
   }
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body, {String? token}) async {
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body,
+      {String? token}) async {
     final h = _headers(token);
     final b = jsonEncode(body);
-    return _send((c, base) => c.post(Uri.parse('$base$path'), headers: h, body: b),
-        token: token, path: path);
+    return _cached(
+        'POST',
+        path,
+        b,
+        () => _send(
+            (c, base) => c.post(Uri.parse('$base$path'), headers: h, body: b),
+            token: token,
+            path: path));
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
     final h = _headers(token);
-    return _send((c, base) => c.get(Uri.parse('$base$path'), headers: h), token: token, path: path);
+    return _cached(
+        'GET',
+        path,
+        null,
+        () => _send((c, base) => c.get(Uri.parse('$base$path'), headers: h),
+            token: token, path: path));
+  }
+
+  /// Runs [run], remembers the answer, and — only when the request never reached the server
+  /// (transport failure on every hop) — replays the last known good answer for the same call.
+  /// A real HTTP/API error is never masked by cache: the server did answer.
+  Future<Map<String, dynamic>> _cached(String method, String path, String? body,
+      Future<Map<String, dynamic>> Function() run) async {
+    final key = OfflineCache.instance.key(method, path, body);
+    try {
+      final data = await run();
+      if (data['success'] == true || (data['results'] is List)) {
+        unawaited(OfflineCache.instance.put(key, jsonEncode(data)));
+      }
+      return data;
+    } catch (e) {
+      if (e is ApiHttpException) rethrow; // the server spoke; its answer stands
+      final cached = await OfflineCache.instance.get(key);
+      if (cached != null) return cached;
+      rethrow;
+    }
   }
 
   /// One-shot request for the few endpoints that need the raw response (DELETE status
   /// codes). Same rule as _send: its own connection, closed straight after, one retry.
-  Future<http.Response> _rawRequest(Future<http.Response> Function(http.Client, String base) fn) async {
+  Future<http.Response> _rawRequest(
+      Future<http.Response> Function(http.Client, String base) fn) async {
     Future<http.Response> once() async {
       final client = clientInjected ? _client : _hardenedClient();
       try {
@@ -1755,10 +2240,12 @@ class Try1SecondApi {
   /// Fire-and-forget transport report -> POST /api/client-diag (owner 31 Oct).
   /// Deliberately uses its own HttpClient and never the slot queue, so it cannot deadlock
   /// or hold a request slot while the app is already in trouble.
-  Future<void> _reportTransportFailure(String path, Object error, {String onBase = ''}) async {
+  Future<void> _reportTransportFailure(String path, Object error,
+      {String onBase = ''}) async {
     if (clientInjected) return; // tests stay silent
     try {
-      final client = IOClient(io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
+      final client = IOClient(
+          io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
       try {
         await client
             .post(
@@ -1767,7 +2254,8 @@ class Try1SecondApi {
               body: jsonEncode({
                 'endpoint': path,
                 'error': '$error',
-                'platform': '${io.Platform.operatingSystem} ${io.Platform.version}',
+                'platform':
+                    '${io.Platform.operatingSystem} ${io.Platform.version}',
                 'addressFamily': 'ipv4-first',
                 'appVersion': kAppVersion,
                 'retries': 2,
@@ -1784,11 +2272,13 @@ class Try1SecondApi {
   /// OWNER 31 Oct: "/api/admin/client-diag" now shows WHY a hop refused us - the status, the hop
   /// host, and the first 160 characters of the body (Cloudflare's page, LiteSpeed's page and our
   /// own JSON each look different), so the next report is evidence instead of a guess.
-  Future<void> _reportHttpFailure(String path, int status, String body, String base) async {
+  Future<void> _reportHttpFailure(
+      String path, int status, String body, String base) async {
     if (clientInjected) return; // tests stay silent
     final snippet = body.replaceAll(RegExp(r'\\s+'), ' ').trim();
     try {
-      final client = IOClient(io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
+      final client = IOClient(
+          io.HttpClient()..connectionTimeout = const Duration(seconds: 5));
       try {
         await client
             .post(
@@ -1798,7 +2288,8 @@ class Try1SecondApi {
                 'endpoint': path,
                 'error': 'HTTP $status from ${base.replaceFirst('https://', '')}: '
                     '${snippet.length > 160 ? snippet.substring(0, 160) : snippet}',
-                'platform': '${io.Platform.operatingSystem} ${io.Platform.version}',
+                'platform':
+                    '${io.Platform.operatingSystem} ${io.Platform.version}',
                 'addressFamily': 'dual-hop',
                 'appVersion': kAppVersion,
                 'retries': 1,
@@ -1826,7 +2317,9 @@ class Try1SecondApi {
             ...body,
             'success': false,
             'pendingRefresh': true,
-            'retryAfterSec': retry is num ? retry.toInt() : int.tryParse(res.headers['retry-after'] ?? '') ?? 3,
+            'retryAfterSec': retry is num
+                ? retry.toInt()
+                : int.tryParse(res.headers['retry-after'] ?? '') ?? 3,
           };
         }
       } catch (_) {/* fall through to the generic handling */}
@@ -1864,7 +2357,9 @@ List<OfferGroup> groupByEntity(List<Offer> offers) {
     final key = o.canonicalEntityId ?? o.id;
     byKey.putIfAbsent(key, () => []).add(o);
   }
-  return byKey.values.map((group) => OfferGroup(group, cheapestOf(group))).toList();
+  return byKey.values
+      .map((group) => OfferGroup(group, cheapestOf(group)))
+      .toList();
 }
 
 /// Cheapest offer that actually owns a price. Zero prices are skipped.
@@ -1878,10 +2373,12 @@ Offer cheapestOf(List<Offer> offers) {
 /// Pick the offer matching a page/query product: prefer canonical-entity
 /// match, else >=60% title-token overlap. Returns null when nothing matches
 /// honestly (the caller must then show "no verified offers").
-Offer? pickMatchingOffer(List<Offer> offers, String reference, String? canonicalEntityId) {
+Offer? pickMatchingOffer(
+    List<Offer> offers, String reference, String? canonicalEntityId) {
   if (offers.isEmpty) return null;
   if (canonicalEntityId != null && canonicalEntityId.isNotEmpty) {
-    final byEntity = offers.where((o) => o.canonicalEntityId == canonicalEntityId).toList();
+    final byEntity =
+        offers.where((o) => o.canonicalEntityId == canonicalEntityId).toList();
     if (byEntity.isNotEmpty) return cheapestOf(byEntity);
   }
   final refTokens = _tokens(reference);
@@ -1924,9 +2421,11 @@ Verdict? verdictFromHistory(List<HistoryPoint> points, double currentPrice) {
     return Verdict('Buy now', 'Price is at/near the lowest recorded ($low).');
   }
   if (currentPrice > avg) {
-    return Verdict('Wait', 'Above the recorded average ($avg.round()). Consider waiting for a drop.');
+    return Verdict('Wait',
+        'Above the recorded average ($avg.round()). Consider waiting for a drop.');
   }
-  return Verdict('Fair price', 'Between the recorded low ($low) and high ($high).');
+  return Verdict(
+      'Fair price', 'Between the recorded low ($low) and high ($high).');
 }
 
 /// ₹ formatting, Indian digit grouping (1,09,999 style used on the web).

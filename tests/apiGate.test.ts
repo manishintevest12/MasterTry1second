@@ -126,3 +126,45 @@ test('when the origin reset, the request is rescued through the Cloudflare relay
   assert.equal(seen[0], 'https://relay.example.dev/api/deals?limit=5');
   void realFetch;
 });
+
+test('when every route is resetting, the last good answer is replayed from offline cache', async () => {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    get length() { return store.size; },
+    key: (i: number) => Array.from(store.keys())[i] ?? null,
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+  };
+
+  let online = true;
+  const base = (async () => {
+    if (!online) throw new TypeError('Failed to fetch');
+    return new Response('{"success":true,"results":[{"id":"r1"}]}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+
+  const gated = createGatedFetch(base, {
+    relayBase: '',
+    retriesPerRoute: 0,
+    isGated: (url) => url.startsWith('https://www.try1second.com/api/'),
+  });
+
+  const live = await gated('https://www.try1second.com/api/deals?limit=5');
+  assert.equal(live.status, 200);
+  await new Promise((r) => setTimeout(r, 10)); // let the async cache write land
+
+  online = false; // phone lost the network / edge resetting everything
+  const offline = await gated('https://www.try1second.com/api/deals?limit=5');
+  assert.equal(offline.status, 200, 'cache answers instead of throwing');
+  assert.equal(offline.headers.get('x-t1s-cache'), 'stale');
+  assert.match(await offline.text(), /"r1"/);
+
+  // A call that was never cached must still fail loudly, never invent data.
+  await assert.rejects(() => gated('https://www.try1second.com/api/never-seen'));
+  delete (globalThis as any).localStorage;
+});
+

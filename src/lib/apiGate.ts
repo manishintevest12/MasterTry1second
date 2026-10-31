@@ -60,6 +60,57 @@ export function relayUrlFor(absoluteUrl: string, relayBase: string): string | nu
   }
 }
 
+/**
+ * OWNER 31 Oct ("ye error kabhi na aaye"): a transport reset means the server never spoke, not that
+ * the answer changed. The last good body for the exact same call is kept in localStorage and
+ * replayed when every route fails, so the page renders real (slightly older) data instead of an
+ * error card. A real HTTP answer is never replaced by cache.
+ */
+const CACHE_PREFIX = 't1s_offline_v1:';
+const CACHE_MAX_ENTRIES = 25;
+const CACHE_MAX_BYTES = 400_000;
+
+function cacheStore(): Storage | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+export function offlineKey(method: string, url: string, body: string): string {
+  let hash = 0;
+  for (let i = 0; i < body.length; i++) hash = (hash * 31 + body.charCodeAt(i)) | 0;
+  return `${CACHE_PREFIX}${method.toUpperCase()}:${url}#${hash}`;
+}
+
+export function cachePut(key: string, body: string): void {
+  const store = cacheStore();
+  if (!store || body.length > CACHE_MAX_BYTES) return;
+  try {
+    const keys = Object.keys(store).filter((k) => k.startsWith(CACHE_PREFIX));
+    if (keys.length >= CACHE_MAX_ENTRIES) store.removeItem(keys[0]);
+    store.setItem(key, JSON.stringify({ at: Date.now(), body }));
+  } catch {
+    /* quota or private mode: caching is best-effort */
+  }
+}
+
+export function cacheGet(key: string): { at: number; body: string } | null {
+  const store = cacheStore();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.body !== 'string') return null;
+    if (Date.now() - Number(parsed.at || 0) > 7 * 86_400_000) return null;
+    return { at: Number(parsed.at || 0), body: parsed.body };
+  } catch {
+    return null;
+  }
+}
+
 export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOptions = {}): typeof fetch {
   const maxConcurrent = Math.max(1, options.maxConcurrent ?? 3);
   const retriesPerRoute = Math.max(0, options.retriesPerRoute ?? 1);
@@ -131,11 +182,12 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
       if (existing) return (await existing).clone();
     }
 
-    // One canonical request whose body is never consumed (every attempt runs on a clone), so the
-    // relay hop can replay a POST with its payload intact.
     const canonical = typeof input === 'object' && 'clone' in input && input instanceof Request
       ? input
       : new Request(absolute, init);
+
+    // Storage key for the offline copy, derived INSIDE execute so no await delays the dedupe map.
+    let storageKey: string | null = method === 'GET' ? offlineKey(method, absolute, '') : null;
 
     const routes: Array<{ url: string; viaRelay: boolean }> = [];
     const originRoute = { url: absolute, viaRelay: false };
@@ -147,6 +199,13 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
     const execute = (async (): Promise<Response> => {
       let lastError: unknown;
       let lastResponse: Response | undefined;
+      if (storageKey === null && method !== 'GET') {
+        try {
+          storageKey = offlineKey(method, absolute, await canonical.clone().text());
+        } catch {
+          storageKey = null;
+        }
+      }
 
       for (const route of routes) {
         for (let attempt = 0; attempt <= retriesPerRoute; attempt++) {
@@ -165,6 +224,10 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
             // A route that produced a real answer is the route to keep.
             if (route.viaRelay && response.status < 500) rememberRelay(true);
             else if (!route.viaRelay && preferRelay && response.status < 500) rememberRelay(false);
+            if (response.ok && storageKey) {
+              const copy = response.clone();
+              copy.text().then((text) => cachePut(storageKey!, text)).catch(() => undefined);
+            }
             return response;
           } catch (error) {
             lastError = error;
@@ -175,6 +238,20 @@ export function createGatedFetch(baseFetch: typeof fetch, options: GatedFetchOpt
       }
 
       if (lastResponse) return lastResponse;
+      // Every route failed in transport: replay the last good answer for this exact call.
+      if (storageKey) {
+        const cached = cacheGet(storageKey);
+        if (cached) {
+          return new Response(cached.body, {
+            status: 200,
+            headers: {
+              'content-type': 'application/json; charset=utf-8',
+              'x-t1s-cache': 'stale',
+              'x-t1s-cached-at': new Date(cached.at).toISOString(),
+            },
+          });
+        }
+      }
       throw lastError;
     })();
 
