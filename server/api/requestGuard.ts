@@ -35,7 +35,7 @@ const SESSION_TTL_MS = 45_000;
 /** How long the app is told to wait before retrying after a 429. */
 const RETRY_AFTER_SEC = 3;
 
-const active = new Map<string, { startedAt: number; vertical: string; queryKey: string }>();
+const active = new Map<string, { startedAt: number; vertical: string; queryKey: string; token: object }>();
 
 /**
  * Session identity for the one-scrape rule. The app already sends a stable device/session
@@ -78,13 +78,29 @@ export function beginScrape(req: Request, vertical: string, queryKey: string = '
   const key = sessionKeyOf(req);
   const noop = () => undefined;
 
-  const existing = active.get(key);
+  let existing = active.get(key);
   // A REPEAT of the search already running is not a second scrape: the load governor
   // coalesces it onto the in-flight job and the repeat cache answers it, which is exactly
   // how the app's poll loop is meant to work. Only a DIFFERENT search from the same device
   // while one is still running is refused (owner rule: one scrape per user/session).
   if (existing && queryKey && existing.queryKey && existing.queryKey !== queryKey) {
-    return { ok: false, reason: 'session_busy', retryAfterSec: RETRY_AFTER_SEC, release: noop };
+    // OWNER 31 Oct audit finding ("agar sb jagah ye perfect results de"): a GENUINELY new search
+    // from the same device used to be refused with 429 session_busy, so a user who changed the
+    // city/vertical quickly got an error box for their own next search. That is not a duplicate,
+    // so it now SUPERSEDES the old booking: the stale job is left to finish (its answer is simply
+    // not awaited), the slot moves to the new query, and the global CPU/queue governor still caps
+    // real concurrency. Duplicates of the same query are still coalesced, never re-scraped.
+    log.info('Search', 'New search superseded the running one (owner 31 Oct)', {
+      vertical,
+      from: existing.vertical,
+      fromKey: existing.queryKey.slice(0, 60),
+      toKey: queryKey.slice(0, 60),
+      ranForMs: now - existing.startedAt,
+    });
+    active.delete(key);
+    // Clear the local too: otherwise the `if (existing)` duplicate branch below would hand back a
+    // no-op booking and the NEW query would never actually own the slot.
+    existing = undefined;
   }
   if (existing) {
     // Same search: hand back a release that does NOT clear the original booking.
@@ -96,7 +112,10 @@ export function beginScrape(req: Request, vertical: string, queryKey: string = '
   if (stats.queued >= Math.max(1, liveQueueMax() - 1)) {
     return { ok: false, reason: 'queue_full', retryAfterSec: RETRY_AFTER_SEC, release: noop };
   }
-  active.set(key, { startedAt: now, vertical, queryKey });
+  // A per-booking token: a SUPERSEDED booking's late release must never free the slot its
+  // successor now owns (that would let two scrapes run for one session).
+  const token = {};
+  active.set(key, { startedAt: now, vertical, queryKey, token });
   let released = false;
   return {
     ok: true,
@@ -104,7 +123,7 @@ export function beginScrape(req: Request, vertical: string, queryKey: string = '
     release: () => {
       if (released) return;
       released = true;
-      active.delete(key);
+      if (active.get(key)?.token === token) active.delete(key);
     },
   };
 }

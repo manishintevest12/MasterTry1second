@@ -19,16 +19,22 @@ const req = (headers: Record<string, string> = {}) => ({
   socket: { remoteAddress: '1.2.3.4' },
 }) as any;
 
-test('a second DIFFERENT search from the same session is refused', () => {
+test('a GENUINELY new search SUPERSEDES the running one instead of erroring (owner 31 Oct)', () => {
   resetRequestGuard();
   const first = beginScrape(req(), 'flights', 'indore to delhi');
   assert.equal(first.ok, true);
+  // The owner's audit found users getting a 429 for their own next search (change city -> error),
+  // so the new query takes the slot and the stale booking is dropped.
   const second = beginScrape(req(), 'flights', 'mumbai to goa');
-  assert.equal(second.ok, false);
-  assert.equal(second.reason, 'session_busy');
-  assert.equal(second.retryAfterSec, 3);
+  assert.equal(second.ok, true, 'a new query must never be refused as session_busy');
+  assert.equal(activeScrapeSessions(), 1, 'still exactly one active booking per session');
+  // the superseded booking's late release must not free the NEW slot
   first.release();
-  // released -> the next search is allowed again
+  assert.equal(activeScrapeSessions(), 1);
+  // a repeat of the new query coalesces (never a second scrape)
+  assert.equal(beginScrape(req(), 'flights', 'mumbai to goa').ok, true);
+  assert.equal(activeScrapeSessions(), 1);
+  second.release();
   assert.equal(beginScrape(req(), 'flights', 'mumbai to goa').ok, true);
 });
 
@@ -41,7 +47,8 @@ test('a poll of the SAME search is not treated as a second scrape', () => {
   // releasing the poll must not clear the original booking
   poll.release();
   assert.equal(activeScrapeSessions(), 1);
-  assert.equal(beginScrape(req(), 'flights', 'mumbai to goa').ok, false);
+  // a different query still takes over (supersede) rather than being refused
+  assert.equal(beginScrape(req(), 'flights', 'mumbai to goa').ok, true);
 });
 
 test('two devices are independent', () => {
