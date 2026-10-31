@@ -193,12 +193,26 @@ void main() {
           'https://seller/offer?aff=1');
     });
 
-    test('HTTP errors surface honestly', () async {
+    test('our own JSON refusal surfaces honestly', () async {
+      final api = Try1SecondApi.withClient(
+        'https://x.test',
+        MockClient((req) async => http.Response(
+            jsonEncode({'error': 'bad_request'}), 400,
+            headers: {'content-type': 'application/json'})),
+      );
+      expect(() => api.search('q'), throwsException);
+    });
+
+    test('an edge refusal (no API body) becomes the retrying state, never a box', () async {
+      // Owner rule 31 Oct: a 503 from the hosting edge / a WAF page is NOT an answer the user
+      // should read as an error; the app keeps its own scanning state so the screen stays alive.
       final api = Try1SecondApi.withClient(
         'https://x.test',
         MockClient((req) async => http.Response('', 503)),
       );
-      expect(() => api.search('q'), throwsException);
+      final res = await api.search('q');
+      expect(res.results, isEmpty);
+      expect(res.servedFrom, anyOf('unavailable', ''));
     });
   });
 

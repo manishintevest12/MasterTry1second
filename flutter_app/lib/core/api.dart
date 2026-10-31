@@ -1377,24 +1377,47 @@ class Try1SecondApi {
       ..userAgent = kAppUserAgent;
     // IPv4-first dialler. Falls back to the platform's own resolution when no A record is
     // available, so behaviour can only get better, never worse.
+    //
+    // OWNER 31 Oct ("no matching option found error in every vertical"): this factory used to
+    // hand back a PLAIN socket for an https:// URI. dart:io requires the factory to return an
+    // already-secured socket for TLS URLs, so every single request the app made died in the
+    // handshake, _cached turned that refusal into the "still scanning" envelope, the poll budget
+    // ran out and the feed landed on "No matching options found" in EVERY vertical - while curl
+    // and the browser kept working. The socket is now TLS-wrapped with the REAL host name, so SNI
+    // and certificate validation stay intact while the IPv4-first dial is kept.
     inner.connectionFactory =
         (Uri uri, String? proxyHost, int? proxyPort) async {
       final host = proxyHost ?? uri.host;
       final port = proxyPort ?? uri.port;
+      final secure = uri.scheme == 'https';
+      Future<Socket> wrap(Socket raw) async {
+        if (!secure) return raw;
+        try {
+          return await io.SecureSocket.secure(raw, host: uri.host);
+        } catch (_) {
+          try {
+            raw.destroy();
+          } catch (_) {/* already gone */}
+          rethrow;
+        }
+      }
+
       try {
         final v4 =
             await InternetAddress.lookup(host, type: InternetAddressType.IPv4);
         if (v4.isNotEmpty) {
-          final socket = await Socket.connect(v4.first, port,
+          final raw = await Socket.connect(v4.first, port,
               timeout: const Duration(seconds: 8));
+          final socket = await wrap(raw);
           return ConnectionTask.fromSocket(
               Future<Socket>.value(socket), () => socket.destroy());
         }
-      } catch (_) {/* fall through to the default dialler */}
+      } catch (_) {/* fall through to the platform dialler */}
       final any = await InternetAddress.lookup(host);
       if (any.isEmpty) throw const SocketException('no address for host');
-      final socket = await Socket.connect(any.first, port,
+      final raw = await Socket.connect(any.first, port,
           timeout: const Duration(seconds: 8));
+      final socket = await wrap(raw);
       return ConnectionTask.fromSocket(
           Future<Socket>.value(socket), () => socket.destroy());
     };
