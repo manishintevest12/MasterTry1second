@@ -28,10 +28,28 @@ export function sameVertical(a: unknown, b: unknown): boolean {
   return ca !== '' && ca === canonicalVertical(b);
 }
 
-/** Rewrite the vertical tag of engine rows to its canonical id, leaving everything else intact. */
-export function canonicalizeRows<T extends { vertical?: unknown }>(rows: T[]): T[] {
-  return rows.map((row) => {
-    const canon = canonicalVertical(row?.vertical);
-    return canon && canon !== row?.vertical ? ({ ...row, vertical: canon } as T) : row;
+/**
+ * Rewrite the vertical tag of engine rows to its canonical id, leaving everything else intact.
+ *
+ * OWNER 30 Oct (blank white /hotels page): "Uncaught TypeError: Cannot read properties of
+ * undefined (reading 'map')" inside ComparisonFeed's flatMap. The price sidebar collects seller
+ * names with `items.flatMap(it => it.sellerQuotes.map(...))`, and a single engine row that
+ * arrives without sellerQuotes (presence / "still scanning" rows, and cached rows written by an
+ * older build) threw during render, which unmounts the whole React tree and leaves the page
+ * blank. This is the one place every live row passes through, so the shape is guaranteed here
+ * instead of guarding a dozen consumers: sellerQuotes is always an array and null rows are
+ * dropped. Nothing is invented - a row with no quotes simply carries an empty list.
+ */
+export function canonicalizeRows<T extends { vertical?: unknown; sellerQuotes?: unknown }>(rows: T[]): T[] {
+  return (Array.isArray(rows) ? rows : []).filter(Boolean).map((row) => {
+    const canon = canonicalVertical((row as any)?.vertical);
+    const raw = (row as any)?.sellerQuotes;
+    const needsVertical = Boolean(canon) && canon !== (row as any)?.vertical;
+    if (!needsVertical && Array.isArray(raw)) return row;
+    return {
+      ...(row as any),
+      ...(needsVertical ? { vertical: canon } : {}),
+      sellerQuotes: Array.isArray(raw) ? raw.filter(Boolean) : [],
+    } as T;
   });
 }

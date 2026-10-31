@@ -43,7 +43,8 @@ export const PriceAdviceSidebar: React.FC = () => {
   // Collect unique sellers for current vertical
   const allVendors = Array.from(
     new Set(
-      currentVerticalItems.flatMap((it) => it.sellerQuotes.map((q) => q.sellerName))
+      // OWNER 30 Oct: this exact line blanked /hotels when one row had no sellerQuotes.
+      currentVerticalItems.flatMap((it) => (it.sellerQuotes || []).map((q) => q.sellerName))
     )
   );
 
