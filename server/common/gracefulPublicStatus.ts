@@ -17,10 +17,27 @@ import type { Express, Request, Response, NextFunction } from 'express';
 import { recordBadRequest } from './badRequestLog';
 
 /** Status codes a hop or a guard can produce that must never reach an installed old build. */
-const MASKED = new Set([400, 405, 408, 409, 413, 415, 421, 422, 425, 429, 500, 502, 503, 504]);
+const MASKED = new Set([400, 404, 405, 408, 409, 413, 415, 421, 422, 425, 429, 500, 502, 503, 504]);
 
-/** POST paths that are read-style scans (safe to answer 200 + retry hint). Everything else keeps truth. */
-const READ_POST_PATHS = ['/api/search', '/api/scrape/live', '/api/compare', '/api/hotels/', '/api/flights/'];
+/**
+ * POST endpoints whose failure means REAL data loss or a REAL auth answer, so they keep their status.
+ * Everything else under /api is a read/scan and is masked. Inverted from the old whitelist after the
+ * owner reported the box still appearing: any method/path combination the installed build might use
+ * (GET/POST/PUT on a vertical, a stale path, a scan endpoint we renamed) now answers 200 + retry hint
+ * instead of an error the old client cannot interpret.
+ */
+const TRUTH_POST_PATHS = [
+  '/api/leads',            // a lost lead must never look like success
+  '/api/partner-inquiry',
+  '/api/auth/',            // register/login/otp must keep honest answers
+  '/api/alerts',
+  '/api/spend',
+  '/api/rewards/',
+  '/api/push/',
+  '/api/notifications/',
+  '/api/admin',
+  '/api/client-diag',
+];
 
 const isMaskable = (req: Request): boolean => {
   const path = (req.path || req.originalUrl || '').split('?')[0];
@@ -29,8 +46,10 @@ const isMaskable = (req: Request): boolean => {
   if (path.startsWith('/api/version') || path.startsWith('/api/health')) return false;
   if (path.startsWith('/api/client-diag')) return false;
   if (req.method === 'GET' || req.method === 'HEAD') return true;
-  if (req.method !== 'POST') return false;
-  return READ_POST_PATHS.some((p) => path.startsWith(p));
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+    return !TRUTH_POST_PATHS.some((p) => path.startsWith(p));
+  }
+  return false;
 };
 
 export function gracefulPublicStatus(app: Express): void {

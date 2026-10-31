@@ -50705,8 +50705,21 @@ function lenientJsonBody(limit = "256kb") {
 
 // server/common/gracefulPublicStatus.ts
 init_badRequestLog();
-var MASKED = /* @__PURE__ */ new Set([400, 405, 408, 409, 413, 415, 421, 422, 425, 429, 500, 502, 503, 504]);
-var READ_POST_PATHS = ["/api/search", "/api/scrape/live", "/api/compare", "/api/hotels/", "/api/flights/"];
+var MASKED = /* @__PURE__ */ new Set([400, 404, 405, 408, 409, 413, 415, 421, 422, 425, 429, 500, 502, 503, 504]);
+var TRUTH_POST_PATHS = [
+  "/api/leads",
+  // a lost lead must never look like success
+  "/api/partner-inquiry",
+  "/api/auth/",
+  // register/login/otp must keep honest answers
+  "/api/alerts",
+  "/api/spend",
+  "/api/rewards/",
+  "/api/push/",
+  "/api/notifications/",
+  "/api/admin",
+  "/api/client-diag"
+];
 var isMaskable = (req) => {
   const path15 = (req.path || req.originalUrl || "").split("?")[0];
   if (!path15.startsWith("/api/")) return false;
@@ -50714,8 +50727,10 @@ var isMaskable = (req) => {
   if (path15.startsWith("/api/version") || path15.startsWith("/api/health")) return false;
   if (path15.startsWith("/api/client-diag")) return false;
   if (req.method === "GET" || req.method === "HEAD") return true;
-  if (req.method !== "POST") return false;
-  return READ_POST_PATHS.some((p) => path15.startsWith(p));
+  if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+    return !TRUTH_POST_PATHS.some((p) => path15.startsWith(p));
+  }
+  return false;
 };
 function gracefulPublicStatus(app) {
   app.use((req, res, next) => {
