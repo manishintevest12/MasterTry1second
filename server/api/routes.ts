@@ -401,7 +401,12 @@ apiRouter.get('/movies/upcoming', async (req, res) => {
 // per-movie Book page. Cached 30 minutes like the upcoming tab; honest empty state.
 const nowShowingCache = new Map<string, { at: number; movies: any[] }>();
 apiRouter.get('/movies/currently-showing', async (req, res) => {
-  const city = String(req.query.city || '').slice(0, 60).trim();
+  // OWNER 2 Nov ("homepage pr currently showing ni aa raha"): the homepage rail calls this
+  // path with NO city at all (web CurrentlyShowing.tsx and the app's rail both call
+  // '/api/movies/currently-showing'). An empty city sent BMS down the slowest path - measured
+  // cold it never answered inside the 40s curl budget, so the section sat on 'loading' and
+  // rendered nothing. The site's own default seed city is Indore, so use it instead of ''.
+  const city = (String(req.query.city || '').slice(0, 60).trim() || 'Indore');
   const cacheKey = (city || 'default').toLowerCase();
   const hit = nowShowingCache.get(cacheKey);
   if (hit && Date.now() - hit.at < 30 * 60_000) return res.json({ movies: hit.movies, city });
@@ -414,7 +419,11 @@ apiRouter.get('/movies/currently-showing', async (req, res) => {
     const region = await resolveBmsRegion(city || undefined, fetchJson);
     let r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: 'safari', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
     if (r.status !== 200) r = await cffiFetch(bmsDiscoverUrl(region), { impersonate: 'chrome', timeoutMs: 15_000, headers: bmsDiscoverHeaders(region) });
-    if (r.status !== 200) return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
+    if (r.status !== 200) {
+      const last = nowShowingCache.get(cacheKey) || nowShowingCache.get('indore');
+      if (last?.movies?.length) return res.json({ movies: last.movies, city: region.regionName || city, stale: true });
+      return res.json({ movies: [], city: region.regionName || city, error: `BookMyShow now-showing HTTP ${r.status}` });
+    }
     const parsed = parseNowShowingCards(JSON.parse(r.body || '{}'), region).slice(0, 12);
     // The now-showing discovery payload prints certification + languages, not genres, and
     // carries the likes count inside the poster URL. The card the owner asked for needs
@@ -422,7 +431,12 @@ apiRouter.get('/movies/currently-showing', async (req, res) => {
     // page (its JSON "genre" array) with a small bounded fan-out, and likes decoded from the
     // poster BMS printed. Nothing is invented: a movie with no genre data on its page simply
     // falls back to the certification+languages line BMS itself shows.
+    // Hard budget for the genre fan-out. 12 movie pages x 2 fingerprints at 8s each ran
+    // ~40s cold and that latency (not the data) is what hid the section; a card without a
+    // genre line falls back to certification+languages, which is BMS's own copy.
+    const genreDeadline = Date.now() + 5_000;
     const genreOf = async (url: string): Promise<string | null> => {
+      if (Date.now() > genreDeadline) return null;
       // One honest retry with the other fingerprint: BMS throttles a 4-wide fan-out
       // intermittently, and a missed page only costs that card its genre line.
       for (const fp of ['safari', 'chrome'] as const) {
@@ -458,8 +472,14 @@ apiRouter.get('/movies/currently-showing', async (req, res) => {
       goUrl: createMaskingPointer(m.pageUrl, { offerId: String(m.eventCode || m.title) }),
     }));
     if (movies.length) nowShowingCache.set(cacheKey, { at: Date.now(), movies });
+    if (cacheKey === 'indore') nowShowingCache.set('indore', { at: Date.now(), movies });
     return res.json({ movies, city: region.regionName || city });
   } catch (e: any) {
+    // Never hide the section because one BMS call failed: a recently verified list is real
+    // inventory (30-min cache), so serve it with stale:true instead of an empty payload that
+    // makes both the web rail and the app rail render nothing.
+    const last = nowShowingCache.get(cacheKey) || nowShowingCache.get('indore');
+    if (last?.movies?.length) return res.json({ movies: last.movies, city, stale: true });
     return res.json({ movies: [], city, error: String(e?.message || e).slice(0, 120) });
   }
 });
