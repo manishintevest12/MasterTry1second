@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/api.dart';
 import '../../core/app_state.dart';
 import '../../core/theme.dart';
 import '../screens/in_app_browser_screen.dart';
@@ -276,8 +277,10 @@ class SectionTitle extends StatelessWidget {
 /// Back/Forward/Refresh/Share/More toolbar) instead of leaving to Chrome.
 Future<bool> openDeal(String url, {String? sellerName, double? price}) async {
   if (url.isEmpty) return false;
-  final base = AppState.instance.api.baseUrl;
-  final full = url.startsWith('http') ? url : '$base$url';
+  // Resolved against the PUBLIC site host, never the API relay: a webview request is
+  // neither our Dart client UA nor an allow-listed browser Origin, so the relay refused it
+  // and the partner page never loaded (see exitUrl in core/api.dart).
+  final full = exitUrl(url);
   final uri = Uri.tryParse(full);
   if (uri == null) return false;
   final nav = AppState.instance.navigator.currentState;

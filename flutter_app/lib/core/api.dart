@@ -42,6 +42,24 @@ const String kRelayKey = String.fromEnvironment('RELAY_KEY');
 /// app stays on the working route instead of paying double latency forever.
 const String kOriginFallbackBase = 'https://www.try1second.com';
 
+/// Resolve a server masking pointer (`/api/out?t=...`) for a BROWSER surface — the in-app
+/// webview or any external open.
+///
+/// OWNER 2 Nov ("book dabane par partner site nahi khul rahi, sirf blank white page"):
+/// exits were resolved against the API base, which is the Cloudflare relay. The relay only
+/// authorises our Dart client UA (`Try1Second/...`) or an allow-listed browser `Origin`;
+/// a WebView request carries a browser UA and no Origin, so the relay answered
+/// 401 {"error":"unauthorized"} (24 bytes) and the webview painted an empty white page
+/// under the seller's name. Pointers must therefore be resolved against the PUBLIC site
+/// host, exactly like the web app does — the site host is public and 302s to the partner
+/// (still server-tracked: the /api/out token is what records the click and adds the
+/// affiliate parameters).
+String exitUrl(String url) {
+  if (url.isEmpty) return url;
+  if (url.startsWith('http')) return url;
+  return '$kOriginFallbackBase$url';
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -306,7 +324,7 @@ class QuickApp {
               badge: a.badge,
               // masking pointers are relative (/api/out?t=...) — resolve to the
               // API base so the in-app browser can open and track them.
-              goUrl: a.goUrl.startsWith('/') ? '$baseUrl${a.goUrl}' : a.goUrl,
+              goUrl: exitUrl(a.goUrl),
             ))
         .toList();
   }

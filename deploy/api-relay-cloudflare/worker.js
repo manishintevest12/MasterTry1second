@@ -136,7 +136,13 @@ export default {
     // The app identifies itself with its own UA. Accepting it keeps older APKs (whose embedded
     // RELAY_KEY may have been rotated since) on the relay instead of failing closed, while
     // anonymous non-browser clients still get 401.
-    const fromOurApp = /^Try1Second\//i.test(request.headers.get('user-agent') || '');
+    // The in-app BROWSER (webview) also comes from our app but sends a browser UA that ends in
+    // "Try1SecondApp/1.9" - the plain client pattern above never matched it, so every merchant
+    // exit resolved against the relay answered 401 {"error":"unauthorized"} (24 bytes) and the
+    // webview painted a blank white page under the seller's name (owner 2 Nov: "book dabane par
+    // partner site nahi khul rahi, white page"). Exits belong on the public site host, but
+    // already-installed builds still point here, so accept both markers.
+    const fromOurApp = /Try1Second(\/|App\/)/i.test(request.headers.get('user-agent') || '');
     if (key && request.headers.get('x-relay-key') !== key && !fromAllowedBrowser && !fromOurApp) {
       const denied = new Response(JSON.stringify({ error: 'unauthorized' }), {
         status: 401,
