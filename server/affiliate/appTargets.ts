@@ -106,6 +106,37 @@ export function directAppTarget(destinationUrl: string): AppTarget | null {
   return null;
 }
 
+/**
+ * Ticketing partner hosts whose exits must STAY INSIDE the in-app browser.
+ *
+ * Owner 2 Nov: "maine kaha tha iske andar dikhane ko jaisa 1st image mai hai, pr ye tho
+ * redirection ke baad new tab open krta hai. phle iske andar hi aata tha aur black colour
+ * se link hide krta tha pr ab ni krta hai."
+ *
+ * What was happening: for a movies exit the app webview asked /api/out, the server answered
+ * `intent://…#package=com.bt.bms;S.browser_fallback_url=<paid url>;end`, the webview handed
+ * that to the OS (app_handoff) and the OS either opened the BookMyShow app or, when it is not
+ * installed, opened CHROME with the fallback URL — a normal browser tab, so the dark in-app
+ * browser header (hidden URL) disappeared and the tracked stay-on-page flow broke.
+ *
+ * The app hop is a nice-to-have for shop/travel exits, but a movie booking is a multi-step
+ * seat-selection flow that belongs inside our own browser. These hosts therefore never get
+ * the intent redirect; the webview loads the tracked https URL directly.
+ */
+export const WEBVIEW_ONLY_HOSTS: Array<[RegExp, string]> = [
+  [/(^|\.)bookmyshow\.com$/, 'BookMyShow'],
+  [/(^|\.)district\.in$/, 'District'],
+  [/(^|\.)cinepolis(india)?\.com$/, 'Cinépolis'],
+  [/(^|\.)ticketnew\.com$/, 'TicketNew'],
+];
+
+/** True when this destination must open inside the in-app browser, never via an OS app hop. */
+export function keepsWebviewExit(destinationUrl: string): boolean {
+  const host = hostOf(destinationUrl);
+  if (!host) return false;
+  return WEBVIEW_ONLY_HOSTS.some(([re]) => re.test(host));
+}
+
 export function appTargetFor(destinationUrl: string, partner?: string | null): AppTarget | null {
   const host = hostOf(destinationUrl);
   if (host) {

@@ -44,7 +44,7 @@ import { addSpendEntry, listSpendEntries, deleteSpendEntry, spendSummary } from 
 import { createMaskingPointer, resolveMaskingPointer, buildSecureDeeplink, recordPointerClick, merchantSearchFallback } from '../affiliate/deeplink';
 import { isCabAppScheme } from '../affiliate/cabLinks';
 import { createInterstitialPointer, isInAppWebView, adBlockHtml } from '../redirect/interstitial';
-import { directAppTarget, androidIntentUrl, isAndroid, appHandlesIntents } from '../affiliate/appTargets';
+import { directAppTarget, androidIntentUrl, isAndroid, appHandlesIntents, keepsWebviewExit } from '../affiliate/appTargets';
 import { getCabDeeplinkConfig, saveCabDeeplinkConfig, buildUberBookUrl, buildOlaBookUrl, buildRapidoBookUrl, geocodeCabPlace, numParam, buildUberAppSchemeUrl, buildOlaAppSchemeUrl, cabWebUrlToAppScheme } from '../common/cabDeeplink';
 import { buildShowcase, fetchAffiliateRows, realMerchantDomain, nameDomainOf } from '../home/showcase';
 import { cachedSection } from './cachedSections';
@@ -3246,7 +3246,10 @@ apiRouter.get('/out', async (req, res) => {
   if (isInAppWebView(req.headers['user-agent'])) {
     const ua = String(req.headers['user-agent'] || '');
     const direct = directAppTarget(freshDestination);
-    if (direct && isAndroid(ua) && appHandlesIntents(ua)) {
+    // Owner 2 Nov: ticketing exits (BookMyShow / District / Cinépolis / TicketNew) must stay
+    // in the in-app browser — the intent hop opened the partner app or a Chrome tab and lost
+    // our dark header + hidden URL ("phle iske andar hi aata tha ... pr ab ni krta hai").
+    if (direct && isAndroid(ua) && appHandlesIntents(ua) && !keepsWebviewExit(freshDestination)) {
       res.redirect(302, androidIntentUrl(direct, dl.trackingUrl));
       return;
     }

@@ -37605,6 +37605,11 @@ function directAppTarget(destinationUrl) {
   for (const [re, target] of BY_HOST) if (re.test(host)) return target;
   return null;
 }
+function keepsWebviewExit(destinationUrl) {
+  const host = hostOf2(destinationUrl);
+  if (!host) return false;
+  return WEBVIEW_ONLY_HOSTS.some(([re]) => re.test(host));
+}
 function androidIntentUrl(target, webUrl) {
   let rest = "";
   try {
@@ -37628,7 +37633,7 @@ function appHandlesIntents(ua) {
   if (!v) return false;
   return parseFloat(v) >= 1.9;
 }
-var BY_HOST, norm6, BY_NAME;
+var BY_HOST, norm6, BY_NAME, WEBVIEW_ONLY_HOSTS;
 var init_appTargets = __esm({
   "server/affiliate/appTargets.ts"() {
     BY_HOST = [
@@ -37688,6 +37693,12 @@ var init_appTargets = __esm({
     ];
     norm6 = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     BY_NAME = BY_HOST.map(([, t]) => [norm6(t.label), t]);
+    WEBVIEW_ONLY_HOSTS = [
+      [/(^|\.)bookmyshow\.com$/, "BookMyShow"],
+      [/(^|\.)district\.in$/, "District"],
+      [/(^|\.)cinepolis(india)?\.com$/, "Cin\xE9polis"],
+      [/(^|\.)ticketnew\.com$/, "TicketNew"]
+    ];
   }
 });
 
@@ -45114,7 +45125,7 @@ ${adHtml ? `<div class="ad">${adHtml}</div>` : ""}
       if (isInAppWebView(req.headers["user-agent"])) {
         const ua = String(req.headers["user-agent"] || "");
         const direct = directAppTarget(freshDestination);
-        if (direct && isAndroid(ua) && appHandlesIntents(ua)) {
+        if (direct && isAndroid(ua) && appHandlesIntents(ua) && !keepsWebviewExit(freshDestination)) {
           res.redirect(302, androidIntentUrl(direct, dl.trackingUrl));
           return;
         }
