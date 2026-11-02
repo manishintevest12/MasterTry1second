@@ -16,6 +16,7 @@ import { emtEncrypt, parseEmtAirbus, emtAirbusItems } from '../parsers/emtAirbus
 import { resolveAirport, IATA } from '../../common/airportLookup';
 import { kiwiSearch, kiwiItems } from '../parsers/kiwiFlights';
 import { parseIndigoSearch, indigoItems, indigoWebFareCalendar, indigoDayFareItems } from '../parsers/indigoFlights';
+import { aertripSearchUrl, aertripResultsUrl, aertripDeeplink, parseAertripSid, parseAertripJourneys, AERTRIP_GROUPS, AERTRIP_SELLER } from '../parsers/aertripFlights';
 import { parseAkasaFareCalendar, akasaFareCalendarUrl, akasaDayFareItems, akasaHonestNoService } from '../parsers/akasaFlights';
 import { parseBudgetAirCalendar, budgetAirCalendarUrl, budgetAirDayFareItems } from '../parsers/budgetAirFlights';
 import {
@@ -1834,6 +1835,79 @@ export const flightsWorker: VerticalWorker = {
         return etraveliBrandSearch(ctx, GOTOGATE_IN);
       },
     },
+    {
+      // Owner (2 Nov): "flight mai aertrip ... add kro". Aertrip is an Indian OTA whose
+      // storefront is a JS-only SPA, but its own flight API answers plain HTTP:
+      //   GET /api/v1/flights/search  -> sid   (depart as DD-MM-YYYY)
+      //   GET /api/v1/flights/results?sid=..&vcodes_grp=<supplier group>
+      // The results feed is progressive (each supplier group answers separately), so we
+      // poll the groups instead of trusting one empty answer. Aertrip SELLS the ticket,
+      // so seller = Aertrip and the deeplink is Aertrip's own results page for the exact
+      // route + date we searched. Verified live: IDR-DEL 19-11-2026, 6E-6627 07:15->08:45,
+      // nonstop, 7284 INR all-in.
+      sourceId: 'w_flights_aertrip',
+      name: 'Flights worker: Aertrip own flight results API (INR)',
+      priority: 12,
+      maxPerMinute: 3,
+      timeoutMs: 45_000,
+      run: async (ctx) => {
+        const raw = String(ctx.query.rawQuery || ctx.query.entityName || '');
+        const rt = routeFromQuery(raw);
+        if (!rt) return [];
+        const fromA = await resolveAirport(rt.from, rt.fromCode);
+        const toA = await resolveAirport(rt.to, rt.toCode);
+        const from = fromA.code; const to = toA.code;
+        if (!from || !to) return [];
+        const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart)
+          ? ctx.query.travelDates.depart
+          : new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
+        const routeLabel = `${from} to ${to}`;
+
+        const sr = await cffiFetch(aertripSearchUrl(from, to, dep), {
+          impersonate: 'chrome',
+          timeoutMs: 20_000,
+          headers: { Referer: aertripDeeplink(from, to, dep), Accept: 'application/json, text/plain, */*' },
+        });
+        if (sr.status === 403 || sr.status === 429) {
+          throw new AcquisitionError(sr.status === 403 ? 'ACCESS_CHALLENGE' : 'RATE_LIMITED',
+            `Aertrip search refused (HTTP ${sr.status}).`, sr.status);
+        }
+        if (sr.status !== 200) {
+          throw new AcquisitionError('SERVER_ERROR', `Aertrip search HTTP ${sr.status}: ${(sr.body || '').replace(/\s+/g, ' ').slice(0, 160)}`, sr.status);
+        }
+        const sid = parseAertripSid(sr.body);
+        if (!sid) return []; // honest: no search session minted, no rows claimed
+
+        const out: any[] = [];
+        const seen = new Set<string>();
+        for (let round = 0; round < 3; round++) {
+          for (const group of AERTRIP_GROUPS) {
+            let r;
+            try {
+              r = await cffiFetch(aertripResultsUrl(sid, group), {
+                impersonate: 'chrome',
+                timeoutMs: 15_000,
+                headers: { Referer: aertripDeeplink(from, to, dep), Accept: 'application/json, text/plain, */*' },
+              });
+            } catch { continue; }
+            if (r.status !== 200) continue;
+            const rows = parseAertripJourneys(r.body, { source: ctx.source, fromCode: from, toCode: to, dateIso: dep, routeLabel, today });
+            for (const it of rows) {
+              const k = String(it.identifiers?.sku || '');
+              if (k && seen.has(k)) continue;
+              if (k) seen.add(k);
+              out.push(it);
+            }
+          }
+          if (out.length >= 8) break; // enough for a comparison card set; stop spending requests
+          await new Promise((res) => setTimeout(res, 1200));
+        }
+        if (out.length) return out;
+        throw new AcquisitionError('EMPTY_RESPONSE', `Aertrip answered no priced journeys for ${from}-${to} ${dep} (sid ${sid.slice(0, 8)}…, ${AERTRIP_SELLER} groups polled).`);
+      },
+    },
+
     {
       // Owner OTA expansion (25 Oct). Etraveli Group — FlightNetwork IN
       // storefront. Same SearchOnResultPage recipe as Gotogate (identical

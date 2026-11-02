@@ -8457,6 +8457,139 @@ var init_indigoFlights = __esm({
   }
 });
 
+// server/workers/parsers/aertripFlights.ts
+function aertripDepartParam(depIso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(depIso || "").trim());
+  if (!m) return "";
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+function aertripSearchUrl(fromCode, toCode, depIso, cabin = "economy") {
+  const depart = aertripDepartParam(depIso);
+  const q3 = new URLSearchParams({
+    trip_type: "single",
+    adult: "1",
+    child: "0",
+    infant: "0",
+    cabinclass: cabin,
+    origin: String(fromCode || "").toUpperCase(),
+    destination: String(toCode || "").toUpperCase(),
+    depart,
+    pType: "flight"
+  });
+  return `${AERTRIP_API}/search?${q3.toString()}`;
+}
+function aertripResultsUrl(sid, group, displayGroupId = 1) {
+  const q3 = new URLSearchParams({ sid: String(sid), display_group_id: String(displayGroupId), vcodes_grp: String(group) });
+  return `${AERTRIP_API}/results?${q3.toString()}`;
+}
+function aertripDeeplink(fromCode, toCode, depIso, cabin = "economy") {
+  const depart = aertripDepartParam(depIso);
+  return `${AERTRIP_WEB}/v2/flights?trip_type=single&adult=1&child=0&infant=0&cabinclass=${encodeURIComponent(cabin)}&origin=${String(fromCode).toUpperCase()}&destination=${String(toCode).toUpperCase()}&depart=${depart}`;
+}
+function parseAertripSid(body) {
+  try {
+    const js = JSON.parse(body || "{}");
+    const sid = js?.data?.sid;
+    return typeof sid === "string" && sid.length >= 8 ? sid : null;
+  } catch {
+    return null;
+  }
+}
+function aertripDurationMinutes(j) {
+  const raw = Array.isArray(j?.tt) ? Number(j.tt[0]) : Number(j?.tt);
+  if (!Number.isFinite(raw) || raw <= 0) return void 0;
+  return Math.round(raw / 60);
+}
+function aertripFlightNumber(j) {
+  const segs = (j?.leg || []).flatMap((l) => l?.flights || []);
+  const nums = segs.map((s) => String(s?.ffk_str || s?.fno || s?.flt_no || "").split("_")[0].trim()).filter((n) => /^[A-Z0-9]{2}-?[A-Z]?\d{1,5}$/i.test(n));
+  return nums.join("-");
+}
+function aertripJourneyPrice(j) {
+  const gt = Number(j?.fare?.grand_total?.value);
+  const fp = Number(j?.farepr);
+  const gross = Number(j?.grosspr);
+  const pick3 = [gt, fp, gross].find((v) => Number.isFinite(v) && v > 0);
+  return pick3 ? Math.round(pick3) : void 0;
+}
+function parseAertripJourneys(body, opts) {
+  let js;
+  try {
+    js = JSON.parse(body || "{}");
+  } catch {
+    return [];
+  }
+  const flights = js?.data?.flights;
+  if (!Array.isArray(flights)) return [];
+  const deeplink = aertripDeeplink(opts.fromCode, opts.toCode, opts.dateIso);
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const f of flights) {
+    const journeys = f?.results?.j || [];
+    for (const j of journeys) {
+      const depTime = String(j?.dt || "").slice(0, 5);
+      const arrTime = String(j?.at || "").slice(0, 5);
+      const price = aertripJourneyPrice(j);
+      const flightNo2 = aertripFlightNumber(j);
+      if (!/^\d{2}:\d{2}$/.test(depTime) || !/^\d{2}:\d{2}$/.test(arrTime)) continue;
+      if (!price || price < 500 || price > 5e5) continue;
+      if (!flightNo2) continue;
+      const ap = (j?.ap || []).map((c) => String(c).toUpperCase());
+      if (ap.length >= 2 && (ap[0] !== opts.fromCode.toUpperCase() || ap[ap.length - 1] !== opts.toCode.toUpperCase())) continue;
+      const carrierCode = String((j?.al || [])[0] || flightNo2.split("-")[0] || "").toUpperCase();
+      const stops = Number.isFinite(Number(j?.stp)) ? Number(j?.stp) : Math.max(0, (j?.leg || []).length - 1);
+      const duration = aertripDurationMinutes(j);
+      const cabin = String(j?.segment_cabin_classes?.[0] || "economy");
+      const key = `${flightNo2}|${depTime}|${price}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const dispNo = flightNo2.split("-").reduce((acc, part, i, arr) => {
+        if (i % 2 === 0) acc.push(part + (arr[i + 1] ? `-${arr[i + 1]}` : ""));
+        return acc;
+      }, []).join(" + ");
+      out.push(newRawItem(opts.source, {
+        title: `${dispNo} \xB7 ${opts.routeLabel}`.slice(0, 200),
+        brand: carrierCode.slice(0, 80),
+        price,
+        currency: "INR",
+        seller: AERTRIP_SELLER,
+        sellerUrl: deeplink,
+        travel: { route: opts.routeLabel.toLowerCase(), date: opts.dateIso, seatType: cabin },
+        attributes: {
+          route: opts.routeLabel,
+          travel_date: opts.dateIso,
+          airline_code: carrierCode,
+          flight_number: flightNo2,
+          departure: depTime,
+          arrival: arrTime,
+          stops: String(stops),
+          ...duration ? { duration_minutes: String(duration) } : {},
+          cabin,
+          price_basis: `live all-inclusive ${stops === 0 ? "nonstop" : `${stops}-stop`} fare observed on ${AERTRIP_SELLER}'s flight results for ${opts.routeLabel} on ${opts.today} (${AERTRIP_SELLER} is the selling website)`,
+          data_note: `Fare acquired via ${AERTRIP_SELLER}'s own flight results API on ${opts.today}; the ticket is SOLD by ${AERTRIP_SELLER}. Price may change at checkout.`
+        },
+        identifiers: { sku: `aertrip-${flightNo2}-${opts.dateIso}-${depTime}`.slice(0, 120) },
+        evidence: {
+          sourceUrl: aertripDeeplink(opts.fromCode, opts.toCode, opts.dateIso),
+          sourceReference: String(j?.fk || `${flightNo2}-${depTime}`).slice(0, 160),
+          extractedFields: ["data.flights[].results.j[].dt/at/tt/stp/al/ap/farepr", "results.j[].leg[].flights[].ffk_str"]
+        }
+      }));
+    }
+  }
+  return out;
+}
+var AERTRIP_WEB, AERTRIP_API, AERTRIP_SELLER, AERTRIP_GROUPS;
+var init_aertripFlights = __esm({
+  "server/workers/parsers/aertripFlights.ts"() {
+    init_contract();
+    AERTRIP_WEB = "https://www.aertrip.com";
+    AERTRIP_API = "https://www.aertrip.com/api/v1/flights";
+    AERTRIP_SELLER = "Aertrip";
+    AERTRIP_GROUPS = ["6e", "6ecr", "emtp", "tjsr", "tbof", "cmsr", "cdmg"];
+  }
+});
+
 // server/workers/parsers/akasaFlights.ts
 function akasaFareCalendarUrl(fromCode, toCode, depIso) {
   const start = `${depIso}T00:00:00%2B05:30`;
@@ -15705,6 +15838,7 @@ var init_flights = __esm({
     init_airportLookup();
     init_kiwiFlights();
     init_indigoFlights();
+    init_aertripFlights();
     init_akasaFlights();
     init_budgetAirFlights();
     init_etraveliFlights();
@@ -17341,6 +17475,80 @@ var init_flights = __esm({
           timeoutMs: 34e3,
           run: async (ctx) => {
             return etraveliBrandSearch(ctx, GOTOGATE_IN);
+          }
+        },
+        {
+          // Owner (2 Nov): "flight mai aertrip ... add kro". Aertrip is an Indian OTA whose
+          // storefront is a JS-only SPA, but its own flight API answers plain HTTP:
+          //   GET /api/v1/flights/search  -> sid   (depart as DD-MM-YYYY)
+          //   GET /api/v1/flights/results?sid=..&vcodes_grp=<supplier group>
+          // The results feed is progressive (each supplier group answers separately), so we
+          // poll the groups instead of trusting one empty answer. Aertrip SELLS the ticket,
+          // so seller = Aertrip and the deeplink is Aertrip's own results page for the exact
+          // route + date we searched. Verified live: IDR-DEL 19-11-2026, 6E-6627 07:15->08:45,
+          // nonstop, 7284 INR all-in.
+          sourceId: "w_flights_aertrip",
+          name: "Flights worker: Aertrip own flight results API (INR)",
+          priority: 12,
+          maxPerMinute: 3,
+          timeoutMs: 45e3,
+          run: async (ctx) => {
+            const raw = String(ctx.query.rawQuery || ctx.query.entityName || "");
+            const rt = routeFromQuery(raw);
+            if (!rt) return [];
+            const fromA = await resolveAirport(rt.from, rt.fromCode);
+            const toA = await resolveAirport(rt.to, rt.toCode);
+            const from = fromA.code;
+            const to = toA.code;
+            if (!from || !to) return [];
+            const dep = ctx.query?.travelDates?.depart && /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.travelDates.depart) ? ctx.query.travelDates.depart : new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+            const today2 = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const routeLabel = `${from} to ${to}`;
+            const sr = await cffiFetch(aertripSearchUrl(from, to, dep), {
+              impersonate: "chrome",
+              timeoutMs: 2e4,
+              headers: { Referer: aertripDeeplink(from, to, dep), Accept: "application/json, text/plain, */*" }
+            });
+            if (sr.status === 403 || sr.status === 429) {
+              throw new AcquisitionError(
+                sr.status === 403 ? "ACCESS_CHALLENGE" : "RATE_LIMITED",
+                `Aertrip search refused (HTTP ${sr.status}).`,
+                sr.status
+              );
+            }
+            if (sr.status !== 200) {
+              throw new AcquisitionError("SERVER_ERROR", `Aertrip search HTTP ${sr.status}: ${(sr.body || "").replace(/\s+/g, " ").slice(0, 160)}`, sr.status);
+            }
+            const sid = parseAertripSid(sr.body);
+            if (!sid) return [];
+            const out = [];
+            const seen = /* @__PURE__ */ new Set();
+            for (let round = 0; round < 3; round++) {
+              for (const group of AERTRIP_GROUPS) {
+                let r;
+                try {
+                  r = await cffiFetch(aertripResultsUrl(sid, group), {
+                    impersonate: "chrome",
+                    timeoutMs: 15e3,
+                    headers: { Referer: aertripDeeplink(from, to, dep), Accept: "application/json, text/plain, */*" }
+                  });
+                } catch {
+                  continue;
+                }
+                if (r.status !== 200) continue;
+                const rows = parseAertripJourneys(r.body, { source: ctx.source, fromCode: from, toCode: to, dateIso: dep, routeLabel, today: today2 });
+                for (const it of rows) {
+                  const k = String(it.identifiers?.sku || "");
+                  if (k && seen.has(k)) continue;
+                  if (k) seen.add(k);
+                  out.push(it);
+                }
+              }
+              if (out.length >= 8) break;
+              await new Promise((res) => setTimeout(res, 1200));
+            }
+            if (out.length) return out;
+            throw new AcquisitionError("EMPTY_RESPONSE", `Aertrip answered no priced journeys for ${from}-${to} ${dep} (sid ${sid.slice(0, 8)}\u2026, ${AERTRIP_SELLER} groups polled).`);
           }
         },
         {
