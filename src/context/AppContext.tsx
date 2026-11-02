@@ -497,7 +497,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       for (const p of approved) {
         const cat = (['travel', 'retail', 'food', 'finance', 'cabs'].includes(p.category) ? p.category : 'retail') as DirectPartnerItem['category'];
         const website = p.websiteUrl.includes('://') ? p.websiteUrl : `https://${p.websiteUrl}`;
-        const dupe = base.some((b) => b.websiteUrl.replace(/\/$/, '') === website.replace(/\/$/, ''));
+        const dupe = base.some((b) => String(b.websiteUrl ?? '').replace(/\/$/, '') === website.replace(/\/$/, ''));
         if (dupe) continue;
         base.push({
           id: `srv-${p.id}`,

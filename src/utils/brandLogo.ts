@@ -67,8 +67,10 @@ export function airlineIata(item: { specs?: Record<string, string>; provider?: s
   return AIRLINE_NAME_TO_IATA[name];
 }
 
-export function brandDomain(name: string): string | undefined {
-  for (const [re, d] of DOMAIN_BY_BRAND) if (re.test(name)) return d;
+export function brandDomain(name: string | null | undefined): string | undefined {
+  const n = String(name ?? '');
+  if (!n) return undefined;
+  for (const [re, d] of DOMAIN_BY_BRAND) if (re.test(n)) return d;
   return undefined;
 }
 
@@ -86,7 +88,9 @@ export function brandLogoUrl(item: { vertical: string; specs?: Record<string, st
   return dom ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(dom)}&sz=128` : undefined;
 }
 
-export function initials(name: string): string {
-  const parts = name.replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+export function initials(name: string | null | undefined): string {
+  // OWNER 2 Nov ("/flights par undefined.replace"): every card helper must survive a row that
+  // arrived without a provider/subtitle instead of throwing out of the whole feed.
+  const parts = String(name ?? '').replace(/[^A-Za-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
   return (parts.length > 1 ? parts[0][0] + parts[1][0] : (parts[0] || '?').slice(0, 2)).toUpperCase();
 }

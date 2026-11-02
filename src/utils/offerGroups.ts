@@ -35,7 +35,7 @@ const spec = (it: ComparisonItem, ...ks: string[]): string => {
   return '';
 };
 
-const norm = (s: string): string =>
+const norm = (s: string | null | undefined): string =>
   String(s || '')
     .toLowerCase()
     .replace(/&/g, ' and ')
@@ -45,7 +45,7 @@ const norm = (s: string): string =>
 
 /** Words that never distinguish one product from another. */
 const NOISE = /\b(the|a|an|of|and|with|for|by|new|latest|original|combo|pack|buy|online|india|official|store|limited|ltd|pvt)\b/g;
-const tokens = (s: string): string =>
+const tokens = (s: string | null | undefined): string =>
   [...new Set(norm(s).replace(NOISE, ' ').split(' ').filter(Boolean))].sort().join(' ');
 
 /** Date normalizer (owner 24 Oct flight compare fix): sellers emit either ISO
@@ -141,7 +141,7 @@ export function offerKey(it: ComparisonItem): string {
   }
   if (v === 'grocery') {
     // Same product AND same pack size across quick-commerce apps.
-    return `g|${tokens(it.title.replace(/\(([^)]*)\)/g, ' $1 '))}|${norm(spec(it, 'quantity'))}`;
+    return `g|${tokens(String(it.title ?? '').replace(/\(([^)]*)\)/g, ' $1 '))}|${norm(spec(it, 'quantity'))}`;
   }
   // ecommerce: same product title across marketplaces (brand + model words).
   return `e|${tokens(it.title)}|${norm(spec(it, 'brand'))}`;
